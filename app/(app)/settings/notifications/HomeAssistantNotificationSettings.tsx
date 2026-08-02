@@ -2,8 +2,6 @@
 
 import { useState, useTransition } from "react";
 import type { ProfileHomeAssistant } from "@/lib/settings";
-import type { NotificationKind } from "@/lib/notifications/types";
-import { TOGGLEABLE_HA_KINDS } from "@/lib/notifications/home-assistant-core";
 import {
   saveHomeAssistantPrefs,
   sendTestHomeAssistant,
@@ -14,8 +12,15 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // Home Assistant as a third delivery channel (#248). A per-profile outbound webhook
 // so HA can announce reminders on a kitchen speaker (TTS), flash lights on
 // escalation, or hold a message until someone's home — presence/room-aware delivery
-// the app itself can't do. Mirrors the Telegram/push blocks: enable + target +
-// per-kind toggles + send-test.
+// the app itself can't do.
+//
+// THIS CARD IS THE CHANNEL, NOT THE ROUTING (#1868 §1). It used to carry a per-kind
+// checkbox grid ("Announce which reminders") over `ha_notify_disabled_kinds` — the
+// SAME key the Message-kinds matrix's HA column writes, i.e. 26 checkboxes for 13
+// booleans on one page, while the page's own header comment claimed the matrix had
+// already replaced per-kind duplication. The grid is gone; the matrix column is the
+// one editor, and `saveHomeAssistantPrefs` now PRESERVES the stored set rather than
+// deriving it from this form.
 export default function HomeAssistantNotificationSettings({
   config,
 }: {
@@ -24,14 +29,6 @@ export default function HomeAssistantNotificationSettings({
   const [enabled, setEnabled] = useState(config.enabled);
   const [webhookUrl, setWebhookUrl] = useState(config.webhookUrl);
   const [secret, setSecret] = useState(config.secret);
-  // A checkbox per toggleable kind — checked means "forward to HA". Seed from the
-  // stored DISABLED set (absence = every kind on).
-  const [kinds, setKinds] = useState<Record<NotificationKind, boolean>>(() => {
-    const disabled = new Set(config.disabledKinds);
-    const out = {} as Record<NotificationKind, boolean>;
-    for (const { kind } of TOGGLEABLE_HA_KINDS) out[kind] = !disabled.has(kind);
-    return out;
-  });
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   // The test send drives the result message, not the "saved" chip, so it keeps its
   // own transition.
@@ -46,9 +43,6 @@ export default function HomeAssistantNotificationSettings({
     fd.set("ha_enabled", enabled ? "1" : "0");
     fd.set("ha_webhook_url", webhookUrl);
     fd.set("ha_secret", secret);
-    for (const { kind } of TOGGLEABLE_HA_KINDS) {
-      if (kinds[kind]) fd.set(`ha_kind_${kind}`, "1");
-    }
     return fd;
   }
 
@@ -160,32 +154,14 @@ export default function HomeAssistantNotificationSettings({
             </p>
           </div>
 
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="label">Announce which reminders</label>
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              Turn off any kind you’d rather not send to Home Assistant (they
-              still go to your other channels).
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {TOGGLEABLE_HA_KINDS.map(({ kind, label }) => (
-                <label
-                  key={kind}
-                  className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-                >
-                  <input
-                    type="checkbox"
-                    checked={kinds[kind]}
-                    onChange={(e) =>
-                      setKinds((k) => ({ ...k, [kind]: e.target.checked }))
-                    }
-                    className="h-4 w-4 accent-brand-600"
-                    data-testid={`ha-kind-${kind}`}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </div>
+          <p
+            className="text-xs text-slate-500 dark:text-slate-400"
+            data-testid="ha-kinds-pointer"
+          >
+            Which reminders Home Assistant announces is the{" "}
+            <strong>HA</strong> column of the Message kinds table below — it is
+            the one place that setting lives.
+          </p>
         </>
       )}
 

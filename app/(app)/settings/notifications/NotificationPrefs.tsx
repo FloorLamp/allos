@@ -9,6 +9,13 @@ import {
   type NotificationKindEntry,
 } from "@/lib/notifications/kinds";
 import { serializeDisabledKinds } from "@/lib/notifications/home-assistant-core";
+import {
+  applyColumnBulk,
+  columnBulkLabel,
+  columnBulkState,
+  nextColumnBulkTarget,
+  sweepableKinds,
+} from "@/lib/notifications/matrix-bulk";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -40,6 +47,17 @@ import { savePushNotifyKinds, saveLoginTelegramNotifyKinds } from "../actions";
 // change, and each channel cell writes to ITS channel's tier store through its own
 // tier-correct action (#319) exactly as the old matrix did — Telegram and Web Push
 // follow the LOGIN, Home Assistant follows the PROFILE.
+//
+// THE HA COLUMN IS THE ONE HA EDITOR (#1868 §1). The Home Assistant card above used to
+// carry its own per-kind checkbox grid over the SAME `ha_notify_disabled_kinds` key —
+// 26 checkboxes for 13 booleans on one page. That grid is gone; this column edits the
+// key, exactly as the Telegram and Push columns edit theirs.
+//
+// COLUMN SELECT-ALL (#1868 §2). Each column header carries a tri-state bulk toggle
+// over the keys that already exist. Its decision logic is pure and lives in
+// lib/notifications/matrix-bulk.ts, including the rule that matters: SAFETY kinds are
+// never swept, so a column "turn off" leaves dose/escalation/redose exactly as the user
+// set them, individually. Row-level select-all is deliberately out.
 
 type ChannelId = "telegram" | "push" | "ha";
 
@@ -188,6 +206,13 @@ export default function NotificationPrefs({
     ha: saveHomeAssistantNotifyKinds,
   };
 
+  // The rendered rows. A kind with no registry entry (the NON_CONFIGURABLE set, e.g.
+  // `followup` since #1873) never reaches this list, so it is invisible to the matrix
+  // AND to the column sweep below — both read this one filtered set.
+  const rows = NOTIFICATION_KIND_REGISTRY.filter(
+    (e) => !e.requiresFoodLogging || foodLoggingRelevant
+  );
+
   // A cell is a real toggle unless the channel inherently can't deliver the kind
   // (only push × food today). An unavailable cell is neither "on" nor a checkbox.
   function cellAvailable(channel: ChannelId, kind: NotificationKind): boolean {
@@ -195,14 +220,19 @@ export default function NotificationPrefs({
     return true;
   }
 
+  // The kinds this column may sweep: rendered rows that have a real cell here, minus
+  // the safety tier (the exclusion lives in the pure module, not in this component).
+  function columnSweep(channel: ChannelId): NotificationKind[] {
+    return sweepableKinds(
+      rows.map((e) => e.kind).filter((k) => cellAvailable(channel, k))
+    );
+  }
+
   function routes(channel: ChannelId, kind: NotificationKind): boolean {
     return !disabled[channel].has(kind);
   }
 
-  async function toggleRoute(channel: ChannelId, kind: NotificationKind) {
-    const next = new Set(disabled[channel]);
-    if (next.has(kind)) next.delete(kind);
-    else next.add(kind);
+  async function writeColumn(channel: ChannelId, next: Set<NotificationKind>) {
     setDisabled({ ...disabled, [channel]: next });
     setRouting(true);
     try {
@@ -212,6 +242,23 @@ export default function NotificationPrefs({
     } finally {
       setRouting(false);
     }
+  }
+
+  async function toggleRoute(channel: ChannelId, kind: NotificationKind) {
+    const next = new Set(disabled[channel]);
+    if (next.has(kind)) next.delete(kind);
+    else next.add(kind);
+    await writeColumn(channel, next);
+  }
+
+  // The column select-all: one write of the FULL disabled set for this column through
+  // the same tier-correct action a single cell uses. Safety kinds are not in
+  // `columnSweep`, so they survive the sweep untouched.
+  async function sweepColumn(channel: ChannelId) {
+    const sweep = columnSweep(channel);
+    const on = nextColumnBulkTarget(columnBulkState(sweep, disabled[channel]));
+    const next = applyColumnBulk([...disabled[channel]], sweep, on);
+    await writeColumn(channel, new Set(next));
   }
 
   // Whether a safety kind will reach NO configured channel — the warn-never-block
@@ -237,10 +284,6 @@ export default function NotificationPrefs({
         return values[e.control.dayField] !== "";
     }
   }
-
-  const rows = NOTIFICATION_KIND_REGISTRY.filter(
-    (e) => !e.requiresFoodLogging || foodLoggingRelevant
-  );
 
   return (
     <div className="space-y-6">
@@ -345,22 +388,44 @@ export default function NotificationPrefs({
           <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Turn a kind off, or keep it and choose which channels carry it.
+          Turn a kind off, or keep it and choose which channels carry it. The box
+          under a channel name edits that whole column at once — it turns off
+          everything except safety reminders, which keep their own boxes.
         </p>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
           <span>Kind</span>
           <span className="grid w-[7.5rem] grid-cols-3 gap-1 text-center sm:w-40">
-            {columns.map((c) => (
-              <span key={c.id} title={`${c.label} — ${c.owner}`}>
-                {c.short}
-                {!c.configured && (
-                  <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
-                    not set up
-                  </span>
-                )}
-              </span>
-            ))}
+            {columns.map((c) => {
+              const sweep = columnSweep(c.id);
+              const state = columnBulkState(sweep, disabled[c.id]);
+              const label = columnBulkLabel(c.label, state);
+              return (
+                <span key={c.id} className="block">
+                  <span title={`${c.label} — ${c.owner}`}>{c.short}</span>
+                  {!c.configured && (
+                    <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+                      not set up
+                    </span>
+                  )}
+                  {/* The tri-state column sweep (#1868 §2). `indeterminate` is a DOM
+                      property with no React attribute, so it is set through a ref. */}
+                  <input
+                    type="checkbox"
+                    className="mx-auto mt-1 block h-4 w-4 accent-brand-600"
+                    ref={(el) => {
+                      if (el) el.indeterminate = state === "mixed";
+                    }}
+                    checked={state === "all"}
+                    disabled={routing || sweep.length === 0}
+                    onChange={() => sweepColumn(c.id)}
+                    data-testid={`matrix-column-all-${c.id}`}
+                    aria-label={label}
+                    title={label}
+                  />
+                </span>
+              );
+            })}
           </span>
         </div>
 

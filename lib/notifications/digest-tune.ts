@@ -167,6 +167,21 @@ export function toggleDigestDemotion(
   return DIGEST_TUNABLE_CATEGORIES.filter((c) => next.has(c));
 }
 
+// The one-line state the Settings mirror shows COLLAPSED (#1868 §3). The mirror's ten
+// always-rendered checkboxes moved behind a disclosure — the card is a mirror of the
+// digest's own ⚙️ Tune control, so it should cost one line until someone opens it —
+// and a collapsed control has to state what is actually stored, by name. Declaration
+// order, so the summary matches the list underneath it.
+export function digestTuneSummary(demoted: readonly DigestCategory[]): string {
+  const named = DIGEST_TUNABLE_CATEGORIES.filter((c) => demoted.includes(c));
+  if (named.length === 0)
+    return "Every category on — nothing turned down to notable-only.";
+  const labels = named.map((c) => DIGEST_CATEGORY_LABELS[c]).join(", ");
+  return named.length === 1
+    ? `1 category is notable-only: ${labels}.`
+    : `${named.length} categories are notable-only: ${labels}.`;
+}
+
 // ---- One message, N readers ------------------------------------------------
 
 // The digest is built ONCE per profile and dispatched to every managing login's

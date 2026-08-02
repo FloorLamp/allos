@@ -68,9 +68,7 @@ import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
   parseDisabledKinds,
-  TOGGLEABLE_HA_KINDS,
 } from "@/lib/notifications/home-assistant-core";
-import type { NotificationKind } from "@/lib/notifications/types";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 
 // ---- Profile scope (follows the active profile) ----
@@ -455,11 +453,17 @@ export async function saveNotificationPrefs(formData: FormData) {
 
 // ---- Notifications: Home Assistant channel (profile scope, issue #248) ----
 
-// The per-profile Home Assistant webhook target: enable toggle, webhook URL,
-// optional shared secret, and which notification kinds to forward (a household may
-// want doses announced but not weekly recaps). Profile-scoped like the Telegram
-// delivery target, so any login with write access to the profile may edit it.
-// Rejects a malformed URL when enabling so a typo can't silently disable delivery.
+// The per-profile Home Assistant webhook TARGET: enable toggle, webhook URL, and the
+// optional shared secret. Profile-scoped like the Telegram delivery target, so any
+// login with write access to the profile may edit it. Rejects a malformed URL when
+// enabling so a typo can't silently disable delivery.
+//
+// It does NOT own the per-kind routing (#1868 §1). That is `ha_notify_disabled_kinds`,
+// edited by the matrix's HA column through saveHomeAssistantNotifyKinds below; this
+// action carries the stored set through unchanged. (It used to DERIVE the set from
+// `ha_kind_*` checkboxes on the card — the duplicate editor the issue removed — so
+// preserving here is load-bearing: a form with no such fields would otherwise read as
+// "every kind unchecked" and silence the whole channel on a URL edit.)
 export async function saveHomeAssistantPrefs(
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -477,18 +481,11 @@ export async function saveHomeAssistantPrefs(
     };
   }
 
-  // A checkbox per toggleable kind: checked ("1") = forward; the DISABLED set is the
-  // kinds NOT checked. Absent field also reads as disabled (an unchecked box submits
-  // nothing), so the form must render every kind.
-  const disabledKinds: NotificationKind[] = TOGGLEABLE_HA_KINDS.filter(
-    ({ kind }) => formData.get(`ha_kind_${kind}`) !== "1"
-  ).map(({ kind }) => kind);
-
   setProfileHomeAssistant(profile.id, {
     enabled,
     webhookUrl,
     secret,
-    disabledKinds,
+    disabledKinds: getProfileHomeAssistant(profile.id).disabledKinds,
   });
   revalidatePath("/settings/notifications");
   return { ok: true };
