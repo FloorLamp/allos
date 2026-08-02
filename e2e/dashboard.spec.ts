@@ -454,6 +454,15 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
   const main = page.getByRole("main");
   await main.getByRole("button", { name: "Edit dashboard" }).click();
 
+  // At `lg`+ the editor keeps the IN-PLACE cards (#1891). Spans and adjacency are
+  // visible on a six-column canvas and are part of what is being edited there, so
+  // the compact reorder rows are the phone's answer only — see
+  // e2e/dashboard-reorder.mobile.spec.ts for the other side of the same switch.
+  await expect(main.getByTestId("dashboard-customize")).toHaveAttribute(
+    "data-presentation",
+    "cards"
+  );
+
   const widgets = main.locator("[data-testid^='dashboard-widget-']");
   await expect(widgets.first()).toBeVisible(); // first-ok: the editor's leading slot IS the subject — "does the top widget move?"
   const idsBefore = await widgets.evaluateAll((els) =>
