@@ -4,6 +4,27 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1925,
+          "kind": "fix",
+          "issues": [1878],
+          "title": "Background updates wait while you are part-way through a form",
+          "body": "The app repaints itself in the background when things finish elsewhere — the offline queue syncing, an import completing, a document finishing extraction. Those repaints now hold off while you have unsaved text in a record form, and land as soon as you save or clear it, so a half-filled form is not disturbed under you. Repaints you ask for yourself are unaffected: pulling to refresh still refreshes immediately, because that is the whole point of the gesture."
+        },
+        {
+          "pr": 1924,
+          "kind": "fix",
+          "issues": [1893],
+          "title": "Tapping \"Start workout\" during a workout no longer restarts its clock",
+          "body": "With a workout running and minimised to the dock, every entry point still said \"Start workout\" — and tapping one silently reset that session's elapsed time and cleared what it held. Those entry points now read \"Resume workout\" while a session is live and reopen the one you were in, with its clock untouched. Refills also gained a small note saying when you just refilled, so an accidental double-tap is visible rather than silently adding a second bottle; it tells you, it does not stop you, because restocking two at once is a real thing to do."
+        },
+        {
+          "pr": 1920,
+          "kind": "feature",
+          "issues": [1853],
+          "title": "Goals can target a lab value or a vital",
+          "body": "Goals could only track weight, body fat and resting heart rate, so \"LDL under 100 by June\" had nowhere to live and sat as plain text beside the very chart that could have answered it. A goal can now name a biomarker with a target and a direction, and its progress reads the same series the trends pages draw. Pacing works per result rather than per day — a lab goal advances when a result arrives, not on a calendar, so it will not tell you that you are behind on a day nothing was measured."
+        },
+        {
           "pr": 1918,
           "kind": "fix",
           "issues": [1905, 1906],
