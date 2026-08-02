@@ -165,6 +165,10 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
   it("a failing provider still gets the reconnect copy", () => {
     const p = newProfile("FailingAttention");
     connect(p, "strava");
+    // Three consecutive failures — the #1880 escalation threshold. A single failed
+    // run is `intermittent` now and raises nothing (see integration-flap.test.ts).
+    syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401)");
+    syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401)");
     syncEvent(p, "strava", 0, 0, "Strava token refresh failed (401)");
 
     const item = integrationToItem(getIntegrationAttention(p)[0]);
