@@ -6,7 +6,20 @@ import { IconFileImport, IconChevronRight } from "@tabler/icons-react";
 // there flows into the same immunizations shown on this page (and its labs/vitals
 // into Biomarkers), and the file becomes a managed document you can reprocess or
 // delete.
-export default function MyChartImport() {
+export default function MyChartImport({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <Link href="/data?section=import" className="btn-ghost text-sm">
+        <IconFileImport className="h-4 w-4" stroke={1.75} />
+        Import records
+      </Link>
+    );
+  }
+
   return (
     <Link
       href="/data?section=import"

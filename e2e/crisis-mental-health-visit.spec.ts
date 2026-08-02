@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_CRISIS,
   E2E_MEMBER_PASSWORD,
@@ -22,11 +22,13 @@ async function bookVisit(page: Page, title: string, kind: string) {
   await page.goto("/records/history/visits");
   const upcoming = page.getByTestId("visits-upcoming");
   await expect(upcoming).toBeVisible();
-  await upcoming.getByLabel("Reason / title").fill(title);
-  await upcoming.getByLabel("Kind (optional)").selectOption(kind);
+  await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+  const dialog = page.getByRole("dialog", { name: "Add visit" });
+  await dialog.getByLabel("Reason / title").fill(title);
+  await dialog.getByLabel("Kind (optional)").selectOption(kind);
   await settledClick(
     page,
-    upcoming.getByRole("button", { name: "Add", exact: true })
+    dialog.getByRole("button", { name: "Add", exact: true })
   );
   // Repeated runs can leave an earlier success toast visible briefly. Assert the
   // newest toast instead of making the locator strict across both messages.

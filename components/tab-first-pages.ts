@@ -2,7 +2,7 @@ import type { AppRoute, NutritionTab } from "@/lib/hrefs";
 import { trainingTabStrip } from "@/lib/training-tabs";
 
 interface TabFirstPageBase {
-  pageId: "nutrition" | "results" | "training";
+  pageId: "nutrition" | "records" | "results" | "training";
   title: string;
   subtitle?: string;
   mobileColumns: 2 | 3 | 4;
@@ -40,13 +40,29 @@ export const NUTRITION_TAB_FIRST_PAGE = {
   ] satisfies readonly { id: NutritionTab; label: string }[],
 } as const satisfies TabFirstPageConfig;
 
+export const RECORDS_TAB_FIRST_PAGE = {
+  pageId: "records",
+  kind: "route",
+  pathnamePrefix: "/records",
+  title: "Health record",
+  subtitle:
+    "Your health record in one place — history, problems, care, and specialty records.",
+  mobileColumns: 4,
+  testId: "records-group-tabs",
+  desktopStripClassName: "mb-2",
+  tabs: [
+    { href: "/records/history", label: "History" },
+    { href: "/records/problems", label: "Problems" },
+    { href: "/records/care", label: "Care" },
+    { href: "/records/specialty", label: "Specialty" },
+  ],
+} as const satisfies TabFirstPageConfig;
+
 export const RESULTS_TAB_FIRST_PAGE = {
   pageId: "results",
   kind: "route",
   pathnamePrefix: "/results",
   title: "Results",
-  subtitle:
-    "Your result records in one place — labs and biomarkers, imaging studies, and genomic variants.",
   mobileColumns: 4,
   testId: "results-tabs",
   desktopStripClassName: "mb-6",
@@ -76,6 +92,7 @@ export const TRAINING_TAB_FIRST_PAGE = {
 // while the compact desktop strip stays below its PageHeader.
 const TAB_FIRST_PAGES: readonly TabFirstPageConfig[] = [
   NUTRITION_TAB_FIRST_PAGE,
+  RECORDS_TAB_FIRST_PAGE,
   RESULTS_TAB_FIRST_PAGE,
   TRAINING_TAB_FIRST_PAGE,
 ];

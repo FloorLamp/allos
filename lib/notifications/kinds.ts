@@ -34,6 +34,7 @@ export const ALL_NOTIFICATION_KINDS = [
   "refill",
   "preventive",
   "illness-care",
+  "followup",
   "workout",
   "workout-stale",
   "workout-recap",
@@ -235,6 +236,8 @@ export const NON_CONFIGURABLE_KINDS: Readonly<
     "A PRN redose-window notice (#798). Safety-adjacent and driven entirely by the item's own PRN interval — there has never been a per-kind control for it.",
   "illness-care":
     "A care finding derived from logged symptoms (#805); it follows the findings bus, not a notification preference.",
+  followup:
+    "The overdue safety-follow-up escalation (#1866, owner ruling): the tracked due date IS the consent — same structure as a dose reminder — so there is deliberately NO notification setting anywhere. Two sends ever; the per-item resolve/decline terminator is the only off-switch.",
   "ease-back":
     "The one-shot post-illness re-entry note (#837) — a single message per episode, not a recurring kind to schedule.",
 };

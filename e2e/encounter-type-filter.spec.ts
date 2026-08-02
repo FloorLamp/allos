@@ -2,9 +2,9 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 
-// Canonical encounter types (#1233): the Visits list renders the raw ActEncounterCode
-// class through a friendly label ("AMB" → "Ambulatory") and offers a canonical-kind
-// filter ("show ED visits") keyed on the ONE encounterKind() identity function. This
+// Canonical encounter types (#1233): the Visits list keeps the source's visit type
+// without a redundant ActEncounterCode badge and offers a canonical-kind filter
+// ("show ED visits") keyed on the ONE encounterKind() identity function. This
 // spec OWNS its fixtures — two throwaway encounters on profile 1 (the e2e session's
 // active profile) with DISTINCT classes (Emergency + Ambulatory) and unique reason
 // markers — and asserts only on those rows (presence/absence under a filter), never an
@@ -47,21 +47,27 @@ test.describe("Visits — canonical encounter class label + kind filter (#1233)"
 
   test.afterAll(cleanup);
 
-  test("the class badge shows the friendly label, not the raw code", async ({
+  test("the visit type stands alone without a duplicate class badge", async ({
     page,
   }) => {
     await page.goto("/records/history/visits");
     const list = page.getByTestId("records-visits");
 
-    // The Emergency fixture row renders its class as "Emergency" (label), and the raw
-    // "EMER" code is not shown as a badge.
+    // The source's own visit type is the single label. Neither the friendly class
+    // label nor its raw code is repeated beside it as a badge.
     const emerRow = list.locator("tr", { hasText: EMER_MARKER });
-    await expect(emerRow).toContainText("Emergency");
+    await expect(
+      emerRow.getByRole("link", { name: "E2E ER Visit" })
+    ).toBeVisible();
+    await expect(emerRow).not.toContainText("Emergency");
     await expect(emerRow).not.toContainText("EMER");
 
-    // The Ambulatory fixture row renders "Ambulatory", not the raw "AMB".
     const ambRow = list.locator("tr", { hasText: AMB_MARKER });
-    await expect(ambRow).toContainText("Ambulatory");
+    await expect(
+      ambRow.getByRole("link", { name: "E2E Clinic Visit" })
+    ).toBeVisible();
+    await expect(ambRow).not.toContainText("Ambulatory");
+    await expect(ambRow).not.toContainText("AMB");
   });
 
   test("the kind filter shows only the selected kind's visits", async ({

@@ -44,6 +44,15 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
     await expect(context).toBeVisible();
     await expect(context).toContainText("2nd visit with Dr. Enid Enrich (e2e)");
     await expect(context).toContainText("this year");
+
+    // ProviderName owns the stethoscope glyph; the detail row must not prepend a
+    // second copy around that shared component.
+    const providerRow = page
+      .getByTestId("encounter-detail-card")
+      .locator("dt")
+      .filter({ hasText: /^Provider$/ })
+      .locator("..");
+    await expect(providerRow.locator("svg")).toHaveCount(1);
   });
 
   test("provenance chain resolves: scheduling origin + timeline day", async () => {
@@ -81,8 +90,11 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
     );
   });
 
-  test("a document-sourced record's provenance deep-links to the source import (#1353)", async () => {
+  test("a document-sourced record uses one explicit provenance link (#1353)", async () => {
     await page.goto("/records/problems/conditions");
+    // The condition itself is not a disguised link to its import. The Source
+    // field is the single, explicit route back to provenance.
+    await expect(page.getByTestId("source-document-link")).toHaveCount(0);
     await expect(page.getByTestId("record-provenance-link")).toBeVisible();
     // The manual condition keeps a plain (non-link) 'Manual' label — so exactly one
     // provenance deep-link exists on this dedicated profile's list.

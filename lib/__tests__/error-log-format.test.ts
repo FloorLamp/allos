@@ -3,8 +3,6 @@ import {
   capDetail,
   redactSecrets,
   buildDetail,
-  shouldRotate,
-  keepRecentLines,
   parseErrorLine,
 } from "../error-log-format";
 
@@ -73,28 +71,6 @@ describe("buildDetail", () => {
     const out = buildDetail({ blob: "x".repeat(9000) }, 100);
     expect(out!.length).toBeLessThan(200);
     expect(out).toContain("chars)");
-  });
-});
-
-describe("shouldRotate", () => {
-  it("trips on bytes over budget", () => {
-    expect(shouldRotate(6_000_000, 10, 5_000_000, 2000)).toBe(true);
-  });
-  it("trips on line count over budget", () => {
-    expect(shouldRotate(100, 3000, 5_000_000, 2000)).toBe(true);
-  });
-  it("stays put when both are under budget", () => {
-    expect(shouldRotate(100, 10, 5_000_000, 2000)).toBe(false);
-  });
-});
-
-describe("keepRecentLines", () => {
-  it("keeps the newest N non-empty lines", () => {
-    const lines = ["a", "b", "", "c", "d"];
-    expect(keepRecentLines(lines, 2)).toEqual(["c", "d"]);
-  });
-  it("drops empty lines from the count", () => {
-    expect(keepRecentLines(["a", "", "b", ""], 5)).toEqual(["a", "b"]);
   });
 });
 

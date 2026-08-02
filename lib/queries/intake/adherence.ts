@@ -28,6 +28,7 @@ import {
 } from "../../dose-log-window";
 import { decrementSupply, incrementSupply } from "./refill";
 import { getMedicationFamilyStates } from "./prn-family";
+import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -1065,23 +1066,34 @@ export function getRedoseArmingState(
 // (the #148 UL-warning shape applied per-day). "Over" is strictly greater than the
 // max (you've logged MORE than the label allows today).
 //
-// FAMILY-AWARE (#1027 ask 2): the count is the ingredient family's COMBINED taken
-// count (OTC ibuprofen + Rx ibuprofen 800 together), compared against the most
-// conservative confirmed max_daily_count among members. The finding is anchored to
-// the member holding that most-conservative max (lowest id on a tie), so its
+// FAMILY-AWARE (#1027 ask 2): the exposure is the ingredient family's COMBINED
+// taken administrations (OTC ibuprofen + Rx ibuprofen 800 together), compared
+// against the most conservative confirmed ceiling among members. The finding is
+// anchored to the member holding the binding max (lowest id on a tie), so its
 // dedupeKey stays `prn-max:<itemId>` — identical to the pre-family key for a
 // single-item family (#203: keys stable where possible). Members with unconfirmed
 // fields still contribute their logged administrations (a logged dose is a fact
-// regardless of config); a family with NO confirmed max produces nothing (the #798
-// liability gate). Amount-aware mg accounting stays a noted follow-up; the
-// confirmed COUNT is the reliable signal.
+// regardless of config); a family with NO confirmed ceiling produces nothing (the
+// #798 liability gate).
+//
+// AMOUNT-AWARE (#1854): basis/total/max come straight from the family state's
+// prnDayExposure verdict — summed snapshotted MILLIGRAMS against a confirmed
+// mg/day max when every administration's amount parses (3 × 800 mg is 2400 mg,
+// not a calm "3 of 6"), the administration COUNT as the fallback for unparseable
+// amounts. `basis` tells the copy which one was used.
 export interface PrnOverMaxItem {
   id: number;
   name: string;
-  count: number;
-  maxDailyCount: number;
-  // Every family member's name, when the count spans MORE than one item (the #531
-  // label-by-what-differs rule for the finding copy); absent for a solo item.
+  // The basis the day was judged on, its total and confirmed ceiling — mg for the
+  // amount-aware path, administrations for the count fallback (prnDayExposure).
+  basis: PrnExposureBasis;
+  total: number;
+  max: number;
+  // mg basis only: administrations with no parseable snapshotted amount (the
+  // lower-bound path — copy must read "at least"). Always 0 on the count basis.
+  unknownAmounts: number;
+  // Every family member's name, when the exposure spans MORE than one item (the
+  // #531 label-by-what-differs rule for the finding copy); absent for a solo item.
   memberNames?: string[];
 }
 
@@ -1092,35 +1104,50 @@ export function getPrnOverMaxItems(
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
   const states = getMedicationFamilyStates(profileId, date);
-  // Anchor selection needs each member's own confirmed max + PRN flag; re-read the
-  // active PRN-configured meds once (profile-scoped).
+  // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
+  // the active PRN-configured meds once (profile-scoped). Either ceiling form
+  // (count or mg/day, #1854) makes an item "configured".
   const configured = db
     .prepare(
-      `SELECT id, name, max_daily_count AS maxDailyCount
+      `SELECT id, name, max_daily_count AS maxDailyCount,
+              max_daily_amount_mg AS maxDailyAmountMg
          FROM intake_items
         WHERE profile_id = ? AND active = 1
           AND obligation = 'may' AND kind = 'medication'
-          AND max_daily_count IS NOT NULL AND max_daily_count > 0
+          AND ((max_daily_count IS NOT NULL AND max_daily_count > 0)
+            OR (max_daily_amount_mg IS NOT NULL AND max_daily_amount_mg > 0))
         ORDER BY id`
     )
-    .all(profileId) as { id: number; name: string; maxDailyCount: number }[];
+    .all(profileId) as {
+    id: number;
+    name: string;
+    maxDailyCount: number | null;
+    maxDailyAmountMg: number | null;
+  }[];
   for (const item of configured) {
     const state = states.get(item.id);
     if (!state || seenFamilies.has(state.familyKey)) continue;
     seenFamilies.add(state.familyKey);
-    const max = state.minConfirmedMax ?? item.maxDailyCount;
-    if (state.countToday <= max) continue;
-    // Anchor: the configured member holding the most conservative max (lowest id
-    // on a tie) — `configured` is id-ordered, so the first match wins.
+    const exposure = state.exposure;
+    if (!exposure || !exposure.over) continue;
+    // Anchor: the configured member holding the binding most-conservative max on
+    // the basis actually used (lowest id on a tie) — `configured` is id-ordered,
+    // so the first match wins.
     const anchor =
       configured.find(
-        (c) => state.memberIds.includes(c.id) && c.maxDailyCount === max
+        (c) =>
+          state.memberIds.includes(c.id) &&
+          (exposure.basis === "mg"
+            ? c.maxDailyAmountMg === exposure.max
+            : c.maxDailyCount === exposure.max)
       ) ?? item;
     out.push({
       id: anchor.id,
       name: anchor.name,
-      count: state.countToday,
-      maxDailyCount: max,
+      basis: exposure.basis,
+      total: exposure.total,
+      max: exposure.max,
+      unknownAmounts: exposure.unknownAmounts,
       ...(state.memberIds.length > 1 ? { memberNames: state.memberNames } : {}),
     });
   }
@@ -1151,6 +1178,10 @@ export interface PrnMedForQuickLog {
   familyLastGivenAt: string | null;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
+  // The family's amount-aware day exposure (#1854) from the ONE family gather —
+  // null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
+  // widget/card/Telegram "N of M" line reads milligrams when they're known.
+  familyExposure: PrnDayExposure | null;
   // Number of active items in the ingredient family (1 for a solo item) — lets the
   // widget note that the counters span sibling items.
   familyMemberCount: number;
@@ -1190,6 +1221,7 @@ export function getPrnMedicationsForQuickLog(
     | "familyCount"
     | "familyLastGivenAt"
     | "familyMaxDailyCount"
+    | "familyExposure"
     | "familyMemberCount"
   >[];
   const families = getMedicationFamilyStates(profileId, date);
@@ -1200,6 +1232,7 @@ export function getPrnMedicationsForQuickLog(
       familyCount: fam?.countToday ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
+      familyExposure: fam?.exposure ?? null,
       familyMemberCount: fam?.memberIds.length ?? 1,
     };
   });

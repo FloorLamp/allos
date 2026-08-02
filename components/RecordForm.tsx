@@ -11,6 +11,7 @@ import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
+import { useAddEntryModalClose } from "./AddEntryPanel";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import {
   RESULT_STATUSES,
@@ -69,6 +70,7 @@ export default function RecordForm({
   defaultName?: string;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = record?.id ?? "new";
@@ -129,6 +131,7 @@ export default function RecordForm({
       setCanonical("");
       setSpecimen("");
       toast("Record saved");
+      closeEntryModal?.();
     }
   }
 

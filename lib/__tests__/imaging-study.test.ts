@@ -169,6 +169,23 @@ describe("studyDisplayLabel", () => {
     ).toBe("CT Chest");
   });
 
+  it("does not repeat laterality already present in the region", () => {
+    expect(
+      studyDisplayLabel({
+        ...base,
+        body_region: "Left Knee",
+        laterality: "left",
+      })
+    ).toBe("MRI Left Knee");
+    expect(
+      studyDisplayLabel({
+        modality: "x-ray",
+        body_region: "bilateral hands",
+        laterality: "bilateral",
+      })
+    ).toBe("X-ray bilateral hands");
+  });
+
   it("omits an 'na' laterality (a midline / whole study)", () => {
     expect(
       studyDisplayLabel({

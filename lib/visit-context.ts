@@ -2,17 +2,16 @@
 // page shows under its hero — "3rd visit with Dr. Patel · last one Mar 2026" and
 // "2nd urgent-care visit this year". Pure ordinal math over the profile's other
 // encounters; the DB gather (lib/queries) feeds it the deduped representative rows and
-// the page formats the result. No context on a genuine first visit (ordinal 1) — the
+// the page formats the result. Type cadence uses the displayed visit type rather than
+// the coarse setting bucket. No context on a genuine first visit (ordinal 1) — the
 // point is continuity, so a lone visit stays silent (the #489 absent-pillar rule).
-import type { EncounterKind } from "@/lib/encounter-kind";
-
 // One of the profile's OTHER visits, reduced to just the axes context keys on: when
-// it happened, who it was with, and its coarse kind (#1319). The subject visit is
-// passed separately as `current`.
+// it happened, who it was with, and its displayed-type identity. The subject visit
+// is passed separately as `current`.
 export interface PriorVisit {
   date: string; // YYYY-MM-DD
   providerId: number | null;
-  kind: EncounterKind;
+  typeKey: string;
 }
 
 export interface VisitContextSubject extends PriorVisit {
@@ -30,9 +29,11 @@ export interface VisitContext {
     ordinal: number;
     priorDate: string | null;
   } | null;
-  // Same-kind-this-year cadence — present only when this is at least the 2nd visit of
-  // its kind in the subject visit's calendar year. `ordinal` is 1-based within the year.
-  kindYear: {
+  // Same-type-this-year cadence — present only when this is at least the 2nd visit
+  // with the same displayed visit type in the subject visit's calendar year. This is
+  // intentionally finer than encounterKind(): a dental visit and an office visit may
+  // both be ambulatory, but they are not the same type to a person reading the page.
+  typeYear: {
     ordinal: number;
   } | null;
 }
@@ -66,14 +67,16 @@ export function visitContext(
     }
   }
 
-  let kindYear: VisitContext["kindYear"] = null;
+  let typeYear: VisitContext["typeYear"] = null;
   const y = yearOf(current.date);
-  const sameKindYear = others.filter(
+  const sameTypeYear = others.filter(
     (o) =>
-      o.kind === current.kind && yearOf(o.date) === y && o.date <= current.date
+      o.typeKey === current.typeKey &&
+      yearOf(o.date) === y &&
+      o.date <= current.date
   );
-  const kindOrdinal = sameKindYear.length + 1;
-  if (kindOrdinal >= 2) kindYear = { ordinal: kindOrdinal };
+  const typeOrdinal = sameTypeYear.length + 1;
+  if (typeOrdinal >= 2) typeYear = { ordinal: typeOrdinal };
 
-  return { provider, kindYear };
+  return { provider, typeYear };
 }

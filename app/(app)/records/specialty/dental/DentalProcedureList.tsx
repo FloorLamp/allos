@@ -30,8 +30,6 @@ function buildColumns(
     ...baseColumns(fmt),
     {
       header: "Recheck",
-      headerClassName: "hidden md:table-cell",
-      cellClassName: "hidden md:table-cell",
       cell: (d) => (
         <TrackDentalFollowUpControl
           recordId={d.id}
@@ -94,8 +92,7 @@ const baseColumns = (
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (d) => (
       <RecordProvenance source={d.source} documentId={d.document_id} />
     ),

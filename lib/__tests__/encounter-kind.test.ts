@@ -3,6 +3,7 @@ import {
   classLabel,
   encounterKind,
   encounterTypeDisplay,
+  encounterTypeKey,
   ENCOUNTER_CLASS_LABELS,
   ENCOUNTER_KIND_LABELS,
   ENCOUNTER_KIND_ORDER,
@@ -46,6 +47,16 @@ describe("encounterTypeDisplay", () => {
   it("falls back to 'Visit' when neither type nor class is present", () => {
     expect(encounterTypeDisplay(null, null)).toBe("Visit");
     expect(encounterTypeDisplay(undefined, undefined)).toBe("Visit");
+  });
+});
+
+describe("encounterTypeKey", () => {
+  it("normalizes equivalent display text without merging distinct visit types", () => {
+    expect(encounterTypeKey("  Dental   Visit ", "AMB")).toBe("dental visit");
+    expect(encounterTypeKey("DENTAL VISIT", "AMB")).toBe("dental visit");
+    expect(encounterTypeKey("Office Visit", "AMB")).not.toBe(
+      encounterTypeKey("Dental Visit", "AMB")
+    );
   });
 });
 

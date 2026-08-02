@@ -36,15 +36,16 @@ function newEncounter(
   profileId: number,
   date: string,
   providerId: number | null,
-  classCode: string
+  classCode: string,
+  type = "Office Visit"
 ): number {
   return Number(
     db
       .prepare(
         `INSERT INTO encounters (profile_id, date, type, class_code, provider_id)
-         VALUES (?, ?, 'Office Visit', ?, ?)`
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(profileId, date, classCode, providerId).lastInsertRowid
+      .run(profileId, date, type, classCode, providerId).lastInsertRowid
   );
 }
 
@@ -100,15 +101,15 @@ describe("encounter-detail gathers (#1350)", () => {
     const appt = appointmentForEncounter(A, subject);
     expect(appt?.scheduled_at.slice(0, 10)).toBe("2026-06-10");
 
-    // Visit context: 2nd visit with Dr. Patel (prior 2026-03-02), 2nd ambulatory
-    // visit this year.
+    // Visit context: 2nd visit with Dr. Patel (prior 2026-03-02), 2nd Office Visit
+    // this year.
     const ctx = visitContextForEncounter(A, subject);
     expect(ctx?.provider).toEqual({
       name: "Dr. Patel",
       ordinal: 2,
       priorDate: "2026-03-02",
     });
-    expect(ctx?.kindYear).toEqual({ ordinal: 2 });
+    expect(ctx?.typeYear).toEqual({ ordinal: 2 });
 
     // Profile isolation: A's episode suggestion never sees B's overlapping episode,
     // and B's appointment never answers for A's visit.
@@ -139,6 +140,22 @@ describe("encounter-detail gathers (#1350)", () => {
     const solo = newEncounter(P, "2026-05-01", newProvider("Dr. Solo"), "AMB");
     const ctx = visitContextForEncounter(P, solo);
     expect(ctx?.provider).toBeNull();
-    expect(ctx?.kindYear).toBeNull();
+    expect(ctx?.typeYear).toBeNull();
+  });
+
+  it("does not count an office visit as a prior dental visit", () => {
+    const P = newProfile("Dental context");
+    const provider = newProvider("Dr. Dental Context");
+    newEncounter(P, "2026-02-01", provider, "AMB", "Office Visit");
+    const dental = newEncounter(
+      P,
+      "2026-05-01",
+      provider,
+      "AMB",
+      "Dental Visit"
+    );
+    const ctx = visitContextForEncounter(P, dental);
+    expect(ctx?.provider?.ordinal).toBe(2);
+    expect(ctx?.typeYear).toBeNull();
   });
 });

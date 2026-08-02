@@ -4,9 +4,9 @@ import {
   encountersForRecords,
 } from "@/lib/queries";
 import FilterPills, { type FilterPillOption } from "@/components/FilterPills";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import ConditionForm from "@/app/(app)/records/problems/conditions/ConditionForm";
-import ListRailLayout from "@/components/ListRailLayout";
 import ConditionList from "@/app/(app)/records/problems/conditions/ConditionList";
 import { addCondition } from "@/app/(app)/records/problems/conditions/actions";
 import type { ConditionStatus } from "@/lib/types";
@@ -74,17 +74,15 @@ export default function ConditionsSection({
   const active = cond ?? "all";
 
   return (
-    <ListRailLayout
-      rail={
-        <>
-          <ConditionForm action={addCondition} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Imported problems come from uploaded health records (CCD Active
-            Problems section).
-          </p>
-        </>
-      }
-    >
+    <div className="space-y-6">
+      <AddEntryPanel
+        testId="add-condition-panel"
+        panelId="add-condition-panel-body"
+        label="Add condition"
+        presentation="modal"
+      >
+        <ConditionForm action={addCondition} />
+      </AddEntryPanel>
       <FilterPills
         options={FILTERS}
         value={active}
@@ -99,6 +97,6 @@ export default function ConditionsSection({
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }
       />
-    </ListRailLayout>
+    </div>
   );
 }

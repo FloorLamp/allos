@@ -342,6 +342,9 @@ export function loadMedicationsData(
         latestGivenAt: parseUtcSql(famLast),
         countToday: famCount,
         now: nowInstant,
+        // The family's amount-aware exposure (#1854): the card's "N of M" line
+        // reads milligrams when a mg/day max is confirmed and amounts are known.
+        exposure: fam?.exposure ?? null,
       });
       redoseLine = redoseCardLabel(redoseStatus, fam?.memberIds.length ?? 1);
       redosePrimary = redoseActionIsPrimary(redoseStatus);

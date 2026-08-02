@@ -102,10 +102,13 @@ test("the panel index leads on a phone, inside the first viewport (#1647)", asyn
     await topOf(page.getByTestId("trajectory-findings"))
   );
 
-  // "+ Add result" stays last, as it was.
-  expect(await topOf(page.getByTestId("add-result-panel"))).toBeGreaterThan(
-    await topOf(page.getByTestId("bio-age-hero"))
+  // The add CTA travels with the index instead of being buried after every card.
+  const add = await topOf(page.getByTestId("add-result-panel"));
+  expect(add).toBeGreaterThan(
+    await topOf(page.getByTestId("trajectory-findings"))
   );
+  expect(add).toBeLessThan(header);
+  expect(add).toBeLessThan(await topOf(page.getByTestId("bio-age-hero")));
 
   await page.context().close();
 });

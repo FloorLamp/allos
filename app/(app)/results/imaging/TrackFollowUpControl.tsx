@@ -1,6 +1,7 @@
 "use client";
 
 import SubmitButton from "@/components/SubmitButton";
+import { followUpStateLabel } from "@/lib/followup";
 import { trackImagingFollowUp } from "./actions";
 import type { ImagingFollowUpSummary } from "@/lib/queries";
 
@@ -23,13 +24,7 @@ export default function TrackFollowUpControl({
   existing?: ImagingFollowUpSummary;
 }) {
   if (existing) {
-    const label = existing.resolution
-      ? `resolved · ${existing.resolution}`
-      : existing.status === "completed"
-        ? "done"
-        : existing.plannedDate
-          ? `due ${existing.plannedDate}`
-          : "tracked";
+    const label = followUpStateLabel(existing);
     return (
       <span
         data-testid={`imaging-followup-state-${studyId}`}

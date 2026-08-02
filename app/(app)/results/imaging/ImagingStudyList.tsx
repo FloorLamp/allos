@@ -20,6 +20,7 @@ import type { ImagingFollowUpSummary } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // Columns as a factory so the Follow-up cell can read the per-study follow-up map
 // (issue #700) without a module-level global.
@@ -32,8 +33,6 @@ function buildColumns(
     ...baseColumns(fmt),
     {
       header: "Follow-up",
-      headerClassName: "hidden md:table-cell",
-      cellClassName: "hidden md:table-cell",
       cell: (s) => {
         // Follow-ups are an acting-profile-derived feature (#1328 scope-limit): the
         // followUps map + trackImagingFollowUp both target the acting profile, so a
@@ -127,8 +126,7 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (s) => (
       <RecordProvenance source={s.source} documentId={s.document_id} />
     ),
@@ -200,7 +198,21 @@ export default function ImagingStudyList({
       <RecordTable
         items={filtered}
         columns={columns}
-        emptyMessage="No imaging studies yet. Add one, or upload a radiology report to import it."
+        emptyMessage={
+          items.length
+            ? "No imaging studies match these filters."
+            : "No imaging studies yet. Add one manually or import a radiology report."
+        }
+        emptyActions={
+          items.length
+            ? undefined
+            : [
+                {
+                  href: dataSectionHref("import"),
+                  label: "Import records",
+                },
+              ]
+        }
         multiView={
           multiView
             ? {

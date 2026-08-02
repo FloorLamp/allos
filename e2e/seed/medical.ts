@@ -1111,9 +1111,7 @@ export function seedReportPanes(): void {
   ).run(emptyId);
   // Assert the emptiness rather than assume it — a reused dev server may have run
   // an earlier generation of this fixture.
-  db.prepare(
-    `DELETE FROM medical_records WHERE profile_id = ? AND category = 'report'`
-  ).run(emptyId);
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(emptyId);
   seedMemberLogin(E2E_LOGIN_REPORTS_EMPTY, emptyId, "write");
 
   // ── The attributed, document-linked pane ──────────────────────────────────

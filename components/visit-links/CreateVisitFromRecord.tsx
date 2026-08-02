@@ -33,17 +33,19 @@ export default function CreateVisitFromRecord({
 
   return (
     <section
-      className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 shadow-sm sm:p-6 dark:border-brand-900 dark:bg-brand-950/30"
+      className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 shadow-sm dark:border-brand-900 dark:bg-brand-950/30"
       data-testid="create-visit-from-record"
     >
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-        Create a visit from this record?
-      </h2>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {offers.length} record{offers.length === 1 ? "" : "s"} look like a visit
-        happened, but there’s no visit on that day yet.
-      </p>
-      <ul className="mt-3 space-y-2">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Possible missing visit
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {offers.length} record{offers.length === 1 ? "" : "s"} without a
+          same-day visit
+        </p>
+      </div>
+      <ul className="mt-2 space-y-2">
         {offers.map((o) => (
           <li
             key={`${o.domain}-${o.id}`}

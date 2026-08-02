@@ -124,7 +124,9 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
         /\/results\/biomarkers\?new=1&name=Creatinine$/
       );
       await expect(
-        page.locator("#add-result").getByLabel("Name", { exact: true })
+        page
+          .getByRole("dialog", { name: "Add medical record" })
+          .getByLabel("Name", { exact: true })
       ).toHaveValue("Creatinine");
     } finally {
       await page.context().close();

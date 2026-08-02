@@ -91,6 +91,11 @@ export interface Appointment {
   // "Log this visit" creates a linked encounter or an import/sync auto-completes a
   // matching one. NULL for a still-scheduled or manually-completed appointment.
   encounter_id: number | null;
+  // Import provenance (#24): appointments projected from a document retain both
+  // the owning document FK and its `document:<id>` source identity. Manual rows
+  // keep both null.
+  document_id: number | null;
+  source: string | null;
   created_at: string;
 }
 
@@ -922,6 +927,14 @@ export interface CarePlanItem {
   resolved_by_dental_procedure_id: number | null; // the later dental record it was resolved against (dental adapter)
   resolved_by_skin_lesion_id: number | null; // the later lesion record it was resolved against (skin adapter)
   resolved_at: string | null;
+  // The follow-up TERMINATOR (issue #1866, migration 141): the user's own statement
+  // that closed the chain — 'done' ("it happened on settled_on, outside our records")
+  // or 'declined' ("discussed, not doing it"). Distinct from `resolution`, which
+  // records what a LATER RECORD showed. A settled follow-up never renders as a
+  // finding and never pushes again.
+  settled_disposition: string | null; // 'done' | 'declined' once settled
+  settled_on: string | null; // the user-stated date (YYYY-MM-DD)
+  settled_reason: string | null; // optional free text; renders through <NotesText>
 }
 
 // A care goal (table: care_goals): a clinical target from a health record's Goals

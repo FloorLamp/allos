@@ -39,6 +39,67 @@ test("bare /records redirects to History › Visits and renders the Visits list 
   await expect(page.getByTestId("records-conditions")).toHaveCount(0);
 });
 
+test("mobile Health record starts with four shell-owned group tabs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/records/history/visits");
+
+  await expect(page.getByTestId("records-page-title")).toBeHidden();
+  const shell = page.getByTestId("shell-chrome");
+  const strip = shell.getByTestId("shell-tab-strip");
+  const tabs = strip.getByTestId("records-group-tabs");
+  await expect(tabs).toBeVisible();
+  await expect(tabs).toHaveCSS("overflow-y", "hidden");
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
+
+  const boxes = await Promise.all(
+    ["History", "Problems", "Care", "Specialty"].map(async (name) => {
+      const tab = tabs.getByRole("tab", { name });
+      await expect(tab).toHaveCSS("font-size", "14px");
+      return tab.boundingBox();
+    })
+  );
+  expect(boxes.every(Boolean)).toBe(true);
+  expect(boxes[0]!.height).toBeGreaterThanOrEqual(44);
+  for (const box of boxes.slice(1)) {
+    expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
+  }
+
+  await expect(tabs.getByRole("tab", { name: "History" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await followLink(
+    page,
+    tabs.getByRole("tab", { name: "Problems" }),
+    /\/records\/problems\/conditions$/
+  );
+  await expect(
+    page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Problems" })
+  ).toHaveAttribute("aria-selected", "true");
+  const subTabs = page.getByTestId("records-sub-tabs");
+  await expect(subTabs).toBeVisible();
+  await expect(page.getByTestId("records-conditions")).toBeVisible();
+
+  // The secondary chips continue the tab band without becoming another sticky
+  // layer. They should leave the viewport with the pane rather than lingering
+  // after the shell-owned primary tabs auto-hide.
+  const primaryBox = await page
+    .getByTestId("shell-tab-strip")
+    .getByTestId("records-group-tabs")
+    .boundingBox();
+  const secondaryBox = await subTabs.boundingBox();
+  expect(primaryBox).not.toBeNull();
+  expect(secondaryBox).not.toBeNull();
+  expect(
+    secondaryBox!.y - (primaryBox!.y + primaryBox!.height)
+  ).toBeLessThanOrEqual(12);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(subTabs).not.toBeInViewport();
+});
+
 test("two-level tabs navigate group → sub-tab across the panes (#1079)", async ({
   page,
 }) => {
@@ -68,7 +129,7 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   // Care group tab → its Overview pane.
   await followLink(
     page,
-    page.getByTestId("records-group-tabs").getByRole("link", { name: "Care" }),
+    page.getByTestId("records-group-tabs").getByRole("tab", { name: "Care" }),
     /\/records\/care\/overview$/
   );
   // Care › Overview is a STACKED pane — all four light sections render together.
@@ -76,6 +137,15 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-family-history")).toBeVisible();
   await expect(page.getByTestId("records-care-plan")).toBeVisible();
   await expect(page.getByTestId("records-health-goals")).toBeVisible();
+  await expect(page.getByTestId("smoking-history")).toBeHidden();
+  await page.getByTestId("records-background").locator("summary").click();
+  const smokingHistory = page.getByTestId("smoking-history");
+  await expect(smokingHistory).toBeVisible();
+  expect(
+    await smokingHistory.evaluate((element) =>
+      Boolean(element.parentElement?.closest(".card"))
+    )
+  ).toBe(false);
 
   // Care › Providers — the heavy directory, a solo pane.
   await followLink(
@@ -93,7 +163,7 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   // themselves with page-scale in-page headings.
   await followLink(
     page,
-    groups.getByRole("link", { name: "Problems" }),
+    groups.getByRole("tab", { name: "Problems" }),
     /\/records\/problems\/conditions$/
   );
   const problemSubs = page.getByTestId("records-sub-tabs");
@@ -176,6 +246,9 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/records/history/immunizations");
+  await page
+    .locator("summary", { hasText: "CDC recommended schedule" })
+    .click();
   const grid = page.getByTestId("cdc-schedule-grid");
   await expect(grid).toBeVisible();
 
@@ -194,7 +267,7 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   await expectNoClippedContent(page);
 });
 
-test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
+test("the five specialty sub-tabs render with rare entry collapsed and the crisis line present (#1079, #1497)", async ({
   page,
 }) => {
   test.slow();
@@ -213,8 +286,11 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
   }
 
   await expect(
-    page.getByTestId("records-vision").getByTestId("optical-prescription-form")
+    page
+      .getByTestId("records-vision")
+      .getByTestId("add-prescription-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("optical-prescription-form")).toBeHidden();
 
   await followLink(
     page,
@@ -222,8 +298,11 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
     /\/records\/specialty\/dental$/
   );
   await expect(
-    page.getByTestId("records-dental").getByTestId("dental-procedure-form")
+    page
+      .getByTestId("records-dental")
+      .getByTestId("add-dental-record-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("dental-procedure-form")).toBeHidden();
 
   await followLink(
     page,
@@ -231,8 +310,9 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
     /\/records\/specialty\/skin$/
   );
   await expect(
-    page.getByTestId("records-skin").getByTestId("skin-lesion-form")
+    page.getByTestId("records-skin").getByTestId("add-skin-lesion-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("skin-lesion-form")).toBeHidden();
 
   // Mental health — its crisis line travels WITH the route (the safety contract is
   // content, not route, #716/#1079).
@@ -244,8 +324,11 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
     /\/records\/specialty\/mental-health$/
   );
   await expect(
-    page.getByTestId("records-mental-health").getByTestId("instruments-form")
+    page
+      .getByTestId("records-mental-health")
+      .getByTestId("add-mental-health-screening-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("instruments-form")).toBeHidden();
   await expect(
     page
       .getByTestId("records-mental-health")
@@ -264,8 +347,9 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
   await expect(
     page
       .getByTestId("records-substance-use")
-      .getByTestId("substance-instruments-form")
+      .getByTestId("add-substance-screening-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("substance-instruments-form")).toBeHidden();
 });
 
 test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates (#1079)", async ({

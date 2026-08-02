@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconLink, IconX, IconPlus } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
+import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import type { Provider, ProviderType } from "@/lib/types";
 import type {
@@ -43,6 +44,7 @@ export default function ProviderAffiliations({
 }) {
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const counterpartType: ProviderType =
     providerType === "individual" ? "organization" : "individual";
   const heading = providerType === "individual" ? "Practices at" : "People";
@@ -50,7 +52,8 @@ export default function ProviderAffiliations({
   async function run(
     action: (fd: FormData) => Promise<{ error?: string }>,
     fd: FormData,
-    ok: string
+    ok: string,
+    onSuccess?: () => void
   ) {
     setError(null);
     const res = await action(fd);
@@ -59,6 +62,7 @@ export default function ProviderAffiliations({
       return;
     }
     toast(ok);
+    onSuccess?.();
   }
 
   return (
@@ -142,7 +146,7 @@ export default function ProviderAffiliations({
                   <span className="flex shrink-0 gap-1.5">
                     <button
                       type="button"
-                      className="btn-ghost text-xs"
+                      className="btn btn-sm"
                       data-testid="affiliation-accept"
                       onClick={() => {
                         const fd = new FormData();
@@ -179,39 +183,70 @@ export default function ProviderAffiliations({
       ) : null}
 
       {canEdit ? (
-        <form
-          className="mt-3 flex items-end gap-2"
-          data-testid="affiliation-add-form"
-          action={(fd) => {
-            fd.set("id", String(providerId));
-            fd.set("counterpart_type", counterpartType);
-            run(linkAffiliationAction, fd, "Affiliation linked");
-          }}
-        >
-          <div className="min-w-0 flex-1">
-            <label className="label" htmlFor="affiliation-name">
-              Affiliated with…
-            </label>
-            <ProviderCombobox
-              id="affiliation-name"
-              name="name"
-              ariaLabel="Affiliated with"
-              providers={counterpartProviders}
-              placeholder={
-                counterpartType === "organization"
-                  ? "e.g. Sample Care East"
-                  : "e.g. Dr. Chen"
-              }
-            />
-          </div>
-          <SubmitButton className="btn inline-flex items-center gap-1.5">
+        <div className="mt-3">
+          <button
+            type="button"
+            className="btn"
+            data-testid="affiliation-add-toggle"
+            onClick={() => {
+              setError(null);
+              setAdding(true);
+            }}
+          >
             <IconPlus className="h-4 w-4" stroke={1.75} />
-            Link
-          </SubmitButton>
-        </form>
+            Link affiliation
+          </button>
+          {adding ? (
+            <ModalShell
+              title="Link affiliation"
+              onClose={() => setAdding(false)}
+            >
+              <form
+                className="mt-4 space-y-4"
+                data-testid="affiliation-add-form"
+                action={async (fd) => {
+                  fd.set("id", String(providerId));
+                  fd.set("counterpart_type", counterpartType);
+                  await run(
+                    linkAffiliationAction,
+                    fd,
+                    "Affiliation linked",
+                    () => setAdding(false)
+                  );
+                }}
+              >
+                <div>
+                  <label className="label" htmlFor="affiliation-name">
+                    Affiliated with…
+                  </label>
+                  <ProviderCombobox
+                    id="affiliation-name"
+                    name="name"
+                    ariaLabel="Affiliated with"
+                    providers={counterpartProviders}
+                    placeholder={
+                      counterpartType === "organization"
+                        ? "e.g. Sample Care East"
+                        : "e.g. Dr. Chen"
+                    }
+                  />
+                </div>
+                <SubmitButton className="btn inline-flex items-center gap-1.5">
+                  <IconPlus className="h-4 w-4" stroke={1.75} />
+                  Link
+                </SubmitButton>
+                {error ? (
+                  <p className="text-sm text-rose-600 dark:text-rose-400">
+                    {error}
+                  </p>
+                ) : null}
+              </form>
+            </ModalShell>
+          ) : null}
+        </div>
       ) : null}
 
-      {error ? (
+      {error && !adding ? (
         <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{error}</p>
       ) : null}
     </div>

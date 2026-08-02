@@ -20,6 +20,7 @@ import { followUpItems } from "@/lib/followup-findings";
 import {
   trackImagingFollowUpCore,
   resolveFollowUpCore,
+  settleFollowUpCore,
 } from "@/lib/followup-write";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
 import {
@@ -211,5 +212,133 @@ describe("followUpItems builder (#700)", () => {
     );
     // Tracking a non-existent / cross-profile study is invalid.
     expect(trackImagingFollowUpCore(p, 99999, 30, now).kind).toBe("invalid");
+  });
+});
+
+describe("the #1866 terminator on the builder surface", () => {
+  it("an open follow-up carries the settle payload; a resolvable one does not", () => {
+    const p = newProfile("followup-settle-payload");
+    const now = today(p);
+    const studyId = addStudy(p, {
+      modality: "ct",
+      body_region: "Chest",
+      study_date: shiftDateStr(now, -400),
+    });
+    const res = trackImagingFollowUpCore(p, studyId, 30, now);
+    const cpId = (res as { carePlanItemId: number }).carePlanItemId;
+
+    // Overdue (and upcoming) states carry the terminator payload, ids only.
+    const overdue = followUpItems(p, now);
+    expect(overdue[0].carePersistent).toBe(true);
+    expect(overdue[0].followUpSettle).toEqual({ carePlanItemId: cpId });
+
+    // Once a later record makes it resolvable, the resolve OFFER is the close —
+    // no settle payload rides beside it.
+    addStudy(p, {
+      modality: "ct",
+      body_region: "Chest",
+      study_date: shiftDateStr(now, -1),
+    });
+    const offering = followUpItems(p, now);
+    expect(offering[0].followUpResolve).toBeDefined();
+    expect(offering[0].followUpSettle).toBeUndefined();
+  });
+
+  it("a settled (declined) follow-up drops off every surface and blocks nothing new", () => {
+    const p = newProfile("followup-settle-drop");
+    const now = today(p);
+    const studyId = addStudy(p, {
+      modality: "ct",
+      study_date: shiftDateStr(now, -400),
+    });
+    const res = trackImagingFollowUpCore(p, studyId, 30, now);
+    const cpId = (res as { carePlanItemId: number }).carePlanItemId;
+    const key = `${FOLLOWUP_PREFIX}${cpId}`;
+
+    const settled = settleFollowUpCore(
+      p,
+      cpId,
+      "declined",
+      now,
+      "discussed — not pursuing",
+      now
+    );
+    expect(settled.kind).toBe("settled");
+
+    // Gone from the builder AND from collectUpcoming — a terminal state, not a
+    // suppression.
+    expect(followUpItems(p, now)).toHaveLength(0);
+    expect(collectUpcoming(p, now).some((u) => u.key === key)).toBe(false);
+
+    // The chain node records the decision (status in the vocabulary the care-plan
+    // module already reads as CLOSED).
+    const row = db
+      .prepare(
+        `SELECT status, resolution, settled_disposition AS d, settled_on AS o,
+                settled_reason AS r
+           FROM care_plan_items WHERE id = ? AND profile_id = ?`
+      )
+      .get(cpId, p) as {
+      status: string;
+      resolution: string | null;
+      d: string;
+      o: string;
+      r: string;
+    };
+    expect(row.status).toBe("not-done");
+    expect(row.resolution).toBeNull();
+    expect(row.d).toBe("declined");
+    expect(row.o).toBe(now);
+    expect(row.r).toBe("discussed — not pursuing");
+
+    // A deliberate re-track starts a NEW chain node (a new consent) — the settled
+    // node no longer satisfies the "open follow-up exists" idempotency check.
+    const retracked = trackImagingFollowUpCore(p, studyId, 30, now);
+    expect(retracked.kind).toBe("created");
+    expect((retracked as { carePlanItemId: number }).carePlanItemId).not.toBe(
+      cpId
+    );
+  });
+
+  it("settleFollowUpCore refuses with typed outcomes, never a silent no-op", () => {
+    const p = newProfile("followup-settle-refuse");
+    const other = newProfile("followup-settle-refuse-b");
+    const now = today(p);
+    const studyId = addStudy(p, { study_date: shiftDateStr(now, -100) });
+    const res = trackImagingFollowUpCore(p, studyId, 30, now);
+    const cpId = (res as { carePlanItemId: number }).carePlanItemId;
+
+    // Off-vocabulary disposition, malformed and future dates.
+    expect(settleFollowUpCore(p, cpId, "maybe", now, null, now).kind).toBe(
+      "invalid-disposition"
+    );
+    expect(
+      settleFollowUpCore(p, cpId, "done", "yesterday", null, now).kind
+    ).toBe("invalid-date");
+    expect(
+      settleFollowUpCore(p, cpId, "done", shiftDateStr(now, 1), null, now).kind
+    ).toBe("invalid-date");
+    // Cross-profile: not found.
+    expect(settleFollowUpCore(other, cpId, "done", now, null, now).kind).toBe(
+      "not-found"
+    );
+    // First settle lands; a second (double-click / stale surface) is told the
+    // truth instead of being confirmed.
+    expect(settleFollowUpCore(p, cpId, "done", now, null, now).kind).toBe(
+      "settled"
+    );
+    expect(settleFollowUpCore(p, cpId, "declined", now, null, now).kind).toBe(
+      "already-closed"
+    );
+    // A resolved follow-up is equally un-settleable.
+    const study2 = addStudy(p, { study_date: shiftDateStr(now, -50) });
+    const res2 = trackImagingFollowUpCore(p, study2, 30, now);
+    const cpId2 = (res2 as { carePlanItemId: number }).carePlanItemId;
+    expect(resolveFollowUpCore(p, cpId2, "resolved", null).kind).toBe(
+      "resolved"
+    );
+    expect(settleFollowUpCore(p, cpId2, "declined", now, null, now).kind).toBe(
+      "already-closed"
+    );
   });
 });

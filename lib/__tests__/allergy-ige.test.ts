@@ -126,6 +126,7 @@ describe("allergenKey + merge/dedup", () => {
   const sens: IgESensitizationInput[] = [
     {
       allergen: "Peanut",
+      canonicalName: "Peanut IgE",
       marker: "Peanut IgE",
       value: "Class 3",
       valueNum: null,
@@ -136,6 +137,7 @@ describe("allergenKey + merge/dedup", () => {
     },
     {
       allergen: "Cat Dander",
+      canonicalName: null,
       marker: "Cat Dander IgE",
       value: "Class 2",
       valueNum: null,
