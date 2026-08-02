@@ -4,6 +4,27 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1911,
+          "kind": "feature",
+          "issues": [1600],
+          "title": "Hearing gets a home, and the ototoxic warning finally says what it is warning about",
+          "body": "Audiograms had nowhere to live: the analytes and reference ranges were already curated, but there was no way to enter a hearing test. Records → Specialty now has a Hearing pane beside Vision, storing each ear-and-frequency threshold alongside every other reading so it trends, flags and exports like the rest. Retesting a single frequency now updates only that frequency instead of blanking the others. The medication warning for hearing-toxic drugs also changed: where it used to say only that you were on one, it can now cite your own audiogram — \"a documented threshold shift since January: 15 dB across 4 and 8 kHz, right ear\". With no audiogram on file it says nothing extra rather than prompting you for a test you never had."
+        },
+        {
+          "pr": 1910,
+          "kind": "feature",
+          "issues": [1675],
+          "title": "Biomarker pickers put what matters to you first",
+          "body": "Every biomarker picker — starring a trend, choosing what to compare, naming a result, mapping an import — was a flat alphabetical list of roughly two hundred analytes, so the one you actually track sat wherever the alphabet put it. Opening a picker now leads with anything due for a retest or currently flagged, then the standard metrics, then the markers you have recorded before, then everything else; typing still searches the whole list. All four pickers use the same control and the same order, so moving between them does not mean relearning where things are."
+        },
+        {
+          "pr": 1908,
+          "kind": "feature",
+          "issues": [1403, 1407],
+          "title": "A left knee is no longer the same as a right one, and an adopted parent no longer counts as inherited risk",
+          "body": "Conditions can now record which side they affect, how severe they are, and their stage, and family history can record age and cause of death plus whether a relative is biological, half, adopted or step. Both were previously impossible to state and were dropped on import even when the source document said so. Two things change beyond the record itself: a left-knee and a right-knee diagnosis no longer collapse into one row on the problem list, and screening cadence now skips a relative you have marked non-biological instead of weighing their history as inherited. A biological relative's stated cause of death also counts toward that cadence — \"father, heart attack at 52\" previously sat in a field nothing read."
+        },
+        {
           "pr": 1899,
           "kind": "feature",
           "issues": [1868],
