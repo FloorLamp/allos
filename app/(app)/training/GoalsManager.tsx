@@ -164,6 +164,7 @@ export default function GoalsManager({
             return (
               <div
                 key={g.id}
+                data-testid="goal-card"
                 className={`card !p-3 text-sm ${
                   g.archived ? "opacity-55 grayscale" : ""
                 } ${openMenu === g.id ? "relative z-20" : ""}`}

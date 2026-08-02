@@ -21,6 +21,7 @@ import {
   seedActivityFormPaths,
   seedEndurancePlans,
   seedTrainingRollup,
+  seedLabValueGoal,
   seedLoadContexts,
 } from "./seed/training";
 import { seedIntegrationSyncEvents } from "./seed/integrations";
@@ -181,6 +182,7 @@ seedFitnessLens();
 seedRankedCardOrder();
 seedPinnedCardOrder();
 seedTrainingRollup();
+seedLabValueGoal();
 seedLoadContexts();
 seedTimelineChrome();
 seedTimelineEmpty();

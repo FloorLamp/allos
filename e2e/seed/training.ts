@@ -24,7 +24,15 @@ import {
   LOAD_CONTEXT_LIFT,
   LOAD_CONTEXT_HOME,
   LOAD_CONTEXT_HOTEL,
+  E2E_LOGIN_LAB_GOAL,
+  LAB_GOAL_PROFILE,
+  LAB_GOAL_TRACKED,
+  LAB_GOAL_OVERDUE,
+  LAB_GOAL_IN_RANGE,
+  LAB_GOAL_TARGET,
 } from "../fixture-logins";
+import { setUserBirthdate, setUserSex } from "../../lib/settings";
+import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -523,5 +531,92 @@ export function seedLoadContexts(): void {
   seedMemberLogin(E2E_LOGIN_LOAD_CONTEXT, profileId, "write");
   console.log(
     `e2e: seeded strength load-context fixture — profile ${profileId} (${LOAD_CONTEXT_PROFILE}) (#1610)`
+  );
+}
+
+export function seedLabValueGoal(): void {
+  // The fixture behind e2e/lab-value-goal.spec.ts (#1853). See the constants' header
+  // in e2e/logins/training.ts for why it is a dedicated, write-granted profile.
+  const pid = fixtureProfileId(LAB_GOAL_PROFILE);
+  seedMemberLogin(E2E_LOGIN_LAB_GOAL, pid, "write");
+  setUserBirthdate(pid, "1984-02-19");
+  setUserSex(pid, "male");
+  const anchor = today(pid);
+
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name IN (?, ?, ?)`
+  ).run(pid, LAB_GOAL_TRACKED, LAB_GOAL_OVERDUE, LAB_GOAL_IN_RANGE);
+  const insRecord = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, canonical_name, value_num, source)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, 'manual')`
+  );
+  // The goal's baseline draw, then a later one that has moved toward the target but
+  // has not reached it — so the card renders a partial bar rather than 0% or "met".
+  insRecord.run(
+    pid,
+    shiftDateStr(anchor, -200),
+    LAB_GOAL_TRACKED,
+    "160",
+    "mg/dL",
+    LAB_GOAL_TRACKED,
+    160
+  );
+  insRecord.run(
+    pid,
+    shiftDateStr(anchor, -40),
+    LAB_GOAL_TRACKED,
+    "130",
+    "mg/dL",
+    LAB_GOAL_TRACKED,
+    130
+  );
+  // Overdue on its 90-day cadence, so the picker's relevance group leads with it.
+  insRecord.run(
+    pid,
+    shiftDateStr(anchor, -400),
+    LAB_GOAL_OVERDUE,
+    "5.4",
+    "%",
+    LAB_GOAL_OVERDUE,
+    5.4
+  );
+  // Measured, in range, fresh: the profile's own marker and nothing more, which is
+  // what puts a row under the picker's "Your markers" header.
+  insRecord.run(
+    pid,
+    shiftDateStr(anchor, -30),
+    LAB_GOAL_IN_RANGE,
+    "4.5",
+    "g/dL",
+    LAB_GOAL_IN_RANGE,
+    4.5
+  );
+  reconcileFlags(pid);
+
+  // The goal itself is seeded DIRECTLY (#1901): the rendered progress/pacing line is
+  // what this half of the spec is about, and driving a create form first would make
+  // every assertion depend on a second feature's UI. The form IS exercised, on the
+  // OTHER analyte, by the picker half.
+  //
+  // The window is chosen so the two pacing models DISAGREE, which is what makes the
+  // rendered tone worth asserting: created 200 days ago, due in 160, so the goal is
+  // 200/360 = 56% through its calendar but only 50% of the way to its number. A
+  // DAILY-paced goal would read "behind" here. The last RESULT landed 40 days ago,
+  // at 160/360 = 44% of the window, so on the evidence the goal is on pace — and it
+  // cannot fall behind until a new draw says so.
+  db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `INSERT INTO goals
+       (profile_id, title, category, status, archived, target_value, unit,
+        biomarker_name, target_direction, target_date, baseline_value, created_at)
+     VALUES (?, ?, 'biomarker', 'active', 0, ?, 'mg/dL', ?, 'below', ?, 160, ?)`
+  ).run(
+    pid,
+    `${LAB_GOAL_TRACKED} under ${LAB_GOAL_TARGET}`,
+    LAB_GOAL_TARGET,
+    LAB_GOAL_TRACKED,
+    shiftDateStr(anchor, 160),
+    `${shiftDateStr(anchor, -200)} 09:00:00`
   );
 }
