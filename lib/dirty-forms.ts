@@ -78,9 +78,7 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
 }
 
 /** Whether a form currently holds input the server does not have. */
-export function formHasUnsavedInput(
-  fields: readonly TrackedField[]
-): boolean {
+export function formHasUnsavedInput(fields: readonly TrackedField[]): boolean {
   return fields.some(fieldHoldsUnsavedInput);
 }
 

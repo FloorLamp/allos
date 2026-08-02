@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getImportJobStates } from "@/app/(app)/data/actions";
 import { useToast } from "@/components/Toast";
+import { useChromeRefresh } from "@/components/DirtyFormRegistry";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
 
 // The import-job statuses that count as terminal (extraction no longer running).
@@ -30,6 +31,11 @@ export default function ImportJobsToaster({
 }) {
   const router = useRouter();
   const toast = useToast();
+  // CHROME-INITIATED (#1878): a poll noticed a background job finish. The user
+  // did nothing; deferring it while a record form is dirty costs nothing and
+  // saves the half-typed row. `router` stays for the toast's Review push, which
+  // is a navigation the user asked for.
+  const chromeRefresh = useChromeRefresh();
   // Last seen status per job id; null until the first poll (which seeds without
   // toasting, so pre-existing ready/failed jobs don't re-announce on load).
   const prev = useRef<Map<number, string> | null>(null);
@@ -106,7 +112,7 @@ export default function ImportJobsToaster({
         // Survives the #1473 sweep: this is poll-driven. getImportJobStates is a read
         // action with no revalidatePath, and the work that changed the rows ran in a
         // background job, not in an action this client awaited.
-        if (changed) router.refresh();
+        if (changed) chromeRefresh();
       }
 
       const processing = jobs.some((j) => j.status === "processing");
@@ -118,7 +124,7 @@ export default function ImportJobsToaster({
       active = false;
       clearTimeout(timer);
     };
-  }, [router, toast, profileId]);
+  }, [router, toast, chromeRefresh, profileId]);
 
   return null;
 }

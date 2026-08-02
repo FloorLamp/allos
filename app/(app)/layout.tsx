@@ -9,6 +9,7 @@ import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
+import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import ShellChrome from "@/components/ShellChrome";
@@ -219,77 +220,50 @@ export default async function AppLayout({
                 SUBJECT — form drafts above all (#1699), so a profile switch can
                 never surface another subject's half-typed entry. */}
             <ActiveProfileProvider profileId={profile.id}>
-              <OfflineQueueProvider activeProfileId={profile.id}>
-                <ProfileSwitchWatcher activeProfileId={profile.id} />
-                {/* The shared quick-entry overlay host (#1468). Inside
+              {/* The dirty-form registry (#1878). Outermost of the client
+                  providers because every chrome actor that repaints the page —
+                  the offline queue's post-sync refresh, the import and
+                  extraction toasters — sits inside it and routes its
+                  `router.refresh()` through `useChromeRefresh`, so a background
+                  repaint can never land on a half-typed record form. It defers
+                  those refreshes; it never adds one, never removes one, and
+                  never touches a refresh the USER asked for. */}
+              <DirtyFormProvider>
+                <OfflineQueueProvider activeProfileId={profile.id}>
+                  <ProfileSwitchWatcher activeProfileId={profile.id} />
+                  {/* The shared quick-entry overlay host (#1468). Inside
                   OfflineQueueProvider by necessity: the forms it mounts
                   (MeasurementsQuickAdd) queue offline writes, and it
                   renders them as its OWN children, so they must sit under that
                   provider. It gathers nothing until a sheet row is tapped. */}
-                <QuickEntryProvider>
-                  <ActivityEditorProvider
-                    units={units}
-                    suggestions={suggestions}
-                    history={exerciseHistory}
-                    equipment={equipment}
-                    recentActivityEquipment={recentActivityEquipment}
-                    bodyweightKg={bodyweightKg}
-                    lastActivity={lastActivity}
-                    restricted={restricted}
-                    deloadContext={deloadContext}
-                    recoveringContext={recoveringContext}
-                    plateauHints={plateauHints}
-                    presence={presence}
-                    liveEditData={liveEditData}
-                    liveStartEpochMs={liveStartEpochMs}
-                    subjectName={actingSubjectName}
-                  >
-                    <div className="flex min-h-screen">
-                      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                        <SidebarContent
-                          activityDates={timelineDates}
-                          version={version}
-                          active={session.profile}
-                          username={login.username}
-                          // The scope's DISAMBIGUATED set (#534) — two accessible
-                          // profiles can share a name, and the bar/panel must name
-                          // a specific one.
-                          profiles={scope.profiles}
-                          viewIds={scope.viewIds}
-                          readOnlyIds={readOnlyIds}
-                          restricted={restricted}
-                          isAdmin={isAdmin}
-                          multiProfile={multiProfile}
-                          foodLoggingRelevant={foodLoggingRelevant}
-                          hasIntakeItems={hasIntakeItems}
-                          relevance={relevance}
-                          reviewCount={reviewCount}
-                          readOnly={readOnly}
-                          whatsNewUnseen={whatsNewUnseen}
-                        />
-                      </aside>
-                      {/* clip (not hidden) so it doesn't force overflow-y to auto, which
-            turns <main> into a scroll container and breaks position:sticky inside it.
-            min-w-0 lets this flex item shrink below its content's intrinsic width —
-            without it, wide tables/rows blow the whole page out horizontally. */}
-                      <main className="min-w-0 flex-1 overflow-x-clip">
-                        {/* The ONE sticky top chrome (issue #1416): the phone top
-                    bar hides on scroll-down and returns on scroll-up, so "whose
-                    data am I looking at?" stays answerable mid-scroll instead of
-                    scrolling away with the content. Since #1801 the identity bar
-                    IS that answer and rides inside the bar itself, so the
-                    separate view-banner slot the chrome used to carry is gone —
-                    one surface, not two. */}
-                        <ShellChrome
-                          disabledTabFirstPageIds={
-                            restricted ? ["training"] : undefined
-                          }
-                        >
-                          <MobileNav
+                  <QuickEntryProvider>
+                    <ActivityEditorProvider
+                      units={units}
+                      suggestions={suggestions}
+                      history={exerciseHistory}
+                      equipment={equipment}
+                      recentActivityEquipment={recentActivityEquipment}
+                      bodyweightKg={bodyweightKg}
+                      lastActivity={lastActivity}
+                      restricted={restricted}
+                      deloadContext={deloadContext}
+                      recoveringContext={recoveringContext}
+                      plateauHints={plateauHints}
+                      presence={presence}
+                      liveEditData={liveEditData}
+                      liveStartEpochMs={liveStartEpochMs}
+                      subjectName={actingSubjectName}
+                    >
+                      <div className="flex min-h-screen">
+                        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                          <SidebarContent
                             activityDates={timelineDates}
                             version={version}
                             active={session.profile}
                             username={login.username}
+                            // The scope's DISAMBIGUATED set (#534) — two accessible
+                            // profiles can share a name, and the bar/panel must name
+                            // a specific one.
                             profiles={scope.profiles}
                             viewIds={scope.viewIds}
                             readOnlyIds={readOnlyIds}
@@ -303,48 +277,87 @@ export default async function AppLayout({
                             readOnly={readOnly}
                             whatsNewUnseen={whatsNewUnseen}
                           />
-                        </ShellChrome>
-                        {/* max(padding, safe-area inset) keeps content clear of the
+                        </aside>
+                        {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+            turns <main> into a scroll container and breaks position:sticky inside it.
+            min-w-0 lets this flex item shrink below its content's intrinsic width —
+            without it, wide tables/rows blow the whole page out horizontally. */}
+                        <main className="min-w-0 flex-1 overflow-x-clip">
+                          {/* The ONE sticky top chrome (issue #1416): the phone top
+                    bar hides on scroll-down and returns on scroll-up, so "whose
+                    data am I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. Since #1801 the identity bar
+                    IS that answer and rides inside the bar itself, so the
+                    separate view-banner slot the chrome used to carry is gone —
+                    one surface, not two. */}
+                          <ShellChrome
+                            disabledTabFirstPageIds={
+                              restricted ? ["training"] : undefined
+                            }
+                          >
+                            <MobileNav
+                              activityDates={timelineDates}
+                              version={version}
+                              active={session.profile}
+                              username={login.username}
+                              profiles={scope.profiles}
+                              viewIds={scope.viewIds}
+                              readOnlyIds={readOnlyIds}
+                              restricted={restricted}
+                              isAdmin={isAdmin}
+                              multiProfile={multiProfile}
+                              foodLoggingRelevant={foodLoggingRelevant}
+                              hasIntakeItems={hasIntakeItems}
+                              relevance={relevance}
+                              reviewCount={reviewCount}
+                              readOnly={readOnly}
+                              whatsNewUnseen={whatsNewUnseen}
+                            />
+                          </ShellChrome>
+                          {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
               the unchanged pt-8 / 1.25rem from `md` up. The conditional variant
               this used to carry went with the view banner (#1801): the chrome no
               longer grows a second row, so the padding is unconditional again. */}
-                        <div
-                          data-testid="app-content-container"
-                          className="mx-auto pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
-                        >
-                          {/* This slot is OnboardingReturnBanner's alone again
+                          <div
+                            data-testid="app-content-container"
+                            className="mx-auto pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                          >
+                            {/* This slot is OnboardingReturnBanner's alone again
                             (#1795). The deploy notice used to render here too, as a
                             second surface for the event the service worker's update
                             bar already owns — one deploy, two notices, two reload
                             buttons. There is one now, and it is the bar mounted by
                             ServiceWorkerRegister in the root layout. */}
-                          <OnboardingReturnBanner show={showOnboardingReturn} />
-                          {children}
-                        </div>
-                      </main>
-                    </div>
-                    <CommandPalette
-                      profileName={session.profile.name}
-                      weightUnit={units.weightUnit}
-                    />
-                    {/* PWA home-screen shortcuts land here (#1424): reads
+                            <OnboardingReturnBanner
+                              show={showOnboardingReturn}
+                            />
+                            {children}
+                          </div>
+                        </main>
+                      </div>
+                      <CommandPalette
+                        profileName={session.profile.name}
+                        weightUnit={units.weightUnit}
+                      />
+                      {/* PWA home-screen shortcuts land here (#1424): reads
                       `?quick=` and opens the SAME activity editor / quick-entry
                       overlay / palette the sheet does. Beside CommandPalette so
                       it sits inside both contexts it dispatches into, and
                       viewport-agnostic — the shortcut URL is an ordinary link. */}
-                    <QuickShortcutHandler restricted={restricted} />
-                    <ExtractionToaster profileId={profile.id} />
-                    <ImportJobsToaster profileId={profile.id} />
-                    {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
+                      <QuickShortcutHandler restricted={restricted} />
+                      <ExtractionToaster profileId={profile.id} />
+                      <ImportJobsToaster profileId={profile.id} />
+                      {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
                       listens to nothing in a browser tab, where the browser's own
                       refresh already exists. */}
-                    <PullToRefresh />
-                  </ActivityEditorProvider>
-                </QuickEntryProvider>
-              </OfflineQueueProvider>
+                      <PullToRefresh />
+                    </ActivityEditorProvider>
+                  </QuickEntryProvider>
+                </OfflineQueueProvider>
+              </DirtyFormProvider>
             </ActiveProfileProvider>
           </ConfirmProvider>
         </FormatPrefsProvider>

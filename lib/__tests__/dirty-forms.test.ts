@@ -71,7 +71,9 @@ describe("fieldHoldsUnsavedInput", () => {
   it("releases when the edit is undone — the blur-with-empty case", () => {
     // Typed "Annual physical" into an empty field, then deleted it again.
     expect(
-      fieldHoldsUnsavedInput(field({ touched: true, current: "", baseline: "" }))
+      fieldHoldsUnsavedInput(
+        field({ touched: true, current: "", baseline: "" })
+      )
     ).toBe(false);
     // Same rule for a field that started with a server value and was restored.
     expect(
@@ -224,10 +226,7 @@ describe("reduceDirtyForms", () => {
     expect(cycle1.refreshes).toBe(1);
 
     const cycle2 = run(
-      [
-        { type: "dirty", formId: "visit-add" },
-        { type: "chrome-refresh" },
-      ],
+      [{ type: "dirty", formId: "visit-add" }, { type: "chrome-refresh" }],
       cycle1.state
     );
     expect(cycle2.refreshes).toBe(0);
