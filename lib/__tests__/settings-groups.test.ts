@@ -30,9 +30,6 @@ const SETTINGS_DIR = join(process.cwd(), "app", "(app)", "settings");
 const NON_GROUP_ROUTES = new Set([
   // The index itself — it renders the registry rather than being an entry in it.
   "/settings",
-  // A pure redirect stub kept for old bookmarks after equipment moved to its own
-  // top-level registry (#343). Not a settings surface.
-  "/settings/equipment",
 ]);
 
 function pageRoutes(dir: string, prefix: string): string[] {

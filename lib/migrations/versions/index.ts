@@ -140,6 +140,7 @@ import { migration as m138 } from "./138-document-coverage-markers";
 import { migration as m139 } from "./139-notify-message-title";
 import { migration as m140 } from "./140-prn-max-daily-mg";
 import { migration as m141 } from "./141-followup-settle";
+import { migration as m142 } from "./142-trend-views-cleanup";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -289,4 +290,5 @@ export const MIGRATIONS: Migration[] = [
   m139,
   m140,
   m141,
+  m142,
 ];

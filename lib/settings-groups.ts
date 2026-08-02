@@ -62,12 +62,14 @@ export type SettingsGroup = {
   // standard (docs/internals/copy.md, #945) these stay to a single sentence.
   summary: string;
   relevance?: SettingsGroupRelevance;
-  // Sub-pages rendered by the group nav when the group is active. Two groups have
+  // Sub-pages rendered by the group nav when the group is active. Three groups have
   // them: Logs & audit (AI logs / Errors / Audit are three diagnostic VIEWERS that
-  // share one topic but can't sensibly share one page) and Account & security (API
+  // share one topic but can't sensibly share one page), Account & security (API
   // tokens, #1734 — a credential REGISTRY with its own mint/revoke lifecycle, which
-  // does not belong stacked under the password and 2FA forms). They come from this
-  // same registry, so they are part of the one nav, not a fourth system.
+  // does not belong stacked under the password and 2FA forms), and Server (AI,
+  // #1870 — the provider tiers + automation cards, split off the ten-card Server
+  // page). They come from this same registry, so they are part of the one nav, not
+  // a fourth system.
   pages?: readonly SettingsGroupPage[];
 };
 
@@ -169,6 +171,13 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     adminOnly: true,
     summary:
       "Instance-wide configuration: public URL, email, the Telegram bot, AI, and backups.",
+    // The two AI cards (provider tiers #875 + automation knobs) earn a sub-page
+    // rather than staying stacked in a ten-card scroll (#1870 owner ruling — the
+    // account→tokens precedent). Same tier, same requireAdmin() gate as the parent.
+    pages: [
+      { href: "/settings/server", label: "Server" },
+      { href: "/settings/ai", label: "AI" },
+    ],
   },
   {
     id: "logs",

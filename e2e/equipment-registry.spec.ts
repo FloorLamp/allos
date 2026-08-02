@@ -69,19 +69,13 @@ test.describe("Equipment registry (#343)", () => {
     await expect(page.getByTestId("equipment-index")).toBeVisible();
   });
 
-  test("the old Settings → Equipment URL redirects to the registry", async ({
+  test("the old Settings → Equipment URL 404s (the post-#1635 no-redirect doctrine)", async ({
     page,
   }) => {
-    test.slow();
-
-    await page.goto("/settings/equipment");
-    await page.waitForURL((u) => u.pathname === "/equipment", {
-      timeout: 20_000,
-    });
-    await expect(page).toHaveURL(/\/equipment$/);
-    await expect(
-      page.getByRole("heading", { name: "Your equipment" })
-    ).toBeVisible();
+    // The #343-era redirect stub is gone (#1869 item 5): a retired URL 404s, the
+    // same call #1462 made for the much higher-traffic /settings/profile.
+    const resp = await page.goto("/settings/equipment");
+    expect(resp?.status()).toBe(404);
   });
 
   // #592: the command palette is the one discoverable, ungated door to the registry.

@@ -1,15 +1,44 @@
 import { test, expect } from "./fixtures";
-import { settledClick, settledFill } from "./helpers";
+import { followLink, settledClick, settledFill } from "./helpers";
 
-// The admin Server settings page surfaces the two AI provider tiers (issue #875):
+// The two AI cards — provider tiers (issue #875) and the automation knobs — live on
+// the Server group's AI sub-page (issue #1870, the account→tokens precedent):
 // Heavy (extraction) and Light (narratives/suggestions), each an editable provider
 // config. The e2e DB boots without ANTHROPIC_API_KEY/AI_BASE_URL, so testing a tier
 // reports the honest keyless degradation ("not configured") rather than a live ping.
-test.describe("Settings → Server: AI provider tiers", () => {
+test.describe("Settings → Server → AI: AI provider tiers", () => {
+  test("the AI sub-page is reachable from the Server group nav, and back", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/settings/server");
+    // The sub-page strip comes from the settings registry, so this also proves the
+    // registry entry reaches the rendered nav (not just the route).
+    const nav = page.getByTestId("settings-subpage-nav");
+    await expect(nav).toBeVisible();
+    // The cards themselves left the Server page.
+    await expect(page.getByTestId("ai-tier-settings")).toHaveCount(0);
+    await followLink(
+      page,
+      nav.getByRole("link", { name: "AI" }),
+      /\/settings\/ai$/
+    );
+    await expect(page.getByTestId("ai-tier-settings")).toBeVisible();
+    // …and the same strip returns to the parent page.
+    await followLink(
+      page,
+      page.getByTestId("settings-subpage-nav").getByRole("link", {
+        name: "Server",
+      }),
+      /\/settings\/server$/
+    );
+    await expect(page.getByTestId("backup-settings")).toBeVisible();
+  });
+
   test("shows the Heavy and Light tier blocks and degrades a keyless test", async ({
     page,
   }) => {
-    await page.goto("/settings/server");
+    await page.goto("/settings/ai");
     await expect(page.getByTestId("ai-tier-settings")).toBeVisible();
     await expect(page.getByTestId("ai-tier-heavy")).toBeVisible();
     await expect(page.getByTestId("ai-tier-light")).toBeVisible();
@@ -28,12 +57,12 @@ test.describe("Settings → Server: AI provider tiers", () => {
   // asserts the UI renders and degrades keyless.
 
   // The global per-profile daily recommendation-run clamp (issue #424) lives on
-  // the admin Server tab. Admin-only, so this authenticated-as-admin spec can edit
+  // the AI sub-page. Admin-only, so this authenticated-as-admin spec can edit
   // it; the value persists across a reload.
   test("admin can set the recommendation runs-per-day clamp", async ({
     page,
   }) => {
-    await page.goto("/settings/server");
+    await page.goto("/settings/ai");
     const input = page.getByTestId("recommendation-max-runs");
     // settledFill: wait for React to hydrate before filling, so the value lands in
     // state (a pre-hydration fill reverts, the autosave never fires, and the reload

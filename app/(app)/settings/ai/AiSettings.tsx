@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { AiPrefs } from "@/lib/settings";
-import { saveAiSettings } from "./server/actions";
+import { saveAiSettings } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 

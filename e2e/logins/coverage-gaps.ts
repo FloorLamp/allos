@@ -5,7 +5,7 @@
 
 // A member granted ONLY the seeded "Riley (child)" profile, so Riley is its sole
 // (and therefore active) profile on login. Read-only uses across specs:
-//   - equipment-manager: the age-gate redirect off /settings/equipment,
+//   - equipment-manager: the age-gate redirect off /equipment,
 //   - integrations-strava: the disconnected (no-connection) setup form,
 //   - immunizations: proving reads are profile-scoped (Riley's own empty list),
 //   - ai-logs-access: a member is bounced off the admin-only AI logs page.
