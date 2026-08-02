@@ -394,6 +394,16 @@ See `docs/internals/e2e-hygiene.md`.
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
   which SQL reaches through the `biomarker_family()` user function). Labels must
   include the attribute that actually distinguishes otherwise identical choices.
+- Additive writes may stay plain; **lifecycle writes render from state**. A
+  one-tap affordance over a transition (period start, episode close, live
+  session, supply counter) renders a shared offer state so its label names the
+  write it will perform, and its write core enforces the same conditions with
+  typed refusals. `lib/stateful-writes.ts` (`STATEFUL_WRITE_TABLES`) registers
+  the gated tables; the scan in `lib/__tests__/stateful-writes.test.ts` fails any
+  raw `INSERT`/`UPDATE`/`DELETE` reaching past a registered core. The scan
+  guarantees no silent corruption; the audit upgrades refusals into good UX. Do
+  not "upgrade" genuinely additive affordances (weight, food servings). See
+  `docs/internals/stateful-affordances.md`.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
   hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:

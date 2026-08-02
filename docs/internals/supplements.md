@@ -612,8 +612,28 @@ household cockpit's cross-profile confirm, Telegram taps), `logAdministration`
 (PRN quick-log, `/dose`), the historical-dose backfill, the offline replay, and
 the administration undo/restore inverse. `refillSupply` (the one-tap "Refilled")
 tops up the pool, while `last_fill_size` stays on the ITEM ("I buy the 90-count
-bottle" is a fact about how one person restocks). **Linking clears the item's
-private count** — keeping a second count IS the phantom-double-supply bug —
+bottle" is a fact about how one person restocks).
+
+Both counters are registered gated tables (`STATEFUL_WRITE_TABLES`, #1893):
+outside `refill.ts` and `supply-pool.ts` no module may write `quantity_on_hand`
+on `intake_items` or `shared_supplies`, so a fourth write path can't reappear
+and clobber a concurrent taker's decrement. The item FORM's absolute write is a
+reviewed allowlist entry — it is the #467 compare-and-set over the
+`quantity_on_hand_loaded` snapshot, not a blind clobber. The gate is
+column-narrowed, so name/dose/cadence edits stay ordinary last-write-wins form
+writes. See [stateful affordances](./stateful-affordances.md).
+
+A refill is **additive**, so the one-tap affordance is deliberately not gated:
+two bottles is a legitimate restock and blocking the second tap would refuse a
+real write. Instead it carries the #798 informational treatment — for
+`REFILL_RECENCY_WINDOW_MS` after a successful tap it shows
+"Refilled just now (+90)" beside a button that stays fully enabled
+(`refillRecencyLine`, `lib/refill-recency.ts`). `refillMedication` returns the
+core's own `fillSize`/`newQuantity` so the one-tap path — where the size came
+from `last_fill_size`, not the form — can name what it actually added.
+
+**Linking clears the item's private count** — keeping a second count IS the
+phantom-double-supply bug —
 which also means a pooled item drops out of the per-item refill candidate set
 (`quantity_on_hand != null`) by construction, so one bottle can never surface
 twice.

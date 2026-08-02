@@ -534,7 +534,11 @@ lift's coached next set is pre-seeded so you just confirm it, and a client-side
 **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter
 for accessories — with preset chips and a beep/vibrate at zero) starts
 automatically when you log the next set; **Finish workout** stamps your end time
-and drops back to the normal form for notes and intensity. It's a
+and drops back to the normal form for notes and intensity. While a session is
+running, every one of those entry points — including "Log this session" on
+Today's session — reads **Resume workout** and reopens the session you already
+have going, with its clock and its logged sets intact; you can never restart a
+workout you're in the middle of by tapping the wrong thing. It's a
 strength-focused surface, so it's hidden for age-restricted profiles. A
 non-strength session can also be tagged with the **gear** it used — a bike for a
 ride, shoes for a run — picked from your **Equipment** registry, with the picker
