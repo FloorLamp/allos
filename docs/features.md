@@ -90,7 +90,13 @@ biomarkers, biological age, recent activity, immunizations, today's insight,
 streak, low supply, active goals, and weekly routine were retired because Needs
 attention/Upcoming or a richer remaining card already answers them. Legacy saved
 layouts discard those ids safely. Empty data-aware widgets still show a one-tap
-setup CTA. Biomarker stars remain available on Biomarkers and Trends as personal
+setup CTA — and where the thing that fills a domain is a LOG rather than a
+pipeline, that CTA opens the log in place and **stays on the card once data
+exists** (#1892). Latest vitals keeps a small **"Log reading"** action in its
+populated state, opening the same measurements quick-entry its empty CTA opens:
+the affordance used to vanish the moment the first reading landed, so the person
+who logs blood pressure weekly — the one who actually opens that card — had
+none. Biomarker stars remain available on Biomarkers and Trends as personal
 pins—what someone wants to follow even while normal—and are deliberately
 separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
 standard, sleep regularity, biological age, and biomarkers in optimal range as
@@ -1472,6 +1478,28 @@ period ended by mistake within a small recency window (it refuses an older one
 rather than silently merging two cycles). Every quick action answers from its
 write core's **typed outcome** — a tap that changes nothing says so, and never
 reports success.
+
+**That control has three renderers, not three implementations** (#1892). The
+same one-tap offer sits on the **dashboard Cycle-phase card** and in the **phone's
+quick-log sheet** ("Log period"), and all three surfaces render the SAME
+server-resolved control state, so they can never disagree about which verb is
+available. The label always names the write it will perform — _Period started
+today_ / _Period ended today_ / _Still bleeding_ — and between the reopen window
+closing and a new period becoming plausible there is deliberately **no button at
+all**, because a tap there would record something the domain cannot mean; the
+dated form owns that exception. A tap from a page that has gone stale (a
+dashboard tab open since yesterday, a period logged on another device) hits the
+same write core and gets its honest refusal, never a double-log.
+
+The dashboard card **no longer self-hides when nothing is derivable yet**. That
+was precisely the state of someone who had not logged day 1, so the card
+vanished exactly when logging mattered most and the only path was
+nav → Medical → Cycle. It is now the registry's data-aware CTA — "Log your period
+to start tracking" plus the offer button — on the SAME `cycle` relevance bit as
+the nav entry, so it never reaches a profile the domain does not apply to. The
+sheet's period row is gated on that same bit, server-side as well as in the menu.
+The #714 tracking-not-forecasting contract governs the DISPLAY, which stays as
+quiet as ever: **never predicting has never meant never offering a log button**.
 
 Cycle writes carry **plausibility guards** (#1682), all in one pure module so
 the form, the quick actions, and any future import path share them:
