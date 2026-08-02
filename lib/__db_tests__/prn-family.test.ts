@@ -22,7 +22,8 @@ import {
   getMedicationFamilyStates,
   getPrnOverMaxItems,
 } from "@/lib/queries";
-import { prnMaxSignalKey } from "@/lib/prn-redose";
+import { prnMaxSignalKey, PRN_MAX_PREFIX } from "@/lib/prn-redose";
+import { SUPPRESSION_DISPLAY_PREFIXES } from "@/lib/suppression-display";
 import { buildMedicationDuplicationFindings } from "@/lib/rule-findings";
 import {
   dedupeKeyHasKnownPrefix,
@@ -64,6 +65,7 @@ function seedMed(
     redoseNotice?: number;
     minInterval?: number | null;
     maxDaily?: number | null;
+    maxDailyMg?: number | null;
   } = {}
 ): { itemId: number; doseId: number } {
   const {
@@ -71,15 +73,17 @@ function seedMed(
     redoseNotice = 0,
     minInterval = null,
     maxDaily = null,
+    maxDailyMg = null,
   } = opts;
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, obligation, redose_notice, min_interval_hours, max_daily_count)
-         VALUES (?, ?, 1, 'medication', 'daily', 'may', ?, ?, ?)`
+           (profile_id, name, active, kind, condition, obligation, redose_notice, min_interval_hours, max_daily_count, max_daily_amount_mg)
+         VALUES (?, ?, 1, 'medication', 'daily', 'may', ?, ?, ?, ?)`
       )
-      .run(profileId, name, redoseNotice, minInterval, maxDaily).lastInsertRowid
+      .run(profileId, name, redoseNotice, minInterval, maxDaily, maxDailyMg)
+      .lastInsertRowid
   );
   const doseId = Number(
     db
@@ -97,16 +101,19 @@ function logAdmin(
   doseId: number,
   date: string,
   hoursAgo: number,
-  now: Date
+  now: Date,
+  // The snapshotted amount (#797's confirm-dose invariant; what the real
+  // logAdministration stamps from the dose row). Null = a legacy/amount-less row.
+  amount: string | null = null
 ): number {
   const givenAt = utcSqlString(new Date(now.getTime() - hoursAgo * 3_600_000));
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
-         VALUES (?, ?, ?, ?, 'taken')`
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status, amount)
+         VALUES (?, ?, ?, ?, 'taken', ?)`
       )
-      .run(doseId, itemId, date, givenAt).lastInsertRowid
+      .run(doseId, itemId, date, givenAt, amount).lastInsertRowid
   );
 }
 
@@ -191,6 +198,25 @@ describe("runRedoseNotices — the sibling dose holds the notice (#1027)", () =>
     await runRedoseNotices(p, "FamHold", date, later);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("the mg ceiling suppresses the notice when the summed amounts are at max even though the count reads calm (#1854)", async () => {
+    const p = newProfile("FamMgCeiling");
+    const { otc, rx } = seedIbuprofenPair(p); // OTC: 6h interval, count max 4, opted in
+    db.prepare(
+      "UPDATE intake_items SET max_daily_amount_mg = 1200 WHERE id = ?"
+    ).run(otc.itemId);
+    const now = new Date();
+    const date = today(p);
+    // 3 × 800 mg = 2400 mg ≥ 1200 mg/day, while "3 of 4 doses" would have fired.
+    for (const h of [12, 10, 7])
+      logAdmin(rx.itemId, rx.doseId, date, h, now, "800 mg");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runRedoseNotices(p, "FamMgCeiling", date, now);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getProfileSetting(p, redoseMarkerKey(otc.itemId))).toBeUndefined();
+  });
 });
 
 describe("family over-max care finding (#1027)", () => {
@@ -207,8 +233,9 @@ describe("family over-max care finding (#1027)", () => {
     const items = getPrnOverMaxItems(p, date);
     expect(items).toHaveLength(1);
     expect(items[0].id).toBe(otc.itemId); // anchored on the confirmed-max member
-    expect(items[0].count).toBe(5);
-    expect(items[0].maxDailyCount).toBe(4);
+    expect(items[0].basis).toBe("count"); // no mg max confirmed → count fallback
+    expect(items[0].total).toBe(5);
+    expect(items[0].max).toBe(4);
     expect(items[0].memberNames).toEqual(
       expect.arrayContaining(["Ibuprofen", "Ibuprofen 800 mg"])
     );
@@ -220,6 +247,8 @@ describe("family over-max care finding (#1027)", () => {
     expect(up).toBeTruthy();
     expect(up!.detail).toContain("across");
     expect(up!.detail).toContain("Ibuprofen 800 mg");
+    // The copy states the basis actually used (#1854): doses, not milligrams.
+    expect(up!.detail).toContain("5 doses logged today");
   });
 
   it("a solo item keeps the exact pre-#1027 behavior", () => {
@@ -234,8 +263,146 @@ describe("family over-max care finding (#1027)", () => {
     logAdmin(itemId, doseId, date, 2, now);
     const items = getPrnOverMaxItems(p, date);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ id: itemId, count: 2, maxDailyCount: 1 });
+    expect(items[0]).toMatchObject({
+      id: itemId,
+      basis: "count",
+      total: 2,
+      max: 1,
+    });
     expect(items[0].memberNames).toBeUndefined();
+  });
+});
+
+// ---- Amount-aware mg accounting (#1854) over the SAME mixed-strength family ----
+//
+// The issue's own numbers: OTC ibuprofen 200 mg + Rx ibuprofen 800 mg are ONE
+// family (#1027), so a "dose" spans a 4× strength range and counting rows
+// misreports exposure in both directions. With a confirmed mg/day max and the
+// snapshotted per-log amounts, the counters sum MILLIGRAMS; the count stays the
+// fallback when an amount doesn't parse.
+describe("family over-max care finding — mg basis (#1854)", () => {
+  // A mixed-strength pair with the ADULT OTC ceiling confirmed in mg on the OTC
+  // member (1200 mg/day) alongside a loose count max of 6.
+  function seedMgPair(p: number) {
+    const otc = seedMed(p, "Ibuprofen", {
+      amount: "200 mg",
+      minInterval: 6,
+      maxDaily: 6,
+      maxDailyMg: 1200,
+    });
+    const rx = seedMed(p, "Ibuprofen 800 mg", { amount: "800 mg" });
+    return { otc, rx };
+  }
+
+  it("under-report fixed: 3 × 800 mg = 2400 mg fires the mg finding while the count reads a calm 3 of 6", () => {
+    const p = newProfile("MgUnder");
+    const { otc, rx } = seedMgPair(p);
+    const now = new Date();
+    const date = today(p);
+    for (const h of [10, 6, 2])
+      logAdmin(rx.itemId, rx.doseId, date, h, now, "800 mg");
+
+    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    expect(state.minConfirmedMaxMg).toBe(1200);
+    expect(state.exposure).toMatchObject({
+      basis: "mg",
+      total: 2400,
+      max: 1200,
+      over: true,
+      unknownAmounts: 0,
+    });
+
+    const items = getPrnOverMaxItems(p, date);
+    expect(items).toHaveLength(1);
+    // Anchored on the member holding the binding mg max; the key namespace is the
+    // registered `prn-max:` finding prefix (dismiss bus + suppression registry).
+    expect(items[0].id).toBe(otc.itemId);
+    expect(items[0]).toMatchObject({ basis: "mg", total: 2400, max: 1200 });
+
+    const key = prnMaxSignalKey(otc.itemId);
+    expect(key.startsWith(PRN_MAX_PREFIX)).toBe(true);
+    expect(SUPPRESSION_DISPLAY_PREFIXES).toContain(PRN_MAX_PREFIX);
+    const up = collectUpcoming(p, date).find((u) => u.key === key)!;
+    expect(up).toBeTruthy();
+    expect(up.domain).toBe("prn-max");
+    // End-to-end copy: milligram basis stated, both members named, never a
+    // dose-count framing.
+    expect(up.detail).toContain("2400 mg logged today");
+    expect(up.detail).toContain("max of 1200 mg per day");
+    expect(up.detail).toContain("Ibuprofen 800 mg");
+    expect(up.detail).not.toContain("doses logged");
+  });
+
+  it("over-report fixed: 5 × 200 mg = 1000 mg stays calm although the count max of 4 would have tripped", () => {
+    const p = newProfile("MgOver");
+    const { otc } = seedMgPair(p);
+    const now = new Date();
+    const date = today(p);
+    // Tighten the count max to the pre-#1854 trip point.
+    db.prepare("UPDATE intake_items SET max_daily_count = 4 WHERE id = ?").run(
+      otc.itemId
+    );
+    for (const h of [12, 10, 8, 5, 2])
+      logAdmin(otc.itemId, otc.doseId, date, h, now, "200 mg");
+
+    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    expect(state.exposure).toMatchObject({
+      basis: "mg",
+      total: 1000,
+      max: 1200,
+      over: false,
+    });
+    expect(getPrnOverMaxItems(p, date)).toHaveLength(0);
+  });
+
+  it("count remains the fallback when an administration's amount doesn't parse", () => {
+    const p = newProfile("MgFallback");
+    const { otc, rx } = seedMgPair(p);
+    const now = new Date();
+    const date = today(p);
+    db.prepare("UPDATE intake_items SET max_daily_count = 4 WHERE id = ?").run(
+      otc.itemId
+    );
+    for (const h of [12, 10, 8, 5])
+      logAdmin(otc.itemId, otc.doseId, date, h, now, "200 mg");
+    logAdmin(rx.itemId, rx.doseId, date, 2, now, "1 tablet"); // unparseable
+
+    const items = getPrnOverMaxItems(p, date);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ basis: "count", total: 5, max: 4 });
+    const up = collectUpcoming(p, date).find(
+      (u) => u.key === prnMaxSignalKey(otc.itemId)
+    )!;
+    expect(up.detail).toContain("5 doses logged today");
+    expect(up.detail).not.toContain("mg logged today");
+  });
+
+  it("mg lower bound when NO count fallback exists: known amounts already past the ceiling read 'at least'", () => {
+    const p = newProfile("MgLowerBound");
+    const otc = seedMed(p, "Ibuprofen", {
+      amount: "200 mg",
+      maxDailyMg: 1200, // mg max only — no count max anywhere in the family
+    });
+    const rx = seedMed(p, "Ibuprofen 800 mg", { amount: "800 mg" });
+    const now = new Date();
+    const date = today(p);
+    logAdmin(rx.itemId, rx.doseId, date, 8, now, "800 mg");
+    logAdmin(rx.itemId, rx.doseId, date, 4, now, "800 mg");
+    logAdmin(otc.itemId, otc.doseId, date, 2, now, "1 tablet"); // unknown mg
+
+    const items = getPrnOverMaxItems(p, date);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      basis: "mg",
+      total: 1600,
+      max: 1200,
+      unknownAmounts: 1,
+    });
+    const up = collectUpcoming(p, date).find(
+      (u) => u.key === prnMaxSignalKey(otc.itemId)
+    )!;
+    expect(up.detail).toContain("At least 1600 mg logged today");
+    expect(up.detail).toContain("1 dose had no recorded amount");
   });
 });
 

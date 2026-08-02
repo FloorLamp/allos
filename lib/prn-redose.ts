@@ -32,6 +32,106 @@ import { parseUtcSql } from "./date";
 
 export const PRN_MAX_PREFIX = "prn-max:";
 
+// ---- Day exposure: milligrams when known, administrations as the fallback ----
+// (issue #1854). The family-wide counters (#1027) made "a dose" ambiguous: 200 mg
+// OTC ibuprofen and 800 mg Rx ibuprofen are the same ingredient but 4× the
+// exposure. The confirm-dose snapshot stamps the amount onto every log row, so
+// when a mg/day max is confirmed AND every administration's amount parses, the
+// day's exposure is the SUM of snapshotted milligrams; the confirmed count stays
+// the fallback basis. ONE computation — the over-max care finding, the med-card /
+// widget / Telegram status line, and the redose notice's ceiling all read this.
+
+// Snapshotted dose amount → milligrams, or null when it doesn't parse. Accepts
+// the stored shapes: a leading number + mass unit ("200 mg", "0.5 g", "500 mcg"),
+// including a liquid "<mg> mg / <mL> mL" line (the administered mg leads). A bare
+// count ("2 capsules") or an unknown unit (IU) is NOT a mass — null, never a
+// guess: the mg basis must never imply precision it doesn't have.
+export function parseAmountMg(
+  amount: string | null | undefined
+): number | null {
+  const m = amount
+    ?.trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(mg|mcg|µg|ug|g)\b(?!\s*(?:\/|per)\s*kg)/i);
+  if (!m) return null;
+  const value = Number(m[1]);
+  if (!Number.isFinite(value)) return null;
+  const unit = m[2].toLowerCase();
+  if (unit === "g") return value * 1000;
+  if (unit === "mg") return value;
+  return value / 1000; // mcg/µg/ug
+}
+
+// The basis the day's PRN exposure was computed on. "mg" only when it is honest:
+// a confirmed mg/day max AND (for the full-precision path) parseable amounts.
+export type PrnExposureBasis = "mg" | "count";
+
+export interface PrnDayExposure {
+  basis: PrnExposureBasis;
+  // Summed milligrams (mg basis) or the administration count (count basis).
+  total: number;
+  // The confirmed ceiling on the same basis (mg/day or doses/day).
+  max: number;
+  // Strictly over the ceiling — the care finding's gate ("you've logged MORE").
+  over: boolean;
+  // At or over — the notice-suppression / "Max reached" ceiling.
+  atMax: boolean;
+  // mg basis only: today's administrations whose snapshotted amount did NOT
+  // parse. Non-zero only on the lower-bound path (no count fallback existed), and
+  // the copy must then say "at least". Always 0 on the count basis.
+  unknownAmounts: number;
+}
+
+// Decide the day's exposure for one ingredient family. `amounts` are the
+// snapshotted amount strings of TODAY's taken administrations across the family;
+// the maxes are the most conservative CONFIRMED ceilings among members (null =
+// no member confirmed one). Basis selection, most honest first:
+//   1. mg — mg max confirmed and EVERY administration's amount parses.
+//   2. count — the confirmed count max (the fallback for unparseable amounts).
+//   3. mg lower bound — mg max confirmed, some amounts unparseable, and NO count
+//      fallback exists: the known sum still catches a certain over-exposure
+//      (a lower bound past the ceiling is past the ceiling), with
+//      `unknownAmounts` carried so the copy never claims full precision.
+// Neither max confirmed ⇒ null (the #798 liability gate: no ceiling, no verdict).
+export function prnDayExposure(input: {
+  amounts: (string | null)[];
+  maxDailyAmountMg: number | null;
+  maxDailyCount: number | null;
+}): PrnDayExposure | null {
+  const mgMax =
+    input.maxDailyAmountMg != null && input.maxDailyAmountMg > 0
+      ? input.maxDailyAmountMg
+      : null;
+  const countMax =
+    input.maxDailyCount != null && input.maxDailyCount > 0
+      ? input.maxDailyCount
+      : null;
+  const parsed = input.amounts.map(parseAmountMg);
+  const unknown = parsed.filter((mg) => mg == null).length;
+  if (mgMax != null && (unknown === 0 || countMax == null)) {
+    const total = parsed.reduce<number>((sum, mg) => sum + (mg ?? 0), 0);
+    return {
+      basis: "mg",
+      total,
+      max: mgMax,
+      over: total > mgMax,
+      atMax: total >= mgMax,
+      unknownAmounts: unknown,
+    };
+  }
+  if (countMax != null) {
+    const total = input.amounts.length;
+    return {
+      basis: "count",
+      total,
+      max: countMax,
+      over: total > countMax,
+      atMax: total >= countMax,
+      unknownAmounts: 0,
+    };
+  }
+  return null;
+}
+
 // The stable dedupe/suppression key for an over-max finding: `prn-max:<itemId>`, keyed
 // on the AUTOINCREMENT item id (never recycles, #203). A new day's count resets the
 // UNDERLYING condition, but the key stays stable so a same-episode dismiss holds.
@@ -55,6 +155,11 @@ export interface RedoseWindowInput {
   // or null when never notified. Equal to latestAdministrationId ⇒ already fired for
   // THIS administration ⇒ one-shot done.
   notifiedAdministrationId: number | null;
+  // The day's amount-aware exposure (#1854), when the caller computed one. When
+  // present its ceiling REPLACES the count comparison: 3 × 800 mg is suppressed at
+  // a 2400 mg/day max even though "3 of 6 doses" reads calm. Absent/null keeps the
+  // count-basis suppression exactly as before.
+  exposure?: PrnDayExposure | null;
 }
 
 export type RedoseDecision =
@@ -65,6 +170,9 @@ export type RedoseDecision =
       maxDailyCount: number;
       sinceHours: number;
       lastGivenAt: Date;
+      // The exposure the ceiling was judged on (null ⇒ plain count), so the
+      // notice body can phrase the SAME basis ("1200 of 2400 mg today").
+      exposure: PrnDayExposure | null;
     }
   | { kind: "not-armed" } // no administration to arm the timer
   | { kind: "already-notified" } // one-shot already fired for the latest administration
@@ -91,9 +199,12 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   if (elapsed < input.minIntervalHours) {
     return { kind: "not-yet", opensInHours: input.minIntervalHours - elapsed };
   }
-  // Window is open. Suppress at/over the confirmed daily max (label ceiling) — no
+  // Window is open. Suppress at/over the confirmed daily ceiling (label max) — no
   // marker is written, so a later administration (new id) re-evaluates cleanly.
-  if (input.countToday >= input.maxDailyCount) {
+  // With an amount-aware exposure (#1854) the ceiling is ITS verdict (mg when
+  // known); otherwise the plain count comparison stands.
+  const exposure = input.exposure ?? null;
+  if (exposure ? exposure.atMax : input.countToday >= input.maxDailyCount) {
     return { kind: "suppressed-max" };
   }
   return {
@@ -103,6 +214,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
     lastGivenAt: latestGivenAt,
+    exposure,
   };
 }
 
@@ -121,11 +233,15 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // requiring both — its gather gate only returns items with both confirmed.
 export interface RedoseStatus {
   open: boolean; // the minimum interval has elapsed since the last administration
-  atMax: boolean; // today's count has reached the confirmed daily max (false when unset)
+  atMax: boolean; // today's exposure has reached the confirmed ceiling (false when unset)
   countToday: number;
-  maxDailyCount: number | null; // null ⇒ no confirmed ceiling
+  maxDailyCount: number | null; // null ⇒ no confirmed count ceiling
   sinceHours: number; // hours since the last administration
   opensInHours: number; // hours until the window opens (0 when already open)
+  // The day's amount-aware exposure (#1854), when one was computable — the "N of
+  // M" fragment then reads milligrams and atMax is ITS verdict. null keeps the
+  // plain count fragment/ceiling.
+  exposure: PrnDayExposure | null;
 }
 
 export function redoseWindowStatus(input: {
@@ -134,18 +250,22 @@ export function redoseWindowStatus(input: {
   latestGivenAt: Date | null;
   countToday: number;
   now: Date;
+  exposure?: PrnDayExposure | null;
 }): RedoseStatus | null {
   if (!input.latestGivenAt) return null;
   const elapsed = hoursBetween(input.latestGivenAt, input.now);
   const open = elapsed >= input.minIntervalHours;
+  const exposure = input.exposure ?? null;
   return {
     open,
-    atMax:
-      input.maxDailyCount != null && input.countToday >= input.maxDailyCount,
+    atMax: exposure
+      ? exposure.atMax
+      : input.maxDailyCount != null && input.countToday >= input.maxDailyCount,
     countToday: input.countToday,
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
     opensInHours: open ? 0 : input.minIntervalHours - elapsed,
+    exposure,
   };
 }
 
@@ -176,6 +296,10 @@ export function prnQuickLogRedoseStatus(
     familyCount: number;
     familyLastGivenAt: string | null;
     familyMaxDailyCount: number | null;
+    // The family's amount-aware day exposure (#1854), computed by the ONE
+    // getMedicationFamilyStates gather; null when no ceiling is confirmed (or on
+    // a legacy caller), which keeps the count basis exactly as before.
+    familyExposure?: PrnDayExposure | null;
   },
   now: Date
 ): RedoseStatus | null {
@@ -189,5 +313,6 @@ export function prnQuickLogRedoseStatus(
     latestGivenAt: parseUtcSql(med.familyLastGivenAt),
     countToday: med.familyCount,
     now,
+    exposure: med.familyExposure ?? null,
   });
 }

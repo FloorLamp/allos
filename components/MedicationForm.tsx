@@ -219,6 +219,12 @@ export default function MedicationForm({
   const [maxDailyCount, setMaxDailyCount] = useState(
     s?.max_daily_count != null ? String(s.max_daily_count) : ""
   );
+  // Amount-aware daily maximum in mg (#1854) — the count field's sibling. User-
+  // confirmed only (no label prefill); blank means the mg basis is unavailable
+  // and the safety counters fall back to counting doses.
+  const [maxDailyAmountMg, setMaxDailyAmountMg] = useState(
+    s?.max_daily_amount_mg != null ? String(s.max_daily_amount_mg) : ""
+  );
   const [redoseNotice, setRedoseNotice] = useState(s?.redose_notice === 1);
   const [product, setProduct] = useState(s?.product ?? "");
   const [formulationSlug, setFormulationSlug] = useState(() =>
@@ -487,6 +493,7 @@ export default function MedicationForm({
       endDate,
       minIntervalHours,
       maxDailyCount,
+      maxDailyAmountMg,
       redoseNotice,
       product,
       formulationSlug,
@@ -510,6 +517,7 @@ export default function MedicationForm({
       endDate,
       minIntervalHours,
       maxDailyCount,
+      maxDailyAmountMg,
       redoseNotice,
       product,
       formulationSlug,
@@ -540,6 +548,7 @@ export default function MedicationForm({
       setEndDate(d.endDate);
       setMinIntervalHours(d.minIntervalHours);
       setMaxDailyCount(d.maxDailyCount);
+      setMaxDailyAmountMg(d.maxDailyAmountMg ?? "");
       setRedoseNotice(d.redoseNotice);
       setProduct(d.product);
       setFormulationSlug(d.formulationSlug);
@@ -1026,6 +1035,35 @@ export default function MedicationForm({
                 className="input"
                 placeholder="e.g. 4"
               />
+            </div>
+            {/* Amount-aware daily maximum (#1854). When set, the safety counters
+                sum the logged milligrams (family-wide, from the snapshotted
+                amounts) instead of counting doses — the honest basis when the
+                same ingredient exists at two strengths (200 mg OTC + 800 mg Rx).
+                Count remains the fallback when a dose amount isn't a parseable
+                mg value. User-confirmed only, like its siblings. */}
+            <div>
+              <label className="label" htmlFor={`redose-max-mg-${fid}`}>
+                Maximum mg per day
+              </label>
+              <input
+                id={`redose-max-mg-${fid}`}
+                data-testid="redose-max-mg"
+                name="max_daily_amount_mg"
+                type="number"
+                min={0}
+                step="any"
+                value={maxDailyAmountMg}
+                // No markTouched: nothing prefills this field (user-confirmed
+                // only), so there is no suggestion to protect it from.
+                onChange={(e) => setMaxDailyAmountMg(e.target.value)}
+                className="input"
+                placeholder="e.g. 1200"
+              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Sums the logged dose amounts across same-ingredient items; leave
+                blank to count doses instead.
+              </p>
             </div>
           </div>
           <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
