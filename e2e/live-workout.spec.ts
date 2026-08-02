@@ -104,7 +104,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 });
 
 // Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp
-// `liveStartEpoch = Date.now()` unconditionally, which is exactly the instant the #921
+// `liveStartEpoch` from the wall clock unconditionally, which is exactly the instant the #921
 // dock's elapsed timer ticks off: tapping an entry point mid-workout silently reset the
 // running session's clock. Every entry point now renders one offer state and resumes.
 //

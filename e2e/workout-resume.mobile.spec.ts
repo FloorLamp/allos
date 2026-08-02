@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 // Issue #1893 at the PHONE viewport — the mobile bar's bolt, the entry point the issue
 // names first. It is an icon-only control, so its accessible name IS its label: while a
 // session is running it must read "Resume workout" and reopen the docked session, because
-// `openLive()` used to clear the editor and re-stamp `liveStartEpoch = Date.now()` — the
+// `openLive()` used to clear the editor and re-stamp `liveStartEpoch` from the wall clock — the
 // exact instant the #921 dock's elapsed timer ticks off.
 //
 // The assertion that proves the corruption is gone is the EPOCH, not the label: the dock
