@@ -1,6 +1,7 @@
 "use client";
 
 import SubmitButton from "@/components/SubmitButton";
+import { followUpStateLabel } from "@/lib/followup";
 import { trackLabFollowUp, trackIopFollowUp } from "./actions";
 import type { LabFollowUpSummary } from "@/lib/queries";
 
@@ -56,13 +57,7 @@ export default function TrackLabFollowUpControl({
 }) {
   const copy = COPY[kind];
   if (existing) {
-    const label = existing.resolution
-      ? `resolved · ${existing.resolution}`
-      : existing.status === "completed"
-        ? "done"
-        : existing.plannedDate
-          ? `recheck due ${existing.plannedDate}`
-          : "tracked";
+    const label = followUpStateLabel(existing, "recheck due");
     return (
       <span
         data-testid={copy.stateTestId}

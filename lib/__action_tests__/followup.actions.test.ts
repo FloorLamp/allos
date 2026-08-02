@@ -15,7 +15,7 @@ import {
   trackImagingFollowUp,
   deleteImagingStudy,
 } from "@/app/(app)/results/imaging/actions";
-import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
+import { resolveFollowUp, settleFollowUp } from "@/app/(app)/upcoming/actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -173,6 +173,136 @@ describe("resolveFollowUp action", () => {
     expect(res.ok).toBe(false);
     // Untouched.
     expect(carePlanRow(cpId)!.status).toBeNull();
+  });
+});
+
+describe("settleFollowUp action — the #1866 terminator", () => {
+  async function seedOverdueFollowUp() {
+    const { profile } = seedActor();
+    const now = today(profile.id);
+    const studyId = addStudy(profile.id, shiftDateStr(now, -400));
+    await trackImagingFollowUp(fd({ study_id: studyId, interval_days: 91 }));
+    const cpId = (
+      db
+        .prepare(
+          "SELECT id FROM care_plan_items WHERE profile_id = ? AND source_imaging_study_id = ?"
+        )
+        .get(profile.id, studyId) as { id: number }
+    ).id;
+    return { profile, cpId, now };
+  }
+
+  function settledRow(id: number) {
+    return db
+      .prepare(
+        `SELECT status, settled_disposition AS d, settled_on AS o,
+                settled_reason AS r
+           FROM care_plan_items WHERE id = ?`
+      )
+      .get(id) as {
+      status: string | null;
+      d: string | null;
+      o: string | null;
+      r: string | null;
+    };
+  }
+
+  it("declines with a reason: closes the node as not-done", async () => {
+    const { cpId, now } = await seedOverdueFollowUp();
+    const res = await settleFollowUp(
+      fd({
+        care_plan_item_id: cpId,
+        disposition: "declined",
+        reason: "discussed with clinician — not pursuing",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const row = settledRow(cpId);
+    expect(row.d).toBe("declined");
+    expect(row.status).toBe("not-done");
+    // No date posted ⇒ defaults to the profile-local today.
+    expect(row.o).toBe(now);
+    expect(row.r).toBe("discussed with clinician — not pursuing");
+    expect(revalidate).toHaveBeenCalledWith("/upcoming");
+  });
+
+  it("marks done on a stated past date", async () => {
+    const { cpId, now } = await seedOverdueFollowUp();
+    const doneOn = shiftDateStr(now, -14);
+    const res = await settleFollowUp(
+      fd({ care_plan_item_id: cpId, disposition: "done", settled_on: doneOn })
+    );
+    expect(res.ok).toBe(true);
+    const row = settledRow(cpId);
+    expect(row.d).toBe("done");
+    expect(row.o).toBe(doneOn);
+    expect(row.status).toBe("completed");
+    expect(row.r).toBeNull();
+  });
+
+  it("typed refusals: bad disposition, future date, unknown id, double settle", async () => {
+    const { cpId, now } = await seedOverdueFollowUp();
+    expect(
+      (
+        await settleFollowUp(
+          fd({ care_plan_item_id: cpId, disposition: "snoozed" })
+        )
+      ).ok
+    ).toBe(false);
+    expect(
+      (
+        await settleFollowUp(
+          fd({
+            care_plan_item_id: cpId,
+            disposition: "done",
+            settled_on: shiftDateStr(now, 3),
+          })
+        )
+      ).ok
+    ).toBe(false);
+    expect(
+      (
+        await settleFollowUp(
+          fd({ care_plan_item_id: 999999, disposition: "declined" })
+        )
+      ).ok
+    ).toBe(false);
+    // Nothing was written by the refusals.
+    expect(settledRow(cpId).d).toBeNull();
+
+    // Settle once, then the double-click is refused honestly — never a false ok.
+    expect(
+      (
+        await settleFollowUp(
+          fd({ care_plan_item_id: cpId, disposition: "declined" })
+        )
+      ).ok
+    ).toBe(true);
+    const again = await settleFollowUp(
+      fd({ care_plan_item_id: cpId, disposition: "done" })
+    );
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error).toContain("already closed");
+  });
+
+  it("cannot settle another profile's follow-up, and read-only is bounced", async () => {
+    const { cpId } = await seedOverdueFollowUp();
+    const otherLogin = createLogin({});
+    const otherProfile = createProfile("settle-other", otherLogin.id);
+    actAs(otherLogin, otherProfile, "write");
+    const res = await settleFollowUp(
+      fd({ care_plan_item_id: cpId, disposition: "declined" })
+    );
+    expect(res.ok).toBe(false);
+    expect(settledRow(cpId).d).toBeNull();
+
+    // Read-only acting session: the write gate throws before any parse.
+    const roLogin = createLogin({});
+    const roProfile = createProfile("settle-ro", roLogin.id);
+    actAs(roLogin, roProfile, "read");
+    await expect(
+      settleFollowUp(fd({ care_plan_item_id: cpId, disposition: "declined" }))
+    ).rejects.toThrow();
   });
 });
 

@@ -606,6 +606,57 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
+## Overdue safety-follow-up escalation (#1866)
+
+**The overdue finding follow-up (#700) pushes — with zero settings and a
+per-item off-switch (owner ruling 2026-08-01).** `runFollowUpNudges`
+(`lib/notifications/followup.ts`) rides the hourly tick (waking-window, assessed
+once per profile-local day — overdue-ness is day-granular, and an escalation
+about something already months late earns no 3am delivery) over the SAME
+`followUpItems` computation the Upcoming page and Needs-attention hero render.
+The consent question is answered by structure, not by a toggle: the user (or
+their accepted extraction) recorded the follow-up as a tracked care item **with
+a due date**, which is the same declaration shape that lets a `must` medication
+remind without a "remind me about medications" setting. Accordingly the
+`followup` kind is **NON_CONFIGURABLE** (no registry row, no matrix
+row — the reason is data in `NON_CONFIGURABLE_KINDS`), and delivery is governed
+entirely by the channels the user already enabled: no channels, nothing new
+happens.
+
+- **Conservative cadence, owned by a pure planner**
+  (`planFollowUpNudges`, `lib/followup-nudge.ts`): ONE send when the follow-up
+  crosses overdue, ONE repeat `FOLLOWUP_REPEAT_DAYS` (21 days) later that says
+  out loud it is the final message, then nothing further, ever — the finding
+  keeps holding Upcoming and the hero, which never age out. The
+  `notify_last_followup_<carePlanItemId>` marker stores the send DATES
+  (comma-joined), so the whole cadence state is one value, stamped only on a
+  delivered send (#227 discipline) and swept when the follow-up leaves the
+  overdue set (#325 self-heal). Ids are AUTOINCREMENT and never recycle (#203).
+- **A third suppression shape: policy-gated, not bus-gated and not ungated.**
+  The send gate is `isHiddenUnderPolicy` under the item's OWN declared policy
+  (`itemSuppressionPolicy` → `snooze-only` for an overdue follow-up, #700 ask
+  5 / #942), keyed by the IDENTICAL `followup:<id>` dedupeKey the visible
+  finding carries. So the push behaves exactly as the page does: an Upcoming
+  **dismiss is RESISTED** — it can never silence this send (the safety posture
+  the issue requires) — while a deliberate time-boxed **snooze defers** it with
+  the cadence marker frozen, resuming where it stood when the snooze expires.
+- **The per-item TERMINATOR is the only permanent off-switch** (the real
+  control, per the ruling): `settleFollowUpCore` records "done on \<date\>" or
+  "discussed, not doing it" (optional reason) onto the chain node (migration
+  140), which removes it from the builder's output entirely — the escalation
+  ends because the question is answered. A declined follow-up never sends
+  again, including across marker sweeps and re-ticks; deliberately re-tracking
+  the same source creates a NEW chain node (a new tracked due date = a new
+  consent) with its own fresh cadence.
+- **Channel honesty (#1718):** the copy names no button any channel strips —
+  the message states the fact ("Was due 2026-03-15", the source-finding detail)
+  and carries a single "Open Upcoming" url action (the push click-through),
+  because the terminator needs a date/reason and therefore belongs on the
+  surface, not in a callback keyboard (the two-way button principle: no ONE
+  idempotent state change to offer). Sends go through `dispatch()` like every
+  builder — delivery-health marker fold included — and any Telegram write rides
+  the one chokepoint.
+
 **Morning digest (one merged message, #1108).** The tick sends ONE summary per
 profile per day at `digest_hour`, hard-deduped by the single
 `notify_last_digest` marker. Sections in order: **Illness** (open-episode

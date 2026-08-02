@@ -26,7 +26,9 @@ import { dentalFollowUpTitle, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpTitle, SKIN_FOLLOWUP_KIND } from "./followup-skin";
 import type { DentalProcedure, SkinLesion } from "./types";
 import { biomarkerFamily } from "./canonical-name";
-import { normalizeResolution } from "./followup";
+import { normalizeResolution, normalizeSettleDisposition } from "./followup";
+import { isCarePlanItemOpen } from "./care-plan-upcoming";
+import type { FollowUpSettleDisposition } from "./followup";
 import type { ImagingStudy } from "./types";
 
 // ---- Create: track a follow-up for an imaging study -------------------------
@@ -66,7 +68,8 @@ export function trackImagingFollowUpCore(
       .prepare(
         `SELECT id FROM care_plan_items
           WHERE profile_id = ? AND source_kind = ?
-            AND source_imaging_study_id = ? AND resolution IS NULL`
+            AND source_imaging_study_id = ? AND resolution IS NULL
+            AND settled_disposition IS NULL`
       )
       .get(profileId, IMAGING_FOLLOWUP_KIND, imagingStudyId) as
       { id: number } | undefined;
@@ -177,7 +180,8 @@ export function resolveFollowUpCore(
       .prepare(
         `SELECT id, source_kind FROM care_plan_items
           WHERE id = ? AND profile_id = ?
-            AND source_kind IS NOT NULL AND resolution IS NULL`
+            AND source_kind IS NOT NULL AND resolution IS NULL
+            AND settled_disposition IS NULL`
       )
       .get(carePlanItemId, profileId) as
       { id: number; source_kind: string } | undefined;
@@ -202,6 +206,82 @@ export function resolveFollowUpCore(
         WHERE id = ? AND profile_id = ?`
     ).run(outcome, resolvingRecordId, carePlanItemId, profileId);
     return { kind: "resolved" as const };
+  });
+}
+
+// ---- Settle: the per-item TERMINATOR (issue #1866) ---------------------------
+
+export type SettleFollowUpOutcome =
+  | { kind: "settled"; disposition: FollowUpSettleDisposition }
+  | { kind: "invalid-disposition" } // not one of done/declined
+  | { kind: "invalid-date" } // settledOn malformed or in the future
+  | { kind: "already-closed" } // the follow-up exists but is already resolved/settled/closed
+  | { kind: "not-found" }; // no such linked follow-up for this profile
+
+// The user's own statement that ends a follow-up chain node permanently — the ONLY
+// off-switch for the #1866 overdue-follow-up push (no notification setting exists):
+//   - "done":     "it happened on <settledOn>" (an outside record we never saw);
+//   - "declined": "discussed, not doing it", with an optional free-text reason.
+// Writes the settled_* columns AND stamps `status` with the matching vocabulary the
+// care-plan module already understands ('completed' / 'not-done' — a CLOSED status
+// per isCarePlanItemOpen), so every existing open/closed read agrees. `resolution`
+// stays NULL: no later record backs this close, and conflating the two would make
+// "the scan showed it's stable" and "we decided not to scan" indistinguishable.
+//
+// Refusals are typed, never silent (#232): an off-vocabulary disposition, a
+// malformed/future date, a follow-up that isn't this profile's, and a follow-up that
+// is ALREADY closed (double-click, a stale surface) each get their own outcome — the
+// caller renders them; nothing is written.
+export function settleFollowUpCore(
+  profileId: number,
+  carePlanItemId: number,
+  disposition: string,
+  settledOn: string,
+  reason: string | null,
+  today: string
+): SettleFollowUpOutcome {
+  const d = normalizeSettleDisposition(disposition);
+  if (!d) return { kind: "invalid-disposition" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(settledOn) || settledOn > today)
+    return { kind: "invalid-date" };
+  const trimmedReason = (reason ?? "").trim() || null;
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT id, status, resolution, settled_disposition
+           FROM care_plan_items
+          WHERE id = ? AND profile_id = ? AND source_kind IS NOT NULL`
+      )
+      .get(carePlanItemId, profileId) as
+      | {
+          id: number;
+          status: string | null;
+          resolution: string | null;
+          settled_disposition: string | null;
+        }
+      | undefined;
+    if (!row) return { kind: "not-found" as const };
+    if (
+      row.resolution != null ||
+      row.settled_disposition != null ||
+      !isCarePlanItemOpen(row.status)
+    )
+      return { kind: "already-closed" as const };
+
+    db.prepare(
+      `UPDATE care_plan_items
+          SET settled_disposition = ?, settled_on = ?, settled_reason = ?,
+              status = ?
+        WHERE id = ? AND profile_id = ?`
+    ).run(
+      d,
+      settledOn,
+      trimmedReason,
+      d === "done" ? "completed" : "not-done",
+      carePlanItemId,
+      profileId
+    );
+    return { kind: "settled" as const, disposition: d };
   });
 }
 
@@ -245,7 +325,8 @@ export function trackLabFollowUpCore(
            JOIN medical_records mr
              ON mr.id = cp.source_medical_record_id AND mr.profile_id = cp.profile_id
           WHERE cp.profile_id = ? AND cp.source_kind = ?
-            AND cp.source_medical_record_id IS NOT NULL AND cp.resolution IS NULL`
+            AND cp.source_medical_record_id IS NOT NULL AND cp.resolution IS NULL
+            AND cp.settled_disposition IS NULL`
       )
       .all(profileId, LABS_FOLLOWUP_KIND) as {
       cpId: number;
@@ -319,7 +400,8 @@ export function trackIopFollowUpCore(
       .prepare(
         `SELECT id FROM care_plan_items
           WHERE profile_id = ? AND source_kind = ?
-            AND source_medical_record_id IS NOT NULL AND resolution IS NULL`
+            AND source_medical_record_id IS NOT NULL AND resolution IS NULL
+            AND settled_disposition IS NULL`
       )
       .get(profileId, IOP_FOLLOWUP_KIND) as { id: number } | undefined;
     if (existing)
@@ -409,7 +491,8 @@ export function trackDentalFollowUpCore(
       .prepare(
         `SELECT id FROM care_plan_items
           WHERE profile_id = ? AND source_kind = ?
-            AND source_dental_procedure_id = ? AND resolution IS NULL`
+            AND source_dental_procedure_id = ? AND resolution IS NULL
+            AND settled_disposition IS NULL`
       )
       .get(profileId, DENTAL_FOLLOWUP_KIND, dentalProcedureId) as
       { id: number } | undefined;
@@ -508,7 +591,8 @@ export function trackSkinFollowUpCore(
       .prepare(
         `SELECT id FROM care_plan_items
           WHERE profile_id = ? AND source_kind = ?
-            AND source_skin_lesion_id = ? AND resolution IS NULL`
+            AND source_skin_lesion_id = ? AND resolution IS NULL
+            AND settled_disposition IS NULL`
       )
       .get(profileId, SKIN_FOLLOWUP_KIND, skinLesionId) as
       { id: number } | undefined;
