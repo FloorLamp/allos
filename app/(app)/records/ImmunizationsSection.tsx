@@ -7,6 +7,7 @@ import {
   getPickerProviders,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
 import { getRiskFactors } from "@/lib/queries/upcoming/risk";
@@ -31,6 +32,7 @@ import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
 import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
 import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 
 const TITER_BADGE = {
   immune:
@@ -183,13 +185,26 @@ export default function ImmunizationsSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div>
+        <div className="mb-6 flex flex-wrap items-start gap-2">
+          <AddEntryPanel
+            testId="add-immunization-panel"
+            panelId="add-immunization-panel-body"
+            label="Add immunization"
+            presentation="modal"
+            dense
+          >
+            <ImmunizationForm action={addImmunization} defaultDate={now} />
+          </AddEntryPanel>
+          <MyChartImport compact />
+        </div>
+
         {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
           action, inlined so the merged /records SectionHeader stays generic). */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {subtitle}
           </p>
-          <div className="hidden gap-2 sm:flex">
+          <div className="flex gap-2">
             <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
             <Summary count={summary.dueCount} label="Due" tone="amber" />
             <Summary
@@ -333,26 +348,8 @@ export default function ImmunizationsSection({
           </div>
         )}
 
-        <div className="mb-6">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            CDC recommended schedule
-          </h2>
-          <ScheduleGrid
-            records={records.map((r) => ({
-              vaccine: r.vaccine,
-              date: r.date,
-              dose_label: r.dose_label,
-              notes: r.notes,
-              source: r.source,
-            }))}
-            birthdate={birthdate}
-            ageMonths={ageMonths}
-            assessments={summary.assessments}
-          />
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="min-w-0 space-y-6 lg:col-span-2">
+        <div className="space-y-6">
+          <div className="space-y-6">
             <div className="card">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
                 Immunity titers
@@ -384,6 +381,17 @@ export default function ImmunizationsSection({
                         <div className="text-xs text-slate-500 dark:text-slate-400">
                           {t.value ?? "—"} {t.unit ?? ""}
                           {t.date ? ` · ${t.date}` : ""}
+                          {t.document_id != null ? (
+                            <>
+                              {" · "}
+                              <SourceDocumentLink
+                                documentId={t.document_id}
+                                className="text-brand-700 hover:underline dark:text-brand-300"
+                              >
+                                Source document
+                              </SourceDocumentLink>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <span
@@ -397,7 +405,7 @@ export default function ImmunizationsSection({
               )}
             </div>
 
-            <details className="card">
+            <details className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                 All recorded doses{" "}
                 <span className="text-sm font-normal text-slate-400">
@@ -407,7 +415,7 @@ export default function ImmunizationsSection({
               <div className="mt-3">
                 {recordedDoses.length === 0 ? (
                   <EmptyState
-                    message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
+                    message="No immunizations recorded yet. Use Add immunization, or import a MyChart export."
                     action={{
                       href: dataSectionHref("import"),
                       label: "Go to Import",
@@ -426,17 +434,35 @@ export default function ImmunizationsSection({
                 )}
               </div>
             </details>
+
+            <details className="border-t border-black/5 pt-4 dark:border-white/5">
+              <summary className="cursor-pointer text-slate-800 dark:text-slate-100">
+                <h3 className="inline font-semibold">
+                  CDC recommended schedule
+                </h3>
+              </summary>
+              <div className="mt-3">
+                <ScheduleGrid
+                  records={records.map((r) => ({
+                    vaccine: r.vaccine,
+                    date: r.date,
+                    dose_label: r.dose_label,
+                    notes: r.notes,
+                    source: r.source,
+                  }))}
+                  birthdate={birthdate}
+                  ageMonths={ageMonths}
+                  assessments={summary.assessments}
+                />
+              </div>
+            </details>
           </div>
 
-          <div className="min-w-0 space-y-4">
-            <ImmunizationForm action={addImmunization} defaultDate={now} />
-            <MyChartImport />
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              Simplified schedule. The tracked schedule is a practical subset of
-              the CDC/ACIP recommendations and does not model risk conditions,
-              pregnancy, or shared-decision cases.
-            </p>
-          </div>
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Simplified schedule. The tracked schedule is a practical subset of
+            the CDC/ACIP recommendations and does not model risk conditions,
+            pregnancy, or shared-decision cases.
+          </p>
         </div>
       </div>
     </ProviderOptionsProvider>

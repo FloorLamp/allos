@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FormResult } from "@/lib/types";
 import { initialVisitTense, visitTenseForDate } from "@/lib/visit-entry";
 import type { VisitTense } from "@/lib/visit-entry";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import AppointmentForm from "./AppointmentForm";
 import EncounterForm from "./EncounterForm";
 
@@ -38,6 +39,7 @@ export default function AddVisitEntry({
   };
   focusNew: boolean;
 }) {
+  const closeEntryModal = useAddEntryModalClose();
   const [date, setDate] = useState(defaultDate);
   const [tense, setTense] = useState<VisitTense>(
     initialVisitTense({
@@ -58,13 +60,7 @@ export default function AddVisitEntry({
   const upcoming = tense === "upcoming";
 
   return (
-    <div className="card space-y-3" data-testid="visits-add">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add visit
-        </h2>
-      </div>
-
+    <div className="space-y-3" data-testid="visits-add">
       {/* Tense toggle — the single entry's branch selector. */}
       <div
         className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm dark:bg-ink-800"
@@ -105,7 +101,7 @@ export default function AddVisitEntry({
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {upcoming
           ? "Scheduling a future visit — it books an appointment and surfaces on Upcoming."
-          : "Logging a visit that already happened — it's saved to your visit history below."}
+          : "Logging a visit that already happened — it's saved to your visit history."}
       </p>
 
       {/* One branch renders at a time; the shared date carries across the flip. */}
@@ -116,6 +112,7 @@ export default function AddVisitEntry({
           prefill={prefill}
           date={date}
           onDateChange={handleDateChange}
+          onSaved={closeEntryModal ?? undefined}
           embedded
         />
       ) : (
@@ -124,6 +121,7 @@ export default function AddVisitEntry({
           defaultDate={defaultDate}
           date={date}
           onDateChange={handleDateChange}
+          onSaved={closeEntryModal ?? undefined}
           embedded
         />
       )}

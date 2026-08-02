@@ -189,7 +189,7 @@ export default function ProviderIdentityCard({
   }
 
   return (
-    <div className="card" data-testid="provider-identity">
+    <section className="card" data-testid="provider-identity">
       {provider.archived ? (
         <div
           className="mb-3 inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
@@ -200,7 +200,10 @@ export default function ProviderIdentityCard({
         </div>
       ) : null}
       <div className="flex items-start justify-between gap-3">
-        <dl className="min-w-0 flex-1 space-y-2 text-sm">
+        <dl
+          className="flex min-w-0 flex-1 flex-col gap-3 text-sm"
+          data-testid="provider-identity-details"
+        >
           {provider.specialty ? (
             <div
               className="flex items-center gap-2 text-slate-600 dark:text-slate-300"
@@ -267,7 +270,7 @@ export default function ProviderIdentityCard({
           ) : null}
         </dl>
         {canEdit ? (
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               className="btn-ghost inline-flex items-center gap-1.5 text-sm"
@@ -298,6 +301,6 @@ export default function ProviderIdentityCard({
           </div>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }

@@ -56,9 +56,12 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
-    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
-    const form = page.getByTestId("imaging-study-form");
+    const add = page.getByTestId("add-imaging-panel-toggle");
+    await expect(add).toHaveClass(/\bbtn\b/);
+    await hydratedClick(page, add);
+    const dialog = page.getByRole("dialog", { name: "Add imaging study" });
+    await expect(dialog).toBeVisible();
+    const form = dialog.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
     // Add an MRI with contrast.
@@ -94,9 +97,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await list
       .getByRole("row")
       .filter({ hasText: REGION })
-      .getByRole("button", { name: "Edit" })
+      .getByLabel("Record actions")
       .click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("imaging-study-form");
+    await expect(editForm).not.toHaveClass(/\bcard\b/);
     await editForm.getByLabel("Impression").fill("Interval improvement.");
     await submitWithToast(
       page,
@@ -111,12 +116,10 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       list.getByRole("row").filter({ hasText: REGION })
     ).toContainText("Interval improvement.", { timeout: 15_000 });
 
-    // Delete it and confirm it's gone. The confirm click MUST be scoped to the
-    // dialog: the page also carries one per-row aria-label="Delete" button for every
-    // study (incl. the seeded rows), so an unscoped getByRole("button", { name:
-    // "Delete" }) is a strict-mode collision.
+    // Delete it through the row's shared record-actions menu.
     const survivor = list.getByRole("row").filter({ hasText: REGION });
-    await survivor.getByRole("button", { name: "Delete" }).click();
+    await survivor.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })
@@ -132,7 +135,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    // The rare-entry CTA opens the imaging form in a modal.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
@@ -162,7 +165,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(card).not.toContainText("Informational, not medical advice.");
 
     // Clean up the study we created.
-    await row.getByRole("button", { name: "Delete" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })
@@ -193,7 +197,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     }
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    // The rare-entry CTA opens the imaging form in a modal.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
@@ -242,7 +246,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(card.getByTestId("radiation-dose-total")).toContainText("≈");
 
     // Clean up the study we created.
-    await row.getByRole("button", { name: "Delete" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })

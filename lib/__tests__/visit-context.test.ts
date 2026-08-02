@@ -9,14 +9,14 @@ const sub = (o: Partial<VisitContextSubject> = {}): VisitContextSubject => ({
   date: "2026-06-18",
   providerId: 7,
   providerName: "Dr. Patel",
-  kind: "ambulatory",
+  typeKey: "office visit",
   ...o,
 });
 
 const prior = (o: Partial<PriorVisit> = {}): PriorVisit => ({
   date: "2026-03-02",
   providerId: 7,
-  kind: "ambulatory",
+  typeKey: "office visit",
   ...o,
 });
 
@@ -24,7 +24,7 @@ describe("visitContext (#1350)", () => {
   it("gives no context for a genuine first visit", () => {
     const ctx = visitContext(sub(), []);
     expect(ctx.provider).toBeNull();
-    expect(ctx.kindYear).toBeNull();
+    expect(ctx.typeYear).toBeNull();
   });
 
   it("counts the same-provider series and names the last prior visit", () => {
@@ -68,13 +68,23 @@ describe("visitContext (#1350)", () => {
     ).toBeNull();
   });
 
-  it("counts same-kind visits within the subject visit's year", () => {
-    const ctx = visitContext(sub({ kind: "emergency", date: "2026-06-18" }), [
-      prior({ kind: "emergency", date: "2026-01-20" }),
-      prior({ kind: "emergency", date: "2025-12-30" }), // prior YEAR — ignored
-      prior({ kind: "ambulatory", date: "2026-02-02" }), // different kind — ignored
+  it("counts matching visit types within the subject visit's year", () => {
+    const ctx = visitContext(
+      sub({ typeKey: "emergency visit", date: "2026-06-18" }),
+      [
+        prior({ typeKey: "emergency visit", date: "2026-01-20" }),
+        prior({ typeKey: "emergency visit", date: "2025-12-30" }), // prior YEAR — ignored
+        prior({ typeKey: "office visit", date: "2026-02-02" }), // different type — ignored
+      ]
+    );
+    expect(ctx.typeYear).toEqual({ ordinal: 2 });
+  });
+
+  it("does not merge distinct visit types that share a coarse setting", () => {
+    const ctx = visitContext(sub({ typeKey: "dental visit" }), [
+      prior({ typeKey: "office visit" }),
     ]);
-    expect(ctx.kindYear).toEqual({ ordinal: 2 });
+    expect(ctx.typeYear).toBeNull();
   });
 
   it("keeps the same-day predecessor in the ordinal but leaves priorDate null", () => {

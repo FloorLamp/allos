@@ -15,6 +15,7 @@ import { addRecord } from "@/app/(app)/medical/actions";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
 import { PHONE_STACK } from "@/lib/phone-fold";
+import { biomarkerAddHref, dataSectionHref } from "@/lib/hrefs";
 import {
   boundPanelGroups,
   defaultOpenPanels,
@@ -70,6 +71,7 @@ export default function BiomarkersSection({
   const canonicalOptions = getCanonicalAutocomplete(scope.actingProfileId);
   const now = today(scope.actingProfileId);
   const ids = scope.viewIds;
+  const openEntryPanel = entryPanelOpen(searchParams);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -134,6 +136,30 @@ export default function BiomarkersSection({
               range={range}
               q={q}
               current={current}
+              action={
+                <AddEntryPanel
+                  // A same-route ?new=1 Link preserves this client component. Change
+                  // its identity only when route intent changes so defaultOpen is
+                  // deliberately re-applied without making the modal controlled.
+                  key={openEntryPanel ? "route-add-intent" : "browse-intent"}
+                  id="add-result"
+                  testId="add-result-panel"
+                  panelId="add-result-panel-body"
+                  label="Add medical record"
+                  addLabel="Add result"
+                  defaultOpen={openEntryPanel}
+                  presentation="modal"
+                >
+                  <RecordForm
+                    mode="add"
+                    action={addRecord}
+                    categories={BIOMARKER_CATEGORIES}
+                    defaultDate={now}
+                    defaultCategory={active ?? "lab"}
+                    defaultName={searchParams.name?.trim() || undefined}
+                  />
+                </AddEntryPanel>
+              }
             />
 
             {panelGroups.length === 0 ? (
@@ -142,8 +168,19 @@ export default function BiomarkersSection({
                   active || panel || range || q || current
                     ? "No records match these filters."
                     : multi
-                      ? "No records yet for these profiles. Import documents from the Data page (Data → Import), or add one below."
-                      : "No records yet. Import documents from the Data page (Data → Import), or add one below."
+                      ? "No results yet for these profiles. Add one manually or import a document."
+                      : "No results yet. Add one manually or import a document."
+                }
+                actions={
+                  active || panel || range || q || current
+                    ? undefined
+                    : [
+                        { href: biomarkerAddHref(), label: "Add result" },
+                        {
+                          href: dataSectionHref("import"),
+                          label: "Import records",
+                        },
+                      ]
                 }
               />
             ) : (
@@ -158,31 +195,6 @@ export default function BiomarkersSection({
                 }
               />
             )}
-          </div>
-
-          {/* Entry behind "+ Add result" (#1499 section C — the #1497 rare-cadence
-          rule). Lab readings arrive a few times a year, mostly by import; a standing
-          form charged every read of the hub for it. `#add-result` stays on the
-          wrapper so the palette / medication-monitoring deep links still land here,
-          and they auto-expand it. */}
-          <div className={PHONE_STACK.entry}>
-            <AddEntryPanel
-              id="add-result"
-              testId="add-result-panel"
-              panelId="add-result-panel-body"
-              label="Add medical record"
-              addLabel="Add result"
-              defaultOpen={entryPanelOpen(searchParams)}
-            >
-              <RecordForm
-                mode="add"
-                action={addRecord}
-                categories={BIOMARKER_CATEGORIES}
-                defaultDate={now}
-                defaultCategory={active ?? "lab"}
-                defaultName={searchParams.name?.trim() || undefined}
-              />
-            </AddEntryPanel>
           </div>
         </div>
       </CanonicalNamesProvider>

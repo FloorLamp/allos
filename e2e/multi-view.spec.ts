@@ -524,7 +524,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#health-goals");
     await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 

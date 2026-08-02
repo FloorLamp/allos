@@ -133,7 +133,7 @@ test.describe("Settings IA (#1462) — index and routing", () => {
 
   test("the health cards stayed on Medical → Background", async ({ page }) => {
     test.slow();
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#background");
     await expect(
       page.getByRole("heading", { name: "Background" })
     ).toBeVisible();

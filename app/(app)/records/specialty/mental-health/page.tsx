@@ -2,6 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { isInstrument, type Instrument } from "@/lib/mental-health";
 import MentalHealthSection from "../../MentalHealthSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,8 @@ export default async function RecordsMentalHealthPage(props: {
     ? screenParam
     : undefined;
   return (
-    <div data-testid="records-mental-health">
-      <SectionSubtitle>
+    <PageContainer width="reading" data-testid="records-mental-health">
+      <SectionSubtitle title="Mental health">
         Track validated screening instruments — PHQ-9 and GAD-7 — as
         severity-banded scores over time.
       </SectionSubtitle>
@@ -30,6 +31,6 @@ export default async function RecordsMentalHealthPage(props: {
         isAdmin={login.role === "admin"}
         initialInstrument={initialInstrument}
       />
-    </div>
+    </PageContainer>
   );
 }

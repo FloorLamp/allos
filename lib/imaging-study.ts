@@ -242,8 +242,15 @@ export function studyDisplayLabel(s: {
     s.laterality && s.laterality !== "na"
       ? lateralityLabel(s.laterality)
       : null;
-  if (side) parts.push(side);
   const region = s.body_region?.trim();
+  // Imported and manually entered regions sometimes already carry their side
+  // ("Left Knee"). Keep laterality as structured data without repeating it in
+  // the shared display identity ("MRI Left Left Knee").
+  const regionAlreadyHasSide =
+    side != null &&
+    region != null &&
+    region.toLocaleLowerCase().startsWith(`${side.toLocaleLowerCase()} `);
+  if (side && !regionAlreadyHasSide) parts.push(side);
   if (region) parts.push(region);
   return parts.join(" ");
 }

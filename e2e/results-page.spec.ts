@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_REPORTS_EMPTY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as
 // route-per-tab (`/results/<tab>`), superseding the #1042 stacked-section page. A
@@ -19,6 +21,12 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   await expect(
     page.getByRole("heading", { name: "Results", exact: true })
   ).toBeVisible();
+  await expect(page.getByTestId("results-container")).toHaveClass(
+    /\bmax-w-6xl\b/
+  );
+  await expect(page.getByText(/Your result records in one place/)).toHaveCount(
+    0
+  );
   // The browser renders as the collapsed panel index, whole — the #114 pager it used
   // to carry was retired in #1581, so the tab's proof of life is a group header.
   const biomarkers = page.getByTestId("results-biomarkers");
@@ -27,6 +35,46 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
     biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
   ).toBeVisible();
   await expect(biomarkers.getByTestId("biomarkers-pagination")).toHaveCount(0);
+  const addBox = await biomarkers
+    .getByTestId("add-result-panel-toggle")
+    .boundingBox();
+  const searchBox = await biomarkers
+    .getByLabel("Search records by name or panel")
+    .boundingBox();
+  expect(addBox).not.toBeNull();
+  expect(searchBox).not.toBeNull();
+  expect(Math.abs(addBox!.y - searchBox!.y)).toBeLessThan(3);
+});
+
+test("the empty Biomarkers action opens the add-result modal", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_REPORTS_EMPTY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/results/biomarkers");
+    await expect(
+      page.getByText("No results yet.", { exact: false })
+    ).toBeVisible();
+
+    await followLink(
+      page,
+      page.getByRole("link", { name: /^Add result/ }),
+      /\/results\/biomarkers\?new=1(?:#add-result)?$/
+    );
+
+    await expect(page.getByTestId("add-result-panel")).toHaveAttribute(
+      "data-open",
+      "true"
+    );
+    await expect(
+      page.getByRole("dialog", { name: "Add medical record" })
+    ).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
 });
 
 test("mobile Results starts with four shell-owned route tabs", async ({
@@ -64,6 +112,30 @@ test("mobile Results starts with four shell-owned route tabs", async ({
   await expect(
     page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Imaging" })
   ).toHaveAttribute("aria-selected", "true");
+  const imaging = page.getByTestId("imaging-study-list");
+  const knee = imaging.getByRole("row").filter({ hasText: "Left Knee" });
+  await expect(knee).toContainText("MRI Left Knee");
+  await expect(knee).not.toContainText("MRI Left Left Knee");
+  await expect(knee.getByLabel("Follow-up interval")).toBeVisible();
+  await expect(
+    knee.getByRole("button", { name: "Track follow-up" })
+  ).toBeVisible();
+
+  await followLink(
+    page,
+    page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Genomics" }),
+    /\/results\/genomics$/
+  );
+  const brca = page
+    .getByTestId("genomic-variant-list")
+    .getByRole("row")
+    .filter({ hasText: "BRCA1" });
+  await expect(
+    brca.getByRole("cell").filter({ hasText: "Significance" })
+  ).toContainText("Pathogenic");
+  await expect(
+    brca.getByRole("cell").filter({ hasText: "Type" })
+  ).toContainText("Hereditary risk");
 });
 
 test("the Biomarkers browser carries the trajectory watch but no fitness-percentile inline (#1164)", async ({
@@ -98,6 +170,8 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
     /\/results\/imaging$/
   );
   const imaging = page.getByTestId("results-imaging");
+  await expect(imaging).toHaveClass(/\bmax-w-4xl\b/);
+  await expect(imaging.getByText(/Your radiology studies/)).toHaveCount(0);
   await expect(
     imaging
       .getByTestId("imaging-study-list")
@@ -118,6 +192,12 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
       .getByText("CYP2C19")
       .first() // first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
   ).toBeVisible();
+  await expect(page.getByTestId("results-genomics")).toHaveClass(
+    /\bmax-w-4xl\b/
+  );
+  await expect(
+    page.getByTestId("results-genomics").getByText(/Structured genetic results/)
+  ).toHaveCount(0);
 });
 
 test("the per-biomarker detail route survives at /biomarkers/view (#1079)", async ({

@@ -122,7 +122,7 @@ test.describe("lab result lifecycle (#1404)", () => {
     await page.goto(
       `${BIOMARKERS}?new=1&name=${encodeURIComponent(FASTING)}#add-result`
     );
-    const form = page.locator("#add-result");
+    const form = page.getByRole("dialog", { name: "Add medical record" });
     await expect(form.getByLabel("Name", { exact: true })).toHaveValue(FASTING);
 
     // DateField DISPLAYS a friendly format ("Jan 12, 2026") while posting the ISO

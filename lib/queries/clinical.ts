@@ -646,7 +646,8 @@ export function getAllergenSensitizations(
   const rows = getMedicalRecords(profileId, { current: true });
   const out: IgESensitizationInput[] = [];
   for (const r of rows) {
-    const name = r.canonical_name?.trim() || r.name;
+    const canonicalName = r.canonical_name?.trim() || null;
+    const name = canonicalName || r.name;
     if (!isAllergenSpecificIgE(name)) continue;
     if (
       !isSensitizedIgE({ flag: r.flag, value: r.value, valueNum: r.value_num })
@@ -656,6 +657,7 @@ export function getAllergenSensitizations(
     if (!allergen) continue;
     out.push({
       allergen,
+      canonicalName,
       marker: name,
       value: r.value,
       valueNum: r.value_num,
@@ -663,6 +665,7 @@ export function getAllergenSensitizations(
       rastClass: rastClassFromValue(r.value, r.value_num),
       flag: r.flag,
       date: r.date,
+      documentId: r.document_id,
     });
   }
   return out;
