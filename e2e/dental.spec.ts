@@ -42,6 +42,7 @@ test.describe("Dental records — add → view → filter → track recheck → 
     test.slow();
 
     await page.goto("/records/specialty/dental");
+    await page.getByTestId("add-dental-record-panel-toggle").click();
     const form = page.getByTestId("dental-procedure-form");
     await expect(form).toBeVisible();
 
@@ -90,8 +91,9 @@ test.describe("Dental records — add → view → filter → track recheck → 
     await list
       .getByRole("row")
       .filter({ hasText: NAME })
-      .getByRole("button", { name: "Edit" })
+      .getByLabel("Record actions")
       .click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("dental-procedure-form");
     await editForm.getByLabel("Finding / note").fill("Interval stable.");
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
@@ -101,20 +103,12 @@ test.describe("Dental records — add → view → filter → track recheck → 
       { timeout: 15_000 }
     );
 
-    // Delete it and confirm it's gone. The confirm click MUST be scoped to the dialog
-    // (every row carries a per-row aria-label="Delete" button).
+    // Delete it through the shared record-actions menu and confirm it's gone.
     const survivor = list.getByRole("row").filter({ hasText: NAME });
-    // #1535: the row's Edit and Delete are two bare glyphs sitting side by side,
-    // one of them destructive. Each carries a hover tooltip (`title`) naming what
-    // it acts on, on top of its accessible name, so a sighted user can tell them
-    // apart before clicking. Asserted on the shared RecordTable surface because
-    // every records page inherits this row.
-    const deleteRow = survivor.getByRole("button", { name: "Delete" });
-    await expect(deleteRow).toHaveAttribute("title", "Delete record");
-    await expect(
-      survivor.getByRole("button", { name: "Edit" })
-    ).toHaveAttribute("title", "Edit record");
-    await deleteRow.click();
+    const actions = survivor.getByLabel("Record actions");
+    await expect(actions).toHaveAttribute("title", "Record actions");
+    await actions.click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })

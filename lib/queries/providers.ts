@@ -1,5 +1,12 @@
 import { db } from "../db";
-import { encounterHref, MEDICATIONS_HREF, type AppRoute } from "../hrefs";
+import {
+  biomarkerViewHref,
+  encounterHref,
+  immunizationHref,
+  intakeHref,
+  medicationHref,
+  type AppRoute,
+} from "../hrefs";
 import { biomarkerNameKey } from "./medical";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
@@ -356,7 +363,8 @@ export function getProviderLabs(
   // analyte-listing surface keys on.
   const rows = db
     .prepare(
-      `SELECT id, date, ${biomarkerNameKey()} AS name, category FROM medical_records
+      `SELECT id, date, ${biomarkerNameKey()} AS name, canonical_name, category
+         FROM medical_records
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )
@@ -364,6 +372,7 @@ export function getProviderLabs(
     id: number;
     date: string | null;
     name: string;
+    canonical_name: string | null;
     category: string | null;
   }[];
   return rows.map((r) => ({
@@ -371,7 +380,7 @@ export function getProviderLabs(
     date: r.date,
     label: r.name,
     sublabel: r.category,
-    href: "/results/biomarkers",
+    href: biomarkerViewHref(r.canonical_name, r.name),
   }));
 }
 
@@ -388,7 +397,7 @@ export function getProviderMedications(
     .all(profileId, providerId) as {
     id: number;
     name: string;
-    kind: string;
+    kind: "medication" | "supplement";
     active: number;
   }[];
   return rows.map((r) => ({
@@ -396,7 +405,7 @@ export function getProviderMedications(
     date: null,
     label: r.name,
     sublabel: r.active ? r.kind : `${r.kind} · inactive`,
-    href: MEDICATIONS_HREF,
+    href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
   }));
 }
 
@@ -421,7 +430,7 @@ export function getProviderImmunizations(
     date: r.date,
     label: r.vaccine,
     sublabel: r.dose_label,
-    href: "/records/history/immunizations",
+    href: immunizationHref(r.vaccine),
   }));
 }
 
@@ -456,7 +465,8 @@ export function getProviderCarePlan(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, planned_date, description, status FROM care_plan_items
+      `SELECT id, planned_date, description, status
+         FROM care_plan_items
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY planned_date DESC, id DESC`
     )
@@ -471,7 +481,7 @@ export function getProviderCarePlan(
     date: r.planned_date,
     label: r.description,
     sublabel: r.status,
-    href: "/records/care/overview",
+    href: "/records/care/overview#care-plan",
   }));
 }
 
@@ -506,7 +516,8 @@ export function getProviderImaging(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, study_date, modality, body_region FROM imaging_studies
+      `SELECT id, study_date, modality, body_region
+         FROM imaging_studies
          WHERE profile_id = ?
            AND (ordering_provider_id = ? OR reading_provider_id = ?)
          ORDER BY COALESCE(study_date, '') DESC, id DESC`
@@ -556,7 +567,8 @@ export function getProviderDental(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, procedure_date, name, tooth FROM dental_procedures
+      `SELECT id, procedure_date, name, tooth
+         FROM dental_procedures
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
     )
@@ -581,7 +593,8 @@ export function getProviderSkin(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, observed_date, label, body_region FROM skin_lesions
+      `SELECT id, observed_date, label, body_region
+         FROM skin_lesions
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY COALESCE(observed_date, '') DESC, id DESC`
     )

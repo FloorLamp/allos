@@ -18,6 +18,7 @@ export default function EncounterForm({
   encounter,
   profileId,
   onDone,
+  onSaved,
   defaultDate,
   date,
   onDateChange,
@@ -29,6 +30,7 @@ export default function EncounterForm({
   // member's visit targets that member (gateItemProfile). Undefined in single view.
   profileId?: number;
   onDone?: () => void;
+  onSaved?: () => void;
   defaultDate: string;
   // When the single "Add visit" wrapper (issue #566) owns the date, it passes it
   // controlled so the value survives a tense flip between this form and the
@@ -71,6 +73,7 @@ export default function EncounterForm({
       setType("");
     }
     onDone?.();
+    onSaved?.();
   }
 
   const uid = encounter?.id ?? "new";

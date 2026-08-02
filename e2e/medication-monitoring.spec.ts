@@ -44,7 +44,9 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
     /\/results\/biomarkers\?new=1&name=INR#add-result$/
   );
   await expect(
-    page.locator("#add-result").getByLabel("Name", { exact: true })
+    page
+      .getByRole("dialog", { name: "Add medical record" })
+      .getByLabel("Name", { exact: true })
   ).toHaveValue("INR");
 });
 

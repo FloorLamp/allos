@@ -101,7 +101,7 @@ export default function LesionPhotoStrip({
         <form
           ref={formRef}
           action={handleUpload}
-          className="flex flex-wrap items-end gap-2 rounded-lg border border-black/10 p-2 dark:border-white/10"
+          className="flex flex-wrap items-end gap-2 border-t border-black/5 pt-3 dark:border-white/5"
           data-testid={`lesion-photo-upload-${lesionId}`}
         >
           <input type="hidden" name="lesion_id" value={lesionId} />

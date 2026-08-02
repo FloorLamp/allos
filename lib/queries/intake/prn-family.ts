@@ -29,6 +29,7 @@ import {
   familyDisplayLabel,
   type MedicationFamily,
 } from "../../medication-family";
+import { prnDayExposure, type PrnDayExposure } from "../../prn-redose";
 import type { IntakeObligation } from "../../types";
 
 // The per-family safety state every cross-item counter reads. One object is shared
@@ -51,6 +52,18 @@ export interface MedFamilyState {
   // The most conservative confirmed max_daily_count among members, or null when no
   // member carries one.
   minConfirmedMax: number | null;
+  // The most conservative confirmed max_daily_amount_mg among members (#1854), or
+  // null when no member carries one.
+  minConfirmedMaxMg: number | null;
+  // The snapshotted amount of each of today's taken administrations across the
+  // family (the confirm-dose snapshot invariant is what makes this summable).
+  amountsToday: (string | null)[];
+  // The day's amount-aware exposure verdict (#1854): summed milligrams when the
+  // mg ceiling applies and amounts parse, the administration count as the
+  // fallback, null when NO ceiling is confirmed. THE one computation every
+  // counter surface (over-max finding, card/widget/Telegram line, redose-notice
+  // ceiling) formats over.
+  exposure: PrnDayExposure | null;
 }
 
 interface FamilyMemberRow {
@@ -59,6 +72,7 @@ interface FamilyMemberRow {
   rxcui: string | null;
   rxcui_ingredients: string | null;
   max_daily_count: number | null;
+  max_daily_amount_mg: number | null;
   obligation: IntakeObligation;
 }
 
@@ -69,7 +83,8 @@ export function getActiveMedicationFamilies(
 ): MedicationFamily<FamilyMemberRow & { rxcuiIngredients: string[] | null }>[] {
   const rows = db
     .prepare(
-      `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count, obligation
+      `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count,
+              max_daily_amount_mg, obligation
          FROM intake_items
         WHERE profile_id = ? AND active = 1 AND kind = 'medication'
         ORDER BY id`
@@ -107,19 +122,31 @@ export function getMedicationFamilyStates(
       )
       .get(profileId, ...ids) as
       { id: number; givenAt: string; itemId: number } | undefined;
-    const count = db
+    // Today's taken administrations WITH their snapshotted amounts — the count is
+    // the row count, and the amounts feed the amount-aware exposure (#1854).
+    const todaysLogs = db
       .prepare(
-        `SELECT COUNT(*) AS n
+        `SELECT l.amount AS amount
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
             AND l.date = ? AND l.status = 'taken'`
       )
-      .get(profileId, ...ids, date) as { n: number };
+      .all(profileId, ...ids, date) as { amount: string | null }[];
+    const amountsToday = todaysLogs.map((l) => l.amount);
 
     const confirmedMaxes = family.members
       .map((m) => m.max_daily_count)
       .filter((m): m is number => m != null && m > 0);
+    const confirmedMgMaxes = family.members
+      .map((m) => m.max_daily_amount_mg)
+      .filter((m): m is number => m != null && m > 0);
+    const minConfirmedMax = confirmedMaxes.length
+      ? Math.min(...confirmedMaxes)
+      : null;
+    const minConfirmedMaxMg = confirmedMgMaxes.length
+      ? Math.min(...confirmedMgMaxes)
+      : null;
     const state: MedFamilyState = {
       familyKey: family.familyKey,
       memberIds: ids,
@@ -131,10 +158,15 @@ export function getMedicationFamilyStates(
       latestItemName: latest
         ? (family.members.find((m) => m.id === latest.itemId)?.name ?? null)
         : null,
-      countToday: count.n,
-      minConfirmedMax: confirmedMaxes.length
-        ? Math.min(...confirmedMaxes)
-        : null,
+      countToday: amountsToday.length,
+      minConfirmedMax,
+      minConfirmedMaxMg,
+      amountsToday,
+      exposure: prnDayExposure({
+        amounts: amountsToday,
+        maxDailyAmountMg: minConfirmedMaxMg,
+        maxDailyCount: minConfirmedMax,
+      }),
     };
     for (const id of ids) out.set(id, state);
   }

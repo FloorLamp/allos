@@ -22,7 +22,19 @@ import {
 // so --repeat-each stays clean. Interactions settle via settledClick.
 
 async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7") {
+  await openScreening(page);
   await settledClick(page, page.getByTestId(`instrument-select-${key}`));
+}
+
+async function openScreening(page: Page) {
+  const form = page.getByTestId("instruments-form");
+  if (!(await form.isVisible().catch(() => false))) {
+    await settledClick(
+      page,
+      page.getByTestId("add-mental-health-screening-panel-toggle")
+    );
+  }
+  await expect(form).toBeVisible();
 }
 
 // Answer every item of the currently-selected instrument with the same option value.
@@ -76,7 +88,7 @@ test.describe("mental-health instruments (#716)", () => {
 
   test("in-app PHQ-9 computes a mild band and records a score", async () => {
     await page.goto("/records/specialty/mental-health");
-    await expect(page.getByTestId("instruments-form")).toBeVisible();
+    await openScreening(page);
 
     const rows = page.getByTestId(/^instrument-reading-\d+$/);
     const before = await rows.count();
@@ -156,7 +168,7 @@ test.describe("correcting a recorded score (#1396)", () => {
 
   test("a mis-entered outside total can be corrected in place", async () => {
     await page.goto("/records/specialty/mental-health");
-    await page.getByTestId("instrument-select-GAD-7").click();
+    await pickInstrument(page, "GAD-7");
     await page.getByLabel("Enter a score from elsewhere").check();
     // The issue's case: 21 typed where 12 was meant.
     await page.getByTestId("instrument-outside-total").fill("21");
@@ -186,7 +198,7 @@ test.describe("correcting a recorded score (#1396)", () => {
 
   test("a mis-entered score can be removed from the History list", async () => {
     await page.goto("/records/specialty/mental-health");
-    await page.getByTestId("instrument-select-GAD-7").click();
+    await pickInstrument(page, "GAD-7");
     await page.getByLabel("Enter a score from elsewhere").check();
     await page.getByTestId("instrument-outside-total").fill("4");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));

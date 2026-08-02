@@ -24,6 +24,7 @@ import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
 import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import {
   updateSubstanceInstrumentAction,
   deleteSubstanceInstrumentAction,
@@ -107,37 +108,6 @@ export default function SubstanceUseSection({
         </Notice>
       ) : null}
 
-      {/* Screening instruments */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-          Screening
-        </h2>
-        <SubstanceInstrumentsForm
-          defaultDate={td}
-          initialInstrument={initialInstrument}
-        />
-        <div data-testid="substance-history">
-          {/* Per-row correct/remove (#1396) — the SAME list component Mental health
-              renders, so a mis-entered AUDIT-C is correctable exactly like a
-              mis-entered GAD-7. This surface's actions carry its life-stage gate. */}
-          <InstrumentHistoryList
-            testidPrefix="substance"
-            emptyMessage="No screening scores yet. Answer the AUDIT-C or DAST-10 above, or enter a total from elsewhere."
-            updateAction={updateSubstanceInstrumentAction}
-            deleteAction={deleteSubstanceInstrumentAction}
-            rows={readings.map((r) => ({
-              id: r.id,
-              instrument: r.instrument,
-              date: r.date,
-              total: r.total,
-              bandLabel: r.band.label,
-              maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
-              href: biomarkerViewHref(r.instrument),
-            }))}
-          />
-        </div>
-      </section>
-
       {/* Consumption + reduction target, one section per tracked substance
           (#1078): alcohol on the shared food-log ledger, nicotine/cannabis on
           the dedicated substance_log ledger — same one-tap log/undo, weekly cap,
@@ -202,6 +172,43 @@ export default function SubstanceUseSection({
           </section>
         );
       })}
+
+      {/* Screening history leads; the questionnaire itself opens only on request. */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          Screening
+        </h2>
+        <div data-testid="substance-history">
+          <InstrumentHistoryList
+            testidPrefix="substance"
+            emptyMessage="No screening scores yet. Add an AUDIT-C or DAST-10 screening, or enter a total from elsewhere."
+            updateAction={updateSubstanceInstrumentAction}
+            deleteAction={deleteSubstanceInstrumentAction}
+            rows={readings.map((r) => ({
+              id: r.id,
+              instrument: r.instrument,
+              date: r.date,
+              total: r.total,
+              bandLabel: r.band.label,
+              maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
+              href: biomarkerViewHref(r.instrument),
+              documentId: r.documentId,
+            }))}
+          />
+        </div>
+        <AddEntryPanel
+          testId="add-substance-screening-panel"
+          panelId="add-substance-screening-panel-body"
+          label="Add screening"
+          defaultOpen={!!initialInstrument}
+          presentation="modal"
+        >
+          <SubstanceInstrumentsForm
+            defaultDate={td}
+            initialInstrument={initialInstrument}
+          />
+        </AddEntryPanel>
+      </section>
 
       {/* Tobacco/nicotine STATUS: the existing structured smoking status links in
           as the risk-factor / screening-eligibility source of truth (#83 —

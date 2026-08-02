@@ -6,6 +6,7 @@ import {
   titleCase,
   statusTone,
   formatVisitLabel,
+  sourceDocumentId,
 } from "@/lib/record-format";
 import { documentSource } from "@/lib/body-metric-extract";
 
@@ -22,6 +23,24 @@ describe("sourceLabel", () => {
 
   it("shows any other source verbatim", () => {
     expect(sourceLabel("health-connect")).toBe("health-connect");
+  });
+});
+
+describe("sourceDocumentId", () => {
+  it("prefers a valid explicit document id", () => {
+    expect(sourceDocumentId(42, "document:7")).toBe(42);
+  });
+
+  it("falls back to document provenance encoded in source", () => {
+    expect(sourceDocumentId(null, "document:7")).toBe(7);
+    expect(sourceDocumentId(undefined, documentSource(12))).toBe(12);
+  });
+
+  it("rejects manual, integration, and malformed provenance", () => {
+    expect(sourceDocumentId(null, null)).toBeNull();
+    expect(sourceDocumentId(null, "health-connect")).toBeNull();
+    expect(sourceDocumentId(null, "document:0")).toBeNull();
+    expect(sourceDocumentId(null, "document:nope")).toBeNull();
   });
 });
 

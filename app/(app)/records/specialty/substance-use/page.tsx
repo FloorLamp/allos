@@ -5,6 +5,7 @@ import { getUserAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { isSubstanceInstrument } from "@/lib/substance-use";
 import SubstanceUseSection from "../../SubstanceUseSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,8 @@ export default async function RecordsSubstanceUsePage(props: {
     ? screenParam
     : undefined;
   return (
-    <div data-testid="records-substance-use">
-      <SectionSubtitle>
+    <PageContainer width="reading" data-testid="records-substance-use">
+      <SectionSubtitle title="Substance use">
         Track validated screening scores (AUDIT-C, AUDIT, DAST-10), alcohol,
         nicotine, and cannabis use over time, and reduction targets you set
         yourself.
@@ -43,6 +44,6 @@ export default async function RecordsSubstanceUsePage(props: {
         formatPrefs={getDisplayFormatPrefs(login.id)}
         initialInstrument={initialInstrument}
       />
-    </div>
+    </PageContainer>
   );
 }

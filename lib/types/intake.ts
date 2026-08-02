@@ -133,6 +133,13 @@ export interface Supplement {
   // finding. All null/0 for non-PRN and legacy rows.
   min_interval_hours: number | null;
   max_daily_count: number | null;
+  // Amount-aware daily maximum in MILLIGRAMS (issue #1854, migration 140) — the
+  // user-CONFIRMED mg/day ceiling for the item's active ingredient, alongside the
+  // count form above. When confirmed AND every one of today's family
+  // administrations carries a parseable snapshotted mg amount, the PRN safety
+  // counters compare summed milligrams instead of counting rows (prnDayExposure);
+  // the count remains the fallback basis. NULL = not confirmed → never used.
+  max_daily_amount_mg: number | null;
   redose_notice: number;
   // Cached RxNorm concept id (RxCUI) for this item's name (issue #144), resolved
   // via NLM's approximateTerm API and user-confirmed on the edit form; NULL when

@@ -35,7 +35,10 @@ test.describe("Immunizations (#391)", () => {
     await expect(page.locator('a[href="/immunizations/rv"]')).toHaveCount(0);
     await expect(page.locator('a[href="/immunizations/hib"]')).toHaveCount(0);
 
-    // The CDC schedule grid + the seeded immunity titer both render.
+    // The optional CDC schedule stays available without dominating the page.
+    await page
+      .locator("summary", { hasText: "CDC recommended schedule" })
+      .click();
     await expect(
       page.getByRole("heading", { name: "CDC recommended schedule" })
     ).toBeVisible();

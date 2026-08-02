@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AppRoute } from "@/lib/hrefs";
 import RecordSearch from "./RecordSearch";
@@ -26,6 +27,7 @@ export default function MedicalFilters({
   range,
   q,
   current,
+  action,
 }: {
   category?: string;
   panel?: PanelId;
@@ -35,6 +37,7 @@ export default function MedicalFilters({
   range?: string;
   q?: string;
   current?: boolean;
+  action?: ReactNode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -55,33 +58,38 @@ export default function MedicalFilters({
 
   return (
     <div
-      className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4"
+      className="mb-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-between"
       data-testid="medical-filters"
     >
-      <RecordSearch q={q} />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4">
+        <RecordSearch q={q} />
 
-      {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
+        {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
           here (see getMedicalRecords excludeCategories on the page). */}
-      <CategoryFilterSelect
-        value={category}
-        categories={BIOMARKER_CATEGORIES}
-      />
-
-      <PanelFilterSelect value={panel} panels={panels} />
-
-      <RangeFilterSelect value={range} />
-
-      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-brand-600"
-          checked={!!current}
-          onChange={(e) =>
-            router.push(qs({ current: e.target.checked ? "1" : undefined }))
-          }
+        <CategoryFilterSelect
+          value={category}
+          categories={BIOMARKER_CATEGORIES}
         />
-        <span className="font-medium">Current values only</span>
-      </label>
+
+        <PanelFilterSelect value={panel} panels={panels} />
+
+        <RangeFilterSelect value={range} />
+
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-brand-600"
+            checked={!!current}
+            onChange={(e) =>
+              router.push(qs({ current: e.target.checked ? "1" : undefined }))
+            }
+          />
+          <span className="font-medium">Current values only</span>
+        </label>
+      </div>
+      {action ? (
+        <div className="shrink-0 self-end sm:self-start">{action}</div>
+      ) : null}
     </div>
   );
 }

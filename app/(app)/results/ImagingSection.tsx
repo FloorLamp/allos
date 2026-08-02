@@ -12,7 +12,6 @@ import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
 import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
-import ListRailLayout from "@/components/ListRailLayout";
 import ImagingStudyList from "@/app/(app)/results/imaging/ImagingStudyList";
 import RadiationDoseCard from "@/app/(app)/results/imaging/RadiationDoseCard";
 import { addImagingStudy } from "@/app/(app)/results/imaging/actions";
@@ -55,26 +54,17 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <ListRailLayout
-        rail={
-          <>
-            {/* Entry behind "+ Add imaging study" (#1499 section C — the #1497
-            rare-cadence rule): a radiology study is a few-times-a-year event, so
-            the form costs one button until it is wanted. */}
-            <AddEntryPanel
-              testId="add-imaging-panel"
-              panelId="add-imaging-panel-body"
-              label="Add imaging study"
-            >
-              <ImagingStudyForm action={addImagingStudy} />
-            </AddEntryPanel>
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              Allos stores the imaging report, not the images themselves (DICOM
-              is out of scope).
-            </p>
-          </>
-        }
-      >
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <AddEntryPanel
+            testId="add-imaging-panel"
+            panelId="add-imaging-panel-body"
+            label="Add imaging study"
+            presentation="modal"
+          >
+            <ImagingStudyForm action={addImagingStudy} />
+          </AddEntryPanel>
+        </div>
         <CreateVisitFromRecord
           profileId={profileId}
           offers={createVisitOffersList}
@@ -87,7 +77,7 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }
         />
-      </ListRailLayout>
+      </div>
     </ProviderOptionsProvider>
   );
 }

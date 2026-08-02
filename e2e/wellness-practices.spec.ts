@@ -74,6 +74,11 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
     }
   );
   expect(listboxIsTopmost).toBe(true);
+  // Escape dismisses the nested picker first, preserving the parent modal and
+  // its typed state. A second Escape closes the modal itself.
+  await page.keyboard.press("Escape");
+  await expect(listbox).toBeHidden();
+  await expect(create).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(create).toHaveCount(0);
 

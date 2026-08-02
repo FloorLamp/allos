@@ -1,6 +1,7 @@
 import { requireScope } from "@/lib/scope";
 import ProceduresSection from "../../ProceduresSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,11 @@ export default async function RecordsProceduresPage(props: {
   const prefillName =
     newParam === "1" && nameParam?.trim() ? nameParam.trim() : undefined;
   return (
-    <div data-testid="records-procedures">
-      <SectionSubtitle>
-        Your procedure &amp; surgical history — coded (CPT / SNOMED) when
-        imported from a health record. Add them manually or import from uploaded
-        records (CCD Procedures section).
+    <PageContainer width="flow" data-testid="records-procedures">
+      <SectionSubtitle title="Procedures">
+        Review procedures and surgical history.
       </SectionSubtitle>
       <ProceduresSection scope={scope} prefillName={prefillName} />
-    </div>
+    </PageContainer>
   );
 }

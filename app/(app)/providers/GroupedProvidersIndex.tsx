@@ -8,6 +8,7 @@ import {
   IconSearch,
   IconPhone,
   IconArchive,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import type { DirectoryProvider, GroupedDirectory } from "@/lib/queries";
 import { providersEmptyMessage } from "@/lib/providers";
@@ -40,6 +41,25 @@ export default function GroupedProvidersIndex({
 
   // Grouping only makes sense on the full (unsearched) view with edges present.
   const showGrouped = !needle && directory.hasEdges;
+  const activeOrgs = directory.orgs.filter(
+    (group) =>
+      group.org.activity > 0 ||
+      group.members.some((member) => member.activity > 0)
+  );
+  const otherOrgs = directory.orgs.filter(
+    (group) =>
+      group.org.activity === 0 &&
+      group.members.every((member) => member.activity === 0)
+  );
+  const activeIndividuals = directory.unaffiliated.filter(
+    (provider) => provider.activity > 0
+  );
+  const otherIndividuals = directory.unaffiliated.filter(
+    (provider) => provider.activity === 0
+  );
+  const otherCount =
+    otherOrgs.reduce((count, group) => count + group.members.length + 1, 0) +
+    otherIndividuals.length;
 
   return (
     <div>
@@ -61,36 +81,49 @@ export default function GroupedProvidersIndex({
 
       {showGrouped ? (
         <div className="space-y-6" data-testid="provider-directory-grouped">
-          {directory.orgs.map((group) => (
-            <div
-              key={group.org.id}
-              className="overflow-hidden rounded-xl border border-black/5 bg-white/60 dark:border-white/10 dark:bg-black/10"
-              data-testid="provider-org-card"
-            >
-              <ProviderRow p={group.org} heading />
-              {group.members.length > 0 ? (
-                <ul className="divide-y divide-black/5 border-t border-black/5 pl-4 dark:divide-white/10 dark:border-white/10">
-                  {group.members.map((m) => (
-                    <li key={m.id}>
-                      <ProviderRow p={m} />
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
+          {activeOrgs.map((group) => (
+            <OrganizationGroup key={group.org.id} group={group} />
           ))}
 
-          {directory.unaffiliated.length > 0 ? (
+          {activeIndividuals.length > 0 ? (
             <div>
               <div className="section-label mb-2">Other individuals</div>
               <ul className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
-                {directory.unaffiliated.map((p) => (
+                {activeIndividuals.map((p) => (
                   <li key={p.id}>
                     <ProviderRow p={p} />
                   </li>
                 ))}
               </ul>
             </div>
+          ) : null}
+
+          {otherCount > 0 ? (
+            <details
+              className="group border-t border-black/5 pt-3 dark:border-white/10"
+              data-testid="provider-other-disclosure"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300">
+                <span className="flex-1">
+                  Other directory entries ({otherCount})
+                </span>
+                <IconChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-3 space-y-4">
+                {otherOrgs.map((group) => (
+                  <OrganizationGroup key={group.org.id} group={group} />
+                ))}
+                {otherIndividuals.length > 0 ? (
+                  <ul className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
+                    {otherIndividuals.map((provider) => (
+                      <li key={provider.id}>
+                        <ProviderRow p={provider} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </details>
           ) : null}
         </div>
       ) : (
@@ -117,9 +150,33 @@ export default function GroupedProvidersIndex({
       ) : null}
 
       <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
-        Record counts are {profileName}’s. Providers are shared across everyone
-        on this instance.
+        Showing providers linked to {profileName}’s records first. The provider
+        directory is shared across everyone on this instance.
       </p>
+    </div>
+  );
+}
+
+function OrganizationGroup({
+  group,
+}: {
+  group: GroupedDirectory["orgs"][number];
+}) {
+  return (
+    <div
+      className="overflow-hidden rounded-xl border border-black/5 bg-white/60 dark:border-white/10 dark:bg-black/10"
+      data-testid="provider-org-card"
+    >
+      <ProviderRow p={group.org} heading />
+      {group.members.length > 0 ? (
+        <ul className="divide-y divide-black/5 border-t border-black/5 pl-4 dark:divide-white/10 dark:border-white/10">
+          {group.members.map((member) => (
+            <li key={member.id}>
+              <ProviderRow p={member} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

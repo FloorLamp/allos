@@ -185,7 +185,9 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     // The form landed preselected on PHQ-9 (the deep-link's ?screen= honored): only
     // PHQ-9 has a 9th item (index 8); GAD-7 has 7, so this proves the selection.
     await expect(
-      page.getByRole("main").getByTestId("instrument-item-8")
+      page
+        .getByRole("dialog", { name: "Add screening" })
+        .getByTestId("instrument-item-8")
     ).toBeVisible();
   });
 
@@ -279,16 +281,16 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
 
     // The create form is prefilled from the preventive item: its title and the
     // rule's mapped visit kind (skin check → screening).
-    await expect(page.getByLabel("Reason / title")).toHaveValue("Skin check");
-    await expect(page.getByLabel("Kind (optional)")).toHaveValue("screening");
+    const visitDialog = page.getByRole("dialog", { name: "Add visit" });
+    await expect(visitDialog.getByLabel("Reason / title")).toHaveValue(
+      "Skin check"
+    );
+    await expect(visitDialog.getByLabel("Kind (optional)")).toHaveValue(
+      "screening"
+    );
 
     // Save the (still-scheduled) visit — the date is prefilled to the suggested day.
-    // Scoped to the Upcoming (appointments) section: the merged Visits page (#288)
-    // renders a second "Add" in the Past (encounter) form.
-    await page
-      .getByTestId("visits-upcoming")
-      .getByRole("button", { name: "Add", exact: true })
-      .click();
+    await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
     // Back on Upcoming, the matching-kind booking quiets the preventive item to a

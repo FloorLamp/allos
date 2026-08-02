@@ -10,6 +10,10 @@ import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -60,6 +64,7 @@ function LesionRecordRow({
 }) {
   const fmt = useFormatPrefs();
   const [editing, setEditing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { run: runDelete, pending: deleting } = useConfirmedAction(
     {
       title: "Delete lesion record",
@@ -86,74 +91,99 @@ function LesionRecordRow({
   }
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-black/5 py-2 text-sm dark:border-white/5"
+      className="border-t border-black/5 py-3 text-sm dark:border-white/5"
       data-testid={`lesion-record-${record.id}`}
     >
-      <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
-        {formatRecordDate(record.observed_date, "—", fmt)}
-      </span>
-      <StatusBadge status={record.status} />
-      {letters && (
-        <span
-          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-          title="Recorded ABCDE observations"
-        >
-          ABCDE {letters}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 pr-1">
+        <span className="whitespace-nowrap font-medium text-slate-800 dark:text-slate-100">
+          {formatRecordDate(record.observed_date, "—", fmt)}
         </span>
-      )}
-      {record.size_mm != null && (
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          {record.size_mm} mm
+        <StatusBadge status={record.status} />
+        {letters && (
+          <span
+            className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            title="Recorded ABCDE observations"
+          >
+            ABCDE {letters}
+          </span>
+        )}
+        {record.size_mm != null && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {record.size_mm} mm
+          </span>
+        )}
+        <span className="ml-auto">
+          <OverflowMenu
+            label="Record actions"
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+          >
+            {({ close }) => (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setEditing(true);
+                    close();
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={deleting}
+                  className={MENU_ITEM_DANGER}
+                  onClick={() => {
+                    close();
+                    runDelete();
+                  }}
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </OverflowMenu>
         </span>
-      )}
-      <NotesText
-        as="span"
-        notes={record.finding}
-        className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400"
-      />
-      {record.provider_id ? (
-        <ProviderName
-          name={record.provider_name ?? "Provider"}
-          providerId={record.provider_id}
-          size="sm"
-          className="text-xs text-slate-500 dark:text-slate-400"
+      </div>
+
+      {record.finding ? (
+        <NotesText
+          notes={record.finding}
+          className="mt-1 text-sm text-slate-600 dark:text-slate-300"
         />
       ) : null}
-      {/* "Checked at: <visit>" (#1526) — the visit whose dermatologist produced this
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
+        {record.provider_id ? (
+          <ProviderName
+            name={record.provider_name ?? "Provider"}
+            providerId={record.provider_id}
+            size="sm"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          />
+        ) : null}
+        {/* "Checked at: <visit>" (#1526) — the visit whose dermatologist produced this
           record's finding, deep-linked. Absent pillar: nothing renders for an unlinked
           observation (a self-photograph between appointments). */}
-      {checkedAt ? (
-        <RecordEncounterLink
-          label="Checked at"
-          encounter={checkedAt}
-          testid={`lesion-visit-${record.id}`}
+        {checkedAt ? (
+          <RecordEncounterLink
+            label="Checked at"
+            encounter={checkedAt}
+            testid={`lesion-visit-${record.id}`}
+          />
+        ) : null}
+        <RecordProvenance
+          source={record.source}
+          documentId={record.document_id}
         />
-      ) : null}
-      <RecordProvenance
-        source={record.source}
-        documentId={record.document_id}
-      />
-      <TrackSkinFollowUpControl
-        recordId={record.id}
-        offer={record.status !== "removed"}
-        existing={followUp}
-      />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className="text-xs text-slate-500 underline hover:text-slate-700 dark:text-slate-400"
-          onClick={() => setEditing(true)}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          disabled={deleting}
-          onClick={() => runDelete()}
-          className="text-xs text-slate-400 underline hover:text-rose-600 disabled:opacity-60 dark:hover:text-rose-400"
-        >
-          Delete
-        </button>
+        <TrackSkinFollowUpControl
+          recordId={record.id}
+          offer={record.status !== "removed"}
+          existing={followUp}
+        />
       </div>
     </div>
   );

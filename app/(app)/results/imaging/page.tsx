@@ -1,4 +1,5 @@
 import { requireScope } from "@/lib/scope";
+import PageContainer from "@/components/PageContainer";
 import ImagingSection from "../ImagingSection";
 
 export const dynamic = "force-dynamic";
@@ -9,14 +10,12 @@ export const dynamic = "force-dynamic";
 export default async function ResultsImagingPage() {
   const scope = await requireScope();
   return (
-    <div data-testid="results-imaging">
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
-        Your radiology studies — modality, region, laterality, contrast, and the
-        radiologist&apos;s impression. Add them manually or import an uploaded
-        report. Numeric imaging measurements (DEXA T-scores, calcium score)
-        still live in Biomarkers.
-      </p>
+    <PageContainer
+      width="flow"
+      className="mx-auto"
+      data-testid="results-imaging"
+    >
       <ImagingSection scope={scope} />
-    </div>
+    </PageContainer>
   );
 }

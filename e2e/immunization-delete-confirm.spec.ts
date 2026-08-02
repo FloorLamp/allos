@@ -21,7 +21,8 @@ test.describe("Immunization delete confirm (#534)", () => {
     const rowA = page.getByRole("row").filter({ hasText: "Travel dose A" });
     await expect(rowA).toBeVisible();
 
-    await rowA.getByRole("button", { name: "Delete" }).click();
+    await rowA.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
 
     // The confirm dialog carries the distinguishing dose so it isn't ambiguous
     // against its same-vaccine same-date twin.

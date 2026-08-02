@@ -218,6 +218,13 @@ function fields(formData: FormData) {
   const maxRaw = Number(formData.get("max_daily_count"));
   const maxDailyCount =
     isPrn && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
+  // Amount-aware daily maximum in mg (#1854), same confirm discipline: a PRN
+  // item only, user-entered, blank/invalid stays NULL — the mg basis is then
+  // simply unavailable and the counters fall back to counting doses. It does NOT
+  // gate the redose opt-in (interval + count max remain that pair).
+  const maxMgRaw = Number(formData.get("max_daily_amount_mg"));
+  const maxDailyAmountMg =
+    isPrn && Number.isFinite(maxMgRaw) && maxMgRaw > 0 ? maxMgRaw : null;
   const redoseNotice =
     isPrn &&
     minIntervalHours != null &&
@@ -262,6 +269,7 @@ function fields(formData: FormData) {
     isPrn,
     minIntervalHours,
     maxDailyCount,
+    maxDailyAmountMg,
     redoseNotice,
     rxcui,
     rxcuiIngredients,
@@ -517,12 +525,12 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
             kind, prescriber, pharmacy, rx_number, rx,
-            min_interval_hours, max_daily_count, redose_notice,
+            min_interval_hours, max_daily_count, max_daily_amount_mg, redose_notice,
             rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
             created_at,
             cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date,
             supply_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?,?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?,?)`
       )
       .run(
         name,
@@ -547,6 +555,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.rx,
         f.minIntervalHours,
         f.maxDailyCount,
+        f.maxDailyAmountMg,
         f.redoseNotice,
         f.rxcui,
         f.rxcuiIngredients,
@@ -719,7 +728,8 @@ export async function updateSupplement(
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
-             min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
+             min_interval_hours = ?, max_daily_count = ?,
+             max_daily_amount_mg = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?,
              indication_condition_id = ?,
              cadence_kind = ?, cadence_weekdays = ?,
@@ -748,6 +758,7 @@ export async function updateSupplement(
       f.rx,
       f.minIntervalHours,
       f.maxDailyCount,
+      f.maxDailyAmountMg,
       f.redoseNotice,
       f.rxcui,
       f.rxcuiIngredients,

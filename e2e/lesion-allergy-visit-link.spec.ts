@@ -105,20 +105,23 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
 
   test("recording an allergy against a visit through the form's picker surfaces the link", async () => {
     await page.goto("/records/problems/allergies");
+    await settledClick(page, page.getByTestId("add-allergy-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add allergy" });
+    await expect(dialog).toBeVisible();
 
     await settledFill(
       page,
-      page.locator("#allergy-substance-new"),
+      dialog.locator("#allergy-substance-new"),
       LESIONALLERGY_ALLERGY_PICKED
     );
     await settledFill(
       page,
-      page.getByTestId("allergy-reaction-new-0"),
+      dialog.getByTestId("allergy-reaction-new-0"),
       "swelling"
     );
 
     // The new picker: choose the seeded dermatology visit by its shared visit label.
-    const picker = page.getByTestId("allergy-encounter-new");
+    const picker = dialog.getByTestId("allergy-encounter-new");
     await expect(picker).toBeVisible();
     const option = picker.locator("option", {
       hasText: LESIONALLERGY_VISIT_TYPE,
@@ -130,7 +133,7 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
     // exact: the repeatable-reactions fieldset also has an "Add reaction" button.
     await settledClick(
       page,
-      page.getByRole("button", { name: "Add", exact: true })
+      dialog.getByRole("button", { name: "Add", exact: true })
     );
 
     // End state: the freshly recorded allergy reads its visit back through the SAME

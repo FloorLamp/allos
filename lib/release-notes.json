@@ -4,6 +4,27 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1838,
+          "kind": "feature",
+          "issues": [1603],
+          "title": "Fix a whole run of bad data at once",
+          "body": "A miscalibrated scale or an import that landed pounds as kilograms no longer means dozens of row-at-a-time edits. Data → Review grows a \"Fix a run of data\" panel: pick the field, source, and date range, preview every change (with a plain warning that corrected device rows stop receiving sync updates), then apply in one pass — with a 24-hour undo that restores values while leaving anything you edited afterwards alone. The Body weight chart links straight into it with \"Fix a range\"."
+        },
+        {
+          "pr": 1839,
+          "kind": "feature",
+          "issues": [1596],
+          "title": "Workouts and food logging work offline",
+          "body": "The two gym-and-kitchen moments that still needed signal now queue like doses and weigh-ins: a workout session logged entirely offline is captured when you close the editor and syncs on reconnect (exactly once, sets and all), and the one-tap food serving and protein quick-adds queue too. Undo taps stay online-only — removing something you can't see the current total for would be a guess."
+        },
+        {
+          "pr": 1840,
+          "kind": "feature",
+          "issues": [1431],
+          "title": "Merging duplicate activities: pick any copy's value, per field",
+          "body": "When merging duplicate activities that genuinely disagree — say three copies with three distances — the conflict preview now lists every copy's value as a choice per field, pre-selected to the record you're keeping. Change the keeper and the preview re-orients. Works the same on the Review resolver and the Journal's multi-select merge."
+        },
+        {
           "pr": 1835,
           "kind": "feature",
           "issues": [1826],

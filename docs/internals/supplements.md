@@ -128,20 +128,34 @@ treatment — keyed by RxNorm ingredient CUI with a #279 name fallback;
 applied silently — an unconfirmed/empty field means **no notice, ever** (the
 liability line). The tick's `runRedoseNotices` fires the safety-tier one-shot
 (see `docs/internals/notifications.md`: administration-armed, re-arms on the
-next dose, suppressed at the daily max, and DELIBERATELY overnight-capable). An
-administration count that **exceeds** the confirmed max surfaces a
-bus-suppressible **care-tier** finding (`prn-max:<itemId>`, the #148 UL-warning
-shape per-day; count-based, with amount-aware mg accounting a noted follow-up).
-**The PRN safety counters are ingredient-FAMILY-wide (#1027):** the same active
+next dose, suppressed at the daily max, and DELIBERATELY overnight-capable). A
+day that **exceeds** the confirmed max surfaces a bus-suppressible **care-tier**
+finding (`prn-max:<itemId>`, the #148 UL-warning shape per-day).
+**The daily max is amount-aware (#1854, migration 140):** beside
+`max_daily_count`, the med form carries a user-confirmed `max_daily_amount_mg`
+(mg/day, never pre-filled), and the pure `prnDayExposure` (`lib/prn-redose.ts`)
+decides the day's basis — when the mg max is confirmed and EVERY family
+administration's snapshotted amount parses to a mass (`parseAmountMg`), the
+counters compare summed MILLIGRAMS (3 × 800 mg Rx = 2400 mg fires a 1200 mg/day
+ceiling that "3 of 6 doses" would miss, and 6 × 200 mg = 1200 mg stays calm
+under a 2400 mg ceiling a 6-dose count would trip); the confirmed COUNT remains
+the fallback for unparseable amounts, and with a mg max but NO count fallback
+the known sum is judged as an explicit "at least" lower bound. The exposure is
+computed once in `getMedicationFamilyStates` and formatted everywhere —
+`prnOverMaxDetail` (the finding), `exposureFragment` (card / widget / Telegram
+"N of M" line), and the redose notice's at-max suppression — so every surface
+states the basis it actually used and never implies mg precision it doesn't
+have. **The PRN safety counters are ingredient-FAMILY-wide (#1027):** the same active
 ingredient tracked as two items (OTC ibuprofen 200 mg + Rx ibuprofen 800 mg) is
 ONE family (`lib/medication-family.ts`, the #482 identity function — cached #279
 ingredient CUIs first, cleaned-generic-name fallback, no resolution ⇒ own
 family), and the ONE gather `getMedicationFamilyStates`
 (`lib/queries/intake/prn-family.ts`) feeds every counter surface: the redose
 interval clock arms from the FAMILY's latest administration (a sibling's dose
-holds "Redose OK" — the false-GO fix), the day count totals the family, and
-over-max compares the family count against the most conservative confirmed max
-among members (the finding stays keyed `prn-max:<itemId>` on that member). The
+holds "Redose OK" — the false-GO fix), the day exposure totals the family
+(summed mg or count per the basis above), and over-max compares it against the
+most conservative confirmed ceiling among members (the finding stays keyed
+`prn-max:<itemId>` on the member holding the binding max). The
 per-item ONE-SHOT marker semantics are unchanged, and a member with UNCONFIRMED
 fields still gets no notice of its own (the liability line stands) while its
 logged administrations count into a sibling's family math — a logged dose is a

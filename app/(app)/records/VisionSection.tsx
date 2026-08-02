@@ -5,6 +5,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
 import OpticalPrescriptionForm from "@/app/(app)/records/specialty/vision/OpticalPrescriptionForm";
@@ -34,28 +35,30 @@ export default function VisionSection({
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <CreateVisitFromRecord
-            profileId={profileId}
-            offers={createVisitOffersList}
-          />
-          <OpticalProgression
-            items={prescriptions}
-            formatPrefs={getDisplayFormatPrefs(loginId)}
-          />
-          <OpticalPrescriptionList
-            items={prescriptions}
-            today={today(profileId)}
-          />
-        </div>
-
-        <div className="min-w-0 space-y-4">
+      <div className="space-y-6">
+        <AddEntryPanel
+          testId="add-prescription-panel"
+          panelId="add-prescription-panel-body"
+          label="Add prescription"
+          presentation="modal"
+        >
           <OpticalPrescriptionForm action={addOpticalPrescription} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            OD = right eye, OS = left eye.
-          </p>
-        </div>
+        </AddEntryPanel>
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
+        <OpticalProgression
+          items={prescriptions}
+          formatPrefs={getDisplayFormatPrefs(loginId)}
+        />
+        <OpticalPrescriptionList
+          items={prescriptions}
+          today={today(profileId)}
+        />
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+          OD = right eye, OS = left eye.
+        </p>
       </div>
     </ProviderOptionsProvider>
   );

@@ -5,6 +5,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   DENTAL_STATUSES,
   TOOTH_SYSTEMS,
@@ -33,6 +34,7 @@ export default function DentalProcedureForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!record;
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +53,10 @@ export default function DentalProcedureForm({
       return;
     }
     toast(editing ? "Record updated" : "Record saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      closeEntryModal?.();
+    }
     onDone?.();
   }
 
@@ -60,14 +65,9 @@ export default function DentalProcedureForm({
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className="space-y-3"
       data-testid="dental-procedure-form"
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add dental record
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={record!.id} />}
       <div>
         <label className="label" htmlFor={`dp-name-${uid}`}>

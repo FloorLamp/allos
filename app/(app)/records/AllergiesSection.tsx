@@ -10,11 +10,13 @@ import {
   type LinkedEncounterRef,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
-import ListRailLayout from "@/components/ListRailLayout";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
+import { biomarkerViewHref } from "@/lib/hrefs";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
@@ -32,6 +34,10 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
   const profileId = scope.actingProfileId;
   const multi = scope.viewIds.length > 1;
   const view = getAllergiesView(profileId);
+  // Keep corroborating IgE evidence too: `both` is a documented allergy with a
+  // matching positive lab, and splitting the manager from the evidence must not
+  // make that lab result disappear from this surface.
+  const labSensitizations = view.filter((a) => a.origin !== "documented");
   const stored = stampSubjects(
     scope,
     readForProfiles(scope.viewIds, (pid) => getAllergies(pid))
@@ -72,81 +78,85 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
           byProfile: encountersByProfile,
         }}
       >
-        <ListRailLayout
-          listSpacing="space-y-6"
-          rail={
-            <>
-              <AllergyForm action={addAllergy} />
-              <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-                Allergen-specific IgE (RAST/ImmunoCAP) results are surfaced as
-                sensitizations when above range or class ≥ 1; total serum IgE is
-                excluded.
-              </p>
-            </>
-          }
-        >
-          <div className="card">
+        <div className="space-y-6">
+          <AddEntryPanel
+            testId="add-allergy-panel"
+            panelId="add-allergy-panel-body"
+            label="Add allergy"
+            presentation="modal"
+          >
+            <AllergyForm action={addAllergy} />
+          </AddEntryPanel>
+
+          <div>
             <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Known allergies &amp; sensitizations
+              Recorded allergies
             </h3>
-            {view.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                No known allergies recorded. Positive allergen-specific IgE lab
-                results (e.g. “Peanut IgE”) will also appear here — add them
-                under{" "}
-                <Link href="/results/biomarkers" className="underline">
-                  Biomarkers
-                </Link>
-                .
+            <AllergyList
+              items={stored}
+              contraindications={contraindications}
+              recordedAt={recordedAt}
+              multiView={
+                multi ? { actingProfileId: scope.actingProfileId } : undefined
+              }
+            />
+          </div>
+
+          {labSensitizations.length > 0 ? (
+            <div className="card">
+              <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+                Lab sensitizations
+              </h3>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Positive allergen-specific IgE results are evidence of
+                sensitization, not by themselves a documented allergy.
               </p>
-            ) : (
-              <ul className="divide-y divide-black/5 dark:divide-white/5">
-                {view.map((a) => (
-                  <li
-                    key={a.key}
-                    className="flex items-start justify-between gap-4 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-slate-800 dark:text-slate-100">
-                          {a.substance}
-                        </span>
-                        {a.origin !== "documented" && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                            {a.origin === "both" ? "labs confirm" : "from labs"}
-                          </span>
-                        )}
-                      </div>
-                      {(a.severity || a.reaction) && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {[a.severity, a.reaction].filter(Boolean).join(" · ")}
-                        </div>
+              <ul className="space-y-3">
+                {labSensitizations.map((a) => (
+                  <li key={a.key}>
+                    <Link
+                      href={biomarkerViewHref(
+                        a.evidence?.canonicalName,
+                        a.evidence?.marker
                       )}
-                      {a.evidence && (
-                        <div className="text-xs text-slate-400">
-                          {a.evidence.marker}
-                          {a.evidence.value ? ` · ${a.evidence.value}` : ""}
-                          {a.evidence.rastClass != null
-                            ? ` · class ${a.evidence.rastClass}`
-                            : ""}
-                        </div>
-                      )}
+                      className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                      data-testid="lab-sensitization-biomarker-link"
+                    >
+                      {a.substance}
+                    </Link>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {a.evidence?.marker}
+                      {a.evidence?.value ? ` · ${a.evidence.value}` : ""}
+                      {a.evidence?.rastClass != null
+                        ? ` · class ${a.evidence.rastClass}`
+                        : ""}
+                      {a.evidence?.documentId ? (
+                        <>
+                          {" · "}
+                          <SourceDocumentLink
+                            documentId={a.evidence.documentId}
+                            className="text-brand-700 hover:underline dark:text-brand-300"
+                            testId="lab-sensitization-source-link"
+                          >
+                            Source document
+                          </SourceDocumentLink>
+                        </>
+                      ) : null}
                     </div>
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          ) : null}
 
-          {crossReactivity.length > 0 && (
-            <div className="card" data-testid="cross-reactivity">
-              <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-                Cross-reactivity
-              </h3>
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                Allergens on record that are commonly associated with reactions
-                to related substances. Informational reference only — a
-                documented cross-reactivity does not mean you will react.
+          {crossReactivity.length > 0 ? (
+            <details className="card" data-testid="cross-reactivity">
+              <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                Cross-reactivity information
+              </summary>
+              <p className="mb-3 mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Informational reference only. A documented cross-reactivity does
+                not mean you will react.
               </p>
               <ul className="space-y-3">
                 {crossReactivity.map((c) => (
@@ -167,27 +177,17 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            </details>
+          ) : null}
 
-          <div>
-            {/* No "(N)" here (#1449): a count belongs on a COLLAPSED surface, where
-              it says what's hidden (the Visits "Completed & cancelled" summary) —
-              above an always-visible list it just restates the rows below it, and
-              the heading-with-count shape appeared nowhere else in the family. */}
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Recorded allergies
-            </h3>
-            <AllergyList
-              items={stored}
-              contraindications={contraindications}
-              recordedAt={recordedAt}
-              multiView={
-                multi ? { actingProfileId: scope.actingProfileId } : undefined
-              }
-            />
-          </div>
-        </ListRailLayout>
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Lab sensitizations come from{" "}
+            <Link href="/results/biomarkers" className="underline">
+              Biomarkers
+            </Link>
+            ; documented allergies are managed here.
+          </p>
+        </div>
       </EncounterOptionsProvider>
     </ProviderOptionsProvider>
   );

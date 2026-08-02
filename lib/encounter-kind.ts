@@ -79,6 +79,20 @@ export function encounterTypeDisplay(
   return classLabel(classCode) ?? "Visit";
 }
 
+// Fine-grained identity for copy that says "this type of visit". Keep this separate
+// from encounterKind(), whose deliberately coarse buckets make Dental Visit and
+// Office Visit both ambulatory. Whitespace/case normalization lets equivalent source
+// display strings compare without collapsing distinct visit types.
+export function encounterTypeKey(
+  type: string | null | undefined,
+  classCode: string | null | undefined
+): string {
+  return encounterTypeDisplay(type, classCode)
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 // The coarse canonical encounter KIND — a closed set for filtering/grouping. Distinct
 // clinical settings stay apart (exclusion discipline #482): observation is NOT
 // inpatient (distinct admission status), virtual is NOT ambulatory (telehealth vs

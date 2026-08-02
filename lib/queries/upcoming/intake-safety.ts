@@ -123,6 +123,7 @@ import {
   getPrnOverMaxItems,
 } from "../intake";
 import { prnMaxSignalKey } from "../../prn-redose";
+import { prnOverMaxDetail } from "../../redose-format";
 import {
   dietaryLimitSignalKey,
   ulWarningTitle,
@@ -462,22 +463,19 @@ export function dietaryLimitItems(
 // SAME getFindingSuppressions bus as every other finding. Banded to Today (a
 // standing, informational safety note framed "you've logged more than your confirmed
 // daily max" — never prescriptive), and it clears itself at the next date rollover.
-// FAMILY-AWARE (#1027): the count spans the ingredient family (OTC + Rx ibuprofen
-// together) against the most conservative confirmed max; a multi-item family names
-// every member (#531 — label by what the count spans) and stays keyed on the
-// most-conservative member's id.
+// FAMILY-AWARE (#1027): the exposure spans the ingredient family (OTC + Rx
+// ibuprofen together) against the most conservative confirmed ceiling; a
+// multi-item family names every member (#531 — label by what the count spans) and
+// stays keyed on the binding member's id. AMOUNT-AWARE (#1854): when a mg/day max
+// is confirmed and every administration's snapshotted amount parses, the verdict
+// is summed MILLIGRAMS ("2400 mg … max of 1200 mg per day"); the administration
+// count is the fallback basis, and prnOverMaxDetail states whichever was used.
 export function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
   return getPrnOverMaxItems(profileId, today).map((m) => ({
     key: prnMaxSignalKey(m.id),
     domain: "prn-max" as const,
     title: `${m.name} — over your daily max`,
-    detail:
-      (m.memberNames?.length
-        ? `${m.count} logged today across ${m.memberNames.join(" + ")} vs the ` +
-          `most conservative confirmed max of ${m.maxDailyCount}. `
-        : `${m.count} logged today vs your confirmed max of ${m.maxDailyCount}. `) +
-      `Informational — if this looks wrong, adjust the log; if you're in pain, ` +
-      `contact your clinician.`,
+    detail: prnOverMaxDetail(m),
     href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { AiEvent, AiStatus } from "@/lib/ai-log";
 import ScrollFade from "@/components/ScrollFade";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -15,12 +15,23 @@ const STATUS_BADGE: Record<AiStatus, string> = {
 };
 
 // Renders the AI event table and live-streams new events via SSE. Seeded with
-// the server-rendered `initial` events so it works without JS too.
-export default function LogsStream({ initial }: { initial: AiEvent[] }) {
+// the server-rendered `initial` events so it works without JS too. The Clear
+// button mirrors the Errors tab's (#1842): admin-gated server action behind a
+// two-tap confirm; the local table/seen state is reset alongside, because the
+// streamed rows live in client state that a revalidation alone can't empty.
+export default function LogsStream({
+  initial,
+  clearAction,
+}: {
+  initial: AiEvent[];
+  clearAction: () => Promise<void>;
+}) {
   const formatPrefs = useFormatPrefs();
   const [events, setEvents] = useState<AiEvent[]>(initial);
   const [live, setLive] = useState(false);
   const seen = useRef<Set<string>>(new Set(initial.map((e) => e.id)));
+  const [pending, startTransition] = useTransition();
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     const es = new EventSource("/settings/logs/stream");
@@ -50,6 +61,46 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
         />
         {live ? "Live" : "Reconnecting…"}
         <span className="ml-auto">{events.length} events</span>
+        {events.length > 0 &&
+          (confirming ? (
+            <span className="flex items-center gap-2">
+              <span className="text-slate-500 dark:text-slate-400">
+                Clear all?
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  startTransition(async () => {
+                    await clearAction();
+                    setEvents([]);
+                    seen.current.clear();
+                    setConfirming(false);
+                  })
+                }
+                className="btn-danger btn-sm"
+                data-testid="ai-log-clear-confirm"
+              >
+                {pending ? "Clearing…" : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="rounded-md border border-black/10 px-2 py-1 font-medium text-slate-500 hover:text-slate-700 dark:border-white/10 dark:text-slate-400 dark:hover:text-slate-200"
+              data-testid="ai-log-clear"
+            >
+              Clear
+            </button>
+          ))}
       </div>
 
       {events.length === 0 ? (
