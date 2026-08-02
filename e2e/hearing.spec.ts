@@ -5,25 +5,34 @@ import {
   ototoxicWarnings,
   ototoxicWarningRows,
 } from "./intake-warnings-helpers";
+import { followLink, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
-// Hearing / audiology domain (#713 + #717). Two user-visible surfaces the build/
-// typecheck/unit tiers can't prove render:
+// Hearing / audiology domain (#713 + #717 + #1600). The user-visible surfaces the
+// build/typecheck/unit tiers can't prove render:
 //   • the AUDIOGRAM biomarker series (#713) — seeded per-ear/per-frequency pure-tone
 //     thresholds trend on the Biomarkers surface like any other analyte, and a recent
 //     4 kHz reading above the ≤25 dB HL band flags. Read-only over the shared seed
 //     (visibility, never an exact count).
+//   • the HEARING PANE (#1600) — Records › Specialty › Hearing, beside Vision: entering
+//     a hearing test through the real form, seeing it listed with its per-ear average,
+//     and removing it again.
 //   • the OTOTOXIC-medication awareness note (#717) — an active ototoxic medication
 //     surfaces a calm, cited, never-prescriptive note on /medications AND a dismissible
-//     finding on /upcoming.
+//     finding on /upcoming — now CITING the hearing baseline when one is on file (#1600).
 //
 // Fixture discipline (shared seeded DB): this spec OWNS its rows — one uniquely-named
-// active aminoglycoside medication for profile 1 — seeded via a raw connection and
-// cleaned up in beforeAll AND afterAll so it's idempotent across retries and never
-// touches seeded rows. Locators are scoped to the specific row.
+// active aminoglycoside medication for profile 1, plus one audiogram on a marker date no
+// seed row uses — seeded/removed via a raw connection and cleaned up in beforeAll AND
+// afterAll so it's idempotent across retries and never touches seeded rows. Locators are
+// scoped to the specific row.
 
 const MED = "E2E Ototoxic Gentamicin"; // tokenizes to contain the "gentamicin" synonym
 const MED_PREFIX = "E2E Ototoxic";
+// A fixed historical date this spec owns outright. Fixed (not frozenNow-relative) on
+// purpose: it is only ever compared to itself, so it is week-mode- and clock-agnostic,
+// and it can't collide with the seed's relative audiogram dates.
+const AUDIOGRAM_DATE = "2019-03-05";
 
 function dbPath(): string {
   return workerDbPath();
@@ -44,6 +53,13 @@ function cleanup(): void {
     db.prepare("DELETE FROM intake_items WHERE name LIKE ?").run(
       `${MED_PREFIX}%`
     );
+    // The audiogram this spec enters through the form (#1600) — keyed on its marker
+    // date so the seed's own audiograms are never touched.
+    db.prepare(
+      `DELETE FROM medical_records
+        WHERE profile_id = 1 AND date = ?
+          AND canonical_name LIKE 'Hearing Threshold,%'`
+    ).run(AUDIOGRAM_DATE);
   } finally {
     db.close();
   }
@@ -63,7 +79,7 @@ function seed(): void {
   }
 }
 
-test.describe("Hearing / audiology (#713, #717)", () => {
+test.describe("Hearing / audiology (#713, #717, #1600)", () => {
   test.beforeAll(() => {
     cleanup();
     seed();
@@ -99,6 +115,70 @@ test.describe("Hearing / audiology (#713, #717)", () => {
     // Informational, cited, never prescriptive.
     await expect(row).toContainText("discuss");
     await expect(row).toContainText("Source:");
+    // #1600 — the payoff: the note now cites the profile's hearing baseline, and the
+    // seeded pair of audiograms (a widening 4/8 kHz noise notch) is a documented
+    // threshold shift, so the note can finally state the conjunction. Presence-only
+    // over the shared seed — never an exact value.
+    await expect(row).toContainText("Hearing baseline on file");
+    await expect(row).toContainText("documented threshold shift");
+  });
+
+  test("records a hearing test on Records › Specialty › Hearing and removes it again (#1600)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // Reach the pane the way a person does: from a sibling Specialty pane's sub-tab.
+    await page.goto("/records/specialty/skin");
+    await followLink(
+      page,
+      page.getByTestId("records-sub-tabs").getByRole("link", {
+        name: "Hearing",
+        exact: true,
+      }),
+      /\/records\/specialty\/hearing$/
+    );
+    await expect(page.getByTestId("records-hearing")).toBeVisible();
+
+    await page.getByTestId("add-audiogram-panel-toggle").click();
+    const form = page.getByTestId("audiogram-form");
+    await expect(form).toBeVisible();
+
+    await form.getByLabel("Test date").fill(AUDIOGRAM_DATE);
+    // The DateField's calendar popup overlays the submit button; Escape is its
+    // documented close (the optical-prescription spec does the same).
+    await page.keyboard.press("Escape");
+    // A clean baseline audiogram: both ears well inside the ≤25 dB HL normal band.
+    await form.locator('input[name="right_500"]').fill("5");
+    await form.locator('input[name="right_1000"]').fill("10");
+    await form.locator('input[name="right_2000"]').fill("10");
+    await form.locator('input[name="right_4000"]').fill("15");
+    await form.locator('input[name="left_1000"]').fill("10");
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Add", exact: true })
+    );
+
+    // It lists as ONE dated hearing test with its per-ear average — the readings are
+    // twelve-analytes-wide underneath, but the surface speaks in audiograms.
+    const card = page.getByTestId(`audiogram-${AUDIOGRAM_DATE}`);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card).toContainText("15 dB HL");
+    await expect(
+      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-right`)
+    ).toContainText("10 dB HL");
+    // A frequency left blank stays "not tested", never a fabricated 0.
+    await expect(
+      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-left`)
+    ).toContainText("10 dB HL");
+
+    // Confirm-first removal, scoped to this card (every audiogram row has a Delete).
+    await card.getByRole("button", { name: "Delete", exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
   });
 
   test("the ototoxic finding surfaces on Upcoming (#717)", async ({ page }) => {

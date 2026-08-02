@@ -260,10 +260,11 @@ test("known-minor: the substance-use section + its jump-link are absent, and the
       subTabs.getByRole("link", { name: "Mental health" })
     ).toBeVisible();
 
-    // A direct URL re-gates server-side to the first visible pane (Skin) — the
-    // section never renders for a minor.
+    // A direct URL re-gates server-side to the FIRST VISIBLE pane — the section never
+    // renders for a minor. That pane is Hearing since #1600 (ungated, ahead of Skin);
+    // the route computes it from the shared gated list rather than naming a sibling.
     await page.goto("/records/specialty/substance-use");
-    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await expect(page).toHaveURL(/\/records\/specialty\/hearing$/);
     await expect(page.getByTestId("records-substance-use")).toHaveCount(0);
   } finally {
     await page.context().close();
