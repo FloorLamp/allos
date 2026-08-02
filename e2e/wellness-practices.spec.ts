@@ -137,6 +137,11 @@ test("the command palette preserves the first-practice creation path (#1620)", a
 test("practice edits reject invalid cadence and logs-only name collisions (#1618/#1619)", async ({
   page,
 }) => {
+  // The double-create sequence carries a declared 45s post-create ceiling (below),
+  // which exceeds the default 30s TEST budget — without slow(), the test times out
+  // at 30s before the ceiling can do its job (exactly what shard 4 kept showing:
+  // "Test timeout of 30000ms exceeded" at 30.1s). 2026-08-02, #1556 census.
+  test.slow();
   const suffix = frozenNow().getTime();
   const trackedName = `E2E Cadence ${suffix}`;
   const historyName = `E2E History ${suffix}`;
