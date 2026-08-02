@@ -348,13 +348,17 @@ export function detectThresholdShift(
       continue;
     }
 
-    // (b) ≥ 10 dB at two ADJACENT tested frequencies — the first such pair on the
-    // ladder, which keeps the result deterministic.
+    // (b) ≥ 10 dB at two ADJACENT frequencies — the first such pair on the ladder,
+    // which keeps the result deterministic. Adjacency is over the STANDARD LADDER, not
+    // over "the frequencies this audiogram happened to test": a screening audiogram
+    // that skips 2 kHz must not make 1 kHz and 4 kHz count as neighbours, because two
+    // octaves apart is a different (weaker) claim than the criterion makes. The
+    // conservative reading — a pair that skips a rung simply doesn't qualify.
     let pair: [(typeof deltas)[number], (typeof deltas)[number]] | null = null;
-    for (let i = 0; i + 1 < deltas.length; i++) {
-      const a = deltas[i];
-      const b = deltas[i + 1];
-      if (a.delta >= 10 && b.delta >= 10) {
+    for (let i = 0; i + 1 < AUDIOGRAM_FREQUENCIES_HZ.length; i++) {
+      const a = deltas.find((d) => d.hz === AUDIOGRAM_FREQUENCIES_HZ[i]);
+      const b = deltas.find((d) => d.hz === AUDIOGRAM_FREQUENCIES_HZ[i + 1]);
+      if (a && b && a.delta >= 10 && b.delta >= 10) {
         pair = [a, b];
         break;
       }
