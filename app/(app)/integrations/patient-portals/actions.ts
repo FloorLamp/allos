@@ -17,9 +17,10 @@
 //     session, refuses in demo mode, asserts the caller can REACH the target, and asserts
 //     WRITE on it — in that order, because accessForProfile assumes reachability.
 //
-//   requireAnyProfileWriteAccess()  — the PENDING LIST's non-routing actions (ignore,
-//     dismiss). See its definition for why it exists and what it deliberately does not
-//     assert.
+//   requireAnyProfileWriteAccess()  — the PENDING LIST's low-stakes non-routing actions
+//     (dismiss, request-sync). See its definition for why it exists and what it
+//     deliberately does not assert. Durable IGNORE left this tier by #1875's ruling —
+//     it is admin-only now, because it silently breaks another login's future imports.
 //
 // The lib/portals.ts cores are auth-blind by house rule; every gate lives here.
 
@@ -42,7 +43,10 @@ import {
   ignorePortalIdentity,
   pendingIdentity,
   portalIdentityState,
+  remapPortalIdentity,
   renamePortal,
+  renamePortalAccount,
+  setPortalSoftware,
   unbindPortalIdentity,
   unignorePortalIdentity,
 } from "@/lib/portals";
@@ -52,21 +56,23 @@ export type PortalActionResult = { ok: true } | { ok: false; error: string };
 
 const CARD = "/integrations/patient-portals";
 
-// The gate for pending-list actions that route NOTHING: ignoring a patient label and
-// dismissing a prompt. Neither names a profile, so requireProfileWriteAccess has no
-// target, and requireWriteAccess would assert the wrong thing (the session's ACTIVE
-// profile, which is unrelated to a portal login).
+// The gate for the LOW-STAKES actions that route nothing and durably change nothing:
+// dismissing a pending prompt ("Not now", self-expiring) and raising a sync request.
+// Neither names a profile, so requireProfileWriteAccess has no target, and
+// requireWriteAccess would assert the wrong thing (the session's ACTIVE profile, which
+// is unrelated to a portal login).
 //
-// What it asserts instead is the honest minimum: this login could act on the pending list
-// at all — it holds WRITE on at least one profile, i.e. it is in the same population the
-// bind picker already serves. A caregiver who can write nowhere cannot silence a portal
-// identity, and neither can a read-only viewer.
+// What it asserts is the honest minimum: this login could act on the pending list at
+// all — it holds WRITE on at least one profile, i.e. it is in the same population the
+// bind picker already serves. A caregiver who can write nowhere cannot clear a portal
+// prompt, and neither can a read-only viewer.
 //
-// This is the gate the OWNER chose when they made the pending list member-visible. The
-// earlier admin-only reasoning — a pending row has no profile, so there is no accessible
-// set to filter a stranger's portal-spelled name through — remains factually true; the
-// exposure of portal-spelled patient labels to non-admin members WITH WRITE ACCESS is an
-// accepted trade, not an oversight. Do not "restore" the admin gate on that reasoning.
+// Durable IGNORE used to take this gate too; #1875 moved it to requireAdmin() — an
+// ignore permanently refuses a patient on a login that may belong to another household
+// member, which no any-profile grant can stand in for. The pending list's VISIBILITY is
+// likewise no longer "any writer sees everything": the page reads it through
+// lib/portal-visibility.ts's scoped reader, so a member only meets pendings on logins
+// already claimed by a profile they can access.
 async function requireAnyProfileWriteAccess(): Promise<void> {
   const session = await requireSession();
   if (isDemoRestricted(isDemoMode(), session.login.role)) {
@@ -117,6 +123,23 @@ export async function renamePortalAction(
   return { ok: true };
 }
 
+// Edit a portal's software tag after creation (#1836). Display metadata plus a
+// tool-side sanity check — never identity — so it takes the registry gate and touches
+// nothing a tool config quotes.
+export async function editPortalSoftwareAction(
+  formData: FormData
+): Promise<PortalActionResult> {
+  await requireAdmin();
+  const id = Number(formData.get("portal_id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: "Unknown portal." };
+  }
+  const r = setPortalSoftware(id, String(formData.get("software") ?? ""));
+  if (!r.ok) return { ok: false, error: r.error };
+  revalidatePath(CARD);
+  return { ok: true };
+}
+
 export async function removePortalAction(
   formData: FormData
 ): Promise<PortalActionResult> {
@@ -144,6 +167,24 @@ export async function addAccountAction(
   // A NICKNAME for which login this is ("Mom"), never a username and never a credential.
   // createPortalAccount mints the slug and refuses address-shaped text.
   const r = createPortalAccount(portalId, String(formData.get("name") ?? ""));
+  if (!r.ok) return { ok: false, error: r.error };
+  revalidatePath(CARD);
+  return { ok: true };
+}
+
+// Rename a login (#1836). Registry maintenance, so it takes the registry gate; the slug
+// every tool config quotes is untouched. Validation lives in the core — the ONE
+// login-name rule (#1829): an email-shaped name is VALID, every other address shape is
+// refused with ACCOUNT_NAME_ERROR.
+export async function renameAccountAction(
+  formData: FormData
+): Promise<PortalActionResult> {
+  await requireAdmin();
+  const id = Number(formData.get("account_id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: "Unknown login." };
+  }
+  const r = renamePortalAccount(id, String(formData.get("name") ?? ""));
   if (!r.ok) return { ok: false, error: r.error };
   revalidatePath(CARD);
   return { ok: true };
@@ -244,6 +285,58 @@ export async function unbindIdentityAction(
   return { ok: true };
 }
 
+// Atomically re-point a bound patient label at a different profile (#1836) — the
+// "Change profile" behind tapping a mapped row's avatar chip.
+//
+// TWO gates, because the transition touches two profiles: write on the profile the
+// binding CURRENTLY points at (records are being routed away from it) and write on the
+// TARGET (records are being routed onto it) — the same discipline unbind and bind each
+// take for their half. The current owner is resolved server-side, never trusted from
+// the post (#1747); the client's `expected_profile_id` is compared against it so a row
+// that changed under a stale screen is refused rather than silently overwritten. The
+// write itself is remapPortalIdentity's single compare-and-swap — never
+// unmap-then-rebind, so there is no window where the label is unmapped and a
+// companion-tool upload could be refused mid-edit.
+export async function remapIdentityAction(
+  formData: FormData
+): Promise<PortalActionResult> {
+  const id = Number(formData.get("identity_id"));
+  const expectedProfileId = Number(formData.get("expected_profile_id"));
+  const newProfileId = Number(formData.get("profile_id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: "Unknown mapping." };
+  }
+  if (!Number.isInteger(newProfileId) || newProfileId <= 0) {
+    return { ok: false, error: "Choose a profile." };
+  }
+  const state = portalIdentityState(id);
+  if (!state || state.ignored || state.profileId === null) {
+    return { ok: false, error: "That mapping is already gone." };
+  }
+  if (
+    !Number.isInteger(expectedProfileId) ||
+    state.profileId !== expectedProfileId
+  ) {
+    return {
+      ok: false,
+      error: "This mapping changed while you were editing — check it again.",
+    };
+  }
+  await requireProfileWriteAccess(state.profileId);
+  await requireProfileWriteAccess(newProfileId);
+
+  if (!remapPortalIdentity(id, state.profileId, newProfileId)) {
+    // The CAS matched nothing: a concurrent write re-pointed or removed the row between
+    // the resolve above and this statement.
+    return {
+      ok: false,
+      error: "This mapping changed while you were editing — check it again.",
+    };
+  }
+  revalidatePath(CARD);
+  return { ok: true };
+}
+
 // ── Pending (refused and discovered) identities ──────────────────────────────
 //
 // A pending row is an identity allos could not place — either refused at upload/report
@@ -253,9 +346,11 @@ export async function unbindIdentityAction(
 //
 //   binding one  → requireProfileWriteAccess(TARGET). It IS that write; the pending row
 //                  only supplies the (login, label) the caller would otherwise retype.
-//   ignoring one → requireAnyProfileWriteAccess(). It routes nothing, and writes a
-//                  binding that deliberately points nowhere.
-//   dismissing   → requireAnyProfileWriteAccess(). It clears a prompt and nothing else.
+//   ignoring one → requireAdmin() (#1875). It writes a DURABLE refused binding that
+//                  silently breaks another login's future imports, so the coarse
+//                  any-writer gate was never enough for it.
+//   dismissing   → requireAnyProfileWriteAccess(). It clears a prompt and nothing else,
+//                  and it expires on its own — the low-stakes half.
 
 // One-tap mapping straight off the card (#1739). The (login, label) come from the PENDING
 // ROW, resolved server-side — the client names which pending row and which profile, never
@@ -295,10 +390,17 @@ export async function bindPendingIdentityAction(
 // "Not ever" — a real person on the portal whose records belong somewhere else. Writes a
 // durable IGNORED binding (no profile, by CHECK), so the identity stops being pending and
 // stays that way, and every future upload for it is refused exactly like an unknown one.
+//
+// ADMIN-ONLY (#1875, owner-ruled). An ignore is durable and names no profile, so no
+// per-profile grant can stand in for the gate — and under the old any-writer gate a
+// member with write access to one child profile could permanently refuse a pending
+// belonging to another adult's login, silently breaking that person's future imports.
+// The UI states the gate too (the Ignore verb only renders for admins); "Not now"
+// (dismiss, below) stays any-writer because it is self-expiring and low-stakes.
 export async function ignorePendingIdentityAction(
   formData: FormData
 ): Promise<PortalActionResult> {
-  await requireAnyProfileWriteAccess();
+  await requireAdmin();
   const pendingId = Number(formData.get("pending_id"));
   if (!Number.isInteger(pendingId) || pendingId <= 0) {
     return { ok: false, error: "Unknown pending patient." };
