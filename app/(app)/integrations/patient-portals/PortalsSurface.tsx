@@ -1566,7 +1566,9 @@ export default function PortalsSurface({
         </p>
       )}
 
-      {!showGuide && checklistStrip()}
+      {/* The strip needs structure to sit above: a member with no covering login gets
+          the promise below, never a checklist for steps they cannot take. */}
+      {portals.length > 0 && !showGuide && checklistStrip()}
 
       {portals.map((p) => portalSection(p))}
 
