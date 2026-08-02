@@ -140,7 +140,7 @@ test("record tables keep md-only columns hidden at the sm breakpoint", async ({
   await expect(onsetCell).toBeVisible();
 });
 
-test("document-backed records expose one explicit source link on mobile", async ({
+test("document-backed records avoid duplicate source links on mobile", async ({
   page,
 }) => {
   await page.goto("/records/problems/conditions");
@@ -154,12 +154,14 @@ test("document-backed records expose one explicit source link on mobile", async 
 
   await page.goto("/records/history/visits");
   const visit = page.locator("tr").filter({ hasText: "E2E Browser Visit" });
+  // Visits deliberately omit provenance from the compact table. The visit title
+  // links to the encounter detail, where its source document remains available.
   await expect(visit.getByTestId("source-document-link")).toHaveCount(0);
-  await expect(visit.getByTestId("record-provenance-link")).toHaveAttribute(
-    "href",
-    "/import/908"
-  );
-  await expect(visit.locator('a[href="/import/908"]')).toHaveCount(1);
+  await expect(visit.getByTestId("record-provenance-link")).toHaveCount(0);
+  await expect(visit.locator('a[href="/import/908"]')).toHaveCount(0);
+  await expect(
+    visit.getByRole("link", { name: "E2E Browser Visit" })
+  ).toBeVisible();
 
   await page.goto("/records/history/immunizations");
   await hydratedClick(page, page.getByText("All recorded doses"));

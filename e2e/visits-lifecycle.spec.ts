@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The appointment → encounter lifecycle on the merged Visits page (issue #288):
@@ -36,12 +36,14 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     const upcoming = page.getByTestId("visits-upcoming");
     await expect(upcoming).toBeVisible();
 
-    // Book an appointment in the Upcoming section (date defaults to today, so the
-    // row is scheduled and actionable). Scope every field to the booking form.
-    await upcoming.getByLabel("Reason / title").fill(MARKER);
-    await upcoming.getByLabel("Kind (optional)").selectOption("physical");
-    await upcoming.getByLabel("Provider").fill("E2E Lifecycle Clinic");
-    await upcoming.getByRole("button", { name: "Add", exact: true }).click();
+    // Book through the shared Add visit modal (date defaults to today, so the row
+    // is scheduled and actionable).
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const visitDialog = page.getByRole("dialog", { name: "Add visit" });
+    await visitDialog.getByLabel("Reason / title").fill(MARKER);
+    await visitDialog.getByLabel("Kind (optional)").selectOption("physical");
+    await visitDialog.getByLabel("Provider").fill("E2E Lifecycle Clinic");
+    await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
     // Complete the just-booked appointment. Its row carries the Mark-completed

@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 // #474: a silent-return validation guard + a trusting form used to produce a false
 // "Saved ✓" toast over lost data. The ImmunizationForm's vaccine Combobox has no
 // client-side required check, so submitting it blank hit updateImmunization/
@@ -10,10 +11,11 @@ test("submitting the immunization form with a blank vaccine shows an inline erro
   page,
 }) => {
   await page.goto("/records/history/immunizations");
+  await hydratedClick(page, page.getByTestId("add-immunization-panel-toggle"));
 
   const form = page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "Add immunization" }) });
+    .getByRole("dialog", { name: "Add immunization" })
+    .locator("form");
   await expect(form).toBeVisible();
 
   // The date field is pre-filled (defaultDate), so it passes; the vaccine combobox

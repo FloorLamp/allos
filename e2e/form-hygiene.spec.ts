@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { hydratedClick } from "./helpers";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
 // Three things the census found and this pins:
@@ -143,10 +144,13 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
   page,
 }) => {
   await page.goto("/records/history/visits");
+  await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
 
   // The appointment Date field is the site the census captured as
   // "Friday, July 2‹" at BOTH widths.
-  const dateField = page.locator('input[id^="appt-date-"]').first(); // first-ok: the appointment form renders one date field; scoping by its id prefix, order-agnostic
+  const dateField = page
+    .getByRole("dialog", { name: "Add visit" })
+    .locator('input[id^="appt-date-"]');
   await expect(dateField).toBeVisible();
 
   // A December date is the widest the short form gets. DateField submits the ISO
