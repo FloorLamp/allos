@@ -28,6 +28,8 @@ function goal(overrides: Partial<Goal>): Goal {
     target_duration_sec: null,
     body_metric: null,
     baseline_value: null,
+    biomarker_name: null,
+    target_direction: null,
     archived: 0,
     ...overrides,
   };

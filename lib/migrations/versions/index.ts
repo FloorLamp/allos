@@ -144,6 +144,7 @@ import { migration as m142 } from "./142-trend-views-cleanup";
 import { migration as m143 } from "./143-portal-software-open-enum";
 import { migration as m144 } from "./144-condition-laterality-severity";
 import { migration as m145 } from "./145-family-history-death-lineage";
+import { migration as m147 } from "./147-goal-biomarker-target";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -297,4 +298,5 @@ export const MIGRATIONS: Migration[] = [
   m143,
   m144,
   m145,
+  m147,
 ];
