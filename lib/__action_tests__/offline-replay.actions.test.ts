@@ -16,8 +16,14 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { POST } from "@/app/api/offline-replay/route";
 import { createLogin, createProfile, actAs } from "./harness";
-import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import {
+  shiftDateStr,
+  utcSqlString,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
+import { isCompletedSessionRow } from "@/lib/workout-presence";
 import {
   STALE_QUEUED_DOSE_REASON,
   type QueuedIntent,
@@ -583,6 +589,87 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     });
     expect((await replay([intent])).body.results?.[0].status).toBe("done");
     expect(activityRows(profile.id, title)[0].date).toBe(captured);
+  });
+
+  it("replays as a COMPLETED session — never the live-draft signature the dock resurrects", async () => {
+    // The create form defaults start_time to the open moment, and an
+    // offline-abandoned session has no end and no duration. Replayed verbatim
+    // that is the live-draft signature (started, unended, duration-less):
+    // workout presence (#921) would read the row as an ACTIVE workout at
+    // reconnect and the app-wide dock + stale-workout nag would haunt every
+    // page for up to 90 minutes (observed as cross-spec dock contamination on
+    // CI). The replay must stamp the CAPTURE instant — the moment the editor
+    // closed — as the end, in the profile's timezone.
+    const admin = createLogin();
+    const profile = createProfile(`SetCompleted ${uniqueKey()}`);
+    actAs(admin, profile);
+    // Yesterday, so the intent's capturedAt (`${date}T18:05:00.000Z`) is always
+    // in the past — resolveCapturedInstant refuses a future capture instant.
+    const date = shiftDateStr(today(profile.id), -1);
+    const title = `Abandoned offline ${uniqueKey()}`;
+    const intent = setIntent(profile.id, title, date, { start_time: "13:15" });
+    // capturedAt is the close moment (setIntent stamps `${date}T18:05:00.000Z`).
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+
+    const row = db
+      .prepare(
+        `SELECT start_time, end_time, duration_min FROM activities
+          WHERE profile_id = ? AND title = ?`
+      )
+      .get(profile.id, title) as {
+      start_time: string | null;
+      end_time: string | null;
+      duration_min: number | null;
+    };
+    expect(row.start_time).toBe("13:15");
+    // The end is the capturedAt instant's wall clock in the profile's timezone.
+    const expectedEnd = zonedDateParts(
+      getTimezone(profile.id),
+      new Date(`${date}T18:05:00.000Z`)
+    ).hhmm;
+    expect(row.end_time).toBe(expectedEnd);
+    // The ONE shared answer to "is this row finished?" (#221) — the same
+    // predicate the presence matrix and the post-workout dispatch consult.
+    expect(isCompletedSessionRow(row)).toBe(true);
+  });
+
+  it("leaves a captured end time / duration untouched — the stamp is a fallback, not a rewrite", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SetEndKept ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+
+    // An explicit end survives verbatim.
+    const ended = `Ended offline ${uniqueKey()}`;
+    await replay([
+      setIntent(profile.id, ended, date, {
+        start_time: "13:15",
+        end_time: "13:58",
+      }),
+    ]);
+    const endedRow = db
+      .prepare(
+        "SELECT end_time FROM activities WHERE profile_id = ? AND title = ?"
+      )
+      .get(profile.id, ended) as { end_time: string | null };
+    expect(endedRow.end_time).toBe("13:58");
+
+    // A start-less capture (an untimed retroactive log) is already completed —
+    // no end is invented for it.
+    const untimed = `Untimed offline ${uniqueKey()}`;
+    await replay([setIntent(profile.id, untimed, date)]);
+    const untimedRow = db
+      .prepare(
+        "SELECT start_time, end_time, duration_min FROM activities WHERE profile_id = ? AND title = ?"
+      )
+      .get(profile.id, untimed) as {
+      start_time: string | null;
+      end_time: string | null;
+      duration_min: number | null;
+    };
+    expect(untimedRow.start_time).toBeNull();
+    expect(untimedRow.end_time).toBeNull();
+    expect(isCompletedSessionRow(untimedRow)).toBe(true);
   });
 
   it("dead-letters an invalid payload with the typed reason — never a silent drop", async () => {
