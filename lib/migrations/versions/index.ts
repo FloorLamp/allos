@@ -138,6 +138,7 @@ import { migration as m136 } from "./136-clinical-content-key";
 import { migration as m137 } from "./137-episode-stopped-med-snapshot";
 import { migration as m138 } from "./138-document-coverage-markers";
 import { migration as m139 } from "./139-notify-message-title";
+import { migration as m140 } from "./140-prn-max-daily-mg";
 import { migration as m141 } from "./141-followup-settle";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -286,5 +287,6 @@ export const MIGRATIONS: Migration[] = [
   m137,
   m138,
   m139,
+  m140,
   m141,
 ];

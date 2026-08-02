@@ -51,6 +51,7 @@ function supp(
     rx: 0,
     min_interval_hours: null,
     max_daily_count: null,
+    max_daily_amount_mg: null,
     redose_notice: 0,
     rxcui: null,
     rxcui_ingredients: null,

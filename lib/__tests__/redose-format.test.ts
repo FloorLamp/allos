@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   countFragment,
+  exposureFragment,
+  mgLabel,
+  prnOverMaxDetail,
   hoursLabel,
   prnLogAnswerText,
   prnQuickLogLabel,
@@ -9,6 +12,7 @@ import {
   redoseNoticeMessage,
 } from "@/lib/redose-format";
 import type { RedoseStatus } from "@/lib/prn-redose";
+import { prnDayExposure } from "@/lib/prn-redose";
 
 describe("redoseNoticeMessage", () => {
   it("renders the issue's example phrasing", () => {
@@ -86,6 +90,7 @@ describe("redoseCardLabel", () => {
     maxDailyCount: 4,
     sinceHours: 3,
     opensInHours: 3,
+    exposure: null,
     ...over,
   });
 
@@ -176,6 +181,7 @@ describe("prnQuickLogLabel (#1717)", () => {
     maxDailyCount: 4,
     sinceHours: 7,
     opensInHours: 0,
+    exposure: null,
     ...over,
   });
 
@@ -276,6 +282,7 @@ describe("prnLogAnswerText (#1717)", () => {
           maxDailyCount: 4,
           sinceHours: 0,
           opensInHours: 6,
+          exposure: null,
         },
         1
       )
@@ -296,5 +303,141 @@ describe("prnLogAnswerText (#1717)", () => {
     expect(prnLogAnswerText("Logged ✅ Tylenol", true, null)).toBe(
       "Logged ✅ Tylenol"
     );
+  });
+});
+
+// ---- Amount-aware fragments + the over-max finding copy (#1854) -------------
+
+describe("exposureFragment (#1854)", () => {
+  it("reads milligrams on the mg basis", () => {
+    expect(
+      exposureFragment(
+        prnDayExposure({
+          amounts: ["800 mg", "400 mg"],
+          maxDailyAmountMg: 2400,
+          maxDailyCount: 6,
+        }),
+        2,
+        6
+      )
+    ).toBe("1200 of 2400 mg today");
+  });
+
+  it("says 'at least' on the mg lower bound — never full precision it doesn't have", () => {
+    expect(
+      exposureFragment(
+        prnDayExposure({
+          amounts: ["800 mg", "1 tablet"],
+          maxDailyAmountMg: 1200,
+          maxDailyCount: null,
+        }),
+        2,
+        null
+      )
+    ).toBe("at least 800 of 1200 mg today");
+  });
+
+  it("falls back to the plain count fragment on the count basis and with no exposure", () => {
+    expect(
+      exposureFragment(
+        prnDayExposure({
+          amounts: ["800 mg", "1 tablet"],
+          maxDailyAmountMg: 1200,
+          maxDailyCount: 4,
+        }),
+        2,
+        4
+      )
+    ).toBe("2 of 4 today");
+    expect(exposureFragment(null, 2, 4)).toBe("2 of 4 today");
+    expect(exposureFragment(null, 2, null)).toBe("2 today");
+  });
+});
+
+describe("mgLabel", () => {
+  it("keeps at most one decimal and drops trailing zeros", () => {
+    expect(mgLabel(2400)).toBe("2400");
+    expect(mgLabel(0.5)).toBe("0.5");
+    expect(mgLabel(333.333)).toBe("333.3");
+  });
+});
+
+describe("redoseCardLabel × exposure (#1854)", () => {
+  it("the card's Max reached verdict and fragment both follow the mg basis", () => {
+    const exposure = prnDayExposure({
+      amounts: ["800 mg", "800 mg", "800 mg"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: 6,
+    });
+    const s: RedoseStatus = {
+      open: true,
+      atMax: exposure!.atMax,
+      countToday: 3,
+      maxDailyCount: 6,
+      sinceHours: 7,
+      opensInHours: 0,
+      exposure,
+    };
+    expect(redoseCardLabel(s, 2)).toBe(
+      "Max reached · 2400 of 1200 mg today across 2 items"
+    );
+  });
+});
+
+describe("prnOverMaxDetail (#1854)", () => {
+  it("mg basis, family: milligrams stated, members named, ceiling in mg/day", () => {
+    const d = prnOverMaxDetail({
+      basis: "mg",
+      total: 2400,
+      max: 1200,
+      unknownAmounts: 0,
+      memberNames: ["Ibuprofen", "Ibuprofen 800 mg"],
+    });
+    expect(d).toContain("2400 mg logged today");
+    expect(d).toContain("summed from your logged dose amounts");
+    expect(d).toContain("across Ibuprofen + Ibuprofen 800 mg");
+    expect(d).toContain("most conservative confirmed max of 1200 mg per day");
+    expect(d).toContain("Informational");
+  });
+
+  it("mg lower bound reads 'At least' and counts the amount-less doses", () => {
+    const d = prnOverMaxDetail({
+      basis: "mg",
+      total: 1600,
+      max: 1200,
+      unknownAmounts: 2,
+    });
+    expect(d).toContain("At least 1600 mg logged today");
+    expect(d).toContain("(2 doses had no recorded amount)");
+    expect(d).not.toContain("summed from");
+  });
+
+  it("count basis states doses — never implying mg precision", () => {
+    const d = prnOverMaxDetail({
+      basis: "count",
+      total: 5,
+      max: 4,
+      unknownAmounts: 0,
+    });
+    expect(d).toContain(
+      "5 doses logged today vs your confirmed max of 4 per day"
+    );
+    expect(d).not.toContain("mg");
+  });
+
+  it("the notice body phrases the same mg basis (one computation)", () => {
+    const m = redoseNoticeMessage({
+      name: "Ibuprofen",
+      sinceHours: 6,
+      lastClock: "4:02pm",
+      countToday: 1,
+      maxDailyCount: 6,
+      exposure: prnDayExposure({
+        amounts: ["800 mg"],
+        maxDailyAmountMg: 2400,
+        maxDailyCount: 6,
+      }),
+    });
+    expect(m.body).toContain("800 of 2400 mg today");
   });
 });
