@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { settledClick } from "./helpers";
+import { hydratedClick } from "./helpers";
 
 // Amount-aware PRN max-dose accounting (issue #1854). The family-wide counters
 // (#1027) made "a dose" span a 4× strength range — 200 mg OTC ibuprofen and 800 mg
@@ -178,9 +178,13 @@ test("the mg/day max round-trips through the medication edit form", async ({
     // The stored ceiling is loaded beside the count max…
     await expect(mgInput).toHaveValue("1200");
     await expect(form.getByTestId("redose-max")).toHaveValue("6");
-    // …and an edit persists.
+    // …and an edit persists. The card fires other POSTs while the form is open
+    // (RxNorm resolution), so "the save settled" is asserted by ITS OWN UI
+    // signal — a successful action closes the edit form (onDone) — rather than
+    // by the first same-origin POST response.
     await mgInput.fill("2400");
-    await settledClick(page, form.getByRole("button", { name: "Save" }));
+    await hydratedClick(page, form.getByRole("button", { name: "Save" }));
+    await expect(mgInput).toBeHidden({ timeout: 20_000 });
 
     await page.goto(`/medications/${otcId}?action=edit`);
     await expect(page.getByTestId("redose-max-mg")).toHaveValue("2400");
