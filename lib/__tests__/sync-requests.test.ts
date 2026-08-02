@@ -361,6 +361,71 @@ describe("copy — one formatter, so every surface phrases it identically", () =
       expect(text).not.toContain("://");
     }
   });
+
+  // ── ONE OPTIONAL CLAUSE, NOT A SECOND FORMATTER (#1889) ──
+  //
+  // A failed unattended run leaves the request open (nobody acted) and is exactly the
+  // information the person-channel copy wants: the machine tried, so tell the human why
+  // it is their turn. It composes onto the SAME sentence every surface already shares.
+
+  it("says nothing extra when nothing has tried", () => {
+    const plain = syncRequestCopy({ ...ochsner, reason: "manual" });
+    const explicit = syncRequestCopy({
+      ...ochsner,
+      reason: "manual",
+      unattendedFailure: null,
+    });
+    expect(explicit.detail).toBe(plain.detail);
+  });
+
+  it("carries the last unattended failure reason, and names the person's move", () => {
+    const c = syncRequestCopy({
+      ...ochsner,
+      reason: "post-visit",
+      visitSubject: "Riley",
+      unattendedFailure: { message: "passkey prompt" },
+    });
+    expect(c.detail).toBe(
+      "Riley's visit just happened — the portal likely has new results. Run the portal tool on the computer with Mom's login. " +
+        "The scheduled run couldn't finish (passkey prompt) — someone needs to go to the machine."
+    );
+  });
+
+  it("adds the clause to every reason, on the one formatter", () => {
+    for (const reason of SYNC_REQUEST_REASONS) {
+      const c = syncRequestCopy({
+        ...ochsner,
+        reason,
+        daysSinceChecked: 30,
+        unattendedFailure: { message: "the portal asked for a code" },
+      });
+      expect(c.detail).toContain("someone needs to go to the machine");
+      // The base sentence is untouched — the clause composes, it does not replace.
+      expect(c.detail.toLowerCase()).toContain("run the portal tool on");
+    }
+  });
+
+  it("does not invent a cause when the run gave none", () => {
+    const c = syncRequestCopy({
+      ...ochsner,
+      reason: "staleness",
+      daysSinceChecked: 35,
+      unattendedFailure: { message: null },
+    });
+    expect(c.detail).toContain(
+      "The scheduled run couldn't finish — someone needs to go to the machine."
+    );
+    expect(c.detail).not.toContain("()");
+  });
+
+  it("leaves the card's state line alone — the login row already tells that story", () => {
+    const c = syncRequestCopy({
+      ...ochsner,
+      reason: "manual",
+      unattendedFailure: { message: "passkey prompt" },
+    });
+    expect(c.cardLine).toBe("Sync requested");
+  });
 });
 
 describe("the post-visit window", () => {

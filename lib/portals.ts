@@ -740,31 +740,61 @@ export interface IdentityOutcomeTally {
   cleared: number;
 }
 
+// The binding this outcome is ABOUT, resolved from the external identity key the report
+// names. A resolve-the-owner lookup, exactly like portalIdentityProfile: the caller is
+// asking "whose row is this, so I can check I may write it", and a `profile_id = ?` filter
+// would presuppose the answer.
+const IDENTITY_OWNER_STMT = db.prepare(
+  "SELECT id, profile_id AS profileId FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+);
+
+// Scoped by BOTH the row id and the profile the caller authorized — the same
+// compare-and-swap shape unbindPortalIdentity uses. A concurrent re-point between the
+// resolve above and this write matches nothing rather than writing to a profile nobody
+// authorized.
 const SET_DECLINED_STMT = db.prepare(
   `UPDATE portal_identities
       SET declined = ?, updated_at = datetime('now')
-    WHERE account_id = ? AND patient_label = ? AND declined = ?`
+    WHERE id = ? AND profile_id = ? AND declined = ?`
 );
 
-// Apply the outcomes one run reported for one LOGIN. Entries with no outcome are left
-// alone — a client that has never heard of outcomes must not silently clear a standing
-// answer by merely listing the label it saw.
+// Apply the outcomes one run reported for one LOGIN.
+//
+// AUTH-BLIND, TAKING THE AUTHORIZED SET: the route resolves the reporting token's WRITE
+// set and hands the ids in; this core never imports lib/auth. The scoping is not
+// theatre — one portal login can cover several household members, and a caregiver token
+// that may write only one of them must not be able to change standing state on another's
+// binding, however harmless the direction of that change looks.
+//
+// Entries with NO stated outcome are left alone: a client that has never heard of outcomes
+// must not silently clear a standing answer by merely listing the label it saw.
 export function applyIdentityOutcomes(
   accountId: number,
-  entries: readonly ReportedIdentity[]
+  entries: readonly ReportedIdentity[],
+  allowedProfileIds: readonly number[]
 ): IdentityOutcomeTally {
   const stated = entries.filter((e) => e.outcome !== null);
-  if (stated.length === 0) return { declined: 0, cleared: 0 };
+  const allowed = new Set(allowedProfileIds);
+  if (stated.length === 0 || allowed.size === 0) {
+    return { declined: 0, cleared: 0 };
+  }
   return writeTx((): IdentityOutcomeTally => {
     let declined = 0;
     let cleared = 0;
     for (const entry of stated) {
+      const row = IDENTITY_OWNER_STMT.get(accountId, entry.label) as
+        { id: number; profileId: number | null } | undefined;
+      // No binding yet (the label is only pending), an IGNORED one (no profile by the
+      // migration-131 CHECK), or a profile this token may not write: nothing to say.
+      if (!row || row.profileId === null || !allowed.has(row.profileId)) {
+        continue;
+      }
       const want: IdentityOutcome = entry.outcome!;
       const to = want === "declined" ? 1 : 0;
       const changes = SET_DECLINED_STMT.run(
         to,
-        accountId,
-        entry.label,
+        row.id,
+        row.profileId,
         to === 1 ? 0 : 1
       ).changes;
       if (changes > 0) {
@@ -779,15 +809,19 @@ export function applyIdentityOutcomes(
 // A successful collection for ONE patient clears their declined state, whether or not the
 // run bothered to spell the outcome out. `status: "downloaded"` for a patient IS the
 // evidence that the portal offered the download — the same fact `outcome: "collected"`
-// carries, arriving by the older spelling.
+// carries, arriving by the older spelling. The caller has already authorized `profileId`
+// (it is the profile the run was filed under), so this is scoped by it directly.
 export function clearIdentityDeclined(
   accountId: number,
-  patientLabel: string
+  patientLabel: string,
+  profileId: number
 ): boolean {
-  return (
-    SET_DECLINED_STMT.run(0, accountId, normalizePatientLabel(patientLabel), 1)
-      .changes > 0
-  );
+  const row = IDENTITY_OWNER_STMT.get(
+    accountId,
+    normalizePatientLabel(patientLabel)
+  ) as { id: number; profileId: number | null } | undefined;
+  if (!row || row.profileId !== profileId) return false;
+  return SET_DECLINED_STMT.run(0, row.id, profileId, 1).changes > 0;
 }
 
 // ── Resolution (the upload path) ─────────────────────────────────────────────

@@ -185,6 +185,19 @@ export async function POST(req: Request): Promise<Response> {
     attended: body.attended,
   });
 
+  // The reporting token's WRITE set, resolved once at the auth boundary. Per-identity
+  // outcomes (#1889) are writes to profile-owned bindings, and one portal login can cover
+  // several household members — so a caregiver token that may write only one of them must
+  // not be able to change standing state on another's binding. Reach first, then access,
+  // the order every gate here uses.
+  const writableProfileIds = accessibleProfilesForLogin(login.id)
+    .filter(
+      (p) =>
+        !isDemoRestricted(isDemoMode(), login.role) &&
+        accessForProfile(login.id, login.role, p.id) === "write"
+    )
+    .map((p) => p.id);
+
   const counts = parseSyncReportCounts({
     inserted: body.inserted,
     updated: body.updated,
@@ -238,7 +251,7 @@ export async function POST(req: Request): Promise<Response> {
     // signed in far enough to see the proxy list, was refused two of the three downloads,
     // and then broke. Applied to BOUND identities only — an outcome for a label nobody has
     // mapped yet is a no-op, because there is no binding to hold standing state on.
-    applyIdentityOutcomes(account.account.id, reported);
+    applyIdentityOutcomes(account.account.id, reported, writableProfileIds);
     recordPortalRunReport(account.account, {
       ok: false,
       status,
@@ -290,7 +303,7 @@ export async function POST(req: Request): Promise<Response> {
       // the login, which one run routinely answers differently per person. Recorded
       // against the LOGIN, before the reporting patient is resolved, so a run whose own
       // identity is unmapped still tells the truth about the ones that are.
-      applyIdentityOutcomes(account.account.id, reported);
+      applyIdentityOutcomes(account.account.id, reported, writableProfileIds);
     }
     const resolved = resolvePortalIdentity(
       target.target.portalSlug,
@@ -345,7 +358,11 @@ export async function POST(req: Request): Promise<Response> {
     // again needs nobody to notice. `nothing-new` deliberately does NOT clear it — a run
     // that found nothing new never proved the download is on offer.
     if (ev.ok && status === "downloaded") {
-      clearIdentityDeclined(resolved.accountId, resolved.patientLabel);
+      clearIdentityDeclined(
+        resolved.accountId,
+        resolved.patientLabel,
+        resolved.profileId
+      );
     }
   }
 
