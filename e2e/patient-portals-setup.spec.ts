@@ -1201,3 +1201,93 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     await removePortal(page, portal);
   });
 });
+
+// THE QUIET DECLINED NOTE (#1889). A portal that offers a proxy a preview with no
+// Download button is a settled answer, not a fault — so it is said ONCE, on that
+// patient's own row, and the other patient on the SAME login says nothing. That
+// per-identity grain is the whole ruling: one run downloads the account holder's records
+// and is refused the proxies, and no run-level word can express it.
+//
+// FIXTURE OWNERSHIP: this test plants its own portal, login and two patients, addresses
+// rows by data-label, and removes everything it added.
+test.describe("Patient portals — the portal declines one patient (#1889)", () => {
+  test("says so once, quietly, on that patient's row only", async ({
+    browser,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Declined Portal ${stamp}`;
+    const holderLabel = `DECLINED, HOLDER ${stamp}`;
+    const proxyLabel = `DECLINED, PROXY ${stamp}`;
+
+    const cleanup = withDb((db) => {
+      const profileA = (
+        db
+          .prepare("SELECT id FROM profiles WHERE name = ?")
+          .get(PORTAL_HOUSEHOLD_A_PROFILE) as { id: number }
+      ).id;
+      const portalId = Number(
+        db
+          .prepare(
+            "INSERT INTO portals (slug, name, created_at) VALUES (?, ?, datetime('now'))"
+          )
+          .run(`declined-portal-${stamp}`, portal).lastInsertRowid
+      );
+      const accountId = Number(
+        db
+          .prepare(
+            `INSERT INTO portal_accounts (portal_id, slug, name, implicit, created_at)
+             VALUES (?, 'default', 'Default login', 1, datetime('now'))`
+          )
+          .run(portalId).lastInsertRowid
+      );
+      const bind = db.prepare(
+        `INSERT INTO portal_identities
+           (portal_id, account_id, patient_label, profile_id, ignored, declined,
+            created_at, updated_at)
+         VALUES (?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`
+      );
+      bind.run(portalId, accountId, holderLabel, profileA, 0);
+      // Bound to a real profile AND declined — the two are not exclusive, which is
+      // exactly how this differs from `ignored`.
+      bind.run(portalId, accountId, proxyLabel, profileA, 1);
+      return { portalId };
+    });
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_PORTAL_A,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/patient-portals");
+
+      const proxyRow = patientRowFor(member, proxyLabel);
+      await expect(proxyRow).toBeVisible();
+      await expect(proxyRow.getByTestId("portal-identity-declined")).toHaveText(
+        /the portal doesn’t offer downloads for this proxy — nothing to fix/
+      );
+      // Still a real binding: the profile chip is there, and the row is not "ignored".
+      await expect(proxyRow.getByTestId("portal-identity-ignored")).toHaveCount(
+        0
+      );
+
+      // The other patient on the SAME login says nothing about it.
+      const holderRow = patientRowFor(member, holderLabel);
+      await expect(holderRow).toBeVisible();
+      await expect(
+        holderRow.getByTestId("portal-identity-declined")
+      ).toHaveCount(0);
+    } finally {
+      await member.context().close();
+      withDb((db) => {
+        db.prepare("DELETE FROM portal_identities WHERE portal_id = ?").run(
+          cleanup.portalId
+        );
+        db.prepare("DELETE FROM portal_accounts WHERE portal_id = ?").run(
+          cleanup.portalId
+        );
+        db.prepare("DELETE FROM portals WHERE id = ?").run(cleanup.portalId);
+      });
+    }
+  });
+});

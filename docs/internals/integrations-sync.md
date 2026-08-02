@@ -351,6 +351,95 @@ path — a person's duplicate still lands the visible `'skipped'` row that IS th
 untouched by document delete, reassignment and extracted-count accounting, because it
 records an offer that was never stored rather than anything a document import wrote.
 
+**A report says WHAT KIND OF RUN it was, and the answer is one predicate (#1888/#1889).**
+`status` (`downloaded` / `nothing-new` / `failed`) says how a run went and stays a closed
+three-value enum. Two optional booleans on the sync-report body say what the run WAS, and
+both are **absent-means-true**, so every client that has never heard of them keeps its
+exact meaning: `contacted` (did this report describe a visit to the portal at all) and
+`attended` (was a person at the machine). They exist because the acquirer's standalone
+`push` ships records already on disk and still reports — the report is also how bindings
+are discovered — and that delivery used to ANSWER an open sync request and RESET the
+staleness clock. Nobody had checked the portal and allos believed someone had, which is
+the one failure this feature cannot have.
+
+The owner's binding constraint was **one predicate, named, shared**:
+`reportCountsAsCheck(report)` (`contacted !== false`) in `lib/acquirer-identity.ts` is the
+only place that semantic lives, and both consumers derive from it —
+`reportAnswersRequest` (contacted, and either successful or attended) and
+`reportAdvancesStalenessClock` (contacted and successful). A pure test pins the consumers
+as functions of the one predicate rather than restating their truth tables, so a third
+consumer joins the rule instead of inventing a variant.
+
+**Why the flags are decided at ingest and read as columns.** `portal_run_reports` holds
+ONE ROW PER LOGIN — the last run it reported — which is what keeps the table bounded
+(migration 132). A delivery-only push therefore OVERWRITES the previous genuine run's
+stamp, so a read-time `contacted = 1` filter would turn "checked yesterday, pushed today"
+into "never checked" and nag one day after a real run: the opposite bug, equally silent.
+Migration 144 adds a **sticky check clock** — `checked_at` (the answering signal) and
+`checked_ok_at` (the staleness clock) — stamped by `recordPortalRunReport` through those
+pure predicates and only ever moving forward. `lib/portal-requests.ts` reads them through
+ONE shared SQL fragment (`CHECK_CLOCK_COLS`) embedded by both the `openSyncRequests`
+projection and the staleness candidate query, and a pure source-scan test asserts neither
+consumer restates the predicate in SQL. Migration 144 backfills the clock from the stamps
+the old readers used, so a household upgrading mid-week does not suddenly read as
+never-checked.
+
+**What a delivery-only report still stamps.** Everything the documents earned: the
+`integration_sync_events` row, the per-identity "Last synced" chips
+(`identitySyncStatuses`), Data → Review's feed, the connection stamp, and the integrations
+accounting. ONLY the checked-the-portal clock holds still. The over-rotation — making a
+push look like nothing happened — would be its own bug, and the DB-tier fixture asserts
+both halves in one test.
+
+**The escalation clause.** A failed unattended run answers nothing, and is exactly the
+information the person-channel copy wants. `unattended_fail_at` / `unattended_fail_message`
+are sticky in the same row (a later delivery push must not erase why the machine gave up)
+and cleared by any report that answers. The request's Upcoming/digest line then gains ONE
+optional clause on `syncRequestCopy` — #1757's one-formatter rule, not a second formatter:
+_"The scheduled run couldn't finish (passkey prompt) — someone needs to go to the
+machine."_
+
+**The open-request read endpoint (`GET /api/documents/requests`, #1889).** The original
+design deliberately withheld requests from the tool; that line was drawn when a portal run
+NEEDED a person, and unattended runs changed the premise rather than the principle. The
+endpoint preserves everything the line protected: **slugs only, never an address** (the
+shape is fixed by the pure `buildSyncRequestList`, exactly as `buildToolConfig` fixes the
+registry's, and it carries no account nickname either), **open and unexpired only**
+through the one `isSyncRequestOpen` definition, **no claim state, no acknowledgment, no
+push channel**, and the `held` endpoint's bearer auth, rate-limit namespace and write-set
+scoping — a request is listed only when its portal login covers a profile that token could
+write. Requests still reach a person through Upcoming and the digest, unchanged. **The
+poll/run race is harmless and needs no coordination:** a request may be answered by
+somebody else between the poll and the run, and then the run's own report closes it as
+today while a double collection lands as `covered`/dedup on the upload path — the
+idempotence a client already has is the whole protocol.
+
+**`declined` is PER-IDENTITY standing state, not a run field (#1889's owner ruling).** A
+run signs in once and collects for every patient a login reaches, so one login covering
+three people routinely downloads the account holder's records and is refused the two
+proxies ON THE SAME RUN. A run-level flag (or a fourth status) cannot express that — the
+run neither failed nor was declined. So the report's `identities` list gained a
+per-identity outcome (`["JANE DOE"]` still means "I saw this label";
+`[{ patient, outcome }]` adds what the run managed), and allos stores the refusal on
+`portal_identities.declined` (migration 144) — the sibling of `ignored`, which is the
+existing settled-answer shape. It deliberately does **not** copy migration 131's CHECK:
+`ignored` is mutually exclusive with having a profile because an ignored label names
+nobody here, while a declined identity IS bound to a real profile whose records the
+household wants and the portal will not hand over. It renders once as a quiet note on the
+patient row and is **never re-reported as a failure event** — no Data → Review badge, no
+notification, because a badge that lights every run forever is how a badge stops being
+read. Staleness and post-visit **suppress for that identity only**, through the rule that
+already existed rather than a new bypass: a declined identity is not collectable, so it
+does not count toward the `mappedPatients` input `isStalenessDue` already gates on, and
+the post-visit join simply does not reach it. A person's own **"Request sync"** is
+unaffected — the system may reduce contact unilaterally, never overrule a user's action.
+The state **clears itself** on the next successful collection for that patient (an
+`outcome: "collected"` entry, or plainly a `downloaded` report naming them), so a portal
+that starts offering the download again needs nobody to notice. Per-identity outcomes are
+writes to profile-owned bindings, so they are scoped to the reporting token's write set —
+a caregiver token that may write one member of a shared login cannot change another's
+standing state, however harmless the direction of that change looks.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)
