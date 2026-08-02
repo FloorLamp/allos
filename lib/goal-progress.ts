@@ -5,11 +5,42 @@
 import { shiftDateStr } from "./date";
 import type { Goal } from "./types";
 
+// Why a MEASURED goal has no progress to show, or null when it has (#1853).
+//   "no-readings"   — nothing numeric has been measured for it yet.
+//   "unit-mismatch" — the series is now charted in a unit the stored target was not
+//                     captured in. mg/dL and mmol/L differ by ~39× for a lipid, so
+//                     comparing them anyway would render a confident lie.
+export type GoalUnavailable = "no-readings" | "unit-mismatch";
+
+// When a per-result goal is next expected to be measured (#1853). Declared here
+// rather than in lib/biomarker-goal so GoalProgress can carry it without importing
+// back — biomarker-goal already depends on this module, and one direction is enough.
+export interface GoalCheckIn {
+  // The analyte's check-in cadence, in days.
+  cadenceDays: number;
+  // When the next result is expected, or null when none has ever landed.
+  dueDate: string | null;
+  // Whether that expected result is now due (or overdue).
+  due: boolean;
+  // Whole days since the last result, or null when there is none.
+  daysSinceResult: number | null;
+}
+
 export interface GoalProgress {
   current: number;
   target: number;
   pct: number;
   done: boolean;
+  // ---- Per-result (biomarker) goal fields, #1853 --------------------------
+  // The date of the reading `current` came from — the goal's EVIDENCE date, which
+  // is what its pace verdict advances on (goalPaceTone's `evidenceDate`). Absent
+  // for exercise and body-metric goals, which advance on the clock.
+  asOf?: string | null;
+  // The unit both `current` and `target` are expressed in.
+  unit?: string | null;
+  unavailable?: GoalUnavailable | null;
+  // Attached by the gather (it needs the profile's `today`), not by the pure core.
+  checkIn?: GoalCheckIn | null;
   // Best value across ALL logged sets ever — the lifetime PR — regardless of the
   // recency window. `current` is the best within the trailing window (when a
   // `today` is supplied); this is exposed separately so the UI can still surface

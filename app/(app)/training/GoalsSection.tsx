@@ -11,6 +11,8 @@ import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
 import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
+import { today } from "@/lib/db";
+import { getGoalBiomarkerOptions } from "./goal-target-options";
 import GoalsManager from "./GoalsManager";
 import GoalPacingFindings from "./GoalPacingFindings";
 
@@ -54,6 +56,10 @@ export default async function GoalsSection() {
         equipment={equipment}
         equipmentByExercise={equipmentByExercise}
         weightUnit={wu}
+        biomarkerOptions={getGoalBiomarkerOptions(
+          profile.id,
+          today(profile.id)
+        )}
       />
 
       {/* Right-sizing suggestions (#1670) for the weekly routine below: a training

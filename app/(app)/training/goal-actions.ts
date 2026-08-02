@@ -9,18 +9,24 @@ import {
   formOk,
   type FormResult,
   type BodyMetricKind,
+  type GoalDirection,
   type GoalMetric,
 } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { resolveWeightKg, submittedWeightUnit } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
-import { BODY_METRIC_LABELS, isGoalStatus } from "@/lib/goals";
+import { BODY_METRIC_LABELS, isGoalDirection, isGoalStatus } from "@/lib/goals";
 import { getEquipmentById } from "@/lib/equipment";
 import {
   getLatestBodyMetric,
   dismissFinding,
   restoreFinding,
+  resolveBiomarkerOptionName,
 } from "@/lib/queries";
+import {
+  biomarkerPlot,
+  biomarkerTargetUnit,
+} from "@/lib/queries/biomarker-plot";
 import { GOAL_PACE_PREFIX, goalPaceSignalKey } from "@/lib/goal-pacing";
 
 // Dismiss a goal-pacing finding (issue #45, domain 6): an off-pace goal or the safe-
@@ -60,6 +66,8 @@ interface GoalCols {
   current_value: number | null;
   unit: string | null;
   body_metric: BodyMetricKind | null;
+  biomarker_name: string | null;
+  target_direction: GoalDirection | null;
 }
 
 // The prior canonical (kg) weight values for the goal being edited, so an
@@ -157,6 +165,8 @@ function goalColsFromForm(
       current_value: null,
       unit: null,
       body_metric: null,
+      biomarker_name: null,
+      target_direction: null,
     };
   }
 
@@ -192,6 +202,46 @@ function goalColsFromForm(
       current_value: null,
       unit: null,
       body_metric: bm,
+      biomarker_name: null,
+      target_direction: null,
+    };
+  }
+
+  // Biomarker goal (#1853): "LDL under 100 by June". The analyte is validated
+  // against the profile's own canonical vocabulary — the SAME ranked option list the
+  // picker offered — so a hand-posted name can't create a goal on an analyte the app
+  // has no notion of, and the UNIT is resolved server-side from the analyte's own
+  // plot rather than trusted from the client. A target's unit is not decoration: a
+  // lipid in mg/dL and the same lipid in mmol/L differ by ~39×, so the number is
+  // stored beside the unit the series is actually charted in.
+  if (kind === "biomarker") {
+    const name = String(formData.get("biomarker_name") ?? "").trim();
+    const direction = String(formData.get("target_direction") ?? "").trim();
+    if (!name || !isGoalDirection(direction)) return null;
+    const canonical = resolveBiomarkerOptionName(profileId, name);
+    if (!canonical) return null;
+    const value = num("biomarker_target");
+    if (value == null) return null;
+    return {
+      title:
+        String(formData.get("title") ?? "").trim() ||
+        `${canonical} ${direction === "below" ? "under" : "over"} ${value}`,
+      description: str("description"),
+      category: "biomarker",
+      target_date: str("target_date"),
+      exercise: null,
+      metric: null,
+      equipment_id: null,
+      target_weight_kg: null,
+      target_reps: null,
+      target_sets: null,
+      target_duration_sec: null,
+      target_value: value,
+      current_value: null,
+      unit: biomarkerTargetUnit(profileId, canonical),
+      body_metric: null,
+      biomarker_name: canonical,
+      target_direction: direction,
     };
   }
 
@@ -214,13 +264,15 @@ function goalColsFromForm(
     current_value: num("current_value") ?? 0,
     unit: str("unit"),
     body_metric: null,
+    biomarker_name: null,
+    target_direction: null,
   };
 }
 
 const GOAL_COLS =
   "title, description, category, target_date, exercise, metric, equipment_id, " +
   "target_weight_kg, target_reps, target_sets, target_duration_sec, " +
-  "target_value, current_value, unit, body_metric";
+  "target_value, current_value, unit, body_metric, biomarker_name, target_direction";
 
 function goalValues(c: GoalCols) {
   return [
@@ -239,6 +291,8 @@ function goalValues(c: GoalCols) {
     c.current_value,
     c.unit,
     c.body_metric,
+    c.biomarker_name,
+    c.target_direction,
   ];
 }
 
@@ -246,17 +300,23 @@ export async function createGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
   const c = goalColsFromForm(formData, login.id, profile.id);
   if (!c) return formError("Check the goal's required fields and try again.");
-  // Body goals capture the metric's current value as the baseline, so progress
-  // can run baseline → target (handling reduction goals).
+  // Measured goals capture their metric's current value as the baseline, so progress
+  // can run baseline → target (handling reduction goals). A biomarker goal's baseline
+  // is the latest point of the SAME plot its progress will be read from, so the two
+  // ends of the bar are guaranteed to be in one unit; null when the profile has no
+  // reading yet, which the progress reader handles as a direction-only goal.
   const baseline = c.body_metric
     ? getLatestBodyMetric(profile.id, c.body_metric)
-    : null;
+    : c.biomarker_name
+      ? (biomarkerPlot(profile.id, c.biomarker_name)?.points.at(-1)?.value ??
+        null)
+      : null;
   // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
   // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
   // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
     `INSERT INTO goals (${GOAL_COLS}, baseline_value, profile_id, status, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
   ).run(...goalValues(c), baseline, profile.id, sqlNow());
   revalidatePath("/training");
   revalidatePath("/");
@@ -283,7 +343,8 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
        title = ?, description = ?, category = ?, target_date = ?, exercise = ?, metric = ?,
        equipment_id = ?,
        target_weight_kg = ?, target_reps = ?, target_sets = ?, target_duration_sec = ?,
-       target_value = ?, current_value = ?, unit = ?, body_metric = ?
+       target_value = ?, current_value = ?, unit = ?, body_metric = ?,
+       biomarker_name = ?, target_direction = ?
      WHERE id = ? AND profile_id = ?`
   ).run(...goalValues(c), id, profile.id);
   // RE-TARGET clears a stale off-pace dismissal (#436/#203). The `goal-pace:goal:<id>`

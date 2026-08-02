@@ -4,8 +4,16 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
+import {
+  biomarkerGoalCheckIn,
+  biomarkerTargetOf,
+  computeBiomarkerGoalProgress,
+  isBiomarkerGoal,
+} from "../../biomarker-goal";
+import { retestDaysForBiomarker } from "../../biomarker-retest";
 import { goalMatchesExercise } from "../../goals";
 import type { BodyMetricKind, Goal } from "../../types";
+import { biomarkerPlot } from "../biomarker-plot";
 import { getLatestBodyMetric } from "../metrics";
 
 // Training-SPECIFIC goal reads. The scope-kind-generic `frequency_targets`
@@ -50,6 +58,31 @@ export function getGoalProgressMap(
     for (const g of bodyGoals) {
       out.set(g.id, computeBodyGoalProgress(g, latest[g.body_metric!]));
     }
+  }
+
+  // Biomarker goals (#1853): the latest reading of the analyte's #482 FAMILY, in the
+  // unit its own chart is labelled with. Both come from `biomarkerPlot` — the SAME
+  // plot the biomarker detail page draws — so a goal card and the chart it describes
+  // can never disagree about the value or the unit (#221). The check-in rhythm is the
+  // analyte's curated retest cadence, resolved through the shared
+  // retestDaysForBiomarker lookup rather than a goals-only interval table.
+  for (const g of goals.filter(isBiomarkerGoal)) {
+    const target = biomarkerTargetOf(g);
+    if (!target) continue;
+    const plot = biomarkerPlot(profileId, target.name);
+    const progress = computeBiomarkerGoalProgress(
+      target,
+      plot?.points ?? [],
+      plot?.unit ?? target.unit
+    );
+    out.set(g.id, {
+      ...progress,
+      checkIn: biomarkerGoalCheckIn(
+        progress.asOf,
+        retestDaysForBiomarker(target.name),
+        today(profileId)
+      ),
+    });
   }
 
   const exGoals = goals.filter((g) => g.exercise && g.metric);

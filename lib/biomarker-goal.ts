@@ -31,7 +31,13 @@
 // the next one is due.
 
 import { shiftDateStr, daysBetweenDateStr } from "./date";
-import { baselineTargetProgress, type GoalProgress } from "./goal-progress";
+import {
+  baselineTargetProgress,
+  type GoalCheckIn,
+  type GoalProgress,
+  type GoalUnavailable,
+} from "./goal-progress";
+import { retestIntervalDays } from "./reference-range";
 import { sameUnit } from "./unit-conversions";
 import type { Goal, GoalDirection } from "./types";
 
@@ -59,22 +65,15 @@ export interface BiomarkerGoalTarget {
   baselineValue: number | null;
 }
 
-// Why a biomarker goal has no progress to show, or null when it has.
-//   "no-readings"    — the family has no numeric reading to measure against yet.
-//   "unit-mismatch"  — the series is now charted in a unit the stored target was not
-//                      captured in (a lab switched units on an analyte with no
-//                      canonical unit). mg/dL and mmol/L differ by ~39× for a lipid,
-//                      so comparing them anyway would render a confident lie; the
-//                      surface says so and offers a re-target instead.
-export type BiomarkerGoalUnavailable = "no-readings" | "unit-mismatch";
-
+// A biomarker goal's progress: the shared GoalProgress shape with the per-result
+// fields REQUIRED, since this is the goal kind that always answers them. The
+// "unit-mismatch" case is real for an analyte with no canonical unit, whose plot is
+// labelled by whatever unit its latest reading carried — a lab switching units would
+// otherwise silently re-scale the target.
 export interface BiomarkerGoalProgress extends GoalProgress {
-  // The date of the reading `current` came from — the goal's EVIDENCE date, which is
-  // what the pace verdict advances on.
   asOf: string | null;
-  // The unit both `current` and `target` are in (the series' charted unit).
   unit: string | null;
-  unavailable: BiomarkerGoalUnavailable | null;
+  unavailable: GoalUnavailable | null;
 }
 
 // Whether a value is on the wanted side of the target. Inclusive on both sides: a
@@ -146,37 +145,23 @@ export function computeBiomarkerGoalProgress(
 
 // ---- The check-in rhythm ---------------------------------------------------
 
-// The cadence a lab goal is re-assessed on when the analyte carries no curated
-// retest interval. Matches lib/reference-range's DEFAULT_RETEST_DAYS — the same flat
-// fallback the retest signal uses — so an uncurated analyte's goal and its retest
-// nudge agree about when "next" is.
-export const DEFAULT_GOAL_CHECK_IN_DAYS = 365;
-
-export interface BiomarkerGoalCheckIn {
-  // The analyte's check-in cadence in days.
-  cadenceDays: number;
-  // When the next result is expected, or null when none has ever landed (there is
-  // nothing to count from, and inventing "today + cadence" would put a goal set
-  // years ago permanently one cadence in the future).
-  dueDate: string | null;
-  // Whether that expected result is now due (or overdue).
-  due: boolean;
-  // Whole days since the last result, or null when there is none.
-  daysSinceResult: number | null;
-}
-
 // When this goal's next check-in falls, from the last result's date and the analyte's
-// cadence. Pure calendar math over inputs the caller resolved through the shared
-// cadence lookup — this module never picks a cadence itself.
+// curated `retest_days`.
+//
+// The cadence itself is NOT chosen here: `retestDays` goes straight through
+// `retestIntervalDays`, the same selector the Upcoming retest signal runs on (curated
+// interval when present and positive, else the flat DEFAULT_RETEST_DAYS). A lab
+// goal's check-in rhythm and its retest nudge are one question — HbA1c is quarterly
+// for both or the goal card and Upcoming will tell the user different things about
+// the same draw (#221). Callers resolve `retestDays` through
+// retestDaysForBiomarker, which keys on the analyte's retest identity so a family
+// member inherits the family's clock.
 export function biomarkerGoalCheckIn(
   lastResultDate: string | null,
-  cadenceDays: number,
+  retestDays: number | null | undefined,
   today: string
-): BiomarkerGoalCheckIn {
-  const cadence =
-    Number.isFinite(cadenceDays) && cadenceDays > 0
-      ? Math.round(cadenceDays)
-      : DEFAULT_GOAL_CHECK_IN_DAYS;
+): GoalCheckIn {
+  const cadence = Math.round(retestIntervalDays(retestDays));
   if (!lastResultDate) {
     return {
       cadenceDays: cadence,
@@ -243,4 +228,33 @@ export function biomarkerTargetOf(goal: Goal): BiomarkerGoalTarget | null {
     direction: goal.target_direction!,
     baselineValue: goal.baseline_value,
   };
+}
+
+// ---- Formatters ------------------------------------------------------------
+// One place each of these phrases is built, so the goal card, the biomarker detail
+// page and the off-pace finding cannot describe the same state three ways (#221).
+
+// The "where am I now" phrase for a biomarker goal's progress line.
+export function biomarkerGoalCurrentText(
+  progress: GoalProgress | null | undefined
+): string {
+  if (!progress) return "—";
+  if (progress.unavailable === "unit-mismatch")
+    return "Units changed — re-set this target";
+  if (progress.unavailable === "no-readings") return "No result yet";
+  const unit = progress.unit?.trim();
+  return `${progress.current}${unit ? ` ${unit}` : ""} now`;
+}
+
+// The check-in line: when the next result that could move this goal is expected.
+// `formatDate` is supplied by the surface so each renders dates in the viewer's own
+// format preferences; this module never picks a date shape.
+export function biomarkerGoalCheckInText(
+  checkIn: GoalCheckIn,
+  formatDate: (iso: string) => string
+): string {
+  const cadence = `every ${checkIn.cadenceDays} days`;
+  if (!checkIn.dueDate) return `Awaiting a first result — retested ${cadence}`;
+  if (checkIn.due) return `Next result due now — retested ${cadence}`;
+  return `Next result due ${formatDate(checkIn.dueDate)}`;
 }
