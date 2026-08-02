@@ -10,6 +10,8 @@ import { E2E_LOGIN_ROUTINE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //
 //   1. The card renders the resolved day (Push) and its filled slate.
 //   2. "Log this session" pre-fills the activity form (live mode) with the slate.
+//   3. #1893: with a session already running the SAME control resumes it instead of
+//      restarting — handing over the routine slate used to reset the live clock.
 
 let page: Page;
 
@@ -61,6 +63,48 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
   const del = page.getByRole("button", { name: "Delete", exact: true });
   if (await del.isVisible().catch(() => false)) {
     await del.click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+  }
+});
+
+test("mid-session, 'Log this session' resumes instead of restarting (#1893)", async () => {
+  await page.goto("/training?tab=overview");
+
+  const card = page.getByTestId("todays-session-card");
+  const control = card.getByTestId("log-this-session");
+  await expect(control).toHaveAttribute("data-workout-offer", "start");
+  await expect(control).toHaveText("Log this session");
+  await control.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+
+  await page.getByTestId("minimize-workout").click();
+  const dock = page.getByTestId("workout-dock");
+  await expect(dock).toBeVisible();
+  const startedAt = await dock.getAttribute("data-start-epoch");
+  expect(startedAt).toMatch(/^\d+$/);
+
+  // The control names the write it will now perform — the routine day is still one tap
+  // away once the running session is finished.
+  await expect(control).toHaveAttribute("data-workout-offer", "resume");
+  await expect(control).toHaveText("Resume workout");
+
+  await control.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.getByTestId("minimize-workout").click();
+  await expect(dock).toBeVisible();
+  // The epoch pin: openSession reopened the running session, it did not restart it.
+  await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
+
+  await page.getByTestId("workout-dock-open").click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dock).toHaveCount(0);
+  const leftover = page.getByRole("button", { name: "Delete", exact: true });
+  if (await leftover.isVisible().catch(() => false)) {
+    await leftover.click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })

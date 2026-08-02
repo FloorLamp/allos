@@ -151,6 +151,7 @@ export default function CommandPalette({
     openRepeatLast,
     hasLastActivity,
     canStartWorkout,
+    workoutOffer,
   } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const [open, setOpen] = useState(false);
@@ -649,6 +650,14 @@ export default function CommandPalette({
                   const itemIdx = actionStart + i;
                   const active = itemIdx === highlight;
                   const Icon = ACTION_ICONS[action.icon];
+                  // The live-workout action renders the SHARED offer state (#1893):
+                  // while a session is running it reads "Resume workout", because
+                  // openLive reopens the docked session rather than resetting its
+                  // clock. Every other action's label is its own.
+                  const label =
+                    action.target.kind === "live"
+                      ? workoutOffer.label
+                      : action.label;
                   return (
                     <li key={action.id}>
                       <button
@@ -663,7 +672,7 @@ export default function CommandPalette({
                       >
                         <Icon className="h-4 w-4 shrink-0 opacity-70" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {action.label}
+                          {label}
                         </span>
                         {active && (
                           <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
