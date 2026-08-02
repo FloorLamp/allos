@@ -407,12 +407,14 @@ export function seedSuppressedCenter(): void {
     // Two successful weather syncs so the profile's Connected-sources card renders
     // with a latest-state line AND an expandable history (#1614): before that fix
     // Weather was excluded from getConnectedSources by kind, so the "Sync history"
-    // link on its own setup page led nowhere. Fixed past dates — nothing compares
-    // these to `now`.
+    // link on its own setup page led nowhere. Dated TODAY in the profile's timezone
+    // (the frozen run clock): since #1880 the standing composes the #1685 staleness
+    // rule, so a fixed past date would read as a silent stop and flip this healthy
+    // fixture to "Sync failing". The WINDOW stamps stay fixed — they are data.
     ins.run(
       wxId,
       "weather",
-      "2026-07-08 05:00:00",
+      `${wxToday} 05:00:00`,
       1,
       "2026-06-25",
       "2026-07-09",
@@ -428,7 +430,7 @@ export function seedSuppressedCenter(): void {
     ins.run(
       wxId,
       "weather",
-      "2026-07-08 06:00:00",
+      `${wxToday} 06:00:00`,
       1,
       "2026-06-25",
       "2026-07-09",

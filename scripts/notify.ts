@@ -70,6 +70,7 @@ import { runRefills } from "../lib/notifications/refill";
 import { runPoolRefills } from "../lib/notifications/supply-pool";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
+import { runFollowUpNudges } from "../lib/notifications/followup";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import {
@@ -608,6 +609,36 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       else setProfileSetting(profile.id, "notify_illnesscare_assessed", date);
     } catch (e) {
       log.error("illness-care check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Overdue safety-follow-up escalation (#1866): a tracked finding follow-up (#700)
+  // past its planned date. Care-tier SAFETY posture with ZERO settings: the tracked
+  // due date is the consent (the dose-reminder structure), delivery rides only the
+  // channels already enabled, and the ONLY permanent off-switch is the per-item
+  // resolve/decline terminator. NOT bus-gated by a dismiss — the send honors the
+  // item's own "snooze-only" policy through isHiddenUnderPolicy (a live snooze
+  // freezes it; a dismiss is resisted, exactly as on the page). Conservative
+  // two-send cadence owned by the pure planner (crossing + one repeat, then
+  // silence). Overdue-ness is day-granular, so like preventive/illness-care it is
+  // assessed once per profile-local day, inside the waking window (#378 — this is
+  // an escalation about something already months late; 3am urgency would be
+  // manufactured). Mark assessed only after a clean run so a failed send retries
+  // next waking hour.
+  if (
+    waking &&
+    getProfileSetting(profile.id, "notify_followup_assessed") !== date
+  ) {
+    try {
+      const fu = await runFollowUpNudges(profile.id, profile.name, date);
+      if (fu.failed) anyFailed = true;
+      else setProfileSetting(profile.id, "notify_followup_assessed", date);
+    } catch (e) {
+      log.error("followup escalation check failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });

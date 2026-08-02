@@ -341,6 +341,11 @@ export interface UpcomingItem {
   // controls (confirm-first, #560) that record the outcome against the resolving
   // record. Only followup items in the resolvable state carry one; ids only.
   followUpResolve?: { carePlanItemId: number; resolvingRecordId: number };
+  // Finding follow-up TERMINATOR payload (issue #1866): carried by every still-open,
+  // not-yet-resolvable follow-up so the care surfaces can render the first-class
+  // "Done on <date>" / "discussed, not doing it" controls — the per-item off-switch
+  // that permanently ends the overdue push escalation. Ids only.
+  followUpSettle?: { carePlanItemId: number };
   // The "something's off" signals only (issue #524): which page grouping the item
   // surfaces under ("Flagged" for out-of-range labs, "For review" for the review
   // count + failing integrations). Set ⇒ the item is NOT a date-scheduled signal,

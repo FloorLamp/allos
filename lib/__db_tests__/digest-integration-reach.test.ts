@@ -96,6 +96,10 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const p = newProfile("DigestReauth");
     const td = today(p);
     connect(p, "strava");
+    // Three consecutive failures — the #1880 escalation threshold. A lone failed
+    // run is `intermittent` now and deliberately never reaches the digest.
+    syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401): expired");
+    syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401): expired");
     syncEvent(p, "strava", 0, 0, "Strava token refresh failed (401): expired");
     seedActivityYesterday(p); // ordinary content, so this isn't a sync-only digest
     configureTelegram(p, "555685");

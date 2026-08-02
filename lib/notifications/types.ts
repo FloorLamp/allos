@@ -19,6 +19,7 @@ export type NotificationKind =
   | "refill" // low-supply refill nudge
   | "preventive" // preventive-care nudge
   | "illness-care" // logged-symptom duration/trajectory care finding (#805)
+  | "followup" // overdue safety follow-up escalation (#1866; two sends, terminator-gated)
   | "workout" // training/workout reminder
   | "workout-stale" // unfinished-session nudge (#560/#1205)
   | "workout-recap" // post-workout session recap line (#924)

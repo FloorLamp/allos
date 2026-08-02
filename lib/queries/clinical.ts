@@ -376,6 +376,7 @@ export interface ImagingFollowUpSummary {
   plannedDate: string | null;
   status: string | null;
   resolution: string | null;
+  settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
 export function getImagingStudyFollowUps(
@@ -385,7 +386,8 @@ export function getImagingStudyFollowUps(
     .prepare(
       `SELECT id AS carePlanItemId,
               source_imaging_study_id AS sourceImagingStudyId,
-              planned_date AS plannedDate, status, resolution
+              planned_date AS plannedDate, status, resolution,
+              settled_disposition AS settledDisposition
          FROM care_plan_items
         WHERE profile_id = ? AND source_kind = 'imaging'
           AND source_imaging_study_id IS NOT NULL
@@ -421,6 +423,7 @@ export interface DentalFollowUpSummary {
   plannedDate: string | null;
   status: string | null;
   resolution: string | null;
+  settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
 export function getDentalProcedureFollowUps(
@@ -430,7 +433,8 @@ export function getDentalProcedureFollowUps(
     .prepare(
       `SELECT id AS carePlanItemId,
               source_dental_procedure_id AS sourceDentalProcedureId,
-              planned_date AS plannedDate, status, resolution
+              planned_date AS plannedDate, status, resolution,
+              settled_disposition AS settledDisposition
          FROM care_plan_items
         WHERE profile_id = ? AND source_kind = 'dental'
           AND source_dental_procedure_id IS NOT NULL
@@ -471,6 +475,7 @@ export interface SkinLesionFollowUpSummary {
   plannedDate: string | null;
   status: string | null;
   resolution: string | null;
+  settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
 export function getSkinLesionFollowUps(
@@ -480,7 +485,8 @@ export function getSkinLesionFollowUps(
     .prepare(
       `SELECT id AS carePlanItemId,
               source_skin_lesion_id AS sourceSkinLesionId,
-              planned_date AS plannedDate, status, resolution
+              planned_date AS plannedDate, status, resolution,
+              settled_disposition AS settledDisposition
          FROM care_plan_items
         WHERE profile_id = ? AND source_kind = 'skin'
           AND source_skin_lesion_id IS NOT NULL
@@ -520,6 +526,7 @@ export interface LabFollowUpSummary {
   plannedDate: string | null;
   status: string | null;
   resolution: string | null;
+  settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
 export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
@@ -528,7 +535,8 @@ export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
       `SELECT cp.id AS carePlanItemId,
               cp.source_medical_record_id AS sourceRecordId,
               COALESCE(NULLIF(TRIM(mr.canonical_name), ''), mr.name) AS sourceName,
-              cp.planned_date AS plannedDate, cp.status, cp.resolution
+              cp.planned_date AS plannedDate, cp.status, cp.resolution,
+              cp.settled_disposition AS settledDisposition
          FROM care_plan_items cp
          JOIN medical_records mr
            ON mr.id = cp.source_medical_record_id AND mr.profile_id = cp.profile_id
@@ -572,7 +580,8 @@ export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
       `SELECT cp.id AS carePlanItemId,
               cp.source_medical_record_id AS sourceRecordId,
               COALESCE(NULLIF(TRIM(mr.canonical_name), ''), mr.name) AS sourceName,
-              cp.planned_date AS plannedDate, cp.status, cp.resolution
+              cp.planned_date AS plannedDate, cp.status, cp.resolution,
+              cp.settled_disposition AS settledDisposition
          FROM care_plan_items cp
          JOIN medical_records mr
            ON mr.id = cp.source_medical_record_id AND mr.profile_id = cp.profile_id
@@ -614,7 +623,8 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
               cp.resolved_by_imaging_study_id,
               cp.resolved_by_medical_record_id,
               cp.resolved_by_dental_procedure_id,
-              cp.resolved_by_skin_lesion_id, cp.resolved_at
+              cp.resolved_by_skin_lesion_id, cp.resolved_at,
+              cp.settled_disposition, cp.settled_on, cp.settled_reason
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?

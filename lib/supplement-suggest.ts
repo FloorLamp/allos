@@ -346,7 +346,7 @@ async function runModel(
     return {
       suggestions: [],
       model: "offline",
-      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server to get AI supplement suggestions.",
+      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server → AI to get AI supplement suggestions.",
     };
   }
   // Per-profile daily AI cap (rate-limiting Fix 1). A key is present, so a real
@@ -375,7 +375,7 @@ async function runModel(
     return {
       suggestions: [],
       model: "offline",
-      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server to get AI supplement suggestions.",
+      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server → AI to get AI supplement suggestions.",
     };
   }
   const { client, model: MODEL, tier, host } = resolved;

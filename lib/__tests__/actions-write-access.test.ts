@@ -403,6 +403,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/upcoming/actions.ts",
+    fn: "settleFollowUp",
+    why: "multi-view (#1096): settles (done/declined, #1866 terminator) a follow-up on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
     fn: "snoozeItem",
     why: "multi-view (#1096): snoozes on the ITEM's suppression bus via gateItemProfile() → requireProfileWriteAccess(itemProfileId), so a dismissal lands on the item's profile, never the acting one",
   },

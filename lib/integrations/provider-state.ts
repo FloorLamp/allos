@@ -17,6 +17,8 @@
 
 import { formatSplitLabel, formatWindow, isNoOpSyncEvent } from "./sync-log";
 import { isTruncatedSyncEvent } from "./sync-details";
+import { isSyncStale } from "./staleness";
+import { daysBetweenDateStr } from "../date";
 
 // The event fields every state answer is derived from. Structurally typed rather than
 // importing the row type, so the pure tier never drags @/lib/db in behind it.
@@ -62,12 +64,22 @@ export type StatusTone = "good" | "caution" | "bad" | "neutral";
 
 // What kind of shape a provider is in, as one closed vocabulary every surface reads.
 export type ProviderStanding =
-  // Connected, and its most recent run succeeded cleanly.
+  // Connected, and every recent run succeeded cleanly.
   | "healthy"
   // Connected, most recent run succeeded but stopped early (#1614) — real data
   // landed, more is upstream.
   | "partial"
-  // Connected, most recent run failed.
+  // Connected and FLAPPING (#1880): failures in the recent run window, but not
+  // enough consecutive ones to escalate and no staleness breach. Data is still
+  // flowing (or nothing has ever flowed, which the provider's own page already
+  // shows), so this is a calm amber fact — it NEVER enters Needs attention, the
+  // review badge, or the digest's 🔌 lines. Crying wolf hourly during upstream
+  // instability trains the user to ignore the one surface that must be trusted.
+  | "intermittent"
+  // Connected and genuinely broken: FAILING_CONSECUTIVE_RUNS consecutive failures,
+  // or the #1685 staleness threshold breached (no successful run within the
+  // provider's registry threshold). The ONLY standing that escalates besides
+  // needs-reauth — a single failed run no longer does (#1880).
   | "failing"
   // The credential died / was revoked (#326) — actionable, and distinct from the
   // benign never-configured case.
@@ -77,16 +89,78 @@ export type ProviderStanding =
   // Connected but nothing has run yet.
   | "never-synced";
 
-export function providerStanding(s: {
+// How many CONSECUTIVE failures escalate a flapping provider to `failing` (#1880).
+// Below this, a failure with the idempotent full-window re-fetch behind it loses
+// nothing — the next good run catches up — so the standing stays `intermittent`.
+export const FAILING_CONSECUTIVE_RUNS = 3;
+
+// How many recent runs the standing derivation looks at. Deliberately the same
+// depth every surface resolves (getIntegrationState reads this window regardless
+// of how much display history the caller asked for), so the grid card, the source
+// page, and Review can never disagree about whether a provider is flapping.
+export const STANDING_RUN_WINDOW = 10;
+
+// Leading run of failures in a newest-first event list — the "N consecutive
+// failures" the escalation rule counts. A success at the head returns 0.
+export function consecutiveLeadingFailures(
+  eventsNewestFirst: readonly SyncEventFacts[]
+): number {
+  let n = 0;
+  for (const ev of eventsNewestFirst) {
+    if (ev.ok) break;
+    n++;
+  }
+  return n;
+}
+
+// The facts the standing is derived from. `recentRuns` is the newest-first
+// standing window (latest included); the three staleness fields compose the #1685
+// rule (isSyncStale — the same derivation the silent-stop signal uses, not a
+// duplicate of it).
+export interface ProviderStandingFacts {
   connected: boolean;
   needsReauth: boolean;
   latest: SyncEventFacts | null;
-}): ProviderStanding {
+  recentRuns?: readonly SyncEventFacts[];
+  lastSuccessAt?: string | null;
+  thresholdDays?: number | null;
+  today?: string | null;
+}
+
+// THE standing derivation (#1772, flap-aware since #1880). One shared rule: the
+// Review badge, Needs attention, the grid card, the source page, and the digest
+// all read this — latest-event-wins is gone. Only `failing` and `needs-reauth`
+// escalate (standingEscalates); `intermittent` stays a calm rendered fact.
+export function providerStanding(s: ProviderStandingFacts): ProviderStanding {
   if (s.needsReauth) return "needs-reauth";
   if (!s.connected) return "not-connected";
   if (!s.latest) return "never-synced";
-  if (!s.latest.ok) return "failing";
-  return isTruncatedSyncEvent(s.latest) ? "partial" : "healthy";
+  const runs =
+    s.recentRuns && s.recentRuns.length > 0 ? s.recentRuns : [s.latest];
+  // The #1685 staleness rule, COMPOSED: a connected provider with no successful
+  // run inside its registry threshold is broken however few failures it recorded.
+  // `alreadyFailing` is false on purpose — this IS the failing derivation, so
+  // there is no other signal to defer to here (getImportIssues still reports each
+  // provider once).
+  const stale =
+    s.lastSuccessAt !== undefined &&
+    s.thresholdDays !== undefined &&
+    !!s.today &&
+    isSyncStale(
+      {
+        provider: "",
+        lastSuccessAt: s.lastSuccessAt ?? null,
+        thresholdDays: s.thresholdDays ?? null,
+        alreadyFailing: false,
+      },
+      s.today
+    );
+  if (stale || consecutiveLeadingFailures(runs) >= FAILING_CONSECUTIVE_RUNS) {
+    return "failing";
+  }
+  if (s.latest.ok && isTruncatedSyncEvent(s.latest)) return "partial";
+  if (runs.some((ev) => !ev.ok)) return "intermittent";
+  return "healthy";
 }
 
 export interface ProviderBadge {
@@ -103,6 +177,8 @@ export function standingBadge(standing: ProviderStanding): ProviderBadge {
       return { label: "Connected", tone: "good" };
     case "partial":
       return { label: "Partial sync", tone: "caution" };
+    case "intermittent":
+      return { label: "Intermittent", tone: "caution" };
     case "failing":
       return { label: "Sync failing", tone: "bad" };
     case "needs-reauth":
@@ -114,19 +190,73 @@ export function standingBadge(standing: ProviderStanding): ProviderBadge {
   }
 }
 
-// Does this provider belong in Review's INBOX with its reason and its action, or is
-// it healthy enough to collapse to a single line? Review is an inbox (#1772): a
-// provider is there because something is wrong or unfinished, not because it exists.
+// Which standings ESCALATE (#1880): Review's "Needs attention" card, the
+// profile-menu/Data badge, the dashboard hero item, and the digest's 🔌 lines all
+// gate on this. Everything else — including `intermittent` — is a rendered fact on
+// calm surfaces only; the reach of a flapping provider may only ever narrow.
+export function standingEscalates(standing: ProviderStanding): boolean {
+  return standing === "failing" || standing === "needs-reauth";
+}
+
+// Does this provider render EXPANDED with its reason and its action, or collapse to
+// a single line? Review is an inbox (#1772): a provider is expanded because
+// something is wrong or unfinished, not because it exists.
 // `never-synced` is deliberately NOT attention: a just-enabled provider waiting for
 // the hourly tick is working as designed, and the staleness detector (#1685) is what
-// escalates one that never starts.
+// escalates one that never starts. `intermittent` is deliberately NOT attention
+// either (#1880): it collapses to a calm amber one-liner stating the pattern.
 export function needsAttention(standing: ProviderStanding): boolean {
   return (
-    standing === "failing" ||
-    standing === "needs-reauth" ||
+    standingEscalates(standing) ||
     standing === "partial" ||
     standing === "not-connected"
   );
+}
+
+// ---- Flap + escalation copy (#1880) ---------------------------------------
+
+// The honest pattern statement for a flapping provider's one-liner and status
+// header: "3 of the last 10 runs failed".
+export function intermittentRunsLabel(failed: number, total: number): string {
+  return `${failed} of the last ${total} ${total === 1 ? "run" : "runs"} failed`;
+}
+
+// Why a flapping provider loses nothing, in the provider's own vocabulary — the
+// question a person reading an amber chip actually has.
+export function intermittentReassurance(vocabulary: SyncVocabulary): string {
+  return vocabulary === "forecast"
+    ? "nothing missing — each run re-fetches the full window"
+    : "the next successful sync catches up";
+}
+
+// The intermittent status header's headline. The copy states the pattern, not the
+// last event.
+export const INTERMITTENT_HEADLINE = "Working, with interruptions";
+
+// The escalation policy, stated visibly on the source page (#1880 item 1): the one
+// shared rule, so the page can promise what the badge and the digest will do.
+export function escalationPolicyLabel(thresholdDays: number | null): string {
+  const consecutive = `after ${FAILING_CONSECUTIVE_RUNS} consecutive failures`;
+  const staleness =
+    thresholdDays == null
+      ? ""
+      : `, or when no run has succeeded in ${thresholdDays} ${
+          thresholdDays === 1 ? "day" : "days"
+        }`;
+  return (
+    `This source escalates to “Sync failing” ${consecutive}${staleness} — ` +
+    "the same rule the Review badge and the morning digest use."
+  );
+}
+
+// The consequence of a broken source, in user terms (#1880 item 2): what stops
+// arriving, not which HTTP verb failed. Providers declare their own phrase in the
+// registry (`stoppedConsequence`); this is the fallback for one that doesn't.
+export function failureConsequence(
+  name: string,
+  declared?: string | null
+): string {
+  return declared ?? `New data from ${name} has stopped arriving.`;
 }
 
 // ---- Outcome ---------------------------------------------------------------
@@ -213,8 +343,8 @@ export type SyncHistoryRow<T extends SyncEventFacts = SyncEventFacts> =
   | {
       kind: "event";
       ev: T;
-      // Only when this run's window departs from the run norm. Identical windows are
-      // stated once, above the table.
+      // Only when this run's window departs from the run norm — a divergence NOTE
+      // (windowDivergence). Identical windows are stated once, above the table.
       window: string | null;
     }
   | {
@@ -225,46 +355,115 @@ export type SyncHistoryRow<T extends SyncEventFacts = SyncEventFacts> =
       count: number;
       newestAt: string;
       oldestAt: string;
+    }
+  | {
+      kind: "failure-run";
+      // A maximal run of CONSECUTIVE IDENTICAL failures (#1880 item 3), collapsed
+      // the same way no-ops are: "Failed ×2 · 4:00–5:00 PM · reason". The table then
+      // SHOWS intermittency instead of encoding it as an alternating zebra.
+      count: number;
+      newestAt: string;
+      oldestAt: string;
+      error: string | null;
+      // The newest event of the run, for stable keys and admin drill-ins.
+      newest: T;
     };
 
-// The window shape MOST of a provider's runs cover, so the table can state it once
-// and flag only the rows that differ. Null when the events carry no window at all.
+// The window the LATEST windowed run covers (#1880 item 4). The norm used to be a
+// majority vote over the whole event set, so after a day rollover the header —
+// computed from stale history — contradicted the newest row. The latest run is the
+// norm; OLDER rows note their divergence, never the reverse. Null when no event
+// carries a window.
 export function runWindowNorm(
   events: readonly SyncEventFacts[],
   vocabulary: SyncVocabulary = "records"
 ): string | null {
-  const tally = new Map<string, number>();
   for (const ev of events) {
     const label = formatCoverage(ev, vocabulary);
-    if (!label) continue;
-    tally.set(label, (tally.get(label) ?? 0) + 1);
+    if (label) return label;
   }
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [label, count] of tally) {
-    if (count > bestCount) {
-      best = label;
-      bestCount = count;
+  return null;
+}
+
+// The raw [start, end] of the latest windowed run — the divergence comparisons below
+// need the parts, not the label.
+function latestWindow(
+  events: readonly SyncEventFacts[]
+): { start: string | null; end: string | null } | null {
+  for (const ev of events) {
+    if (ev.window_start || ev.window_end) {
+      return { start: ev.window_start ?? null, end: ev.window_end ?? null };
     }
   }
-  return best;
+  return null;
+}
+
+// An OLDER row's divergence note against the latest run's window (#1880 item 4).
+// Null when the row matches the norm (or has no window). A run that shares the
+// norm's start but stopped one day short is the day-rollover case, and says so:
+// "covered → 2026-08-08 (before the day rolled)". Anything else states its own
+// window in full.
+export function windowDivergence(
+  ev: SyncEventFacts,
+  norm: { start: string | null; end: string | null } | null,
+  vocabulary: SyncVocabulary = "records"
+): string | null {
+  const start = ev.window_start ?? null;
+  const end = ev.window_end ?? null;
+  if (!start && !end) return null;
+  if (!norm) return formatCoverage(ev, vocabulary);
+  if (start === norm.start && end === norm.end) return null;
+  if (start === norm.start && end && norm.end) {
+    const gap = daysBetweenDateStr(end.slice(0, 10), norm.end.slice(0, 10));
+    if (gap === 1) return `covered → ${end} (before the day rolled)`;
+    if (gap != null && gap > 0) return `covered → ${end}`;
+  }
+  return formatCoverage(ev, vocabulary);
 }
 
 // Fold a provider's events (NEWEST-FIRST, as the queries return them) into table
-// rows: consecutive no-ops collapsed, and each surviving row carrying its window only
-// when that window departs from the norm. Pure → unit-testable.
+// rows: consecutive no-ops collapsed (#137), consecutive IDENTICAL failures
+// collapsed (#1880 item 3), and each surviving row carrying its window only when it
+// departs from the latest run's norm. Pure → unit-testable.
 export function buildHistoryRows<T extends SyncEventFacts>(
   eventsNewestFirst: readonly T[],
   vocabulary: SyncVocabulary = "records"
 ): SyncHistoryRow<T>[] {
-  const norm = runWindowNorm(eventsNewestFirst, vocabulary);
+  const norm = latestWindow(eventsNewestFirst);
+  const divergence = (ev: T) => windowDivergence(ev, norm, vocabulary);
   const out: SyncHistoryRow<T>[] = [];
   let i = 0;
   while (i < eventsNewestFirst.length) {
     const ev = eventsNewestFirst[i];
+    if (!ev.ok) {
+      // A maximal run of consecutive failures WITH THE SAME REASON — an upstream
+      // outage retried hourly. A failure with a different reason starts its own
+      // run (two different causes must not collapse into one row).
+      let j = i;
+      while (
+        j < eventsNewestFirst.length &&
+        !eventsNewestFirst[j].ok &&
+        (eventsNewestFirst[j].error ?? null) === (ev.error ?? null)
+      )
+        j++;
+      const run = eventsNewestFirst.slice(i, j);
+      if (run.length === 1) {
+        out.push({ kind: "event", ev, window: divergence(ev) });
+      } else {
+        out.push({
+          kind: "failure-run",
+          count: run.length,
+          newestAt: run[0].at,
+          oldestAt: run[run.length - 1].at,
+          error: ev.error ?? null,
+          newest: run[0],
+        });
+      }
+      i = j;
+      continue;
+    }
     if (!isNoOpSyncEvent(ev)) {
-      const window = formatCoverage(ev, vocabulary);
-      out.push({ kind: "event", ev, window: window === norm ? null : window });
+      out.push({ kind: "event", ev, window: divergence(ev) });
       i++;
       continue;
     }
@@ -278,12 +477,7 @@ export function buildHistoryRows<T extends SyncEventFacts>(
     // A single quiet sync is not a run — collapsing it would hide a row and gain
     // nothing, so it renders as itself.
     if (run.length === 1) {
-      const window = formatCoverage(run[0], vocabulary);
-      out.push({
-        kind: "event",
-        ev: run[0],
-        window: window === norm ? null : window,
-      });
+      out.push({ kind: "event", ev: run[0], window: divergence(run[0]) });
     } else {
       out.push({
         kind: "quiet",
@@ -305,4 +499,15 @@ export function quietRunLabel(
   return vocabulary === "forecast"
     ? `${count} refreshes with no change`
     : `${count} syncs with no new data`;
+}
+
+// A collapsed failure run's shared reason, count-qualified so the row still says the
+// reason held for EVERY run it collapsed (#1880 item 3). Null when the runs carried
+// no recorded reason.
+export function failureRunReason(
+  count: number,
+  error: string | null
+): string | null {
+  if (!error) return null;
+  return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
 }

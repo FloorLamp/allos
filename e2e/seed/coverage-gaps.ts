@@ -41,7 +41,7 @@ export function seedCoverageGaps(): void {
   // scripts/seed.ts ONLY (no seed-events), so its DB never sees this setting. The two
   // child-profile specs (kids-growth, pediatric-ranges) only visit Trends / Settings /
   // Biomarkers as Riley — none of which the gate touches. The equipment-manager spec
-  // uses it to prove /settings/equipment bounces a restricted profile to /settings.
+  // uses it to prove /equipment bounces a restricted profile to the dashboard.
   setMinTrainingAge(13);
 
   // Riley (child) is seeded by scripts/seed.ts; grant the child member to it.

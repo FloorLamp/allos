@@ -160,6 +160,10 @@ function domainFollowUpItems<S>(
       c.source_kind === domain.kind &&
       domain.sourceIdOf(c) != null &&
       c.resolution == null &&
+      // The #1866 terminator is STRUCTURAL here, not just a status side-effect: a
+      // settled (done/declined) chain node never renders and never pushes again,
+      // even if a later free-form status edit re-opens the row's status.
+      c.settled_disposition == null &&
       isCarePlanItemOpen(c.status)
   );
   if (linked.length === 0) return [];
@@ -229,6 +233,10 @@ function domainFollowUpItems<S>(
       href,
       dueDate: c.planned_date,
       carePersistent: overdue ? true : undefined,
+      // The #1866 terminator payload (ids only): the surfaces render the
+      // "Done on <date>" / "Not doing it" controls for any still-open, not-yet-
+      // resolvable follow-up — the one first-class way to end the escalation.
+      followUpSettle: { carePlanItemId: c.id },
     });
   }
   return items;

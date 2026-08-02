@@ -1,7 +1,6 @@
 import {
   getPublicUrl,
   getInstanceTimezone,
-  getAiPrefs,
   getBackupSettings,
   getAuditRetentionMonths,
   getSetting,
@@ -18,7 +17,6 @@ import {
   getOffsiteReadiness,
   readVerification,
 } from "@/lib/backup";
-import { getTierConfigView } from "@/lib/settings/ai-tiers";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
@@ -31,8 +29,6 @@ import SettingsAdvanced from "../SettingsAdvanced";
 import PublicUrlSettings from "../PublicUrlSettings";
 import ServerTelegramSettings from "../notifications/ServerTelegramSettings";
 import SmtpSettings from "./SmtpSettings";
-import AiSettings from "../AiSettings";
-import AiTierSettings from "./AiTierSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
@@ -84,11 +80,8 @@ export default async function ServerSettingsPage() {
           publicUrl={publicUrl}
           lastError={getNotifyError()}
         />
-        <AiTierSettings
-          heavy={getTierConfigView("heavy")}
-          light={getTierConfigView("light")}
-        />
-        <AiSettings prefs={getAiPrefs()} />
+        {/* The two AI cards (provider tiers + automation) live on the AI sub-page
+            (#1870, the account→tokens precedent) — see ../ai/page.tsx. */}
         <InstanceTimezoneSettings timezone={getInstanceTimezone()} />
         <BackupSettings
           settings={getBackupSettings()}

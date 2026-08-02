@@ -79,10 +79,11 @@ export async function GET() {
     // undefined = never run yet (treated as not-a-failure). No PRAGMA here.
     const integrityRaw = getSetting("backup_live_integrity_ok");
     liveIntegrityOk = integrityRaw === undefined ? null : integrityRaw === "1";
-    backupsEnabled = getBackupSettings().enabled;
-    const thresholdRaw = Number(getSetting("backup_staleness_hours"));
-    if (Number.isFinite(thresholdRaw) && thresholdRaw > 0)
-      stalenessThresholdHours = thresholdRaw;
+    // Threshold parsing/clamping lives in getBackupSettings (one computation for
+    // the endpoint and the Settings → Server Backups card that edits it, #1869).
+    const backup = getBackupSettings();
+    backupsEnabled = backup.enabled;
+    stalenessThresholdHours = backup.stalenessHours;
     // Off-volume replication staleness (#463): cheap settings-only reads, folded
     // into the same staleness threshold family as the primary backup.
     const { isOffsiteConfigured, getLastOffsiteBackupAt } =

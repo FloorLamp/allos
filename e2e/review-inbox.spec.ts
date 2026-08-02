@@ -2,18 +2,19 @@ import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
-// After issue #208 the surface is split into two sections with a shared strip on
-// top: "Needs attention" (a currently-failing integration) spans both, then
-// "Connected sources" and "Imports" (the chronological one-off feed of documents +
-// archive imports + paste jobs). Plus the profile-menu badge count.
+// After issue #208 the surface is split into sections; since #1880 the inbox order
+// is attention → duplicates → connected sources → imports → tools, and the
+// "Needs attention" card IS the escalated source's card — chip, reason, consequence,
+// and all its actions once — rather than a summary row duplicating a source card
+// 200px below.
 //
 // Since #1772 "Connected sources" is an INBOX rendered through the shared state model
-// (lib/integrations/provider-state): a provider that needs attention is expanded with
-// the reason and the action, a healthy one collapses to a single line, and the full
-// per-provider history lives on the provider's own page (see the setup-page specs
-// below and weather-uv.spec.ts).
+// (lib/integrations/provider-state): a provider with something unfinished is expanded
+// with the reason and the action, a healthy one collapses to a single line, and the
+// full per-provider history lives on the provider's own page (see the setup-page
+// specs below and weather-uv.spec.ts).
 test.describe("Data → Review import inbox", () => {
-  test("splits connected sources from one-off imports, with a failing integration on top", async ({
+  test("renders the failing source ONCE, fully, under Needs attention (#1880)", async ({
     page,
   }) => {
     await page.goto("/data?section=review");
@@ -26,15 +27,39 @@ test.describe("Data → Review import inbox", () => {
       review.getByRole("heading", { name: "Imports", exact: true })
     ).toBeVisible();
 
-    // The failing Strava sync is called out under "Needs attention". The same
-    // failure message also renders on the Strava source card (by design), so
-    // scope the message assertion to the attention item to avoid a strict-mode
-    // double-match.
-    await expect(review.getByText("Needs attention")).toBeVisible();
-    const attentionItem = review
-      .getByRole("listitem")
-      .filter({ hasText: "Strava sync failed" });
-    await expect(attentionItem.getByText(/token refresh failed/)).toBeVisible();
+    // Strava (its last success is past the staleness threshold, so its standing
+    // escalates) renders its FULL card inside "Needs attention": standing chip,
+    // reason, user-terms consequence, and its actions together. The alert IS the
+    // card.
+    const attention = review.getByTestId("needs-attention-sources");
+    await expect(attention.getByText("Needs attention")).toBeVisible();
+    const stravaCard = attention.getByTestId("source-strava");
+    await expect(stravaCard.getByTestId("sync-status-strava")).toContainText(
+      "Sync failing"
+    );
+    await expect(
+      stravaCard.getByText(/Strava token refresh failed/)
+    ).toBeVisible();
+    await expect(
+      stravaCard.getByTestId("source-consequence-strava")
+    ).toContainText("New runs and rides have stopped arriving.");
+    await expect(
+      stravaCard.getByRole("button", { name: "Sync now" })
+    ).toBeVisible();
+    const fullHistory = stravaCard.getByTestId("source-history-link-strava");
+    await expect(fullHistory).toHaveAttribute("href", "/integrations/strava");
+
+    // THE duplicate-rendering tripwire: the failure reason appears exactly once on
+    // the whole Review surface — the #1772 disease (attention row + source card
+    // restating the same 401 with different buttons) stays dead. (Scoped to
+    // Strava's own message: the seeded Withings card has a 401 of its own.)
+    await expect(review.getByText(/Strava token refresh failed/)).toHaveCount(
+      1
+    );
+    // And the escalated source is NOT listed again under Connected sources.
+    await expect(
+      review.getByTestId("connected-sources").getByTestId("source-strava")
+    ).toHaveCount(0);
 
     // "Connected sources": one card per recurring provider, collapsed to latest state.
     await expect(
@@ -54,20 +79,6 @@ test.describe("Data → Review import inbox", () => {
       )
     ).toBeVisible();
     await expect(hcCard.getByText(/Push-only/)).toBeVisible();
-
-    // Strava's card (connected in the seed) offers a per-provider Sync now button;
-    // its latest outcome is the failure.
-    const stravaCard = review.getByTestId("source-strava");
-    await expect(
-      stravaCard.getByRole("button", { name: "Sync now" })
-    ).toBeVisible();
-    // One card, one latest state — the history that used to repeat this line moved to
-    // the provider's own page (#1772), so this is an exact single match.
-    await expect(stravaCard.getByText("Sync failed")).toBeVisible();
-    // The inbox states the reason and offers the way to the full history.
-    await expect(stravaCard.getByText(/token refresh failed/)).toBeVisible();
-    const fullHistory = stravaCard.getByTestId("source-history-link-strava");
-    await expect(fullHistory).toHaveAttribute("href", "/integrations/strava");
 
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"

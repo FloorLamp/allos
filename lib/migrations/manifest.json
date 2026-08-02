@@ -139,5 +139,7 @@
   "138-document-coverage-markers.ts": "3dfbd1c85bd491411ac063865f4df1acc9291e49ce651322170ba8bb7bb7b520",
   "139-notify-message-title.ts": "ce80caa46c2dd530a4a33617febc76fe27b50fa1eb4d6fcf932113506680b47c",
   "140-prn-max-daily-mg.ts": "96d47bdfa54e55313678207364f0e16183dd623782fd35b94ac8f53cb3ff4dbc",
-  "141-portal-software-open-enum.ts": "d15f35689ead11f3714d8e287264fcd64fa44dc8a2e43f5dd7440b380a25c302"
+  "141-followup-settle.ts": "959d68ed38d6d209d0bb77a4c2beae4ad7efbdf29ac1c61eba00f6533acd56b4",
+  "142-trend-views-cleanup.ts": "5d6cf57ed589e67663929f9f0aa8714494bfcc7971c38cf0cf590575a3540e2f",
+  "143-portal-software-open-enum.ts": "7df9afe2f9ea6bf4c4c043b34e8e941520d20f7cb98d6f6dd8569345fa881c57"
 }

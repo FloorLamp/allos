@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 141 (issue #1836): drop the CHECK enum on `portals.software`, making the
+// Migration 143 (issue #1836): drop the CHECK enum on `portals.software`, making the
 // column what the write boundary already treats it as — bare TEXT validated in
 // lib/portals.ts (`isPortalSoftware`, derived from the one SOFTWARE_VALUES tuple).
 //
@@ -64,7 +64,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 141,
-  name: "141-portal-software-open-enum",
+  id: 143,
+  name: "143-portal-software-open-enum",
   up,
 };

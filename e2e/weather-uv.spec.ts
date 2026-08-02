@@ -4,7 +4,7 @@ import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { WEATHER_PROFILE } from "./logins/findings";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). The
 // fixture profile (E2E_LOGIN_WEATHER) is seeded with a home location, skin type, the
@@ -19,9 +19,18 @@ import { workerDbPath } from "./worker-env";
 // test must not pretend otherwise — see restoreWeatherFixture() for how the run's
 // side effects are undone.
 
-// The two events e2e/seed/findings.ts seeds for the weather profile. Anything else on
-// the provider was written by a kicked sync during this file's run.
-const SEEDED_SYNC_EVENTS = ["2026-07-08 05:00:00", "2026-07-08 06:00:00"];
+// The two events e2e/seed/findings.ts seeds for the weather profile — dated on the
+// run's frozen "today" in the profile's timezone (America/New_York), because since
+// #1880 the standing composes the #1685 staleness rule and a fixed past date would
+// read as a silent stop. Anything else on the provider was written by a kicked sync
+// during this file's run. Computed exactly the way the seed computes `wxToday`.
+const WX_TODAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(frozenNow());
+const SEEDED_SYNC_EVENTS = [`${WX_TODAY} 05:00:00`, `${WX_TODAY} 06:00:00`];
 
 // Undo what the re-enable's kicked sync wrote. Whatever the network did, the run
 // appends an integration_sync_events row — ok:1 with a today-relative window where
@@ -254,15 +263,16 @@ test.describe("Weather & UV integration (#1172)", () => {
       await settledClick(member, member.getByTestId("weather-enable"));
       // This test is about the CONNECTION, so it asserts the connection — NOT the
       // sync-standing badge. Since #1772 `sync-status-weather` reports STANDING,
-      // which folds in the latest run's outcome, and `enableWeatherAction` kicks a
+      // which folds in the recent runs' outcomes, and `enableWeatherAction` kicks a
       // real runWeatherSync before it revalidates: where open-meteo is reachable
       // that lands ok:1 and the badge reads "Connected", where it is not (CI has no
       // egress; openMeteoFetch catches and returns ok:false rather than throwing) it
-      // lands ok:0 and the badge reads "Sync failing" — correctly, because a just-
-      // enabled provider whose only run failed IS something wrong. Asserting
-      // "Connected" here was asserting the network, which is why widening its budget
-      // to 20s did not help (run 30682). The connected VIEW is the honest, offline-
-      // deterministic signal: only that branch renders these controls.
+      // lands ok:0 and the flap-aware badge (#1880) reads "Intermittent" — calm,
+      // because one failed run beside this morning's seeded successes is a flap, not
+      // an outage. Asserting "Connected" here was asserting the network, which is
+      // why widening its budget to 20s did not help (run 30682). The connected VIEW
+      // is the honest, offline-deterministic signal: only that branch renders these
+      // controls.
       await expect(member.getByTestId("sync-now-weather")).toBeVisible();
       await expect(
         member.getByRole("button", { name: "Disable" })

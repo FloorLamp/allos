@@ -15,9 +15,10 @@ import { test, expect } from "./fixtures";
 // here is a real missing character rather than a CSS/layout artifact.
 
 test("bold spans render with the space that follows them", async ({ page }) => {
-  // Settings → Server: the paragraph where two structurally identical lines
-  // disagreed — "Heavy handles" rendered fine while "Lighthandles" did not.
-  await page.goto("/settings/server");
+  // Settings → Server → AI (the tier cards' home since #1870): the paragraph where
+  // two structurally identical lines disagreed — "Heavy handles" rendered fine
+  // while "Lighthandles" did not.
+  await page.goto("/settings/ai");
   const ai = page
     .locator("p")
     .filter({ hasText: "Two tiers, each its own provider" })

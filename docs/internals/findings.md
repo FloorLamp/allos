@@ -298,12 +298,30 @@ resolution (an outcome recorded against a later record).**
   outcome against the later study (`resolveFollowUpCore`). That yields the
   serial view of one finding across time.
 
-**Tier reach (#449).** Care tier: it reaches Upcoming + the non-hideable **Needs
-attention** hero (an overdue one bands `overdue` → the hero's "Past due"). Like
-condition-review (#685), a **new Telegram push channel is deliberately scoped
-OUT for v1** — `followup` is omitted from the digest's `DOMAIN_SEQ` — so the
-escalation is the hero + Upcoming + care-persistence step; a push is a follow-up
-decision.
+**Tier reach (#449, amended by owner ruling 2026-08-01 — #1866).** Care tier: it
+reaches Upcoming + the non-hideable **Needs attention** hero (an overdue one
+bands `overdue` → the hero's "Past due"), and — since #1866 — the **overdue
+state pushes**. v1 scoped the channel out; the owner ruled it in-doctrine with
+**zero new settings**: the contact-consent rule requires a user-owned
+declaration behind any contact increase, and the follow-up has one — the user
+(or their accepted extraction) recorded it as a tracked care item with a due
+date. That is the same structure that lets a `must` medication remind without a
+"remind me about medications" toggle. The escalation
+(`runFollowUpNudges`, `lib/notifications/followup.ts`) is deliberately
+conservative — one send when the follow-up crosses overdue, one repeat
+`FOLLOWUP_REPEAT_DAYS` later framed as final, then nothing further, with the
+finding holding the calm surfaces forever — and its ONLY permanent off-switch is
+the **per-item terminator** (`settleFollowUpCore`: "done on \<date\>" /
+"discussed, not doing it" with an optional reason, migration 141's `settled_*`
+columns), rendered inline where the follow-up renders. It is NOT silenced by an
+Upcoming dismissal: the send gate is `isHiddenUnderPolicy` under the item's own
+`snooze-only` policy, keyed by the identical `followup:<id>` dedupeKey — a
+dismiss is resisted exactly as on the page, a live snooze defers with the
+cadence marker frozen. `followup` remains omitted from the digest's
+`DOMAIN_SEQ` (the escalation is its own message, not a digest line), and
+`condition-review` stays out of push entirely — that is a separate, smaller
+decision. Full delivery mechanics:
+[notifications](notifications.md#overdue-safety-follow-up-escalation-1866).
 
 ### Care-tier persistence contract (#700 ask 5)
 
@@ -338,6 +356,16 @@ resolvable follow-up is fully suppressible like any finding. The pure pin is
 snooze → hidden), and the end-to-end pin is
 `lib/__db_tests__/followup-findings.test.ts` (a dismiss on `collectUpcoming`
 leaves the overdue follow-up live).
+
+The definitive CLOSE is never a suppression at all: the #1866 **terminator**
+(`settleFollowUpCore` — "done on \<date\>" or a declined "discussed, not doing
+it" with an optional reason) writes terminal state onto the chain node itself
+(`settled_disposition`/`settled_on`/`settled_reason`, migration 141, status
+stamped `completed`/`not-done`), so the finding — and its push escalation —
+ends because the underlying fact is answered, not because a dismissal hid it. A
+settled node is structurally excluded from the builder and from every "open
+follow-up exists" idempotency check; deliberately re-tracking the same source
+later starts a NEW chain node, which is a new consent.
 
 **The drug-allergy contraindication finding is the second `carePersistent`
 tenant (#1092).** The allergy ↔ medication cross-check
@@ -809,8 +837,9 @@ dashboard hero and Data → Review as it always did, and it is now counted and
 NAMED in the morning digest — the one message that was already going to send.
 There is no dedicated notification and no escalation.
 
-Why it earns a push channel at all, when `condition-review`, `followup` and
-`med-monitor` are deliberately kept off it: this is the one signal whose entire
+Why it earns a push channel at all, when `condition-review` and `med-monitor`
+are deliberately kept off it (and `followup` earned its own dedicated send only
+by the explicit #1866 owner ruling): this is the one signal whose entire
 purpose is to work while the user is NOT looking. An integration exists so data
 flows without opening the app, which makes a dead one precisely the state its
 owner is least likely to notice, and a revoked grant is unrecoverable without

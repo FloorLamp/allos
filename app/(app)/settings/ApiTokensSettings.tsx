@@ -52,7 +52,11 @@ export default function ApiTokensSettings({
   const fmt = (ts: string) => formatTimestamp(ts, formatPrefs, { zone: "utc" });
   const [pending, start] = useTransition();
   const [name, setName] = useState("");
-  const [scope, setScope] = useState<ApiTokenScope>(API_TOKEN_SCOPES[0]);
+  // The capability vocabulary ships exactly ONE scope (#1734's deliberate v1
+  // friction), so there is no choice to offer — the mint form states the
+  // capability as text instead of a one-option select (#1869 item 1). When a
+  // second scope lands, this becomes a picker again.
+  const scope: ApiTokenScope = API_TOKEN_SCOPES[0];
   const [minted, setMinted] = useState<{ token: string; name: string } | null>(
     null
   );
@@ -115,23 +119,17 @@ export default function ApiTokensSettings({
                   data-testid="api-token-name"
                 />
               </label>
-              <label className="space-y-1">
+              <div className="space-y-1">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   Capability
                 </span>
-                <select
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as ApiTokenScope)}
-                  className="input w-full"
-                  data-testid="api-token-scope-select"
+                <p
+                  className="py-1 text-sm font-medium text-slate-700 dark:text-slate-200"
+                  data-testid="api-token-capability"
                 >
-                  {API_TOKEN_SCOPES.map((s) => (
-                    <option key={s} value={s}>
-                      {apiTokenScopeLabel(s)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {apiTokenScopeLabel(scope)}
+                </p>
+              </div>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {apiTokenScopeSummary(scope)}
