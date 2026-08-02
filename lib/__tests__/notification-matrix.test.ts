@@ -9,7 +9,6 @@ import {
   isSafetyKind,
   SAFETY_NOTIFICATION_KINDS,
   TOGGLEABLE_NOTIFICATION_KINDS,
-  TOGGLEABLE_HA_KINDS,
 } from "@/lib/notifications/home-assistant-core";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 
@@ -65,9 +64,6 @@ describe("safety kinds", () => {
 });
 
 describe("shared toggleable-kind registry", () => {
-  it("is the same list the HA channel historically used (back-compat alias)", () => {
-    expect(TOGGLEABLE_NOTIFICATION_KINDS).toBe(TOGGLEABLE_HA_KINDS);
-  });
   it("excludes `test` and the internal `other` kind", () => {
     const kinds = TOGGLEABLE_NOTIFICATION_KINDS.map((k) => k.kind);
     expect(kinds).not.toContain("test");

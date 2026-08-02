@@ -1,5 +1,6 @@
 import { DEFAULT_TIMEZONE, isValidTimezone } from "../timezone";
 import { clampAuditRetentionMonths } from "../retention";
+import { DEFAULT_BACKUP_STALENESS_HOURS } from "../health-status";
 import { db, writeTx } from "../db";
 import { getSetting, setSetting } from "./kv";
 import {
@@ -40,6 +41,10 @@ export interface BackupSettings {
   hour: number; // 0–23, instance timezone
   keepDaily: number; // most-recent snapshots kept
   keepWeekly: number; // additional older weeks kept (newest per week)
+  // Hours before /api/health flags the newest snapshot `backup-stale` (#131).
+  // Read by the health endpoint; editable on the Backups card (#1869 item 2 —
+  // the key used to be readable only, configurable by hand-editing the DB).
+  stalenessHours: number;
 }
 
 export const DEFAULT_BACKUP_SETTINGS: BackupSettings = {
@@ -47,6 +52,7 @@ export const DEFAULT_BACKUP_SETTINGS: BackupSettings = {
   hour: 3,
   keepDaily: 7,
   keepWeekly: 8,
+  stalenessHours: DEFAULT_BACKUP_STALENESS_HOURS,
 };
 
 function parseIntInRange(
@@ -84,6 +90,14 @@ export function getBackupSettings(): BackupSettings {
       520,
       DEFAULT_BACKUP_SETTINGS.keepWeekly
     ),
+    // 1h..1y — a zero/garbage/hand-edited value falls back to the 48h default
+    // rather than disabling the alarm (the health endpoint's posture, #131).
+    stalenessHours: parseIntInRange(
+      getSetting("backup_staleness_hours"),
+      1,
+      8760,
+      DEFAULT_BACKUP_SETTINGS.stalenessHours
+    ),
   };
 }
 
@@ -93,6 +107,7 @@ export function setBackupSettings(cfg: BackupSettings): void {
     setSetting("backup_hour", String(cfg.hour));
     setSetting("backup_keep_daily", String(cfg.keepDaily));
     setSetting("backup_keep_weekly", String(cfg.keepWeekly));
+    setSetting("backup_staleness_hours", String(cfg.stalenessHours));
   });
 }
 

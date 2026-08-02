@@ -1,8 +1,167 @@
 {
   "days": [
     {
+      "date": "2026-08-02",
+      "entries": [
+        {
+          "pr": 1899,
+          "kind": "feature",
+          "issues": [1868],
+          "title": "Notification settings stop asking the same question twice",
+          "body": "The Home Assistant card listed all thirteen reminder kinds and so did the routing matrix's Home Assistant column — twenty-six checkboxes for thirteen choices. The card now keeps the connection settings and the matrix is the one editor. Each channel column also gains a select-all in its header, so switching a whole channel off is one tap instead of thirteen — except your dose reminders, missed-dose escalations, and redose notices, which keep their own boxes so a safety reminder can never be silenced by a single undifferentiated tap."
+        },
+        {
+          "pr": 1900,
+          "kind": "security",
+          "issues": [1882, 1883],
+          "title": "Secrets stay masked in the console too, and busy logs stop losing lines",
+          "body": "Values that look like credentials were already masked before being written to the log files, but the copy echoed to the container console was not — the audience most likely to have the log in front of them saw the unmasked version. Both destinations now pass through the same masking step. Separately, the log files trimmed themselves by rewriting the whole file, which could silently drop an entry written by the notification service at the same moment; trimming is now safe against a second writer."
+        },
+        {
+          "pr": 1896,
+          "kind": "fix",
+          "issues": [1884],
+          "title": "Undoing a merge of several activities no longer loses one of them",
+          "body": "When a merge of three or more activities was undone, each restore ran independently — so if one failed, the surviving activity's data could end up unreachable: not on the restored rows, and no longer on the kept one. Undo now removes exactly the contribution of the activity being restored, leaving the rest intact, and retrying the failed one finishes the job."
+        },
+        {
+          "pr": 1894,
+          "kind": "fix",
+          "issues": [1885],
+          "title": "A brief Telegram outage no longer strands a message with stale buttons",
+          "body": "When the app updates a Telegram message and Telegram is briefly unreachable, it used to forget that message permanently — leaving buttons on screen that no longer did anything and could never be corrected. It now tells a temporary failure apart from a genuinely dead message, and retries the temporary ones on the next check."
+        },
+        {
+          "pr": 1887,
+          "kind": "feature",
+          "issues": [1836, 1874, 1875],
+          "title": "Patient portals shows the actual structure: portal, login, patient",
+          "body": "The portals page is now built from the objects it manages — each portal a permanent section, its logins inside it, and the patients under the login they arrived on. Mapping a patient means tapping a family member's face rather than picking from a dropdown, and when the same person shows up on two logins the page offers the match instead of looking like a duplicate. Portal names, logins, and software tags are editable in place, and changing which profile a patient maps to is a single atomic switch. Members now only see the logins covering profiles they can reach, and permanently refusing a patient is an admin action."
+        },
+        {
+          "pr": 1804,
+          "kind": "feature",
+          "issues": [1497],
+          "title": "Health record and Results are easier to move around",
+          "body": "The record hub leads with your lists, keeps Add reachable on every screen size, and puts each record's actions inline where you are already looking."
+        },
+        {
+          "pr": 1886,
+          "kind": "fix",
+          "issues": [1880],
+          "title": "A flaky data source stops crying wolf",
+          "body": "A source that fails one hour and succeeds the next — a weather service having a bad afternoon — used to report itself as broken, badge and all, even though nothing was missing. It now says plainly that it is working with interruptions, and only escalates after three failures in a row or when nothing has arrived for a day. A source that does need attention is shown once, with its reason and all its actions together, and the run history groups repeated failures instead of alternating stripes."
+        },
+        {
+          "pr": 1881,
+          "kind": "feature",
+          "issues": [1869, 1870],
+          "title": "Settings housekeeping",
+          "body": "The AI provider and automation cards move to their own page under Server, which was carrying ten cards. The backup staleness alarm the health check reads is now editable instead of database-only, and a capability field that only ever had one option reads as plain text."
+        },
+        {
+          "pr": 1873,
+          "kind": "feature",
+          "issues": [1866],
+          "title": "Overdue safety follow-ups finally reach you",
+          "body": "A follow-up you tracked with a due date — the scan recommended in March — now sends a reminder when it goes overdue, and one more some weeks later, then stops. There is no new setting to find: recording the follow-up with a date is the ask, and the off switch is marking it done or saying you have decided against it, either of which ends it for good."
+        },
+        {
+          "pr": 1872,
+          "kind": "fix",
+          "issues": [1854],
+          "title": "As-needed dose limits can count milligrams, not just doses",
+          "body": "Because the safety counter groups the same ingredient across items, 200 mg and 800 mg ibuprofen were both simply \"a dose\" — so three prescription tablets read as calm while six low-dose ones tripped the limit. You can now record a milligrams-per-day maximum, and when every logged dose has a known amount the counter compares real exposure and says which basis it used."
+        }
+      ]
+    },
+    {
       "date": "2026-08-01",
       "entries": [
+        {
+          "pr": 1838,
+          "kind": "feature",
+          "issues": [1603],
+          "title": "Fix a whole run of bad data at once",
+          "body": "A miscalibrated scale or an import that landed pounds as kilograms no longer means dozens of row-at-a-time edits. Data → Review grows a \"Fix a run of data\" panel: pick the field, source, and date range, preview every change (with a plain warning that corrected device rows stop receiving sync updates), then apply in one pass — with a 24-hour undo that restores values while leaving anything you edited afterwards alone. The Body weight chart links straight into it with \"Fix a range\"."
+        },
+        {
+          "pr": 1839,
+          "kind": "feature",
+          "issues": [1596],
+          "title": "Workouts and food logging work offline",
+          "body": "The two gym-and-kitchen moments that still needed signal now queue like doses and weigh-ins: a workout session logged entirely offline is captured when you close the editor and syncs on reconnect (exactly once, sets and all), and the one-tap food serving and protein quick-adds queue too. Undo taps stay online-only — removing something you can't see the current total for would be a guess."
+        },
+        {
+          "pr": 1840,
+          "kind": "feature",
+          "issues": [1431],
+          "title": "Merging duplicate activities: pick any copy's value, per field",
+          "body": "When merging duplicate activities that genuinely disagree — say three copies with three distances — the conflict preview now lists every copy's value as a choice per field, pre-selected to the record you're keeping. Change the keeper and the preview re-orients. Works the same on the Review resolver and the Journal's multi-select merge."
+        },
+        {
+          "pr": 1835,
+          "kind": "feature",
+          "issues": [1826],
+          "title": "Patient portals is now a guided setup flow",
+          "body": "The portals page shows one step at a time — from \"register your first portal\" through mapping discovered patients to a steady-state status view — with a single next-step button instead of eight cards of forms. Everything else lives under a collapsed Manage section (where portals can now also be renamed), copy is shorter, and the page is narrower. Setup surfaces you've finished simply stop appearing."
+        },
+        {
+          "pr": 1834,
+          "kind": "fix",
+          "issues": [1822],
+          "title": "Nudges say things worth reading",
+          "body": "\"With 0 days left\" now reads \"only today left\" everywhere, praise skips generic session names instead of saying \"Nice workout today\", the workout nudge no longer states the same shortfall twice, limit-tier food groups sink to the end of the quick-log keyboard, the protein line drops its hedging, and a message that resolves itself now says what it was about (\"Morning food log — handled in the app\")."
+        },
+        {
+          "pr": 1833,
+          "kind": "fix",
+          "issues": [1828, 1829],
+          "title": "Duplicate documents stop being re-uploaded forever, and logins can be named by email",
+          "body": "When the import tool offers a file whose records are already fully imported, allos now remembers that verdict and tells the tool not to send it again — and forgets automatically if you later delete the covering document, so nothing is ever silently skipped. Portal logins can now be named with an email address (\"mom@gmail.com\"); web addresses remain rejected everywhere. A migration applies automatically."
+        },
+        {
+          "pr": 1832,
+          "kind": "fix",
+          "issues": [1827],
+          "title": "One import, one count",
+          "body": "The import coverage card's \"imported\" number now always equals the document's extracted count. It previously missed medications, imaging, and several other domains, so the two numbers could disagree about the same import."
+        },
+        {
+          "pr": 1830,
+          "kind": "fix",
+          "issues": [1823],
+          "title": "Opening the desktop profile switcher no longer shoves the sidebar",
+          "body": "The switcher panel now drops over the sidebar's contents instead of pushing the navigation, calendar, and footer down by half a screen and snapping them back on close."
+        },
+        {
+          "pr": 1825,
+          "kind": "fix",
+          "issues": [1433],
+          "title": "A brand-new profile no longer opens on a wall of red \"Overdue\" screenings",
+          "body": "Screenings with no recorded history now show as a calm \"No record yet — add a past date or schedule\" setup list instead of red Overdue rows. Nothing about them is counted as late, badged, or sent as a reminder — real overdue states, backed by a recorded date, look exactly as before."
+        },
+        {
+          "pr": 1824,
+          "kind": "fix",
+          "issues": [1819],
+          "title": "The morning digest reports news, not plumbing",
+          "body": "Data-arrival lines now say what arrived (\"Health Connect: steps, sleep, workouts\") instead of meaningless raw row counts, and the weather cache no longer produces a permanent arrival line every single morning. Six smaller copy and grammar fixes ride along: no doubled \"Today:\" prefix, named overdue items instead of bare counts, merged supplement lines, and friendlier sleep phrasing."
+        },
+        {
+          "pr": 1821,
+          "kind": "feature",
+          "issues": [1408],
+          "title": "Energy and Calm from your daily check-in are now charted",
+          "body": "The check-in's energy and calm ratings each get the full treatment your mood rating already had: a Trends card, a tile, a detail page with history and corrections, and a star for the Overview grid. The calm chart plots the same high-is-calm scale the check-in card uses."
+        },
+        {
+          "pr": 1820,
+          "kind": "feature",
+          "issues": [1679, 1680],
+          "title": "Next-period forecasting and trying-to-conceive tracking",
+          "body": "The Cycle page (and a dashboard tile) now project your next period as a date window with an honest confidence label derived from your own cycle variability — never a bare date, never before three completed cycles, and paused entirely during pregnancy or after menopause. A new trying-to-conceive section records LH tests, waking temperature, and cervical mucus as ordinary observations and derives an evidence-based fertile window; it stays off until you turn it on."
+        },
         {
           "pr": 1816,
           "kind": "feature",

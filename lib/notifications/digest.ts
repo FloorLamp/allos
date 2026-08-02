@@ -18,6 +18,12 @@ import { offerTextTail } from "./offer-tail";
 import { joinBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
 import { sleepVerdictPhrase } from "../sleep-summary";
+import {
+  intakeDeltaLine,
+  intakeGapExplainedBy,
+  type IntakeDeltas,
+} from "../intake-deltas";
+import { isTrainingSignalKey } from "../workout-nudge";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -135,13 +141,15 @@ export interface DigestInput {
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
-  // The state-change HEADLINE for the pushed tier (#1505 part 3) —
-  // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
-  // ONE shared `intakeDeltaLine` the weekly recap and the household card also render.
-  // Null on a quiet window, which is the signal to say nothing: a fraction always has
-  // a value, but a delta only exists when something actually changed. Optional so
-  // older callers/fixtures are unchanged.
-  intakeDeltaLine?: string | null;
+  // The state changes across the pushed tier (#1505 part 3), classified by the ONE
+  // shared `classifyIntakeDeltas` the weekly recap and the household card also read.
+  // Rendered here through the SAME `intakeDeltaLine` formatter those two use — the
+  // structured form is carried rather than the finished string so the digest can also
+  // decide whether the delta and the adherence fraction are stating one fact twice
+  // (#1819 item 6). Empty/absent on a quiet window, which is the signal to say
+  // nothing: a fraction always has a value, but a delta only exists when something
+  // actually changed.
+  intakeDeltas?: IntakeDeltas | null;
   // Weight logged yesterday, canonical kg. Rendered in kg by policy: the
   // notification has no login-unit context (multiple logins, each with its own
   // weight preference, can watch one profile), so all notification builders emit
@@ -169,7 +177,7 @@ export interface DigestInput {
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
-  // The GUARANTEED access tail (#1505): the collapsed "Log other… · <slot>" action
+  // The GUARANTEED access tail (#1505): the collapsed "Log other (N for <slot>)" action
   // for this profile's `may` items, or null when the profile has none on offer today.
   // Its presence also lowers the "is there anything to say?" bar to zero — see
   // buildDigest — because for a tap-only user this button IS the digest's job.
@@ -178,9 +186,18 @@ export interface DigestInput {
   // render an expandable keyboard (Web Push, Home Assistant).
   offerCount?: number;
   // Today's recommended workout, preformatted by the SAME formatter the dedicated
-  // nudge uses (#1712 §2 / #221). Null when there's no recommendation — no routine, a
-  // restricted profile, or the presence gates hold.
+  // nudge uses (#1712 §2 / #221) in its BARE variant — the standalone "Today:" prefix
+  // is right in the nudge and restates the heading here (#1819 item 3). Null when
+  // there's no recommendation — no routine, a restricted profile, or the presence
+  // gates hold.
   workoutPreview?: string | null;
+  // The weekly-progress phrase for training targets (#1819 item 4) — "2 of 4 training
+  // targets on pace — behind on Back", from the SAME paced set the Upcoming training
+  // items are drawn from. It REPLACES the band's "N training targets" count, which was
+  // a number carrying neither progress nor what is lagging. Null for a profile with no
+  // weekly targets, and never applied to a band whose `training` items are something
+  // else (an outdoor plan, an endurance event).
+  trainingPaceLine?: string | null;
   // The collapsed ⚙️ Tune control (#1714), or null when today's message carries
   // nothing tunable. Unlike the offer tail it does NOT lower the "is there anything to
   // say?" bar: a message that exists only to offer its own preferences is not a
@@ -234,6 +251,12 @@ function activityStat(a: DigestActivity): string {
 // Doses are summarized by the Today dose-count headline, so they're dropped from
 // the banded "what's due" lines to avoid double-counting (issue #1108).
 const DOSE_EXCLUDED_FROM_BANDS: readonly UpcomingDomain[] = ["dose"];
+
+// A band of at most this many items NAMES them instead of counting them (#1819 item
+// 5). "Overdue: 1 screening, 2 labs" is a count with the subject removed; at this size
+// the names fit and the count never did any work. Above it, naming stops fitting on a
+// line and the count is genuinely the right shape.
+const BAND_NAME_AT_MOST = 3;
 
 // Assemble the digest model, or null when every section is empty (so the tick
 // sends nothing rather than a hollow "nothing to report").
@@ -320,11 +343,28 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of
   // only doses reads as one clean line, not "💊 3 doses" + "Today: 3 doses".
+  //
+  // Two shapes beyond the bare count (#1819 items 4 and 5): a band of at most
+  // BAND_NAME_AT_MOST items NAMES them ("Overdue: colonoscopy · CBC, lipid panel"),
+  // because below that size a count withholds the only thing the reader needs; and a
+  // band whose `training` items are all weekly targets states the weekly PROGRESS
+  // instead of counting them. The training guard is the key namespace, not the domain
+  // — an endurance event and an outdoor plan also live in `training`, and the pace
+  // phrase is not about them.
   const due = buildUpcomingDigest(input.profileName, input.todayGroups, {
     excludeDomains: DOSE_EXCLUDED_FROM_BANDS,
+    nameAtMost: BAND_NAME_AT_MOST,
+    phraseFor: (domain, items) =>
+      domain === "training" &&
+      input.trainingPaceLine &&
+      items.every((i) => isTrainingSignalKey(i.key))
+        ? input.trainingPaceLine
+        : null,
   });
   if (due) {
-    for (const line of due.lines) todayLines.push(line);
+    // One bullet grammar for the section (#1819 item 5): the band summaries were the
+    // only lines in the whole message with no emoji.
+    for (const line of due.lines) todayLines.push(`🗓️ ${line}`);
     for (const h of due.highlights) {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
     }
@@ -349,22 +389,39 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   // The delta headline LEADS the intake report (#1505 part 3): "which of the things
   // that push me changed state" is the news; the fraction below is the supporting
-  // detail. Rendered from the preformatted shared line, never recomputed here.
-  if (input.intakeDeltaLine) {
-    yLines.push(`🔁 ${input.intakeDeltaLine}`);
+  // detail. Rendered through the ONE shared formatter, never recomputed here.
+  //
+  // …UNLESS the two state one fact twice (#1819 item 6). "🔁 Missed: Glycine (1 day)"
+  // above "💊 Supplements: 8/9 taken" is one line's worth of news wearing two bullets:
+  // the 1 missing IS the Glycine. When the delta fully explains the gap the two MERGE
+  // into "💊 8/9 taken — missed Glycine (1 day)". The divergent cases — a skip, several
+  // misses, a resume, a mixed window — keep both lines, because there the fraction and
+  // the delta genuinely answer different questions.
+  const deltas = input.intakeDeltas ?? null;
+  const deltaLine = deltas ? intakeDeltaLine(deltas) : null;
+  const adherence = input.adherence;
+  // Skips are excluded from the "of N due" figure (they weren't intended doses); a
+  // nonzero skip count is shown as a trailing note (#232).
+  const intended = adherence ? adherence.due - adherence.skipped : 0;
+  const mergedClause =
+    deltas && adherence && intended > 0
+      ? intakeGapExplainedBy(deltas, intended - adherence.taken)
+      : null;
+  if (deltaLine && !mergedClause) {
+    yLines.push(`🔁 ${deltaLine}`);
   }
-  if (input.adherence) {
-    // Skips are excluded from the "of N due" figure (they weren't intended
-    // doses); a nonzero skip count is shown as a trailing note (#232).
-    const { taken, skipped, due } = input.adherence;
-    const intended = due - skipped;
+  if (adherence) {
+    const { taken, skipped } = adherence;
     if (intended <= 0) {
       // Everything due was deliberately skipped — a "0/0 taken" line reads as a
       // bug (#380 nit); state the skips plainly instead.
       yLines.push(`💊 ${cap(noun)}: ${skipped} skipped`);
     } else {
       const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
-      yLines.push(`💊 ${cap(noun)}: ${taken}/${intended} taken${skipNote}`);
+      const explain = mergedClause ? ` — ${mergedClause}` : "";
+      yLines.push(
+        `💊 ${cap(noun)}: ${taken}/${intended} taken${skipNote}${explain}`
+      );
     }
   }
   if (input.weightKg != null) {
@@ -398,9 +455,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       s.baselineMin,
       fmtSleepDuration
     );
+    // The verdict is a CLAUSE about the figure, so it takes the em-dash separator the
+    // rest of the message uses for exactly that (#1819 item 7) — interpolated with a
+    // bare space it read as one run-on quantity, "6h 38m about typical".
     sleepLines.push(
       `😴 Last night: ${fmtSleepDuration(s.lastNightMin)}${
-        verdict ? ` ${verdict}` : ""
+        verdict ? ` — ${verdict}` : ""
       }${stageNote}`
     );
     // A same-day nap on its own line — kept apart from the overnight total.
@@ -408,7 +468,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       sleepLines.push(`💤 + ${fmtSleepDuration(s.napMin)} nap`);
     }
     if (s.sri != null) {
-      sleepLines.push(`📈 Sleep regularity · ${sriPresentation(s.sri).text}`);
+      // "Sleep regularity 94 — very consistent" (#1819 item 7). The old line paired an
+      // acronym with a naked number ("Sleep regularity · SRI 94") and left the reader
+      // to know the scale. The banded qualifier comes from the SAME sriPresentation
+      // every SRI surface reads, and by #992's contract it qualifies the schedule's
+      // consistency — never the sleeper.
+      const sri = sriPresentation(s.sri);
+      sleepLines.push(`📈 Sleep regularity ${sri.value} — ${sri.qualifier}`);
     }
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
@@ -443,7 +509,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // A tail-only digest still needs a body: an empty message reads as a bug. The
   // count rides the sentence here on EVERY channel — with no other content there is
   // nothing for the Telegram button to be redundant against, and a bare "Nothing
-  // scheduled." beside a "Log other…" button would under-describe what is on offer.
+  // scheduled." beside a "Log other" button would under-describe what is on offer.
   if (sections.length === 0) {
     const offered = input.offerCount ?? 0;
     sections.push({

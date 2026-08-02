@@ -141,7 +141,7 @@ export async function extractMedicalDocument(
     return {
       status: "skipped",
       message:
-        "AI not configured — file stored but not extracted. Configure the Heavy AI tier under Settings → Server and re-upload to import results.",
+        "AI not configured — file stored but not extracted. Configure the Heavy AI tier under Settings → Server → AI and re-upload to import results.",
     };
   }
   const { client, model: MODEL, tier, host } = resolved;

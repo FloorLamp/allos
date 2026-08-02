@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Per-hit command-palette actions (issue #662): a FOUND entity offers contextual
@@ -95,10 +95,12 @@ test.describe("command palette — per-hit actions (#662)", () => {
 
       // Book a scheduled appointment we own (date defaults to today → scheduled).
       await page.goto("/records/history/visits");
-      const upcoming = page.getByTestId("visits-upcoming");
-      await expect(upcoming).toBeVisible();
-      await upcoming.getByLabel("Reason / title").fill(APPT_MARKER);
-      await upcoming.getByRole("button", { name: "Add", exact: true }).click();
+      await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+      const visitDialog = page.getByRole("dialog", { name: "Add visit" });
+      await visitDialog.getByLabel("Reason / title").fill(APPT_MARKER);
+      await visitDialog
+        .getByRole("button", { name: "Add", exact: true })
+        .click();
       await expect(page.getByText("Appointment saved")).toBeVisible();
 
       // Find it in the palette and complete it from the hit's action chip.
@@ -109,7 +111,11 @@ test.describe("command palette — per-hit actions (#662)", () => {
         .getByRole("listitem")
         .filter({ hasText: APPT_MARKER })
         .first(); // first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
-      await expect(row).toBeVisible();
+      // Same first-search warm-up ceiling as the medication/biomarker hits above —
+      // this test's search is its palette's first, so index warm-up + a loaded
+      // shard can outrun the 5 s default (#1556 interaction-latency class,
+      // observed on shard 2, 2026-08-01).
+      await expect(row).toBeVisible({ timeout: 20_000 });
       const complete = row.getByTestId("palette-hit-action-complete");
       await expect(complete).toBeVisible();
       // settledClick awaits the completeAppointment POST before returning.

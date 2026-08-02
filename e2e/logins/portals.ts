@@ -22,3 +22,12 @@ export const PORTAL_HOUSEHOLD_B_PROFILE = "Portal House B (e2e)";
 export const PORTAL_B_NAME = "Bee Clinic Portal (e2e)";
 export const PORTAL_B_ACCOUNT = "Bee Household Login (e2e)";
 export const PORTAL_B_FAILURE = "e2e-1787-leak-canary: sign-in blocked for bee";
+
+// A READ-ONLY caregiver on household A, for the member × empty promise state (#1874).
+// The page derives everything from the registry this login can SEE, and since #1875 a
+// member's read admits only accounts CLAIMED by a profile they can reach (unclaimed
+// first-contact accounts are admin-only). A's profile has no portal binding, so this
+// login's visible registry is empty no matter what portals other specs create and remove
+// around it — which is what makes "a member with no covering login" a deterministic
+// assertion on a shared worker database rather than a scheduling coin flip.
+export const E2E_LOGIN_PORTAL_NONE = "e2e_portal_none";

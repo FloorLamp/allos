@@ -5,6 +5,8 @@ import {
   effectiveMaxDailyCount,
   prnMaxSignalKey,
   PRN_MAX_PREFIX,
+  parseAmountMg,
+  prnDayExposure,
 } from "@/lib/prn-redose";
 
 // The arming administration was given at a fixed instant; `now` is offset from it.
@@ -186,5 +188,190 @@ describe("effectiveMaxDailyCount (#1027 widening, #1458 degradation)", () => {
 describe("prnMaxSignalKey", () => {
   it("keys on the item id under the registered prefix", () => {
     expect(prnMaxSignalKey(7)).toBe(`${PRN_MAX_PREFIX}7`);
+  });
+});
+
+// ---- Amount-aware day exposure (#1854) --------------------------------------
+
+describe("parseAmountMg", () => {
+  it("parses a leading number + mass unit, mg canonical", () => {
+    expect(parseAmountMg("200 mg")).toBe(200);
+    expect(parseAmountMg("200mg")).toBe(200);
+    expect(parseAmountMg("0.5 g")).toBe(500);
+    expect(parseAmountMg("500 mcg")).toBe(0.5);
+    expect(parseAmountMg("500 µg")).toBe(0.5);
+  });
+
+  it("takes the administered mg off a liquid concentration line", () => {
+    expect(parseAmountMg("240 mg / 7.5 mL")).toBe(240);
+    expect(parseAmountMg("160 mg per 5 mL")).toBe(160);
+  });
+
+  it("refuses anything that is not a mass — never a guess", () => {
+    expect(parseAmountMg("2 tablets")).toBeNull();
+    expect(parseAmountMg("1 capsule")).toBeNull();
+    expect(parseAmountMg("400 IU")).toBeNull();
+    expect(parseAmountMg("5 mL")).toBeNull();
+    expect(parseAmountMg("")).toBeNull();
+    expect(parseAmountMg(null)).toBeNull();
+    expect(parseAmountMg(undefined)).toBeNull();
+    // A per-kg rate is a rate, not an administered amount.
+    expect(parseAmountMg("10 mg/kg")).toBeNull();
+  });
+});
+
+describe("prnDayExposure — basis selection (#1854)", () => {
+  it("mg basis when the mg max is confirmed and every amount parses (3 × 800 mg vs 1200 mg/day)", () => {
+    expect(
+      prnDayExposure({
+        amounts: ["800 mg", "800 mg", "800 mg"],
+        maxDailyAmountMg: 1200,
+        maxDailyCount: 6,
+      })
+    ).toEqual({
+      basis: "mg",
+      total: 2400,
+      max: 1200,
+      over: true,
+      atMax: true,
+      unknownAmounts: 0,
+    });
+  });
+
+  it("mg basis stays calm when the milligrams are under the ceiling a count would have tripped", () => {
+    const e = prnDayExposure({
+      amounts: ["200 mg", "200 mg", "200 mg", "200 mg", "200 mg"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: 4, // 5 rows would be over on the count basis
+    });
+    expect(e).toMatchObject({ basis: "mg", total: 1000, over: false });
+  });
+
+  it("count fallback when an amount does not parse and a count max exists", () => {
+    const e = prnDayExposure({
+      amounts: ["800 mg", "1 tablet"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: 1,
+    });
+    expect(e).toEqual({
+      basis: "count",
+      total: 2,
+      max: 1,
+      over: true,
+      atMax: true,
+      unknownAmounts: 0,
+    });
+  });
+
+  it("count basis when no mg max is confirmed", () => {
+    const e = prnDayExposure({
+      amounts: ["800 mg", "800 mg"],
+      maxDailyAmountMg: null,
+      maxDailyCount: 4,
+    });
+    expect(e).toMatchObject({ basis: "count", total: 2, over: false });
+  });
+
+  it("mg lower bound when there is NO count fallback: known sum judged, unknowns counted", () => {
+    const e = prnDayExposure({
+      amounts: ["800 mg", "800 mg", "1 tablet"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: null,
+    });
+    expect(e).toEqual({
+      basis: "mg",
+      total: 1600,
+      max: 1200,
+      over: true,
+      atMax: true,
+      unknownAmounts: 1,
+    });
+  });
+
+  it("atMax without over at exactly the ceiling", () => {
+    const e = prnDayExposure({
+      amounts: ["600 mg", "600 mg"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: null,
+    });
+    expect(e).toMatchObject({ over: false, atMax: true });
+  });
+
+  it("null when NO ceiling is confirmed (the liability gate) — a 0 is not a ceiling", () => {
+    expect(
+      prnDayExposure({
+        amounts: ["800 mg"],
+        maxDailyAmountMg: null,
+        maxDailyCount: null,
+      })
+    ).toBeNull();
+    expect(
+      prnDayExposure({
+        amounts: ["800 mg"],
+        maxDailyAmountMg: 0,
+        maxDailyCount: 0,
+      })
+    ).toBeNull();
+  });
+
+  it("an empty day on the mg basis is 0 of max", () => {
+    expect(
+      prnDayExposure({ amounts: [], maxDailyAmountMg: 1200, maxDailyCount: 6 })
+    ).toMatchObject({ basis: "mg", total: 0, over: false, atMax: false });
+  });
+});
+
+describe("redoseNoticeDecision × exposure (#1854)", () => {
+  it("suppresses at the mg ceiling although the count reads calm", () => {
+    const d = redoseNoticeDecision({
+      ...base,
+      countToday: 3, // < maxDailyCount 4 — the pre-#1854 gate would fire
+      exposure: prnDayExposure({
+        amounts: ["800 mg", "800 mg", "800 mg"],
+        maxDailyAmountMg: 1200,
+        maxDailyCount: 4,
+      }),
+    });
+    expect(d.kind).toBe("suppressed-max");
+  });
+
+  it("fires under the mg ceiling although the count would have suppressed, and carries the exposure", () => {
+    const exposure = prnDayExposure({
+      amounts: ["200 mg", "200 mg", "200 mg", "200 mg"],
+      maxDailyAmountMg: 2400,
+      maxDailyCount: 4,
+    });
+    const d = redoseNoticeDecision({
+      ...base,
+      countToday: 4, // == maxDailyCount — the count gate would suppress
+      exposure,
+    });
+    expect(d.kind).toBe("fire");
+    if (d.kind === "fire") expect(d.exposure).toEqual(exposure);
+  });
+
+  it("a null exposure keeps the count gate exactly as before", () => {
+    const d = redoseNoticeDecision({ ...base, countToday: 4, exposure: null });
+    expect(d.kind).toBe("suppressed-max");
+  });
+});
+
+describe("redoseWindowStatus × exposure (#1854)", () => {
+  it("atMax follows the exposure verdict and the exposure rides the status", () => {
+    const exposure = prnDayExposure({
+      amounts: ["800 mg", "800 mg", "800 mg"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: 6,
+    });
+    const s = redoseWindowStatus({
+      minIntervalHours: 6,
+      maxDailyCount: 6,
+      latestGivenAt: GIVEN,
+      countToday: 3,
+      now: hoursAfter(7),
+      exposure,
+    })!;
+    expect(s.atMax).toBe(true); // 2400 mg ≥ 1200 mg/day; "3 of 6" would read calm
+    expect(s.exposure).toEqual(exposure);
   });
 });

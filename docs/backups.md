@@ -10,8 +10,10 @@ is the short operator overview.
 The hourly tick takes a **nightly SQLite snapshot** of the database via
 `VACUUM INTO` (a compact single-file copy, safe against the live connection).
 Configure it in **Settings → Server → Automated backups** (admin only):
-enable/disable, the hour (in the instance timezone), and retention (keep _N_
-dailies + _M_ weeklies, default 7/8). Snapshots are written to
+enable/disable, the hour (in the instance timezone), retention (keep _N_
+dailies + _M_ weeklies, default 7/8), and the health endpoint's stale alarm
+(hours before the newest snapshot counts as stale, default 48). Snapshots are
+written to
 `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, older ones are pruned only after a
 successful new snapshot, and the card shows the last backup's time/size (plus
 any failure) with a **Back up now** button. The card also shows the last **live
@@ -195,8 +197,9 @@ the container unhealthy:
   never runs the expensive `integrity_check` itself, so it stays cheap enough
   for a frequent uptime poll.
 - **`backup-stale`** — backups are enabled and the newest snapshot is older than
-  the staleness threshold (**48h** by default; override with the
-  `backup_staleness_hours` global setting). A brand-new instance inside its
+  the staleness threshold (**48h** by default; the **Stale alarm** field on the
+  Automated backups card, stored as the `backup_staleness_hours` global
+  setting). A brand-new instance inside its
   grace window is **not** flagged here — see `backups-never-ran` below for the
   perpetually-unbackuped case.
 - **`backups-never-ran`** — backups are enabled but **no snapshot has ever been

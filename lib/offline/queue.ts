@@ -7,18 +7,40 @@
 // lib/offline/queue-db.ts, and the server writes in lib/offline/writes.ts).
 //
 // SCOPE: only these idempotent quick-log flows are queueable — a dose confirm, a
-// dose SKIP (issue #232), a body-metric quick-add, a vitals quick-add, and the
-// daily mood check-in (issue #992, idempotent per day).
+// dose SKIP (issue #232), a body-metric quick-add, a vitals quick-add, the daily
+// mood check-in (issue #992, idempotent per day), a workout SESSION logged
+// entirely offline ("set" — #28's original "add set" ask, landed by #1596), and a
+// food quick-add ("food", #1596: a one-serving food-group tap or a protein-grams
+// tap).
 // Anything with server-derived state stays online-only. Payloads carry the
 // CAPTURED raw fields + date so a late replay lands on the day the user logged it
 // (issue #28, point 5), never the replay date.
+//
+// DELIBERATE EXCLUSIONS (#1596 — documented here so they're policy, not ambient):
+//   • Editing an activity that already has a SERVER row is not queueable. The
+//     training log's persistence model is create-then-update against a
+//     server-created row id, with wholesale set replacement on every save — a
+//     replayed stale update would be a destructive overwrite of state that may
+//     have moved (another device, an integration re-ingest), not a capture. So
+//     the "set" flow queues only a session the server NEVER saw (the form closed
+//     offline before its first save could create the row): that whole session is
+//     pure captured fields — the client's own set ordering is the submitted array
+//     order, exactly what the online path derives set_number from. Mid-session
+//     edits to an already-created row are covered by the form's own retrying
+//     auto-save plus the #1699 local draft, not the queue.
+//   • The food/protein "−" undo taps are not queueable. An undo is a DECREMENT
+//     against whatever total stands at replay time, not a capture of raw fields;
+//     replaying one against state that changed while offline could remove a
+//     serving the user never saw. Only the additive "+" taps queue; an offline
+//     "−" still fails honestly at the surface.
 
 // Type-only (fully erased at build, so this module stays runtime-dependency-free):
-// the dose write cores' typed answer, which the replay disposition below maps onto
-// the queue's own vocabulary.
-import type { DoseTakenOutcome } from "@/lib/types";
+// the dose write cores' typed answer and the activity save core's typed answer,
+// which the replay dispositions below map onto the queue's own vocabulary.
+import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
 
-export type FlowKind = "dose" | "skip-dose" | "body-metric" | "vitals" | "mood";
+export type FlowKind =
+  "dose" | "skip-dose" | "body-metric" | "vitals" | "mood" | "set" | "food";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
@@ -26,6 +48,8 @@ export const FLOW_KINDS: readonly FlowKind[] = [
   "body-metric",
   "vitals",
   "mood",
+  "set",
+  "food",
 ];
 
 // A dose confirm ("dose") is a SET-TO-TAKEN intent and a dose skip ("skip-dose",
@@ -95,8 +119,53 @@ export interface MoodPayload {
   note: string | null;
 }
 
+// Workout session logged entirely offline (#1596, landing #28's "add set"). The
+// payload is the EXACT string fields the activity form submits to saveActivity —
+// captured verbatim from the form's own FormData at close time, so the replay
+// rebuilds the identical request and runs the identical write core
+// (lib/activity-write.ts::saveActivityCore) with zero re-encoding drift. The sets
+// ride inside `fields.sets` (the form's JSON array, whose order IS the set order),
+// and `fields.weight_unit` carries the unit each load was captured in (#630).
+// CREATE-ONLY by construction: the capture never includes `id` or `profile_id`
+// (the replay strips them again, belt-and-braces), so a replayed intent can only
+// insert a new session on the intent's stamped profile — never retarget an
+// existing row. See the scope comment's exclusion note.
+//
+// REPLAYS AS A COMPLETED SESSION: the capture fires on the editor's CLOSE path,
+// so the intent's own capturedAt is the moment the session ended — and the
+// replay (lib/offline/writes.ts::applySetIntent) stamps it as the row's end_time
+// when the captured fields carry a start but no end/duration. Without that, the
+// replayed row would be the live-draft signature (started, unended,
+// duration-less) and workout presence (#921) would resurrect it as an ACTIVE
+// workout at reconnect — the app-wide dock and the stale-workout nag, hours
+// after the user walked away.
+export interface SetPayload {
+  fields: Record<string, string>;
+}
+
+// Food quick-add (#1596) — the two additive one-tap logging controls that share
+// this flow, discriminated by `entry`:
+//   "serving" — one serving of a food-group (the FoodLogBar "+" tap): `groupKey`
+//               is the catalog slug, `mealSlot` the meal window active at tap
+//               (asserted at replay like the Telegram nudge's baked-in slot).
+//   "protein" — N grams of direct protein (the ProteinQuickAdd "+" tap): `grams`.
+// The intent's own `capturedAt` doubles as the tap instant for the
+// food_log_events frecency ledger, so a late replay ranks in the slot the user
+// actually tapped, not the reconnect slot.
+export interface FoodPayload {
+  entry: "serving" | "protein";
+  groupKey: string | null;
+  mealSlot: string | null;
+  grams: number | null;
+}
+
 export type IntentPayload =
-  DosePayload | BodyMetricPayload | VitalsPayload | MoodPayload;
+  | DosePayload
+  | BodyMetricPayload
+  | VitalsPayload
+  | MoodPayload
+  | SetPayload
+  | FoodPayload;
 
 // The maximum number of intents accepted (server) and sent (client) per replay POST
 // — the SINGLE source of truth for both sides so they can never disagree (issue
@@ -315,6 +384,8 @@ export function describeIntent(intent: QueuedIntent): string {
     "body-metric": "Body metric",
     vitals: "Vitals",
     mood: "Mood check-in",
+    set: "Workout session",
+    food: "Food log",
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }
@@ -381,6 +452,61 @@ export function classifyDoseReplay(
           "This dose is no longer on the schedule (it was removed or changed), so it couldn't be saved.",
       };
   }
+}
+
+// ── set replay: honoring the typed outcome (#1596, the #1427 pattern) ─────────
+//
+// The queued workout session replays through the SAME write core the live form's
+// auto-save uses (lib/activity-write.ts::saveActivityCore), which answers with a
+// typed SaveActivityOutcome (#332) rather than a boolean — so a refusal reaches
+// the dead-letter panel with the real reason, never a silent drop or a fake
+// "synced". Pure, so the mapping is unit-tested rather than inferred from the
+// route. "not-owned" is unreachable for a create-only intent (it carries no row
+// id), but the mapping stays total so a future outcome can't fall through silent.
+export function classifySetReplay(outcome: SaveActivityOutcome): {
+  status: "done" | "rejected";
+  reason?: string;
+} {
+  if (outcome.ok) return { status: "done" };
+  switch (outcome.reason) {
+    case "restricted":
+      return {
+        status: "rejected",
+        reason:
+          "Activity logging isn't available for this profile, so the workout wasn't saved.",
+      };
+    case "not-owned":
+      return {
+        status: "rejected",
+        reason:
+          "This workout doesn't belong to a profile you can write, so it wasn't saved.",
+      };
+    case "invalid":
+    default:
+      return {
+        status: "rejected",
+        reason:
+          "The workout entry couldn't be validated (check the title and date), so it wasn't saved.",
+      };
+  }
+}
+
+// The tap instant a replayed food/protein intent should ledger under (#1596): the
+// intent's own capturedAt when it parses to a real moment that isn't after `now`
+// (client clocks drift), else the replay instant. Keeps the food_log_events
+// frecency ranking honest — a Morning tap replayed at dinner still counts for
+// Morning — without ever trusting a garbage or future timestamp.
+export function resolveCapturedInstant(
+  capturedAt: unknown,
+  now: Date = new Date()
+): string {
+  if (typeof capturedAt === "string") {
+    const t = new Date(capturedAt);
+    if (Number.isFinite(t.getTime()) && t.getTime() <= now.getTime()) {
+      return t.toISOString();
+    }
+  }
+  return now.toISOString();
 }
 
 // The refusal shown when a queued dose entry sat unsent past the dose-log date window

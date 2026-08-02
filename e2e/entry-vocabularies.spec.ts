@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick, settledFill, settledSelect } from "./helpers";
 import {
@@ -101,6 +102,30 @@ function plannedDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+async function openAllergyDialog(page: Page) {
+  await settledClick(page, page.getByTestId("add-allergy-panel-toggle"));
+  const dialog = page.getByRole("dialog", { name: "Add allergy" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+async function revealCarePlan(page: Page) {
+  const section = page.getByTestId("records-care-plan");
+  const open = await section.evaluate(
+    (element) => (element as HTMLDetailsElement).open
+  );
+  if (!open) await settledClick(page, section.locator("summary"));
+  return section;
+}
+
+async function openCarePlanDialog(page: Page) {
+  await revealCarePlan(page);
+  await settledClick(page, page.getByTestId("add-care-plan-panel-toggle"));
+  const dialog = page.getByRole("dialog", { name: "Add care-plan item" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 test.describe("Entry vocabularies (#1676)", () => {
   test.beforeAll(() => {
     cleanupRows();
@@ -121,16 +146,21 @@ test.describe("Entry vocabularies (#1676)", () => {
     // (1) The escape hatch. A wording the vocabulary doesn't know still saves —
     // through the explicit "Use …" row, and unchanged.
     await page.goto("/records/problems/allergies");
-    const substance = page.locator("#allergy-substance-new");
+    const allergyDialog = await openAllergyDialog(page);
+    const substance = allergyDialog.locator("#allergy-substance-new");
     await settledFill(page, substance, DRIFTED_ALLERGEN);
     await page
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${DRIFTED_ALLERGEN}`) })
       .click();
-    await settledFill(page, page.getByTestId("allergy-reaction-new-0"), "rash");
+    await settledFill(
+      page,
+      allergyDialog.getByTestId("allergy-reaction-new-0"),
+      "rash"
+    );
     await settledClick(
       page,
-      page.getByRole("button", { name: "Add", exact: true })
+      allergyDialog.getByRole("button", { name: "Add", exact: true })
     );
     await expect(page.getByText("Allergy saved")).toBeVisible();
     await expect(
@@ -148,17 +178,22 @@ test.describe("Entry vocabularies (#1676)", () => {
     // (2) The same allergy, entered through the picker.
     cleanupRows();
     await page.goto("/records/problems/allergies");
-    const picker = page.locator("#allergy-substance-new");
+    const pickedDialog = await openAllergyDialog(page);
+    const picker = pickedDialog.locator("#allergy-substance-new");
     await settledFill(page, picker, "nsaid");
     await page
       .getByRole("listbox")
       .getByRole("button", { name: PICKED_ALLERGEN, exact: true })
       .click();
     await expect(picker).toHaveValue(PICKED_ALLERGEN);
-    await settledFill(page, page.getByTestId("allergy-reaction-new-0"), "rash");
+    await settledFill(
+      page,
+      pickedDialog.getByTestId("allergy-reaction-new-0"),
+      "rash"
+    );
     await settledClick(
       page,
-      page.getByRole("button", { name: "Add", exact: true })
+      pickedDialog.getByRole("button", { name: "Add", exact: true })
     );
     await expect(page.getByText("Allergy saved")).toBeVisible();
 
@@ -237,18 +272,25 @@ test.describe("Entry vocabularies (#1676)", () => {
     test.slow();
 
     await page.goto("/records/care/overview");
-    await settledFill(page, page.locator("#cp-desc-new"), CARE_ITEM);
-    await settledSelect(page, page.locator("#cp-category-new"), "procedure");
-    await settledSelect(page, page.locator("#cp-status-new"), "planned");
+    const carePlanDialog = await openCarePlanDialog(page);
+    await settledFill(page, carePlanDialog.locator("#cp-desc-new"), CARE_ITEM);
+    await settledSelect(
+      page,
+      carePlanDialog.locator("#cp-category-new"),
+      "procedure"
+    );
+    await settledSelect(
+      page,
+      carePlanDialog.locator("#cp-status-new"),
+      "planned"
+    );
     // DateField re-renders the committed ISO value as a formatted display string, so
     // a plain fill is right here — the settled fills above already proved this form
     // is hydrated.
-    await page.locator("#cp-date-new").fill(plannedDate());
+    await carePlanDialog.locator("#cp-date-new").fill(plannedDate());
     await settledClick(
       page,
-      page
-        .getByTestId("records-care-plan")
-        .getByRole("button", { name: "Add", exact: true })
+      carePlanDialog.getByRole("button", { name: "Add", exact: true })
     );
     await expect(page.getByText("Care-plan item saved")).toBeVisible();
 
@@ -264,8 +306,10 @@ test.describe("Entry vocabularies (#1676)", () => {
     // sits outside the open/closed machinery, so the item keeps nudging. The form
     // says so BEFORE the save, and the feed proves it after.
     await page.goto("/records/care/overview");
+    await revealCarePlan(page);
     const row = page.locator("tr").filter({ hasText: CARE_ITEM });
-    await row.getByRole("button", { name: "Edit" }).click();
+    await settledClick(page, row.getByLabel("Record actions"));
+    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );
@@ -291,11 +335,10 @@ test.describe("Entry vocabularies (#1676)", () => {
 
     // Picking a status the machinery recognizes is what actually closes it.
     await page.goto("/records/care/overview");
-    await page
-      .locator("tr")
-      .filter({ hasText: CARE_ITEM })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    await revealCarePlan(page);
+    const closingRow = page.locator("tr").filter({ hasText: CARE_ITEM });
+    await settledClick(page, closingRow.getByLabel("Record actions"));
+    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editAgain = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );

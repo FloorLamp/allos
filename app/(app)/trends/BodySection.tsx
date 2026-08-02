@@ -774,6 +774,20 @@ export default async function BodySection({
       unit: ` ${wu}`,
       color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
+      // Contextual entry to the bulk-correction panel (#1603): a bad RUN in this
+      // chart (miscalibrated scale, lb-as-kg import) is fixed in one pass on
+      // Data → Review, not row-at-a-time. A FOOTER action, not a headerAction:
+      // the header row is the card's full-width tap target (#1488, pinned by
+      // chart-tap-through.spec) and must not cede width to a sibling affordance.
+      footerAction: (
+        <Link
+          href="/data?section=review&fix=weight#bulk-correction"
+          className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+          data-testid="body-weight-fix-range"
+        >
+          Fix a range <IconArrowRight size={14} />
+        </Link>
+      ),
     },
     bodyfat: {
       key: "bodyfat",

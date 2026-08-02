@@ -283,9 +283,22 @@ describe("runRefills orchestrator", () => {
 // runPreventive — bus-gated nudge, per-item markers (#665)
 // =====================================================================
 
-// A ~46-year-old male, so the assessor emits due preventive items (adult_physical,
-// blood_pressure, lipid_screening, …) with no history on record.
+// A ~46-year-old male with a LONG-LAPSED recorded history, so the assessor emits
+// genuinely overdue preventive items. The recorded dates are load-bearing since
+// #1433: a profile with nothing on record is in the never-recorded `setup` state,
+// which is deliberately outside `actionable` and therefore never nudges (pinned by
+// its own test below). The nudge is for evidence of lateness — these dates are that
+// evidence.
 function preventiveProfile(name: string): number {
+  const p = bareProfile(name);
+  for (const rule of ["adult_physical", "blood_pressure", "lipid_screening"]) {
+    recordPreventiveDone(p, rule, "2012-03-05");
+  }
+  return p;
+}
+
+// The same demographics with NO history at all — a brand-new profile (#1433).
+function bareProfile(name: string): number {
   const p = newProfile(name);
   setUserBirthdate(p, "1980-01-01");
   setUserSex(p, "male");
@@ -306,6 +319,24 @@ describe("runPreventive orchestrator", () => {
     expect(getProfileSetting(p, PREVENTIVE_MARKER("adult_physical"))).toBe(
       date
     );
+  });
+
+  it("a brand-new profile with NO history nudges about NOTHING (#1433)", async () => {
+    // The cold-start guarantee at the push boundary: age + a nominal interval is not
+    // evidence anything was missed, so the setup state never reaches a send and
+    // never stamps an episode marker (which would also make the FIRST real due date
+    // look already-announced).
+    const p = bareProfile("PrevColdStart");
+    const date = today(p);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const res = await runPreventive(p, "PrevColdStart", date);
+    expect(res.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, PREVENTIVE_MARKER("adult_physical"))
+    ).toBeUndefined();
   });
 
   it("marker lifecycle: no longer actionable → marker CLEARED", async () => {

@@ -66,9 +66,9 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "immunization_overrides.created_at — audit stamp on an upsert keyed by (profile_id, vaccine). Never day-reduced.",
   },
-  "app/(app)/training/activity-actions.ts": {
+  "lib/activity-write.ts": {
     count: 1,
-    why: "journal updated_at — a 'last modified' audit stamp.",
+    why: "journal updated_at — a 'last modified' audit stamp. (Moved with saveActivityCore's extraction out of app/(app)/training/activity-actions.ts, #1596.)",
   },
   "app/(app)/settings/family/page.tsx": {
     count: 1,
@@ -87,8 +87,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "api_tokens created_at / last_used_at / revoked_at (#1734) — credential LIFECYCLE stamps. Nothing reduces them to a calendar day: created/last-used are rendered as full UTC timestamps in the management UI, and revoked_at is read only for IS NULL (liveness), never compared to a today()-derived date.",
   },
   "lib/portals.ts": {
-    count: 6,
-    why: "portals.created_at, portal_accounts.created_at (x2 — the implicit login minted with a portal, and a named one added later), and portal_identities.created_at/updated_at (#1739) — registry and binding AUDIT stamps ('when was this portal registered', 'when was this patient last re-bound'). Nothing reduces them to a calendar day: the card renders them as timestamps and no query compares them to a today()-derived date. The one pair here that IS reduced to a day — pending_portal_identities.first_seen_at/last_seen_at, which the card prints as 'first seen 2026-01-02' — deliberately goes through sqlNow() instead and so does not appear in this count. The acquirer's own dated data arrives as documents, which carry their own clock-seam stamps.",
+    count: 7,
+    why: "portals.created_at, portal_accounts.created_at (x2 — the implicit login minted with a portal, and a named one added later), and portal_identities.created_at/updated_at (x2 since #1836: the bind/ignore upsert and remapPortalIdentity's compare-and-swap both re-stamp updated_at) (#1739) — registry and binding AUDIT stamps ('when was this portal registered', 'when was this patient last re-bound'). Nothing reduces them to a calendar day: the card renders them as timestamps and no query compares them to a today()-derived date. The one pair here that IS reduced to a day — pending_portal_identities.first_seen_at/last_seen_at, which the card prints as 'first seen 2026-01-02' — deliberately goes through sqlNow() instead and so does not appear in this count. The acquirer's own dated data arrives as documents, which carry their own clock-seam stamps.",
   },
   "lib/audit.ts": {
     count: 2,

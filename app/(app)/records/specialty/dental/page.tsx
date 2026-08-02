@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import DentalSection from "../../DentalSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -13,13 +14,11 @@ export default async function RecordsDentalPage() {
   const { profile } = await requireSession();
   if (!getNavRelevance(profile.id).dental) redirect("/records/specialty/skin");
   return (
-    <div data-testid="records-dental">
-      <SectionSubtitle>
-        Your dental procedures and exam findings, anchored to teeth. Add them
-        manually or import a dental record. Periodontal measurements (pocket
-        depth, bleeding) and dental X-rays live on Results.
+    <PageContainer width="flow" data-testid="records-dental">
+      <SectionSubtitle title="Dental">
+        Review dental procedures and tooth-specific exam findings.
       </SectionSubtitle>
       <DentalSection profileId={profile.id} />
-    </div>
+    </PageContainer>
   );
 }

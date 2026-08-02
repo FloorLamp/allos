@@ -88,6 +88,7 @@ export async function runRedoseNotices(
       latestItemId: null as number | null,
       latestItemName: null as string | null,
       minConfirmedMax: null as number | null,
+      exposure: null,
     };
     const markerRaw = getProfileSetting(profileId, redoseMarkerKey(item.id));
     const notifiedAdministrationId = markerRaw
@@ -106,6 +107,10 @@ export async function runRedoseNotices(
       countToday: arming.countToday,
       now,
       notifiedAdministrationId,
+      // The amount-aware ceiling (#1854): with a confirmed mg/day max and
+      // parseable snapshotted amounts, 3 × 800 mg suppresses at 2400 mg even
+      // though "3 of 6 doses" reads calm — same verdict every other surface uses.
+      exposure: arming.exposure,
     });
     if (decision.kind !== "fire") continue;
 
@@ -121,6 +126,9 @@ export async function runRedoseNotices(
       lastClock: formatGivenAtClock(tz, arming.latestGivenAt),
       countToday: decision.countToday,
       maxDailyCount: decision.maxDailyCount,
+      // The same basis the ceiling was judged on (#1854): the body reads
+      // "1200 of 2400 mg today" when milligrams are known.
+      exposure: decision.exposure,
       // When a same-ingredient SIBLING's dose armed the clock (#1027), the body
       // names it — "8h since Ibuprofen OTC" — instead of implying this item.
       sinceName:

@@ -34,7 +34,7 @@ import {
   foodSlotForProfileInstant,
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
-import { blendFoodOrder } from "../food-rank";
+import { blendFoodOrder, demoteCappedGroups } from "../food-rank";
 import {
   foodEventWindow,
   foodEventsInWindow,
@@ -415,6 +415,14 @@ function proteinNudgeCurated(): string[] {
 // __protein__ is not a catalog group — the nudge renderer resolves each key to a food-group
 // button or the protein "+Xg" button. Excluded-group demotion still applies to the real
 // slugs; __protein__ is never in the excluded set, so it's exempt (#975). Profile-scoped.
+//
+// TWO DEMOTIONS, INNERMOST FIRST (#1822 item 5). CAPPED groups (the catalog's `limit`
+// tier) drop below every floor group first, then the profile's EXCLUDED groups drop below
+// everything — so a group that is both lands at the very tail, where the user's own
+// explicit exclusion belongs. Both are stable partitions over the blend, and both DEMOTE
+// rather than filter: every key is still reachable through "➕ Show more". This is the
+// nudge's ranking only — the web bar (getFoodGroupLogOrder) renders groups under tier
+// headings already, so it needs no reordering.
 export function getFoodNudgeRankedKeys(
   profileId: number,
   window?: FoodSlot
@@ -424,7 +432,7 @@ export function getFoodNudgeRankedKeys(
     ? proteinNudgeCurated()
     : foodGroupSlugs();
   return demoteExcludedGroups(
-    blendFoodOrder(curated, overall, slot, t),
+    demoteCappedGroups(blendFoodOrder(curated, overall, slot, t)),
     new Set(getExcludedFoodGroups(profileId))
   );
 }

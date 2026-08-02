@@ -10,6 +10,7 @@ import {
   goalPaceTone,
   goalPct,
   goalsForExercise,
+  weeklyTargetPaceLine,
   goalTargetText,
   isGoalStatus,
   PACE_BORDER_CLASS,
@@ -489,5 +490,48 @@ describe("isGoalStatus — single-sourced from GOAL_STATUSES (#328)", () => {
     ]) {
       expect(isGoalStatus(bad)).toBe(false);
     }
+  });
+});
+
+// ---- The weekly-progress phrase (#1819 item 4) ----------------------------
+
+describe("weeklyTargetPaceLine", () => {
+  const t = (label: string, pace: "met" | "on-pace" | "behind") => ({
+    label,
+    pace,
+  });
+
+  it("states progress, and names what is lagging", () => {
+    expect(
+      weeklyTargetPaceLine([
+        t("Back", "behind"),
+        t("Chest", "behind"),
+        t("Cardio", "met"),
+        t("Lower body", "on-pace"),
+      ])
+    ).toBe("2 of 4 training targets on pace — behind on Back, Chest");
+  });
+
+  it("counts a MET target as on pace — a finished week is not a behind one", () => {
+    expect(weeklyTargetPaceLine([t("Cardio", "met"), t("Back", "met")])).toBe(
+      "2 of 2 training targets on pace"
+    );
+  });
+
+  it("singularizes a lone target", () => {
+    expect(weeklyTargetPaceLine([t("Cardio", "behind")])).toBe(
+      "0 of 1 training target on pace — behind on Cardio"
+    );
+  });
+
+  it("collapses past the naming cap so the line stays a line", () => {
+    const many = ["A", "B", "C", "D", "E"].map((l) => t(l, "behind"));
+    expect(weeklyTargetPaceLine(many)).toBe(
+      "0 of 5 training targets on pace — behind on A, B, C, +2 more"
+    );
+  });
+
+  it("says nothing at all for a profile with no weekly targets", () => {
+    expect(weeklyTargetPaceLine([])).toBeNull();
   });
 });

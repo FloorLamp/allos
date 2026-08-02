@@ -25,7 +25,7 @@ import {
   type BodyGroup,
 } from "./lifts";
 import { weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
-import { reachableWithoutToday } from "./effort-class";
+import { daysLeftPhrase, reachableWithoutToday } from "./effort-class";
 import {
   deRankUnavailableLifts,
   type EquipmentAvailability,
@@ -237,23 +237,23 @@ function noRecoveryState(): RecoveryWindowState {
   return { resting: [], allFresh: false, override: null };
 }
 
-// "Back was Saturday — 1/2 with today left." The acknowledgment a tight-week override
-// owes the reader: it names the recent session AND the pace fact, so a nudge that
-// contradicts the recovery window never reads as the app having forgotten what you did.
-// Pure, so the Telegram nudge, the dashboard card and the Training overview render one
-// string (#221).
+// "Back was Saturday — 1/2 with only today left." The acknowledgment a tight-week
+// override owes the reader: it names the recent session AND the pace fact, so a nudge
+// that contradicts the recovery window never reads as the app having forgotten what you
+// did. Pure, so the Telegram nudge, the dashboard card and the Training overview render
+// one string (#221).
+//
+// The days-left phrase itself comes from `daysLeftPhrase` (#1822 item 1) — the SAME
+// helper the same-day acknowledgment states, so the two pace formatters cannot answer
+// the 0-days-after-today edge differently again.
 export function recoveryOverrideLine(o: RecoveryOverride): string {
   const when =
     o.daysSince === 1
       ? "yesterday"
       : (WEEKDAYS_LONG[weekdayOfDateStr(o.lastDate)] ?? o.lastDate);
-  const left =
-    o.daysLeftInWindow <= 0
-      ? "today left"
-      : `today and ${o.daysLeftInWindow} ${
-          o.daysLeftInWindow === 1 ? "day" : "days"
-        } left`;
-  return `${o.region} was ${when} — ${o.target.count}/${o.target.perWeek} with ${left}.`;
+  return `${o.region} was ${when} — ${o.target.count}/${o.target.perWeek} with ${daysLeftPhrase(
+    o.daysLeftInWindow
+  )}.`;
 }
 
 export interface NextWorkoutInput {

@@ -40,6 +40,7 @@ import { activeFindings } from "@/lib/findings";
 import { dismissFinding, getFindingSuppressions } from "@/lib/queries";
 import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { intakeDeltaLine } from "@/lib/intake-deltas";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
 import type { IntakeObligation } from "@/lib/types";
@@ -396,11 +397,14 @@ describe("#1505 part 3 — the digest reports state changes", () => {
     }
 
     const input = gatherDigestInput(p, "Deltas Missed (test)");
-    expect(input.intakeDeltaLine).toBe("Missed: Magnesium (test) (3 days)");
+    // The gather carries the STRUCTURED deltas (#1819 item 6); the line is the same
+    // shared formatter every digest channel renders them through.
+    const line = intakeDeltaLine(input.intakeDeltas!);
+    expect(line).toBe("Missed: Magnesium (test) (3 days)");
     // The `may` item's identical log history is NOT news: it has no dueness, so it
     // has no misses, so there is no state change to report. Its administrations are
     // still in the ledger — this is a reporting boundary, not a data one.
-    expect(input.intakeDeltaLine).not.toContain("Ashwagandha");
+    expect(line).not.toContain("Ashwagandha");
   });
 
   it("names a resumption after a real lapse", () => {
@@ -414,7 +418,9 @@ describe("#1505 part 3 — the digest reports state changes", () => {
     logTaken(d3.doseId, d3.itemId, shiftDateStr(day, -1));
 
     const input = gatherDigestInput(p, "Deltas Resumed (test)");
-    expect(input.intakeDeltaLine).toBe("Resumed: Vitamin D (test) (3 days)");
+    expect(intakeDeltaLine(input.intakeDeltas!)).toBe(
+      "Resumed: Vitamin D (test) (3 days)"
+    );
   });
 
   it("says nothing on a quiet window — no state change, no line", () => {
@@ -425,7 +431,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
       logTaken(item.doseId, item.itemId, shiftDateStr(day, -back));
     }
     expect(
-      gatherDigestInput(p, "Deltas Quiet (test)").intakeDeltaLine
+      intakeDeltaLine(gatherDigestInput(p, "Deltas Quiet (test)").intakeDeltas!)
     ).toBeNull();
   });
 });

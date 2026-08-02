@@ -3,7 +3,9 @@
 // ONE auth-blind, profileId-first gather composing EXISTING per-profile readers —
 // the #1009 household-history pattern generalized. No new cross-profile SQL, so the
 // profile-scoping rule holds with no new allowlist entry; every statement this calls
-// through already filters by profile_id, and the two statements it owns do too.
+// through already filters by profile_id, and the statements it owns do too (the
+// arrival read scopes `integration_sync_rows` through its parent event, the
+// child-table convention).
 //
 // Two windows, one definition:
 //   • the Household member card (#1463) asks for 7 days;
@@ -18,6 +20,8 @@ import { today as todayFor } from "../db";
 import { db } from "../db";
 import {
   applyRecentChangeDemotion,
+  arrivalKind,
+  arrivalKindsPhrase,
   RECENT_CHANGE_CATEGORIES,
   rankRecentChanges,
   recentChangeWindowStart,
@@ -36,6 +40,7 @@ import { getEncounters } from "./medical/encounters";
 import { getMoodLogs } from "./mood";
 import { getSymptomDaysInRange } from "./symptoms";
 import { getIntegration } from "../integrations/registry";
+import { syncVocabularyForKind } from "../integrations/provider-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { sharedSurfaceDetail } from "../appointment-sensitivity";
@@ -100,40 +105,83 @@ function weekdayLabel(dateStr: string): string {
 // Successful syncs in the window that actually WROTE something — "what arrived
 // overnight", the half of #1713's data category nothing reports today.
 //
+// KINDS, NOT COUNTS (#1819 item 2). The line reports WHICH record kinds arrived, read
+// off the per-row provenance every keyed upsert already persists (#1333) — the target
+// table each written row landed in, plus the metric for a `metric_samples` row. That
+// is the accounting the sync rows already carry; no second one is minted here, and
+// raw counts stay in Data → Review where a number is what the reader came for. A
+// provider whose window wrote nothing NAMEABLE therefore produces no line at all,
+// which is the honest answer rather than a count standing in for news.
+//
+// CACHE-KIND PROVIDERS ARE NOT ARRIVALS (#1819 item 1). Weather & UV writes cells of
+// the GLOBAL location-keyed forecast cache, not records about the profile (#1772's
+// vocabulary disease), and its sliding fetch window inserts new forecast hours every
+// single day — so the old `HAVING SUM(inserted) > 0` passed every morning forever,
+// and by the attention doctrine a permanent line carries no information. The
+// exclusion is derived from the provider KIND through the ONE shared
+// `syncVocabularyForKind`, so any future cache-kind provider is excluded for free;
+// its sync accounting lives in Data → Review.
+//
 // STALENESS IS NOT RE-DERIVED HERE. #1685 already owns "a source has gone quiet"
 // end to end (staleSyncIssues → getIntegrationAttention → the digest's Today lines,
 // the Upcoming page and the Data → Review badge). Computing a second staleness
 // notion in the collector would be exactly the #221 drift these issues are about, so
 // this category reports ARRIVAL only and defers the quiet-source line to the engine
 // that already renders it in this same message.
+//
+// PROFILE-SCOPED through the parent event (the child-table convention —
+// `integration_sync_rows` has no own profile_id), and the metric_samples join carries
+// `s.profile_id = e.profile_id` so a target can never resolve across profiles.
 function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   const rows = db
     .prepare(
-      `SELECT provider,
-              SUM(COALESCE(inserted, 0)) AS inserted,
-              MAX(at) AS at
-         FROM integration_sync_events
-        WHERE profile_id = ? AND ok = 1 AND at > ?
-        GROUP BY provider
-        HAVING SUM(COALESCE(inserted, 0)) > 0
-        ORDER BY inserted DESC, provider`
+      `SELECT e.provider AS provider,
+              r.target_table AS target_table,
+              s.metric AS metric,
+              COUNT(*) AS n
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+         LEFT JOIN metric_samples s
+                ON r.target_table = 'metric_samples'
+               AND s.id = r.target_id
+               AND s.profile_id = e.profile_id
+        WHERE e.profile_id = ? AND e.ok = 1 AND e.at > ?
+          AND r.disposition = 'inserted'
+        GROUP BY e.provider, r.target_table, s.metric
+        ORDER BY n DESC, e.provider, r.target_table`
     )
     .all(profileId, sinceTs) as {
     provider: string;
-    inserted: number;
-    at: string;
+    target_table: string;
+    metric: string | null;
+    n: number;
   }[];
-  return rows.map((r) => {
-    const name =
-      getIntegration(r.provider as IntegrationId)?.name ?? r.provider;
-    return {
-      id: `data:${r.provider}`,
-      category: "data" as const,
+
+  // Provider → the kinds it wrote, in descending row-count order (the biggest news
+  // first), insertion-ordered so the providers themselves keep that order too.
+  const byProvider = new Map<string, string[]>();
+  for (const r of rows) {
+    const def = getIntegration(r.provider as IntegrationId);
+    if (syncVocabularyForKind(def?.kind ?? "") === "forecast") continue;
+    const kinds = byProvider.get(r.provider) ?? [];
+    kinds.push(arrivalKind(r.target_table, r.metric));
+    byProvider.set(r.provider, kinds);
+  }
+
+  const out: RecentChange[] = [];
+  for (const [provider, kinds] of byProvider) {
+    const phrase = arrivalKindsPhrase(kinds);
+    if (!phrase) continue;
+    const name = getIntegration(provider as IntegrationId)?.name ?? provider;
+    out.push({
+      id: `data:${provider}`,
+      category: "data",
       // Dateless: arrival is about NOW, not about a logged day.
       date: null,
-      text: `📥 ${name}: ${r.inserted} new record${r.inserted === 1 ? "" : "s"}`,
-    };
-  });
+      text: `📥 ${name}: ${phrase}`,
+    });
+  }
+  return out;
 }
 
 // Mood / the daily check-in (#992). The #992/#716 sensitivity contract governs the

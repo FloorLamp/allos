@@ -1,9 +1,15 @@
 // SERVER-ACTION TIER — the Home Assistant notification prefs write path (#248).
 //
 // Proves the real saveHomeAssistantPrefs / sendTestHomeAssistant actions run through
-// the (mocked) auth guard, persist to the acting PROFILE's settings tier, derive the
-// disabled-kinds set from the unchecked boxes, reject a malformed URL, refuse a
-// read-only member, and report "not configured" for a send-test with no webhook.
+// the (mocked) auth guard, persist to the acting PROFILE's settings tier, PRESERVE the
+// per-kind routing the matrix owns, reject a malformed URL, refuse a read-only member,
+// and report "not configured" for a send-test with no webhook.
+//
+// The card used to DERIVE `disabledKinds` from `ha_kind_*` checkboxes it rendered
+// itself — the duplicate editor #1868 §1 removed. The matrix's HA column is now the one
+// editor of that key, so this action must carry the stored set through: deriving it
+// from a form that no longer has those fields would read as "every kind unchecked" and
+// silence the whole channel whenever someone edited the webhook URL.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -11,7 +17,10 @@ import {
   saveHomeAssistantPrefs,
   sendTestHomeAssistant,
 } from "@/app/(app)/settings/profile/actions";
-import { getProfileHomeAssistant } from "@/lib/settings";
+import {
+  getProfileHomeAssistant,
+  setProfileHomeAssistant,
+} from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -23,21 +32,14 @@ beforeEach(() => {
 });
 
 describe("saveHomeAssistantPrefs", () => {
-  it("persists enable/url/secret and disables the unchecked kinds", async () => {
+  it("persists enable/url/secret for the acting profile only", async () => {
     const login = createLogin();
     const profile = createProfile("ha-owner", login.id);
     const bystander = createProfile("bystander", login.id);
     actAs(login, profile);
 
-    // Only "dose" and "refill" boxes checked → the other kinds are disabled.
     const res = await saveHomeAssistantPrefs(
-      fd({
-        ha_enabled: "1",
-        ha_webhook_url: URL,
-        ha_secret: "s3cr3t",
-        ha_kind_dose: "1",
-        ha_kind_refill: "1",
-      })
+      fd({ ha_enabled: "1", ha_webhook_url: URL, ha_secret: "s3cr3t" })
     );
 
     expect(res).toEqual({ ok: true });
@@ -45,29 +47,43 @@ describe("saveHomeAssistantPrefs", () => {
     expect(cfg.enabled).toBe(true);
     expect(cfg.webhookUrl).toBe(URL);
     expect(cfg.secret).toBe("s3cr3t");
-    // The disabled set is every toggleable kind NOT checked. Since #1108 there is no
-    // separate `upcoming` row (the "what's due" list is the morning digest's Today
-    // section — one `digest` kind), so it isn't among the derived disabled kinds.
-    expect(new Set(cfg.disabledKinds)).toEqual(
-      new Set([
-        "escalation",
-        "preventive",
-        "workout",
-        // The stale-workout and practice nudges became REAL routable kinds in #1718
-        // (they dispatched as "other", so they could not be muted or routed at all).
-        "workout-stale",
-        "workout-recap",
-        "food",
-        "mood",
-        "practice",
-        "digest",
-        "weekly-recap",
-        "milestone",
-      ])
-    );
+    // Nothing was routed off: a channel card that carries no per-kind fields must not
+    // invent a disabled set (#1868 §1).
+    expect(cfg.disabledKinds).toEqual([]);
     // Profile-scoped: a bystander profile is untouched.
     expect(getProfileHomeAssistant(bystander.id).enabled).toBe(false);
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
+  });
+
+  it("PRESERVES the matrix-owned disabled kinds across a channel edit (#1868 §1)", async () => {
+    const login = createLogin();
+    const profile = createProfile("ha-preserve", login.id);
+    actAs(login, profile);
+    // What the matrix's HA column stored.
+    setProfileHomeAssistant(profile.id, {
+      enabled: true,
+      webhookUrl: URL,
+      secret: "",
+      disabledKinds: ["digest", "milestone"],
+    });
+
+    // Editing the webhook target says nothing about routing, and must change nothing
+    // about it — the failure mode being pinned is a silent whole-channel mute.
+    const res = await saveHomeAssistantPrefs(
+      fd({
+        ha_enabled: "1",
+        ha_webhook_url: "http://homeassistant.local:8123/api/webhook/allos-new",
+        ha_secret: "added",
+      })
+    );
+
+    expect(res).toEqual({ ok: true });
+    const cfg = getProfileHomeAssistant(profile.id);
+    expect(cfg.webhookUrl).toBe(
+      "http://homeassistant.local:8123/api/webhook/allos-new"
+    );
+    expect(cfg.secret).toBe("added");
+    expect(cfg.disabledKinds).toEqual(["digest", "milestone"]);
   });
 
   it("rejects a malformed URL when enabling and persists nothing", async () => {

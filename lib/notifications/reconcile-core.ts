@@ -148,7 +148,39 @@ export function decideReconcile(input: ReconcileInput): ReconcileDecision {
 //
 // Never celebratory and never a judgment — this is a correction of the app's own
 // display, not feedback about the user (the #992/#716 tone contract).
+//
+// SUBJECTLESS FALLBACK ONLY (#1822 item 7). A close replaces the ENTIRE message text, so
+// these sentences used to arrive as orphan bubbles: "Handled in the app — nothing left
+// here." at 08:00, with no indication of WHAT was handled and — in a shared family chat —
+// the "[Name] " attribution gone with the rest of the text, so you could not tell whose
+// message resolved. Prefer `reconcileClosingText`, which names the subject; this map is
+// what it degrades to for a pointer that never recorded one.
 export const RECONCILE_CLOSING: Record<CloseReason, string> = {
   resolved: "Handled in the app — nothing left here.",
   rollover: "This is yesterday's message.",
 };
+
+// The same two sentences as a TAIL, for when the subject leads the line:
+// "[Norton] 🍽️ Morning food log — handled in the app."
+const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
+  resolved: "handled in the app.",
+  rollover: "this was yesterday's message.",
+};
+
+// The text a closed message collapses to, naming its own subject. `title` is the message's
+// delivered title line (attribution prefix included) as the pointer recorded it at send
+// time; the first line is taken and trimmed, matching `replacementWithTitle`'s convention
+// on the tap path — the same problem, already solved there for #377, so the reconcile close
+// follows it rather than inventing a second shape.
+//
+// No title (a pointer from before the column existed, or a title-less message) ⇒ the bare
+// closing line above. A close never invents a subject it was not told.
+export function reconcileClosingText(
+  reason: CloseReason,
+  title: string | null | undefined
+): string {
+  const subject = (title ?? "").split("\n")[0]?.trim() ?? "";
+  return subject
+    ? `${subject} — ${RECONCILE_CLOSING_TAIL[reason]}`
+    : RECONCILE_CLOSING[reason];
+}

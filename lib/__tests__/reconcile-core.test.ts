@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   decideReconcile,
   keyboardTokens,
+  reconcileClosingText,
   RECONCILE_CLOSING,
   stripTokens,
   tokenPrefix,
@@ -221,5 +222,65 @@ describe("the closing lines", () => {
   it("say WHY the buttons are gone, without celebrating or judging", () => {
     expect(RECONCILE_CLOSING.resolved).toContain("app");
     expect(RECONCILE_CLOSING.rollover).toContain("yesterday");
+  });
+});
+
+// ---- The close names its subject (issue #1822 item 7) ----
+//
+// A close replaces the ENTIRE message text, so the bare lines above arrived as orphan
+// bubbles: at 08:00 the reader saw "Handled in the app — nothing left here." with no
+// indication of WHAT was handled, and in a shared family chat the "[Name] " attribution
+// went with the rest of the text. The tap path solved this long ago
+// (replacementWithTitle, #377); the reconcile close now follows the same convention.
+
+describe("reconcileClosingText (#1822 item 7)", () => {
+  const TITLE = "[Norton] 🍽️ Morning food log";
+
+  it("names the subject on a RESOLVED close, attribution intact", () => {
+    expect(reconcileClosingText("resolved", TITLE)).toBe(
+      "[Norton] 🍽️ Morning food log — handled in the app."
+    );
+  });
+
+  it("names the subject on a ROLLOVER close too", () => {
+    expect(reconcileClosingText("rollover", TITLE)).toBe(
+      "[Norton] 🍽️ Morning food log — this was yesterday's message."
+    );
+  });
+
+  it("keeps the two closes distinguishable — a rollover is not 'handled'", () => {
+    const resolved = reconcileClosingText("resolved", TITLE);
+    const rollover = reconcileClosingText("rollover", TITLE);
+    expect(resolved).not.toBe(rollover);
+    // Neither celebrates or judges (#992/#716) — this corrects the app's own display.
+    for (const text of [resolved, rollover]) {
+      expect(text.toLowerCase()).not.toMatch(
+        /great|well done|nice|missed|you /
+      );
+    }
+  });
+
+  it("takes the TITLE LINE only, trimmed — the replacementWithTitle convention", () => {
+    expect(
+      reconcileClosingText("resolved", "  [Ada] 💊 Morning doses  \nTake 2…")
+    ).toBe("[Ada] 💊 Morning doses — handled in the app.");
+  });
+
+  it("two subjects in one chat stay distinguishable", () => {
+    expect(reconcileClosingText("resolved", "[Ada] 💊 Morning doses")).not.toBe(
+      reconcileClosingText("resolved", "[Ben] 💊 Morning doses")
+    );
+  });
+
+  it("degrades to the bare line rather than inventing a subject", () => {
+    // A pointer recorded before migration 139 has no title; so does a title-less message.
+    for (const missing of [null, undefined, "", "   ", "\n…"]) {
+      expect(reconcileClosingText("resolved", missing)).toBe(
+        RECONCILE_CLOSING.resolved
+      );
+      expect(reconcileClosingText("rollover", missing)).toBe(
+        RECONCILE_CLOSING.rollover
+      );
+    }
   });
 });

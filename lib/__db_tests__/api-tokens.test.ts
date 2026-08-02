@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, writeTx } from "@/lib/db";
 import {
+  anyApiTokenWithScope,
   authenticateApiToken,
   countApiTokensForLogin,
   createApiToken,
@@ -325,6 +326,27 @@ describe("the login tie", () => {
     db.prepare("DELETE FROM logins WHERE id = ?").run(memberId);
     const row = db.prepare("SELECT id FROM api_tokens WHERE id = ?").get(id);
     expect(row).toBeUndefined();
+  });
+});
+
+// The capability-existence probe the guided Patient portals page derives its
+// "create a token" stage from (#1826). It answers about the INSTANCE, not a login, and
+// a revoked token must stop counting the moment it is revoked — otherwise the page
+// would tell a household setup is done because of a credential nothing can present.
+describe("anyApiTokenWithScope", () => {
+  it("is false on an instance with no live token of that capability", () => {
+    expect(anyApiTokenWithScope("upload:documents")).toBe(false);
+  });
+
+  it("is true once any login holds one, and false again once it is revoked", async () => {
+    const { id } = await createApiToken(
+      memberId,
+      "the laptop",
+      "upload:documents"
+    );
+    expect(anyApiTokenWithScope("upload:documents")).toBe(true);
+    expect(revokeApiToken(id, memberId, "member")).toBe(true);
+    expect(anyApiTokenWithScope("upload:documents")).toBe(false);
   });
 });
 

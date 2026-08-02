@@ -21,12 +21,15 @@ import { getLogContext } from "./log-context";
 import {
   buildDetail,
   capDetail,
-  keepRecentLines,
   parseErrorLine,
   redactSecrets,
-  shouldRotate,
   type ErrorEvent,
 } from "./error-log-format";
+import {
+  appendJsonlLine,
+  clearJsonlFile,
+  type JsonlBudgets,
+} from "./jsonl-log-file";
 
 export type { ErrorEvent } from "./error-log-format";
 
@@ -37,10 +40,17 @@ export const ERROR_LOG_PATH = path.join(
   "errors.jsonl"
 );
 
-// Keep the file bounded so a crash loop can't fill the disk: rewrite with the
-// newest lines when EITHER budget trips.
+// Keep the file bounded so a crash loop can't fill the disk: when it grows past
+// MAX_BYTES, rewrite with the newest lines. The kept tail must fit BOTH budgets
+// (#1841) — a pure line-count trim retains ~8MB of 4KB-capped lines and
+// re-triggers on every append. keepBytes sits at half the trigger so the
+// appends between rewrites amortize.
 const MAX_BYTES = 5 * 1024 * 1024;
-const KEEP_LINES = 2000;
+const BUDGETS: JsonlBudgets = {
+  maxBytes: MAX_BYTES,
+  keepLines: 2000,
+  keepBytes: MAX_BYTES / 2,
+};
 
 // Monotonic-ish id within a process: time + counter so events appended in the
 // same millisecond still sort/resume correctly.
@@ -48,27 +58,6 @@ let seq = 0;
 function nextId(): string {
   seq = (seq + 1) % 1_000_000;
   return `${Date.now()}-${seq.toString().padStart(6, "0")}`;
-}
-
-function ensureDir() {
-  fs.mkdirSync(path.dirname(ERROR_LOG_PATH), { recursive: true });
-}
-
-function trimIfLarge() {
-  try {
-    const { size } = fs.statSync(ERROR_LOG_PATH);
-    // Cheap byte check first; only read the whole file to count lines when the
-    // byte budget is already blown (avoids reading it on every append).
-    if (size <= MAX_BYTES) return;
-    const lines = fs.readFileSync(ERROR_LOG_PATH, "utf8").split("\n");
-    if (!shouldRotate(size, lines.length, MAX_BYTES, KEEP_LINES)) return;
-    fs.writeFileSync(
-      ERROR_LOG_PATH,
-      keepRecentLines(lines, KEEP_LINES).join("\n") + "\n"
-    );
-  } catch {
-    // best-effort
-  }
 }
 
 // Guards against re-entrancy: recordErrorEvent's own fs failure below is logged
@@ -92,9 +81,10 @@ export function recordErrorEvent(e: LogSinkEvent): void {
       loginId: ctx?.loginId ?? null,
       profileId: ctx?.profileId ?? null,
     };
-    ensureDir();
-    fs.appendFileSync(ERROR_LOG_PATH, JSON.stringify(event) + "\n");
-    trimIfLarge();
+    // One chokepoint owns the append + self-trim for both JSONL sinks (#1883):
+    // the notify sidecar appends to THIS file from another process, so the trim
+    // has to be atomic against a concurrent append.
+    appendJsonlLine(ERROR_LOG_PATH, JSON.stringify(event) + "\n", BUDGETS);
   } catch {
     // Deliberately swallowed: we're already in the error path, and the raw
     // failure still went to stdout via the console emit in log.ts. Re-logging
@@ -131,8 +121,7 @@ export function errorLogSize(): number {
 // stay put for the next append.
 export function clearErrorLog(): void {
   try {
-    ensureDir();
-    fs.writeFileSync(ERROR_LOG_PATH, "");
+    clearJsonlFile(ERROR_LOG_PATH);
   } catch {
     // best-effort
   }

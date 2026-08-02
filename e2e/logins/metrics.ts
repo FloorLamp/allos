@@ -119,6 +119,14 @@ export const VITALS_DAY_WEIGHT_KG = 78.4;
 export const VITALS_DAY_BODY_FAT = 21.7;
 export const VITALS_DAY_STEPS = 4321;
 
+// #1603 — bulk corrections (Data → Review's "Fix a run of data" panel). A
+// DEDICATED member login + adult profile seeded with NO rows at all: the spec
+// owns every body_metrics row on it (it clears and re-inserts its lb-as-kg run
+// at test start, so --repeat-each starts identically), and a bulk write landing
+// on a shared profile would move every weight surface its neighbors assert.
+export const E2E_LOGIN_BULKFIX = "e2e_bulkfix";
+export const BULKFIX_PROFILE = "Bulk Fix (e2e)";
+
 // A member granted a dedicated ADULT profile carrying NOTHING but the two
 // age-derived preventive findings every adult profile gets (COVID-19, Influenza),
 // used by app-badge.mobile.spec.ts (#1424). Dedicated ON PURPOSE: proving the

@@ -1,6 +1,7 @@
 import { getCareGoalsForProfiles } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import CareGoalForm from "@/app/(app)/records/care/overview/CareGoalForm";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import CareGoalList from "@/app/(app)/records/care/overview/CareGoalList";
 import { addCareGoal } from "@/app/(app)/records/care/overview/care-goal-actions";
 
@@ -20,22 +21,21 @@ export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
   const goals = stampSubjects(scope, getCareGoalsForProfiles(scope.viewIds));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <CareGoalList
-          items={goals}
-          multiView={
-            multi ? { actingProfileId: scope.actingProfileId } : undefined
-          }
-        />
-      </div>
-
-      <div className="min-w-0 space-y-4">
+    <div className="space-y-6">
+      <AddEntryPanel
+        testId="add-health-goal-panel"
+        panelId="add-health-goal-panel-body"
+        label="Add health goal"
+        presentation="modal"
+      >
         <CareGoalForm action={addCareGoal} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Imported goals come from uploaded health records (Goals section).
-        </p>
-      </div>
+      </AddEntryPanel>
+      <CareGoalList
+        items={goals}
+        multiView={
+          multi ? { actingProfileId: scope.actingProfileId } : undefined
+        }
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { loginAs, followLink } from "./nav";
 import { settledClick, settledCheck, settledFill } from "./helpers";
 import {
   E2E_LOGIN_NOTIF,
+  E2E_LOGIN_NOTIF_SWEEP,
   E2E_LOGIN_CLOSURE_DQ,
   CLOSURE_DQ_PROFILE,
   E2E_MEMBER_PASSWORD,
@@ -133,7 +134,7 @@ test.describe("Settings IA (#1462) — index and routing", () => {
 
   test("the health cards stayed on Medical → Background", async ({ page }) => {
     test.slow();
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#background");
     await expect(
       page.getByRole("heading", { name: "Background" })
     ).toBeVisible();
@@ -172,6 +173,18 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     // The instance-wide bot card left this page for Server (#1462 §1/§6), so a
     // member-visible page no longer embeds an admin-only block.
     await expect(page.getByTestId("server-telegram")).toHaveCount(0);
+
+    // #1868 §4: the group is registered `mixed`, so the ONE header states the mixed
+    // scope instead of claiming the profile over four login-scoped cards.
+    await expect(page.getByTestId("settings-tier-blurb")).toContainText(
+      /partly your login/i
+    );
+
+    // #1868 §3: the digest mirror is collapsed to a summary line — its ten checkboxes
+    // exist behind a disclosure rather than always rendering.
+    await expect(page.getByTestId("digest-tune-summary")).toBeVisible();
+    await expect(page.getByTestId("digest-tune-list")).not.toBeVisible();
+    await expect(page.getByTestId("digest-tune-disclosure")).toBeVisible();
 
     // The schedule/kind cards autosave now, so their explicit Save buttons are gone.
     // The login Telegram channel card keeps its own Save (it validates a chat id),
@@ -303,9 +316,16 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
         member.getByTestId("ha-webhook-url"),
         "http://homeassistant.local:8123/api/webhook/allos-notif"
       );
-      // Saving the HA card resets its per-kind grid to all-on, so dose starts ON.
       await settledClick(member, member.getByTestId("ha-save"));
       await member.reload();
+
+      // #1868 §1: the HA card is the CHANNEL now — enable, URL, secret, test — and
+      // carries no per-kind grid. Its routing lives in the matrix's HA column, which
+      // the rest of this case drives. (Applying the card must also not silence the
+      // channel: with the grid gone, a derived-from-form disabled set would have read
+      // as "every kind unchecked" — asserted from the matrix side just below.)
+      await expect(member.getByTestId("ha-kind-dose")).toHaveCount(0);
+      await expect(member.getByTestId("ha-kinds-pointer")).toBeVisible();
 
       // Baseline: with HA configured and dose ON, no safety warning.
       const haDose = member.getByTestId("matrix-cell-ha-dose");
@@ -325,6 +345,111 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       );
       // ha card still rendered (sanity — the section didn't collapse).
       await expect(ha).toBeVisible();
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // The column select-all (#1868 §2). What only a browser can prove: the tri-state
+  // header renders, one tap rewrites the whole column through the real Server Action,
+  // and — the case that must never regress — the SAFETY checkboxes survive a column
+  // "turn off". The sweep's decision logic is pinned in the pure tier
+  // (lib/__tests__/matrix-bulk.test.ts) and its write path in the action tier.
+  //
+  // Runs on its OWN login+profile: a sweep rewrites a whole channel's disabled-kinds
+  // blob, which on a shared login would silence ten kinds for every other spec.
+  test("a column select-all sweeps the whole column but never the safety kinds", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_NOTIF_SWEEP,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/settings/notifications");
+      await expect(member.getByTestId("notification-kinds")).toBeVisible();
+
+      // Same optimistic-flip re-click discipline the per-cell case documents above:
+      // the control fires its action from a CLIENT onChange, so a click landing in the
+      // hydration window is silently swallowed with no navigation to follow (#830).
+      const tapUntil = async (testid: string, checked: boolean) => {
+        const box = member.getByTestId(testid);
+        await expect(async () => {
+          await box.click();
+          await expect(box).toBeChecked({ checked });
+        }).toPass(); // topass-ok: re-tap until the optimistic flip proves onChange fired — "my tap landed" is non-atomic with no navigation to follow (#830)
+        await expect(box).toBeEnabled();
+      };
+
+      const header = member.getByTestId("matrix-column-all-telegram");
+      const refill = member.getByTestId("matrix-cell-telegram-refill");
+      const digest = member.getByTestId("matrix-cell-telegram-digest");
+      const dose = member.getByTestId("matrix-cell-telegram-dose");
+      const escalation = member.getByTestId("matrix-cell-telegram-escalation");
+
+      // The control names what it does AND states the carve-out, so nobody taps it
+      // believing it silences everything.
+      await expect(header).toHaveAttribute(
+        "aria-label",
+        /except safety reminders/i
+      );
+
+      // Drive to a known state — a --repeat-each run re-enters with the previous run's
+      // writes. `check()` is a no-op once the column is already fully on.
+      await expect(async () => {
+        await header.check();
+        await expect(header).toBeChecked();
+      }).toPass(); // topass-ok: idempotent drive-to-known-state on a client-onChange control that may still be hydrating (#830); check() is a no-op once already on
+      await expect(refill).toBeChecked();
+      await expect(digest).toBeChecked();
+      await expect(dose).toBeChecked();
+
+      // ONE tap turns the column off — except the safety tier.
+      await tapUntil("matrix-column-all-telegram", false);
+      await expect(refill).not.toBeChecked();
+      await expect(digest).not.toBeChecked();
+      await expect(dose).toBeChecked();
+      await expect(escalation).toBeChecked();
+
+      // It was a real write, not local state.
+      await member.reload();
+      await expect(
+        member.getByTestId("matrix-cell-telegram-refill")
+      ).not.toBeChecked();
+      await expect(
+        member.getByTestId("matrix-cell-telegram-dose")
+      ).toBeChecked();
+      await expect(
+        member.getByTestId("matrix-column-all-telegram")
+      ).not.toBeChecked();
+
+      // And one tap brings the column back.
+      await tapUntil("matrix-column-all-telegram", true);
+      await expect(
+        member.getByTestId("matrix-cell-telegram-refill")
+      ).toBeChecked();
+      await expect(
+        member.getByTestId("matrix-cell-telegram-dose")
+      ).toBeChecked();
+
+      // Turning ONE cell off makes the header indeterminate — neither on nor off.
+      await tapUntil("matrix-cell-telegram-refill", false);
+      const head = member.getByTestId("matrix-column-all-telegram");
+      await expect(head).not.toBeChecked();
+      await expect
+        .poll(() => head.evaluate((el: HTMLInputElement) => el.indeterminate))
+        .toBe(true);
+
+      // Restore the column for the next repeat.
+      await tapUntil("matrix-column-all-telegram", true);
+
+      // A NON_CONFIGURABLE kind (#1873's `followup`) has no registry row, so it is
+      // invisible to the matrix — and therefore unreachable by any sweep.
+      await expect(member.getByTestId("kind-row-followup")).toHaveCount(0);
+      await expect(
+        member.getByTestId("matrix-cell-telegram-followup")
+      ).toHaveCount(0);
     } finally {
       await member.context().close();
     }

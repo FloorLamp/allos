@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
@@ -65,7 +66,7 @@ export default async function WeatherPage(props: {
         </Notice>
       )}
 
-      <div className="grid max-w-3xl gap-6">
+      <PageContainer width="reading" className="grid gap-6">
         <div className="card space-y-4">
           {!home ? (
             <div className="space-y-3">
@@ -167,7 +168,7 @@ export default async function WeatherPage(props: {
         {connected && (
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         )}
-      </div>
+      </PageContainer>
     </div>
   );
 }

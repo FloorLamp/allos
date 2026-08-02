@@ -12,6 +12,9 @@ import {
   assessCatalog,
   assessPreventiveCare,
   lastByRule,
+  preventiveEvidence,
+  PREVENTIVE_SETUP_DETAIL,
+  PREVENTIVE_SETUP_SHORT,
   type PreventiveAssessment,
   type PreventiveInput,
 } from "@/lib/preventive-status";
@@ -180,24 +183,33 @@ describe("well-child milestone windows", () => {
 // Screening age windows (never done → due vs overdue vs aged-out)
 // ---------------------------------------------------------------------------
 describe("screening age windows (never done)", () => {
-  // colorectal_cancer: 45–76, grace 6 → lead opens at 45y-1mo, overdue at 45y6mo, aged out at 76y.
+  // colorectal_cancer: 45–76, aged out at 76y. With NOTHING on record the whole
+  // in-window range is the never-recorded setup state (#1433) — age alone can open
+  // the window but can never establish lateness.
   it("is not_recommended before the lead window", () => {
     expect(
       statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y - 2 }))?.status
     ).toBe("not_recommended");
   });
-  it("is due at the window edge (and ~1 month before)", () => {
+  it("is a setup item at the window edge (and ~1 month before)", () => {
     expect(
       statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y - 1 }))?.status
-    ).toBe("due");
+    ).toBe("setup");
     expect(
       statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y }))?.status
-    ).toBe("due");
+    ).toBe("setup");
   });
-  it("becomes overdue past the grace period with nothing on record", () => {
-    expect(
-      statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y + 6 }))?.status
-    ).toBe("overdue");
+  it("STAYS a setup item past the old grace period with nothing on record", () => {
+    // The exact #1433 regression: this used to read "overdue", off nothing but a
+    // birthdate the user had just typed in.
+    const a = statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y + 6 }))!;
+    expect(a.status).toBe("setup");
+    expect(a.detail).toBe(PREVENTIVE_SETUP_SHORT);
+    expect(a.nextLabel).toBe(PREVENTIVE_SETUP_DETAIL);
+    expect(preventiveEvidence(a)).toBe("never-recorded");
+    // The entry age still rides out, so a surface can still say WHEN the window
+    // opened — it just cannot call the person late.
+    expect(a.nextDueAgeMonths).toBe(45 * Y);
   });
   it("is not_recommended once aged out of the routine window", () => {
     expect(
@@ -206,6 +218,101 @@ describe("screening age windows (never done)", () => {
     expect(
       statusOf("colorectal_cancer", assess({ ageMonths: 75 * Y }))?.status
     ).not.toBe("not_recommended");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The evidence split (issue #1433) — never-recorded vs recorded-then-lapsed
+// ---------------------------------------------------------------------------
+describe("evidence split: never-recorded vs recorded-lapsed", () => {
+  // The FIXTURE PAIR the issue asks for: the same rule, the same profile, the same
+  // clock — differing ONLY in whether a dated satisfaction exists. One of them is
+  // evidence of lateness; the other is evidence of nothing.
+  const ageMonths = 50 * Y;
+
+  it("never recorded + a long-elapsed nominal interval is `setup`, not overdue", () => {
+    const a = statusOf("blood_pressure", assess({ ageMonths }))!;
+    expect(a.status).toBe("setup");
+    expect(preventiveEvidence(a)).toBe("never-recorded");
+    expect(a.lastDate).toBeNull();
+    // Its copy invites, it does not accuse.
+    expect(a.nextLabel).toBe(PREVENTIVE_SETUP_DETAIL);
+    expect(a.nextLabel).not.toMatch(/overdue/i);
+  });
+
+  it("recorded then lapsed keeps today's overdue treatment unchanged", () => {
+    const a = statusOf(
+      "blood_pressure",
+      assess({
+        ageMonths,
+        // blood_pressure: 12-month interval, 6-month grace — this is ~5 years stale.
+        satisfactions: [{ ruleKey: "blood_pressure", date: "2021-01-04" }],
+      })
+    )!;
+    expect(a.status).toBe("overdue");
+    expect(preventiveEvidence(a)).toBe("recorded");
+    expect(a.lastDate).toBe("2021-01-04");
+    expect(a.nextDueDate).toBe("2022-01-04");
+  });
+
+  it("recording ANY past date moves a rule out of setup and onto the real clock", () => {
+    // A recent result → up_to_date; an ancient one → overdue. Either way the rule
+    // has left the setup slice, because now there IS a history to reason from.
+    const recent = assess({
+      ageMonths,
+      satisfactions: [{ ruleKey: "blood_pressure", date: "2026-06-01" }],
+    });
+    expect(statusOf("blood_pressure", recent)?.status).toBe("up_to_date");
+    expect(recent.setup.some((a) => a.key === "blood_pressure")).toBe(false);
+  });
+
+  it("a brand-new profile has NOTHING actionable — the whole cold-start bug", () => {
+    // A 38-year-old, thirty seconds after the setup wizard: no records at all.
+    const s = assess({ ageMonths: 38 * Y, sex: "female" });
+    expect(s.actionable).toEqual([]);
+    expect(s.dueCount).toBe(0);
+    expect(s.overdueCount).toBe(0);
+    // The rules are not silenced, though — they are collected as a setup list.
+    expect(s.setupCount).toBeGreaterThan(0);
+    expect(s.setup).toHaveLength(s.setupCount);
+    expect(s.setup.every((a) => a.status === "setup")).toBe(true);
+    // And no assessment anywhere claims lateness off an age alone.
+    expect(s.assessments.some((a) => a.status === "overdue")).toBe(false);
+  });
+
+  it("a profile WITH stale history still produces real overdue findings", () => {
+    // The other half of the guarantee: the split must not mute earned alarm.
+    const s = assess({
+      ageMonths: 38 * Y,
+      sex: "female",
+      satisfactions: [
+        { ruleKey: "blood_pressure", date: "2018-03-02" },
+        { ruleKey: "dental_cleaning", date: "2017-11-08" },
+      ],
+    });
+    expect(s.overdueCount).toBeGreaterThan(0);
+    expect(s.actionable.map((a) => a.key)).toContain("blood_pressure");
+    expect(s.actionable.map((a) => a.key)).toContain("dental_cleaning");
+    // Overdue still sorts first in the actionable slice.
+    expect(s.actionable[0].status).toBe("overdue");
+  });
+
+  it("an override still wins over the setup state", () => {
+    const s = assess({
+      ageMonths,
+      overrides: [{ ruleKey: "blood_pressure", kind: "not_applicable" }],
+    });
+    expect(statusOf("blood_pressure", s)?.status).toBe("not_recommended");
+    expect(s.setup.some((a) => a.key === "blood_pressure")).toBe(false);
+  });
+
+  it("well-child milestones keep their own dated window (deliberately unchanged)", () => {
+    // A milestone lapses OUT of a narrow, dated window instead of accumulating
+    // forever, so "overdue" there is a statement about a window that is closing —
+    // not a backlog invented from an age. Pinned so the #1433 split can't creep.
+    expect(statusOf("wellchild_2mo", assess({ ageMonths: 3 }))?.status).toBe(
+      "overdue"
+    );
   });
 });
 
@@ -261,14 +368,14 @@ describe("interval recurrence from last result", () => {
 // One-time (once-in-window) screening
 // ---------------------------------------------------------------------------
 describe("one-time screening (hepatitis C)", () => {
-  it("is due when freshly in-window and never done", () => {
+  it("is a setup item when freshly in-window and never done", () => {
     expect(statusOf("hepatitis_c", assess({ ageMonths: 18 * Y }))?.status).toBe(
-      "due"
+      "setup"
     );
   });
-  it("is overdue when well past entry with nothing on record", () => {
+  it("is still a setup item well past entry with nothing on record", () => {
     expect(statusOf("hepatitis_c", assess({ ageMonths: 40 * Y }))?.status).toBe(
-      "overdue"
+      "setup"
     );
   });
   it("stays satisfied for good once a result exists", () => {
@@ -286,15 +393,15 @@ describe("one-time screening (hepatitis C)", () => {
 describe("depression screening", () => {
   // depression_screening: 12–120, interval 12mo, grace 6 → due at the 12y edge,
   // overdue once well past it with nothing on record.
-  it("is due at the age-12 window edge with nothing on record, regardless of sex", () => {
+  it("is a setup item at the age-12 window edge with nothing on record, regardless of sex", () => {
     expect(
       statusOf("depression_screening", assess({ ageMonths: 12 * Y }))?.status
-    ).toBe("due");
+    ).toBe("setup");
   });
-  it("is overdue for an adult who has never been screened", () => {
+  it("is a setup item for an adult who has never been screened", () => {
     expect(
       statusOf("depression_screening", assess({ ageMonths: 40 * Y }))?.status
-    ).toBe("overdue");
+    ).toBe("setup");
   });
   it("is not_recommended for a young child below the window", () => {
     expect(
@@ -316,11 +423,12 @@ describe("depression screening", () => {
 // ---------------------------------------------------------------------------
 describe("sex gating", () => {
   it("recommends a female-only screening for a matching profile", () => {
-    // At the window entry age (40y) with nothing on record → due (not yet overdue).
+    // At the window entry age (40y) with nothing on record → the setup state: the
+    // rule APPLIES to her, and the app has no history for it (#1433).
     expect(
       statusOf("mammography", assess({ ageMonths: 40 * Y, sex: "female" }))
         ?.status
-    ).toBe("due");
+    ).toBe("setup");
   });
   it("does not recommend a female-only screening for a male profile", () => {
     expect(
@@ -332,7 +440,7 @@ describe("sex gating", () => {
     expect(
       statusOf("osteoporosis", assess({ ageMonths: 65 * Y, sex: "female" }))
         ?.status
-    ).toBe("due");
+    ).toBe("setup");
     expect(
       statusOf("osteoporosis", assess({ ageMonths: 60 * Y, sex: "female" }))
         ?.status
@@ -371,9 +479,13 @@ describe("risk-gated rules", () => {
       sex: "male",
       smoking: everSmoker,
     });
-    // Never done + well past the 65y entry age → actionable (overdue here).
-    expect(["due", "overdue"]).toContain(statusOf("aaa_ultrasound", s)?.status);
-    expect(s.actionable.some((a) => a.key === "aaa_ultrasound")).toBe(true);
+    // The gate OPENS (the rule stops being not_recommended and starts applying to
+    // him). With nothing on record it opens into the setup state, not an overdue
+    // one — the smoking history is evidence the rule APPLIES, never evidence a scan
+    // was missed (#1433).
+    expect(statusOf("aaa_ultrasound", s)?.status).toBe("setup");
+    expect(s.setup.some((a) => a.key === "aaa_ultrasound")).toBe(true);
+    expect(s.actionable.some((a) => a.key === "aaa_ultrasound")).toBe(false);
   });
 
   it("AAA stays inert for a never-smoker even in the window", () => {
@@ -405,11 +517,9 @@ describe("risk-gated rules", () => {
       ageMonths: 60 * Y,
       smoking: everSmoker, // quit 2020, today 2026 → 6y ago
     });
-    // Never done + past the 50y entry age → actionable (overdue here).
-    expect(["due", "overdue"]).toContain(
-      statusOf("lung_cancer_ldct", s)?.status
-    );
-    expect(s.actionable.some((a) => a.key === "lung_cancer_ldct")).toBe(true);
+    // The gate opens; with nothing on record it opens into the setup state (#1433).
+    expect(statusOf("lung_cancer_ldct", s)?.status).toBe("setup");
+    expect(s.setup.some((a) => a.key === "lung_cancer_ldct")).toBe(true);
   });
 
   it("lung LDCT stays inert below the pack-year threshold", () => {

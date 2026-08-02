@@ -41,6 +41,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // killed, battery optimization suspended it, or the token was rotated. Three days
     // tolerates a phone off for a long weekend without tolerating a dead exporter.
     staleAfterDays: 3,
+    stoppedConsequence:
+      "Steps, workouts, and vitals from your phone have stopped arriving.",
     docsUrl: "https://github.com/mcnaveen/health-connect-webhook",
   },
   {
@@ -66,6 +68,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // successful sync tracks the CONNECTION's liveness, not the user's training: a
     // rest week is not staleness. Three days is ~72 missed polls.
     staleAfterDays: 3,
+    stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
   },
   {
@@ -90,6 +93,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // same three-day reading applies: nights without the ring off the charger are not
     // staleness, a connection that stopped answering is.
     staleAfterDays: 3,
+    stoppedConsequence:
+      "Sleep, HRV, and workouts from your ring have stopped arriving.",
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
   },
   {
@@ -116,6 +121,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // connection is fine). Three days measures the poll, which is the thing that can
     // silently die.
     staleAfterDays: 3,
+    stoppedConsequence:
+      "Measurements from your scale and cuff have stopped arriving.",
     docsUrl: "https://developer.withings.com/",
   },
   {
@@ -227,6 +234,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // computed signal. Two days — the tightest threshold here, because nothing about
     // this provider is bursty.
     staleAfterDays: 2,
+    stoppedConsequence:
+      "UV and daylight readings for your home location have stopped arriving.",
     docsUrl: "https://open-meteo.com/",
   },
   {

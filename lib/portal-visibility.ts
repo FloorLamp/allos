@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { profileIdsIn } from "@/lib/cross-profile";
 import type {
+  PendingIdentity,
+  PendingOutcome,
   Portal,
   PortalAccount,
   PortalRunReport,
@@ -128,6 +130,62 @@ export function listVisiblePortalRunReports(
     status: row.status as SyncReportStatus,
     message: (row.message as string | null) ?? null,
     discovered: row.discovered as number,
+  }));
+}
+
+// ── The pending list a MEMBER may see (#1875) ────────────────────────────────
+//
+// `listPendingIdentities()` is instance-wide, and the page used to hand the whole thing
+// to any member holding write access to ANY profile. A pending row's patient label is a
+// portal-reported full name ("WANG, DANA") — exactly the cross-household-member
+// disclosure the login/profile access model everywhere else prevents — so a caregiver
+// with write access to only the child profile was shown another adult's proxy-patient
+// labels from a portal with no connection to anything they can reach.
+//
+// The rule is the SAME predicate as the run reports and the registry above, applied to
+// the pending row's account: a member sees a pending only on a login already claimed by
+// a profile they can access (clause a). Clause (b) — unclaimed, first-contact accounts —
+// is ADMIN-ONLY territory here (`canSeeUnclaimed` is passed `isAdmin`, not the old
+// any-writer population): a first-contact portal has no mappings yet, and "an admin adds
+// portals" already owns that era. The fix lives in the read, not in the card, for the
+// same reason as #1787's: a surface that filters what it was handed is one refactor away
+// from leaking again.
+export function listVisiblePendingIdentities(
+  accessibleProfileIds: readonly number[],
+  // True when the viewer may also see pendings on UNCLAIMED accounts. Per #1875 this is
+  // the ADMIN population — first-contact portals are admin-only territory.
+  canSeeUnclaimed: boolean
+): PendingIdentity[] {
+  const ids = [...accessibleProfileIds];
+  const rows = db
+    .prepare(
+      `SELECT pp.id AS id, pp.portal_id AS portalId, p.slug AS portalSlug,
+              p.name AS portalName, pp.account_id AS accountId, a.slug AS accountSlug,
+              a.name AS accountName, a.implicit AS accountImplicit,
+              pp.patient_label AS patientLabel,
+              pp.first_seen_at AS firstSeenAt, pp.last_seen_at AS lastSeenAt,
+              pp.seen_count AS seenCount, pp.last_outcome AS lastOutcome
+         FROM pending_portal_identities pp
+         JOIN portals p ON p.id = pp.portal_id
+         JOIN portal_accounts a ON a.id = pp.account_id
+        WHERE ${reachableAccountSql(ids, "pp.account_id")}
+        ORDER BY pp.last_seen_at DESC, pp.id DESC`
+    )
+    .all(...ids, canSeeUnclaimed ? 1 : 0) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as number,
+    portalId: row.portalId as number,
+    portalSlug: row.portalSlug as string,
+    portalName: row.portalName as string,
+    accountId: row.accountId as number,
+    accountSlug: row.accountSlug as string,
+    accountName: row.accountName as string,
+    accountImplicit: (row.accountImplicit as number) === 1,
+    patientLabel: row.patientLabel as string,
+    firstSeenAt: row.firstSeenAt as string,
+    lastSeenAt: row.lastSeenAt as string,
+    seenCount: row.seenCount as number,
+    lastOutcome: row.lastOutcome as PendingOutcome,
   }));
 }
 

@@ -19,6 +19,10 @@ import { E2E_LOGIN_DIGEST_TUNE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // the categories #1797 opened up — and that a tick round-trips through the real Server
 // Action to SQLite.
 //
+// #1868 §3 collapsed the card: the always-rendered state is now a one-line summary, and
+// the list sits behind a disclosure. Each case opens it first, and the first case also
+// pins that the collapsed line tells the truth about what is stored.
+//
 // Runs on its OWN fixture login (#868): the preference is LOGIN-scoped and persists,
 // so sharing a login would thin another spec's session.
 test.describe("Settings → Notifications: morning digest tuning", () => {
@@ -38,6 +42,12 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       // scope per section.
       await expect(section).toContainText("your login only");
 
+      // Collapsed by default (#1868 §3) — the summary is what always renders.
+      const summary = section.getByTestId("digest-tune-summary");
+      await expect(summary).toBeVisible();
+      await expect(section.getByTestId("digest-tune-list")).not.toBeVisible();
+
+      await section.getByTestId("digest-tune-disclosure").click();
       const card = section.getByTestId("digest-tune-list");
       await expect(card).toBeVisible();
       // The vocabulary comes from the shared registry, so the mirror can't drift from
@@ -59,10 +69,17 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       // run re-enters with the previous run's writes.
       const scope = section.getByTestId("digest-tune-sleep");
       await settledCheckSave(member, scope, true, section);
+      // The collapsed line states what is actually stored, by name — the whole reason a
+      // disclosure is honest here rather than hiding the state.
+      await expect(summary).toContainText("Sleep");
 
       // Reload: the preference came back from SQLite, not from local state.
       await member.reload();
       const reloaded = member.getByTestId("notify-digest-tune");
+      await expect(reloaded.getByTestId("digest-tune-summary")).toContainText(
+        "Sleep"
+      );
+      await reloaded.getByTestId("digest-tune-disclosure").click();
       await expect(reloaded.getByTestId("digest-tune-sleep")).toBeChecked();
       await expect(reloaded.getByTestId("digest-tune-mood")).not.toBeChecked();
 
@@ -74,11 +91,14 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
         reloaded
       );
       await member.reload();
-      await expect(
-        member
-          .getByTestId("notify-digest-tune")
-          .getByTestId("digest-tune-sleep")
-      ).not.toBeChecked();
+      const after = member.getByTestId("notify-digest-tune");
+      // State-relative: this case owns `sleep` only, so it asserts sleep left the
+      // summary rather than that the whole set is empty.
+      await expect(after.getByTestId("digest-tune-summary")).not.toContainText(
+        "Sleep"
+      );
+      await after.getByTestId("digest-tune-disclosure").click();
+      await expect(after.getByTestId("digest-tune-sleep")).not.toBeChecked();
     } finally {
       await member.close();
     }
@@ -95,6 +115,7 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       await member.goto("/settings/notifications");
       const section = member.getByTestId("notify-digest-tune");
       await expect(section).toBeVisible();
+      await section.getByTestId("digest-tune-disclosure").click();
 
       // Drive both to a known state — the login persists across a --repeat-each run.
       await settledCheckSave(
@@ -112,6 +133,7 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
 
       await member.reload();
       const reloaded = member.getByTestId("notify-digest-tune");
+      await reloaded.getByTestId("digest-tune-disclosure").click();
       await expect(reloaded.getByTestId("digest-tune-labs")).toBeChecked();
       await expect(
         reloaded.getByTestId("digest-tune-activities")
@@ -131,6 +153,7 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       );
       await member.reload();
       const after = member.getByTestId("notify-digest-tune");
+      await after.getByTestId("digest-tune-disclosure").click();
       await expect(after.getByTestId("digest-tune-labs")).not.toBeChecked();
       await expect(after.getByTestId("digest-tune-activities")).toBeChecked();
 

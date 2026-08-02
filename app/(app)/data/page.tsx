@@ -14,6 +14,8 @@ import ReviewInbox from "@/components/ReviewInbox";
 import CoverageSection from "@/app/(app)/data/CoverageSection";
 import { getImportJobs } from "@/app/(app)/data/actions";
 import { listDocumentTombstones } from "@/lib/document-tombstones";
+import { listCorrectionSources } from "@/lib/bulk-correction-db";
+import { isCorrectionFieldId } from "@/lib/bulk-correction";
 import {
   getImportDocumentsFeed,
   getConnectedSources,
@@ -87,6 +89,11 @@ export default async function DataPage(
     // Light-tier AI blurb + a candidate scan across biomarkers/meds/conditions.
     activeSection = <CoverageSection profileId={profile.id} />;
   } else if (section === "review") {
+    // A contextual "Fix a range…" link (e.g. from the Body weight chart) lands
+    // here with ?fix=<field> to pre-select the bulk-correction panel's field.
+    const rawFix = Array.isArray(searchParams.fix)
+      ? searchParams.fix[0]
+      : searchParams.fix;
     activeSection = (
       <ReviewInbox
         issues={importIssues}
@@ -102,6 +109,9 @@ export default async function DataPage(
         activityClusters={activityClusters}
         bodyMetricPairs={bodyMetricPairs}
         unitMislabels={unitMislabels}
+        // Bulk corrections (#1603): the "Fix a run of data" panel's source runs.
+        correctionSources={listCorrectionSources(profile.id)}
+        initialCorrectionField={isCorrectionFieldId(rawFix) ? rawFix : null}
         units={units}
         isAdmin={login.role === "admin"}
       />

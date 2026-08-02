@@ -1,7 +1,7 @@
-// Pure decision logic for the server error log (issue #596): rotation,
-// truncation, redaction, and line parsing. No fs/network here so it's unit
-// testable and safe to import from anywhere; the impure fs half lives in
-// lib/error-log.ts.
+// Pure decision logic for the server error log (issue #596): truncation,
+// redaction, and line parsing. No fs/network here so it's unit testable and
+// safe to import from anywhere; the impure fs half lives in lib/error-log.ts,
+// and the self-trim shared with ai.jsonl lives in lib/jsonl-trim.ts (#1841).
 
 export type ErrorLevel = "error" | "warn";
 
@@ -76,22 +76,6 @@ export function buildDetail(
   }
   if (parts.length === 0) return undefined;
   return capDetail(redactSecrets(parts.join("\n")), cap);
-}
-
-// File is over budget → rewrite keeping only the newest lines. Bytes OR lines,
-// whichever trips first, so a crash loop (many small lines) is bounded too.
-export function shouldRotate(
-  size: number,
-  lineCount: number,
-  maxBytes: number,
-  maxLines: number
-): boolean {
-  return size > maxBytes || lineCount > maxLines;
-}
-
-// The newest `keep` non-empty lines, in order (oldest→newest of the kept set).
-export function keepRecentLines(lines: string[], keep: number): string[] {
-  return lines.filter(Boolean).slice(-keep);
 }
 
 export function parseErrorLine(line: string): ErrorEvent | null {

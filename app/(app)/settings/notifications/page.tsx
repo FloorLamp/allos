@@ -72,17 +72,26 @@ function Section({
 }
 
 // The Notifications group page (#1462 §6). It is the one settings page that is
-// inherently MIXED-TIER, so it states scope PER SECTION rather than once in the
-// header, and it is deliberately three sections and no more:
+// inherently MIXED-TIER — the registry now SAYS so (`tier: "mixed"`, #1868 §4), so the
+// header states the mixed scope once and these per-section strings are the
+// fine-grained layer rather than a second, competing labeling system. It is
+// deliberately three sections and no more:
 //
 //   1. Channels      — where messages can arrive (Telegram + Web Push follow the
 //                      LOGIN since #1072; the Home Assistant webhook follows the
-//                      PROFILE).
+//                      PROFILE). Each card configures the CHANNEL — enable, target,
+//                      credentials, send-test — and nothing per-kind.
 //   2. Schedule      — the slot times and quiet hours, nothing else.
 //   3. Message kinds — ONE row per kind carrying its enable, its config, and its
 //                      channel routing. This replaced BOTH the old mega-card's
 //                      per-kind toggles AND the separate kind × channel matrix,
-//                      which used to answer the same question twice.
+//                      which used to answer the same question twice. As of #1868 §1
+//                      that is finally true for ALL THREE columns: the Home Assistant
+//                      card's own per-kind grid wrote the SAME
+//                      `ha_notify_disabled_kinds` key as the matrix's HA column (26
+//                      checkboxes for 13 booleans), and it is gone. Each column header
+//                      also carries a tri-state select-all (#1868 §2) that never
+//                      sweeps the safety kinds.
 //
 // Below them sit the two per-login REDUCTIONS — the morning digest's per-category
 // demotion (#1714) and the per-profile mute (#1072/#1324). Neither is a new
@@ -188,7 +197,7 @@ export default async function NotificationsSettingsPage() {
           <Section
             testId="notify-digest-tune"
             title="Morning digest"
-            scope={`Which lines your morning digest routinely carries — your login only, across every profile. This is the mirror of the digest message's own ⚙️ Tune control, not a second setting.`}
+            scope={`Which lines your morning digest routinely carries — your login only, across every profile. This is the mirror of the digest message's own ⚙️ Tune control, not a second setting, so it stays collapsed to its current state.`}
           >
             <PageContainer width="form">
               <DigestTuneSettings demoted={getLoginDigestDemotions(login.id)} />

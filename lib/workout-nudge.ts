@@ -24,8 +24,20 @@ import { isSuppressed, type SuppressionRecord } from "./upcoming-suppress";
 // `training:<id>`. The SINGLE source of truth for the key — the Upcoming training item
 // (lib/queries/upcoming.ts) AND the workout nudge derive from it, so a page dismissal
 // and its push cousin line up on the same string (issue #245, the #227 pattern).
+export const TRAINING_SIGNAL_PREFIX = "training:";
+
 export function trainingSignalKey(targetId: number): string {
-  return `training:${targetId}`;
+  return `${TRAINING_SIGNAL_PREFIX}${targetId}`;
+}
+
+// Whether an Upcoming item's key names a WEEKLY TRAINING TARGET rather than one of
+// the other findings that share the `training` domain (an outdoor-session plan, a
+// step observation, an endurance event). The domain is the surface a finding belongs
+// to; the key namespace is its identity, so this is the honest test — used by the
+// digest to decide whether the weekly-progress phrase (#1819 item 4) actually
+// describes everything it would stand in for.
+export function isTrainingSignalKey(key: string): boolean {
+  return key.startsWith(TRAINING_SIGNAL_PREFIX);
 }
 
 // Decide whether the workout nudge is suppressed, given the recommendation's

@@ -26,6 +26,12 @@
 // an attacker-controlled login form. `rejectsAddress()` below is that gate, and it is
 // applied to the display NAME as well as the slug: a free-text field is exactly where a
 // URL would otherwise slip in.
+//
+// The one deliberate narrowing (#1829): an ACCOUNT name may be an EMAIL ADDRESS, because
+// a portal login usually is one and an email is an identity label rather than something a
+// tool could dereference. Every dereferenceable spelling — `mailto:`, a scheme, a host
+// with a path, a bare host, an IP literal — is still refused, by the checks that run
+// BEFORE the allowance. See rejectsAddress().
 
 // ── Portal slug ──────────────────────────────────────────────────────────────
 
@@ -85,18 +91,61 @@ export function mintSlug(name: string): string {
   return (lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut).replace(/-+$/, "");
 }
 
+// A BARE EMAIL ADDRESS, and nothing else (issue #1829).
+//
+// Strict on every axis that could smuggle a fetch target through: exactly one `@` (the
+// local part excludes it), no whitespace, no `/` and no `:` ANYWHERE, and a domain that
+// is a real dotted name ending in an alphabetic TLD. So `user@host` (no TLD),
+// `user@host/path`, `user@192.168.1.1` (numeric last label), `a@b@c.com` and anything
+// carrying a scheme or a query string all fail it and fall through to the heuristics
+// below, which reject them.
+//
+// This is a SHAPE test, not a deliverability test: it exists to decide "is this an
+// identity label a person would recognize", not "would mail arrive".
+const EMAIL_SHAPE_RE = /^[^\s@/:]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+
+export function isEmailShape(value: string): boolean {
+  return EMAIL_SHAPE_RE.test(value.trim());
+}
+
 // Does this text look like a network address? Used to refuse a URL wherever a human can
 // type one. Broad on purpose — a scheme, a `//` authority, a bare host with a dot and a
 // plausible TLD, an IPv4 literal, or a userinfo `@` all count. False positives here cost
 // a portal a nicer display name; a false NEGATIVE would put a resolvable address into the
 // authoritative record, which is the one thing this design promises never to do.
-export function rejectsAddress(value: string): boolean {
+//
+// ── THE EMAIL ALLOWANCE (#1829), AND WHY IT SITS EXACTLY WHERE IT DOES ───────
+//
+// `allowEmail` is set by the ACCOUNT (portal login) name path only. A portal login very
+// often IS an email address, so refusing "mom@gmail.com" refused the natural nickname —
+// while the invariant this gate protects is about DEREFERENCEABLE addresses. An email is
+// an identity label, not a fetch target: allowing it changes nothing about what a trigger
+// payload could carry, because a payload still carries names and slugs and there is still
+// no URL column anywhere to hold a fetch target.
+//
+// It is evaluated as a SHAPE, and the position in this sequence is the whole subtlety.
+// Dropping the `@` check alone would NOT be the same fix: the `host.tld` heuristic below
+// fires on an email's DOMAIN HALF ("gmail.com" at end of string), so an allowance placed
+// after it would still refuse every ordinary address. And it must come AFTER the two
+// scheme checks, which is what keeps `mailto:a@b.com` and `https://user@host/…` refused —
+// they are dereferenceable spellings of an address, and they never reach the allowance.
+//
+// NOT applied to portal names or patient labels. A portal is an institution — an email
+// there is nonsense, and that field is the one that historically tempts URL-pasting — and
+// a patient label is a verbatim key that no validator rewrites.
+export function rejectsAddress(
+  value: string,
+  opts: { allowEmail?: boolean } = {}
+): boolean {
   const v = value.trim().toLowerCase();
   if (!v) return false;
   if (/[a-z][a-z0-9+.-]*:\/\//.test(v)) return true; // scheme://
   if (v.startsWith("//")) return true; // protocol-relative
   if (/^[a-z][a-z0-9+.-]*:/.test(v) && !/^\d+$/.test(v.split(":")[1] ?? ""))
     return true; // scheme: (mailto:, javascript:)
+  // The allowance: after every scheme spelling has already been refused, and before the
+  // two heuristics that each fire on one half of an ordinary address.
+  if (opts.allowEmail && EMAIL_SHAPE_RE.test(v)) return false;
   if (/@/.test(v)) return true; // userinfo / email
   if (/\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(v)) return true; // IPv4 literal
   if (/[a-z0-9-]+\.[a-z]{2,}(?:[/:?#]|$)/.test(v)) return true; // host.tld

@@ -106,7 +106,9 @@ success:
   id inside is identical. allos compares those ids, so repackaging the same records will
   keep landing here — the thing to change is what you collect, not how you package it. A
   partly overlapping export (one that genuinely carries a visit the other did not) is
-  **not** a duplicate and is stored.
+  **not** a duplicate and is stored. A records-duplicate refusal is **remembered**: those
+  bytes come back as `covered` in the inventory below, so you can stop offering them
+  without keeping any memory of your own.
 - `failed` — the engine refused it, and `reason` says why (too large, unsupported type,
   contents that contradict the file name).
 - `blocked` — **a person deleted these exact bytes in allos**, and the deletion is
@@ -125,7 +127,9 @@ form still lands a visible "skipped" row for a duplicate: there the row is the f
 person needs. A retry through this endpoint stays idempotent in the table.) This holds for
 the clinical-entry duplicate too, and it is load-bearing there: since a portal's container
 is never byte-stable, a daily re-collection would otherwise land a fresh marker row every
-single run.
+single run. Nothing being stored is also why the inventory grew a third list — with no row
+and no hash to point at, a refused duplicate would otherwise be indistinguishable from a
+document allos has never seen.
 
 You can send several `file` parts in one request; they are ingested one at a time, up to
 the same batch cap the upload form uses, and any overflow is reported in a `skipped`
@@ -171,9 +175,9 @@ upload fails visibly and becomes a one-tap mapping — it never lands on whichev
 seemed closest. A patient the household has explicitly **ignored** answers identically:
 the endpoint never reveals which of the two it was.
 
-Allos also **remembers what it refused**. The identity appears under **Integrations →
-Patient portals → Waiting to be mapped**, with when it was first and last seen, and maps
-to a profile in one tap — spelled exactly as the portal spelled it, so nobody has to
+Allos also **remembers what it refused**. The identity appears on **Integrations →
+Patient portals**, which hands the whole page over to mapping while anyone is waiting,
+with when it was first and last seen, and maps to a profile in one tap — spelled exactly as the portal spelled it, so nobody has to
 retype a label they never saw. Repeated sightings update that one entry rather than
 piling up, only an authenticated request is ever recorded, and the list is bounded per
 login.
@@ -247,7 +251,7 @@ records and still require a target, with the same `400` they always gave.
 
 Such a report has no profile — that is what makes it portal-level — so it lands as a
 **run report against the portal login** rather than as a profile's sync event, and shows
-on **Integrations → Patient portals → Status**. The same is true of a first run whose own
+in the status sentence on **Integrations → Patient portals**. The same is true of a first run whose own
 patient is not mapped yet: refused, nothing filed, but the run is no longer invisible.
 
 ### Asking what allos already holds
@@ -268,21 +272,46 @@ curl -H "Authorization: Bearer $ALLOS_TOKEN" \
 ```
 
 ```json
-{ "ok": true, "profile": 7, "held": ["ab12…"], "deleted": ["cd34…"] }
+{
+  "ok": true,
+  "profile": 7,
+  "held": ["ab12…"],
+  "deleted": ["cd34…"],
+  "covered": ["ef56…"]
+}
 ```
 
 - `held` — content hashes (sha-256 of the file bytes) allos has stored for this profile.
 - `deleted` — hashes a **user deleted**. Offering one of these back is refused with the
   `blocked` outcome above.
+- `covered` — hashes allos **refused as duplicates**: it stored nothing, but it already
+  holds every clinical entry those bytes carry, under different packaging. Sending one
+  again is pure waste — it is refused identically every time.
 
-**Send exactly the hashes in neither list.** That rule is what makes the contract safe for
-a client with no local state at all — you need no memory of your own, which is precisely
-what made the naive design fail. A hash missing from both lists after you previously sent
-it means the document is genuinely gone _without_ a deliberate deletion (lost, corrupted):
-re-sending it is correct, and that is the reconciliation this endpoint exists for.
+**Send exactly the hashes in none of the three lists.** That rule is what makes the
+contract safe for a client with no local state at all — you need no memory of your own,
+which is precisely what made the naive design fail. A hash missing from all three after you
+previously sent it means the document is genuinely gone _without_ a deliberate deletion
+(lost, corrupted): re-sending it is correct, and that is the reconciliation this endpoint
+exists for.
+
+**Why `covered` has to come from the server.** A duplicate refusal stores nothing, so
+without this list the refused hash was in neither of the other two and the rule told you to
+send it again — every run, forever, for a file that can never land. Remembering the
+`duplicate` verdict locally is not a fix: the verdict is not stable. Delete the document
+whose entries made this one redundant and those bytes become storable again, and nothing
+would tell a client holding its own memory — it would skip a document allos would now
+accept. So the list is **recomputed on every read**: while the covering document is held
+the hash is in `covered`, and the moment that document is deleted, reassigned away, or
+reprocessed into a different entry set, the hash silently leaves and you offer it again.
+Nothing special is signalled; the next answer is simply different.
+
+The list is additive: a client written against the older two-list contract keeps working
+untouched — it just keeps re-offering what this list would have told it to skip.
 
 Do not treat `deleted` as advisory. The upload path enforces it independently, so a client
-that ignores the list still cannot resurrect anything — it just wastes the bytes.
+that ignores the list still cannot resurrect anything — it just wastes the bytes. The same
+is true of `covered`, which costs the bytes plus a re-parse.
 
 `profile=<id>` works here too, for debugging by hand. The gate is the upload's: the same
 `upload:documents` scope (a token that may send bytes may know what is held), write access
@@ -453,8 +482,15 @@ behind on someone else's login.
   `lib/medical-pipeline::ingestMedicalUpload`, the ONE ingest engine, and adds no gate of
   its own (a second copy would drift from the form's).
 - `app/api/documents/held/route.ts` — the inventory endpoint. It composes the upload's
-  gate and answers from two readers: `heldDocumentHashes` (stored bytes) and
-  `tombstonedDocumentHashes` (deletions).
+  gate and answers from three readers: `heldDocumentHashes` (stored bytes),
+  `tombstonedDocumentHashes` (deletions) and `coveredDocumentHashes` (duplicate refusals).
+- `lib/document-coverage.ts` — the coverage marker (#1828): written when an automated
+  client's offer is refused as a records-duplicate, and read back as the `covered` list.
+  Evidence is stored — which bytes were offered, which clinical key covered them — and the
+  verdict is recomputed on every read against the documents the profile holds now, so a
+  delete/reassign/reprocess needs no invalidation hook. Deliberately NOT the tombstone
+  table: that records a person's decision, this records the engine's, and a human re-upload
+  clears the one while it simply re-earns the other.
 - `lib/document-tombstones.ts` — the content-hash document tombstone: written on delete,
   consulted on the acquirer ingest path, cleared by a human upload or the Data → Review
   allow-again action. It reuses the `import_tombstones` table under
@@ -465,6 +501,10 @@ behind on someone else's login.
   `profile_id`), so it is not in `lib/owned-tables.ts`.
 - Migration `134-tombstone-label.ts` — the nullable `label` on `import_tombstones`, so a
   blocked document can be named in the UI (the natural key is an opaque hash).
+- Migration `138-document-coverage-markers.ts` — the `document_coverage_markers` table:
+  one row per (profile, offered hash), refreshed on re-offer. Profile-owned, so it is in
+  `lib/owned-tables.ts` and cleared with the profile; it holds no health data and is out of
+  the portable export.
 
 `authenticateApiToken()` **authenticates only**. It answers "which login is this, and
 does its token carry the capability this endpoint demands" — nothing more. Whether that

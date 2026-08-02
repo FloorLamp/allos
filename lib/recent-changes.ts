@@ -216,6 +216,76 @@ export function rankRecentChanges(
   );
 }
 
+// ---- Data arrival: KINDS, not counts (#1819 item 2) ------------------------
+//
+// `📥 Google Health Connect: 2271 new records` summed raw inserts across everything,
+// so minute-grain heart-rate rows and one body-weight reading counted the same: the
+// number was technically true and humanly meaningless. The news is WHAT arrived, and
+// the per-row provenance the sync already persists (`integration_sync_rows`, #1333)
+// knows exactly that — the target table each written row landed in, and for a
+// `metric_samples` row its metric. This is the PURE half: the kind word one written
+// row names, and the phrase distinct kinds join into. No second accounting is minted
+// — COUNTS stay where they belong, in Data → Review.
+
+// A `metric_samples` metric key → the kind word a person recognizes. Anything
+// unmapped falls back to the stored key with its unit suffix and underscores relaxed,
+// so a metric added tomorrow reads sensibly before it is listed here.
+const ARRIVAL_SAMPLE_KINDS: Record<string, string> = {
+  steps: "steps",
+  distance_km: "distance",
+  active_kcal: "active calories",
+  total_kcal: "calories",
+  sleep_min: "sleep",
+  nutrition_kcal: "nutrition",
+  hrv: "HRV",
+  resting_hr: "resting heart rate",
+  heart_rate: "heart rate",
+  spo2: "blood oxygen",
+  hydration_ml: "hydration",
+};
+
+// The provenance target tables, minus `metric_samples` whose kind is per-metric.
+// Keyed by the string the column stores rather than the imported union, so this pure
+// module stays independent of the accounting module's type surface.
+const ARRIVAL_TABLE_KINDS: Record<string, string> = {
+  activities: "workouts",
+  body_metrics: "body measurements",
+  medical_records: "lab results",
+  practice_logs: "wellness sessions",
+};
+
+export function arrivalKind(
+  targetTable: string,
+  metric: string | null | undefined
+): string {
+  if (targetTable !== "metric_samples") {
+    return ARRIVAL_TABLE_KINDS[targetTable] ?? "records";
+  }
+  const key = (metric ?? "").trim();
+  if (!key) return "daily metrics";
+  return (
+    ARRIVAL_SAMPLE_KINDS[key] ??
+    key.replace(/_(min|km|kcal|ml|g)$/, "").replaceAll("_", " ")
+  );
+}
+
+// How many kinds one arrival line names before it collapses to "+N more". An arrival
+// line has to stay a line, and the tail counts KINDS — never records.
+export const MAX_ARRIVAL_KINDS = 4;
+
+// "sleep, heart rate, steps" — the distinct kinds in the order given, deduped, capped.
+// Null when nothing resolvable arrived, which is the signal to omit the line: a
+// provider whose writes name no user record has no arrival to report (its accounting
+// lives in Data → Review), and manufacturing one would be the vocabulary disease
+// #1772 named.
+export function arrivalKindsPhrase(kinds: readonly string[]): string | null {
+  const distinct = [...new Set(kinds.map((k) => k.trim()).filter(Boolean))];
+  if (distinct.length === 0) return null;
+  const named = distinct.slice(0, MAX_ARRIVAL_KINDS);
+  const rest = distinct.length - named.length;
+  return rest > 0 ? `${named.join(", ")}, +${rest} more` : named.join(", ");
+}
+
 // The per-member line cap (#1463 §2): a 40-record import must not flood a card.
 export const RECENT_CHANGES_MAX_LINES = 4;
 

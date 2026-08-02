@@ -24,7 +24,14 @@ see a no-op UPDATE). **User-edit lock (#133):** imported `activities`,
 `body_metrics`, and `medical_records` rows each carry an `edited` flag; the
 app's edit paths set it on a source-owned row (`isEditLocked` in `sync-log.ts`),
 and the keyed upserts skip an edit-locked row (counting it `unchanged`) so a
-hand-correction survives the next rolling-window push. `body_metrics` is
+hand-correction survives the next rolling-window push. **Bulk corrections
+(#1603)** ride the same chokepoint: Data → Review's "Fix a run of data" panel
+(`lib/bulk-correction.ts` / `lib/bulk-correction-db.ts`) applies a plan →
+preview → apply pass over a date-range × source × field run, sets the edit lock
+on every corrected source-owned row (the preview says so plainly), snapshots the
+inverse into `deleted_rows` (`kind='bulk-correction'`, 24h undo window), and its
+undo restores a row only while its value still equals the correction's result —
+clearing `edited` only where that correction set it. `body_metrics` is
 DB-keyed on `UNIQUE(profile_id, date, source)` (NULL source exempt —
 manual/document rows), so its upsert uses `ON CONFLICT DO UPDATE` like the other
 tables. The **Data → Review** tab (`components/ReviewInbox.tsx`; profile-scoped
@@ -70,11 +77,24 @@ where you stood. The computation is now `lib/integrations/provider-state.ts`
 (pure) over `getIntegrationState` (`lib/queries/integrations.ts`), and every
 surface FORMATS its answers:
 
-- **Standing + badge.** `providerStanding` folds connection status and the latest
-  event into one closed vocabulary (`healthy` / `partial` / `failing` /
-  `needs-reauth` / `not-connected` / `never-synced`); `standingBadge` names and
-  tones it, and `components/integrations/StatusBadge.tsx` is the ONE place a tone
-  becomes classes (the sibling of `NOTICE_TONE` for tinted blocks).
+- **Standing + badge.** `providerStanding` folds connection status, the RECENT RUN
+  WINDOW (`STANDING_RUN_WINDOW`, the same depth for every caller), and the #1685
+  staleness facts into one closed vocabulary (`healthy` / `partial` /
+  `intermittent` / `failing` / `needs-reauth` / `not-connected` /
+  `never-synced`); `standingBadge` names and tones it, and
+  `components/integrations/StatusBadge.tsx` is the ONE place a tone becomes
+  classes (the sibling of `NOTICE_TONE` for tinted blocks). Since #1880 the
+  standing is FLAP-AWARE — latest-event-wins is gone. `intermittent` means
+  failures in the recent window but no escalation (a calm amber fact);
+  `failing` means `FAILING_CONSECUTIVE_RUNS` (3) consecutive failures OR a
+  breach of the provider's #1685 staleness threshold, COMPOSED via
+  `isSyncStale`, never duplicated. Only `failing` and `needs-reauth` escalate
+  (`standingEscalates`): the Data badge (`getImportIssues` /
+  `getImportReviewCount`), Review's Needs-attention card, the dashboard hero
+  item, and the digest's 🔌 lines all gate on that one predicate, so an
+  intermittent source can never increase contact anywhere. The source page
+  states the rule visibly (`escalationPolicyLabel`, rendered by
+  `SyncHistoryTable` with the provider's own `staleAfterDays`).
 - **One accounting, two dialects.** `formatSplitLabel` stays the record-language
   engine and is reached only through `formatSyncChange`, which also owns the CACHE
   dialect: a `public` provider writes cells of a global location-keyed cache, not
@@ -91,11 +111,34 @@ surface FORMATS its answers:
   (`sync{Strava,Oura,Withings,Weather}Action`) are gone; `SyncNowButton` serves
   both the setup page and Review over the `sync*Now` actions, which revalidate the
   surfaces they feed (so no client-side refresh).
-- **Deliberate surface roles.** The setup page is the provider's home — shared
-  status header (`IntegrationStatusHeader`), controls, and the full history table.
-  Review's Connected sources is an INBOX: `needsAttention` expands the providers
-  that are failing / needs-reauth / partial / disconnected with the reason and the
-  action, and collapses healthy ones to a single line linking home.
+- **Deliberate surface roles (#1880 item 2: the alert IS the card).** The setup
+  page is the provider's home — shared status header (`IntegrationStatusHeader`),
+  controls, and the full history table. On Review, an ESCALATED source renders
+  ONCE, fully, inside the "Needs attention" card (`EscalatedSources`): standing
+  chip, reason (the recorded failure's error, or the staleness observation for a
+  quiet stop), the consequence in user terms (the registry's per-provider
+  `stoppedConsequence` through `failureConsequence`), and ALL its actions
+  together — nothing below restates it. Connected sources is the calm rest:
+  `needsAttention` expands partial / not-connected providers with their reason,
+  an `intermittent` one collapses to an amber one-liner stating the honest
+  pattern (`intermittentRunsLabel` + `intermittentReassurance`), and healthy
+  ones collapse to a line linking home. Review's inbox order is attention →
+  duplicates/mislabels → connected sources → imports → tools, with the
+  "Fix a run of data" power tool collapsed to one `<details>` line at the bottom
+  (a `?fix=` deep-link opens it).
+
+**The Import grid (#1880 items 7–8).** `components/IntegrationsGrid.tsx` renders
+each provider's card in one of TWO states matching its two jobs: a card whose
+provider is set up (any standing except `not-connected`) is a compact STATUS
+card — name, standing chip, ONE fact (`formatSyncOutcome` + relative time for
+healthy/partial, "Last success &lt;relative&gt;" for intermittent, the error or
+"No data since &lt;date&gt;" for escalated), Manage → — while an unconnected
+provider keeps the PITCH (short blurb, a few representative chips, Set up →).
+The grid orders by state instead of registry-interleaving: attention first (red
+border, Reconnect →), then healthy connected, then an "Available" group for the
+pitches, planned cards dimmed last. Both states read the same
+`getIntegrationState` standing as Review and the source pages, so the three
+surfaces cannot disagree about a provider's health.
 
 **The history table (#1772).** The surviving history surface was still the #208
 debug feed — it had inherited primary duty from #1212 without a redesign. It is
@@ -104,10 +147,16 @@ Window columns; the failure REASON on EVERY failure row (it used to render only
 for the latest event, so a historical "Sync failed" row explained nothing and one
 success erased even the most recent failure's reason from the UI); the run window
 stated ONCE above the table and shown per row only where it departs from the norm
-(`runWindowNorm` — which is exactly where it carries signal, see #1771);
-absolute + relative times; consecutive no-ops collapsed per #137
-(`buildHistoryRows`, the same rule the Imports feed applies); and no nested
-expanders.
+(which is exactly where it carries signal, see #1771); absolute + relative times;
+consecutive no-ops collapsed per #137 (`buildHistoryRows`, the same rule the
+Imports feed applies); and no nested expanders. Since #1880: the norm is the
+LATEST windowed run (`runWindowNorm`), never a majority vote over stale history —
+after a day rollover the header agrees with the newest row, and OLDER rows note
+their divergence (`windowDivergence`: "covered → 2026-08-08 (before the day
+rolled)" for the one-day roll, the full range otherwise), never the reverse. And
+consecutive IDENTICAL failures collapse like no-ops do ("Failed ×2" +
+`failureRunReason`), so an alternating Failed/Refreshed hour reads as a pattern
+instead of a zebra; failures with different reasons never group.
 
 **Per-row provenance drill-in (#1333, #1212 parts 1–2).** The deferred "what
 this sync wrote" drill-in now ships. A child table `integration_sync_rows`
@@ -274,6 +323,34 @@ row backed by two documents does on delete, on reprocess and on conflicting valu
 nothing is deleted retroactively — documents that already double-imported keep both
 copies.
 
+**A refused duplicate is REMEMBERED, so an acquirer stops re-sending it (#1828).** The
+two lists above could not express the `duplicate` outcome: it stores nothing (#1781), so
+the refused hash was in neither `held` nor `deleted` and the documented "send what is in
+neither list" rule made every acquirer re-offer it on every run, forever — 1.7 MB
+re-uploaded and re-parsed per run on the instance that reported it, never converging.
+#1786 turned that from an anomaly into an ordinary configuration (one person, two portal
+logins, one profile), so the seam became permanent. The fix is a third list, `covered`,
+over a small dedicated table (`document_coverage_markers`, migration 138): a
+records-duplicate refusal on the ACQUIRER path writes
+`(profile_id, content_hash, clinical_key, refused_at)`, idempotent per (profile, hash) and
+refreshed on re-offer. **Validity is recomputed at read, never stored** —
+`coveredDocumentHashes` asks, per marker, whether the profile still holds a document
+carrying that clinical key, using the same alias-aware `heldDocumentPredicate` the ingest
+probe uses, and additionally omits a marker whose own bytes have since become held (which
+is what keeps the three lists disjoint). So a delete, a reassignment away, or a reprocess
+into a different entry set makes the hash leave `covered` on the very next read, with no
+invalidation hook, no sweep, and nothing signalled to the client — the same
+storage-of-evidence / verdict-at-read shape as canonical flag recomputation. It is
+deliberately **not** `import_tombstones`: that records a person's decision and this records
+the engine's, and their rules differ in both directions (a human re-upload CLEARS a
+tombstone, while a human re-upload of a covered file simply earns the duplicate verdict
+again). It is equally deliberately not folded into `held`, which also serves the symmetric
+diff a client uses to notice documents IT lost. The marker is written only on the acquirer
+path — a person's duplicate still lands the visible `'skipped'` row that IS their feedback
+— and it is profile-owned (`lib/owned-tables.ts`), out of the portable export, and
+untouched by document delete, reassignment and extracted-count accounting, because it
+records an offer that was never stored rather than anything a document import wrote.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)
@@ -407,7 +484,11 @@ with a green badge, syncing nothing. The only evidence is negative.
 
 So a connected provider whose **last successful sync** is older than a
 per-provider threshold raises the SAME `integration:<id>` attention item, with
-its own copy. The derivation is pure (`lib/integrations/staleness.ts`) and the
+its own copy. Since #1880 the breach also COMPOSES into the standing itself:
+`providerStanding` calls the same `isSyncStale`, so a quiet stop reads
+"Sync failing" on every surface (with the staleness observation as its stated
+reason via `IntegrationState.stale`), and a flapping provider whose last success
+fell outside the threshold escalates even below the consecutive-failure count. The derivation is pure (`lib/integrations/staleness.ts`) and the
 thresholds live beside each provider's other metadata in
 `lib/integrations/registry.ts` as `staleAfterDays` (null = exempt: a manual
 archive import has no cadence to be late against, a `planned` provider has no
@@ -424,10 +505,13 @@ a connection that has never synced successfully (the copy is "no data since
 freshly-created connection).
 
 It reaches the surfaces the same way the expired-Health-Connect signal (#607)
-does — as a synthetic issue folded into `getImportIssues`, carrying the shared
-`STALE_SYNC_EVENT_ID` sentinel — so the profile-menu badge, the Data → Review
-Issues list, the dashboard hero, the Upcoming page and the morning digest all
-read one list and cannot disagree about which sources are broken. Because the
+does — as a synthetic issue in `getImportIssues` (emitted for an escalated
+provider whose latest run SUCCEEDED long ago, i.e. nothing failed on record),
+carrying the shared `STALE_SYNC_EVENT_ID` sentinel — so the profile-menu badge,
+the Data → Review Needs-attention card, the dashboard hero, the Upcoming page
+and the morning digest all read one list and cannot disagree about which sources
+are broken. A provider whose latest run is a RECORDED failure contributes that
+real event instead (it names a cause) — one row per provider either way. Because the
 sentinel is shared across providers it is **not unique per row**: any list
 rendering these keys on `(provider, id)`. The signal is self-clearing: one healthy
 sync and the derivation stops firing, with no lifecycle of its own.

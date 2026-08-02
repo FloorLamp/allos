@@ -299,6 +299,43 @@ describe("portal logins (accounts)", () => {
     expect(createPortalAccount(portalId, "   ").ok).toBe(false);
   });
 
+  it("ACCEPTS an email address as a login name (#1829)", () => {
+    // A portal login usually IS an email, so that is the nickname a person reaches for.
+    // An email is an identity label, never something a tool could dereference.
+    const made = createPortalAccount(portalId, "mom@example.com");
+    expect(made.ok).toBe(true);
+    if (!made.ok) return;
+    const account = accountsForPortal(portalId).find((a) => a.id === made.id);
+    // Stored verbatim as the display name; the SLUG is minted from it as usual, so a
+    // tool's config still quotes plain kebab text.
+    expect(account?.name).toBe("mom@example.com");
+    expect(account?.slug).toBe("mom-example-com");
+  });
+
+  it("still refuses every dereferenceable shape in a login name", () => {
+    for (const bad of [
+      "mailto:mom@example.com",
+      "https://user@portal.example",
+      "user@portal.example/login",
+      "portal.example",
+      "192.168.1.10",
+    ]) {
+      const r = createPortalAccount(portalId, bad);
+      expect(r.ok, bad).toBe(false);
+      if (r.ok) continue;
+      expect(r.error).toMatch(/never a web address/i);
+    }
+  });
+
+  it("keeps a PORTAL name fully strict — an email there is not a name", () => {
+    // A portal is an institution, and this is the field that historically tempts
+    // URL-pasting. The allowance is the account path's alone.
+    const r = createPortal("mom@example.com");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/never a web address/i);
+  });
+
   it("REFUSES to remove a portal's last login — that would be a dead end", () => {
     // Every binding must name a login, so a portal with none could never be bound again.
     expect(deletePortalAccount(defaultAccount)).toBe(false);

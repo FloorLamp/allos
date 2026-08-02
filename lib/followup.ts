@@ -47,6 +47,60 @@ export function normalizeResolution(raw: unknown): FollowUpResolution | null {
     : null;
 }
 
+// ---- The TERMINATOR vocabulary (issue #1866) --------------------------------
+//
+// The per-item off-switch for the overdue-follow-up escalation: the user's own
+// statement that ends the chain node permanently, with no later record to pin.
+//   - "done":     the follow-up happened ("done on <date>" — an outside-clinic CT
+//                 our records never saw).
+//   - "declined": a deliberate, informed decline ("discussed, not doing it"), with
+//                 an optional free-text reason.
+// Deliberately DISTINCT from FollowUpResolution: a resolution records what a later
+// RECORD showed; a settle records a decision about the follow-up itself. Either one
+// closes the node: the finding stops rendering and the push stops forever.
+export type FollowUpSettleDisposition = "done" | "declined";
+
+const SETTLE_DISPOSITIONS: readonly FollowUpSettleDisposition[] = [
+  "done",
+  "declined",
+];
+
+// Coerce a submitted/stored value onto the closed disposition set, or null when it
+// isn't one — validated in code (the normalizeResolution pattern), so a tampered
+// form can never assert an off-vocabulary terminal state.
+export function normalizeSettleDisposition(
+  raw: unknown
+): FollowUpSettleDisposition | null {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  return (SETTLE_DISPOSITIONS as readonly string[]).includes(v)
+    ? (v as FollowUpSettleDisposition)
+    : null;
+}
+
+// The compact state label the per-record "Follow-up: <label>" chips render (the
+// imaging/labs/IOP/dental/skin lists). ONE computation so a new terminal state
+// (like #1866's decline) can't leave one domain's chip claiming "due <date>" about
+// a chain that is closed. `dueWord` is the only per-domain variation ("due" /
+// "recheck due").
+export function followUpStateLabel(
+  s: {
+    resolution: string | null;
+    status: string | null;
+    settledDisposition?: string | null;
+    plannedDate: string | null;
+  },
+  dueWord = "due"
+): string {
+  if (s.resolution) return `resolved · ${s.resolution}`;
+  if (s.settledDisposition === "declined") return "declined";
+  if (s.settledDisposition === "done" || s.status === "completed")
+    return "done";
+  if (s.plannedDate) return `${dueWord} ${s.plannedDate}`;
+  return "tracked";
+}
+
 // The normalized, cross-domain source ref a follow-up links back to — the ONE shape
 // the core reasons over regardless of which concrete FK column carried it.
 export interface FollowUpSourceRef {

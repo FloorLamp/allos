@@ -120,7 +120,17 @@ vi.mock("@/lib/auth", async () => {
       }
       return s;
     },
-    requireAdmin: () => getActingSession(),
+    // Faithful to prod requireAdmin: a non-admin is bounced (redirect("/") throws
+    // NEXT_REDIRECT in prod; a recognizable marker here), so an action test can assert
+    // an admin-only gate refuses a member — #1875 made that observable behaviour worth
+    // pinning in this tier rather than leaving it to the static scan alone.
+    requireAdmin: () => {
+      const s = getActingSession();
+      if (s.login.role !== "admin") {
+        throw new Error("NEXT_REDIRECT: requireAdmin refused a non-admin");
+      }
+      return s;
+    },
     // The persisted cross-profile VIEW (#1331). Prod reads it off the view cookie;
     // this tier has no cookie, and null is exactly what prod returns for a session
     // that has not chosen one — resolveScope then scopes to the acting profile

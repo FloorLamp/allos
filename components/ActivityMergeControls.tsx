@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { IconGitMerge, IconCopyCheck, IconEyeOff } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import { ACTIVITY_DOMAIN } from "@/lib/import-review/detect";
-import type { FieldConflict } from "@/lib/import-review/conflicts";
+import {
+  detectClusterFieldConflicts,
+  type OverrideChoices,
+} from "@/lib/import-review/conflicts";
 import MergeConflictDialog from "@/components/MergeConflictDialog";
 import {
   mergeActivityPair,
@@ -12,22 +15,23 @@ import {
 } from "@/app/(app)/data/review-actions";
 
 // The action row for one detected ACTIVITY duplicate pair in the Data → Review
-// resolver (issue #10), now conflict-aware (issue #100). Either row can be the
-// keeper (two merge buttons). When the two rows genuinely disagree on a field, the
-// chosen keeper's merge opens the shared conflict preview first so the user picks
-// per field; with zero conflicts the merge submits in one click, unchanged. Keep
-// both / Dismiss are unchanged plain server-action forms.
+// resolver (issue #10), conflict-aware (issue #100). Either row can be the keeper
+// (two merge buttons). When the two rows genuinely disagree on a field, the chosen
+// keeper's merge opens the SHARED conflict picker first so the user picks per
+// field; with zero conflicts the merge submits in one click, unchanged. Keep both /
+// Dismiss are unchanged plain server-action forms.
 //
-// Conflicts arrive oriented with row A as the keeper (keepValue = A's value); the
-// "keep B" button flips each pair's two values so the dialog always pre-selects the
-// active keeper's value.
+// The picker is the same N-way component every merge surface uses (#1431); this
+// pairwise card is simply its two-member case, oriented by the pressed button's
+// keeper (the picker pre-selects the keeper's values itself).
 export default function ActivityMergeControls({
   signature,
   aId,
   bId,
   aLabel,
   bLabel,
-  conflicts,
+  aFoldValues,
+  bFoldValues,
   units,
 }: {
   signature: string;
@@ -35,24 +39,35 @@ export default function ActivityMergeControls({
   bId: number;
   aLabel: string;
   bLabel: string;
-  conflicts: FieldConflict[];
+  // Both rows' fold-field values (pickFoldValues) — the picker's conflict input.
+  aFoldValues: Record<string, unknown>;
+  bFoldValues: Record<string, unknown>;
   units: UnitPrefs;
 }) {
   const [pending, startTransition] = useTransition();
   // The keeper whose merge is awaiting per-field resolution ("a" | "b"), or null.
   const [dialogFor, setDialogFor] = useState<"a" | "b" | null>(null);
 
+  const conflicts = useMemo(
+    () =>
+      detectClusterFieldConflicts([
+        { id: aId, values: aFoldValues },
+        { id: bId, values: bFoldValues },
+      ]),
+    [aId, bId, aFoldValues, bFoldValues]
+  );
+
   function submitMerge(
     keepId: number,
     dropId: number,
-    overrideFields: string[]
+    choices: OverrideChoices
   ) {
     const fd = new FormData();
     fd.set("keep_id", String(keepId));
     fd.set("drop_id", String(dropId));
     fd.set("signature", signature);
-    if (overrideFields.length > 0)
-      fd.set("overrides", JSON.stringify(overrideFields));
+    if (Object.keys(choices).length > 0)
+      fd.set("overrides", JSON.stringify(choices));
     startTransition(() => {
       void mergeActivityPair(fd);
     });
@@ -63,23 +78,13 @@ export default function ActivityMergeControls({
       setDialogFor(keeper);
       return;
     }
-    if (keeper === "a") submitMerge(aId, bId, []);
-    else submitMerge(bId, aId, []);
+    if (keeper === "a") submitMerge(aId, bId, {});
+    else submitMerge(bId, aId, {});
   }
 
-  // Conflicts oriented for the active keeper (flip values when B keeps).
-  const dialogConflicts: FieldConflict[] =
-    dialogFor === "b"
-      ? conflicts.map((c) => ({
-          field: c.field,
-          keepValue: c.dropValue,
-          dropValue: c.keepValue,
-        }))
-      : conflicts;
-
-  function confirmDialog(overrideFields: string[]) {
-    if (dialogFor === "a") submitMerge(aId, bId, overrideFields);
-    else if (dialogFor === "b") submitMerge(bId, aId, overrideFields);
+  function confirmDialog(choices: OverrideChoices) {
+    if (dialogFor === "a") submitMerge(aId, bId, choices);
+    else if (dialogFor === "b") submitMerge(bId, aId, choices);
     setDialogFor(null);
   }
 
@@ -131,9 +136,12 @@ export default function ActivityMergeControls({
 
       {dialogFor && (
         <MergeConflictDialog
-          conflicts={dialogConflicts}
-          keeperLabel={dialogFor === "a" ? aLabel : bLabel}
-          dropLabel={dialogFor === "a" ? bLabel : aLabel}
+          conflicts={conflicts}
+          members={[
+            { id: aId, label: aLabel },
+            { id: bId, label: bLabel },
+          ]}
+          keeperId={dialogFor === "a" ? aId : bId}
           units={units}
           busy={pending}
           onConfirm={confirmDialog}

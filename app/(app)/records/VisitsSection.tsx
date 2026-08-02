@@ -14,8 +14,8 @@ import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { EmptyState } from "@/components/ui";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
-import ListRailLayout from "@/components/ListRailLayout";
 import AppointmentList from "@/app/(app)/encounters/AppointmentList";
 import EncounterList from "@/app/(app)/encounters/EncounterList";
 import { createAppointment } from "@/app/(app)/encounters/appointment-actions";
@@ -92,117 +92,118 @@ export default function VisitsSection({
       : undefined;
   // A bare ?new=1 (command palette's "Add appointment" — issue #29) focuses the
   // entry and, like every deep link here, defaults it to the appointment branch.
-  const focusNew = one(searchParams.new) != null;
+  const focusNew =
+    one(searchParams.new) != null || one(searchParams.focus) != null;
 
   // Split scheduled (future-facing, still on Upcoming) from the settled history so
   // the active list stays actionable. getAppointments returns soonest-first.
   const scheduled = appointments.filter((a) => a.status === "scheduled");
   const settled = appointments.filter((a) => a.status !== "scheduled");
-  const upcomingCount = scheduled.filter(
+  const upcomingScheduled = scheduled.filter(
     (a) => a.scheduled_at.slice(0, 10) >= now
-  ).length;
+  );
+  const overdueScheduled = scheduled.filter(
+    (a) => a.scheduled_at.slice(0, 10) < now
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-10">
-        {showHousehold && (
-          <div className="-mt-2">
-            <Link
-              href={EPISODES_HREF}
-              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-              data-testid="household-view-link"
-            >
-              Illness episodes →
-            </Link>
-          </div>
-        )}
+        <AddEntryPanel
+          testId="add-visit-panel"
+          panelId="add-visit-panel-body"
+          label="Add visit"
+          defaultOpen={focusNew || !!bookPrefill}
+          presentation="modal"
+        >
+          <AddVisitEntry
+            createAppointment={createAppointment}
+            addEncounter={addEncounter}
+            defaultDate={bookPrefill ? prefillDate : now}
+            today={now}
+            prefill={bookPrefill}
+            focusNew={focusNew}
+          />
+        </AddEntryPanel>
 
         {/* Upcoming — the appointments surface. */}
         <section data-testid="visits-upcoming">
           <h3 className="mb-3 flex items-center gap-2 section-label">
             Upcoming
-            {scheduled.length > 0 && (
+            {upcomingScheduled.length > 0 && (
               <span className="text-slate-500 dark:text-slate-400">
-                ({upcomingCount} scheduled)
+                ({upcomingScheduled.length} scheduled)
               </span>
             )}
           </h3>
-          <ListRailLayout
-            listSpacing="space-y-6"
-            rail={
-              <>
-                {/* The single "Add visit" entry (issue #566): one affordance that
-                branches on tense — a future/today date books an appointment, a past
-                date logs an encounter — so the user never has to know "which form?".
-                Kept inside the Upcoming section so every existing deep link (#85
-                Book CTA, #29 command palette, calendar feed) lands here on the
-                appointment branch, exactly as before. */}
-                <AddVisitEntry
-                  createAppointment={createAppointment}
-                  addEncounter={addEncounter}
-                  defaultDate={bookPrefill ? prefillDate : now}
-                  today={now}
-                  prefill={bookPrefill}
-                  focusNew={focusNew}
+          <div className="min-w-0 space-y-6">
+            {/* No inner "Scheduled" label (#1449): the outer heading names the
+                list; the count that carries information lives with it. */}
+            <section>
+              {upcomingScheduled.length === 0 ? (
+                <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
+              ) : (
+                <AppointmentList
+                  items={upcomingScheduled}
+                  defaultDate={now}
+                  carePlanItems={openCarePlanItems}
                 />
-              </>
-            }
-          >
-            <div className="min-w-0 space-y-6">
-              {/* No inner "Scheduled" label (#1449): stacked directly under the
-                  section's own "Upcoming", two uppercase section-labels read as one
-                  duplicated pair naming the same list. The outer heading names it;
-                  the count that actually carried information moved up with it. */}
-              <section>
-                {scheduled.length === 0 ? (
-                  <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
-                ) : (
+              )}
+            </section>
+
+            {overdueScheduled.length > 0 && (
+              <details className="border-l-2 border-amber-300 pl-3 dark:border-amber-800">
+                <summary className="cursor-pointer py-1 font-semibold text-amber-800 dark:text-amber-200">
+                  Past date—update status{" "}
+                  <span className="text-sm font-normal">
+                    ({overdueScheduled.length})
+                  </span>
+                </summary>
+                <div className="mt-3">
                   <AppointmentList
-                    items={scheduled}
+                    items={overdueScheduled}
                     defaultDate={now}
                     carePlanItems={openCarePlanItems}
                   />
-                )}
-              </section>
+                </div>
+              </details>
+            )}
 
-              {settled.length > 0 && (
-                <details className="card">
-                  <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-                    Completed &amp; cancelled{" "}
-                    <span className="text-sm font-normal text-slate-400">
-                      ({settled.length})
-                    </span>
-                  </summary>
-                  <div className="mt-3">
-                    <AppointmentList
-                      items={settled}
-                      defaultDate={now}
-                      carePlanItems={openCarePlanItems}
-                    />
-                  </div>
-                </details>
-              )}
-            </div>
-          </ListRailLayout>
+            {settled.length > 0 && (
+              <details className="border-t border-black/5 pt-3 dark:border-white/5">
+                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                  Completed &amp; cancelled{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    ({settled.length})
+                  </span>
+                </summary>
+                <div className="mt-3">
+                  <AppointmentList
+                    items={settled}
+                    defaultDate={now}
+                    carePlanItems={openCarePlanItems}
+                  />
+                </div>
+              </details>
+            )}
+          </div>
         </section>
 
-        {/* Past — the encounters / visit-history surface. Its add form is now the
-          single "Add visit" entry above (toggle to "Already happened"), so this
-          section is history-only. */}
+        {/* Past — the encounter history follows Upcoming without an entry form
+          between the two lists. */}
         <section data-testid="visits-past">
-          <h3 className="mb-3 section-label">Past</h3>
-          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-            To log a visit that already happened, use{" "}
-            <span className="font-medium text-slate-500 dark:text-slate-400">
-              Add visit
-            </span>{" "}
-            above and switch it to{" "}
-            <span className="font-medium text-slate-500 dark:text-slate-400">
-              Already happened
-            </span>
-            . Imported visits come from uploaded health records (CCD Encounters
-            section).
-          </p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <h3 className="section-label">Past</h3>
+            {showHousehold && (
+              <Link
+                href={EPISODES_HREF}
+                className="shrink-0 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+                data-testid="household-view-link"
+              >
+                View illness episodes →
+              </Link>
+            )}
+          </div>
           <EncounterList
             items={encounters}
             defaultDate={now}

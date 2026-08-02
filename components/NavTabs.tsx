@@ -216,7 +216,12 @@ export function RouteNavTabsStrip({
       })}
     >
       {tabs.map((tab) => {
-        const active = pathname === tab.href;
+        // A route tab may own a family of child panes. Records, for example,
+        // points its History tab at /records/history while the selected pane is
+        // /records/history/visits. Prefix matching keeps the parent tab selected
+        // without teaching this shared strip any page-specific route vocabulary.
+        const active =
+          pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}

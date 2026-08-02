@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import LogsStream from "./LogsStream";
 import UsageRollup from "./UsageRollup";
+import { clearAiLogAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +13,13 @@ export default async function AiLogsPage() {
   // The AI log mixes extraction content (names, biomarkers) across every
   // profile, so it's admin-only — a member is redirected out by requireAdmin().
   const { login, profile } = await requireAdmin();
-  const initial = readAiEvents(200);
-  // The rollup wants a wider horizon than the live table (up to the log's 2000-line
-  // cap) so the 7-day window is complete; it aggregates in-memory (issue #410).
-  const rollup = rollupAiUsage(readAiEvents(2000), new Date().toISOString());
+  // ONE bounded read shared by both consumers (#1842): the rollup wants a wider
+  // horizon than the live table (up to the log's 2000-line cap) so the 7-day
+  // window is complete; the table seeds from the newest 200 of the same
+  // newest-first snapshot. It aggregates in-memory (issue #410).
+  const events = readAiEvents(2000);
+  const initial = events.slice(0, 200);
+  const rollup = rollupAiUsage(events, new Date().toISOString());
   // Map profile ids → display names so the rollup names who spent the tokens.
   const profileNames = Object.fromEntries(
     (
@@ -31,7 +35,7 @@ export default async function AiLogsPage() {
         Every extraction, suggestion, and insight call, with token usage.
       </p>
       <UsageRollup rows={rollup} profileNames={profileNames} />
-      <LogsStream initial={initial} />
+      <LogsStream initial={initial} clearAction={clearAiLogAction} />
     </SettingsGroupLayout>
   );
 }

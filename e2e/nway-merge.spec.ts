@@ -10,10 +10,12 @@ import {
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
 import { workerDbPath, frozenNow } from "./worker-env";
 
-// Issue #1081 — N-way activity duplicate merge on BOTH surfaces, on a DEDICATED member
-// profile (#868), re-seeded per test so a --repeat-each iteration always starts from
-// the unmerged state (both merges CONSUME their rows). Two independent same-day groups:
-// a 3-row cross-source cluster for Data → Review, and a 3-row same-day group for the
+// Issue #1081 — N-way activity duplicate merge on BOTH surfaces, plus the #1431
+// per-field conflict picker, on a DEDICATED member profile (#868), re-seeded per
+// test so a --repeat-each iteration always starts from the unmerged state (the
+// merges CONSUME their rows). Three independent same-day groups: a 3-row
+// cross-source cluster for Data → Review, a 3-row cross-source cluster with a
+// material DISTANCE conflict for the picker, and a 3-row same-day group for the
 // Journal multi-select merge.
 
 const DB_PATH = workerDbPath();
@@ -29,6 +31,7 @@ function isoBack(days: number): string {
 
 const REVIEW_DATE = isoBack(3);
 const JOURNAL_DATE = isoBack(2);
+const CONFLICT_DATE = isoBack(4);
 
 function nwayProfileId(db: Database.Database): number {
   return (
@@ -43,7 +46,13 @@ test.describe("N-way activity merge (#1081)", () => {
     const db = new Database(DB_PATH);
     try {
       db.pragma("busy_timeout = 5000");
-      seedNwayMergeFixture(db, nwayProfileId(db), REVIEW_DATE, JOURNAL_DATE);
+      seedNwayMergeFixture(
+        db,
+        nwayProfileId(db),
+        REVIEW_DATE,
+        JOURNAL_DATE,
+        CONFLICT_DATE
+      );
     } finally {
       db.close();
     }
@@ -61,8 +70,11 @@ test.describe("N-way activity merge (#1081)", () => {
       const review = page.getByTestId("review-inbox");
 
       // The three overlapping cross-source rows surface as ONE cluster card (not
-      // C(3,2)=3 pair cards).
-      const cluster = review.getByTestId("dup-activity-cluster");
+      // C(3,2)=3 pair cards). Scoped by title: the fixture profile also carries the
+      // #1431 conflict cluster on its own day.
+      const cluster = review
+        .getByTestId("dup-activity-cluster")
+        .filter({ hasText: "NW review manual" });
       await expect(cluster).toHaveCount(1);
       await expect(cluster.getByTestId("dup-cluster-member")).toHaveCount(3);
       await expect(cluster.getByText("3 copies")).toBeVisible();
@@ -76,8 +88,9 @@ test.describe("N-way activity merge (#1081)", () => {
       );
       await settledClick(page, cluster.getByTestId("dup-cluster-merge"));
 
-      // The cluster is resolved — no duplicate card remains.
-      await expect(review.getByTestId("dup-activity-cluster")).toHaveCount(0);
+      // The cluster is resolved — THIS cluster's card leaves the inbox (the #1431
+      // conflict cluster on its own day is untouched by this test).
+      await expect(cluster).toHaveCount(0);
 
       // Only the chosen keeper survives on the feed; the other two are actually gone
       // (rollups count the session once).
@@ -85,6 +98,77 @@ test.describe("N-way activity merge (#1081)", () => {
       await expect(page.getByText("NW review manual").first()).toBeVisible(); // first-ok: the chosen keeper after the merge THIS test performed on its own fixture profile — deterministic
       await expect(page.getByText("NW review strava")).toHaveCount(0);
       await expect(page.getByText("NW review hc")).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("Review cluster: the per-field picker lands a non-keeper's distance (#1431)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_NWAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/data?section=review");
+      const review = page.getByTestId("review-inbox");
+      const cluster = review
+        .getByTestId("dup-activity-cluster")
+        .filter({ hasText: "NW conf manual" });
+      await expect(cluster).toHaveCount(1);
+
+      // Merging a materially-conflicting cluster opens the SHARED picker instead
+      // of a silent keeper-wins fold. Distances disagree (5/8/12 km), durations
+      // agree — so distance is the one surfaced conflict.
+      await settledClick(page, cluster.getByTestId("dup-cluster-merge"));
+      const dialog = page.getByTestId("merge-conflict-dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByTestId("conflict-distance_km")).toBeVisible();
+      await expect(dialog.getByTestId("conflict-duration_min")).toHaveCount(0);
+
+      // A radio across ALL THREE members' values, pre-selected to the default
+      // keeper's (the Strava row — sourced + richest).
+      await expect(
+        dialog.getByRole("radio", { name: "Keep Distance from Strava" })
+      ).toHaveAttribute("aria-checked", "true");
+      await expect(
+        dialog.getByRole("radio", {
+          name: "Use Distance from Google Health Connect",
+        })
+      ).toBeVisible();
+
+      // Pick the NON-keeper Manual distance (5 km) and merge.
+      await settledClick(
+        page,
+        dialog.getByRole("radio", { name: "Use Distance from Manual entry" })
+      );
+      await settledClick(page, dialog.getByTestId("merge-conflict-confirm"));
+      await expect(cluster).toHaveCount(0);
+
+      // The surviving keeper is the Strava row carrying the CHOSEN distance —
+      // the manual row's 5 km, not its own 8 — proven against the DB. The two
+      // absorbed members are actually gone.
+      const db = new Database(DB_PATH);
+      try {
+        db.pragma("busy_timeout = 5000");
+        const profileId = nwayProfileId(db);
+        const keeper = db
+          .prepare(
+            "SELECT title, distance_km FROM activities WHERE profile_id = ? AND external_id = 'strava:nwc-1'"
+          )
+          .get(profileId) as { title: string; distance_km: number };
+        expect(keeper.title).toBe("NW conf strava");
+        expect(keeper.distance_km).toBe(5);
+        const absorbed = db
+          .prepare(
+            "SELECT COUNT(*) c FROM activities WHERE profile_id = ? AND title IN ('NW conf manual', 'NW conf hc')"
+          )
+          .get(profileId) as { c: number };
+        expect(absorbed.c).toBe(0);
+      } finally {
+        db.close();
+      }
     } finally {
       await page.context().close();
     }

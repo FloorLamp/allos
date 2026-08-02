@@ -96,6 +96,10 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const p = newProfile("DigestReauth");
     const td = today(p);
     connect(p, "strava");
+    // Three consecutive failures — the #1880 escalation threshold. A lone failed
+    // run is `intermittent` now and deliberately never reaches the digest.
+    syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401): expired");
+    syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401): expired");
     syncEvent(p, "strava", 0, 0, "Strava token refresh failed (401): expired");
     seedActivityYesterday(p); // ordinary content, so this isn't a sync-only digest
     configureTelegram(p, "555685");
@@ -106,10 +110,11 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const body = sentBody(fetchMock);
-    // Counted in the band line …
-    expect(body).toContain("sync issue");
-    // … and NAMED, so the user knows which source died and what it wants.
-    expect(body).toContain("Strava sync needs attention");
+    // In the band line — NAMED there too since #1819 item 5, which is a small band
+    // getting exactly what the #1685 detail line was added to guarantee …
+    expect(body).toContain("🗓️ Today: Strava sync needs attention");
+    // … and named again with its cause and its link, which is the point of #1685.
+    expect(body).toContain("🔌 Strava sync needs attention");
     expect(body).toContain("401");
   });
 

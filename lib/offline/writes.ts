@@ -1,9 +1,10 @@
 // Server-side write cores for the offline-queueable quick-log flows (issue #28).
-// These are the SINGLE implementation of each write: both the online Server Action
-// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts)
-// and the offline replay route (app/api/offline-replay) call them, so a replayed
-// write runs byte-for-byte the same validation + persistence the live form does —
-// there is no second, drift-prone copy of the rules. Callers own their own
+// These are the SINGLE implementation of each write: both the online Server Actions
+// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts,
+// nutrition/actions.ts, training/activity-actions.ts — the latter two through their
+// shared lib cores) and the offline replay route (app/api/offline-replay) call them,
+// so a replayed write runs byte-for-byte the same validation + persistence the live
+// form does — there is no second, drift-prone copy of the rules. Callers own their own
 // requireWriteAccess()/session gate and revalidatePath(); these functions take a
 // resolved profileId and just do the profile-scoped write.
 //
@@ -11,7 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
@@ -30,9 +31,15 @@ import {
   normalizeMoodInput,
   type MoodRatingColumn,
 } from "@/lib/mood";
-import { resetMoodCheckinIgnored } from "@/lib/settings";
+import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
+import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
+import { logFoodServingCore } from "@/lib/food-log-write";
+import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { saveActivityCore } from "@/lib/activity-write";
 import {
   classifyDoseReplay,
+  classifySetReplay,
+  resolveCapturedInstant,
   STALE_QUEUED_DOSE_REASON,
   type FlowKind,
   type QueuedIntent,
@@ -40,6 +47,8 @@ import {
   type BodyMetricPayload,
   type VitalsPayload,
   type MoodPayload,
+  type SetPayload,
+  type FoodPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -367,6 +376,148 @@ export function deleteMoodLog(profileId: number, id: number): boolean {
   return info.changes > 0;
 }
 
+// ── workout session (#1596 — #28's "add set", landed) ──────────────────────────
+
+// The form fields a queued session capture may carry into saveActivityCore — the
+// exact submit vocabulary of the activity form's buildFormData, MINUS `id` and
+// `profile_id`. Stripping those two is what makes the flow create-only on the
+// stamped profile by construction: a tampered queue entry can't turn a capture
+// into an update of an arbitrary row, and profile attribution stays the route's
+// per-intent write-access check (#599), never a smuggled form field.
+const SET_FIELDS = [
+  "weight_unit",
+  "distance_unit",
+  "type",
+  "title",
+  "date",
+  "components",
+  "sets",
+  "notes",
+  "start_time",
+  "end_time",
+  "intensity",
+  "duration_min",
+  "est_calories",
+  "equipment_id",
+] as const;
+
+// Apply a queued offline-logged workout session through the SHARED activity write
+// core — the same implementation the live form's auto-save posts to, so a replay
+// runs the identical age-gate, title/date guard, captured-unit conversion (#630),
+// composite rollup, per-set canonicalization, routine crediting (#740), and
+// post-workout dispatch (#1154). The captured `date` on the intent is
+// authoritative (issue #28 point 5): it overwrites whatever the fields carry, so
+// the session lands on the day the user logged it. The core's typed
+// SaveActivityOutcome is honored via classifySetReplay, so a refusal (restricted
+// profile, invalid payload) dead-letters with its reason instead of vanishing.
+function applySetIntent(
+  profileId: number,
+  payload: SetPayload,
+  date: string,
+  capturedAt: unknown
+): { status: "done" | "rejected"; reason?: string } {
+  const fields = payload?.fields;
+  if (!fields || typeof fields !== "object" || !isRealIsoDate(date)) {
+    return { status: "rejected" };
+  }
+  const fd = new FormData();
+  for (const key of SET_FIELDS) {
+    const value = (fields as Record<string, unknown>)[key];
+    if (typeof value === "string") fd.set(key, value);
+  }
+  fd.set("date", date);
+  // COMPLETION STAMP (#1596 follow-up). A queued session is a CLOSED session —
+  // the capture only ever fires on the editor's close path — but the create form
+  // defaults start_time to the open moment, and an offline session is typically
+  // abandoned without an end or a duration. Replayed verbatim, that row carries
+  // the live-draft signature (started, unended, duration-less), so workout
+  // presence (#921) resurrects it as an ACTIVE workout at whatever moment the
+  // device reconnects: the app-wide dock and the 45-min "Still working out?" nag
+  // haunt every page for up to ACTIVE_MAX_QUIET_MIN — hours after the user
+  // walked away (the #1441 class, re-created by replay; caught as cross-spec
+  // dock contamination on CI). The capture instant IS when the session closed,
+  // so stamp it as the end — wall-clock HH:MM in the profile's timezone, the
+  // same "end = the moment you finished" rule the live Finish button applies —
+  // making the row read as the completed session it is (isCompletedSessionRow).
+  // A payload that already carries an end time or a positive duration is left
+  // untouched; a start-less capture is already completed and needs nothing.
+  const durationField = Number(fd.get("duration_min"));
+  const hasDuration = Number.isFinite(durationField) && durationField > 0;
+  if (fd.get("start_time") && !fd.get("end_time") && !hasDuration) {
+    const closedAt = new Date(resolveCapturedInstant(capturedAt));
+    fd.set("end_time", zonedDateParts(getTimezone(profileId), closedAt).hhmm);
+  }
+  // Canonical-unit fallbacks only: the capture always stamps the units each value
+  // was entered in (buildFormData sets both), so these are unreachable for a real
+  // intent and merely keep the core total for a hand-crafted one.
+  const outcome = saveActivityCore(profileId, fd, {
+    weightUnit: "kg",
+    distanceUnit: "km",
+  });
+  return classifySetReplay(outcome);
+}
+
+// ── food quick-add (#1596) ──────────────────────────────────────────────────────
+
+// Apply a queued food-serving or protein-grams tap through the SAME auth-blind
+// cores the online actions (and the Telegram buttons) use, so a replay runs the
+// identical catalog validation and per-add bounds. Additive only — the "−" undo
+// taps never queue (see the queue.ts scope comment). The intent's capturedAt is
+// the ledger's tap instant (resolveCapturedInstant), and a captured meal slot is
+// asserted at replay exactly like the Telegram nudge's baked-in slot, so the
+// serving counts for the meal the user was logging, not the reconnect moment.
+function applyFoodIntent(
+  profileId: number,
+  payload: FoodPayload,
+  date: string,
+  capturedAt: unknown
+): { status: "done" | "rejected"; reason?: string } {
+  if (!payload || typeof payload !== "object" || !isRealIsoDate(date)) {
+    return { status: "rejected" };
+  }
+  const loggedAt = resolveCapturedInstant(capturedAt);
+  if (payload.entry === "serving") {
+    const group = typeof payload.groupKey === "string" ? payload.groupKey : "";
+    // A captured slot must still be a real slot; a garbage one rejects rather
+    // than silently re-slotting the serving (the online action refuses it too).
+    let mealSlot: FoodSlot | undefined;
+    if (payload.mealSlot != null && payload.mealSlot !== "") {
+      if (!isFoodSlot(payload.mealSlot)) return { status: "rejected" };
+      mealSlot = payload.mealSlot;
+    }
+    const outcome = logFoodServingCore(
+      profileId,
+      group,
+      date,
+      loggedAt,
+      mealSlot
+    );
+    if (outcome.kind === "unknown-group") {
+      return {
+        status: "rejected",
+        reason:
+          "This food group is no longer available, so the serving wasn't logged.",
+      };
+    }
+    return { status: "done" };
+  }
+  if (payload.entry === "protein") {
+    const grams = payload.grams;
+    if (typeof grams !== "number") return { status: "rejected" };
+    const outcome = addProteinGramsCore(profileId, date, grams, loggedAt);
+    if (outcome.kind === "invalid") {
+      return {
+        status: "rejected",
+        reason:
+          "The protein amount wasn't valid (1–300 grams), so it wasn't logged.",
+      };
+    }
+    return { status: "done" };
+  }
+  // Unknown entry discriminant — permanently malformed.
+  return { status: "rejected" };
+}
+
 // ── idempotency ledger ──────────────────────────────────────────────────────────
 
 // Has this idempotency key already been applied for this profile? Consulted before
@@ -475,6 +626,32 @@ export function applyIntent(
         factors: p.factors,
         note: p.note,
       });
+    } else if (intent.flow === "set") {
+      // The offline-logged workout replays through the shared activity core; its
+      // typed outcome keeps the refusal's reason (#1596, the dose-flow pattern).
+      const applied = applySetIntent(
+        profileId,
+        intent.payload as SetPayload,
+        intent.date,
+        intent.capturedAt
+      );
+      if (applied.status === "rejected") {
+        outcome = applied;
+        return;
+      }
+      ok = true;
+    } else if (intent.flow === "food") {
+      const applied = applyFoodIntent(
+        profileId,
+        intent.payload as FoodPayload,
+        intent.date,
+        intent.capturedAt
+      );
+      if (applied.status === "rejected") {
+        outcome = applied;
+        return;
+      }
+      ok = true;
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
       ok = insertVitals(profileId, intent.date, {

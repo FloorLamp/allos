@@ -35,6 +35,10 @@ import {
   SUBSTANCE_PROFILE,
   E2E_LOGIN_PREVENTIVE,
   PREVENTIVE_PROFILE,
+  E2E_LOGIN_PREVENTIVE_LAPSED,
+  PREVENTIVE_LAPSED_PROFILE,
+  PREVENTIVE_LAPSED_RULES,
+  PREVENTIVE_LAPSED_DATE,
   E2E_LOGIN_CRISIS,
   CRISIS_PROFILE,
   E2E_LOGIN_NOWSTRIP,
@@ -542,6 +546,33 @@ export function seedNowStrip(): void {
   seedMemberLogin(E2E_LOGIN_PREVENTIVE, preventiveDeeplinksId);
   console.log(
     `e2e: seeded record-free preventive fixture profile ${preventiveDeeplinksId} (${PREVENTIVE_PROFILE}) for the deep-links spec (#1083)`
+  );
+
+  // The RECORDED-then-LAPSED half of the #1433 pair: same demographics as the
+  // record-free profile above, plus deep-past preventive_events for two rules. Their
+  // intervals have elapsed by more than a decade, so those two rules are genuinely
+  // overdue and MUST still band as such — the negative control that keeps the
+  // never-recorded fix from muting earned alarm. Deep-past fixed dates (never
+  // relative) so the assertion is stable whatever the frozen clock is. Idempotent.
+  const preventiveLapsedId = fixtureProfileId(PREVENTIVE_LAPSED_PROFILE);
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(preventiveLapsedId);
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1966-01-01')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(preventiveLapsedId);
+  for (const rule of PREVENTIVE_LAPSED_RULES) {
+    db.prepare(
+      `INSERT INTO preventive_events (profile_id, rule_key, date, source)
+         VALUES (?, ?, ?, 'manual')
+       ON CONFLICT(profile_id, rule_key, date, source) DO NOTHING`
+    ).run(preventiveLapsedId, rule, PREVENTIVE_LAPSED_DATE);
+  }
+  seedMemberLogin(E2E_LOGIN_PREVENTIVE_LAPSED, preventiveLapsedId);
+  console.log(
+    `e2e: seeded lapsed-history preventive fixture profile ${preventiveLapsedId} (${PREVENTIVE_LAPSED_PROFILE}) for the cold-start spec (#1433)`
   );
 
   // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis specs

@@ -46,6 +46,12 @@ export interface BodyChartSpec {
   // across to the illness/fever surface). Server-rendered and passed in, so this
   // component stays the toggle-state owner and nothing else.
   headerAction?: ReactNode;
+  // A cross-link rendered UNDER the plot, beside the projection note (the weight
+  // card's "Fix a range" entry to the bulk-correction panel, #1603). A footer
+  // slot on purpose: the header row is the card's full-width tap target (#1488,
+  // pinned by chart-tap-through.spec), so an affordance must not take width from
+  // it.
+  footerAction?: ReactNode;
   // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
   // ticks. Composed by lib/trends-body-metrics' bodyChartScale() from the ONE
   // registry, never re-decided per surface.
@@ -149,10 +155,17 @@ export default function BodyTrendCharts({
       headerAction={chart.headerAction}
       detailHref={chart.detailHref}
       footer={
-        chart.projectionNote ? (
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            {chart.projectionNote}
-          </p>
+        chart.projectionNote || chart.footerAction ? (
+          <>
+            {chart.projectionNote && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {chart.projectionNote}
+              </p>
+            )}
+            {chart.footerAction && (
+              <div className="mt-2 flex justify-end">{chart.footerAction}</div>
+            )}
+          </>
         ) : null
       }
     >

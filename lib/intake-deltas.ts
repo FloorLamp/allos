@@ -192,3 +192,28 @@ export function intakeDeltaLine(deltas: IntakeDeltas): string | null {
   ].filter((p): p is string => p != null);
   return parts.length ? parts.join(" · ") : null;
 }
+
+// ---- The MERGE test (#1819 item 6) ----------------------------------------
+
+// "🔁 Missed: Glycine (1 day)" beside "💊 Supplements: 8/9 taken" states one fact
+// twice: the 1 missing IS the Glycine. #1505 part 3 made the delta LEAD with the
+// fraction as supporting detail, and that stays right whenever the two carry
+// different information — but when the delta fully explains the gap, two lines is one
+// line's worth of news wearing two bullets.
+//
+// FULLY EXPLAINS means all of: exactly one item changed state, it changed by going
+// MISSED (a resume is a different fact from a gap), and yesterday's gap is exactly
+// one dose. Anything else — a skip, several misses, a mixed missed+resumed window —
+// diverges, and the caller keeps both lines. Returns the trailing CLAUSE the fraction
+// line absorbs ("missed Glycine (1 day)"), phrased from the SAME name/day-run the
+// shared delta formatter renders so the merged and unmerged forms agree word for word.
+export function intakeGapExplainedBy(
+  deltas: IntakeDeltas,
+  gap: number
+): string | null {
+  if (gap !== 1) return null;
+  if (deltas.resumed.length > 0) return null;
+  if (deltas.missed.length !== 1) return null;
+  const d = deltas.missed[0];
+  return `missed ${d.name} (${d.days} day${d.days === 1 ? "" : "s"})`;
+}

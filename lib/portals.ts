@@ -43,7 +43,19 @@ import {
 // account. See migration 131 for the full argument and the CHECK that keeps an ignored
 // binding from carrying a profile.
 
-export type PortalSoftware = "mychart" | "cerner" | "generic-ccd";
+// The software vocabulary, ONE source (#1836). The union type, the write-boundary guard
+// and the form's option values all derive from this tuple, so the enum and the guard
+// cannot drift — the form options remain the one place holding display labels. The
+// column is bare TEXT validated here at the write boundary (like
+// `integration_connections.status`), so growing this list needs no migration.
+export const SOFTWARE_VALUES = [
+  "mychart",
+  "cerner",
+  "ecw",
+  "generic-ccd",
+] as const;
+
+export type PortalSoftware = (typeof SOFTWARE_VALUES)[number];
 
 export interface Portal {
   id: number;
@@ -113,10 +125,8 @@ export function portalById(id: number): Portal | null {
 export type PortalWriteResult =
   { ok: true; id: number } | { ok: false; error: string };
 
-const SOFTWARE_VALUES: readonly string[] = ["mychart", "cerner", "generic-ccd"];
-
 export function isPortalSoftware(value: string): value is PortalSoftware {
-  return SOFTWARE_VALUES.includes(value);
+  return (SOFTWARE_VALUES as readonly string[]).includes(value);
 }
 
 // Mint a slug that is free within `taken`, appending a counter when a name collides.
@@ -213,6 +223,25 @@ export function renamePortal(
     : { ok: false, error: "That portal is already gone." };
 }
 
+// Change a portal's software tag after creation (#1836 — previously create-time only).
+// Display metadata and a sanity-check hint for the companion tool, never identity: the
+// slug and every binding are untouched, so nothing a tool config quotes can move here.
+export function setPortalSoftware(
+  portalId: number,
+  software: string | null
+): PortalWriteResult {
+  const soft = (software ?? "").trim();
+  if (soft !== "" && !isPortalSoftware(soft)) {
+    return { ok: false, error: "Unknown portal software." };
+  }
+  const changed = db
+    .prepare("UPDATE portals SET software = ? WHERE id = ?")
+    .run(soft === "" ? null : soft, portalId).changes;
+  return changed > 0
+    ? { ok: true, id: portalId }
+    : { ok: false, error: "That portal is already gone." };
+}
+
 // Remove a portal. Its accounts, bindings, pending identities, the acquisition links on
 // documents and the identity stamps on sync events all cascade (FK ON DELETE CASCADE /
 // SET NULL), and each is also cleared explicitly so the teardown holds with foreign_keys
@@ -288,23 +317,33 @@ export function accountsForPortal(portalId: number): PortalAccount[] {
   ).map(toAccount);
 }
 
-// Add a named login to a portal ("Mom", "Dad"). An account is a NICKNAME, never a
-// credential: no username, no password, nothing that could sign in to anything. Those
-// live only in the tool's local config, keyed by the slug this mints.
+// HOW AN ACCOUNT (portal login) NAME IS VALIDATED — one rule, one sentence, for every
+// path that names a login (#1829).
+//
+// The no-address invariant holds in full; the ONE narrowing is that an EMAIL SHAPE is
+// allowed, because a portal login usually IS an email and that is the nickname a person
+// reaches for. `mailto:`, `https://user@host`, `user@host/path`, a bare `gmail.com` and an
+// IP literal are all still refused — rejectsAddress runs those checks BEFORE the
+// allowance. A portal NAME keeps full strictness (an institution is not an email, and it
+// is the field that tempts URL-pasting).
+//
+// Exported so any later affordance that renames a login validates identically rather than
+// growing a second, drifting copy of the rule.
+export const ACCOUNT_NAME_RULE = { allowEmail: true } as const;
+export const ACCOUNT_NAME_ERROR =
+  "A login is recorded by a name or an email address — never a web address. The companion tool holds the address, and the credentials, on your own machine.";
+
+// Add a named login to a portal ("Mom", "Dad", "mom@example.com"). An account is a LABEL,
+// never a credential: no password, nothing that could sign in to anything. Those live only
+// in the tool's local config, keyed by the slug this mints.
 export function createPortalAccount(
   portalId: number,
   name: string
 ): PortalWriteResult {
   const n = name.trim().slice(0, PORTAL_NAME_MAX);
   if (!n) return { ok: false, error: "Give the login a name." };
-  // Same address refusal as a portal name. An account name is another free-text field,
-  // and the no-address rule is enforced at every one of them rather than at most of them.
-  if (rejectsAddress(n)) {
-    return {
-      ok: false,
-      error:
-        "A login is recorded by nickname only — never a web address or a username.",
-    };
+  if (rejectsAddress(n, ACCOUNT_NAME_RULE)) {
+    return { ok: false, error: ACCOUNT_NAME_ERROR };
   }
   const base = mintSlug(n);
   if (!base) {
@@ -331,6 +370,28 @@ export function createPortalAccount(
       .run(portalId, slug, n);
     return { ok: true, id: Number(info.lastInsertRowid) };
   });
+}
+
+// Rename a login WITHOUT touching its slug (#1836) — the same rename-is-safe property
+// the portal registry has: every tool config quotes the slug, which never moves.
+// Validates by the ONE login-name rule (#1829): an email SHAPE is valid — a portal login
+// usually IS an email, and that is the nickname a person reaches for — while every other
+// address shape is still refused before the allowance.
+export function renamePortalAccount(
+  accountId: number,
+  name: string
+): PortalWriteResult {
+  const n = name.trim().slice(0, PORTAL_NAME_MAX);
+  if (!n) return { ok: false, error: "Give the login a name." };
+  if (rejectsAddress(n, ACCOUNT_NAME_RULE)) {
+    return { ok: false, error: ACCOUNT_NAME_ERROR };
+  }
+  const changed = db
+    .prepare("UPDATE portal_accounts SET name = ? WHERE id = ?")
+    .run(n, accountId).changes;
+  return changed > 0
+    ? { ok: true, id: accountId }
+    : { ok: false, error: "That login is already gone." };
 }
 
 // Remove a login and everything keyed to it. Refuses to remove a portal's LAST account:
@@ -590,6 +651,38 @@ export function unbindPortalIdentity(
     db
       .prepare("DELETE FROM portal_identities WHERE id = ? AND profile_id = ?")
       .run(identityId, profileId).changes > 0
+  );
+}
+
+// Re-point a bound patient label at a different profile in ONE compare-and-swap (#1836).
+//
+// This exists so "Change profile" is never unmap-then-rebind: two writes would open a
+// window where the label is unmapped and a companion-tool upload arriving mid-edit would
+// be refused — the lifecycle-field rule (access-control-adjacent transitions are atomic,
+// never read-modify-write).
+//
+// The `profile_id = expectedProfileId` predicate is the swap's compare: the caller
+// resolves the row's current owner, authorizes against BOTH that owner and the new
+// target, and this statement re-points the row only if it still means what was
+// authorized. A concurrent re-point in between matches nothing, returns false, and the
+// caller reports a typed refusal instead of overwriting an answer it never saw.
+// `ignored = 0` is belt-and-braces: an ignored row has no profile by CHECK, so the
+// expected-profile compare could never match one anyway.
+//
+// The caller authorizes; this core stays auth-blind (house rule).
+export function remapPortalIdentity(
+  identityId: number,
+  expectedProfileId: number,
+  newProfileId: number
+): boolean {
+  return (
+    db
+      .prepare(
+        `UPDATE portal_identities
+            SET profile_id = ?, updated_at = datetime('now')
+          WHERE id = ? AND profile_id = ? AND ignored = 0`
+      )
+      .run(newProfileId, identityId, expectedProfileId).changes > 0
   );
 }
 

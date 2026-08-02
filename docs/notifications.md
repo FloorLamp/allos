@@ -22,6 +22,13 @@ the **Milestone** filter) regardless of the alert toggle. The recap is also
 available as an off-by-default **Weekly recap** dashboard card (enable it from
 the dashboard's **Customize** control).
 
+**Which kinds reach which channel** is one table on **Settings → Notifications**
+— _Message kinds_, one row per kind and one column per channel. The box in a
+column header edits that whole column at once: it turns off everything except
+safety reminders (dose reminders, missed-dose escalations, and the PRN redose
+notice), which keep their own boxes so they can never be silenced by a single
+undifferentiated tap.
+
 Newly-due **preventive care** (an age/sex-appropriate checkup or screening) also
 sends a proactive nudge — **one message per screening**, so each message names
 its item and its ✅ Done / 🚫 Not applicable / ⏰ Remind later buttons are
@@ -119,9 +126,10 @@ suppress the phone push once the wall panel has spoken). Configure it per person
 under **Settings → Notifications → Home Assistant**: enable it, paste
 your HA webhook URL (`http(s)://<host>:8123/api/webhook/<id>` — HA's built-in
 [webhook trigger](https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger),
-no custom component needed), optionally set a shared secret, choose which
-reminder kinds to forward (a household may want doses announced but not weekly
-recaps), and **Send test**. Allos joins the same channel-aware delivery-health
+no custom component needed), optionally set a shared secret, and **Send test**.
+Which reminder kinds it forwards (a household may want doses announced but not
+weekly recaps) is the **HA** column of the _Message kinds_ table on that same
+page. Allos joins the same channel-aware delivery-health
 marker, so a wrong URL / unreachable HA surfaces on **Settings → Server**.
 
 - **Payload.** A JSON POST with `title`, `body`, a machine-readable `kind`

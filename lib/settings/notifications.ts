@@ -184,15 +184,14 @@ export function setProfileHouseholdRound(
 // The channel migration (profile → login) is best-effort: a wrong channel is a
 // missed notification (recoverable by reconfiguring), never data loss. When the
 // per-login channel derivation was AMBIGUOUS (a granted profile's chat differed
-// from the login's derived one, or a chat spanned multiple logins), the migration
-// sets this flag so the login is nudged to confirm its notification settings on
-// next login. Login-scoped; cleared once the login visits/saves its channel.
+// from the login's derived one, or a chat spanned multiple logins), migration 105
+// sets this flag (via its own inlined SQL — a shipped migration never calls lib/)
+// so the login is nudged to confirm its Telegram chat. Login-scoped; the notice
+// renders on Settings → Notifications until saveLoginTelegram clears it. The flag
+// is one-shot by design — migration 105 is its ONLY writer, so there is no
+// exported setter (#1869 item 3 removed the caller-less one).
 export function getNotifyReviewNeeded(loginId: number): boolean {
   return getLoginSetting(loginId, "notify_review_needed") === "1";
-}
-
-export function setNotifyReviewNeeded(loginId: number): void {
-  setLoginSetting(loginId, "notify_review_needed", "1");
 }
 
 export function clearNotifyReviewNeeded(loginId: number): void {
@@ -368,8 +367,8 @@ export function setHouseholdRoundPointer(
 
 // ---- The digest's live offer-tail keyboard (issue #1505) -------------------
 //
-// The digest carries the guaranteed "Log other…" tail, and that button's LABEL names
-// the slot it opens into ("Log other… · bedtime"). A morning-sent digest whose label
+// The digest carries the guaranteed offer tail, and that button's LABEL names the
+// slot it opens into ("Log other (2 for bedtime)"). A morning-sent digest whose label
 // still says "morning" at 10pm is a promise the expansion won't keep, so the tick
 // re-labels it at each slot boundary.
 //

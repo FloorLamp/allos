@@ -21,7 +21,15 @@
 
 import type { AppRoute } from "./hrefs";
 
-export type SettingsTier = "login" | "profile" | "server";
+// The scope a group's header states. Three of these name ONE storage tier; `mixed`
+// (#1868 §4) names the honest fourth case — a group whose cards genuinely span tiers,
+// which today is exactly Notifications (AGENTS.md documents it as intentionally
+// mixed-scope: delivery channels follow the login, schedules and content follow the
+// profile, and the matrix writes login and profile keys in adjacent columns). Before
+// this, that page claimed "Applies to ⟨profile⟩" in its header and then contradicted
+// itself with a second, page-local scope-labeling system per section. `mixed` makes
+// the header true; the per-section strings stay as the fine-grained layer.
+export type SettingsTier = "login" | "profile" | "mixed" | "server";
 
 export const SETTINGS_GROUP_IDS = [
   "account",
@@ -62,12 +70,14 @@ export type SettingsGroup = {
   // standard (docs/internals/copy.md, #945) these stay to a single sentence.
   summary: string;
   relevance?: SettingsGroupRelevance;
-  // Sub-pages rendered by the group nav when the group is active. Two groups have
+  // Sub-pages rendered by the group nav when the group is active. Three groups have
   // them: Logs & audit (AI logs / Errors / Audit are three diagnostic VIEWERS that
-  // share one topic but can't sensibly share one page) and Account & security (API
+  // share one topic but can't sensibly share one page), Account & security (API
   // tokens, #1734 — a credential REGISTRY with its own mint/revoke lifecycle, which
-  // does not belong stacked under the password and 2FA forms). They come from this
-  // same registry, so they are part of the one nav, not a fourth system.
+  // does not belong stacked under the password and 2FA forms), and Server (AI,
+  // #1870 — the provider tiers + automation cards, split off the ten-card Server
+  // page). They come from this same registry, so they are part of the one nav, not
+  // a fourth system.
   pages?: readonly SettingsGroupPage[];
 };
 
@@ -139,7 +149,11 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     id: "notifications",
     label: "Notifications",
     route: "/settings/notifications",
-    tier: "profile",
+    // MIXED, and honestly so (#1868 §4): Telegram, Web Push, the digest mirror and the
+    // mute follow the LOGIN; the schedule, quiet hours and message content follow the
+    // PROFILE; the Home Assistant webhook follows the profile too. Claiming a single
+    // tier here is what forced the page to grow its own second labeling system.
+    tier: "mixed",
     adminOnly: false,
     summary:
       "Where reminders arrive, when they're sent, and which kinds you get.",
@@ -169,6 +183,13 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     adminOnly: true,
     summary:
       "Instance-wide configuration: public URL, email, the Telegram bot, AI, and backups.",
+    // The two AI cards (provider tiers #875 + automation knobs) earn a sub-page
+    // rather than staying stacked in a ten-card scroll (#1870 owner ruling — the
+    // account→tokens precedent). Same tier, same requireAdmin() gate as the parent.
+    pages: [
+      { href: "/settings/server", label: "Server" },
+      { href: "/settings/ai", label: "AI" },
+    ],
   },
   {
     id: "logs",
@@ -240,8 +261,30 @@ export function tierBlurb(
       return `Applies to your login (${names.username}) on every profile.`;
     case "profile":
       return `Applies to ${names.profileName}.`;
+    case "mixed":
+      return `Partly your login (${names.username}) and partly ${names.profileName} — each section below says which.`;
     case "server":
       return "Applies to this server — admins only.";
+  }
+}
+
+// The SHORT form of the same statement — the chip the /settings index prints beside a
+// group label. One vocabulary, two lengths: the index used to decide this inline with
+// a `tier === "login" ? … : profileName` ternary, which quietly mislabels any tier the
+// registry gains (a mixed group would have read as the profile's name).
+export function tierChip(
+  tier: SettingsTier,
+  names: { username: string; profileName: string }
+): string {
+  switch (tier) {
+    case "login":
+      return "your login";
+    case "profile":
+      return names.profileName;
+    case "mixed":
+      return `your login + ${names.profileName}`;
+    case "server":
+      return "this server";
   }
 }
 

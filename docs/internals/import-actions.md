@@ -100,3 +100,35 @@ Two things keep the class from recurring:
   only its `item_id`/`course_id` (migration 137), because the record is
   episode-owned narrative rather than import data — deleting it with the document,
   or CASCADEing it away on a routine reprocess, would destroy history silently.
+
+## One import, one count (#1827)
+
+"How many rows did this import keep?" is asked in four places — the toast, the
+Review feed, the Timeline's "N extracted", and the import detail page's
+**Coverage** card — and is answered ONCE: `countImportedDocumentRows` tallies
+the document's rows off `IMPORT_FOOTPRINT_TABLES` after every insert loop, and
+`persistDocumentImport` stamps that number into BOTH `extracted_count` and the
+stored report's `imported` (with `considered` following as footprint + row
+drops) in the same UPDATE.
+
+The counts a parser puts on its in-memory report are an ESTIMATE and are
+overwritten on the way in. A parse cannot know the answer: whether a kept
+candidate becomes a row is a persist-time decision — a prescription that renews
+an existing medication attaches as a new course instead of a new item, and a
+body metric defers to a date another source already covers. The parse layer used
+to own the card's number as a hand-maintained sum per builder, and the four
+builders had drifted from the footprint and from each other: the CCD copies
+summed nine terms, missing medications (which only become `intake_items` rows at
+persist), imaging, optical, dental, genomics and appointments, so any document
+carrying one disagreed with its own extracted count.
+
+What a new domain has to do now:
+
+- add its table to `IMPORT_FOOTPRINT_TABLES` — that alone puts it in the
+  delete-set, the reassign move, `extracted_count`, and the coverage card;
+- add its kept list to the `KEPT_ROW_LISTS` registry in `lib/import-report.ts`
+  if a parser produces one, so every parse-time report counts it identically;
+- keep the DB guard's fixture covering it —
+  `lib/__db_tests__/import-report.test.ts` fails with the table's name when a
+  footprint table has no row in the every-domain fixture, and pins
+  `report.imported === extracted_count` for a document carrying them all.

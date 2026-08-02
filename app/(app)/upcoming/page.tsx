@@ -74,6 +74,7 @@ import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
 import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
+import FollowUpSettleControls from "@/components/FollowUpSettleControls";
 import ExplainFinding from "@/components/ExplainFinding";
 import {
   markTaken,
@@ -84,6 +85,7 @@ import {
   markCarePlanDone,
   overridePreventive,
   resolveFollowUp,
+  settleFollowUp,
   dismissMultiviewHintAction,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
@@ -142,6 +144,11 @@ const GROUP_TONE: Record<PageGroupKind, string> = {
   later: "text-slate-500 dark:text-slate-400",
   flagged: "text-amber-600 dark:text-amber-400",
   review: "text-amber-600 dark:text-amber-400",
+  // Never-recorded preventive rules (#1433) get the QUIETEST tone on the page — the
+  // same neutral slate as "Later". Nothing here is late; the group is a list of
+  // things the app has no history for, and colouring it would re-manufacture the
+  // alarm the split removed.
+  setup: "text-slate-500 dark:text-slate-400",
 };
 
 export default async function UpcomingPage(props: {
@@ -1057,6 +1064,12 @@ function Row({
     ) : null;
 
   const hasFollowUp = actionVisible && item.followUpResolve != null;
+  // The #1866 terminator: offered on a still-open follow-up with no resolvable
+  // offer (once a later record lands, recording the outcome IS the close).
+  const hasSettle =
+    actionVisible &&
+    item.followUpSettle != null &&
+    item.followUpResolve == null;
   const hasExplain = item.reasons != null && item.reasons.length > 0;
   // The row has a kebab exactly when something lives behind it at DESKTOP width
   // too (overrides / snooze). That's also the only case where the secondary chips
@@ -1065,6 +1078,7 @@ function Row({
   const hasTrailing =
     item.scheduled === true ||
     hasFollowUp ||
+    hasSettle ||
     hasExplain ||
     cta != null ||
     hasMenu ||
@@ -1154,6 +1168,18 @@ function Row({
               }}
               carePlanItemId={item.followUpResolve.carePlanItemId}
               resolvingRecordId={item.followUpResolve.resolvingRecordId}
+              profileId={item.profileId}
+            />
+          )}
+          {/* Finding follow-up terminator (issue #1866): the first-class
+              "done on <date>" / "discussed, not doing it" close — the ONLY
+              off-switch for the overdue push escalation, so it stays inline
+              on the care surface, never buried in a menu. */}
+          {hasSettle && item.followUpSettle != null && (
+            <FollowUpSettleControls
+              action={settleFollowUp}
+              carePlanItemId={item.followUpSettle.carePlanItemId}
+              today={now}
               profileId={item.profileId}
             />
           )}

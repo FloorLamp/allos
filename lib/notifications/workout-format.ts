@@ -129,7 +129,14 @@ export function formatWorkoutReminder(
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
   else if (rec.focus.length) lines.push(`Focus: ${rec.focus.join(", ")}`);
   if (rec.onTrack) lines.push(rec.onTrack.detail);
-  const behindLine = behindThisWeekLine(rec.behind);
+  // The acknowledgment headline, when it fired, has already stated one behind target
+  // AND its pace in words. Repeating it in the list two lines down is the same fact
+  // twice in a four-line message (#1822 item 3), so the list is asked to skip it — the
+  // ONE place that knows what the headline said. Everything else keeps its `← today`.
+  const behindLine = behindThisWeekLine(
+    rec.behind,
+    ackLine ? (rec.acknowledge?.forcedBy ?? null) : null
+  );
 
   return {
     title: rec.onTrack
@@ -147,16 +154,45 @@ export function formatWorkoutReminder(
 // owner decision: the `← today` suffix always (it renders identically on every channel
 // and reads naturally in-app) plus bold where markup is supported, degrading cleanly to
 // the suffix alone on Web Push / Home Assistant.
+//
+// #1822 item 3 AMENDS that ruling, narrowly and by the owner's own filing: "the suffix
+// always" was decided for a list standing beside a recommendation, not for a list
+// repeating the message's own opening sentence. When the acknowledgment headline has
+// ALREADY named a target and its pace ("Trained today — Chest is 1/2 with only today
+// left"), that target is dropped from the Behind list rather than restated two lines
+// later with an arrow pointing at the same fact. The suffix is untouched everywhere
+// else: any message whose headline does not name the driver renders exactly as before.
 export const BEHIND_DRIVER_SUFFIX = " ← today";
+
+// A target's scope identity — the pair the acknowledgment and the behind list agree on
+// (both carry the frequency target's `scope_kind`/`scope_value` verbatim). Compared
+// rather than the rendered label so the dedup can't be broken by a labeling change.
+export interface BehindScopeRef {
+  scopeKind: string;
+  scopeValue: string;
+}
+
+function sameScope(a: BehindScopeRef, b: BehindScopeRef): boolean {
+  return a.scopeKind === b.scopeKind && a.scopeValue === b.scopeValue;
+}
 
 // "Back 0/2 ← today, Chest 1/2, Lower body 1/2, Cardio 1/2" — the list in the order the
 // core decided, with the driving target marked. Null when nothing is behind.
+//
+// `alreadyStated` is the target the message's own headline has already spelled out with
+// its pace, when there is one (#1822 item 3). It is filtered out, so a four-line message
+// states one fact once; with nothing else behind, the whole line falls away. Omit it (or
+// pass null) and the list is byte-for-byte the pre-#1822 rendering.
 export function behindThisWeekLine(
-  behind: readonly OrderedBehindTarget[]
+  behind: readonly OrderedBehindTarget[],
+  alreadyStated?: BehindScopeRef | null
 ): MessageBody | null {
-  if (behind.length === 0) return null;
+  const remaining = alreadyStated
+    ? behind.filter((t) => !sameScope(t, alreadyStated))
+    : behind;
+  if (remaining.length === 0) return null;
   const parts: (string | ReturnType<typeof bold>)[] = ["Behind this week: "];
-  behind.forEach((t, i) => {
+  remaining.forEach((t, i) => {
     if (i > 0) parts.push(", ");
     const label = `${frequencyScopeLabel(t.scopeKind, t.scopeValue)} ${t.count}/${t.perWeek}`;
     parts.push(t.driving ? bold(`${label}${BEHIND_DRIVER_SUFFIX}`) : label);
@@ -171,12 +207,21 @@ export function behindThisWeekLine(
 // Rest and on-track states REFRAME the line exactly as they reframe the nudge (never a
 // blind "train today" on a rest day), and a recommendation with nothing to say yields
 // null so the digest simply omits the line.
+//
+// SECTION-AWARE FRAMING (#1819 item 3). The standalone "Today:" prefix is correct
+// wherever the line stands on its own; under the morning digest's **Today** heading it
+// restated the heading ("Today / 🏋️ Today: Strength session — …"). So the formatter
+// gains a BARE variant rather than the digest growing its own copy: same computation,
+// same states, only the framing moves. `standalone` defaults to true so every existing
+// caller is unchanged.
 export function digestWorkoutLine(
-  rec: WorkoutRecommendation | null
+  rec: WorkoutRecommendation | null,
+  opts: { standalone?: boolean } = {}
 ): string | null {
   if (!rec) return null;
-  if (rec.rest) return `🛌 Today: ${rec.rest.title}`;
-  if (rec.onTrack) return `✅ Today: ${rec.onTrack.title}`;
+  const lead = opts.standalone === false ? "" : "Today: ";
+  if (rec.rest) return `🛌 ${lead}${rec.rest.title}`;
+  if (rec.onTrack) return `✅ ${lead}${rec.onTrack.title}`;
   // suggestTitle falls back to a generic "Strength session" for an empty focus, which
   // is fine for the nudge's TITLE but would put a contentless line in the digest — so
   // the preview asks for a real focus or a resolved routine day before naming one.
@@ -186,6 +231,6 @@ export function digestWorkoutLine(
   if (!head && !exercises) return null;
   const deload = rec.deloadWeek ? " (deload week)" : "";
   return exercises
-    ? `🏋️ Today: ${head ? `${head} — ` : ""}${exercises}${deload}`
-    : `🏋️ Today: ${head}${deload}`;
+    ? `🏋️ ${lead}${head ? `${head} — ` : ""}${exercises}${deload}`
+    : `🏋️ ${lead}${head}${deload}`;
 }

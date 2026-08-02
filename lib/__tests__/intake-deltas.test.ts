@@ -9,6 +9,7 @@ import {
   classifyIntakeDeltas,
   hasIntakeDeltas,
   intakeDeltaLine,
+  intakeGapExplainedBy,
   INTAKE_DELTA_MAX_NAMED,
   NOTABLE_MISS_MIN_STREAK,
   RESUMED_MIN_MISS_RUN,
@@ -153,5 +154,51 @@ describe("intakeDeltaLine — the one formatter", () => {
     const line = intakeDeltaLine(classifyIntakeDeltas(many))!;
     expect(line).toContain("+2 more");
     expect(line.startsWith("Missed: Item A (test) (1 day)")).toBe(true);
+  });
+});
+
+// ---- The merge test (#1819 item 6) ---------------------------------------
+
+describe("intakeGapExplainedBy — when the delta and the fraction say one thing", () => {
+  const missedOne = classifyIntakeDeltas([
+    { itemId: 1, name: "Glycine (test)", strip: strip([T, T, T, M]) },
+  ]);
+
+  it("returns the clause the fraction absorbs when one miss explains a gap of one", () => {
+    expect(intakeGapExplainedBy(missedOne, 1)).toBe(
+      "missed Glycine (test) (1 day)"
+    );
+  });
+
+  it("declines when the gap is bigger than the one item that changed state", () => {
+    expect(intakeGapExplainedBy(missedOne, 2)).toBeNull();
+    expect(intakeGapExplainedBy(missedOne, 0)).toBeNull();
+  });
+
+  it("declines on several misses — two names cannot ride one fraction", () => {
+    const two = classifyIntakeDeltas([
+      { itemId: 1, name: "Glycine (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Magnesium (test)", strip: strip([T, T, T, M]) },
+    ]);
+    expect(intakeGapExplainedBy(two, 1)).toBeNull();
+  });
+
+  it("declines on a RESUME — a resumption is not the reason a dose is missing", () => {
+    const mixed = classifyIntakeDeltas([
+      { itemId: 1, name: "Glycine (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
+    ]);
+    expect(intakeGapExplainedBy(mixed, 1)).toBeNull();
+  });
+
+  it("declines on a quiet window — there is no delta to merge", () => {
+    expect(intakeGapExplainedBy({ missed: [], resumed: [] }, 1)).toBeNull();
+  });
+
+  it("words the clause exactly as the shared delta formatter words its half", () => {
+    const clause = intakeGapExplainedBy(missedOne, 1)!;
+    expect(intakeDeltaLine(missedOne)).toBe(
+      `Missed: ${clause.replace("missed ", "")}`
+    );
   });
 });

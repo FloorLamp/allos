@@ -17,6 +17,13 @@ call and a **today / 7-day rollup by feature × profile** so the admin whose API
 key everyone spends can see where it goes (tokens only — no dollar math; the
 model is recorded, so compute cost from your provider's prices). Failures
 surface there (and inline where you triggered them), not just in the console.
+Like the error log, each event's free text is masked through the shared
+secret-redaction chokepoint before it's persisted, the file self-trims to a
+byte budget so it stays bounded, and an admin-only **Clear** button on the tab
+empties it. The **stdout echo goes through that same chokepoint**: `docker logs`
+is a broader audience than the admin-only viewer, so a field named
+`authorization`/`token`/`password`/`cookie` is masked in the console line too,
+not just in the file.
 
 Separately, **unexpected** server errors — an unhandled exception in a Server
 Action, a route 500, a crashed fire-and-forget task — are captured server-side
@@ -26,7 +33,12 @@ persisted there with its logger scope, message, and a redacted, size-capped
 detail (any stack), tagged with the acting profile when a request context is in
 scope. Clients still get a generic error (the real cause never leaves this log);
 the file self-trims by size/line count so a crash loop can't fill the disk, and
-a Clear button empties it. This generalizes the "failures surface in the UI"
+a Clear button empties it. Both JSONL logs share one append + self-trim
+chokepoint (`lib/jsonl-log-file.ts`), because the `allos-notify` sidecar is a
+separate OS process writing to the same `DATA_DIR`: the trim holds an advisory
+lock across the whole append-then-trim sequence and swaps the rewritten file in
+with an atomic rename, so a concurrent append is never overwritten and a reader
+never sees a half-written file. This generalizes the "failures surface in the UI"
 pattern (the notification-delivery marker, backup health) to everything.
 
 For debugging integration syncs, each sync can capture the raw provider payload

@@ -5,6 +5,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import type { Procedure, FormResult } from "@/lib/types";
 
 // Shared add/edit procedure form. Add mode: no `procedure`. Edit mode: pass the row
@@ -29,6 +30,7 @@ export default function ProcedureForm({
   prefillName?: string;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!procedure;
   const [error, setError] = useState<string | null>(null);
@@ -51,18 +53,16 @@ export default function ProcedureForm({
       return;
     }
     toast(editing ? "Procedure updated" : "Procedure saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      closeEntryModal?.();
+    }
     onDone?.();
   }
 
   const uid = procedure?.id ?? "new";
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add procedure
-        </h2>
-      )}
+    <form ref={formRef} action={handle} className="space-y-3">
       {editing && <input type="hidden" name="id" value={procedure!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

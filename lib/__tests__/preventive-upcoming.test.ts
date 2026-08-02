@@ -5,7 +5,11 @@ import {
   preventiveActionLabel,
   preventiveNudgeAction,
 } from "../preventive-upcoming";
-import { assessCatalog } from "../preventive-status";
+import {
+  assessCatalog,
+  PREVENTIVE_SETUP_DETAIL,
+  PREVENTIVE_SETUP_SHORT,
+} from "../preventive-status";
 import type { PreventiveAssessment } from "../preventive-status";
 import type { Citation } from "../preventive-catalog";
 
@@ -316,6 +320,67 @@ describe("preventiveAssessmentToUpcomingItem", () => {
   });
 });
 
+// The cold-start mapping (issue #1433): the never-recorded state must arrive at the
+// surfaces as an identifiable, un-alarming row that keeps every affordance and — the
+// load-bearing part — the SAME key, so a dismissal recorded before the relabel still
+// silences it (#203).
+describe("preventiveAssessmentToUpcomingItem — the never-recorded setup state (#1433)", () => {
+  const setup = (over: Partial<PreventiveAssessment> = {}) =>
+    preventiveAssessmentToUpcomingItem(
+      mkAssessment({
+        kind: "screening",
+        key: "colorectal_cancer",
+        name: "Colorectal cancer screening",
+        status: "setup",
+        detail: PREVENTIVE_SETUP_SHORT,
+        nextLabel: PREVENTIVE_SETUP_DETAIL,
+        ...over,
+      }),
+      { today: TODAY }
+    );
+
+  it("carries the setup signal group, no urgency band, and calm copy", () => {
+    const item = setup();
+    expect(item.signalGroup).toBe("setup");
+    expect(item.band).toBe("later");
+    expect(item.dueDate).toBeNull();
+    expect(item.dueText).toBe(PREVENTIVE_SETUP_SHORT);
+    expect(item.detail).toBe(PREVENTIVE_SETUP_DETAIL);
+    expect(item.dueText).not.toMatch(/overdue/i);
+    expect(item.detail).not.toMatch(/overdue/i);
+  });
+
+  it("keeps the SAME dedupe key as the actionable row (dismissals survive)", () => {
+    expect(setup().key).toBe("screening:colorectal_cancer");
+    expect(setup().key).toBe(
+      preventiveAssessmentToUpcomingItem(
+        mkAssessment({ kind: "screening", key: "colorectal_cancer" }),
+        { today: TODAY }
+      ).key
+    );
+  });
+
+  it("keeps every affordance — deep link, named CTA, rule key, Book", () => {
+    const item = setup();
+    expect(item.href).toBe(
+      "/records/history/procedures?new=1&name=Colonoscopy"
+    );
+    expect(item.actionLabel).toBe("Log or schedule a Colonoscopy");
+    expect(item.preventiveRuleKey).toBe("colorectal_cancer");
+    expect(item.bookHref).toContain("new=1");
+  });
+
+  it("a booked visit still wins — coverage quiets before the setup framing", () => {
+    const item = preventiveAssessmentToUpcomingItem(
+      mkAssessment({ kind: "visit", status: "setup" }),
+      { today: TODAY, scheduledDate: "2026-08-01" }
+    );
+    expect(item.scheduled).toBe(true);
+    expect(item.signalGroup).toBeUndefined();
+    expect(item.dueText).toBe("Scheduled");
+  });
+});
+
 describe("assessCatalog + adapter (pure end-to-end)", () => {
   const today = "2026-07-10";
   // A 40-year-old male: past the adult-physical entry age (22) with no visit on
@@ -329,14 +394,19 @@ describe("assessCatalog + adapter (pure end-to-end)", () => {
       satisfactions: [],
       today,
     });
-    const items = summary.actionable.map((a) =>
+    // Nothing on record, so EVERYTHING in-window lands in the never-recorded setup
+    // slice rather than the actionable one (#1433) — that is the whole cold-start
+    // fix, asserted at the seam the surfaces read.
+    expect(summary.actionable).toEqual([]);
+    const items = summary.setup.map((a) =>
       preventiveAssessmentToUpcomingItem(a, { today })
     );
     const domains = new Set(items.map((i) => i.domain));
     expect(domains.has("visit")).toBe(true);
     expect(domains.has("screening")).toBe(true);
-    // The adult physical is due with no history.
+    // The adult physical has no history, so it is a setup item, not an overdue one.
     expect(items.some((i) => i.key === "visit:adult_physical")).toBe(true);
+    expect(items.every((i) => i.signalGroup === "setup")).toBe(true);
     // Every mapped item carries its rule key for the inline actions.
     expect(items.every((i) => typeof i.preventiveRuleKey === "string")).toBe(
       true
@@ -355,6 +425,7 @@ describe("assessCatalog + adapter (pure end-to-end)", () => {
         preventiveAssessmentToUpcomingItem(a, { today })
       )
     ).toEqual([]);
+    expect(summary.setup).toEqual([]);
   });
 
   it("a satisfaction and a declined override each clear the item", () => {
@@ -364,7 +435,9 @@ describe("assessCatalog + adapter (pure end-to-end)", () => {
       satisfactions: [],
       today,
     });
-    expect(base.actionable.some((a) => a.key === "adult_physical")).toBe(true);
+    // With no history the rule sits in the setup slice; a satisfaction or an
+    // override has to clear it from THERE too.
+    expect(base.setup.some((a) => a.key === "adult_physical")).toBe(true);
 
     // Recording a recent completion advances the next-due out of the window.
     const satisfied = assessCatalog({
@@ -376,6 +449,7 @@ describe("assessCatalog + adapter (pure end-to-end)", () => {
     expect(satisfied.actionable.some((a) => a.key === "adult_physical")).toBe(
       false
     );
+    expect(satisfied.setup.some((a) => a.key === "adult_physical")).toBe(false);
 
     // A declined override also drops it from the actionable set.
     const declined = assessCatalog({
@@ -388,5 +462,6 @@ describe("assessCatalog + adapter (pure end-to-end)", () => {
     expect(declined.actionable.some((a) => a.key === "adult_physical")).toBe(
       false
     );
+    expect(declined.setup.some((a) => a.key === "adult_physical")).toBe(false);
   });
 });

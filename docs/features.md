@@ -368,6 +368,33 @@ and, when the last reading was out of range or non-optimal, noting that status
 so a flagged value isn't mistaken for a bare retest), goal deadlines, and
 training targets.
 
+### A never-recorded screening is unknown, not overdue
+
+A preventive rule the app has **no history for** is not late — it is unrecorded.
+Age plus a nominal interval says the rule _applies to you_; it says nothing about
+whether you had the screening before you started using Allos. So a rule with
+nothing on record reads as a calm **setup** state ("No record yet — add a past
+date or schedule") rather than a red **Overdue**:
+
+- On the dashboard the never-recorded rules collapse into **one** closed line —
+  **"Set up your screening history (N)"** — below the Needs-attention card. They
+  are outside the card's bands, its count, and the installed-app badge, so a
+  brand-new profile's hero is not a wall of red about a person it met a minute
+  ago.
+- On **Upcoming** they get their own trailing **Set up your screening history**
+  group, below everything that is genuinely due, in the quietest tone on the page.
+- They are **never pushed**: no Telegram nudge, no morning-digest line. The push
+  side is composed only from rules with a recorded date behind them.
+- Every affordance is unchanged — the same deep link to the form that records the
+  screening, the same **Mark done**, **Book**, **not applicable** / **declined**,
+  and the same snooze/dismiss identity, so a dismissal made before this split
+  still applies.
+
+Recording **any** past date moves a rule onto the real clock: recent → up to
+date, long ago → genuinely **Overdue**, with the red treatment it has always had.
+Well-child milestones keep their own dated window — those lapse out of a narrow
+age window rather than accumulating, so "overdue" there is a real statement.
+
 ### Routine folds, safety never does
 
 A planning page that lists every scheduled dose and every pairwise
@@ -489,10 +516,12 @@ calm, dismissible observations over your recent training — a push/pull volume
 imbalance, an exercise that's gone quiet (in your rotation but untrained for a
 few weeks), and a lift whose estimated 1RM has **plateaued** (~6 weeks flat →
 try a deload or a variation) — kept separate from the next-workout suggestion; a
-workout's **⋯ → Merge with…** menu folds two of that day's activities into one
-for duplicates no auto-detector caught (undoable) — and when the two genuinely
-disagree on a field (e.g. duration 42 vs 51 min) a quick preview lets you pick
-which value to keep per field. Manually logged activities also get an
+workout's **⋯ → Merge with…** menu folds that day's duplicates into one for
+cases no auto-detector caught (undoable) — absorb one in a click, or combine
+several and choose which record survives — and when the records genuinely
+disagree on a field (e.g. duration 42 vs 51 min) a quick preview lists every
+record's value (the keeper's pre-selected) so you pick which to keep per field.
+Manually logged activities also get an
 **estimated calorie burn** — computed from a baked MET (metabolic-equivalent)
 table, the activity's type/intensity/duration, and your nearest bodyweight —
 which auto-fills on the activity form (editable, so you can override it) and
@@ -851,7 +880,9 @@ saying nothing while "whose data is this?" had no answer on that screen at all
 keep the wordmark).
 
 Tapping it opens one **switcher panel** — a drawer dropping from the bar on a
-phone, an expanding container below it on desktop, both rendering the same rows.
+phone, a container dropping below it on desktop, both rendering the same rows.
+On either viewport the panel **overlays** what is behind it: opening the desktop
+switcher never pushes the nav, calendar or footer below it out of the way.
 Every accessible profile gets a row with **two** controls, never one ambiguous
 tap: the **name** switches who you are acting as, and the **eye** toggles that
 profile in and out of your view. You cannot un-view the profile you are acting
@@ -1745,9 +1776,9 @@ or **May** — and everything else follows from it.
 Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
 where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
 into an "available when you want them" section rather than disappearing. If you
-only use the app through Telegram, the daily digest carries a **"Log other…"**
-button that opens into whatever is available right now — so a May item is always
-one tap away even though it never interrupts you.
+only use the app through Telegram, the daily digest carries a
+**"Log other (3 for midday)"** button that opens into whatever is available right
+now — so a May item is always one tap away even though it never interrupts you.
 
 **Medications start as Must**, and moving one lower asks first, spelling out
 exactly what you would be giving up ("no reminders, no escalation, no missed-dose
@@ -1952,8 +1983,10 @@ failing**, and **possible duplicates**—a Strava run and a manual/Health Connec
 run on the same day, two same-source imports of one workout (upstream
 double-feeding, e.g. Strava ingesting the same session from both Garmin and
 Health Connect), or two body-metric rows that would double-count, detected
-across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge
-shows a per-field preview when the two rows disagree on a value), with the
+across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (a
+group of three-plus copies collapses to one card with a keeper radio, and when
+the rows disagree on a value Merge shows a per-field preview listing every
+copy's value — the keeper's pre-selected — so any copy's number can win), with the
 decision remembered so a later re-sync won't undo it — a device row you merge
 away or delete stays gone instead of silently re-importing on the next
 rolling-window sync (counted as **suppressed** in the feed split), and if a
@@ -2011,12 +2044,16 @@ Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
 (Supplements & Meds), a **body-metric** weigh-in (Trends → Body), a **vitals**
-entry (Trends → Body), and a daily **mood check-in** (the Dashboard "How are you
-today?" card — idempotent per day, so a replay updates the day's one entry) —
-the app no longer fails when you're offline: it **queues the entry on your
-device** (in this browser's IndexedDB) and shows a "Saved offline — will sync
-when you reconnect" confirmation plus a **pending badge** counting the queued
-writes.
+entry (Trends → Body), a daily **mood check-in** (the Dashboard "How are you
+today?" card — idempotent per day, so a replay updates the day's one entry), a
+**workout session** logged entirely offline (the Training editor: if the
+connection is gone for the whole session, closing the editor queues the
+complete workout — sets, loads, times — instead of stranding it on the device),
+and the **food quick-adds** (a one-tap food-group serving or protein grams on
+Nutrition) — the app no longer fails when you're offline: it **queues the entry
+on your device** (in this browser's IndexedDB) and shows a "Saved offline —
+will sync when you reconnect" confirmation plus a **pending badge** counting
+the queued writes.
 
 On reconnect the queue **replays automatically** — on the browser's `online`
 event, on the next page load, and (on Chromium/Android, where it's supported)
@@ -2035,7 +2072,13 @@ cleared on logout and profile switch.
 Everything else still needs connectivity: this is a queue for a few one-tap
 logs, not a general offline mode. Forms with server-derived state (anything that
 reads or computes against your existing data) stay online-only, and page
-navigation while offline still shows the reconnect screen.
+navigation while offline still shows the reconnect screen. Two nearby cases are
+deliberately excluded (documented in the queue's scope): **editing a workout
+that already reached the server** relies on the editor's own retrying auto-save
+and local draft rather than the queue (a replayed stale edit would overwrite a
+session that may have moved), and the food/protein **"−" undo taps** are
+online-only (an undo is a decrement against the current total, not a captured
+entry).
 
 ## App updates
 

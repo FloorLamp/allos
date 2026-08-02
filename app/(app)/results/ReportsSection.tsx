@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui";
 import NotesText from "@/components/NotesText";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { importHref } from "@/lib/hrefs";
+import { dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
 
 // Results › Reports (#708): the narrative diagnostic reports — the free-text body of a
@@ -23,16 +24,25 @@ export default function ReportsSection({
 
   if (reports.length === 0) {
     return (
-      <EmptyState message="No narrative reports yet. Microbiology, pathology, and cytology report text is captured when you import a CCD/XDM health record." />
+      <EmptyState
+        message="No narrative reports yet. Import a health record to capture microbiology, pathology, and cytology report text."
+        action={{
+          href: dataSectionHref("import"),
+          label: "Import records",
+        }}
+      />
     );
   }
 
   return (
-    <div className="space-y-4" data-testid="reports-list">
+    <div
+      className="overflow-hidden rounded-xl border border-black/5 bg-white dark:border-white/5 dark:bg-ink-900"
+      data-testid="reports-list"
+    >
       {reports.map((r) => (
         <article
           key={r.id}
-          className="card space-y-2"
+          className="space-y-2 border-b border-black/5 px-4 py-4 last:border-b-0 dark:border-white/5"
           data-testid="report-card"
         >
           <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">

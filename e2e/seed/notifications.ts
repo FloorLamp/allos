@@ -9,7 +9,9 @@ import {
   DIGEST_TUNE_PROFILE,
   E2E_LOGIN_DIGEST_TUNE,
   E2E_LOGIN_HA_NOTIFY,
+  E2E_LOGIN_NOTIF_SWEEP,
   HA_NOTIFY_PROFILE,
+  NOTIF_SWEEP_PROFILE,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -40,5 +42,19 @@ export function seedDigestTune(): void {
   seedMemberLogin(E2E_LOGIN_DIGEST_TUNE, id, "write");
   console.log(
     `e2e: seeded digest-tune fixture — profile ${id} (${DIGEST_TUNE_PROFILE})`
+  );
+}
+
+// ── Matrix column select-all (#1868 §2) ──
+export function seedNotifSweep(): void {
+  // A dedicated adult profile + login for the column-sweep cases in
+  // settings-ia.spec.ts. One sweep rewrites a whole channel's disabled-kinds blob, so
+  // it must not share a login (the Telegram/Push columns are LOGIN-scoped) or a
+  // profile (the HA column is profile-scoped) with any other spec. No health data
+  // needed — the matrix reads only notification settings.
+  const id = fixtureProfileId(NOTIF_SWEEP_PROFILE);
+  seedMemberLogin(E2E_LOGIN_NOTIF_SWEEP, id, "write");
+  console.log(
+    `e2e: seeded notification column-sweep fixture — profile ${id} (${NOTIF_SWEEP_PROFILE})`
   );
 }

@@ -32,7 +32,11 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
     const upcoming = page.getByTestId("visits-upcoming");
     await expect(upcoming).toBeVisible();
 
-    // The seeded, still-scheduled cardiology visit shows with its linked provider.
+    // A scheduled visit whose date passed is separated from genuinely upcoming
+    // appointments so it can be resolved without inflating the Upcoming count.
+    await upcoming
+      .locator("summary", { hasText: "Past date—update status" })
+      .click();
     const row = upcoming
       .getByTestId("appointment-row")
       .filter({ hasText: "Cardiology follow-up" });
@@ -93,7 +97,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
@@ -119,7 +123,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 

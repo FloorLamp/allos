@@ -37,6 +37,10 @@ test.describe("Provider merge disambiguation (#532)", () => {
     await page.goto(`/providers/${a}`);
     const merge = page.getByTestId("provider-merge");
     await expect(merge).toBeVisible();
+    const summary = merge.locator("summary");
+    await expect(summary).toContainText("Admin tool");
+    await expect(summary.locator("svg")).toHaveCount(2);
+    await summary.click();
 
     // B's option is disambiguated — it is NOT the bare "E2E Duplicate Lab" that
     // its twin would also render.

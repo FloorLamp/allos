@@ -9,7 +9,7 @@
 // arrives regardless — carries a guaranteed access path as its FIRST inline button.
 //
 // THE SHAPE. Collapsed by default: one button, labelled with the CURRENT slot
-// ("Log other… · bedtime"). Tapping expands it IN PLACE into one-tap log buttons for
+// ("Log other (2 for bedtime)"). Tapping expands it IN PLACE into one-tap log buttons for
 // the may items on offer right now, plus a collapse button. No new message is sent at
 // any point — the whole interaction is keyboard edits on a message that already
 // exists for its own reasons. That is the contact-consent rule in mechanism form: an
@@ -50,8 +50,14 @@ export function offerCollapseToken(profileId: number, date: string): string {
 }
 
 // The COLLAPSED tail: one button, naming the slot it will open into. The slot label
-// is the promise — "Log other… · bedtime" says what tapping will show — which is
+// is the promise — "Log other (3 for bedtime)" says what tapping will show — which is
 // exactly why the tick has to re-label it when the slot turns over.
+//
+// THE LABEL SAYS WHAT TAPPING DOES (#1819 item 8). It used to cram three things into
+// one cryptic bar with two different separators — "➕ Log other… · midday (3)" — where
+// the ellipsis, the slot and the count all had to be decoded before the button could
+// be trusted. Same guaranteed-access semantics, same slot rule, same re-label at each
+// boundary; only the sentence changed.
 export function collapsedOfferAction(
   profileId: number,
   date: string,
@@ -60,7 +66,7 @@ export function collapsedOfferAction(
 ): NotificationAction {
   const slot = TIME_BUCKET_LABELS[currentTimeBucket(nowHhmm)].toLowerCase();
   return {
-    label: `➕ Log other… · ${slot}${count > 0 ? ` (${count})` : ""}`,
+    label: `➕ Log other (${count > 0 ? `${count} for ${slot}` : slot})`,
     data: offerExpandToken(profileId, date),
     row: "offer-tail",
   };

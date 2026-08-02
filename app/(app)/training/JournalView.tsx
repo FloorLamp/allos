@@ -28,7 +28,6 @@ import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
-import { detectFieldConflicts } from "@/lib/import-review/conflicts";
 import { loadJournalPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
@@ -1008,8 +1007,9 @@ export default function JournalView({
                           actingProfileId={multiView?.actingProfileId}
                           // Manual-merge targets: the OTHER activities logged this
                           // same day (issue #64) AND (multi-view) same subject, from
-                          // the unfiltered scope group, each with the per-field
-                          // conflicts vs this keeper (issue #100).
+                          // the unfiltered scope group, each carrying its fold
+                          // values so the shared conflict picker (#100/#1431) can
+                          // run over whatever member set the user assembles.
                           mergeSiblings={(
                             mergeTargetsByDate.get(mergeGroupKey(g.date, c)) ??
                             []
@@ -1019,13 +1019,11 @@ export default function JournalView({
                               id: o.id,
                               title: o.title,
                               sourceLabel: o.sourceLabel,
-                              conflicts: detectFieldConflicts(
-                                c.foldValues,
-                                o.foldValues
-                              ),
+                              foldValues: o.foldValues,
                               setCount: o.setCount,
                             }))}
                           keeperLabel={c.provenance.label}
+                          foldValues={c.foldValues}
                           units={units}
                           videos={c.videos}
                           canWrite={canWriteVideos}

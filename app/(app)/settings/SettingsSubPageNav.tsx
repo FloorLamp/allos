@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 import type { SettingsGroupPage } from "@/lib/settings-groups";
 
 // The ONE sub-page strip inside a settings group that has more than one page (#1462).
-// Only Logs & audit has sub-pages today — AI logs / Errors / Audit are three
-// diagnostic viewers that share a topic but can't share a page. It replaces the old
+// Logs & audit fronts its three diagnostic viewers, Account & security its API-token
+// registry (#1734), and Server its AI configuration (#1870). It replaces the old
 // standalone AdminSubNav pill row: the entries come from the group registry, and it
 // renders on EVERY viewport (the desktop group nav deliberately does not repeat
-// them), so a phone can reach Errors and Audit.
+// them), so a phone can reach every sub-page.
 export default function SettingsSubPageNav({
   pages,
 }: {

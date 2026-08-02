@@ -6,17 +6,18 @@ import {
   syncStalenessThreshold,
   isStaleSyncEvent,
   STALE_SYNC_EVENT_ID,
-  type SyncFreshness,
+  type StaleSync,
 } from "@/lib/integrations/staleness";
 import type { AttentionIntegration } from "@/lib/attention";
 import {
-  currentlyFailingProviders,
   shouldShowConnectedSource,
   type ProvenanceTable,
 } from "@/lib/integrations/sync-log";
 import {
   providerStanding,
+  standingEscalates,
   syncVocabularyForKind,
+  STANDING_RUN_WINDOW,
   type ProviderStanding,
   type SyncVocabulary,
 } from "@/lib/integrations/provider-state";
@@ -167,69 +168,111 @@ function expiredHealthConnectIssue(
   };
 }
 
-// The profile's CONNECTED providers reduced to the freshness facts the pure staleness
-// derivation needs (#1685). Only `connected` rows are considered: a `needs_reauth` one is
-// already represented by its own reauth signal (and by the ok:0 event that flipped it),
-// and a `disconnected` one is off on purpose. `alreadyFailing` carries the providers the
-// failure detector is currently reporting so the pure layer can enforce the
-// no-double-report rule in one place. Profile-scoped: the connection read and every
-// last-success read filter by profile_id.
-function syncFreshness(
-  profileId: number,
-  failingProviders: ReadonlySet<string>
-): SyncFreshness[] {
-  const rows = db
-    .prepare(
-      `SELECT provider FROM integration_connections
-        WHERE profile_id = ? AND status = 'connected'`
-    )
-    .all(profileId) as { provider: string }[];
-  return rows.map((r) => ({
-    provider: r.provider,
-    lastSuccessAt: getLastSuccessfulSyncAt(profileId, r.provider),
-    thresholdDays: syncStalenessThreshold(
-      getIntegration(r.provider as IntegrationId)
-    ),
-    alreadyFailing: failingProviders.has(r.provider),
-  }));
+// THE per-provider standing resolution (#1772, flap-aware since #1880): connection
+// status + the recent run window + the #1685 staleness facts, folded through the ONE
+// pure derivation (providerStanding). Both getIntegrationState (every rendered
+// surface) and getImportIssues (the badge / Needs attention / digest feed) read this
+// helper, so a surface and the escalation set can never disagree about a provider's
+// shape. Profile-scoped through every read it composes.
+interface ProviderFacts {
+  connected: boolean;
+  needsReauth: boolean;
+  latest: IntegrationSyncEvent | null;
+  // The newest-first standing window (STANDING_RUN_WINDOW events) — the SAME depth
+  // for every caller, however much display history it asked for.
+  window: IntegrationSyncEvent[];
+  lastSuccessAt: string | null;
+  // The #1685 quiet-stop facts when the staleness rule fires for this CONNECTED
+  // provider, for the "no data since" copy. Null otherwise.
+  stale: StaleSync | null;
+  standing: ProviderStanding;
 }
 
-// Synthetic failing sync events for connections that have gone QUIET (#1685) — a
-// connection sitting at `connected` whose last successful sync is older than its
-// provider's registry threshold. Shaped as IntegrationSyncEvents for the same reason the
-// expired-token issue is: everything downstream of getImportIssues (the profile-menu
-// badge, the Data → Review count and Issues list, the attention item, and now the digest)
-// already reads that one list, so the staleness signal reaches every surface without any
-// of them growing a second source. `at` is the last successful sync — the moment the data
-// stopped — so the row sorts and reads honestly next to real events.
-function staleSyncIssues(
+function resolveProviderFacts(
   profileId: number,
-  failingProviders: ReadonlySet<string>
-): IntegrationSyncEvent[] {
+  providerId: IntegrationId
+): ProviderFacts {
+  const def = getIntegration(providerId);
+  const status = getConnection(profileId, providerId)?.status;
+  const connected = status === "connected";
+  const needsReauth = status === "needs_reauth";
+  const window = getIntegrationSyncEvents(
+    profileId,
+    providerId,
+    STANDING_RUN_WINDOW
+  );
+  const latest = window[0] ?? null;
+  const lastSuccessAt = getLastSuccessfulSyncAt(profileId, providerId);
+  const thresholdDays = syncStalenessThreshold(def);
   const td = today(profileId);
-  return staleSyncs(syncFreshness(profileId, failingProviders), td).map((s) => {
-    const def = getIntegration(s.provider as IntegrationId);
-    return {
-      id: STALE_SYNC_EVENT_ID,
-      profile_id: profileId,
-      provider: s.provider,
-      at: s.since,
-      ok: 0,
-      window_start: null,
-      window_end: null,
-      received: null,
-      written: null,
-      inserted: null,
-      updated: null,
-      unchanged: null,
-      suppressed: null,
-      edited: null,
-      skipped: null,
-      raw_ref: null,
-      error: staleSyncDetail(def?.name ?? s.provider, s),
-      created_at: s.since,
-    };
-  });
+  // The quiet-stop copy facts, from the same staleSyncs derivation the standing
+  // composes (`alreadyFailing: false` — this IS the failing derivation, so there is
+  // no other signal to defer to; getImportIssues still reports each provider once).
+  const stale = connected
+    ? (staleSyncs(
+        [
+          {
+            provider: providerId,
+            lastSuccessAt,
+            thresholdDays,
+            alreadyFailing: false,
+          },
+        ],
+        td
+      )[0] ?? null)
+    : null;
+  return {
+    connected,
+    needsReauth,
+    latest,
+    window,
+    lastSuccessAt,
+    stale,
+    standing: providerStanding({
+      connected,
+      needsReauth,
+      latest,
+      recentRuns: window,
+      lastSuccessAt,
+      thresholdDays,
+      today: td,
+    }),
+  };
+}
+
+// A synthetic failing sync event for a connection that went QUIET (#1685) — no
+// recorded failure, just a last success beyond the provider's threshold. Shaped as an
+// IntegrationSyncEvent for the same reason the expired-token issue is: everything
+// downstream of getImportIssues (the profile-menu badge, the Data → Review count and
+// Needs-attention card, the attention item, and the digest) already reads that one
+// list. `at` is the last successful sync — the moment the data stopped — so the row
+// sorts and reads honestly next to real events.
+function syntheticStaleIssue(
+  profileId: number,
+  provider: string,
+  s: StaleSync
+): IntegrationSyncEvent {
+  const def = getIntegration(provider as IntegrationId);
+  return {
+    id: STALE_SYNC_EVENT_ID,
+    profile_id: profileId,
+    provider,
+    at: s.since,
+    ok: 0,
+    window_start: null,
+    window_end: null,
+    received: null,
+    written: null,
+    inserted: null,
+    updated: null,
+    unchanged: null,
+    suppressed: null,
+    edited: null,
+    skipped: null,
+    raw_ref: null,
+    error: staleSyncDetail(def?.name ?? provider, s),
+    created_at: s.since,
+  };
 }
 
 // ── Duplicate/conflict detection + durable decisions (issue #10, Phase 2) ──────
@@ -244,7 +287,7 @@ function staleSyncIssues(
 // compares. Extra fields flow through the generic detectors untouched.
 export interface ActivityDupRow extends ActivityDupInput {
   title: string;
-  // Numeric magnitude fold-fields — the ones detectFieldConflicts can surface as a
+  // Numeric magnitude fold-fields — the ones detectClusterFieldConflicts can surface as a
   // per-field conflict (duration_min/distance_km already on ActivityDupInput).
   elevation_m: number | null;
   avg_hr: number | null;
@@ -434,14 +477,38 @@ export function getReviewPairCount(profileId: number): number {
   );
 }
 
-// The failing-integration events (most recent per currently-broken provider), for
-// the Review tab's "Issues" section and the dashboard "Needs attention" hero.
-// Profile-scoped via getLatestSyncEventPerProvider — per-provider, so it can't miss a
-// broken provider whose failure has aged out of a global recent-events window (#304).
+// The ESCALATED-integration events (one per genuinely-broken provider), for the
+// Review tab's "Needs attention" card, the profile-menu/Data badge, the dashboard
+// hero, and the digest. Since #1880 this is the flap-aware standing, not
+// latest-event-wins: a provider contributes an issue only when its standing
+// escalates (`failing` — 3 consecutive failures or a #1685 staleness breach — or
+// `needs-reauth`). An `intermittent` provider — failures in the recent window but a
+// recent success too — never appears here; it renders as a calm amber fact on the
+// non-escalating surfaces instead. Profile-scoped via getLatestSyncEventPerProvider
+// — per-provider, so it can't miss a broken provider whose failure has aged out of
+// a global recent-events window (#304).
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
-  const failing = currentlyFailingProviders(
-    getLatestSyncEventPerProvider(profileId)
-  );
+  const failing: IntegrationSyncEvent[] = [];
+  for (const latest of getLatestSyncEventPerProvider(profileId)) {
+    const def = getIntegration(latest.provider as IntegrationId);
+    if (!def) {
+      // An unregistered provider id (hand-inserted or retired) has no registry
+      // standing, so the latest-event rule keeps covering it rather than silently
+      // dropping a recorded failure.
+      if (!latest.ok) failing.push(latest);
+      continue;
+    }
+    const facts = resolveProviderFacts(profileId, def.id);
+    if (!standingEscalates(facts.standing)) continue;
+    if (facts.latest && !facts.latest.ok) {
+      // A recorded failure names the cause — the honest row.
+      failing.push(facts.latest);
+    } else if (facts.stale) {
+      // The quiet stop (#1685): nothing failed, nothing arrived. The synthetic row
+      // states the observation. One row per provider either way.
+      failing.push(syntheticStaleIssue(profileId, def.id, facts.stale));
+    }
+  }
   // Fold in the expired-Health-Connect-token signal (#607), but only when a real HC
   // failure event isn't already representing the provider (a rotated-token push
   // records its own via recordUnmatchedHealthConnectPush) — so HC appears at most once.
@@ -449,13 +516,6 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
     const expired = expiredHealthConnectIssue(profileId);
     if (expired) failing.push(expired);
   }
-  // Fold in the silent-stop signal (#1685). Every provider already represented above is
-  // excluded, so a broken connection is reported ONCE: a reauth prompt names the cause,
-  // and a staleness line naming the symptom underneath it would be noise the user has to
-  // reconcile. The exclusion set is built from what this function is about to return, so
-  // it can never drift from the failure list.
-  const represented = new Set(failing.map((e) => e.provider));
-  failing.push(...staleSyncIssues(profileId, represented));
   return failing;
 }
 
@@ -533,6 +593,13 @@ export interface IntegrationState {
   // shape the provider is in, and which words its counts are reported in.
   standing: ProviderStanding;
   vocabulary: SyncVocabulary;
+  // The #1685 quiet-stop facts when the staleness rule fires (a `failing` standing
+  // whose latest run SUCCEEDED long ago) — the "no data since <date>" copy's
+  // ingredients. Null otherwise.
+  stale: StaleSync | null;
+  // The standing window's tally (#1880): how many of the last `total` runs failed,
+  // for the intermittent surfaces' honest "3 of the last 10 runs failed" copy.
+  recentRuns: { total: number; failed: number };
 }
 
 // Retained for the surfaces that speak of "connected sources" (Data → Review). Same
@@ -593,28 +660,36 @@ export function getIntegrationState(
 ): IntegrationState | null {
   const def = getIntegration(providerId as IntegrationId);
   if (!def) return null;
-  const status = getConnection(profileId, def.id)?.status;
-  const latest = getLatestSyncEvent(profileId, def.id);
-  const history = getIntegrationSyncEvents(profileId, def.id, historyLimit);
+  const facts = resolveProviderFacts(profileId, def.id);
+  // The DISPLAY history is the caller's depth; the STANDING window is always
+  // resolveProviderFacts' STANDING_RUN_WINDOW, so a surface that renders no history
+  // (the grid card) still derives the same standing as one that renders 25 rows.
+  const history =
+    historyLimit <= STANDING_RUN_WINDOW
+      ? facts.window.slice(0, Math.max(0, historyLimit))
+      : getIntegrationSyncEvents(profileId, def.id, historyLimit);
   const ids = history.map((e) => e.id);
-  if (latest) ids.push(latest.id);
-  const connected = status === "connected";
-  const needsReauth = status === "needs_reauth";
+  if (facts.latest) ids.push(facts.latest.id);
   return {
     id: def.id,
     name: def.name,
     kind: def.kind,
-    connected,
-    needsReauth,
+    connected: facts.connected,
+    needsReauth: facts.needsReauth,
     canSyncNow: SYNC_NOW_PROVIDERS.has(def.id),
-    latest,
+    latest: facts.latest,
     history,
     provenanceEventIds: ids.length
       ? eventsWithProvenance(profileId, def.id, Math.min(...ids))
       : [],
-    lastSuccessAt: getLastSuccessfulSyncAt(profileId, def.id),
-    standing: providerStanding({ connected, needsReauth, latest }),
+    lastSuccessAt: facts.lastSuccessAt,
+    standing: facts.standing,
     vocabulary: syncVocabularyForKind(def.kind),
+    stale: facts.stale,
+    recentRuns: {
+      total: facts.window.length,
+      failed: facts.window.filter((e) => !e.ok).length,
+    },
   };
 }
 

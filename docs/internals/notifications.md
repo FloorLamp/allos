@@ -4,8 +4,8 @@
 > model and the attention doctrine, not per-channel.** `must` reminds and
 > escalates; `should` reminds; `may` is never pushed and reaches the user only
 > through surfaces they open themselves — including the daily digest's
-> guaranteed "Log other…" tail, whose slot-boundary refresh is a keyboard EDIT
-> and therefore not a send. See
+> guaranteed "Log other (3 for midday)" tail, whose slot-boundary refresh is a
+> keyboard EDIT and therefore not a send. See
 > [the attention doctrine](findings.md#the-attention-doctrine) and
 > [supplements](supplements.md).
 
@@ -84,9 +84,45 @@ login-keyed (`push_subscriptions.login_id`).
   theirs); the schedule + food/mood/sleep stay on the **profile** tier
   (`saveNotificationPrefs`, `requireWriteAccess`); the per-profile mute is a
   login-tier action (`saveProfileNotifyMute`, validated against
-  `canAccessProfile`). The Notifications page renders "This login" (Telegram +
-  Push), "This profile" (Reminders & schedule + mute + Home Assistant), and
-  admin-only "Server".
+  `canAccessProfile`). Since #1462 §6 the page is three sections — Channels,
+  Schedule & message kinds, and the two per-login reductions (digest tune, mute)
+  — and since #1868 it is registered `tier: "mixed"` so its header states the
+  mixed scope instead of claiming one tier; the per-section scope strings remain
+  the fine-grained layer. The instance-wide Telegram BOT card lives on
+  Settings → Server.
+
+**The Settings page is ONE editor per setting (#1868).** Settings → Notifications
+was the densest page in the app, and about a third of its controls were
+duplicates of controls already on it:
+
+- **The Home Assistant card no longer routes kinds.** Its "announce which
+  reminders" grid wrote the SAME `ha_notify_disabled_kinds` key as the matrix's
+  HA column — 26 checkboxes for 13 booleans — while the page's own header comment
+  claimed the matrix had already replaced per-kind duplication (true for Telegram
+  and Push, never done for HA). The card now configures the CHANNEL only (enable,
+  webhook URL, shared secret, send-test) and points at the column.
+  `saveHomeAssistantPrefs` therefore **preserves** the stored disabled set rather
+  than deriving it from `ha_kind_*` fields — load-bearing, since a form without
+  those fields would otherwise read as "every kind unchecked" and silence the
+  whole channel on a URL edit. The `TOGGLEABLE_HA_KINDS` alias is gone with it.
+- **Column select-all on the matrix** (`lib/notifications/matrix-bulk.ts`, pure):
+  a tri-state control in each column header — `sweepableKinds` /
+  `columnBulkState` / `nextColumnBulkTarget` / `applyColumnBulk` — writing the
+  full disabled set through the SAME tier-correct action a single cell uses. No
+  new setting, no new storage, no delivery-semantics change. **Safety kinds are
+  never swept** (#928): `dose`, `escalation` and `redose` keep their individual
+  checkboxes and the existing warn-never-block all-off notice, so a safety signal
+  can never be silenced by one undifferentiated tap — and `columnBulkLabel` says
+  so in the control's own accessible name ("turn off everything except safety
+  reminders"). A NON_CONFIGURABLE kind (`followup`, #1873) has no registry row, so
+  it is invisible to the matrix and unreachable by a sweep. Row-level select-all
+  is deliberately absent: a row spans three cells and overlaps the per-kind
+  enable.
+- **The digest mirror is collapsed.** Its ten checkboxes were an acknowledged
+  mirror of the message's ⚙️ Tune control, so they now sit behind a disclosure
+  over `digestTuneSummary` — one line naming exactly what is turned down. The card
+  survives rather than being deleted because it is the only way to reverse a
+  demotion off-Telegram, which is the whole point of the #1714 mirror.
 
 **Notifications** (`lib/notifications/`) are delivered over three channels —
 Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly
@@ -369,10 +405,32 @@ morning/midday/evening supplement slots and is opt-in per profile. Its keyboard 
 the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
 per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
 (#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
-pseudo-group's "＋Xg protein" button at its ranked position, over a day-total
+pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
 "✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
+
+**Capped groups rank below floor groups (#1822 item 5).** The ranking above is
+usage-only, which put "🍷 Alcohol" on the 08:00 keyboard for a profile who logs
+it: a positive-habits nudge showing an encouragement-shaped affordance for the
+thing being capped, ahead of the floor groups it exists to prompt. So the nudge's
+`getFoodNudgeRankedKeys` composes TWO stable partitions over the blend —
+`demoteCappedGroups` (the catalog's `limit` tier) innermost, then
+`demoteExcludedGroups` (#975) — so a capped group sorts below every floor group
+regardless of usage, and a group that is both lands at the very tail. Both
+**demote, never filter** (#559): logging alcohol is exactly the tracking a cap
+needs, so the button stays one "➕ Show more" away, in every slot. The web bar is
+untouched — it already renders groups under tier headings.
+
+**One label grammar, one protein line.** Every quick-log button leads with a glyph
+(#1710); `PROTEIN_NUDGE_EMOJI` gave the protein button the one it was missing
+(#1822 item 6), deliberately not a catalog group's glyph since it is the shake
+path, not a serving. The status line reads
+"🍗 Protein: 36 g+ so far · goal 80–105 g" (#1822 item 4): the same facts the
+pre-#1822 "Protein · at least 36 g of ~80–105 g" carried — the #767 floor marker,
+the band, the neutral #1710/#992 below-band tone — with the hedges unstacked so it
+parses in one pass. `ProteinNudgeLineParts` still separates amount/band/status, so
+the plain and emphasized renderings can differ only in emphasis.
 
 That 6 is also the **page size** in both directions. "➕ Show more" (#1075) reveals
 the next page and drops once every ranked key is out; "➖ Show less" (#1807) steps
@@ -397,6 +455,27 @@ logging in place, the ranked buttons plus "Show more" cover the real vocabulary,
 and the long tail was not worth a keyboard row on every send. Other messages' deep
 links (refill's "Open form", the household round's "Open Household →") are
 untouched — this is a food-nudge ruling, not a policy against deep links.
+
+**The workout nudge's copy rules (#1672/#1673/#1709, amended by #1822).** Three
+rules govern the message that fires on a day someone already trained:
+
+- **One pace fact, one phrase.** `daysLeftPhrase` (`lib/effort-class.ts`) is the
+  single days-left formatter, called by BOTH `workoutAcknowledgmentLine` and
+  `recoveryOverrideLine`. `daysLeftInWindow` counts on-days AFTER today, so 0 is
+  "only today left", never "with 0 days left" — which read as a closed door on the
+  one day the nudge exists to save. Sharing the phrase is what stops the two
+  formatters answering the same edge differently again (#221).
+- **Lead with what they did, without praising a placeholder.** A named session
+  keeps its praise ("Nice chest workout today"); a generic title
+  (`isGenericSessionTitle` — "Workout", "Gym", "Training session") degrades to
+  "Trained today". Either opening still leads with the session and never with the
+  shortfall, which was #1672's whole point.
+- **State the driver once.** The `← today` marker on the behind list is the #1709
+  owner ruling, and #1822 amends it narrowly: when the acknowledgment headline has
+  already named a target and its pace, `behindThisWeekLine` drops that target from
+  the list (the whole line falls away if nothing else is behind). Every message
+  whose headline does not name the driver renders exactly as before, suffix
+  included.
 
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
@@ -563,6 +642,57 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
+## Overdue safety-follow-up escalation (#1866)
+
+**The overdue finding follow-up (#700) pushes — with zero settings and a
+per-item off-switch (owner ruling 2026-08-01).** `runFollowUpNudges`
+(`lib/notifications/followup.ts`) rides the hourly tick (waking-window, assessed
+once per profile-local day — overdue-ness is day-granular, and an escalation
+about something already months late earns no 3am delivery) over the SAME
+`followUpItems` computation the Upcoming page and Needs-attention hero render.
+The consent question is answered by structure, not by a toggle: the user (or
+their accepted extraction) recorded the follow-up as a tracked care item **with
+a due date**, which is the same declaration shape that lets a `must` medication
+remind without a "remind me about medications" setting. Accordingly the
+`followup` kind is **NON_CONFIGURABLE** (no registry row, no matrix
+row — the reason is data in `NON_CONFIGURABLE_KINDS`), and delivery is governed
+entirely by the channels the user already enabled: no channels, nothing new
+happens.
+
+- **Conservative cadence, owned by a pure planner**
+  (`planFollowUpNudges`, `lib/followup-nudge.ts`): ONE send when the follow-up
+  crosses overdue, ONE repeat `FOLLOWUP_REPEAT_DAYS` (21 days) later that says
+  out loud it is the final message, then nothing further, ever — the finding
+  keeps holding Upcoming and the hero, which never age out. The
+  `notify_last_followup_<carePlanItemId>` marker stores the send DATES
+  (comma-joined), so the whole cadence state is one value, stamped only on a
+  delivered send (#227 discipline) and swept when the follow-up leaves the
+  overdue set (#325 self-heal). Ids are AUTOINCREMENT and never recycle (#203).
+- **A third suppression shape: policy-gated, not bus-gated and not ungated.**
+  The send gate is `isHiddenUnderPolicy` under the item's OWN declared policy
+  (`itemSuppressionPolicy` → `snooze-only` for an overdue follow-up, #700 ask
+  5 / #942), keyed by the IDENTICAL `followup:<id>` dedupeKey the visible
+  finding carries. So the push behaves exactly as the page does: an Upcoming
+  **dismiss is RESISTED** — it can never silence this send (the safety posture
+  the issue requires) — while a deliberate time-boxed **snooze defers** it with
+  the cadence marker frozen, resuming where it stood when the snooze expires.
+- **The per-item TERMINATOR is the only permanent off-switch** (the real
+  control, per the ruling): `settleFollowUpCore` records "done on \<date\>" or
+  "discussed, not doing it" (optional reason) onto the chain node (migration
+  141), which removes it from the builder's output entirely — the escalation
+  ends because the question is answered. A declined follow-up never sends
+  again, including across marker sweeps and re-ticks; deliberately re-tracking
+  the same source creates a NEW chain node (a new tracked due date = a new
+  consent) with its own fresh cadence.
+- **Channel honesty (#1718):** the copy names no button any channel strips —
+  the message states the fact ("Was due 2026-03-15", the source-finding detail)
+  and carries a single "Open Upcoming" url action (the push click-through),
+  because the terminator needs a date/reason and therefore belongs on the
+  surface, not in a callback keyboard (the two-way button principle: no ONE
+  idempotent state change to offer). Sends go through `dispatch()` like every
+  builder — delivery-health marker fold included — and any Telegram write rides
+  the one chokepoint.
+
 **Morning digest (one merged message, #1108).** The tick sends ONE summary per
 profile per day at `digest_hour`, hard-deduped by the single
 `notify_last_digest` marker. Sections in order: **Illness** (open-episode
@@ -616,6 +746,73 @@ the subject's own recent average — never a judgment, never a streak, per the
 STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
 end to end and already renders it in this same message's Today section.
 
+**Arrival lines report NEWS, not substrate (#1819 items 1–2).** The data category
+had drifted into reporting the storage layer at the reader.
+
+- **Cache-kind providers are excluded outright.** Weather & UV's
+  `📥 Weather & UV (Open-Meteo): 406 new records` counted cells of the GLOBAL
+  location-keyed forecast cache, not records about the profile (the #1772
+  vocabulary disease, pushed to a phone) — and because the sliding fetch window
+  inserts new forecast hours every day, the old `HAVING SUM(inserted) > 0` passed
+  **every morning forever**. A permanent line carries no information (the
+  attention doctrine's own logic). The exclusion derives from the provider KIND
+  through the one shared `syncVocabularyForKind`, so a future cache-kind provider
+  is covered with no list to maintain. Cache-kind sync accounting lives in
+  **Data → Review**.
+- **The line names KINDS, not a summed count.**
+  `📥 Google Health Connect: 2271 new records` added minute-grain heart-rate rows
+  to a single body-weight reading, which is technically true and humanly
+  meaningless. `arrivalChanges` now reads the **per-row provenance the syncs
+  already persist** (`integration_sync_rows`, #1333 — the target table each written
+  row landed in, plus the metric for a `metric_samples` row) and renders
+  `📥 Google Health Connect: steps, sleep, workouts`. No second accounting is
+  minted; counts stay in Data → Review. The kind vocabulary and the capped phrase
+  are pure (`arrivalKind` / `arrivalKindsPhrase` in `lib/recent-changes.ts`).
+  A window whose writes name nothing — a legacy pre-#1333 event, a provider that
+  records no provenance — therefore produces **no line**, which is the honest
+  answer rather than a count standing in for news.
+
+**The Today section's band grammar (#1819 items 3–5).**
+
+- A band of **at most three items NAMES them** instead of counting them:
+  `🗓️ Overdue: Colonoscopy · CBC, Lipid panel`. Below that size a count withholds
+  the only thing the reader needs; above it, naming stops fitting on a line and the
+  count is genuinely the right shape (`summarizeBand`'s `nameAtMost`).
+- The **band summaries carry the section's bullet emoji** (`🗓️`) — they were the
+  only lines in the whole message without one.
+- A band whose `training` items are all **weekly targets** states weekly PROGRESS
+  instead of counting unmet ones — "This week: 2 of 4 training targets on pace —
+  behind on Back, Chest" — formatted by the shared `weeklyTargetPaceLine` over the
+  SAME paced set (`getFrequencyTargetProgress`) the Training chips render. The
+  guard is the `training:` key namespace, not the domain — an endurance event and
+  an outdoor plan also live in `training`, and the phrase is not about them.
+- The **workout preview** renders `digestWorkoutLine`'s bare variant, because the
+  formatter's standalone `Today:` prefix restated the section heading it sits under.
+  Same computation, section-aware framing.
+
+**Yesterday: the delta and the fraction merge when redundant (#1819 item 6).**
+`🔁 Missed: Glycine (1 day)` above `💊 Supplements: 8/9 taken` stated one fact
+twice — the 1 missing IS the Glycine. When the delta **fully explains the gap**
+(exactly one item changed state, it went missed, and the gap is exactly one dose)
+the two collapse to `💊 Supplements: 8/9 taken — missed Glycine (1 day)`. Every
+divergent case — a skip, several misses, a resume, a mixed window — keeps both
+lines, because there #1505 part 3's "delta leads, fraction supports" is still
+answering two questions. The test is the pure `intakeGapExplainedBy`.
+
+**Sleep copy (#1819 item 7).** The verdict is a clause about the figure, so it
+takes the em-dash separator (`😴 Last night: 6h 38m — about typical`) rather than a
+bare space that read as one run-on quantity. `sriPresentation` gained a **banded
+qualifier** on its existing thresholds, so the line says what the index means:
+`📈 Sleep regularity 94 — very consistent`. #992's non-judgmental contract holds by
+construction — the qualifier describes the SCHEDULE's consistency, never the
+sleeper.
+
+**Separator grammar.** One rule across the digest: `:` introduces a label's
+content, `—` attaches a clause that qualifies the statement before it, and `·`
+joins peers on one line (`,` joins peers within one group). Applied wherever the
+above lines touch; a line that predates the rule and was not otherwise edited
+still follows it or is a candidate for the next pass.
+
 ## Live-message reconciliation (#1779)
 
 **The defect.** Every inline keyboard the app sent was a frozen snapshot that
@@ -641,8 +838,8 @@ renderer (#221).
 
 **The substrate.** Migration 135's `notify_messages` records one pointer per
 DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
-date, keyboard, sent_at)` — written in the Telegram chokepoint, the only place
-holding both the sent message id and the message it was rendered from. It is per
+date, keyboard, title, sent_at)` — written in the Telegram chokepoint, the only
+place holding both the sent message id and the message it was rendered from. It is per
 DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
 confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
@@ -659,13 +856,45 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
   family's own rebuilder (the dose family reuses the identical
   `slotSessionForKeyboard` → `renderMergedIntakeMessage` path the TAP rebuild
   runs);
-- fully resolved → `closeMessage` with an honest closing line;
+- fully resolved → `closeMessage` with an honest closing line that **names its
+  subject**;
 - **day rolled over** in the profile's timezone → strip or close regardless of
   state, since yesterday's tokens carry yesterday's date. This also closes the
   residual #947 gap: the last nudge of an evening used to keep a live keyboard
   until the next send, which may never come;
 - a dead pointer (message deleted, chat gone, past the edit horizon) → the
   best-effort edit fails, the pointer is dropped, nothing is retried forever.
+
+**A failed edit is CLASSIFIED, never assumed dead (#1885).** The transport used to
+throw a bare `Error` for every Bot API failure alike, so the sweep's catch dropped
+the pointer on a 429, a 5xx, a DNS blip, an `AbortSignal` timeout or a missing bot
+token exactly as it did on "message to edit not found" — and because the claim
+mutates or deletes the row _before_ the network call, a wrongly-dropped pointer has
+no retry path left at all: a live chat keeps a stale keyboard no later tick can fix.
+`lib/notifications/telegram-api.ts` now throws a typed `TelegramApiError` carrying
+the HTTP status and Telegram's own `description` (network failures included, with a
+null status), and one pure decision —
+`classifyTelegramFailure` in `lib/notifications/telegram-error.ts` — splits them:
+
+- **permanent** (`message to edit not found`, `message can't be edited`,
+  `chat not found`, `bot was kicked` / `bot was blocked`, `CHAT_WRITE_FORBIDDEN`,
+  any 403, …) → drop the pointer, exactly as before;
+- **transient** (429, 5xx, network reach failure, timeout, unconfigured token, and
+  anything unrecognised) → **release the claim** and leave the pointer as the sweep
+  found it, so the next tick recomputes the same plan and retries. A keyboard claim
+  is swapped back under the same compare-and-swap
+  (`releaseMessagePointerKeyboard`); a close claim, which deleted the row, is
+  re-inserted verbatim — original id and `sent_at` included
+  (`restoreMessagePointer`). The result carries these as `deferred`.
+
+The **unknown default is transient** on purpose, because the two mistakes are not
+symmetric: a wrong "permanent" is unrecoverable, while a wrong "transient" costs at
+most one fast-failing call per tick until the pointer ages out. Keeping the original
+`sent_at` on a restore is what bounds it — retention (`MESSAGE_POINTER_RETENTION_DAYS`)
+still prunes the row, so "retry" can never become "retry forever" and no attempt
+counter is needed. Delivery HEALTH is untouched by any of this: reconcile never
+dispatches, so the set/clear/freeze decision in `delivery-status.ts` stays the only
+thing that moves the `notify_last_error` marker.
 
 **Overlapping ticks (#1788).** The sweep does not assume an operator runs exactly
 one scheduler — a compose poll sidecar plus a host crontab, two replicas on one
@@ -682,6 +911,21 @@ would leave both passes calling the API, which is the whole cost being avoided. 
 witness is the stored blob **verbatim**, never a re-serialization: a round-trip that
 reordered a key would yield a witness that never matches and a sweep that silently
 stopped editing anything.
+
+**The closing line names what it closed (#1822 item 7).** A close replaces the
+ENTIRE message text, so `RECONCILE_CLOSING` alone arrived as an orphan bubble:
+"Handled in the app — nothing left here." at 08:00, with no indication of WHAT was
+handled and — in a shared family chat — the "[Name] " attribution gone with the
+rest of the text, leaving two members' identical reminders indistinguishable once
+resolved. The tap path solved this for #377 with `replacementWithTitle`; the sweep
+now follows the same convention through `reconcileClosingText`, which composes
+"[Norton] 🍽️ Morning food log — handled in the app." (and, for a rollover,
+"… — this was yesterday's message."). The subject comes from the pointer's stored
+`title`, recorded AS DELIVERED in the same chokepoint write as the keyboard —
+migration 139 — because the tick edits by pointer and never holds the text it is
+replacing; re-deriving it would run a whole builder and would produce TODAY's
+title for YESTERDAY's message on a rollover close. A pointer without one (written
+before 139) degrades to the bare line: a close never invents a subject.
 
 **Edits, never sends.** Everything routes through the chokepoint's
 `closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not
@@ -780,7 +1024,11 @@ per category, then **▲ Done**.
 - **Mirrored in Settings → Notifications** ("Morning digest") as the same toggles,
   read-write, so preferences are discoverable, reversible off-Telegram, and visible
   to someone auditing why their digest looks thin. One storage, two surfaces — a
-  mirror of an existing message control, not a settings-only feature.
+  mirror of an existing message control, not a settings-only feature. Since #1868
+  the mirror renders COLLAPSED: an honest one-line state (`digestTuneSummary`,
+  pure) plus a disclosure holding the full list. Being a mirror is the reason —
+  the canonical control rides the message, and this surface exists for discovery
+  and reversal, not for ten always-rendered checkboxes on the app's densest page.
 
 **Light and movement lines (#1723).** Two more Today/Yesterday lines, both
 riding this message — **no send is created by either**:

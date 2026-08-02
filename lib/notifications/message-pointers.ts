@@ -36,6 +36,11 @@ export interface MessagePointer {
   // The SUBJECT's local calendar date at send time — the rollover comparison.
   date: string;
   keyboard: InlineKeyboard;
+  // The message's TITLE LINE as delivered — attribution prefix included (#1822 item 7).
+  // The sweep edits by pointer and never holds the text it is replacing, so this is what
+  // lets a close name its own subject. Null for a pointer recorded before migration 139,
+  // which closes with the subjectless line rather than a guessed one.
+  title: string | null;
   sentAt: string;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
   //
@@ -95,17 +100,21 @@ export function recordMessagePointer(p: {
   kind: string;
   date: string;
   keyboard: InlineKeyboard;
+  // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
+  // caller with nothing to record stores NULL rather than an empty subject.
+  title?: string | null;
 }): void {
   try {
     db.prepare(
       `INSERT INTO notify_messages
-         (profile_id, chat_id, message_id, kind, date, keyboard, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         (profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
          date       = excluded.date,
          keyboard   = excluded.keyboard,
+         title      = excluded.title,
          sent_at    = excluded.sent_at`
     ).run(
       p.profileId,
@@ -114,6 +123,7 @@ export function recordMessagePointer(p: {
       p.kind,
       p.date,
       JSON.stringify(p.keyboard),
+      p.title?.trim() || null,
       sqlNow()
     );
   } catch (e) {
@@ -132,6 +142,7 @@ interface PointerRow {
   kind: string;
   date: string;
   keyboard: string;
+  title: string | null;
   sent_at: string;
 }
 
@@ -141,7 +152,7 @@ interface PointerRow {
 export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -159,6 +170,7 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
       kind: r.kind,
       date: r.date,
       keyboard,
+      title: r.title,
       sentAt: r.sent_at,
       version: r.keyboard,
     });
@@ -220,6 +232,69 @@ export function claimMessagePointerClose(
           WHERE profile_id = ? AND id = ? AND keyboard = ?`
       )
       .run(profileId, id, version);
+    return res.changes === 1;
+  });
+}
+
+// ---- Releasing a claim the edit did not earn (issue #1885) -----------------
+//
+// The claim is made BEFORE the network call, so an edit that fails has already mutated
+// (or deleted) the row. That is correct for a PERMANENTLY dead message — there is
+// nothing left to reconcile — but wrong for a transient failure: the chat still shows
+// the pre-edit keyboard, and the pointer is the only record of it. Releasing the claim
+// puts the row back exactly as the sweep found it, so the next tick recomputes the same
+// plan, re-claims, and retries. Without this, "we didn't drop it" would still leave no
+// state a retry could run from.
+
+// Undo a keyboard claim: swap the stored blob back from `claimed` to `version`. A
+// compare-and-swap in the same direction as the claim, so a pass that lost the row to
+// another writer in the meantime restores nothing rather than clobbering it. `claimed`
+// is serialized by the SAME call the claim used, so the witness matches by construction.
+export function releaseMessagePointerKeyboard(
+  profileId: number,
+  id: number,
+  claimed: InlineKeyboard,
+  version: string
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `UPDATE notify_messages SET keyboard = ?
+          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+      )
+      .run(version, profileId, id, JSON.stringify(claimed));
+    return res.changes === 1;
+  });
+}
+
+// Undo a CLOSE claim, which deleted the row: re-insert it verbatim, original id and
+// `sent_at` included. Keeping `sent_at` is what keeps retries bounded — the restored
+// pointer ages exactly as it would have, so `pruneMessagePointers` still removes it at
+// the retention horizon instead of a failing message being renewed forever. A conflict
+// (a fresh send already recorded a pointer for this chat/message) leaves the newer row
+// alone: it describes what the chat is showing now, which this one no longer does.
+export function restoreMessagePointer(p: MessagePointer): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `INSERT INTO notify_messages
+           (id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING`
+      )
+      .run(
+        p.id,
+        p.profileId,
+        p.chatId,
+        p.messageId,
+        p.kind,
+        p.date,
+        // The blob VERBATIM, so the restored row is byte-identical to the witness the
+        // next pass will read and claim against.
+        p.version,
+        p.title,
+        p.sentAt
+      );
     return res.changes === 1;
   });
 }
