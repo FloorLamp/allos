@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IconBolt,
   IconChevronUp,
+  IconDroplet,
   IconFileText,
   IconHeartbeat,
   IconMenu2,
@@ -95,6 +96,7 @@ const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
   // exhaustive so adding a registry icon stays a compile error here rather than a
   // missing glyph on the bar.
   sparkles: IconSparkles,
+  droplet: IconDroplet,
   document: IconFileText,
 };
 
@@ -414,6 +416,9 @@ export default function MobileNav({
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         restricted={restricted}
+        // The same server-resolved relevance bitset the drawer's nav entries gate on,
+        // so the sheet's period row and the Cycle nav entry appear together (#1892).
+        cycleRelevant={relevance.cycle}
       />
     </>
   );

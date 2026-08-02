@@ -92,15 +92,19 @@ export const PWA_SHORTCUTS: readonly PwaShortcut[] = [
 // `restricted` is the age gate (`lib/age-gate.ts`): a training-restricted
 // profile has no training surface at all, so a training-only row resolves to
 // null rather than opening an editor that profile can't use — the same gate the
-// sheet's `quickLogMenu` applies.
+// sheet's `quickLogMenu` applies. `cycleRelevant` is the #1042 relevance bit and
+// applies the same way to the period row (#1892) — both default to the permissive
+// value so a caller that hasn't threaded a bit never breaks a working shortcut.
 export function shortcutAction(
   value: string | null | undefined,
-  restricted = false
+  restricted = false,
+  cycleRelevant = true
 ): ShortcutAction | null {
   if (!value) return null;
   if (value === SEARCH_SHORTCUT_ID) return { kind: "search" };
   const item = QUICK_LOG_ITEMS.find((i) => i.id === value);
   if (!item) return null;
   if (item.training && restricted) return null;
+  if (item.cycle && !cycleRelevant) return null;
   return { kind: "quick-log", item };
 }

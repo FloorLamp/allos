@@ -11,6 +11,7 @@ import {
 import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
+import QuickCyclePanel from "./quick-entry/QuickCyclePanel";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
@@ -104,6 +105,9 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   measurements: { title: "Log measurements", ownsHeading: true },
   dose: { title: "Log dose", ownsHeading: false },
   practice: { title: "Log practice", ownsHeading: false },
+  // #1892: the sheet's period row. The panel owns no heading — the verb is on the
+  // button, which is the point.
+  cycle: { title: "Log period", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -243,6 +247,13 @@ function QuickEntryBody({
       );
     case "dose":
       return <QuickDoseList doses={data.doses} onDone={onDone} />;
+    case "cycle":
+      // The SAME <PeriodOfferButton> the Cycle page control and the dashboard phase
+      // widget render, over the SAME server-resolved cycleControlState — a third
+      // RENDERER of one state, never a third implementation. A successful tap closes:
+      // start/end/reopen is one transaction with a real end, and #1468's contract is
+      // that it lands you back where you were.
+      return <QuickCyclePanel state={data.state} onDone={onDone} />;
     case "practice":
       // No `onSaved`: like the food bar, practice logging has no single "saved"
       // moment — multi-session days are the point and a morning check may log two
