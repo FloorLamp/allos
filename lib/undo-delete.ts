@@ -22,6 +22,8 @@
 // capture (e.g. a "take together" pair's OTHER supplement, which still exists) is
 // left as-is — see remapRow.
 
+import type { OverrideChoices } from "./import-review/conflicts";
+
 export interface FkSpec {
   // The FK column on this entity's rows.
   column: string;
@@ -113,10 +115,11 @@ export interface Payload {
   rows: Record<string, Row[]>;
   // OPTIONAL merge-undo context (issues #199/#200). Present ONLY when this deleted
   // row is the discarded side of an activity merge; absent for a plain delete. When
-  // set, restore additionally INVERTS the merge that produced this delete: it moves
-  // the drop's re-parented exercise_sets back off the keeper, restores the keeper's
-  // pre-fold field values, and clears the recorded pair decision so the pair can be
-  // re-detected. A plain delete never carries it, so its restore is unchanged.
+  // set, restore additionally INVERTS this drop's share of the merge that produced the
+  // delete: it moves the drop's re-parented exercise_sets back off the keeper, re-folds
+  // the keeper from the merge's drops that are STILL folded in (#1884), and clears the
+  // recorded pair decision so the pair can be re-detected. A plain delete never carries
+  // it, so its restore is unchanged.
   merge?: MergeUndoContext;
 }
 
@@ -126,6 +129,19 @@ export interface Payload {
 export interface MergeUndoContext {
   // The keeper the discarded row was folded into.
   keeperId: number;
+  // Identity of the MERGE this drop belonged to — the same opaque value on every drop
+  // of one N-way merge (#1884). Undo uses it to find the merge's OTHER drops that are
+  // still folded into the keeper (their holding rows still un-restored) so it can
+  // un-fold only THIS drop's contribution instead of resetting the keeper wholesale to
+  // `keeperBefore`, which is correct only when every drop leaves at once. Optional:
+  // payloads captured before #1884 carry none and keep the old whole-snapshot reset
+  // (harmless for the single-drop case, and they age out inside the 24h undo window).
+  mergeId?: string;
+  // The per-field member choices the fold applied (#1431) — the same map for every
+  // drop of one merge. Undo replays the fold over the still-folded drops with these,
+  // so a choice naming a drop that HAS come back stops applying (its member is no
+  // longer in the merge) while a choice naming a still-folded one keeps applying.
+  overrides?: OverrideChoices;
   // The decision domain + stable pair signature recorded for this merge — deleted on
   // undo so the (now un-merged) pair resurfaces in Review (#200).
   domain: string;

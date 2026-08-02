@@ -1,8 +1,9 @@
 // The impure (DB-touching) half of an activity merge, shared by the Data → Review
 // duplicate resolver (app/(app)/data/review-actions.ts) and the Journal's manual
 // pair-merge (app/(app)/training/activity-actions.ts). The pure fold math lives in
-// lib/import-review/detect.ts (foldActivityFields); this writes the folded result
-// onto the keeper. Server-only (uses the sync `db`).
+// lib/import-review (foldActivityFields in detect.ts; the keeper columns a fold writes,
+// keeperFoldState, in conflicts.ts); this writes that result onto the keeper and — on
+// undo — writes it back with one member removed. Server-only (uses the sync `db`).
 //
 // Callers own the DELETE of the discarded row and the recorded pair-decision — the
 // two merges differ there: the review resolver deletes via FK cascade (no undo),
@@ -11,7 +12,8 @@
 
 import { db } from "./db";
 import {
-  foldActivityFieldsWithOverrides,
+  keeperFoldState,
+  type KeeperFoldState,
   type OverrideChoices,
 } from "./import-review/conflicts";
 import {
@@ -19,7 +21,7 @@ import {
   orderDropsForFold,
 } from "./import-review/detect";
 import { deletePairDecision } from "./queries/integrations";
-import type { MergeUndoContext } from "./undo-delete";
+import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 
 // What writeActivityFold actually moved for one dropped row, returned so an undoable
 // caller (the Journal merge) can build a per-drop MergeUndoContext that inverts EXACTLY
@@ -69,20 +71,10 @@ export function writeActivityFold(
   const ordered = orderDropsForFold(
     drops as unknown as Parameters<typeof orderDropsForFold>[0]
   ) as unknown as Record<string, unknown>[];
-  const f: Record<(typeof ACTIVITY_FOLD_FIELDS)[number], unknown> =
-    foldActivityFieldsWithOverrides(keep, ordered, overrides);
-  // Session-level equipment link (#342): keeper-wins COALESCE across the keeper then
-  // every drop in order — the keeper's gear stands, the drops only fill a gap.
-  // Handled explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the
-  // fold's richness scoring and conflict-preview UI, which are for measurement gap-fill.
-  let foldedEquipmentId =
-    (keep.equipment_id as number | null | undefined) ?? null;
-  for (const drop of ordered) {
-    foldedEquipmentId =
-      foldedEquipmentId ??
-      (drop.equipment_id as number | null | undefined) ??
-      null;
-  }
+  // The keeper columns this fold writes — the SAME pure computation the undo runs in
+  // reverse (#1884), so a partial undo can only ever land the keeper on a state some
+  // subset of this fold would have produced.
+  const state = keeperFoldState(keep, ordered, overrides);
 
   // Re-parent every drop's children onto the keeper (#199, now for N drops). Track
   // whether the keeper has a GPS route yet (activity_routes is UNIQUE(activity_id)):
@@ -127,6 +119,19 @@ export function writeActivityFold(
     moves.push({ dropId, movedRouteId });
   }
 
+  writeKeeperFoldState(profileId, keepId, state);
+  return moves;
+}
+
+// Write a computed KeeperFoldState onto the keeper row. The ONE statement that moves
+// the keeper's fold columns, shared by the fold and its undo (#1884) so the two can
+// never drift apart on which columns a merge owns. Profile-scoped.
+function writeKeeperFoldState(
+  profileId: number,
+  keeperId: number,
+  state: KeeperFoldState
+): void {
+  const f = state.fields;
   db.prepare(
     `UPDATE activities
         SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,
@@ -136,41 +141,42 @@ export function writeActivityFold(
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
             equipment_id = ?,
-            edited = 1
+            edited = ?
       WHERE id = ? AND profile_id = ?`
   ).run(
-    f.notes,
-    f.duration_min,
-    f.distance_km,
-    f.intensity,
-    f.start_time,
-    f.end_time,
-    f.components,
-    f.avg_hr,
-    f.max_hr,
-    f.elevation_m,
-    f.avg_speed_kmh,
-    f.max_speed_kmh,
-    f.relative_effort,
-    f.avg_power_w,
-    f.max_power_w,
-    f.weighted_avg_power_w,
-    f.avg_cadence,
-    f.avg_temp_c,
-    f.kilojoules,
-    f.workout_type,
-    foldedEquipmentId,
-    keepId,
+    f.notes ?? null,
+    f.duration_min ?? null,
+    f.distance_km ?? null,
+    f.intensity ?? null,
+    f.start_time ?? null,
+    f.end_time ?? null,
+    f.components ?? null,
+    f.avg_hr ?? null,
+    f.max_hr ?? null,
+    f.elevation_m ?? null,
+    f.avg_speed_kmh ?? null,
+    f.max_speed_kmh ?? null,
+    f.relative_effort ?? null,
+    f.avg_power_w ?? null,
+    f.max_power_w ?? null,
+    f.weighted_avg_power_w ?? null,
+    f.avg_cadence ?? null,
+    f.avg_temp_c ?? null,
+    f.kilojoules ?? null,
+    f.workout_type ?? null,
+    state.equipmentId,
+    state.edited,
+    keeperId,
     profileId
   );
-  return moves;
 }
 
 // Snapshot the keeper's PRE-fold state for a fully-invertible merge undo (#200):
 // its fold-field values plus its prior `edited` flag, taken from the row the caller
-// SELECTed BEFORE writeActivityFold ran. restoreDeletedRow writes these back so undo
-// removes every gap-fill the merge added (the wholesale-inherited `components` array
-// is the sharpest double-count) and restores the keeper's original edit-lock. Pure.
+// SELECTed BEFORE writeActivityFold ran. It is the BASE the undo re-folds from
+// (#1884): restoring the last drop lands the keeper exactly here, so undo removes
+// every gap-fill the merge added (the wholesale-inherited `components` array is the
+// sharpest double-count) and restores the keeper's original edit-lock. Pure.
 export function snapshotKeeperFold(
   keep: Record<string, unknown>
 ): Record<string, unknown> {
@@ -194,16 +200,81 @@ export function dropSetIds(dropId: number): number[] {
   ).map((r) => r.id);
 }
 
-// INVERT an activity merge on undo (#199/#200): given the restored discarded row's
-// NEW id, move its re-parented sets back off the keeper, restore the keeper's
-// pre-fold fields, and clear the recorded pair decision so the pair resurfaces in
-// Review. Called from restoreDeletedRow inside its restore transaction — the drop
-// row itself is re-inserted by the generic restore, so this only reverses the
-// keeper-side effects the merge applied. Profile-scoped on the keeper write.
+// The activity rows of the OTHER drops of the same merge that are still folded into
+// the keeper — i.e. whose undo token is still sitting in `deleted_rows` un-restored
+// (#1884). `excludeUndoId` is the token being restored right now, which
+// restoreDeletedRow only deletes AFTER this inversion runs.
+//
+// Merge identity is the payload-level `mergeId` every drop of one merge shares. A
+// payload captured before #1884 has none; it yields no siblings, which is exactly the
+// pre-#1884 whole-snapshot behaviour, and those payloads age out within the 24h undo
+// window. A sibling that was already restored has had its holding row deleted, so it
+// correctly stops counting as folded-in. Profile-scoped; a malformed payload is
+// skipped rather than aborting the undo.
+function foldedSiblingDrops(
+  profileId: number,
+  mergeId: string,
+  excludeUndoId: number
+): Row[] {
+  const held = db
+    .prepare(
+      `SELECT id, payload FROM deleted_rows
+        WHERE profile_id = ? AND kind = 'activity' AND id != ?`
+    )
+    .all(profileId, excludeUndoId) as { id: number; payload: string }[];
+  const out: Row[] = [];
+  for (const row of held) {
+    try {
+      const payload = parsePayload(row.payload);
+      if (payload.merge?.mergeId !== mergeId) continue;
+      const drop = payload.rows.activity?.[0];
+      if (drop) out.push(drop);
+    } catch {
+      // an unparseable / non-registry payload is not a sibling of this merge
+    }
+  }
+  return out;
+}
+
+// INVERT one drop's share of an activity merge on undo (#199/#200, made partial-safe
+// by #1884): given the restored discarded row's NEW id, move ITS re-parented sets and
+// route back off the keeper, re-fold the keeper from the drops that are STILL folded
+// in, and clear this pair's recorded decision so the pair resurfaces in Review. Called
+// from restoreDeletedRow inside its restore transaction — the drop row itself is
+// re-inserted by the generic restore, so this only reverses the keeper-side effects.
+// Profile-scoped on the keeper write.
+//
+// ── The model: incremental un-fold, not a whole-snapshot reset (#1884) ─────────────
+// A multi-drop merge's undo is a BATCH of independent per-token restores, and by
+// undoDeletes' documented #202 design a token that throws is isolated so the rest
+// still restore. So this inversion must be correct for ANY SUBSET of the merge's drops
+// coming back, in any order. Writing the pre-fold `keeperBefore` snapshot
+// unconditionally was not: undoing drops A and C while B's restore failed reset the
+// keeper past the point where it carried B's contribution while B stayed deleted and
+// B's re-parented sets stayed on the keeper unaccounted for — B's data reachable from
+// nowhere.
+//
+// Instead the keeper is RECOMPUTED as `fold(keeperBefore, drops still folded in)`:
+// the fold is a pure function of its inputs (keeperFoldState), so removing one member
+// from that set removes exactly that member's contribution and leaves every other
+// drop's intact. Restoring the last drop makes the set empty, which reproduces
+// `keeperBefore` — so a full undo is unchanged, and a retry of a failed token later
+// converges to the same fully-undone state.
+//
+// Children follow their own row, always: a restored drop's sets/route move back onto
+// it; an un-restored drop's sets/route stay on the keeper, which is where they live
+// for as long as that drop is still merged in. No row's data is ever unreachable.
+//
+// Why not make the batch atomic instead (one transaction over the merge's tokens)?
+// That would fix the batch path only — a single-token undo of one drop of an N-way
+// merge has the same defect — and it would carve an exception into #202's per-token
+// isolation to work around an inversion that simply wasn't compositional. Making the
+// inversion compositional keeps the isolation design intact and correct.
 export function revertActivityMerge(
   profileId: number,
   merge: MergeUndoContext,
-  newDropId: number
+  newDropId: number,
+  undoId: number
 ): void {
   // 1. Move the drop's sets back off the keeper onto the restored row (#199). Bound
   //    by id AND the keeper's current parent so a set since moved/deleted is skipped.
@@ -226,60 +297,37 @@ export function revertActivityMerge(
     ).run(newDropId, merge.keeperId, merge.movedRouteId);
   }
 
-  // 2. Restore the keeper's pre-fold fold-field values + prior edited flag (#200),
-  //    undoing every gap-fill (incl. the inherited components) the fold added.
+  // 2. Re-fold the keeper from the drops STILL folded into it (#200/#1884). With none
+  //    left this is exactly the pre-fold snapshot, undoing every gap-fill (incl. the
+  //    inherited components) and restoring the keeper's own edit lock; with siblings
+  //    still merged it keeps precisely their contributions and drops only this one's.
+  //    The keeper's own id rides on the snapshot so a per-field member choice naming
+  //    the keeper still resolves (#1431).
   const before = merge.keeperBefore;
-  // The captured pre-fold equipment_id points at an equipment row OUTSIDE this
-  // merge-undo context. If that gear was deleted after the merge (deleteEquipment
-  // nulls only LIVE activities.equipment_id, so this snapshot kept its id), writing
-  // it back verbatim would violate activities.equipment_id's FK (migration 019) and
-  // abort the ENTIRE undo (#598) — the same #202/#375 dangling-target class the
-  // generic externalRefs reconciliation handles, which never sees the merge context.
-  // Probe it (profile-scoped, since equipment is profile-owned) and null a dead link.
-  const beforeEquipmentId =
-    typeof before.equipment_id === "number" &&
+  const siblings = merge.mergeId
+    ? foldedSiblingDrops(profileId, merge.mergeId, undoId)
+    : [];
+  const state = keeperFoldState(
+    { ...before, id: merge.keeperId },
+    siblings,
+    merge.overrides ?? {}
+  );
+  // The folded equipment_id points at an equipment row OUTSIDE this merge-undo context
+  // (the keeper's own pre-fold gear, or a still-folded drop's). If that gear was
+  // deleted after the merge (deleteEquipment nulls only LIVE
+  // activities.equipment_id, so the captured copies kept its id), writing it back
+  // verbatim would violate activities.equipment_id's FK (migration 019) and abort the
+  // ENTIRE undo (#598) — the same #202/#375 dangling-target class the generic
+  // externalRefs reconciliation handles, which never sees the merge context. Probe it
+  // (profile-scoped, since equipment is profile-owned) and null a dead link.
+  if (
+    state.equipmentId != null &&
     !db
       .prepare("SELECT 1 FROM equipment WHERE id = ? AND profile_id = ?")
-      .get(before.equipment_id, profileId)
-      ? null
-      : (before.equipment_id ?? null);
-  db.prepare(
-    `UPDATE activities
-        SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,
-            start_time = ?, end_time = ?, components = ?,
-            avg_hr = ?, max_hr = ?, elevation_m = ?, avg_speed_kmh = ?,
-            max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
-            max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
-            avg_temp_c = ?, kilojoules = ?, workout_type = ?,
-            equipment_id = ?,
-            edited = ?
-      WHERE id = ? AND profile_id = ?`
-  ).run(
-    before.notes ?? null,
-    before.duration_min ?? null,
-    before.distance_km ?? null,
-    before.intensity ?? null,
-    before.start_time ?? null,
-    before.end_time ?? null,
-    before.components ?? null,
-    before.avg_hr ?? null,
-    before.max_hr ?? null,
-    before.elevation_m ?? null,
-    before.avg_speed_kmh ?? null,
-    before.max_speed_kmh ?? null,
-    before.relative_effort ?? null,
-    before.avg_power_w ?? null,
-    before.max_power_w ?? null,
-    before.weighted_avg_power_w ?? null,
-    before.avg_cadence ?? null,
-    before.avg_temp_c ?? null,
-    before.kilojoules ?? null,
-    before.workout_type ?? null,
-    beforeEquipmentId,
-    before.edited ?? 0,
-    merge.keeperId,
-    profileId
-  );
+      .get(state.equipmentId, profileId)
+  )
+    state.equipmentId = null;
+  writeKeeperFoldState(profileId, merge.keeperId, state);
 
   // 3. Clear the recorded 'merged' decision so the un-merged pair re-detects (#200).
   deletePairDecision(profileId, merge.domain, merge.signature);

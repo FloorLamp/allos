@@ -9,6 +9,7 @@ import {
   foldActivityFieldsWithOverrides,
   pickFoldValues,
   foldFieldLabel,
+  keeperFoldState,
 } from "@/lib/import-review/conflicts";
 
 // Conflict-aware merge picker (issue #100, N-way since #1431). The detector
@@ -319,5 +320,94 @@ describe("pickFoldValues + foldFieldLabel", () => {
   it("labels conflict fields for the UI", () => {
     expect(foldFieldLabel("duration_min")).toBe("Duration");
     expect(foldFieldLabel("avg_hr")).toBe("Avg HR");
+  });
+});
+
+// ── keeperFoldState — the invertible fold (#1884) ─────────────────────────────
+// The keeper columns a merge writes, as ONE pure computation used in both
+// directions: the fold writes it, and a merge UNDO replays it with the un-folded
+// drop removed from the member set. The properties the partial-batch undo relies
+// on are that it depends only on the member SET (not on how members got there),
+// that an empty set reproduces the pre-fold keeper exactly, and that removing one
+// member removes exactly that member's contribution.
+describe("keeperFoldState — the invertible fold (#1884)", () => {
+  const before = {
+    id: 1,
+    notes: null,
+    avg_hr: null,
+    max_hr: null,
+    duration_min: 30,
+    equipment_id: null,
+    edited: 0,
+  };
+  const a = { id: 2, notes: "from-a" };
+  const b = { id: 3, avg_hr: 150 };
+  const c = { id: 4, max_hr: 180 };
+
+  it("with no drops reproduces the pre-fold keeper, edit lock included", () => {
+    const state = keeperFoldState({ ...before, edited: 1 }, []);
+    expect(state.fields.notes).toBeNull();
+    expect(state.fields.avg_hr).toBeNull();
+    expect(state.fields.duration_min).toBe(30);
+    expect(state.equipmentId).toBeNull();
+    expect(state.edited).toBe(1); // the keeper's OWN prior lock, not the fold's
+  });
+
+  it("edit-locks the keeper while any drop is folded in", () => {
+    expect(keeperFoldState(before, [a]).edited).toBe(1);
+    expect(keeperFoldState(before, []).edited).toBe(0);
+  });
+
+  it("removing one member removes exactly that member's contribution", () => {
+    const all = keeperFoldState(before, [a, b, c]).fields;
+    expect([all.notes, all.avg_hr, all.max_hr]).toEqual(["from-a", 150, 180]);
+    // Un-folding a and c (the partial-undo case) leaves b's contribution alone.
+    const onlyB = keeperFoldState(before, [b]).fields;
+    expect([onlyB.notes, onlyB.avg_hr, onlyB.max_hr]).toEqual([
+      null,
+      150,
+      null,
+    ]);
+  });
+
+  it("is independent of the order the members are passed in", () => {
+    expect(keeperFoldState(before, [a, b, c])).toEqual(
+      keeperFoldState(before, [c, a, b])
+    );
+  });
+
+  it("hands a shared gap to the next remaining member when the filler leaves", () => {
+    // Both drops can fill avg_hr; fold order decides which does. Removing the
+    // winner must surface the other's value, not the keeper's gap.
+    const b2 = { id: 5, avg_hr: 160 };
+    const both = keeperFoldState(before, [b, b2]).fields.avg_hr;
+    expect([150, 160]).toContain(both);
+    expect(keeperFoldState(before, [b2]).fields.avg_hr).toBe(160);
+  });
+
+  it("keeper-wins COALESCEs the equipment link across the remaining members", () => {
+    expect(
+      keeperFoldState(before, [{ id: 6, equipment_id: 9 }]).equipmentId
+    ).toBe(9);
+    expect(
+      keeperFoldState({ ...before, equipment_id: 4 }, [
+        { id: 6, equipment_id: 9 },
+      ]).equipmentId
+    ).toBe(4);
+    expect(keeperFoldState(before, []).equipmentId).toBeNull();
+  });
+
+  it("drops an override naming a member that has left, keeps one naming a stayer", () => {
+    const overrides = { duration_min: 3 } as const;
+    // b (id 3) is still folded in → its chosen value wins over the keeper's own.
+    expect(
+      keeperFoldState(before, [{ ...b, duration_min: 99 }], overrides).fields
+        .duration_min
+    ).toBe(99);
+    // b has been restored → it is no longer a member, so the choice resolves to
+    // nothing and the keeper's own value stands.
+    expect(keeperFoldState(before, [a], overrides).fields.duration_min).toBe(
+      30
+    );
   });
 });

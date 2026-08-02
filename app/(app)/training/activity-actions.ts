@@ -133,13 +133,19 @@ export async function logBodyweight(
 // the whole N-way merge is UNDOABLE from a toast (issue #30).
 //
 // FULLY-INVERTIBLE undo (issues #199/#200), now across N drops: every dropped row is
-// captured with its OWN MergeUndoContext — the shared pre-fold keeper snapshot, that
-// drop's re-parented set ids (#199) + moved route id (#569), and the keeper↔drop pair
-// signature — so undoing (via the batch undoDeletes) re-inserts every dropped row,
-// moves each one's sets back off the keeper, restores the keeper's pre-fold fields
-// (idempotent across the N tokens — the same snapshot), and clears every recorded
-// 'merged' decision so the un-merged pairs resurface in Review. The undo of a
-// chosen-away originating card brings it back exactly like any other drop.
+// captured with its OWN MergeUndoContext — the shared pre-fold keeper snapshot, the
+// shared merge id + override choices, that drop's re-parented set ids (#199) + moved
+// route id (#569), and the keeper↔drop pair signature — so undoing (via the batch
+// undoDeletes) re-inserts every dropped row, moves each one's sets back off the
+// keeper, re-folds the keeper from whatever drops are still merged into it, and clears
+// every recorded 'merged' decision so the un-merged pairs resurface in Review. The
+// undo of a chosen-away originating card brings it back exactly like any other drop.
+//
+// PARTIAL-BATCH SAFETY (#1884): the batch undo isolates a token whose restore throws
+// (#202's design), so any SUBSET of the drops can come back. Each drop's undo removes
+// only its own contribution — the keeper is recomputed as the fold over the drops
+// still merged in, and children always follow their own row — so a failed token leaves
+// its drop's data on the keeper (reachable, retriable) rather than nowhere.
 //
 // Same-profile + same-day are enforced server-side (the untrusted form ids), even
 // though the UI only ever offers same-day siblings.
@@ -208,6 +214,11 @@ export async function mergeActivities(
       moves.map((m) => [m.dropId, m.movedRouteId])
     );
 
+    // One identity for THIS merge, stamped on every drop's undo context (#1884), so an
+    // undo can find the merge's other drops that are still folded into the keeper and
+    // un-fold only its own contribution. Opaque and non-PHI.
+    const mergeId = crypto.randomUUID();
+
     const tokens: number[] = [];
     for (const drop of drops) {
       const signature = pairSignature(
@@ -220,9 +231,11 @@ export async function mergeActivities(
       // per-drop merge context rides in the payload so undo fully inverts (#200).
       const undoId = captureDelete("activity", profile.id, drop.id as number, {
         keeperId: keepId,
+        mergeId,
         domain: ACTIVITY_DOMAIN,
         signature,
         keeperBefore,
+        overrides,
         movedSetIds: setIdsByDrop.get(drop.id as number) ?? [],
         movedRouteId: movedRouteByDrop.get(drop.id as number) ?? null,
       });

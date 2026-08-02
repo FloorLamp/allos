@@ -310,9 +310,11 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
 
     // Merge-undo inversion (#199/#200): when the captured row was the discarded side
     // of an activity merge, also reverse the merge's keeper-side effects now that the
-    // drop row is back — move its re-parented sets off the keeper, restore the
-    // keeper's pre-fold fields, and clear the recorded pair decision. Gated on the
-    // presence of the merge context, so every OTHER undo kind is untouched.
+    // drop row is back — move its re-parented sets off the keeper, re-fold the keeper
+    // from the drops still merged into it (#1884), and clear the recorded pair
+    // decision. Gated on the presence of the merge context, so every OTHER undo kind
+    // is untouched. `undoId` is passed so the inversion can tell THIS drop's holding
+    // row (deleted just below, still present now) from its still-folded siblings'.
     if (payload.merge) {
       const rootEntity = spec.entities[0].entity;
       const oldRootId = payload.rows[rootEntity]?.[0]?.id;
@@ -321,7 +323,7 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
           ? idMaps[rootEntity]?.get(oldRootId)
           : undefined;
       if (typeof newDropId === "number")
-        revertActivityMerge(profileId, payload.merge, newDropId);
+        revertActivityMerge(profileId, payload.merge, newDropId, undoId);
     }
 
     // Remove the re-import tombstone the delete/merge wrote (#200 side-effect
