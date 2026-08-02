@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { getIntegration } from "@/lib/integrations/registry";
 import {
   SOURCE_FIDELITY,
@@ -74,7 +75,7 @@ export default async function HealthConnectPage() {
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 
-      <div className="grid max-w-3xl gap-6">
+      <PageContainer width="reading" className="grid gap-6">
         <HealthConnectSetup
           endpoint={endpoint}
           connected={connected}
@@ -176,9 +177,9 @@ export default async function HealthConnectPage() {
             <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
           </>
         )}
-      </div>
 
-      <RecommendedSettings />
+        <RecommendedSettings />
+      </PageContainer>
     </div>
   );
 }
@@ -197,7 +198,7 @@ const SETTING_LABEL: Record<ExporterSetting, string> = {
 function RecommendedSettings() {
   return (
     <div
-      className="card mt-6 max-w-3xl space-y-3 text-sm text-slate-600 dark:text-slate-300"
+      className="card space-y-3 text-sm text-slate-600 dark:text-slate-300"
       data-testid="hc-recommended-settings"
     >
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">

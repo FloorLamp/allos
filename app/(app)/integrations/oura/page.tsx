@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getOuraConfig } from "@/lib/integrations/connections";
@@ -71,7 +72,7 @@ export default async function OuraPage(props: {
       )}
 
       {connected ? (
-        <div className="grid max-w-3xl gap-6">
+        <PageContainer width="reading" className="grid gap-6">
           <div className="card space-y-2">
             <IntegrationStatusHeader
               state={state}
@@ -97,9 +98,9 @@ export default async function OuraPage(props: {
           <SetupCard />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
-        </div>
+        </PageContainer>
       ) : (
-        <div className="grid max-w-3xl gap-6">
+        <PageContainer width="reading" className="grid gap-6">
           <div className="card space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Paste your Oura <strong>personal access token</strong>. Create one
@@ -139,7 +140,7 @@ export default async function OuraPage(props: {
           </div>
 
           <SetupCard />
-        </div>
+        </PageContainer>
       )}
     </div>
   );

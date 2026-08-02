@@ -174,18 +174,29 @@ export default function BulkCorrectionCard({
         : `New value (${displayUnit})`;
 
   return (
-    <div
+    // A power tool used a few times a year, so it collapses to ONE summary line at
+    // the bottom of Review (#1880 item 6). A ?fix= deep-link (initialField) opens it
+    // pre-selected — a native <details>, so the toggle needs no hydration.
+    <details
       id="bulk-correction"
       className="card scroll-mt-4"
       data-testid="bulk-correction-card"
+      open={initialField != null}
     >
-      <div className="mb-1 flex items-center gap-2">
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2"
+        data-testid="bulk-correction-toggle"
+      >
         <IconAdjustments className="h-5 w-5 text-brand-600 dark:text-brand-400" stroke={1.75} />
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+        <span className="font-semibold text-slate-800 dark:text-slate-100">
           Fix a run of data
-        </h2>
-      </div>
-      <p className="text-sm text-slate-500 dark:text-slate-400">
+        </span>
+        <span className="text-sm text-slate-500 dark:text-slate-400">
+          — correct a whole stretch at once (miscalibrated scale, lb-as-kg
+          import)
+        </span>
+      </summary>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
         Correct a whole stretch at once — a miscalibrated scale, an import that
         landed pounds as kilograms. Pick the rows, preview every change, then
         apply. Corrections can be undone for 24 hours.
@@ -423,6 +434,6 @@ export default function BulkCorrectionCard({
             {preview.message}
           </p>
         ))}
-    </div>
+    </details>
   );
 }

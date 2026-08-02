@@ -1,8 +1,13 @@
 import { IconHistory } from "@tabler/icons-react";
 import type { IntegrationState } from "@/lib/queries/integrations";
+import type { IntegrationId } from "@/lib/types";
+import { getIntegration } from "@/lib/integrations/registry";
+import { syncStalenessThreshold } from "@/lib/integrations/staleness";
 import {
   buildHistoryRows,
+  escalationPolicyLabel,
   eventVerdict,
+  failureRunReason,
   formatSyncChange,
   quietRunLabel,
   runWindowNorm,
@@ -37,11 +42,16 @@ export default function SyncHistoryTable({
 }) {
   const { history, vocabulary } = state;
   const rows = buildHistoryRows(history, vocabulary);
-  // Stated ONCE above the table; a row shows its own window only when it departs from
-  // this — which is exactly when the window carries signal (see #1771's failure-vs-
-  // success asymmetry), instead of being noise on every row.
+  // Stated ONCE above the table, from the LATEST run (#1880 item 4) — after a day
+  // rollover the header must agree with the newest row, so OLDER rows note their
+  // divergence ("covered → …, before the day rolled"), never the reverse.
   const norm = runWindowNorm(history, vocabulary);
   const provenance = new Set(state.provenanceEventIds);
+  // The visible escalation policy (#1880 item 1): the page states the one shared
+  // rule, so the amber/red the badge and digest will show is never a surprise.
+  const policy = escalationPolicyLabel(
+    syncStalenessThreshold(getIntegration(state.id as IntegrationId))
+  );
 
   return (
     <div className="card" data-testid="sync-history">
@@ -104,6 +114,36 @@ export default function SyncHistoryTable({
                       </td>
                       <td className="py-2 pr-3 align-top" colSpan={3}>
                         {quietRunLabel(row.count, vocabulary)}
+                      </td>
+                    </tr>
+                  );
+                }
+                if (row.kind === "failure-run") {
+                  // Consecutive IDENTICAL failures collapse (#1880 item 3) — the
+                  // same treatment consecutive no-ops get, so the table SHOWS the
+                  // flap pattern instead of striping it.
+                  const reason = failureRunReason(row.count, row.error);
+                  return (
+                    <tr
+                      key={`failures-${row.newest.id}`}
+                      data-testid="sync-history-failure-run"
+                    >
+                      <td className="py-2 pr-3 align-top text-xs text-slate-500 dark:text-slate-400">
+                        <SyncTimestamp value={row.newestAt} relativeOnly /> –{" "}
+                        <SyncTimestamp value={row.oldestAt} relativeOnly />
+                      </td>
+                      <td className="py-2 pr-3 align-top" colSpan={3}>
+                        <span className={`font-medium ${STATUS_TEXT_TONE.bad}`}>
+                          Failed ×{row.count}
+                        </span>
+                        {reason && (
+                          <p className="mt-0.5 break-words text-xs text-rose-700 dark:text-rose-300">
+                            {reason}
+                          </p>
+                        )}
+                        {isAdmin && row.newest.raw_ref && (
+                          <RawPayloadViewer id={row.newest.id} />
+                        )}
                       </td>
                     </tr>
                   );
@@ -172,6 +212,13 @@ export default function SyncHistoryTable({
           </table>
         </div>
       )}
+
+      <p
+        className="mt-3 max-w-prose rounded-lg border border-dashed border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+        data-testid="escalation-policy"
+      >
+        {policy}
+      </p>
     </div>
   );
 }

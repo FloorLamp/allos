@@ -2,11 +2,16 @@ import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
 import type { IntegrationId } from "@/lib/types/integrations";
 import { integrationDetailHref } from "@/lib/hrefs";
+import { getIntegration } from "@/lib/integrations/registry";
 import type { ConnectedSource } from "@/lib/queries/integrations";
 import {
+  failureConsequence,
   formatSyncOutcome,
+  intermittentReassurance,
+  intermittentRunsLabel,
   needsAttention,
   standingBadge,
+  standingEscalates,
 } from "@/lib/integrations/provider-state";
 import SyncNowButton from "@/components/SyncNowButton";
 import StatusBadge from "@/components/integrations/StatusBadge";
@@ -25,8 +30,12 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 // over getIntegrationState) and the surfaces have deliberate, different ROLES:
 //
 //   • the setup page is the provider's HOME — status header, controls, full history;
-//   • this is the INBOX — providers that need attention, with the reason and the
-//     action; healthy providers collapse to a single line that links home.
+//   • Review's "Needs attention" card IS the alert for a genuinely-broken source
+//     (#1880 item 2) — EscalatedSources below, rendered by ReviewInbox: standing
+//     chip, reason, consequence in user terms, and ALL the actions, once;
+//   • this card is the calm rest — a provider with something unfinished (partial /
+//     not-connected) expands with its reason, a flapping one states its pattern as
+//     an amber one-liner, and a healthy one collapses to a single line linking home.
 //
 // History renders in exactly ONE place still (#1212's rule holds): it moved home.
 // Server component — the page reads the sources via lib/queries (getConnectedSources).
@@ -77,13 +86,16 @@ function SourceAction({ source }: { source: ConnectedSource }) {
 }
 
 // A provider that needs attention: the full shared status header (the same component
-// its own page leads with), its action, and a link to the full history.
+// its own page leads with), its action, and a link to the full history. `consequence`
+// adds the user-terms cost of the breakage on the escalated card (#1880 item 2).
 function AttentionCard({
   source,
   isAdmin,
+  consequence = false,
 }: {
   source: ConnectedSource;
   isAdmin: boolean;
+  consequence?: boolean;
 }) {
   const href = homeHref(source);
   return (
@@ -110,16 +122,63 @@ function AttentionCard({
           </>
         }
       />
+      {consequence && (
+        <p
+          className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+          data-testid={`source-consequence-${source.id}`}
+        >
+          {failureConsequence(
+            source.name,
+            getIntegration(source.id as IntegrationId)?.stoppedConsequence
+          )}
+        </p>
+      )}
     </li>
   );
 }
 
-// A healthy provider: one line. Nothing here needs doing, so the inbox states it and
-// gets out of the way — the same badge, the same outcome sentence, and the same
-// timestamp treatment as everywhere else, just compact.
+// The escalated sources — standing `failing` or `needs-reauth` — rendered ONCE,
+// fully, inside Review's "Needs attention" card (#1880 item 2). The alert IS the
+// card: chip, reason, consequence, and every action together; nothing about these
+// providers renders a second time further down the page.
+export function EscalatedSources({
+  sources,
+  isAdmin = false,
+}: {
+  sources: ConnectedSource[];
+  isAdmin?: boolean;
+}) {
+  if (sources.length === 0) return null;
+  return (
+    <ul className="space-y-3" data-testid="sources-escalated">
+      {sources.map((source) => (
+        <AttentionCard
+          key={source.id}
+          source={source}
+          isAdmin={isAdmin}
+          consequence
+        />
+      ))}
+    </ul>
+  );
+}
+
+// Which sources belong on the escalated card. Exported so ReviewInbox splits with
+// the same rule the badge and digest use (standingEscalates) — one decision.
+export function isEscalatedSource(source: ConnectedSource): boolean {
+  return standingEscalates(source.standing);
+}
+
+// A healthy or flapping provider: one line. Nothing here needs doing, so the inbox
+// states it and gets out of the way — the same badge, the same outcome sentence, and
+// the same timestamp treatment as everywhere else, just compact. A flapping source
+// (#1880 item 1) states the honest pattern instead of its latest event's verdict:
+// "2 of the last 8 runs failed · last success 1 hour ago" — calm amber, never an
+// alert.
 function HealthyRow({ source }: { source: ConnectedSource }) {
   const badge = standingBadge(source.standing);
   const href = homeHref(source);
+  const intermittent = source.standing === "intermittent";
   const outcome = source.latest
     ? formatSyncOutcome(source.latest, source.vocabulary)
     : null;
@@ -134,15 +193,35 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
           tone={badge.tone}
           testid={`sync-status-${source.id}`}
         />
-        <span
-          className={`text-sm ${
-            outcome && !outcome.muted
-              ? "text-slate-700 dark:text-slate-200"
-              : "text-slate-500 dark:text-slate-400"
-          }`}
-        >
-          {outcome ? outcome.primary : "No syncs yet"}
-        </span>
+        {intermittent ? (
+          <span
+            className="text-sm text-slate-500 dark:text-slate-400"
+            data-testid={`intermittent-fact-${source.id}`}
+          >
+            {intermittentRunsLabel(
+              source.recentRuns.failed,
+              source.recentRuns.total
+            )}
+            {source.lastSuccessAt && (
+              <>
+                {" "}
+                · last success{" "}
+                <SyncTimestamp value={source.lastSuccessAt} relativeOnly />
+              </>
+            )}{" "}
+            · {intermittentReassurance(source.vocabulary)}
+          </span>
+        ) : (
+          <span
+            className={`text-sm ${
+              outcome && !outcome.muted
+                ? "text-slate-700 dark:text-slate-200"
+                : "text-slate-500 dark:text-slate-400"
+            }`}
+          >
+            {outcome ? outcome.primary : "No syncs yet"}
+          </span>
+        )}
       </span>
       <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
         {source.latest && (
@@ -177,9 +256,12 @@ export default function ConnectedSources({
   sources: ConnectedSource[];
   isAdmin?: boolean;
 }) {
-  if (sources.length === 0) return null;
-  const attention = sources.filter((s) => needsAttention(s.standing));
-  const healthy = sources.filter((s) => !needsAttention(s.standing));
+  // The escalated sources render ONCE, on Review's "Needs attention" card
+  // (EscalatedSources) — never a second time here (#1880 item 2).
+  const rest = sources.filter((s) => !isEscalatedSource(s));
+  if (rest.length === 0) return null;
+  const attention = rest.filter((s) => needsAttention(s.standing));
+  const healthy = rest.filter((s) => !needsAttention(s.standing));
   return (
     <div className="card" data-testid="connected-sources">
       <div className="mb-1">
@@ -187,9 +269,9 @@ export default function ConnectedSources({
           Connected sources
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Devices and services that sync automatically. Anything needing your
-          attention is expanded with the reason and what to do; the rest are one
-          line each. Open a source for its controls and full sync history.
+          Devices and services that sync automatically. Anything unfinished is
+          expanded with the reason and what to do; the rest are one line each.
+          Open a source for its controls and full sync history.
         </p>
       </div>
       {attention.length > 0 && (

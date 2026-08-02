@@ -1,8 +1,12 @@
 import { IconCheck, IconCircle } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { IntegrationState } from "@/lib/queries/integrations";
+import { staleSyncDetail } from "@/lib/integrations/staleness";
 import {
   formatCoverage,
+  intermittentReassurance,
+  intermittentRunsLabel,
+  INTERMITTENT_HEADLINE,
   standingBadge,
 } from "@/lib/integrations/provider-state";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
@@ -82,23 +86,59 @@ export default function IntegrationStatusHeader({
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        {latest ? (
-          <SyncOutcomeLine ev={latest} vocabulary={vocabulary} />
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
-            No syncs yet
-          </span>
-        )}
-        {coverage && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {coverage}
-          </span>
-        )}
-      </div>
+      {standing === "intermittent" ? (
+        // A FLAPPING provider's header states the pattern, not the last event
+        // (#1880 item 1): what is true ("working, with interruptions"), the honest
+        // tally, and why nothing is lost — the question a person actually has.
+        <div className="mt-2" data-testid="intermittent-summary">
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+            {INTERMITTENT_HEADLINE}
+            {state.lastSuccessAt && (
+              <>
+                {" "}
+                — last success{" "}
+                <SyncTimestamp value={state.lastSuccessAt} relativeOnly />.
+              </>
+            )}
+          </p>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            {intermittentRunsLabel(
+              state.recentRuns.failed,
+              state.recentRuns.total
+            )}{" "}
+            · {intermittentReassurance(vocabulary)}.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {latest ? (
+            <SyncOutcomeLine ev={latest} vocabulary={vocabulary} />
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+              <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
+              No syncs yet
+            </span>
+          )}
+          {coverage && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {coverage}
+            </span>
+          )}
+        </div>
+      )}
 
-      {latest && !latest.ok && latest.error && (
+      {/* The quiet stop (#1685): a `failing` standing whose latest run SUCCEEDED —
+          the escalation came from the staleness breach, so the outcome line above
+          honestly says "Refreshed/Synced" and THIS states what is wrong. */}
+      {state.stale && latest?.ok ? (
+        <p
+          className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300"
+          data-testid={`sync-stale-${state.id}`}
+        >
+          {staleSyncDetail(state.name, state.stale)}
+        </p>
+      ) : null}
+      {standing !== "intermittent" && latest && !latest.ok && latest.error && (
         <p
           className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300"
           data-testid={`sync-error-${latest.id}`}
@@ -107,13 +147,17 @@ export default function IntegrationStatusHeader({
         </p>
       )}
       {/* When the latest attempt failed, say when data last actually arrived — the
-          question every reader of a red card has next. */}
-      {latest && !latest.ok && state.lastSuccessAt && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Last successful sync{" "}
-          <SyncTimestamp value={state.lastSuccessAt} relativeOnly />.
-        </p>
-      )}
+          question every reader of a red card has next. (The intermittent branch
+          already leads with its last success.) */}
+      {standing !== "intermittent" &&
+        latest &&
+        !latest.ok &&
+        state.lastSuccessAt && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Last successful sync{" "}
+            <SyncTimestamp value={state.lastSuccessAt} relativeOnly />.
+          </p>
+        )}
       {latest && <SyncDetailsNotes ev={latest} />}
       {latest && written > 0 && provenance.has(latest.id) && (
         <SyncRowsDrilldown eventId={latest.id} count={written} />

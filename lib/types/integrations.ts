@@ -71,6 +71,12 @@ export interface IntegrationDef {
   // staleness.ts) so the badge, the attention item, and the digest line share one
   // derivation (#221).
   staleAfterDays?: number | null;
+  // The consequence of THIS provider being broken, in user terms (#1880 item 2):
+  // what stops arriving, named the way the user thinks of it ("measurements from
+  // your scale and cuff"), not by transport. Rendered on the escalated Review card
+  // through failureConsequence (lib/integrations/provider-state.ts), which owns
+  // the generic fallback for providers that don't declare one.
+  stoppedConsequence?: string;
 }
 
 // Persisted connection state for a provider (integration_connections table).

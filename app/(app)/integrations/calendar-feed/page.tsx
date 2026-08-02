@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { getIntegration } from "@/lib/integrations/registry";
 import {
   getCalendarFeed,
@@ -122,7 +123,7 @@ export default async function CalendarFeedPage() {
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 
-      <div className="grid max-w-3xl gap-6">
+      <PageContainer width="reading" className="grid gap-6">
         <CalendarFeedConfig
           enabled={feed.enabled}
           detail={feed.detail}
@@ -207,7 +208,7 @@ export default async function CalendarFeedPage() {
             />
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }
