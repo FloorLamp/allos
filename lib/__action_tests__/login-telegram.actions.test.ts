@@ -14,7 +14,7 @@ import {
   getLoginTelegram,
   isProfileMutedForLogin,
   getNotifyReviewNeeded,
-  setNotifyReviewNeeded,
+  setLoginSetting,
   getProfileSetting,
 } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -55,7 +55,9 @@ describe("saveLoginTelegram (login tier)", () => {
     const login = createLogin();
     const profile = createProfile("lt-review", login.id);
     actAs(login, profile);
-    setNotifyReviewNeeded(login.id);
+    // Arm the flag the way its ONE writer (migration 105) does — the exported
+    // setter was removed with no production caller (#1869 item 3).
+    setLoginSetting(login.id, "notify_review_needed", "1");
     expect(getNotifyReviewNeeded(login.id)).toBe(true);
 
     await saveLoginTelegram(
