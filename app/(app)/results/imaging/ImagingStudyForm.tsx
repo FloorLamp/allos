@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -33,7 +32,6 @@ export default function ImagingStudyForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
@@ -57,7 +55,6 @@ export default function ImagingStudyForm({
     if (!editing) formRef.current?.reset();
     onDone?.();
     if (!editing) closeEntryModal?.();
-    router.refresh();
   }
 
   const uid = study?.id ?? "new";

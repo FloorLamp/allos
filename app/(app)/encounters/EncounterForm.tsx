@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -42,7 +41,6 @@ export default function EncounterForm({
   // form's built-in "Add visit" heading to avoid a doubled title.
   embedded?: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!encounter;
@@ -76,7 +74,6 @@ export default function EncounterForm({
     }
     onDone?.();
     onSaved?.();
-    router.refresh();
   }
 
   const uid = encounter?.id ?? "new";

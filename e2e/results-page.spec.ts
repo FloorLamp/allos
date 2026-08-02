@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_REPORTS_EMPTY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as
 // route-per-tab (`/results/<tab>`), superseding the #1042 stacked-section page. A
@@ -42,6 +44,37 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   expect(addBox).not.toBeNull();
   expect(searchBox).not.toBeNull();
   expect(Math.abs(addBox!.y - searchBox!.y)).toBeLessThan(3);
+});
+
+test("the empty Biomarkers action opens the add-result modal", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_REPORTS_EMPTY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/results/biomarkers");
+    await expect(
+      page.getByText("No results yet.", { exact: false })
+    ).toBeVisible();
+
+    await followLink(
+      page,
+      page.getByRole("link", { name: /^Add result/ }),
+      /\/results\/biomarkers\?new=1(?:#add-result)?$/
+    );
+
+    await expect(page.getByTestId("add-result-panel")).toHaveAttribute(
+      "data-open",
+      "true"
+    );
+    await expect(
+      page.getByRole("dialog", { name: "Add medical record" })
+    ).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
 });
 
 test("mobile Results starts with four shell-owned route tabs", async ({

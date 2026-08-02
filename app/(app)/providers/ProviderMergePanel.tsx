@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconChevronDown, IconGitMerge } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -37,7 +36,6 @@ export default function ProviderMergePanel({
   const [busy, setBusy] = useState(false);
   const confirm = useConfirm();
   const toast = useToast();
-  const router = useRouter();
 
   if (candidates.length === 0) return null;
 
@@ -68,7 +66,6 @@ export default function ProviderMergePanel({
       return;
     }
     toast("Providers merged");
-    router.refresh();
   }
 
   return (

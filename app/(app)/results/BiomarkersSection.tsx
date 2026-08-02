@@ -71,6 +71,7 @@ export default function BiomarkersSection({
   const canonicalOptions = getCanonicalAutocomplete(scope.actingProfileId);
   const now = today(scope.actingProfileId);
   const ids = scope.viewIds;
+  const openEntryPanel = entryPanelOpen(searchParams);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -137,12 +138,16 @@ export default function BiomarkersSection({
               current={current}
               action={
                 <AddEntryPanel
+                  // A same-route ?new=1 Link preserves this client component. Change
+                  // its identity only when route intent changes so defaultOpen is
+                  // deliberately re-applied without making the modal controlled.
+                  key={openEntryPanel ? "route-add-intent" : "browse-intent"}
                   id="add-result"
                   testId="add-result-panel"
                   panelId="add-result-panel-body"
                   label="Add medical record"
                   addLabel="Add result"
-                  defaultOpen={entryPanelOpen(searchParams)}
+                  defaultOpen={openEntryPanel}
                   presentation="modal"
                 >
                   <RecordForm

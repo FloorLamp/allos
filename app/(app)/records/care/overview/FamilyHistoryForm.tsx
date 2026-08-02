@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
@@ -48,7 +47,6 @@ export default function FamilyHistoryForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
@@ -123,7 +121,6 @@ export default function FamilyHistoryForm({
       closeEntryModal?.();
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = entry?.id ?? "new";

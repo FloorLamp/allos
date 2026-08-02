@@ -97,11 +97,10 @@ test("a documented allergy keeps its corroborating IgE evidence", async ({
     const biomarkerLink = sensitizations
       .getByTestId("lab-sensitization-biomarker-link")
       .filter({ hasText: CORROBORATED_ALLERGEN });
-    await expect(biomarkerLink).toHaveAttribute(
-      "href",
-      `/biomarkers/view?name=${encodeURIComponent(CORROBORATING_MARKER)}`
-    );
-    await expect(biomarkerLink).not.toHaveAttribute("href", /\/import\//);
+    // This manual reading has no canonical_name. Its raw marker is useful evidence,
+    // but it cannot identify a canonical detail family without landing on an empty
+    // "No readings found" page.
+    await expect(biomarkerLink).toHaveAttribute("href", "/results/biomarkers");
   } finally {
     clearCorroboratedFixture();
   }

@@ -166,6 +166,7 @@ export interface StoredAllergyInput {
 
 export interface IgESensitizationInput {
   allergen: string; // extracted allergen name
+  canonicalName: string | null; // null means the biomarker detail family is unresolved
   marker: string; // full analyte name
   value: string | null;
   valueNum: number | null;

@@ -115,7 +115,10 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                 {labSensitizations.map((a) => (
                   <li key={a.key}>
                     <Link
-                      href={biomarkerViewHref(a.evidence?.marker)}
+                      href={biomarkerViewHref(
+                        a.evidence?.canonicalName,
+                        a.evidence?.marker
+                      )}
                       className="font-medium text-brand-700 hover:underline dark:text-brand-300"
                       data-testid="lab-sensitization-biomarker-link"
                     >
