@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 
@@ -11,6 +11,9 @@ import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 //    "Use '<query>'" row is offered. (Used by SupplementCombobox.)
 // `onPick` fires only when the user actually chooses an entry (vs. typing), so
 // callers can auto-fill sibling fields.
+// `groupFor` (#1675) adds optional headers to the EMPTY-QUERY list, which is what
+// turns a long ranked option list into a readable relevance view; typing is
+// unchanged for every caller, grouped or not.
 export default function Combobox({
   value,
   onChange,
@@ -25,6 +28,7 @@ export default function Combobox({
   iconFor,
   labelFor,
   searchTermsFor,
+  groupFor,
   allowFreeText = false,
   emptyLabel = "No matches",
   freeTextLabel,
@@ -58,6 +62,12 @@ export default function Combobox({
   // Hidden aliases for matching while keeping the option's visible label stable.
   // Used by the protocol outcome picker so "A1c" finds "Hemoglobin A1c".
   searchTermsFor?: (option: string) => readonly string[];
+  // Group headers for the EMPTY-QUERY list only (#1675). An empty query is the
+  // relevance view — the caller hands options in ranked order and names each row's
+  // bucket here, so "Due or flagged" leads and the header says why. Typing is
+  // unchanged: a fuzzy search runs over everything and shows a flat result list,
+  // because a header over one match is noise. Return null to leave a row unheaded.
+  groupFor?: (option: string) => string | null;
   allowFreeText?: boolean;
   emptyLabel?: string;
   // Renders the free-text row for the current query; default: Use "<query>".
@@ -89,6 +99,8 @@ export default function Combobox({
   const filtered = searchTermsFor
     ? fuzzyFilterWithTerms(options, value, searchTermsFor, 8)
     : fuzzyFilter(options, value, 8);
+  // Headers only in the relevance view (see `groupFor`).
+  const showGroups = groupFor != null && q === "";
   const showUse =
     allowFreeText &&
     value.trim() !== "" &&
@@ -257,29 +269,46 @@ export default function Combobox({
               {emptyLabel}
             </li>
           ) : (
-            filtered.map((o, i) => (
-              <li key={o}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pick(o);
-                  }}
-                  onMouseEnter={() => setHighlight(i)}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
-                    i === highlight
-                      ? highlightCls
-                      : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {iconFor?.(o)}
-                    <span className="truncate">{labelFor?.(o) ?? o}</span>
-                  </span>
-                  {badgeFor?.(o)}
-                </button>
-              </li>
-            ))
+            filtered.map((o, i) => {
+              const group = showGroups ? groupFor(o) : null;
+              const prev =
+                showGroups && i > 0 ? groupFor(filtered[i - 1]) : null;
+              return (
+                <Fragment key={o}>
+                  {group && group !== prev && (
+                    <li
+                      role="presentation"
+                      data-testid="combobox-group"
+                      className="section-label px-3 pb-1 pt-2"
+                    >
+                      {group}
+                    </li>
+                  )}
+                  <li>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pick(o);
+                      }}
+                      onMouseEnter={() => setHighlight(i)}
+                      data-testid="combobox-option"
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
+                        i === highlight
+                          ? highlightCls
+                          : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {iconFor?.(o)}
+                        <span className="truncate">{labelFor?.(o) ?? o}</span>
+                      </span>
+                      {badgeFor?.(o)}
+                    </button>
+                  </li>
+                </Fragment>
+              );
+            })
           )}
           {showUse && (
             <li>

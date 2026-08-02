@@ -5,7 +5,7 @@ import {
   getMedicalDocument,
   getDocumentProduced,
   getRecordsForDocument,
-  getCanonicalAutocomplete,
+  getRankedBiomarkerOptions,
   getRankedPickerProviders,
   getDocumentVisits,
   getDocumentConditions,
@@ -25,6 +25,7 @@ import {
   getDocumentProviders,
   createVisitOffers,
 } from "@/lib/queries";
+import { today } from "@/lib/db";
 import { getUserFullName, getUnitPrefs } from "@/lib/settings";
 import { portalById } from "@/lib/portals";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
@@ -323,7 +324,13 @@ export default async function ImportDetailPage(props: {
     activeTab?.kind === "providers"
       ? providerItems(getDocumentProviders(profile.id, id))
       : [];
-  const canonicalOptions = getCanonicalAutocomplete(profile.id);
+  // The mapping field's canonical-name picker (#1675): relevance-ranked over the
+  // same shared builder the Biomarkers page uses, so re-mapping an import row offers
+  // the analytes that matter before the A–Z body of ~200.
+  const canonicalOptions = getRankedBiomarkerOptions(
+    profile.id,
+    today(profile.id)
+  );
   // "Create a visit from this record?" (#1099), scoped to the records THIS document
   // produced: a visit-implying optical/dental/imaging row dated D with no encounter
   // that day. Read-time — an encounter imported alongside self-heals the prompt away.
@@ -337,7 +344,7 @@ export default async function ImportDetailPage(props: {
 
   return (
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
-      <CanonicalNamesProvider names={canonicalOptions}>
+      <CanonicalNamesProvider options={canonicalOptions}>
         <div>
           <Link
             href="/data?section=review"
