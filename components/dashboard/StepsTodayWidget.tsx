@@ -8,10 +8,16 @@ import CountUpNumber from "@/components/CountUpNumber";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import type { StepsTodaySummary } from "@/lib/steps-today";
 
-// Dashboard "Steps today" tile (issue #1221): today's step count against the trailing
-// 7-day average — a thin FORMATTER over the SAME summarizeStepsToday aggregation the
+// Dashboard "Steps today" tile (issue #1221): today's step count against the PRIOR
+// seven days — a thin FORMATTER over the SAME summarizeStepsToday aggregation the
 // gather feeds from getMetricDailyTotals(profileId, "steps") (#221). The arrow carries
 // a text equivalent (the #1220 non-color channel), never color alone.
+//
+// The copy says "prior 7 days", not "7-day average" (#1909): the metric detail page's
+// Rolling summary answers a DIFFERENT question over a different window basis, and two
+// adjacent surfaces reading "7-day average" with two different numbers is
+// indistinguishable from a bug. This card's baseline is the days BEFORE today — the
+// thing today is being compared against — and now says so.
 export default function StepsTodayWidget({
   summary,
 }: {
@@ -32,7 +38,7 @@ export default function StepsTodayWidget({
         : "text-slate-500 dark:text-slate-400";
   const deltaText =
     deltaPct != null
-      ? `${deltaPct > 0 ? "+" : ""}${deltaPct}% vs 7-day average`
+      ? `${deltaPct > 0 ? "+" : ""}${deltaPct}% vs prior 7 days`
       : null;
   return (
     <div className="card" data-testid="steps-today-widget">
@@ -60,7 +66,7 @@ export default function StepsTodayWidget({
           </div>
           {average7 != null && (
             <div className="text-sm text-slate-600 dark:text-slate-300">
-              7-day average · {average7.toLocaleString("en-US")} steps
+              Prior 7 days · {average7.toLocaleString("en-US")} steps a day
             </div>
           )}
           {deltaText && direction && (
