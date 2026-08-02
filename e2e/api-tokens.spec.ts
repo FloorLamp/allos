@@ -38,6 +38,12 @@ test.describe("API tokens (#1734)", () => {
     const name = `spec token ${Date.now()}`; // clock-ok: a uniqueness suffix for this spec's own fixture row, never a stored timestamp — the token's created_at is stamped by the server
     await page.goto("/settings/tokens");
 
+    // With exactly one scope in the vocabulary, the mint form states the capability
+    // as text — a one-option <select> implied a choice that doesn't exist (#1869).
+    await expect(page.getByTestId("api-token-capability")).toHaveText(
+      "Upload documents"
+    );
+
     await settledFill(page, page.getByTestId("api-token-name"), name);
     await hydratedClick(page, page.getByTestId("api-token-create"));
 
