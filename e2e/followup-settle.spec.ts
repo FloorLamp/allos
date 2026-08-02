@@ -116,10 +116,12 @@ test.describe("Follow-up terminator — resolve/decline on Upcoming (#1866)", ()
       page.getByTestId(`imaging-followup-state-${studyId}`)
     ).toHaveText("Follow-up: declined");
 
-    // The care-plan overview records the decision + the free-text reason.
-    await page.goto("/records/care/overview");
+    // The care-plan overview records the decision + the free-text reason. Since
+    // the #1804 hub redesign the section sits behind a <details> disclosure; the
+    // #care-plan hash reveals it (the same navigation care-plan.spec.ts uses).
+    await page.goto("/records/care/overview#care-plan");
     const careRow = page
-      .getByRole("row")
+      .locator("tr")
       .filter({ hasText: `Follow-up CT ${REGION} S${studyId}` });
     await expect(careRow).toContainText("Declined");
     await expect(careRow).toContainText(
