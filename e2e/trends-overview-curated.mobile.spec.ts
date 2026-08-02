@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { followLink, settledClick, settledSelect } from "./helpers";
+import { followLink, settledClick, settledPickOption } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_CURATE,
@@ -118,12 +118,16 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       await expect(tile(page, "Weight")).toHaveCount(1);
 
       // The way back (this is why the picker offers METRICS, not just biomarkers).
-      // The select goes through settledSelect: since #1644 the hub is one long
-      // streamed page, so hydration lands later and a raw selectOption can set a
-      // value React has not attached to yet — the Star would then submit the
-      // stale one.
+      // It goes through settledPickOption: the picker is the shared Combobox since
+      // #1675, and since #1644 the hub is one long streamed page, so hydration lands
+      // later and a value set before React attaches would be reverted — the Star
+      // would then submit the stale one.
       const picker = page.getByTestId("save-trend-picker");
-      await settledSelect(page, picker.getByRole("combobox"), "metric:volume");
+      await settledPickOption(
+        page,
+        picker.locator('input[role="combobox"]'),
+        VOLUME
+      );
       await settledClick(page, picker.getByRole("button", { name: "Star" }));
 
       // Restoring the fixture IS the assertion.

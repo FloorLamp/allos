@@ -113,3 +113,21 @@ export const TRENDS_RANK_PLAIN_PROFILE = "Trends Rank Plain (e2e)";
 // the seed state, so --repeat-each stays clean and no neighbour's order moves.
 export const E2E_LOGIN_TRENDS_PIN = "e2e_trends_pin";
 export const TRENDS_PIN_PROFILE = "Trends Pin (e2e)";
+
+// ── Relevance-ranked biomarker pickers (issue #1675) ─────────────────────────
+// A dedicated WRITE-granted member whose profile owns exactly the facts the rank
+// reads, so "the markers that matter lead" is observable rather than guessed:
+//   • an OVERDUE analyte  — HbA1c on its 90-day cadence, drawn ~400 days ago
+//   • a FLAGGED analyte   — an LDL well over the canonical band, drawn recently
+//                           (so the flag, not a stale draw, is what promotes it)
+//   • a MEASURED analyte  — an in-range Albumin, alphabetically FIRST of the three,
+//                           which is exactly what an alphabetical picker led with
+// Dedicated ON PURPOSE (#868): the spec stars an analyte through the ★ picker and
+// unstars it again, and doing that on profile 1 would reorder the shared saved grid
+// every other Trends spec reads. The spec restores what it writes, so --repeat-each
+// stays clean.
+export const E2E_LOGIN_BIOMARKER_PICKER = "e2e_biomarker_picker";
+export const BIOMARKER_PICKER_PROFILE = "Biomarker Picker (e2e)";
+export const BIOMARKER_PICKER_OVERDUE = "Hemoglobin A1c";
+export const BIOMARKER_PICKER_FLAGGED = "LDL Cholesterol";
+export const BIOMARKER_PICKER_MEASURED = "Albumin";

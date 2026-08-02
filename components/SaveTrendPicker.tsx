@@ -1,4 +1,6 @@
 import { toggleSavedItem } from "@/app/(app)/saved-actions";
+import SaveTrendKeyPicker from "./SaveTrendKeyPicker";
+import type { SeriesPickerInput } from "@/lib/series-picker-options";
 
 // Add a tile to Trends Overview (issue #1487) — the picker that used to be "Pin a
 // biomarker", then "Star a biomarker", and is now the grid's ONE add-entry point.
@@ -16,17 +18,22 @@ import { toggleSavedItem } from "@/app/(app)/saved-actions";
 // offered training volume, and a saved-but-gated metric simply has no tile and no
 // option, exactly as before.
 //
-// A no-JS server-action form, writing through the same action as the ★ anywhere else.
+// A server-action form, writing through the same action as the ★ anywhere else.
 // Renders nothing when there is nothing left to add.
+//
+// #1675 moved the CONTROL into SaveTrendKeyPicker — the shared Combobox over the
+// relevance-ranked option list, with the old grouped `<select>` kept as the
+// pre-hydration / no-JS rendering. The form, the action, and the posted `key` field
+// are untouched: starring is still one POST of one series key.
 export default function SaveTrendPicker({
   metrics,
   biomarkers,
 }: {
-  metrics: { key: string; label: string }[];
-  biomarkers: { key: string; label: string }[];
+  metrics: SeriesPickerInput[];
+  biomarkers: SeriesPickerInput[];
 }) {
-  const first = metrics[0]?.key ?? biomarkers[0]?.key;
-  if (!first) return null;
+  const rows = [...metrics, ...biomarkers];
+  if (rows.length === 0) return null;
   return (
     <form
       action={async (fd) => {
@@ -36,44 +43,7 @@ export default function SaveTrendPicker({
       className="flex flex-wrap items-center gap-2 text-sm"
       data-testid="save-trend-picker"
     >
-      <label
-        htmlFor="star-trend"
-        className="text-slate-500 dark:text-slate-400"
-      >
-        Add to your overview:
-      </label>
-      <select
-        id="star-trend"
-        name="key"
-        defaultValue={first}
-        className="input h-9 max-w-[16rem] py-1"
-      >
-        {metrics.length > 0 && (
-          <optgroup label="Metrics">
-            {metrics.map((o) => (
-              <option key={o.key} value={o.key}>
-                {o.label}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {biomarkers.length > 0 && (
-          <optgroup label="Biomarkers">
-            {biomarkers.map((o) => (
-              <option key={o.key} value={o.key}>
-                {o.label}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
-      <button
-        type="submit"
-        className="btn-ghost inline-flex items-center gap-1 py-1.5"
-      >
-        <span aria-hidden>☆</span>
-        Star
-      </button>
+      <SaveTrendKeyPicker rows={rows} />
     </form>
   );
 }

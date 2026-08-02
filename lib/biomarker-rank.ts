@@ -9,6 +9,23 @@ import { defineRankTable, itemsFromLayout, rankItems } from "./rank-core";
 export type BiomarkerPickerGroup =
   "due-relevant" | "your-markers" | "all-biomarkers";
 
+// The dropdown headers the ranked groups render under. They live here, next to the
+// grouping rule, so every picker in the #1675 census (the ★ picker, Compare, the
+// record form's canonical name, the import mapping field) names the same three
+// buckets the same way instead of inventing per-surface copy.
+export const BIOMARKER_GROUP_LABELS: Record<BiomarkerPickerGroup, string> = {
+  "due-relevant": "Due or flagged",
+  "your-markers": "Your markers",
+  "all-biomarkers": "All biomarkers",
+};
+
+// Declaration order IS render order: the relevance view reads top-down.
+export const BIOMARKER_PICKER_GROUPS: readonly BiomarkerPickerGroup[] = [
+  "due-relevant",
+  "your-markers",
+  "all-biomarkers",
+];
+
 export interface BiomarkerRankFacts {
   due: ReadonlySet<string>;
   dueSoon: ReadonlySet<string>;
@@ -123,12 +140,7 @@ export function rankBiomarkers(
     group: groupFor(item.id, facts),
   }));
 
-  const groups: BiomarkerPickerGroup[] = [
-    "due-relevant",
-    "your-markers",
-    "all-biomarkers",
-  ];
-  return groups.flatMap((group) =>
+  return BIOMARKER_PICKER_GROUPS.flatMap((group) =>
     ranked.filter((item) => item.group === group)
   );
 }

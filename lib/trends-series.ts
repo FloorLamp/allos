@@ -17,7 +17,10 @@ import {
   getAppointments,
   getProtocolWindows,
   getPracticeTrends,
+  getRankedBiomarkerOptions,
 } from "./queries";
+import { today } from "./db";
+import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import {
   getUnitPrefs,
@@ -109,6 +112,9 @@ export interface TrendOption {
   key: string;
   label: string;
   kind: "metric" | "biomarker";
+  // Which relevance bucket a biomarker option belongs to (#1675). Metrics carry
+  // none — they are their own picker group.
+  group?: BiomarkerPickerGroup;
 }
 
 // Deterministic biomarker colors live in the pure lib/trend-colors module (no DB
@@ -477,6 +483,12 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
 // The pickable Compare options: the standard metrics plus every biomarker that has
 // stored readings (canonical names in use). Series are built lazily by
 // resolveSeriesByKey so listing stays cheap.
+//
+// The biomarker half comes back RELEVANCE-ORDERED and group-tagged (#1675) — the same
+// `getRankedBiomarkerOptions` the record form and the import mapping field read, so a
+// retest-due or flagged analyte leads every picker rather than whatever starts with
+// "A". MEMBERSHIP is untouched: the age gates above and the body-metric exclusion below
+// still decide what is offered at all, so a gated metric is neither tile nor option.
 export function listCompareOptions(
   profileId: number,
   restricted: boolean
@@ -489,13 +501,19 @@ export function listCompareOptions(
     label: d.label,
     kind: "metric" as const,
   }));
-  const biomarkers = getUsedCanonicalNamesWithDerived(profileId)
-    .filter((name) => bodyMetricKindForBiomarker(name) == null)
-    .map((name) => ({
-      key: bioSeriesKey(name),
-      label: name,
-      kind: "biomarker" as const,
-    }));
+  const names = getUsedCanonicalNamesWithDerived(profileId).filter(
+    (name) => bodyMetricKindForBiomarker(name) == null
+  );
+  const biomarkers = getRankedBiomarkerOptions(
+    profileId,
+    today(profileId),
+    names
+  ).map((option) => ({
+    key: bioSeriesKey(option.name),
+    label: option.name,
+    kind: "biomarker" as const,
+    group: option.group,
+  }));
   return { metrics, biomarkers };
 }
 
