@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getExtractionStates } from "@/app/(app)/medical/document-actions";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
 import { useToast, useDismissToast } from "@/components/Toast";
+import { useChromeRefresh } from "@/components/DirtyFormRegistry";
 import { MEDICAL_UPLOAD_TOAST_KEY } from "@/lib/upload-gate";
 
 // The document statuses `getExtractionStates` reports as terminal (no longer
@@ -40,6 +41,10 @@ export default function ExtractionToaster({
   const router = useRouter();
   const toast = useToast();
   const dismissKey = useDismissToast();
+  // CHROME-INITIATED (#1878): same shape as ImportJobsToaster — a poll saw a
+  // background extraction finish. `router` stays for the toast's "View document"
+  // push, which the user asks for by tapping it.
+  const chromeRefresh = useChromeRefresh();
   const prev = useRef<Map<number, string> | null>(null);
   // The profile the current seed was built for; drives shouldResetSeed below.
   const seededFor = useRef<number | null>(null);
@@ -122,7 +127,7 @@ export default function ExtractionToaster({
       // Survives the #1473 sweep: poll-driven, same as ImportJobsToaster —
       // getExtractionStates is a read action and the extraction ran in the
       // background, so no action response ever carried the new tree.
-      if (!seeded && changed) router.refresh();
+      if (!seeded && changed) chromeRefresh();
 
       const processing = docs.some((d) => d.status === "processing");
       timer = setTimeout(poll, processing ? 2000 : 6000);
@@ -133,7 +138,7 @@ export default function ExtractionToaster({
       active = false;
       clearTimeout(timer);
     };
-  }, [router, toast, dismissKey, profileId]);
+  }, [router, toast, dismissKey, chromeRefresh, profileId]);
 
   // Headless: it renders through the shared ToastProvider, not its own overlay.
   return null;
