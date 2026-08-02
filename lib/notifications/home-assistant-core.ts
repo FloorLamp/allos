@@ -179,14 +179,14 @@ export function isKindEnabled(
 // the same list, so a new kind becomes a matrix row, a settings row, and a routable
 // kind together. Re-exported here because every existing importer (the matrix, the
 // push gate, the HA channel) reaches for them through this module.
+// The `TOGGLEABLE_HA_KINDS` alias is gone (#1868 §1): it was the last trace of the
+// list being HA-specific, and it existed to feed the HA card's duplicate per-kind
+// grid. The matrix's HA column edits the same key everything else does.
 export {
   TOGGLEABLE_NOTIFICATION_KINDS,
   SAFETY_NOTIFICATION_KINDS,
   isSafetyKind,
 } from "./kinds";
-
-// Back-compat alias (the registry predates the matrix as an HA-only list).
-export { TOGGLEABLE_NOTIFICATION_KINDS as TOGGLEABLE_HA_KINDS } from "./kinds";
 
 // Validate a configured HA webhook URL: a well-formed absolute http(s) URL whose
 // path is exactly HA's built-in webhook trigger shape,

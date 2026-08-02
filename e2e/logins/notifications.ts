@@ -20,3 +20,11 @@ export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
 // a --repeat-each run would re-enter with the previous run's state.
 export const E2E_LOGIN_DIGEST_TUNE = "e2e_digest_tune";
 export const DIGEST_TUNE_PROFILE = "Digest Tune (e2e)";
+
+// A member with a dedicated adult profile for the matrix COLUMN select-all (#1868 §2).
+// Isolated for the same reason the per-cell matrix fixture is: a column sweep rewrites
+// a whole channel's disabled-kinds blob in one write, which on a shared login would
+// silence ten kinds for every other spec's session — and the safety-survival assertion
+// needs to read a column this spec alone has touched.
+export const E2E_LOGIN_NOTIF_SWEEP = "e2e_notif_sweep";
+export const NOTIF_SWEEP_PROFILE = "Notif Sweep (e2e)";
