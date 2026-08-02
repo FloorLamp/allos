@@ -208,6 +208,24 @@ export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 
+// ── Phone dashboard reorder (issue #1891) ────────────────────────────────────
+// A dedicated, write-granted ADULT profile for e2e/dashboard-reorder.mobile.spec.ts,
+// which drives Customize at a phone viewport: compact reorder rows, a drag that
+// SAVES a new order, and the eye toggle hiding a widget.
+//
+// Dedicated because the spec WRITES the profile's `dashboard_layout` — persisting an
+// order and a hidden id is the whole assertion, and doing that on a shared profile
+// would reorder (or hide) a widget out from under every other dashboard spec. The
+// spec clears the key itself before each test, so --repeat-each starts from the
+// registry defaults every iteration.
+//
+// It carries NO health data on purpose: Customize lists every ELIGIBLE widget
+// whether or not it has anything to show, so an empty profile still gives the spec
+// a full list to reorder — and an empty one keeps the compact rows short enough to
+// prove the "fits one screen" claim without depending on seeded content.
+export const E2E_LOGIN_REORDER = "e2e_reorder";
+export const REORDER_PROFILE = "Dashboard Reorder (e2e)";
+
 // ── Just-recovered dashboard band folds (issues #1548 / #1549) ────────────────
 // Three spec-owned caregiver fixtures for e2e/dashboard-household-folds.spec.ts, one
 // per state of the household-history promo's placement. Every one is a MULTI-profile
