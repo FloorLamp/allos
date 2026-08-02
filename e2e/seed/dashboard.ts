@@ -692,7 +692,7 @@ export function seedDailyLoop(): void {
     insBm.run(dailyId, dToday, 63.6, 58);
 
     // Steps: today + a trailing week (additive; one source per day) so the Steps-today
-    // card shows today vs the 7-day average with a direction arrow.
+    // card shows today vs the prior 7 days with a direction arrow.
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
     ).run(dailyId);

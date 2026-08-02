@@ -424,15 +424,26 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     await expect(
       page.getByRole("heading", { level: 2, name: "Rolling summary" })
     ).toBeVisible();
-    // The fixture's steps series is THREE recent days, so the trailing 7/30/90-day
-    // windows contain the same readings and collapse onto ONE card (#1541) — the
-    // page used to render the identical four numbers three times. The card is keyed
-    // by the WIDEST window it covers, and says how many readings it summarises.
+    // The windows cover COMPLETE days (#1909): they end yesterday, so today's
+    // still-accumulating step count never sits inside its own average. The note
+    // says so rather than leaving the exclusion to be inferred from a date range.
+    await expect(page.getByTestId("metric-period-coverage")).toContainText(
+      "through yesterday"
+    );
+    // The fixture's steps series is three consecutive days ending TODAY, so the
+    // summary covers the two complete ones — and the trailing 7/30/90-day windows
+    // contain the same readings and collapse onto ONE card (#1541); the page used
+    // to render the identical four numbers three times. The card is keyed by the
+    // WIDEST window it covers, and says how many readings it summarises.
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(1);
     await expect(page.getByTestId("period-stat-90")).toBeVisible();
     await expect(page.getByTestId("period-readings-90")).toContainText(
-      "3 readings"
+      "2 readings"
     );
+    // Recency is today's job: the card's Latest is today's 7,600, the same value
+    // the page hero shows — while the average beside it (8,650) is history's.
+    await expect(page.getByTestId("period-stat-90")).toContainText("7,600");
+    await expect(page.getByTestId("period-average-90")).toHaveText("8,650");
     const average = page.getByTestId("period-average-90");
     const supportingValue = page
       .getByTestId("period-stat-90")
@@ -466,9 +477,10 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/trends/metric/weight");
 
-    // The fixture's two weigh-ins sit 7 and 1 days back: the 7d window holds ONE
-    // of them, 30d and 90d hold both — so the collapse is partial and the card
-    // count is a real signal rather than a constant.
+    // The fixture's two weigh-ins sit 9 and 1 days back: the 7d window (yesterday
+    // back through today−7, complete days only per #1909) holds ONE of them, 30d
+    // and 90d hold both — so the collapse is partial and the card count is a real
+    // signal rather than a constant.
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(2);
     await expect(page.getByTestId("period-stat-7")).toBeVisible();
     await expect(page.getByTestId("period-stat-90")).toBeVisible();

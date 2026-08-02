@@ -623,7 +623,7 @@ export default async function Dashboard() {
     ? getProteinToday(profile.id)
     : null;
 
-  // steps-today (#1221): today's steps vs the trailing 7-day average, a formatter over
+  // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
   // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
   // Empty series → the data-aware CTA (connect a source).
   const stepsRows = has("steps-today")

@@ -1,8 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
+import { trailingAverage } from "@/lib/trailing-average";
 
 // Pure-tier: the Steps-today dashboard aggregation (#1221). No DB/clock — the gather
 // hands the deduped one-source-per-day series here.
+//
+// The BASELINE is not this module's arithmetic (#1909): it is trailingAverage's
+// data-bearing window with today excluded, and these tests state their expectations
+// through that helper rather than re-deriving a mean — a second mean in the test is
+// how a second mean in the source stays green. The helper's own option matrix and
+// the cross-surface pin live in lib/__tests__/trailing-average.test.ts.
 
 const TODAY = "2026-07-23";
 
@@ -11,7 +18,7 @@ describe("summarizeStepsToday", () => {
     expect(summarizeStepsToday([], TODAY)).toBeNull();
   });
 
-  it("reports today's steps and the trailing 7-day average with an up arrow", () => {
+  it("reports today's steps and the prior-7-day baseline with an up arrow", () => {
     const points = [
       { date: "2026-07-16", value: 6000 },
       { date: "2026-07-17", value: 7000 },
@@ -27,22 +34,24 @@ describe("summarizeStepsToday", () => {
     expect(s.deltaPct).toBe(Math.round(((10000 - 6500) / 6500) * 100));
   });
 
-  it("caps the trailing average to the most recent N data days before today", () => {
+  it("caps the baseline to the most recent N data days before today", () => {
     // 9 prior days all before today; only the newest STEPS_TRAILING_DAYS count.
     const prior = Array.from({ length: 9 }, (_, i) => ({
       date: `2026-07-${String(10 + i).padStart(2, "0")}`,
       value: (i + 1) * 1000, // 1000..9000, oldest→newest
     }));
-    const s = summarizeStepsToday(
-      [...prior, { date: TODAY, value: 500 }],
-      TODAY
-    )!;
-    // The 7 most-recent prior days are 3000..9000 → mean 6000.
-    const expected = Math.round(
-      prior.slice(-STEPS_TRAILING_DAYS).reduce((a, p) => a + p.value, 0) /
-        STEPS_TRAILING_DAYS
-    );
-    expect(s.average7).toBe(expected);
+    const points = [...prior, { date: TODAY, value: 500 }];
+    const s = summarizeStepsToday(points, TODAY)!;
+    // The 7 most-recent prior days are 3000..9000 → mean 6000, which is what the
+    // shared data-bearing window selects — no second arithmetic here.
+    const window = trailingAverage(points, TODAY, {
+      days: STEPS_TRAILING_DAYS,
+      basis: "data-bearing",
+    });
+    expect(window.from).toBe("2026-07-12");
+    expect(window.to).toBe("2026-07-18");
+    expect(s.average7).toBe(6000);
+    expect(s.average7).toBe(Math.round(window.average!));
     expect(s.direction).toBe("down"); // 500 < 6000
   });
 

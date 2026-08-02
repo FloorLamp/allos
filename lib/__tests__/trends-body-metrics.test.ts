@@ -264,7 +264,11 @@ describe("stableEmptyLast", () => {
 });
 
 describe("bodyMetricPeriodStats", () => {
-  const today = "2026-07-22";
+  // Every fixture reading below sits on a COMPLETE day (#1909): the windows end
+  // yesterday, so an anchor one day past the newest reading is what makes these
+  // #1541 collapse cases about the collapse rather than about today-exclusion.
+  // Today-exclusion itself is pinned in lib/__tests__/trailing-average.test.ts.
+  const today = "2026-07-23";
 
   // #1541 — the whole point of the collapse: three windows that contain the SAME
   // readings produced three identical cards, which is the common case for any

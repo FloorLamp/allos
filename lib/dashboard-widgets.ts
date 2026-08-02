@@ -360,7 +360,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     id: "steps-today",
     label: "Steps today",
     description:
-      "Your step count today against your trailing 7-day average — surfaced from Trends → Body to the daily glance.",
+      "Your step count today against your prior 7 days — surfaced from Trends → Body to the daily glance.",
     // On by default (promotion, #1066). Data-aware: a profile with no step data yet
     // gets a connect-a-source CTA. Not fitness-gated — steps matter for every profile.
     defaultOn: true,
