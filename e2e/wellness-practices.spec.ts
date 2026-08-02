@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { expectNoClippedContent, followLink, settledClick } from "./helpers";
 import { openCommandPalette } from "./nav";
-import { frozenNow } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { formatDateWithYear } from "@/lib/format-date";
+import { practiceIdentity } from "@/lib/practice";
 
 async function openPracticeCreate(page: Page) {
   await page.getByTestId("practice-create-trigger").click();
@@ -137,108 +139,104 @@ test("the command palette preserves the first-practice creation path (#1620)", a
 test("practice edits reject invalid cadence and logs-only name collisions (#1618/#1619)", async ({
   page,
 }) => {
-  // The double-create sequence carries a declared 45s post-create ceiling (below),
-  // which exceeds the default 30s TEST budget — without slow(), the test times out
-  // at 30s before the ceiling can do its job (exactly what shard 4 kept showing:
-  // "Test timeout of 30000ms exceeded" at 30.1s). 2026-08-02, #1556 census.
-  test.slow();
+  // This test is about EDITS. Its two subjects — a tracked practice with a min/max
+  // cadence and a logs-only practice to collide with — are seeded straight into the
+  // worker DB (#868 spec-owned fixtures), not built through the UI.
+  //
+  // It used to drive two full create round-trips plus a page reload plus an untrack
+  // as setup, and that setup is what kept failing: a 5s post-create ceiling became
+  // 20s, then 45s, then needed test.slow() to make the 45s reachable at all, and
+  // still exhausted it on shard 4 against diffs that cannot touch wellness (#1901).
+  // Seeding makes the setup deterministic and free. Nothing is lost: the create path
+  // is covered by the palette test above, and untrack/delete by the lifecycle test
+  // below.
   const suffix = frozenNow().getTime();
   const trackedName = `E2E Cadence ${suffix}`;
   const historyName = `E2E History ${suffix}`;
+  const today = frozenNow().toISOString().slice(0, 10);
 
-  await page.goto("/wellness");
-  const main = page.getByRole("main");
-  const create = await openPracticeCreate(page);
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  let trackedTargetId = 0;
+  try {
+    trackedTargetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (1, 'practice', ?, ?, 3, 5)`
+        )
+        .run(trackedName, practiceIdentity(trackedName)).lastInsertRowid
+    );
+    const logSession = db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date) VALUES (1, ?, ?)`
+    );
+    // One session today for the tracked practice ("1 day this week", "1 session");
+    // two for the logs-only one ("2 sessions"). Today is in the current week under
+    // any week mode, so neither count depends on the week boundary. A logs-only
+    // practice is exactly sessions with no frequency_targets row — the collision
+    // check reads the union of both stores.
+    logSession.run(trackedName, today);
+    logSession.run(historyName, today);
+    logSession.run(historyName, today);
 
-  await create.getByLabel("Practice").fill(trackedName);
-  await create.getByLabel("Minimum days").fill("3");
-  await create.getByLabel("Maximum days (optional)").fill("5");
-  await settledClick(
-    page,
-    create.getByRole("button", { name: "Save", exact: true })
-  );
+    await page.goto("/wellness");
+    const main = page.getByRole("main");
+    const trackedCard = main
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: trackedName });
+    const historyCard = main
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: historyName });
+    await expect(trackedCard).toBeVisible();
+    await expect(historyCard).toContainText("Session history only");
 
-  // Re-enter after the first Server Component refresh so the controlled practice
-  // combobox belongs to the current editor instance.
-  await page.goto("/wellness");
-  const refreshedMain = page.getByRole("main");
-  const secondCreate = await openPracticeCreate(page);
-  await secondCreate.getByLabel("Practice").fill(historyName);
-  await secondCreate.getByLabel("Minimum days").fill("2");
-  await secondCreate.getByLabel("Maximum days (optional)").fill("");
-  await settledClick(
-    page,
-    secondCreate.getByRole("button", { name: "Save", exact: true })
-  );
-
-  const trackedCard = refreshedMain
-    .getByTestId("wellness-practice-card")
-    .filter({ hasText: trackedName });
-  const historyCard = refreshedMain
-    .getByTestId("wellness-practice-card")
-    .filter({ hasText: historyName });
-  // Post-create re-render ceiling (recurring-failure census, docs/internals/
-  // e2e-hygiene.md): the second Save's Server Action re-renders the whole practice
-  // list, and settledClick's own pre-visibility assert runs at the 5 s default
-  // (it does NOT honor opts.timeout), so the first card lookup after the save can
-  // outrun it on a loaded shard. Both cards paint in the same repaint, so one
-  // named ceiling covers the sequence. Not a sleep — this still fails if the
-  // created card never appears. 2026-08-01: raised 20s → 45s after three shard-4
-  // overruns in one day on unrelated diffs (#1556 census) — that shard's boxes
-  // run neighboring specs at 28-35s, so a double create round-trip needs the
-  // wider honest ceiling.
-  await expect(trackedCard.getByTestId("practice-log-button")).toBeVisible({
-    timeout: 45_000,
-  });
-  await settledClick(page, trackedCard.getByTestId("practice-log-button"));
-  await settledClick(page, historyCard.getByTestId("practice-log-button"));
-  await settledClick(page, historyCard.getByTestId("practice-log-button"));
-
-  await choosePracticeAction(page, historyCard, "wellness-practice-untrack");
-  await settledClick(
-    page,
-    page
-      .getByTestId("confirm-dialog")
-      .getByRole("button", { name: "Stop tracking" })
-  );
-  await expect(historyCard).toContainText("Session history only");
-
-  await choosePracticeAction(page, trackedCard, "wellness-practice-edit");
-  const edit = trackedCard.getByTestId("practice-edit-form");
-  await edit.getByLabel("Minimum days").fill("5");
-  await edit.getByLabel("Maximum days (optional)").fill("3");
-  await settledClick(page, edit.getByRole("button", { name: "Save changes" }));
-  await expect(edit.getByTestId("practice-save-error")).toHaveText(
-    "The weekly maximum must be greater than the minimum."
-  );
-  await expect(trackedCard).toContainText("1 day this week · Target 3–5×/week");
-
-  await edit.getByLabel("Practice").fill(historyName);
-  await edit.getByLabel("Minimum days").fill("3");
-  await edit.getByLabel("Maximum days (optional)").fill("5");
-  await settledClick(page, edit.getByRole("button", { name: "Save changes" }));
-  await expect(edit.getByTestId("practice-save-error")).toHaveText(
-    "A practice with that name already exists."
-  );
-  await expect(
-    trackedCard.getByTestId("wellness-practice-usage")
-  ).toContainText("1 session");
-  await expect(
-    historyCard.getByTestId("wellness-practice-usage")
-  ).toContainText("2 sessions");
-  await expect(trackedCard).toContainText(trackedName);
-  await expect(historyCard).toContainText(historyName);
-
-  await edit.getByRole("button", { name: "Cancel" }).click();
-  for (const card of [trackedCard, historyCard]) {
-    await choosePracticeAction(page, card, "wellness-practice-delete");
+    await choosePracticeAction(page, trackedCard, "wellness-practice-edit");
+    const edit = trackedCard.getByTestId("practice-edit-form");
+    await edit.getByLabel("Minimum days").fill("5");
+    await edit.getByLabel("Maximum days (optional)").fill("3");
     await settledClick(
       page,
-      page
-        .getByTestId("confirm-dialog")
-        .getByRole("button", { name: "Delete practice" })
+      edit.getByRole("button", { name: "Save changes" })
     );
-    await expect(card).toHaveCount(0);
+    await expect(edit.getByTestId("practice-save-error")).toHaveText(
+      "The weekly maximum must be greater than the minimum."
+    );
+    await expect(trackedCard).toContainText(
+      "1 day this week · Target 3–5×/week"
+    );
+
+    await edit.getByLabel("Practice").fill(historyName);
+    await edit.getByLabel("Minimum days").fill("3");
+    await edit.getByLabel("Maximum days (optional)").fill("5");
+    await settledClick(
+      page,
+      edit.getByRole("button", { name: "Save changes" })
+    );
+    await expect(edit.getByTestId("practice-save-error")).toHaveText(
+      "A practice with that name already exists."
+    );
+    await expect(
+      trackedCard.getByTestId("wellness-practice-usage")
+    ).toContainText("1 session");
+    await expect(
+      historyCard.getByTestId("wellness-practice-usage")
+    ).toContainText("2 sessions");
+    // A refused edit leaves BOTH definitions alone — the rejection is not a partial
+    // write that renamed one of them on the way to failing.
+    await expect(trackedCard).toContainText(trackedName);
+    await expect(historyCard).toContainText(historyName);
+  } finally {
+    db.prepare("DELETE FROM practice_logs WHERE practice IN (?, ?)").run(
+      trackedName,
+      historyName
+    );
+    if (trackedTargetId) {
+      db.prepare("DELETE FROM frequency_targets WHERE id = ?").run(
+        trackedTargetId
+      );
+    }
+    db.close();
   }
 });
 
