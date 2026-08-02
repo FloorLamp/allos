@@ -24,15 +24,31 @@
 //
 // ── THE REQUEST ANSWERS ITSELF ───────────────────────────────────────────────
 //
-// A request for `(ochsner, mom)` is satisfied by the next run report naming that pair.
-// The tool never learns requests exist: no acknowledgment protocol, no claim state, no
-// cleanup burden, nothing new on the wire. The row just WATCHES for the report the
-// phase-1 contract already sends.
+// A request for `(ochsner, mom)` is satisfied by the next ANSWERING report naming that
+// pair. There is still no acknowledgment protocol, no claim state and no cleanup burden:
+// the row just WATCHES for the report the phase-1 contract already sends. (A tool may now
+// READ the open list — #1889 — but it cannot write one, close one, or claim one.)
 //
-// A FAILED run counts as answered, and so does a refusal-path report. The person acted —
-// they went to the machine and ran the tool. Whether the run then succeeded is the sync
-// STATUS's story (the card's "last run failed" line, Data → Review's badge), and letting
-// the request re-ask would nag someone for a thing they just did.
+// A FAILED ATTENDED run counts as answered, and so does a refusal-path report. The person
+// acted — they went to the machine and ran the tool. Whether the run then succeeded is the
+// sync STATUS's story (the card's "last run failed" line, Data → Review's badge), and
+// letting the request re-ask would nag someone for a thing they just did.
+//
+// TWO REPORTS DO NOT ANSWER, and both are the same mistake from different sides:
+//
+//   A DELIVERY-ONLY REPORT (#1888). The acquirer's `push` command ships records already
+//   on disk and contacts no portal at all. It answered the request and reset the
+//   staleness clock, so an unchecked portal looked checked — the one input that can make
+//   allos forget on the user's behalf while telling them everything is fine.
+//
+//   A FAILED UNATTENDED RUN (#1889). "The person acted" is exactly right for a person and
+//   exactly wrong for a task. A scheduled run whose device-trust cookie expired has had
+//   nobody act on it — and that is precisely when somebody DOES need to go to the machine.
+//   Answering there makes the ask disappear at the exact point it became true.
+//
+// A SUCCESSFUL unattended run still answers: records arrived, which is all the request
+// ever wanted. The decision is one pure predicate (`reportAnswersRequest`,
+// lib/acquirer-identity.ts), applied once at ingest.
 //
 // ── OPENNESS IS DERIVED, NEVER STORED ────────────────────────────────────────
 //
@@ -138,14 +154,16 @@ export function isSyncRequestExpired(expiresAt: string, now: string): boolean {
   return now >= expiresAt;
 }
 
-// Answered: SOME run report for this portal login landed at or after the request was
-// raised. `lastReportAt` is the account's most recent report stamp — the run-report row
-// holds only the last run, which is enough: the stamp only ever moves forward, so
-// "the last report is newer than the request" is exactly "a report answered it".
+// Answered: SOME ANSWERING report for this portal login landed at or after the request
+// was raised. `lastReportAt` is the account's most recent answering stamp — a sticky
+// column stamped through `reportAnswersRequest` at ingest, which only ever moves forward,
+// so "the last answering report is newer than the request" is exactly "a report answered
+// it".
 //
-// The report's OUTCOME is deliberately not a parameter. A failed run answers, a
-// refusal-path report answers, a nothing-new run answers. The person went to the machine
-// — that is the whole thing a request asks for.
+// The report's OUTCOME is still deliberately not a parameter HERE. Which reports answer
+// is decided ONCE, at the boundary, by the one pure predicate — never re-derived by each
+// surface that asks whether a request is open. A nothing-new run answers, an attended
+// failure answers, a delivery-only push and an unattended failure do not.
 export function isSyncRequestAnswered(
   createdAt: string,
   lastReportAt: string | null
@@ -266,6 +284,15 @@ export interface SyncRequestCopyInput {
   // The visiting person's display name, for the post-visit wording. Omitted → a
   // subject-less phrasing rather than an invented name.
   visitSubject?: string | null;
+  // THE MACHINE ALREADY TRIED (#1889). Present when the last thing to happen on this
+  // login was a scheduled run failing with nobody at the keyboard. It is ONE OPTIONAL
+  // CLAUSE on this one formatter — never a second formatter — because it is the same ask
+  // with a better reason attached: the request is open BECAUSE the unattended run could
+  // not finish, and the person needs to know it is their turn and why.
+  //
+  // The message is the tool's own free text (`{ message: null }` when it gave none), so
+  // every surface renders it as TEXT, never as markup.
+  unattendedFailure?: { message: string | null } | null;
 }
 
 export interface SyncRequestCopy {
@@ -314,7 +341,28 @@ export function syncRequestCopy(input: SyncRequestCopyInput): SyncRequestCopy {
       detail = `A sync was requested for ${input.portalName} — run the portal tool on ${where}.`;
       break;
   }
-  return { title, detail, cardLine: "Sync requested" };
+  const escalation = unattendedFailureClause(input.unattendedFailure);
+  return {
+    title,
+    detail: escalation ? `${detail} ${escalation}` : detail,
+    cardLine: "Sync requested",
+  };
+}
+
+// "The scheduled run couldn't finish (the portal asked for a code) — someone needs to go
+// to the machine." The machine tried; tell the human why it is their turn.
+//
+// NAMES THE ACTION A PERSON TAKES, like every other sentence here — and says WHY, because
+// "it failed" without a cause sends somebody looking for one. A run that gave no reason
+// gets the honest short form rather than an invented cause.
+function unattendedFailureClause(
+  failure: { message: string | null } | null | undefined
+): string | null {
+  if (!failure) return null;
+  const why = failure.message?.trim();
+  return why
+    ? `The scheduled run couldn't finish (${why}) — someone needs to go to the machine.`
+    : "The scheduled run couldn't finish — someone needs to go to the machine.";
 }
 
 // The expiry half of the card line and the item's due text, from the SAME words:

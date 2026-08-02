@@ -204,6 +204,7 @@ export default async function PatientPortalsPage() {
       patientLabel: i.patientLabel,
       profileId: i.profileId,
       ignored: i.ignored,
+      declined: i.declined,
       lastOkAt: st?.lastOkAt ?? null,
       lastFailedAt: st?.lastFailedAt ?? null,
     };

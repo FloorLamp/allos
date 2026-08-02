@@ -283,30 +283,91 @@ export function parseUploadTarget(input: {
 // report from filling the pending list in one shot.
 export const DISCOVERED_LABELS_MAX = 25;
 
+// WHAT ONE RUN DID FOR ONE PATIENT (#1889's owner ruling).
+//
+// A run signs in once and collects for every patient the login can reach, because the
+// sign-in is the expensive part — so ONE run routinely has DIFFERENT outcomes per
+// patient. The scenario that settled the shape: one login covers three people, the
+// account holder's records download fine, and the portal offers the two proxies a preview
+// with no Download button at all. A run-level flag (or a fourth `status`) cannot say that;
+// it is not a fact about the run.
+//
+//   collected — records came back for this patient on this run.
+//   declined  — the portal REFUSES the download for this patient. A settled answer:
+//               identical tomorrow, identical next month, and nothing the person running
+//               the tool can do about it. Allos stores it as identity-level standing
+//               state (lib/portals.ts), never as a repeated failure event.
+//
+// A closed set, on purpose: a word here becomes standing state a household reads, so
+// growing it is a code change with a review, not a string an untrusted client can invent.
+export const IDENTITY_OUTCOMES = ["collected", "declined"] as const;
+
+export type IdentityOutcome = (typeof IDENTITY_OUTCOMES)[number];
+
+export function isIdentityOutcome(value: string): value is IdentityOutcome {
+  return (IDENTITY_OUTCOMES as readonly string[]).includes(value);
+}
+
+export interface ReportedIdentity {
+  label: string;
+  // Null when the client said nothing — a bare string entry, or an unrecognised word.
+  // "Unstated" is not "collected": a client that has never heard of outcomes must not
+  // silently clear a standing `declined`.
+  outcome: IdentityOutcome | null;
+}
+
 // Parse the `identities` array an acquirer reports at the end of a run: the proxy-patient
 // labels it actually saw on that login, VERBATIM.
 //
 // This is the routine path by which allos learns identities — the refusal path is the
 // safety net for surprises, not the setup path. So it is the one place an untrusted tool
 // writes strings that a human will later read and bind, and it is deliberately narrow:
-// non-strings are dropped, labels are whitespace-normalized (never case-folded — a label
-// is a key), anything that fails isPatientLabel is dropped, exact duplicates collapse,
-// and the result is capped. Dropping rather than erroring is right for a REPORT: a run
-// that genuinely happened must still be recorded even if one label was junk.
-export function parseDiscoveredLabels(raw: unknown): string[] {
+// labels are whitespace-normalized (never case-folded — a label is a key), anything that
+// fails isPatientLabel is dropped, exact duplicates collapse, and the result is capped.
+// Dropping rather than erroring is right for a REPORT: a run that genuinely happened must
+// still be recorded even if one label was junk.
+//
+// TWO WIRE SPELLINGS, and the older one keeps its exact meaning. A bare string is the
+// original contract ("I saw this label"); an object `{ patient, outcome }` adds what the
+// run did for that patient (#1889). An entry that is neither is dropped, and an
+// unrecognised `outcome` degrades to null rather than rejecting the whole report.
+export function parseReportedIdentities(raw: unknown): ReportedIdentity[] {
   if (!Array.isArray(raw)) return [];
-  const out: string[] = [];
+  const out: ReportedIdentity[] = [];
   const seen = new Set<string>();
   for (const entry of raw) {
-    if (typeof entry !== "string") continue;
-    const label = normalizePatientLabel(entry);
+    let rawLabel: unknown;
+    let rawOutcome: unknown;
+    if (typeof entry === "string") {
+      rawLabel = entry;
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const obj = entry as Record<string, unknown>;
+      rawLabel = obj.patient;
+      rawOutcome = obj.outcome;
+    } else {
+      continue;
+    }
+    if (typeof rawLabel !== "string") continue;
+    const label = normalizePatientLabel(rawLabel);
     if (!isPatientLabel(label)) continue;
     if (seen.has(label)) continue;
     seen.add(label);
-    out.push(label);
+    out.push({
+      label,
+      outcome:
+        typeof rawOutcome === "string" && isIdentityOutcome(rawOutcome)
+          ? rawOutcome
+          : null,
+    });
     if (out.length >= DISCOVERED_LABELS_MAX) break;
   }
   return out;
+}
+
+// The labels alone — what the DISCOVERY path binds against. Derived from the one parser
+// so the two readings of `identities` can never disagree about which entries are real.
+export function parseDiscoveredLabels(raw: unknown): string[] {
+  return parseReportedIdentities(raw).map((e) => e.label);
 }
 
 // ── Sync report ──────────────────────────────────────────────────────────────
@@ -486,6 +547,140 @@ export function syncReportEvent(
     // invented here, and truncated by the DB writer.
     error: status === "failed" ? (message ?? "sync failed") : null,
   };
+}
+
+// ── Report PROVENANCE: what KIND of run this was (#1888, #1889) ──────────────
+//
+// `status` says HOW THE RUN WENT. These two say WHAT THE RUN WAS, which is orthogonal —
+// a delivery can succeed, an unattended run can fail — which is why they are flags on the
+// body and not a fourth member of the closed status enum.
+//
+//   contacted — did this report describe a visit to the portal AT ALL? The acquirer's
+//               standalone `push` ships records already on disk: no browser, no login,
+//               nobody at the keyboard. It still reports, because the report is also how
+//               bindings are discovered — and before #1888 that delivery answered an open
+//               sync request and reset the staleness clock. Nobody checked the portal and
+//               allos believed someone had.
+//
+//   attended  — was a PERSON at the machine? A scheduled unattended run that FAILS has
+//               had nobody act on it — the device-trust cookie expired, the portal asked
+//               for a code — which is precisely when somebody does need to go to the
+//               machine. Answering the request there makes the ask disappear at the exact
+//               moment it became true (#1889).
+//
+// ABSENT MEANS TRUE for both, exactly as `suppressed` absent means 0: every client that
+// has never heard of these fields keeps its current meaning, and a client that never
+// pushes and never schedules never has to know they exist.
+
+export interface SyncReportProvenance {
+  contacted: boolean;
+  attended: boolean;
+}
+
+// Absent → true. A boolean is the wire form; the string spellings are accepted for the
+// same reason `count()` accepts strings — an external tool is untrusted input, and
+// misreading "false" as "a portal was contacted" is the whole bug this field exists for.
+function flag(raw: unknown): boolean {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    const v = raw.trim().toLowerCase();
+    if (v === "false" || v === "0") return false;
+  }
+  return true;
+}
+
+export function parseSyncReportProvenance(input: {
+  contacted?: unknown;
+  attended?: unknown;
+}): SyncReportProvenance {
+  return { contacted: flag(input.contacted), attended: flag(input.attended) };
+}
+
+// The facts the three predicates below read. Optional so the ONE predicate can be asked
+// of a raw body, a parsed provenance, or a stored row without three shapes.
+export interface ReportProvenanceFacts {
+  contacted?: boolean;
+  attended?: boolean;
+}
+
+// ── THE ONE PREDICATE (#1888's first implementation constraint) ──────────────
+//
+// "Answers a request" and "advances the staleness clock" must never be two hand-written
+// predicates that happen to agree today — that is exactly the drift that produced #1888.
+// This is the named one; both consumers below derive from it, and nothing else in the
+// codebase spells `contacted !== false`.
+export function reportCountsAsCheck(report: ReportProvenanceFacts): boolean {
+  return report.contacted !== false;
+}
+
+// CONSUMER 1 — the answering signal (`SyncRequest.lastReportAt`). A request asks for
+// someone to go and do a thing; a report answers it when the portal was actually
+// contacted AND either records arrived or a person was there. A SUCCESSFUL unattended run
+// still answers: records arrived, which is all the request ever wanted.
+export function reportAnswersRequest(
+  report: ReportProvenanceFacts & { ok: boolean }
+): boolean {
+  return (
+    reportCountsAsCheck(report) && (report.ok || report.attended !== false)
+  );
+}
+
+// CONSUMER 2 — the staleness clock (`SyncRequest.lastOkAt`, `isStalenessDue`). Same one
+// predicate, plus the pre-existing rule that a failed run is not a check.
+export function reportAdvancesStalenessClock(
+  report: ReportProvenanceFacts & { ok: boolean }
+): boolean {
+  return reportCountsAsCheck(report) && report.ok;
+}
+
+// The escalation input (#1889): the machine tried and could not finish, so it is the
+// human's turn and the request's copy should say why. A delivery-only push is excluded by
+// the same one predicate — nothing tried to sign in, so there is nothing to escalate.
+export function reportIsUnattendedFailure(
+  report: ReportProvenanceFacts & { ok: boolean }
+): boolean {
+  return reportCountsAsCheck(report) && !report.ok && report.attended === false;
+}
+
+// ── The open-request list a tool may READ (issue #1889) ──────────────────────
+//
+// WHAT THIS SHAPE MAY CARRY, exhaustively: the portal and account SLUGS, the reason, and
+// the expiry day. That list is the disclosure boundary and it is enforced HERE, in one
+// pure builder, exactly as `buildToolConfig` enforces the registry's — a field added to
+// `SyncRequest` cannot leak by being spread into a response.
+//
+//   SLUGS ONLY, NEVER AN ADDRESS. The requests table has never held one and this payload
+//   cannot invent one. It carries no account NICKNAME either: "Mom" is household
+//   composition, and the slug is what a tool's local config already quotes.
+//
+//   NO CLAIM STATE, NO ACKNOWLEDGMENT. The list is a volunteer board, not a queue: a
+//   client polls, runs what it can run unattended, and the existing report closes the
+//   request exactly as it does today.
+//
+// The expiry is reduced to its DAY, which is the grain the request actually has ("expires
+// in 6 days" is what every human surface says) and the grain a client can act on.
+
+export interface SyncRequestWire {
+  portal: string;
+  account: string;
+  reason: string;
+  expires: string;
+}
+
+export function buildSyncRequestList(
+  requests: readonly {
+    portalSlug: string;
+    accountSlug: string;
+    reason: string;
+    expiresAt: string;
+  }[]
+): SyncRequestWire[] {
+  return requests.map((r) => ({
+    portal: r.portalSlug,
+    account: r.accountSlug,
+    reason: r.reason,
+    expires: r.expiresAt.slice(0, 10),
+  }));
 }
 
 // ── The tool-config payload (issue #1759) ────────────────────────────────────

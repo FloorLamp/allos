@@ -1,5 +1,24 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { settledClick, settledFill, settledSelect } from "./helpers";
+
+// The Care › Overview sections are <details> disclosures (#1804). A save
+// revalidates the server tree, and the re-rendered <details> comes back CLOSED —
+// which hides the add toggle and every row inside it. So each interaction re-opens
+// the section instead of assuming the previous step left it open. The open state is
+// read off the element, never waited out.
+async function openFamilySection(page: Page) {
+  const section = page.getByTestId("records-family-history");
+  await expect(section).toBeVisible();
+  const isOpen = await section.evaluate(
+    (el) => (el as HTMLDetailsElement).open
+  );
+  if (!isOpen) await settledClick(page, section.locator("summary"));
+  await expect(
+    page.getByTestId("add-family-history-panel-toggle")
+  ).toBeVisible();
+  return section;
+}
 
 // #1403 / #1407 — the passport can finally record what a problem list and a family
 // history actually contain: a SIDE and a GRADE on a condition, and how/how young a
@@ -87,10 +106,8 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
   }) => {
     test.slow();
 
-    // The Care › Overview sections are disclosures revealed by their hash (#1804).
     await page.goto("/records/care/overview#family-history");
-    const section = page.getByTestId("records-family-history");
-    await settledClick(page, section.locator("summary"));
+    let section = await openFamilySection(page);
     await settledClick(
       page,
       page.getByTestId("add-family-history-panel-toggle")
@@ -115,6 +132,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     // "father, MI at 52" — the exact string the screening-cadence logic keys on,
     // now on the row instead of in a notes blob. The death checkbox was never
     // ticked: stating the facts states the death.
+    section = await openFamilySection(page);
     const row = section.locator("tr").filter({ hasText: "E2E father" });
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Died at 52 — Myocardial infarction");
@@ -123,6 +141,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     // hereditary risk, and whose label has to say so. The relation TEXT is neutral on
     // purpose: a relation already spelling out "stepmother" states the discriminator
     // itself, and the label deliberately does not repeat what the text says.
+    section = await openFamilySection(page);
     await settledClick(
       page,
       page.getByTestId("add-family-history-panel-toggle")
@@ -137,6 +156,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     await second.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Family history saved")).toBeVisible();
 
+    section = await openFamilySection(page);
     const stepRow = section.locator("tr").filter({ hasText: "E2E guardian" });
     await expect(stepRow).toBeVisible({ timeout: 15_000 });
     await expect(stepRow).toContainText("E2E guardian (step, maternal)");
@@ -159,6 +179,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Family history updated")).toBeVisible();
 
+    section = await openFamilySection(page);
     await expect(
       section.locator("tr").filter({ hasText: "E2E guardian" })
     ).toContainText("E2E guardian (adopted, maternal)", { timeout: 15_000 });

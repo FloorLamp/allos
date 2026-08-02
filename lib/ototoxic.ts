@@ -27,6 +27,7 @@ import {
   type OtotoxicDrugEntry,
 } from "./datasets/ototoxic";
 import { matchConceptKeysIn } from "./drug-interactions";
+import { hearingBaselineSentence, type HearingBaseline } from "./audiogram";
 import type { SafetyMedication } from "./supplement-safety";
 
 // The informational guardrail appended to every note (#717: never prescriptive; absence
@@ -59,6 +60,15 @@ export interface OtotoxicHit {
   // entry, so a dismiss follows the specific med-and-finding and a med rename never
   // re-attaches it elsewhere.
   dedupeKey: string;
+  // The profile's newest documented audiogram, when one exists (issue #1600) — the
+  // hearing HALF of the conjunction this note has never been able to see: "on an
+  // ototoxic medication AND a documented threshold shift". Null when the profile has no
+  // audiogram on file; the note then says nothing extra rather than nagging for a test
+  // the person never had (the attention doctrine's contact-consent rule — a safety note
+  // may say less, never more, on its own initiative). The SAME hit shape flows to every
+  // surface, so the /medications strip, the Supplements strip, the Upcoming finding, and
+  // the digest all cite the same baseline or none — one question, one computation.
+  baseline: HearingBaseline | null;
 }
 
 export function ototoxicSignalKey(medId: number, entryKey: string): string {
@@ -85,8 +95,14 @@ function entriesForMed(med: OtotoxicMedInput): OtotoxicDrugEntry[] {
 // Detect every ototoxic note between the profile's active meds and the curated table.
 // Each (med, entry) yields at most one hit. Deterministically ordered (med name, then
 // entry key). An unrecognized medication produces nothing.
+//
+// `baseline` (issue #1600) is the profile's newest documented audiogram, or null. It is
+// attached to every hit rather than forking a second cross-check: the drug side of the
+// question is unchanged, so a hearing record only makes the SAME note more specific.
+// Still PURE — the caller (getOtotoxicWarnings) does the DB gather.
 export function crossCheckOtotoxic(
-  meds: readonly OtotoxicMedInput[]
+  meds: readonly OtotoxicMedInput[],
+  baseline: HearingBaseline | null = null
 ): OtotoxicHit[] {
   const hits: OtotoxicHit[] = [];
   for (const med of meds) {
@@ -99,6 +115,7 @@ export function crossCheckOtotoxic(
         note: entry.note,
         citation: entry.source,
         dedupeKey: ototoxicSignalKey(med.id, entry.key),
+        baseline,
       });
     }
   }
@@ -111,20 +128,26 @@ export function crossCheckOtotoxic(
 // The hits for a specific CANDIDATE medication (a create/edit inline notice's
 // computation). The candidate is given id 0; reuses the one crossCheckOtotoxic so the
 // notice can never disagree with the list. `active`-filtering is the caller's job.
-export function ototoxicForCandidate(candidate: {
-  name: string;
-  rxcui: string | null;
-  rxcuiIngredients?: string[] | null;
-}): OtotoxicHit[] {
+export function ototoxicForCandidate(
+  candidate: {
+    name: string;
+    rxcui: string | null;
+    rxcuiIngredients?: string[] | null;
+  },
+  baseline: HearingBaseline | null = null
+): OtotoxicHit[] {
   if (!candidate.name.trim()) return [];
-  return crossCheckOtotoxic([
-    {
-      id: 0,
-      name: candidate.name,
-      rxcui: candidate.rxcui,
-      rxcuiIngredients: candidate.rxcuiIngredients ?? null,
-    },
-  ]);
+  return crossCheckOtotoxic(
+    [
+      {
+        id: 0,
+        name: candidate.name,
+        rxcui: candidate.rxcui,
+        rxcuiIngredients: candidate.rxcuiIngredients ?? null,
+      },
+    ],
+    baseline
+  );
 }
 
 // ---- Formatting (shared by every surface) ---------------------------------
@@ -134,11 +157,36 @@ export function ototoxicTitle(hit: OtotoxicHit): string {
   return `Ototoxic medication — ${hit.medName}`;
 }
 
-// The informational, never-prescriptive detail: the class note, the fixed guardrail
-// sentence, and the source citation.
+// The note BODY: the drug-class sentence plus the HEARING BASELINE citation when the
+// profile has an audiogram on file (#1600). This is the ONE place the two are joined, so
+// the surfaces that render the note as a card body (the /medications and Supplements
+// safety strips, which carry the guardrail in their own evidence line) and the ones that
+// render the whole note as a single string (ototoxicDetail, below) can never disagree
+// about what the baseline says. With no audiogram on file it is exactly `hit.note` and
+// every surface reads as it did before this change.
+export function ototoxicNote(hit: OtotoxicHit): string {
+  return hit.baseline
+    ? `${hit.note} ${hearingBaselineSentence(hit.baseline)}`
+    : hit.note;
+}
+
+// The informational, never-prescriptive detail: the note body, then the fixed guardrail
+// sentence and the source citation. The baseline sentence sits BEFORE the guardrail on
+// purpose — it is factual context about this person, and the guardrail must stay the
+// last word so the note still closes on "discuss it, this is not advice".
 export function ototoxicDetail(hit: OtotoxicHit): string {
-  return `${hit.note} ${GUARDRAIL} Source: ${hit.citation}.`;
+  return `${ototoxicNote(hit)} ${GUARDRAIL} Source: ${hit.citation}.`;
+}
+
+// Whether this note is citing a DOCUMENTED threshold shift — the conjunction #1600
+// exists for ("on an ototoxic med AND the thresholds have measurably moved"). Surfaces
+// use it to give the note a stronger visual weight; it deliberately does NOT change the
+// finding's tier, dedupeKey, or push behavior (a hearing record must not silently turn
+// a calm note into a new send — the contact-consent rule).
+export function ototoxicHasShift(hit: OtotoxicHit): boolean {
+  return (hit.baseline?.shifts.length ?? 0) > 0;
 }
 
 // Re-export the active-med shape so callers can build inputs without reaching two modules.
 export type { SafetyMedication };
+export type { HearingBaseline };

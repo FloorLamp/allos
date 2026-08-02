@@ -81,6 +81,21 @@ function stamp(day: string, time = "09:00:00"): string {
   return `${day} ${time}`;
 }
 
+// Backdate a login's last run report, INCLUDING the sticky CHECK CLOCK the answering and
+// staleness reads now use (#1888). One report writes `at` and its clock stamps together,
+// so a fixture that moves one must move the other — otherwise it describes a row no
+// report could ever produce. A NULL stamp stays NULL: a report that never earned a clock
+// stamp does not gain one by being backdated.
+function backdateReport(accountId: number, at: string): void {
+  db.prepare(
+    `UPDATE portal_run_reports
+        SET at = ?,
+            checked_at = CASE WHEN checked_at IS NULL THEN NULL ELSE ? END,
+            checked_ok_at = CASE WHEN checked_ok_at IS NULL THEN NULL ELSE ? END
+      WHERE account_id = ?`
+  ).run(at, at, at, accountId);
+}
+
 interface Fixture {
   momProfile: number;
   dadProfile: number;
@@ -177,9 +192,9 @@ describe("staleness — the cadence creator", () => {
       message: null,
       discovered: 0,
     });
-    db.prepare("UPDATE portal_run_reports SET at = ? WHERE account_id = ?").run(
-      stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 5))),
-      f.mom.id
+    backdateReport(
+      f.mom.id,
+      stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 5)))
     );
 
     expect(evaluateStalenessRequests(todayFor)).toBeGreaterThanOrEqual(1);
@@ -198,10 +213,7 @@ describe("staleness — the cadence creator", () => {
       message: null,
       discovered: 0,
     });
-    db.prepare("UPDATE portal_run_reports SET at = ? WHERE account_id = ?").run(
-      stamp(shiftDateStr(f.anchor, -3)),
-      f.mom.id
-    );
+    backdateReport(f.mom.id, stamp(shiftDateStr(f.anchor, -3)));
     evaluateStalenessRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
       false
@@ -218,9 +230,9 @@ describe("staleness — the cadence creator", () => {
       message: null,
       discovered: 0,
     });
-    db.prepare("UPDATE portal_run_reports SET at = ? WHERE account_id = ?").run(
-      stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 2))),
-      f.mom.id
+    backdateReport(
+      f.mom.id,
+      stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 2)))
     );
     // Simulate the failure as a separate stored state: ok = 0 with an OLD stamp, so the
     // staleness read (ok = 1 only) sees nothing recent.
@@ -315,10 +327,7 @@ describe("the request answers itself", () => {
       message: null,
       discovered: 0,
     });
-    db.prepare("UPDATE portal_run_reports SET at = ? WHERE account_id = ?").run(
-      stamp(shiftDateStr(f.anchor, -10)),
-      f.mom.id
-    );
+    backdateReport(f.mom.id, stamp(shiftDateStr(f.anchor, -10)));
     expect(requestSync(f.mom.id, "manual").ok).toBe(true);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(true);
   });

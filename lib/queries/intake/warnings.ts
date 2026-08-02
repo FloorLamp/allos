@@ -38,6 +38,7 @@ import {
   type OtotoxicHit,
   type OtotoxicMedInput,
 } from "../../ototoxic";
+import { getHearingBaseline } from "../../audiogram-records";
 import {
   crossCheckWeatherMeds,
   type WeatherMedHit,
@@ -333,6 +334,14 @@ export function getDentalSafetyWarnings(profileId: number): DentalSafetyHit[] {
 // format over ("one question, one computation"). Profile-scoped through
 // getIntakeSafetyContext (profile_id-filtered); no new SQL, so the scoping guard is
 // unaffected. Informational, never prescriptive; absence of a flag is not clearance.
+//
+// #1600 — the note now CITES the profile's newest documented audiogram when one exists
+// (getHearingBaseline over the `medical_records` hearing analytes), which is what lets
+// it finally see the clinically interesting conjunction: "on an ototoxic medication AND
+// a documented threshold shift". The gather is done ONCE here and attached to every hit,
+// so the /medications strip, the Supplements strip, the Upcoming finding, and the digest
+// cannot disagree about what the baseline says. The lookup is skipped entirely when no
+// ototoxic med matched, so a profile with no such medication pays nothing for it.
 export function getOtotoxicWarnings(profileId: number): OtotoxicHit[] {
   const meds: OtotoxicMedInput[] = getIntakeSafetyContext(profileId)
     .medications.filter((m): m is typeof m & { id: number } => m.id != null)
@@ -343,7 +352,9 @@ export function getOtotoxicWarnings(profileId: number): OtotoxicHit[] {
       rxcuiIngredients: m.rxcuiIngredients,
     }));
   if (meds.length === 0) return [];
-  return crossCheckOtotoxic(meds);
+  // Match first, then read the audiogram only if something actually matched.
+  if (crossCheckOtotoxic(meds).length === 0) return [];
+  return crossCheckOtotoxic(meds, getHearingBaseline(profileId));
 }
 
 // Drug-allergy × medication-stack cross-check (issue #1029): each of the profile's

@@ -267,16 +267,18 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   await expectNoClippedContent(page);
 });
 
-test("the five specialty sub-tabs render with rare entry collapsed and the crisis line present (#1079, #1497)", async ({
+test("the six specialty sub-tabs render with rare entry collapsed and the crisis line present (#1079, #1497, #1600)", async ({
   page,
 }) => {
   test.slow();
   // Profile 1 owns optical + dental rows (Vision/Dental relevant) and is an adult
-  // (Substance use ungated), so all five specialty sub-tabs show.
+  // (Substance use ungated), so all six specialty sub-tabs show — Hearing (#1600) is
+  // ungated and always among them.
   await page.goto("/records/specialty/vision");
   const subs = page.getByTestId("records-sub-tabs");
   for (const label of [
     "Vision",
+    "Hearing",
     "Dental",
     "Skin",
     "Mental health",
@@ -356,17 +358,20 @@ test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates 
   browser,
 }) => {
   // The male nav fixture owns no optical/dental rows (e2e/fixture-logins.ts), so the
-  // data-gated specialty sub-tabs drop while Skin/Mental health stay, and a direct
-  // hit on the gated route re-gates server-side (the SettingsTabs admin-tab
-  // discipline: a hidden tab is an unreachable route).
+  // data-gated specialty sub-tabs drop while Hearing/Skin/Mental health stay, and a
+  // direct hit on the gated route re-gates server-side (the SettingsTabs admin-tab
+  // discipline: a hidden tab is an unreachable route). The bounce target is the FIRST
+  // VISIBLE pane, computed from the shared gated list — Hearing since #1600 added it
+  // ahead of Skin, which is exactly why the routes no longer hard-code a sibling.
   const page = await loginAs(browser, {
     username: E2E_LOGIN_NAV_MALE,
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    // Specialty group tab lands on the first VISIBLE pane (Skin) for this profile.
-    await page.goto("/records/specialty/skin");
+    // Specialty group tab lands on the first VISIBLE pane (Hearing) for this profile.
+    await page.goto("/records/specialty/hearing");
     const subs = page.getByTestId("records-sub-tabs");
+    await expect(subs.getByRole("link", { name: "Hearing" })).toBeVisible();
     await expect(subs.getByRole("link", { name: "Skin" })).toBeVisible();
     await expect(
       subs.getByRole("link", { name: "Mental health" })
@@ -376,9 +381,9 @@ test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates 
 
     // The gated route re-gates: a direct hit redirects to the first visible pane.
     await page.goto("/records/specialty/vision");
-    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await expect(page).toHaveURL(/\/records\/specialty\/hearing$/);
     await page.goto("/records/specialty/dental");
-    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await expect(page).toHaveURL(/\/records\/specialty\/hearing$/);
   } finally {
     await page.context().close();
   }

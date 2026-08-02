@@ -109,7 +109,8 @@ export function listVisiblePortalRunReports(
       `SELECT r.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName,
               r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
               a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
-              r.status AS status, r.message AS message, r.discovered AS discovered
+              r.status AS status, r.message AS message, r.discovered AS discovered,
+              r.contacted AS contacted, r.attended AS attended
          FROM portal_run_reports r
          JOIN portals p ON p.id = r.portal_id
          JOIN portal_accounts a ON a.id = r.account_id
@@ -130,6 +131,8 @@ export function listVisiblePortalRunReports(
     status: row.status as SyncReportStatus,
     message: (row.message as string | null) ?? null,
     discovered: row.discovered as number,
+    contacted: (row.contacted as number) === 1,
+    attended: (row.attended as number) === 1,
   }));
 }
 
