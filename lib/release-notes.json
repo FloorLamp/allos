@@ -1,6 +1,81 @@
 {
   "days": [
     {
+      "date": "2026-08-02",
+      "entries": [
+        {
+          "pr": 1899,
+          "kind": "feature",
+          "issues": [1868],
+          "title": "Notification settings stop asking the same question twice",
+          "body": "The Home Assistant card listed all thirteen reminder kinds and so did the routing matrix's Home Assistant column — twenty-six checkboxes for thirteen choices. The card now keeps the connection settings and the matrix is the one editor. Each channel column also gains a select-all in its header, so switching a whole channel off is one tap instead of thirteen — except your dose reminders, missed-dose escalations, and redose notices, which keep their own boxes so a safety reminder can never be silenced by a single undifferentiated tap."
+        },
+        {
+          "pr": 1900,
+          "kind": "security",
+          "issues": [1882, 1883],
+          "title": "Secrets stay masked in the console too, and busy logs stop losing lines",
+          "body": "Values that look like credentials were already masked before being written to the log files, but the copy echoed to the container console was not — the audience most likely to have the log in front of them saw the unmasked version. Both destinations now pass through the same masking step. Separately, the log files trimmed themselves by rewriting the whole file, which could silently drop an entry written by the notification service at the same moment; trimming is now safe against a second writer."
+        },
+        {
+          "pr": 1896,
+          "kind": "fix",
+          "issues": [1884],
+          "title": "Undoing a merge of several activities no longer loses one of them",
+          "body": "When a merge of three or more activities was undone, each restore ran independently — so if one failed, the surviving activity's data could end up unreachable: not on the restored rows, and no longer on the kept one. Undo now removes exactly the contribution of the activity being restored, leaving the rest intact, and retrying the failed one finishes the job."
+        },
+        {
+          "pr": 1894,
+          "kind": "fix",
+          "issues": [1885],
+          "title": "A brief Telegram outage no longer strands a message with stale buttons",
+          "body": "When the app updates a Telegram message and Telegram is briefly unreachable, it used to forget that message permanently — leaving buttons on screen that no longer did anything and could never be corrected. It now tells a temporary failure apart from a genuinely dead message, and retries the temporary ones on the next check."
+        },
+        {
+          "pr": 1887,
+          "kind": "feature",
+          "issues": [1836, 1874, 1875],
+          "title": "Patient portals shows the actual structure: portal, login, patient",
+          "body": "The portals page is now built from the objects it manages — each portal a permanent section, its logins inside it, and the patients under the login they arrived on. Mapping a patient means tapping a family member's face rather than picking from a dropdown, and when the same person shows up on two logins the page offers the match instead of looking like a duplicate. Portal names, logins, and software tags are editable in place, and changing which profile a patient maps to is a single atomic switch. Members now only see the logins covering profiles they can reach, and permanently refusing a patient is an admin action."
+        },
+        {
+          "pr": 1804,
+          "kind": "feature",
+          "issues": [1497],
+          "title": "Health record and Results are easier to move around",
+          "body": "The record hub leads with your lists, keeps Add reachable on every screen size, and puts each record's actions inline where you are already looking."
+        },
+        {
+          "pr": 1886,
+          "kind": "fix",
+          "issues": [1880],
+          "title": "A flaky data source stops crying wolf",
+          "body": "A source that fails one hour and succeeds the next — a weather service having a bad afternoon — used to report itself as broken, badge and all, even though nothing was missing. It now says plainly that it is working with interruptions, and only escalates after three failures in a row or when nothing has arrived for a day. A source that does need attention is shown once, with its reason and all its actions together, and the run history groups repeated failures instead of alternating stripes."
+        },
+        {
+          "pr": 1881,
+          "kind": "feature",
+          "issues": [1869, 1870],
+          "title": "Settings housekeeping",
+          "body": "The AI provider and automation cards move to their own page under Server, which was carrying ten cards. The backup staleness alarm the health check reads is now editable instead of database-only, and a capability field that only ever had one option reads as plain text."
+        },
+        {
+          "pr": 1873,
+          "kind": "feature",
+          "issues": [1866],
+          "title": "Overdue safety follow-ups finally reach you",
+          "body": "A follow-up you tracked with a due date — the scan recommended in March — now sends a reminder when it goes overdue, and one more some weeks later, then stops. There is no new setting to find: recording the follow-up with a date is the ask, and the off switch is marking it done or saying you have decided against it, either of which ends it for good."
+        },
+        {
+          "pr": 1872,
+          "kind": "fix",
+          "issues": [1854],
+          "title": "As-needed dose limits can count milligrams, not just doses",
+          "body": "Because the safety counter groups the same ingredient across items, 200 mg and 800 mg ibuprofen were both simply \"a dose\" — so three prescription tablets read as calm while six low-dose ones tripped the limit. You can now record a milligrams-per-day maximum, and when every logged dose has a known amount the counter compares real exposure and says which basis it used."
+        }
+      ]
+    },
+    {
       "date": "2026-08-01",
       "entries": [
         {

@@ -679,7 +679,7 @@ happens.
 - **The per-item TERMINATOR is the only permanent off-switch** (the real
   control, per the ruling): `settleFollowUpCore` records "done on \<date\>" or
   "discussed, not doing it" (optional reason) onto the chain node (migration
-  140), which removes it from the builder's output entirely — the escalation
+  141), which removes it from the builder's output entirely — the escalation
   ends because the question is answered. A declined follow-up never sends
   again, including across marker sweeps and re-ticks; deliberately re-tracking
   the same source creates a NEW chain node (a new tracked due date = a new
