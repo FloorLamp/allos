@@ -1192,7 +1192,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   preventive_overrides: { revalidate: ["/upcoming", "/"] },
   protocols: { revalidate: ["/longevity", "/"] },
   milestones: { revalidate: ["/"] },
-  equipment: { revalidate: ["/settings/equipment", "/training"] },
+  equipment: { revalidate: ["/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
