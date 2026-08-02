@@ -11,7 +11,6 @@ import {
 import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
-import QuickCyclePanel from "./quick-entry/QuickCyclePanel";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
@@ -21,7 +20,7 @@ import {
 } from "@/app/(app)/quick-entry-actions";
 import type { QuickEntryForm } from "@/lib/quick-log";
 
-// The two newest bodies load ON DEMAND (#1525/#1633). This host is mounted on every
+// The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
 // JavaScript as much as about queries. The forms it already carried are small and
 // shared with pages the shell links to anyway; the upload form and the practice list
@@ -33,6 +32,14 @@ const UploadForm = dynamic(() => import("./UploadForm"));
 const QuickPracticeList = dynamic(
   () => import("./quick-entry/QuickPracticeList")
 );
+// Same rule, third body (#1892): the period panel drags in the shared offer button
+// and, through it, the cycle Server Actions' client references. Static-importing it
+// would put that on the initial JS of EVERY route — including routes with no cycle
+// surface at all — which is exactly the promise this host makes above. Hydration
+// latency is not free: a wider hydration window is what turns a pre-hydration
+// `.fill()` on a controlled input into a silently stale save (see settledFill in
+// e2e/helpers.ts), so the cost of breaking this rule is paid by other pages' flakes.
+const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 
 // The shared quick-entry overlay host (issue #1468).
 //
