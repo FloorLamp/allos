@@ -20,7 +20,10 @@ surface there (and inline where you triggered them), not just in the console.
 Like the error log, each event's free text is masked through the shared
 secret-redaction chokepoint before it's persisted, the file self-trims to a
 byte budget so it stays bounded, and an admin-only **Clear** button on the tab
-empties it.
+empties it. The **stdout echo goes through that same chokepoint**: `docker logs`
+is a broader audience than the admin-only viewer, so a field named
+`authorization`/`token`/`password`/`cookie` is masked in the console line too,
+not just in the file.
 
 Separately, **unexpected** server errors — an unhandled exception in a Server
 Action, a route 500, a crashed fire-and-forget task — are captured server-side
@@ -30,7 +33,12 @@ persisted there with its logger scope, message, and a redacted, size-capped
 detail (any stack), tagged with the acting profile when a request context is in
 scope. Clients still get a generic error (the real cause never leaves this log);
 the file self-trims by size/line count so a crash loop can't fill the disk, and
-a Clear button empties it. This generalizes the "failures surface in the UI"
+a Clear button empties it. Both JSONL logs share one append + self-trim
+chokepoint (`lib/jsonl-log-file.ts`), because the `allos-notify` sidecar is a
+separate OS process writing to the same `DATA_DIR`: the trim holds an advisory
+lock across the whole append-then-trim sequence and swaps the rewritten file in
+with an atomic rename, so a concurrent append is never overwritten and a reader
+never sees a half-written file. This generalizes the "failures surface in the UI"
 pattern (the notification-delivery marker, backup health) to everything.
 
 For debugging integration syncs, each sync can capture the raw provider payload
@@ -65,7 +73,7 @@ proactive AI features (supplement suggestions + a refreshed daily insight) on a
 on a page view once the period has elapsed, and only when the underlying data
 actually changed (an unchanged input signature skips the run, logged in
 **Settings → Logs & audit → AI logs**). The admin sets a per-profile
-**max runs per day** ceiling under **Settings → Server → AI**. Runs happen only in
+**max runs per day** ceiling under **Settings → Server**. Runs happen only in
 the web app, never the notification tick.
 
 Uploaded medical documents (**Data → Import**) are extracted into structured
@@ -104,8 +112,8 @@ cannot disagree.
 
 ### Provider tiers (Heavy / Light) and local inference
 
-AI config lives in the database under **Settings → Server → AI** (the Server
-group's AI sub-page, admin-only), as **two independent tiers**:
+AI config lives in the database under **Settings → Server → AI providers**
+(admin-only), as **two independent tiers**:
 
 - **Heavy** — document/workout extraction (vision + long context; it sees your
   uploaded records).

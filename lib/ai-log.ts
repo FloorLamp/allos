@@ -14,7 +14,11 @@ import path from "node:path";
 import { createLogger } from "./log";
 import { endpointHost } from "./ai-client";
 import { redactSecrets } from "./error-log-format";
-import { trimJsonlLines } from "./jsonl-trim";
+import {
+  appendJsonlLine,
+  clearJsonlFile,
+  type JsonlBudgets,
+} from "./jsonl-log-file";
 import { withLogContext, getLogContext, type LogContext } from "./log-context";
 
 const log = createLogger("ai");
@@ -32,11 +36,14 @@ export function capDetail(s: string, n = 4000): string {
 
 // Keep the file bounded: when it grows past MAX_BYTES, rewrite with the newest
 // lines. The kept tail must fit BOTH budgets (#1841) — a pure line-count trim
-// retains ~8MB of 4KB-capped lines and re-triggers on every append. KEEP_BYTES
+// retains ~8MB of 4KB-capped lines and re-triggers on every append. keepBytes
 // sits at half the trigger so the appends between rewrites amortize.
 const MAX_BYTES = 5 * 1024 * 1024;
-const KEEP_LINES = 2000;
-const KEEP_BYTES = MAX_BYTES / 2;
+const BUDGETS: JsonlBudgets = {
+  maxBytes: MAX_BYTES,
+  keepLines: 2000,
+  keepBytes: MAX_BYTES / 2,
+};
 
 export type AiFeature =
   | "extraction"
@@ -132,24 +139,6 @@ function nextId(): string {
   return `${Date.now()}-${seq.toString().padStart(6, "0")}`;
 }
 
-function ensureDir() {
-  fs.mkdirSync(path.dirname(AI_LOG_PATH), { recursive: true });
-}
-
-function trimIfLarge() {
-  try {
-    const { size } = fs.statSync(AI_LOG_PATH);
-    if (size <= MAX_BYTES) return;
-    const lines = fs.readFileSync(AI_LOG_PATH, "utf8").split("\n");
-    fs.writeFileSync(
-      AI_LOG_PATH,
-      trimJsonlLines(lines, KEEP_LINES, KEEP_BYTES).join("\n") + "\n"
-    );
-  } catch {
-    // best-effort
-  }
-}
-
 // Record an AI event: append to the file AND echo through the central logger
 // (so it also reaches stdout / `docker logs`). Best-effort — never throws into
 // the caller's AI flow.
@@ -173,9 +162,8 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
   if (event.detail) event.detail = redactSecrets(event.detail);
   if (event.error) event.error = redactSecrets(event.error);
   try {
-    ensureDir();
-    fs.appendFileSync(AI_LOG_PATH, JSON.stringify(event) + "\n");
-    trimIfLarge();
+    // Shared append + atomic self-trim chokepoint (#1883) — see lib/jsonl-log-file.ts.
+    appendJsonlLine(AI_LOG_PATH, JSON.stringify(event) + "\n", BUDGETS);
   } catch (err) {
     log.error("failed to write ai log", { err });
   }
@@ -229,8 +217,7 @@ export function aiLogSize(): number {
 // echo leaves a trace of the wipe in `docker logs`.
 export function clearAiLog(): void {
   try {
-    ensureDir();
-    fs.writeFileSync(AI_LOG_PATH, "");
+    clearJsonlFile(AI_LOG_PATH);
     log.info("ai log cleared");
   } catch {
     // best-effort
