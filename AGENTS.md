@@ -414,6 +414,12 @@ See `docs/internals/e2e-hygiene.md`.
 - Never put real PHI in the repository. Fixtures must use clearly fictional or
   reserved data. `phi-scan` runs in CI and pre-commit, but the scanner is not a
   substitute for review.
+- Never put a realistic-looking credential in a fixture, including in a test
+  that exercises redaction — `redactSecrets()` keys off the FIELD NAME, so an
+  obviously-fake low-entropy placeholder proves the same behavior. The secret
+  scan runs `gitleaks git --log-opts="--all"`, i.e. over every ref in the
+  checkout, so one such value in one commit on one branch fails the gate on
+  every open PR in the repo until that commit leaves the remote.
 - When adding a domain, update seed data and the relevant registries, import
   cleanup lists, navigation, and tests together.
 

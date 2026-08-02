@@ -331,6 +331,22 @@ What this means when writing a spec:
   seems racy — if the guard's ceiling is ever exceeded, its error names the
   stuck page; that is a finding, not a flake to sleep past.
 
+## A declared ceiling above 30 s needs `test.slow()` (2026-08-02)
+
+A named `{ timeout: N }` on an assertion bounds only that assertion — the TEST
+still dies at Playwright's 30 s default. So a ceiling raised past 30 s is inert:
+the run is killed before the ceiling it declares can ever apply, and the failure
+reads as the ceiling's message with a _shorter_ elapsed time than the ceiling
+itself, which is the tell. `wellness-practices.spec.ts:137` spent a full cycle
+in that state — a 45 s ceiling that never once got to 45 s, dying at 30.1 s.
+
+If an assertion genuinely needs more than 30 s, add `test.slow()` (or a
+`test.setTimeout`) in the same change, and say in the comment why the sequence is
+slow. And treat a ceiling that keeps needing to grow as evidence the test's SETUP
+is the problem, not its budget: `wellness-practices.spec.ts:137` drives two full
+UI create round-trips as setup for assertions about EDITS, which is what #1901
+fixes by seeding those rows instead.
+
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
 ONE home for settled interactions. The file header carries the authoritative
