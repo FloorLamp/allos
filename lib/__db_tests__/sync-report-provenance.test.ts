@@ -13,7 +13,7 @@
 //     only, and a later successful collection clears it;
 //   • `GET /api/documents/requests`: the auth gate, the write-set scoping, open-and-
 //     unexpired only, and no address-shaped field anywhere in the answer;
-//   • migration 144's columns and its behaviour-preserving backfill.
+//   • migration 146's columns and its behaviour-preserving backfill.
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
@@ -796,9 +796,9 @@ describe("GET /api/documents/requests", () => {
   });
 });
 
-// ── Migration 144 ─────────────────────────────────────────────────────────────
+// ── Migration 146 ─────────────────────────────────────────────────────────────
 
-describe("migration 144 — the provenance columns", () => {
+describe("migration 146 — the provenance columns", () => {
   it("adds both flags defaulting to the wire meaning, plus the clock and escalation columns", () => {
     const cols = new Map(
       (

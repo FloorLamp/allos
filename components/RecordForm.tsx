@@ -13,6 +13,7 @@ import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import { useAddEntryModalClose } from "./AddEntryPanel";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
+import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
 import {
   RESULT_STATUSES,
   RESULT_STATUS_LABELS,
@@ -77,7 +78,23 @@ export default function RecordForm({
   const [error, setError] = useState<string | null>(null);
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
-  const canonicalNames = useCanonicalNames();
+  // Relevance-ranked, group-tagged canonical names (#1675) — same list, same order,
+  // in the Biomarkers add slot, the inline row editor, and the import mapping field.
+  const canonicalOptions = useCanonicalNames();
+  const canonicalNames = useMemo(
+    () => canonicalOptions.map((option) => option.name),
+    [canonicalOptions]
+  );
+  const canonicalGroups = useMemo(
+    () =>
+      new Map(
+        canonicalOptions.map((option) => [
+          option.name,
+          BIOMARKER_GROUP_LABELS[option.group],
+        ])
+      ),
+    [canonicalOptions]
+  );
   const [canonical, setCanonical] = useState(record?.canonical_name ?? "");
   // Same controlled-Combobox treatment for the specimen picker (#1404): form.reset()
   // can't clear a controlled input, so the add path clears it explicitly on save.
@@ -231,6 +248,7 @@ export default function RecordForm({
           value={canonical}
           onChange={setCanonical}
           options={canonicalNames}
+          groupFor={(option) => canonicalGroups.get(option) ?? null}
           allowFreeText
           placeholder="defaults to name"
         />

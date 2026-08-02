@@ -836,3 +836,58 @@ export function installStreamRevealGuard(page: Page): void {
     };
   }
 }
+
+// Open the shared Combobox's dropdown (components/Combobox.tsx) on an EMPTY query —
+// which, for a picker that passes `groupFor`, is its relevance view (#1675).
+//
+// Same hydration root cause as settledFill/settledSelect: the list opens from the
+// input's React `onFocus`, so a click landing before React attaches focuses the DOM
+// node and nothing else — and because the node is then already focused, a retry that
+// simply clicks again fires no second focus event. Waiting for the fiber markers first
+// is what makes the open reliable; the assertion sits inside the retry so a slow
+// hydration re-clicks rather than leaving the caller to time out on a closed list.
+export async function openCombobox(
+  page: Page,
+  field: Locator,
+  opts: { timeout?: number } = {}
+): Promise<Locator> {
+  const timeout = opts.timeout ?? 15_000;
+  await expect(field).toBeVisible();
+  await expect(async () => {
+    const hydrated = await field.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "combobox not hydrated yet").toBe(true);
+    await field.click();
+    await expect(page.getByRole("listbox")).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout });
+  return page.getByRole("listbox");
+}
+
+// Choose a shared-Combobox option by its VISIBLE LABEL — the combobox analog of
+// settledSelect, for the pickers #1675 converted from `<select>`s.
+//
+// Typing the label first is deliberate: it is the app's own fuzzy search, so the row
+// is found the way a user finds it, and the list is narrowed to the intended match
+// instead of relying on a position in a ~200-row ranked list. The option is addressed
+// by its ACCESSIBLE NAME with `exact`, so two rows that read the same fail loudly here
+// (the #531 rule the option builder enforces) rather than picking an arbitrary one.
+export async function settledPickOption(
+  page: Page,
+  field: Locator,
+  label: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 15_000;
+  await expect(async () => {
+    await settledFill(page, field, label, { timeout: 5_000 });
+    const option = page
+      .getByRole("listbox")
+      .getByRole("button", { name: label, exact: true });
+    await expect(option).toBeVisible({ timeout: 2_000 });
+    await option.click();
+    await expect(field).toHaveValue(label, { timeout: 2_000 });
+  }).toPass({ timeout });
+}

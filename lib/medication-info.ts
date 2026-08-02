@@ -106,25 +106,80 @@ export function medicationCatalogLabel(
   return `${generic} (${suffix})`;
 }
 
+// The catalog's label index, built ONCE and shared by everything that asks which label
+// a generic renders as or which generic a display string names (#221): the option list,
+// the picker order in lib/medication-rank.ts, and catalogLabelGeneric below. Both
+// directions come off the same pass over the curated entries, so a label can never mean
+// one thing to the ranker and another to the resolver. Keys are lowercased; the values
+// keep catalog display casing.
+//
+// `genericBy` indexes BOTH display forms of a med — its collapsed label AND its bare
+// generic name — onto that generic, which is what makes it the authority on whether a
+// trailing parenthetical is a brand suffix or part of the name.
+interface CatalogLabelIndex {
+  byGeneric: Map<string, string>;
+  genericBy: Map<string, string>;
+}
+let labelIndex: CatalogLabelIndex | null = null;
+function catalogLabelIndex(): CatalogLabelIndex {
+  if (!labelIndex) {
+    const byGeneric = new Map<string, string>();
+    const genericBy = new Map<string, string>();
+    for (const info of MED_DESCRIPTION_ENTRIES) {
+      if (!info.generic) continue;
+      const label = medicationCatalogLabel(
+        info.generic,
+        info.brand_names ?? []
+      );
+      byGeneric.set(info.generic.toLowerCase(), label);
+      genericBy.set(label.toLowerCase(), info.generic);
+      genericBy.set(info.generic.toLowerCase(), info.generic);
+    }
+    labelIndex = { byGeneric, genericBy };
+  }
+  return labelIndex;
+}
+
+// generic (lowercased) → its collapsed "Generic (Brand, Brand)" combobox label. The
+// picker-order module reads this rather than rebuilding the same map.
+export function catalogLabelsByGeneric(): ReadonlyMap<string, string> {
+  return catalogLabelIndex().byGeneric;
+}
+
 // The med-name combobox source as ONE option per medication (issue #851 item 14),
 // replacing the former flat generics+brands list where each med appeared several
 // times. Each option is the collapsed "Generic (Brand, Brand)" label; the brands ride
 // IN the label so the combobox's fuzzy filter still matches a typed brand token.
 // Sorted by label. Pure over the bundled asset; pinned by the descriptions test.
 export function medicationCatalogOptions(): string[] {
-  const opts: string[] = [];
-  for (const info of MED_DESCRIPTION_ENTRIES) {
-    if (!info.generic) continue;
-    opts.push(medicationCatalogLabel(info.generic, info.brand_names ?? []));
-  }
-  return opts.sort((a, b) => a.localeCompare(b));
+  return [...catalogLabelIndex().byGeneric.values()].sort((a, b) =>
+    a.localeCompare(b)
+  );
 }
 
-// Strip the "(Brand, …)" parenthetical from a collapsed catalog label → the generic.
-// A label with no parenthetical (a brandless med, or a free-text name) passes through.
+// The generic a collapsed catalog label names, decided by the CATALOG rather than by
+// text-stripping the trailing parenthetical. The catalog holds generics whose own name
+// carries parentheses ("Cholecalciferol (Vitamin D3)"), and no regex over label text can
+// tell that parenthetical from a "(Brand, …)" suffix — the old strip truncated them
+// (#1817). So: the whole string is looked up first, and only when the catalog does not
+// recognize it is the parenthetical stripped, as a CANDIDATE the catalog must confirm is
+// a generic display name. That keeps a hand-built or stale brand list resolving
+// ("Acetaminophen (Tylenol, Panadol)" → "Acetaminophen") while refusing a strip the
+// catalog does not vouch for. Every answer that differs from the input is a name the
+// catalog knows.
+//
+// FALLBACK — a string the catalog cannot resolve either way (free text the user typed
+// and picked) comes back trimmed and otherwise UNCHANGED. Off the catalog there is no
+// authority saying a trailing parenthetical is a brand list rather than part of the
+// name, so dropping it would be a guess; the free-text callers (resolveMedicationPick →
+// splitMedicationName) keep exactly what was typed.
 export function catalogLabelGeneric(label: string): string {
-  const m = label.match(/^(.*?)\s*\([^()]*\)\s*$/);
-  return (m ? m[1] : label).trim();
+  const { genericBy } = catalogLabelIndex();
+  const raw = label.trim();
+  const known = genericBy.get(raw.toLowerCase());
+  if (known) return known;
+  const stripped = raw.match(/^(.*?)\s*\([^()]*\)\s*$/)?.[1]?.trim();
+  return (stripped && genericBy.get(stripped.toLowerCase())) || raw;
 }
 
 // Resolve a combobox pick from the collapsed catalog (issue #851 item 14). `picked` is

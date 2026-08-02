@@ -7,7 +7,11 @@
 // don't re-gather.
 
 import { cache } from "../../request-cache";
-import { deriveRiskFactors, type RiskFactor } from "../../risk-stratification";
+import {
+  deriveRiskFactors,
+  familyConditionRefs,
+  type RiskFactor,
+} from "../../risk-stratification";
 import { getRiskAttributes, getSmokingHistory } from "../../settings";
 import { resolveSmoking } from "../../smoking";
 import {
@@ -28,16 +32,14 @@ export const getRiskFactors = cache(function getRiskFactors(
   return deriveRiskFactors({
     // Coded refs, not bare labels (#1030): both tables store code/code_system,
     // so the recognizers run code-first with the stem fallback — a coded-terse
-    // row ("DM2" as E11.9) tightens cadence like its verbose twin. Family rows also
-    // carry onset_age (early-onset cadence tightening, #1039 path 4) and relation
+    // row ("DM2" as E11.9) tightens cadence like its verbose twin. The projection
+    // itself is the PURE familyConditionRefs (#1407): it resolves the genetic gate
+    // (an adopted/step relative's history is not hereditary) and lifts a stated
+    // cause of death into a condition of its own with age_at_death as its onset
+    // proxy — so "father, MI at 52" finally reaches the cardiac cadence. Family rows
+    // also carry onset_age (early-onset tightening, #1039 path 4) and relation
     // (threaded for a future degree-gating pass, #1039 Ask 5 — not consumed today).
-    familyConditions: getFamilyHistory(profileId).map((f) => ({
-      name: f.condition,
-      code: f.code,
-      codeSystem: f.code_system,
-      relation: f.relation,
-      onsetAge: f.onset_age,
-    })),
+    familyConditions: familyConditionRefs(getFamilyHistory(profileId)),
     activeConditions: getConditions(profileId, { status: "active" }).map(
       (c) => ({ name: c.name, code: c.code, codeSystem: c.code_system })
     ),

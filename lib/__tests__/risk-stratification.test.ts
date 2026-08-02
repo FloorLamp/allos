@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveRiskFactors,
+  familyConditionRefs,
   retestModulationFor,
   screeningPriorityFor,
   screeningModulationFor,
@@ -812,5 +813,147 @@ describe("family site cancer cadence + priority (#1039)", () => {
       NO_MODULATION
     );
     expect(screeningPriorityFor("colorectal_cancer", factors).priority).toBe(0);
+  });
+});
+
+// ── The genetic gate + cause of death as a family condition (#1407) ──────────
+//
+// The clinical point of the family-history columns: a genetic-risk read that treats
+// an ADOPTED parent's history as hereditary is wrong, and "father, MI at 52" — the
+// exact input screening cadence keys on — used to live in two columns the classifier
+// never saw.
+describe("deriveRiskFactors — the genetic discriminator (#1407)", () => {
+  const base = {
+    activeConditions: [] as string[],
+    attributes: EMPTY_RISK_ATTRIBUTES,
+  };
+
+  it("an explicitly NON-genetic relative contributes no family factor", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        {
+          name: "Coronary artery disease",
+          relation: "Father",
+          genetic: false,
+        },
+      ],
+    });
+    expect(f.has("family-cardiovascular")).toBe(false);
+  });
+
+  it("a non-genetic relative cannot tighten a cadence through onset age either", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Colon cancer", code: "C18.9", onsetAge: 41, genetic: false },
+      ],
+    });
+    expect(f.has("family-colorectal")).toBe(false);
+    expect(f.has("family-colorectal-early-onset")).toBe(false);
+  });
+
+  it("unstated and half-sibling relatives keep counting (hereditary by default)", () => {
+    const unstated = deriveRiskFactors({
+      ...base,
+      familyConditions: [{ name: "Coronary artery disease" }],
+    });
+    expect(unstated.has("family-cardiovascular")).toBe(true);
+    const half = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Coronary artery disease", genetic: true, relation: "Sister" },
+      ],
+    });
+    expect(half.has("family-cardiovascular")).toBe(true);
+  });
+
+  it("one non-genetic row does not silence a genetic row beside it", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Coronary artery disease", genetic: false },
+        { name: "Breast cancer", onsetAge: 44, genetic: true },
+      ],
+    });
+    expect(f.has("family-cardiovascular")).toBe(false);
+    expect(f.has("family-breast")).toBe(true);
+    expect(f.has("family-breast-early-onset")).toBe(true);
+  });
+});
+
+describe("familyConditionRefs (#1407)", () => {
+  const row = {
+    relation: "Father",
+    condition: "Type 2 diabetes",
+    code: null,
+    code_system: null,
+    onset_age: 55,
+  };
+
+  it("resolves the genetic gate from the stored relation_type", () => {
+    expect(familyConditionRefs([{ ...row }])[0].genetic).toBe(true);
+    expect(
+      familyConditionRefs([{ ...row, relation_type: "half" }])[0].genetic
+    ).toBe(true);
+    expect(
+      familyConditionRefs([{ ...row, relation_type: "adopted" }])[0].genetic
+    ).toBe(false);
+    expect(
+      familyConditionRefs([{ ...row, relation_type: "step" }])[0].genetic
+    ).toBe(false);
+  });
+
+  it("lifts a stated cause of death into a condition of its own, aged at death", () => {
+    const refs = familyConditionRefs([
+      {
+        ...row,
+        cause_of_death: "Myocardial infarction",
+        age_at_death: 52,
+      },
+    ]);
+    expect(refs).toHaveLength(2);
+    expect(refs[1]).toMatchObject({
+      name: "Myocardial infarction",
+      onsetAge: 52,
+      genetic: true,
+    });
+    // …and that is what finally reaches the cardiac cadence: "father, MI at 52".
+    const f = deriveRiskFactors({
+      familyConditions: refs,
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    });
+    expect(f.has("family-cardiovascular")).toBe(true);
+  });
+
+  it("does not duplicate a cause that merely repeats the row's own condition", () => {
+    const refs = familyConditionRefs([
+      {
+        ...row,
+        condition: "Colorectal cancer",
+        cause_of_death: "colorectal cancer",
+        age_at_death: 74,
+      },
+    ]);
+    expect(refs).toHaveLength(1);
+  });
+
+  it("carries the gate onto the cause-of-death ref too", () => {
+    const refs = familyConditionRefs([
+      {
+        ...row,
+        relation_type: "adopted",
+        cause_of_death: "Myocardial infarction",
+        age_at_death: 52,
+      },
+    ]);
+    expect(refs.every((r) => r.genetic === false)).toBe(true);
+    const f = deriveRiskFactors({
+      familyConditions: refs,
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    });
+    expect(f.has("family-cardiovascular")).toBe(false);
   });
 });

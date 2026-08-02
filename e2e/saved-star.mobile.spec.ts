@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledClick, settledSelect } from "./helpers";
+import { settledClick, settledPickOption } from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -243,10 +243,14 @@ test("the picker stars a biomarker straight from Trends", async ({ page }) => {
   const picker = page.getByTestId("save-trend-picker");
   await expect(picker).toBeVisible();
 
-  // settledSelect, not a raw selectOption: since #1644 the hub is one long streamed
-  // page, so hydration lands later and a value set before React attaches would be
-  // reverted under the Star click.
-  await settledSelect(page, picker.getByRole("combobox"), `bio:${ANALYTE_2}`);
+  // settledPickOption, not a raw click: the picker is the shared Combobox since
+  // #1675, and since #1644 the hub is one long streamed page, so hydration lands late
+  // and a value set before React attaches would be reverted under the Star click.
+  await settledPickOption(
+    page,
+    picker.locator('input[role="combobox"]'),
+    ANALYTE_2
+  );
   await settledClick(page, picker.getByRole("button", { name: "Star" }));
 
   const tile = page

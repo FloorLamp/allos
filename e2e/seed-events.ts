@@ -105,6 +105,7 @@ import {
   seedCompareFold,
   seedFitnessLens,
   seedRankedCardOrder,
+  seedBiomarkerPickerRank,
   seedPinnedCardOrder,
 } from "./seed/trends";
 
@@ -192,3 +193,6 @@ seedReportPanes();
 // rows, so every existing fixture's row ids stay exactly where they were.
 seedUpcomingAggregate();
 seedPortalHouseholds();
+// Appended LAST (#1675): a new profile plus its own lab rows, so every existing
+// fixture's row ids stay exactly where they were.
+seedBiomarkerPickerRank();

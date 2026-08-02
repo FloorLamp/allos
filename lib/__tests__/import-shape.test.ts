@@ -484,6 +484,10 @@ describe("extractionToPersistInput (AI path)", () => {
         code: "E11.9",
         code_system: "ICD-10-CM",
         status: "resolved",
+        // #1403: coerced from the extraction, unstated when the document said nothing.
+        laterality: null,
+        severity: null,
+        stage: null,
         onset_date: "2019-05-01",
         resolved_date: null,
         external_id: null,

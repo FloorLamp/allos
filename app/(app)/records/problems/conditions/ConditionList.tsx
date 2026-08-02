@@ -8,6 +8,10 @@ import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { formatRecordDate } from "@/lib/record-format";
+import {
+  conditionDisplayLabel,
+  conditionGradeLabel,
+} from "@/lib/condition-attributes";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { LinkedEncounterRef } from "@/lib/queries";
@@ -26,7 +30,18 @@ function buildColumns(
       cellClassName: "font-medium text-slate-800 dark:text-slate-100",
       cell: (c) => (
         <>
-          {c.name}
+          {/* Side-aware label (#1403/#482): "Osteoarthritis of knee (left)" and its
+              right-side twin are DIFFERENT problems and must never render
+              identically. One shared pure builder, so every surface agrees. */}
+          {conditionDisplayLabel(c)}
+          {conditionGradeLabel(c) ? (
+            <span
+              className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+              data-testid={`condition-grade-${c.id}`}
+            >
+              {conditionGradeLabel(c)}
+            </span>
+          ) : null}
           <NotesText
             notes={c.notes}
             className="ml-2 text-xs font-normal text-slate-400"
@@ -130,7 +145,8 @@ export default function ConditionList({
       )}
       confirmDelete={(c) => ({
         title: "Delete condition",
-        message: `Delete “${c.name}”? This can’t be undone.`,
+        // Side included: confirming a delete must name WHICH sided problem goes.
+        message: `Delete “${conditionDisplayLabel(c)}”? This can’t be undone.`,
       })}
       onDelete={async (c) => {
         const fd = new FormData();

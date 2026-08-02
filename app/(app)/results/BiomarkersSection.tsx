@@ -1,4 +1,4 @@
-import { getCanonicalAutocomplete, getPickerProviders } from "@/lib/queries";
+import { getPickerProviders, getRankedBiomarkerOptions } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
@@ -68,14 +68,19 @@ export default function BiomarkersSection({
   const initialOpen = defaultOpenPanels(groups, filters);
   const panelGroups = boundPanelGroups(groups, initialOpen);
   // The add form + canonical autocomplete + relative-age clock are acting-scoped.
-  const canonicalOptions = getCanonicalAutocomplete(scope.actingProfileId);
   const now = today(scope.actingProfileId);
+  // #1675: relevance-ranked, not alphabetical — a retest-due or flagged analyte leads
+  // the canonical-name picker instead of whatever starts with "A".
+  const canonicalOptions = getRankedBiomarkerOptions(
+    scope.actingProfileId,
+    now
+  );
   const ids = scope.viewIds;
   const openEntryPanel = entryPanelOpen(searchParams);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <CanonicalNamesProvider names={canonicalOptions}>
+      <CanonicalNamesProvider options={canonicalOptions}>
         {/* DOM order is the unchanged #1499 section D order — the CURATED GLANCE
         first (the pinned analytes you chose, then what is moving, then the aging
         index), the panel-group index below it — and from `sm` up that is also what

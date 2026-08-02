@@ -375,12 +375,12 @@ ONE ROW PER LOGIN — the last run it reported — which is what keeps the table
 (migration 132). A delivery-only push therefore OVERWRITES the previous genuine run's
 stamp, so a read-time `contacted = 1` filter would turn "checked yesterday, pushed today"
 into "never checked" and nag one day after a real run: the opposite bug, equally silent.
-Migration 144 adds a **sticky check clock** — `checked_at` (the answering signal) and
+Migration 146 adds a **sticky check clock** — `checked_at` (the answering signal) and
 `checked_ok_at` (the staleness clock) — stamped by `recordPortalRunReport` through those
 pure predicates and only ever moving forward. `lib/portal-requests.ts` reads them through
 ONE shared SQL fragment (`CHECK_CLOCK_COLS`) embedded by both the `openSyncRequests`
 projection and the staleness candidate query, and a pure source-scan test asserts neither
-consumer restates the predicate in SQL. Migration 144 backfills the clock from the stamps
+consumer restates the predicate in SQL. Migration 146 backfills the clock from the stamps
 the old readers used, so a household upgrading mid-week does not suddenly read as
 never-checked.
 
@@ -421,7 +421,7 @@ proxies ON THE SAME RUN. A run-level flag (or a fourth status) cannot express th
 run neither failed nor was declined. So the report's `identities` list gained a
 per-identity outcome (`["JANE DOE"]` still means "I saw this label";
 `[{ patient, outcome }]` adds what the run managed), and allos stores the refusal on
-`portal_identities.declined` (migration 144) — the sibling of `ignored`, which is the
+`portal_identities.declined` (migration 146) — the sibling of `ignored`, which is the
 existing settled-answer shape. It deliberately does **not** copy migration 131's CHECK:
 `ignored` is mutually exclusive with having a profile because an ignored label names
 nobody here, while a declined identity IS bound to a real profile whose records the

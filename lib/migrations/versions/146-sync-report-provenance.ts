@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 144 (issues #1888, #1889): WHAT KIND OF RUN a sync report describes, and
+// Migration 146 (issues #1888, #1889): WHAT KIND OF RUN a sync report describes, and
 // the per-identity settled answer "the portal declines the download for this person".
 //
 // ── THE BUG THIS SCHEMA EXISTS FOR (#1888) ───────────────────────────────────
@@ -152,7 +152,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 144,
-  name: "144-sync-report-provenance",
+  id: 146,
+  name: "146-sync-report-provenance",
   up,
 };

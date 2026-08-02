@@ -724,11 +724,15 @@ export const DATASETS: ExportDataset[] = [
       "code",
       "code_system",
       "status",
+      "laterality",
+      "severity",
+      "stage",
       "onset_date",
       "resolved_date",
       "notes",
     ],
-    select: `SELECT id, name, code, code_system, status, onset_date, resolved_date, notes
+    select: `SELECT id, name, code, code_system, status, laterality, severity, stage,
+              onset_date, resolved_date, notes
        FROM conditions WHERE profile_id = ? ORDER BY name`,
     countSql: `SELECT COUNT(*) AS n FROM conditions WHERE profile_id = ?`,
   }),
@@ -878,14 +882,19 @@ export const DATASETS: ExportDataset[] = [
     table: "family_history",
     columns: [
       "relation",
+      "relation_type",
+      "lineage",
       "condition",
       "code",
       "code_system",
       "onset_age",
       "deceased",
+      "age_at_death",
+      "cause_of_death",
       "notes",
     ],
-    select: `SELECT id, relation, condition, code, code_system, onset_age, deceased, notes
+    select: `SELECT id, relation, relation_type, lineage, condition, code, code_system,
+              onset_age, deceased, age_at_death, cause_of_death, notes
        FROM family_history WHERE profile_id = ? ORDER BY condition, id`,
     countSql: `SELECT COUNT(*) AS n FROM family_history WHERE profile_id = ?`,
   }),

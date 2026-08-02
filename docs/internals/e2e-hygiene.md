@@ -343,9 +343,18 @@ in that state — a 45 s ceiling that never once got to 45 s, dying at 30.1 s.
 If an assertion genuinely needs more than 30 s, add `test.slow()` (or a
 `test.setTimeout`) in the same change, and say in the comment why the sequence is
 slow. And treat a ceiling that keeps needing to grow as evidence the test's SETUP
-is the problem, not its budget: `wellness-practices.spec.ts:137` drives two full
-UI create round-trips as setup for assertions about EDITS, which is what #1901
-fixes by seeding those rows instead.
+is the problem, not its budget.
+
+**A ceiling that keeps growing is a setup problem — seed instead.** That test
+drove two full UI create round-trips (plus a reload and an untrack) as setup for
+assertions about EDITS. Its ceiling went 5 s → 20 s → 45 s → `test.slow()`, and
+still exhausted 45 s on shard 4 against diffs that cannot reach wellness. Seeding
+the two practices straight into the worker DB (#868 spec-owned fixtures) took the
+test from 25–31 s to **under 7 s**, deterministically, with every assertion
+unchanged. Nothing was lost, because the create and untrack paths are each
+already covered by a sibling test in the same file. When you find yourself
+raising a number a third time, ask what the test is NAMED for and seed everything
+that isn't that.
 
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
