@@ -69,6 +69,17 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(card.getByTestId("vitals-latest-resting-hr")).toContainText(
       /bpm resting/
     );
+    // #1892: the log affordance is present WITH data, not only without it. It used to
+    // live in the empty state alone, so the person who logs BP weekly — the one who
+    // actually opens this card — had none. It opens the same shared measurements
+    // quick-entry the empty CTA opens.
+    const logReading = card.getByTestId("vitals-log-reading");
+    await expect(logReading).toHaveText(/Log reading/);
+    await logReading.click();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "measurements"
+    );
   });
 
   test("Cycle-phase card shows the derived cycle day and phase (informational)", async () => {
