@@ -125,12 +125,17 @@ describe("conditionGradeLabel", () => {
     );
   });
 
-  it("does not double the word 'stage' when the value already carries it", () => {
+  it("prefixes 'Stage' onto a bare token only, never onto a phrase", () => {
+    expect(conditionGradeLabel({ name: "x", stage: "3b" })).toBe("Stage 3b");
+    // Already a phrase: rendered verbatim, whatever staging system it comes from.
     expect(conditionGradeLabel({ name: "x", stage: "CKD stage 3b" })).toBe(
       "CKD stage 3b"
     );
     expect(conditionGradeLabel({ name: "x", stage: "Stage II" })).toBe(
       "Stage II"
+    );
+    expect(conditionGradeLabel({ name: "x", stage: "Grade II" })).toBe(
+      "Grade II"
     );
   });
 

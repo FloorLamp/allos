@@ -84,7 +84,13 @@ it now lives. A lab reading also captures what the report PRINTS about the draw
 itself (#1404): its **result status** (a "CORRECTED REPORT" / "Preliminary"
 banner), whether it was drawn **fasting**, and the **specimen**. The model is told
 never to infer any of the three — an unstated attribute stays null rather than
-becoming a "final", non-fasting claim the document never made.
+becoming a "final", non-fasting claim the document never made. The same
+never-infer discipline governs the clinical attributes added in #1403/#1407: a
+condition's **laterality**, **severity** and **stage**, and a relative's **age /
+cause of death** and **genetic relationship** (half / adopted / step) and
+maternal-vs-paternal line are extracted only when the document states them — a
+side is never read off a diagnosis name, and an ordinary relative is left
+unqualified rather than labeled.
 
 Every extracted row also carries the extractor's own **confidence** — a coarse
 `high` / `medium` / `low` plus a short reason for a non-high row (a smudged
