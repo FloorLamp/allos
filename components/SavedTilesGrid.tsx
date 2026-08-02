@@ -78,7 +78,15 @@ function SortableTile({ item }: { item: SavedTileItem }) {
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      // TRANSLATE, not Transform (#1891). The rect strategy's transform carries
+      // scaleX/scaleY as well, morphing the lifted item toward the dimensions of
+      // the slot it is crossing. These tiles are uniform — a fixed number of equal
+      // columns, and `h-full` makes every tile in a row share its height — so the
+      // scale was ~1 and the distortion never showed here; it is the dashboard's
+      // wildly-varying card heights that made it visible. Dropping the scale is
+      // therefore a no-op for this grid's lift, and the translation is the whole
+      // of what a same-size tile ever needed.
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       // `touch-manipulation`, not `touch-none`: the TouchSensor only swallows the
       // gesture once the press-and-hold has actually activated, so an ordinary
       // flick over the grid must still scroll the page.
@@ -161,7 +169,18 @@ export default function SavedTilesGrid({ items }: { items: SavedTileItem[] }) {
 
   return (
     <TileReorderContext.Provider value={reorder}>
-      <SortableOrder ids={order} onReorder={persist} lift="long-press">
+      {/* `rect`: this grid genuinely wraps (two columns, three at `lg`), so a tile
+          moves in two dimensions and the rect strategy is the right one. Stated
+          explicitly since #1891 made it a prop — the dashboard's single-column
+          phone editor needs the vertical one, and neither surface should inherit
+          the other's answer by accident. No `renderOverlay`: the tiles are uniform,
+          so the in-place lift is already stable. */}
+      <SortableOrder
+        ids={order}
+        onReorder={persist}
+        lift="long-press"
+        strategy="rect"
+      >
         <div className="space-y-3" data-testid="saved-tiles">
           <h2 className="flex items-center gap-2 section-label">★ Starred</h2>
           {populated.length > 0 && (
