@@ -4,6 +4,20 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1918,
+          "kind": "fix",
+          "issues": [1905, 1906],
+          "title": "Refreshing clears the update bar, and a stale tab recovers itself instead of showing a broken light card",
+          "body": "With \"Update ready\" showing, refreshing the page did not make it go away — the refresh fetched the new build, but the update it was offering stayed pending, so the bar returned offering an update the page was already running. A refresh now takes the waiting update when the page is already on that build, silently and with no second reload. Separately, navigating to a page a stale tab had not visited yet could land on an error card that was hard-coded light — in dark mode it read as the app breaking — and whose \"Try again\" could never work, because retrying reruns the same stale code. That case now reloads onto the current build automatically, at most once, and the card behind it follows your theme and offers a reload that actually fixes it."
+        },
+        {
+          "pr": 1916,
+          "kind": "fix",
+          "issues": [1909],
+          "title": "Two \"7-day averages\" that disagreed now agree, and period averages stop counting a half-finished today",
+          "body": "The dashboard and the metric detail page both showed a \"7-day average\" and could show different numbers for the same metric on the same day, because one excluded today and the other included it. They now compute the same way. The detail page's 7-, 30- and 90-day averages also stop including today: for anything that accumulates through the day, such as steps, the average was dragged down every afternoon by a day that was not over and quietly corrected itself at midnight. Averages now cover complete days only, the latest reading still shows today's value, and the labels say which is which — \"vs prior 7 days\" and \"through yesterday\"."
+        },
+        {
           "pr": 1911,
           "kind": "feature",
           "issues": [1600],
