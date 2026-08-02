@@ -289,6 +289,23 @@ write, cached-integrity, or configured backup-staleness failures without
 exposing paths, versions, or health data. Keep status composition in
 `lib/health-status.ts`; the endpoint itself must stay cheap.
 
+### Deploys and deployment skew
+
+A deploy leaves open tabs on a build the server no longer serves. The service
+worker installs and **waits** rather than taking over, one merged pending state
+raises one "Update ready" bar, only the tab that tapped ever reloads, and a
+manual refresh consumes a load-time waiting worker silently instead of
+re-offering it. A tab that navigates while still stale hits a deleted chunk; the
+top-level error boundary recognises that signature and hard-reloads **once**,
+under a rationed `sessionStorage` guard, before rendering any card.
+
+Every one of those decisions is pure and lives in `lib/sw-update.ts` (with the
+theme half in `lib/theme.ts`, which `app/global-error.tsx` needs because it
+replaces the root layout and its theme-boot script). Do not re-derive
+"is an update pending" or "is this skew" in a component.
+
+See `docs/internals/deploy-skew.md`.
+
 ## Testing conventions
 
 The repository has three execution tiers:

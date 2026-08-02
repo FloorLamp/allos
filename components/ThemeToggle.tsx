@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  isDarkTheme,
+  normalizeThemeChoice,
+  THEME_STORAGE_KEY,
+  type ThemeChoice,
+} from "@/lib/theme";
 
-type Theme = "light" | "dark" | "system";
+type Theme = ThemeChoice;
 
 const ORDER: Theme[] = ["system", "light", "dark"];
 
@@ -12,12 +18,15 @@ const LABELS: Record<Theme, string> = {
   dark: "Dark",
 };
 
-// Mirror of the inline boot script in layout.tsx: resolve the effective theme and
-// toggle the `dark` class on <html>. Kept in sync so a toggle takes effect without
-// a reload.
+// Apply the effective theme by toggling the `dark` class on <html>, so a toggle
+// takes effect without a reload. The RULE is lib/theme.ts's — shared with the boot
+// script in layout.tsx and with app/global-error.tsx, which needs the same answer as
+// data because it has no stylesheet to apply a class to (#1906).
 function apply(theme: Theme) {
-  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const dark = theme === "dark" || (theme === "system" && systemDark);
+  const dark = isDarkTheme({
+    stored: theme,
+    prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
+  });
   document.documentElement.classList.toggle("dark", dark);
 }
 
@@ -70,14 +79,13 @@ export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const stored = (localStorage.getItem("theme") as Theme | null) ?? "system";
-    setTheme(stored);
+    setTheme(normalizeThemeChoice(localStorage.getItem(THEME_STORAGE_KEY)));
     setMounted(true);
     // Keep "system" in sync if the OS preference changes while the app is open.
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
       if (
-        ((localStorage.getItem("theme") as Theme | null) ?? "system") ===
+        normalizeThemeChoice(localStorage.getItem(THEME_STORAGE_KEY)) ===
         "system"
       ) {
         apply("system");
@@ -90,7 +98,7 @@ export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
   function cycle() {
     const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
     setTheme(next);
-    localStorage.setItem("theme", next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
     apply(next);
   }
 
