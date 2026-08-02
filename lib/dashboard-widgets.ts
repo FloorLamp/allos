@@ -18,6 +18,12 @@
 //     hides the widget (that would bury the CTA that fills it) — it flips the
 //     resolved item's `empty` flag so the page renders the CTA instead of a
 //     blank card.
+//
+// The DEFAULT ORDER is actionable-first (issue #1890): every card you are meant to
+// ACT on today comes before every card you merely read. That is an owner principle,
+// not a one-time reshuffle — each widget declares `actionable` below and the registry
+// test enforces the ordering, so widget #18 can't quietly land a glance card above
+// the daily check-in. A deliberate violation needs a NAMED exception in that test.
 
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import type { ReorderStrategy } from "./drag-order";
@@ -34,6 +40,14 @@ export interface WidgetDef {
   // Fitness-oriented: never rendered or listed for age-restricted profiles,
   // replacing the old per-card `!restricted` JSX guards.
   fitness: boolean;
+  // Does this card exist to be ACTED on today (issue #1890)? True for a card whose
+  // body carries a decision to make or a log/fix affordance meant to be tapped —
+  // the daily check-in, the train/rest call, this week's targets, a one-time
+  // structural fix, today's gap against a goal. False for a GLANCE card that reports
+  // a value and expects you to read it and move on. Declared exactly ONCE here:
+  // nothing anywhere else re-derives "is this card actionable" (#221). The default
+  // order is actionable-first, and the registry test enforces it.
+  actionable: boolean;
   span: WidgetSpan;
   // Pinned above the customizable grid, non-hideable, always first (the hero).
   // Excluded from every resolve* output — it's rendered directly by the page.
@@ -262,7 +276,14 @@ export function dashboardCustomizeMode(wide: boolean): DashboardCustomizeMode {
 // The catalog. Array order is the default display order; new widgets appended to
 // the end appear automatically for existing profiles (see resolveWidgetList).
 //
-// The registry now contains only distinct overview questions. Signals already
+// ORDER = ACTIONABLE FIRST (issue #1890). The cards that exist to be tapped today —
+// the daily check-in, the train/rest call, this week's targets, the one-time
+// structural fixes, today's gaps — lead; the glance cards that report a value follow;
+// the calm observational rollup closes the list, per its own #449 charter. Every
+// entry declares `actionable` and the registry test asserts the split, so the
+// principle survives the next widget instead of decaying with it.
+//
+// The registry contains only distinct overview questions. Signals already
 // represented by Needs attention / Upcoming (low supply, immunizations, care plan),
 // or by a richer sibling widget (quick stats, bio age, recent activity, streak),
 // do not get a second dashboard surface. Legacy layout ids are filtered safely by
@@ -275,25 +296,30 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "Everything that needs you today — doses, flagged labs, appointments, low supply, and more. Always shown, can't be hidden.",
     defaultOn: true,
     fitness: false,
+    // The hero is the most actionable surface in the app — every row is something
+    // that needs doing. Pinned, so it sits outside the ordered grid regardless.
+    actionable: true,
     span: "full",
     pinned: true,
   },
+  // ── Actionable: cards that exist to be tapped today ──────────────────────────
   {
-    id: "recent-labs",
-    label: "Recent labs",
+    id: "symptom-log",
+    label: "How are you today?",
     description:
-      "Your latest lab panel — flagged and recently-changed markers.",
+      "The daily check-in — a one-tap mood log (expand for energy, calm, and factors) plus the illness front door: a quiet \"Not feeling well?\" branch when you're well, deferring to the illness cockpit while you're unwell. Hide it from Customize if you never want it.",
+    // On by default. The unified daily check-in shell (issue #992) composing the mood
+    // tap with the #843 illness front door — two engines, one card, contracts kept
+    // separate (mood is never flagged/escalated; illness keeps its episode machinery).
+    // The id stays `symptom-log` so stored layouts survive the rename. Not
+    // fitness-gated: mood and symptoms matter for every profile. Hideable like any
+    // other widget.
     defaultOn: true,
     fitness: false,
-    span: "half",
-    dataAware: true,
-  },
-  {
-    id: "next-appointment",
-    label: "Next appointment",
-    description: "Your soonest scheduled medical visit.",
-    defaultOn: true,
-    fitness: false,
+    // FIRST in the grid (#1890): the single most actionable card on the board — it
+    // exists to be tapped every day (mood, illness front door, PRN meds). It used to
+    // sit second-to-last, several phone screens down.
+    actionable: true,
     span: "half",
   },
   {
@@ -303,20 +329,36 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "One focused suggestion — train or rest — from your routine and recovery.",
     defaultOn: true,
     fitness: true,
+    // Today's train/rest decision, with the action link on it.
+    actionable: true,
     span: "half",
   },
   {
-    id: "coaching-observations",
-    label: "Coaching observations",
+    id: "goals-habits",
+    label: "Goals and habits",
     description:
-      "A calm rollup of the observational patterns that otherwise live only on their own tabs — training plateaus/balance, weight-log hygiene, off-pace goals, and adherence patterns. FYIs, not alerts; dismiss any and it's silenced everywhere.",
-    // On by default so the tab-only findings gain dashboard REACH (issue #449) —
-    // discoverable without becoming pushy. Not fitness-gated: it spans body-metric
-    // hygiene and medication adherence too, which matter for a restricted profile.
-    // Not data-aware: it self-hides (renders nothing) when no observation is firing,
-    // so an empty state would be noise rather than an onboarding CTA.
+      "Progress toward active goals and this week's recurring targets in one place.",
     defaultOn: true,
+    fitness: true,
+    // This week's targets, each row carrying its log affordance.
+    actionable: true,
+    span: "full",
+  },
+  {
+    id: "active-protocols",
+    label: "Active protocols",
+    description:
+      "Your ongoing N-of-1 experiments — days elapsed, this week's practice adherence, and whether the primary outcome has moved since you started. Off by default; opt in from Customize.",
+    // Off by default (issue #660): protocols are a power-user surface, opt in from
+    // Customize. Not fitness-gated — an intervention can target any metric. Self-
+    // hides (page gates `available`) when no protocol is ongoing, so an enabled-but-
+    // empty widget leaves no blank card rather than showing an onboarding CTA.
+    defaultOn: false,
     fitness: false,
+    // Its rows carry pending log actions — that is exactly why they can never fall
+    // behind the compact cap (#1584). Opt-in, but actionable once opted in, so it
+    // slots inside the actionable band rather than after the glance cards.
+    actionable: true,
     span: "half",
   },
   {
@@ -331,28 +373,66 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // be noise, not an onboarding CTA — a complete profile should see NOTHING.
     defaultOn: true,
     fitness: false,
+    // Every row is a one-time fix with the fix one tap away. High placement costs a
+    // complete profile nothing: the card renders nothing at all when there are no gaps.
+    actionable: true,
     span: "half",
   },
   {
-    id: "healthspan-pillars",
-    label: "Healthspan pillars",
+    id: "nutrition-today",
+    label: "Nutrition today",
     description:
-      "Evidence-backed longevity signals — VO₂ Max percentile, sleep regularity, biological age, and biomarkers in optimal range. Each pillar appears only when its data exists.",
-    // On by default: the differentiator headline. Data-aware so a profile with no
-    // pillar data yet gets an onboarding CTA instead of a blank card. Not fitness-
-    // gated wholesale — individual pillars self-hide, and a child profile can still
-    // show sleep/biomarker pillars.
+      "Today's protein against your goal band, with this week's daily average — the same figures the Nutrition → Food gauge shows.",
+    // On by default so the nutrition domain (a top-level nav domain with zero
+    // dashboard presence before #1221) is served by promotion. Data-aware: a profile
+    // with no logged/tracked intake gets an onboarding CTA instead of a blank card.
+    // Not fitness-gated — protein matters for every profile. requiresFoodLogging so it
+    // drops for an infant profile, exactly like the Nutrition nav entry (#591).
     defaultOn: true,
     fitness: false,
+    // Today's protein gap — a number you can still close today, from a card that
+    // links straight to logging it.
+    actionable: true,
     span: "half",
     dataAware: true,
+    requiresFoodLogging: true,
   },
   {
-    id: "weight-trend",
-    label: "Weight trend",
-    description: "Your recent body-weight chart.",
+    id: "steps-today",
+    label: "Steps today",
+    description:
+      "Your step count today against your prior 7 days — surfaced from Trends → Body to the daily glance.",
+    // On by default (promotion, #1066). Data-aware: a profile with no step data yet
+    // gets a connect-a-source CTA. Not fitness-gated — steps matter for every profile.
     defaultOn: true,
     fitness: false,
+    // Today's count against your own baseline, while the day is still open to change
+    // it — the same "gap you can still close" shape as the nutrition card.
+    actionable: true,
+    span: "half",
+  },
+  // ── Glance: cards that report a value ────────────────────────────────────────
+  {
+    id: "next-appointment",
+    label: "Next appointment",
+    description: "Your soonest scheduled medical visit.",
+    defaultOn: true,
+    fitness: false,
+    // Passive: it tells you when the visit is. Anything about it that needs doing
+    // arrives through the pinned hero and Upcoming.
+    actionable: false,
+    span: "half",
+  },
+  {
+    id: "recent-labs",
+    label: "Recent labs",
+    description:
+      "Your latest lab panel — flagged and recently-changed markers.",
+    defaultOn: true,
+    fitness: false,
+    // Passive: a reading of results already in. Flagged values that need action reach
+    // you through the hero.
+    actionable: false,
     span: "half",
     dataAware: true,
   },
@@ -367,34 +447,8 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // card. Not fitness-gated — sleep matters for every profile.
     defaultOn: true,
     fitness: false,
-    span: "half",
-    dataAware: true,
-  },
-  {
-    id: "nutrition-today",
-    label: "Nutrition today",
-    description:
-      "Today's protein against your goal band, with this week's daily average — the same figures the Nutrition → Food gauge shows.",
-    // On by default so the nutrition domain (a top-level nav domain with zero
-    // dashboard presence before #1221) is served by promotion. Data-aware: a profile
-    // with no logged/tracked intake gets an onboarding CTA instead of a blank card.
-    // Not fitness-gated — protein matters for every profile. requiresFoodLogging so it
-    // drops for an infant profile, exactly like the Nutrition nav entry (#591).
-    defaultOn: true,
-    fitness: false,
-    span: "half",
-    dataAware: true,
-    requiresFoodLogging: true,
-  },
-  {
-    id: "steps-today",
-    label: "Steps today",
-    description:
-      "Your step count today against your prior 7 days — surfaced from Trends → Body to the daily glance.",
-    // On by default (promotion, #1066). Data-aware: a profile with no step data yet
-    // gets a connect-a-source CTA. Not fitness-gated — steps matter for every profile.
-    defaultOn: true,
-    fitness: false,
+    // Passive: last night already happened.
+    actionable: false,
     span: "half",
     dataAware: true,
   },
@@ -408,6 +462,39 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // profile.
     defaultOn: true,
     fitness: false,
+    // Passive: it reports the most recent reading. The empty-state CTA is onboarding,
+    // not a daily action — a data-aware CTA never makes a glance card actionable.
+    actionable: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
+    id: "weight-trend",
+    label: "Weight trend",
+    description: "Your recent body-weight chart.",
+    defaultOn: true,
+    fitness: false,
+    // Passive: a chart of what already happened.
+    actionable: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
+    id: "healthspan-pillars",
+    label: "Healthspan pillars",
+    description:
+      "Evidence-backed longevity signals — VO₂ Max percentile, sleep regularity, biological age, and biomarkers in optimal range. Each pillar appears only when its data exists.",
+    // On by default: the differentiator headline. Data-aware so a profile with no
+    // pillar data yet gets an onboarding CTA instead of a blank card. Not fitness-
+    // gated wholesale — individual pillars self-hide, and a child profile can still
+    // show sleep/biomarker pillars.
+    defaultOn: true,
+    fitness: false,
+    // Passive: four slow-moving signals to read, none of them a today action. Identity
+    // argues for high placement and the principle argues for the glance tier; #1890
+    // placed it here. If it is ever promoted back above the actionable band, it
+    // becomes a NAMED exception in the registry test, not a silent reordering.
+    actionable: false,
     span: "half",
     dataAware: true,
   },
@@ -423,44 +510,28 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // tracking-not-forecasting contract).
     defaultOn: true,
     fitness: false,
+    // Passive by its own #714 contract: informational only, never a prediction and
+    // never a prompt.
+    actionable: false,
     span: "half",
     relevanceKey: "cycle",
   },
   {
-    id: "goals-habits",
-    label: "Goals and habits",
+    id: "coaching-observations",
+    label: "Coaching observations",
     description:
-      "Progress toward active goals and this week's recurring targets in one place.",
-    defaultOn: true,
-    fitness: true,
-    span: "full",
-  },
-  {
-    id: "symptom-log",
-    label: "How are you today?",
-    description:
-      "The daily check-in — a one-tap mood log (expand for energy, calm, and factors) plus the illness front door: a quiet \"Not feeling well?\" branch when you're well, deferring to the illness cockpit while you're unwell. Hide it from Customize if you never want it.",
-    // On by default. The unified daily check-in shell (issue #992) composing the mood
-    // tap with the #843 illness front door — two engines, one card, contracts kept
-    // separate (mood is never flagged/escalated; illness keeps its episode machinery).
-    // The id stays `symptom-log` so stored layouts survive the rename. Not
-    // fitness-gated: mood and symptoms matter for every profile. Hideable like any
-    // other widget.
+      "A calm rollup of the observational patterns that otherwise live only on their own tabs — training plateaus/balance, weight-log hygiene, off-pace goals, and adherence patterns. FYIs, not alerts; dismiss any and it's silenced everywhere.",
+    // On by default so the tab-only findings gain dashboard REACH (issue #449) —
+    // discoverable without becoming pushy. Not fitness-gated: it spans body-metric
+    // hygiene and medication adherence too, which matter for a restricted profile.
+    // Not data-aware: it self-hides (renders nothing) when no observation is firing,
+    // so an empty state would be noise rather than an onboarding CTA.
     defaultOn: true,
     fitness: false,
-    span: "half",
-  },
-  {
-    id: "active-protocols",
-    label: "Active protocols",
-    description:
-      "Your ongoing N-of-1 experiments — days elapsed, this week's practice adherence, and whether the primary outcome has moved since you started. Off by default; opt in from Customize.",
-    // Off by default (issue #660): protocols are a power-user surface, opt in from
-    // Customize. Not fitness-gated — an intervention can target any metric. Self-
-    // hides (page gates `available`) when no protocol is ongoing, so an enabled-but-
-    // empty widget leaves no blank card rather than showing an onboarding CTA.
-    defaultOn: false,
-    fitness: false,
+    // LAST among the on-by-default cards, by its own charter: "FYIs, not alerts".
+    // A calm rollup that closes the list keeps its reach (#449) without spending a
+    // prime slot; it used to sit fourth.
+    actionable: false,
     span: "half",
   },
   {
@@ -471,6 +542,8 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // Off by default so it stays quiet (issue #32); opt in from Customize.
     defaultOn: false,
     fitness: true,
+    // Passive by construction: a retrospective. Stays last.
+    actionable: false,
     span: "half",
   },
   // The former `quick-log-prn` widget (the standalone "Log a PRN dose" card, #797) was
