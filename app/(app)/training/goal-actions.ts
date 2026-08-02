@@ -16,6 +16,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import { resolveWeightKg, submittedWeightUnit } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS, isGoalDirection, isGoalStatus } from "@/lib/goals";
+import { isBiomarkerGoalTargetable } from "@/lib/biomarker-goal";
 import { getEquipmentById } from "@/lib/equipment";
 import {
   getLatestBodyMetric,
@@ -219,7 +220,10 @@ function goalColsFromForm(
     const direction = String(formData.get("target_direction") ?? "").trim();
     if (!name || !isGoalDirection(direction)) return null;
     const canonical = resolveBiomarkerOptionName(profileId, name);
-    if (!canonical) return null;
+    // Same membership rule the picker applied, enforced again here: a rule the client
+    // alone honours is a rule a hand-posted form ignores, and a "Weight" biomarker
+    // goal would be a second way to say what `body_metric` already says.
+    if (!canonical || !isBiomarkerGoalTargetable(canonical)) return null;
     const value = num("biomarker_target");
     if (value == null) return null;
     return {

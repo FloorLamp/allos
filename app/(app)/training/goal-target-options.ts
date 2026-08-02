@@ -8,7 +8,7 @@ import {
   getUserReproductiveStatus,
 } from "@/lib/settings";
 import { referenceRange } from "@/lib/reference-range";
-import { bodyMetricKindForBiomarker } from "@/lib/outcome-identity";
+import { isBiomarkerGoalTargetable } from "@/lib/biomarker-goal";
 import { seriesPickerOptions } from "@/lib/series-picker-options";
 import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
 
@@ -47,15 +47,15 @@ export function getGoalBiomarkerOptions(
   // really body metrics. Weight, body fat and resting HR already have a goal path
   // (`goals.body_metric`, unchanged by #1853) that reads the one-source-per-day body
   // series and stores canonical kg; offering them here as well would give one
-  // question two answers and two storage shapes. The boundary is drawn by
-  // `bodyMetricKindForBiomarker`, the SAME function `listCompareOptions` already uses
-  // to split the two vocabularies — not by a hand-written exclusion list.
+  // question two answers and two storage shapes. The predicate is
+  // `isBiomarkerGoalTargetable`, shared with the write action so the picker and the
+  // form post agree about what a valid target is.
   const sex = getUserSex(profileId);
   const age = getUserAgeOn(profileId, today);
   const status = getUserReproductiveStatus(profileId);
 
-  const ranked = getRankedBiomarkerOptions(profileId, today).filter(
-    (option) => bodyMetricKindForBiomarker(option.name) == null
+  const ranked = getRankedBiomarkerOptions(profileId, today).filter((option) =>
+    isBiomarkerGoalTargetable(option.name)
   );
   const rows = seriesPickerOptions(
     ranked.map((option) => ({

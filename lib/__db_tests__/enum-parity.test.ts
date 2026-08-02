@@ -28,6 +28,7 @@ import {
   APPOINTMENT_STATUSES,
   CONDITION_STATUSES,
   EQUIPMENT_CATEGORIES,
+  GOAL_DIRECTIONS,
   GOAL_STATUSES,
   PROVIDER_AFFILIATION_STATUSES,
   SUGGESTION_STATUSES,
@@ -68,6 +69,14 @@ const REGISTRY: {
   expected: readonly string[];
 }[] = [
   { table: "goals", column: "status", expected: GOAL_STATUSES },
+  // #1853, migration 147. NULLABLE — the CHECK reads
+  // `target_direction IS NULL OR target_direction IN (...)`, so the extractor's
+  // `<column> IN (...)` match lands on the IN list either way.
+  {
+    table: "goals",
+    column: "target_direction",
+    expected: GOAL_DIRECTIONS,
+  },
   { table: "appointments", column: "status", expected: APPOINTMENT_STATUSES },
   { table: "allergies", column: "status", expected: ALLERGY_STATUSES },
   // Passport-completeness vocabularies (migration 122, #1405/#1406). All four are

@@ -37,6 +37,7 @@ import {
   type GoalProgress,
   type GoalUnavailable,
 } from "./goal-progress";
+import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { retestIntervalDays } from "./reference-range";
 import { sameUnit } from "./unit-conversions";
 import type { Goal, GoalDirection } from "./types";
@@ -51,6 +52,23 @@ export function isBiomarkerGoal(goal: {
   target_direction: GoalDirection | null;
 }): boolean {
   return !!goal.biomarker_name?.trim() && goal.target_direction != null;
+}
+
+// Whether an analyte may carry a biomarker goal at all.
+//
+// The ONE membership rule, shared by the picker that OFFERS a target
+// (getGoalBiomarkerOptions) and the action that ACCEPTS one — a rule enforced in only
+// one of those two places is a rule a hand-posted form ignores.
+//
+// Everything is targetable except the three analytes that are really body metrics.
+// Weight, body fat and resting HR already have a goal path (`goals.body_metric`,
+// untouched by #1853) that reads the one-source-per-day body series and stores
+// canonical kg; letting them in here too would give one question two answers and two
+// storage shapes. The boundary is drawn by `bodyMetricKindForBiomarker`, the same
+// function `listCompareOptions` already uses to split these two vocabularies — not by
+// a hand-written exclusion list that would drift from it.
+export function isBiomarkerGoalTargetable(name: string): boolean {
+  return bodyMetricKindForBiomarker(name) == null;
 }
 
 // The minimal goal slice this module reads (Goal satisfies it).
