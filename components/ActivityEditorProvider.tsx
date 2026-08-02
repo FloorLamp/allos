@@ -18,6 +18,7 @@ import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import type { WorkoutPresence } from "@/lib/workout-presence";
+import { workoutOffer, type WorkoutOffer } from "@/lib/workout-offer";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import WorkoutDock from "./WorkoutDock";
@@ -40,13 +41,27 @@ interface ActivityEditorApi {
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
   // no-op for an age-restricted profile (strength is gated, #489); gate the
   // affordance on `canStartWorkout`.
+  //
+  // #1893: with a session ALREADY live this RESUMES it (reopens the docked session,
+  // epoch untouched) instead of clearing state and re-stamping the start instant. The
+  // guard lives here as well as on the affordances so a stale caller cannot stomp an
+  // in-progress session either — defence in depth, not a substitute for rendering
+  // `workoutOffer`.
   openLive: () => void;
   // Whether live workout mode is available (false for age-restricted profiles).
   canStartWorkout: boolean;
+  // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
+  // the bolt, the palette's live action, the Journal aside, and the routine card all
+  // take their LABEL from here, and the open* calls above enforce the same state. See
+  // lib/workout-offer.ts.
+  workoutOffer: WorkoutOffer;
   // "Log this session" (#740): open a CREATE form pre-filled with a resolved
   // routine session (the day's slots as exercises + prescribed sets) IN live mode,
   // so a routine day goes straight into the in-gym flow. A no-op for an
   // age-restricted profile (strength is gated, #489) — gate on `canStartWorkout`.
+  //
+  // #1893: guarded exactly like openLive — a running session is resumed, never
+  // restarted, so the coaching card cannot discard a workout in progress.
   openSession: (prefill: ActivityEditData) => void;
   openEdit: (data: ActivityEditData) => void;
   // "Log again" / "Repeat last": open a CREATE form pre-filled from a stored
@@ -185,9 +200,54 @@ export default function ActivityEditorProvider({
     if (!el) setOpen(false);
   }, []);
 
+  // Resume the acting profile's active session in the live editor from the dock —
+  // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
+  // journal column when one is present, else the overlay. The elapsed baseline comes
+  // from the SERVER's recorded start (`liveStartEpochMs`), never a fresh Date.now(),
+  // so a reload mid-workout resumes the same clock.
+  const resumeLive = useCallback(() => {
+    if (!liveEditData) return;
+    setEditData(liveEditData);
+    setPrefill(null);
+    setLive(true);
+    setLiveStartEpoch(liveStartEpochMs ?? Date.now());
+    setMinimized(false);
+    setDocked(dockElRef.current != null);
+    setOpen(true);
+  }, [liveEditData, liveStartEpochMs]);
+
+  // A fresh-load active session: nothing is mounted in this client, but the
+  // server-hydrated #921 presence says one is running and its draft is reopenable.
+  const hydrationActive =
+    !open && presence?.state === "active" && liveEditData != null;
+
+  // THE start-vs-resume offer (#1893), derived once from the two facts the provider
+  // already holds and handed to every entry point through the context. `open && live`
+  // is the mounted case — minimizing sets `minimized` but keeps `open` true and the
+  // form MOUNTED, which is exactly why a "Start workout" tap could stomp it.
+  const offer = useMemo(
+    () => workoutOffer({ mounted: open && live, hydrated: hydrationActive }),
+    [open, live, hydrationActive]
+  );
+
+  // Perform the resume the offer describes. Mounted: un-hide the still-running form,
+  // leaving `liveStartEpoch` ALONE — that epoch is what the dock's elapsed timer ticks
+  // off, so re-stamping it is the corruption. Hydrated: reopen from the persisted draft
+  // at the server's recorded start.
+  const resumeOffer = useCallback(() => {
+    if (offer.kind !== "resume") return;
+    if (offer.from === "mounted") {
+      setMinimized(false);
+      setOpen(true);
+      return;
+    }
+    resumeLive();
+  }, [offer, resumeLive]);
+
   // Memoized so always-mounted consumers (e.g. MobileNav's quick-log button)
   // only re-render when open/editData actually change — not on every provider
-  // render (dock registration churns on journal mount/unmount).
+  // render (dock registration churns on journal mount/unmount). `offer` is a
+  // dependency ON PURPOSE: the bolt's label must flip the moment a session goes live.
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
@@ -207,6 +267,13 @@ export default function ActivityEditorProvider({
       openLive: () => {
         // Age-restricted profiles have no strength surface (#489) — no-op.
         if (restricted) return;
+        // A session is already running (#1893): reopen it. Never clear the editor and
+        // never re-stamp liveStartEpoch — that would silently reset the running
+        // session's clock and drop its in-flight sets.
+        if (offer.kind === "resume") {
+          resumeOffer();
+          return;
+        }
         setEditData(null);
         setPrefill(null);
         setLive(true);
@@ -218,9 +285,17 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       canStartWorkout: !restricted,
+      workoutOffer: offer,
       openSession: (prefillData) => {
         // Age-restricted profiles have no strength surface (#489) — no-op.
         if (restricted) return;
+        // Same guard as openLive (#1893): the routine card's "Log this session" must
+        // not discard a workout already in progress. The running session wins; the
+        // routine slate is still one tap away once it is finished.
+        if (offer.kind === "resume") {
+          resumeOffer();
+          return;
+        }
         setEditData(null);
         setPrefill(prefillData);
         setLive(true);
@@ -281,22 +356,10 @@ export default function ActivityEditorProvider({
       lastActivity,
       restricted,
       subjectName,
+      offer,
+      resumeOffer,
     ]
   );
-
-  // Resume the acting profile's active session in the live editor from the dock —
-  // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
-  // journal column when one is present, else the overlay.
-  const resumeLive = useCallback(() => {
-    if (!liveEditData) return;
-    setEditData(liveEditData);
-    setPrefill(null);
-    setLive(true);
-    setLiveStartEpoch(liveStartEpochMs ?? Date.now());
-    setMinimized(false);
-    setDocked(dockElRef.current != null);
-    setOpen(true);
-  }, [liveEditData, liveStartEpochMs]);
 
   // Collapse the live overlay to the bar WITHOUT unmounting the form.
   const minimizeLive = useCallback(() => setMinimized(true), []);
@@ -306,8 +369,6 @@ export default function ActivityEditorProvider({
   const showDock = docked && dockEl != null;
 
   const onJournal = pathname === JOURNAL_ROUTE;
-  const hydrationActive =
-    !open && presence?.state === "active" && liveEditData != null;
   // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
   // and for a fresh-load active session everywhere except the journal route (where
   // the editor docks inline instead). A docked-open editor never shows the bar.
