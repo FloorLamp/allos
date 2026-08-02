@@ -315,10 +315,13 @@ describe("onboarding first value", () => {
 describe("onboarding dashboard layout", () => {
   it("fitness prioritizes training surfaces without permanently removing others", () => {
     const layout = onboardingDashboardLayout(["fitness"]);
+    // The focused set is sequenced by REGISTRY order, so this list moves with the
+    // catalog's default order — which #1890 made actionable-first: the train/rest
+    // call and this week's targets now lead the passive weight chart.
     expect(layout.order.slice(0, 4)).toEqual([
       "coaching",
-      "weight-trend",
       "goals-habits",
+      "weight-trend",
       "weekly-recap",
     ]);
     expect(layout.hidden).toContain("recent-labs");

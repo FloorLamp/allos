@@ -102,6 +102,20 @@ separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strengt
 standard, sleep regularity, biological age, and biomarkers in optimal range as
 separate signals, never one invented score.
 
+The default order is **actionable first**: the cards you are meant to act on
+today lead — the **"How are you today?"** check-in, the coaching train/rest call,
+**Goals and habits**, **Data quality**'s one-time fixes, and today's nutrition
+and steps gaps (plus **Active protocols** when you opt in, since its rows carry
+pending log actions) — and the glance cards you read and move on from follow:
+next appointment, recent labs, last night's sleep, latest vitals, weight trend,
+healthspan pillars, cycle phase. **Coaching observations** closes the list, which
+is what its own charter asks for — FYIs, not alerts — and the opt-in **Weekly
+recap** stays last. Each card declares whether it is actionable, and a registry
+test keeps the split honest as new widgets arrive, so a glance card cannot
+quietly take a prime slot. This is the order a **fresh** dashboard starts in; a
+dashboard you have already arranged keeps exactly the order you gave it, and a
+card added by a later release joins in its default position.
+
 **Edit dashboard** opens Customize, where every eligible widget — visible,
 hidden, and temporarily without data — can be reordered by its grip and shown or
 hidden by its eye, with Save persisting the layout and Cancel restoring the
