@@ -73,7 +73,9 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
 
       // Picking + Star writes through the SAME toggleSavedItem the ★ uses anywhere
       // else: the proof is the tile, not a toast.
-      await options(listbox)
+      // The option row IS the button, so it is addressed on the listbox, not inside
+      // an option. `exact` makes a duplicate label fail loudly (#531).
+      await listbox
         .getByRole("button", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
         .click();
       await expect(field).toHaveValue(BIOMARKER_PICKER_FLAGGED);
@@ -125,7 +127,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
 
       // A pick writes the series key into cmpA — the param the overlay reads, which
       // #1675 did not touch.
-      await options(listbox)
+      await listbox
         .getByRole("button", { name: BIOMARKER_PICKER_OVERDUE, exact: true })
         .click();
       await expect(page).toHaveURL(/cmpA=bio%3AHemoglobin\+A1c/);
@@ -145,11 +147,13 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
     });
     try {
       // ?new=1 opens the add-result panel directly (the Biomarkers-page add slot).
+      // Its modal is portalled, so the form is addressed through the dialog rather
+      // than through the panel's own container.
       await page.goto("/results/biomarkers?new=1");
-      const panel = page.getByTestId("add-result-panel");
-      await expect(panel).toBeVisible();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
 
-      const field = panel.getByRole("combobox", { name: "Canonical name" });
+      const field = dialog.getByRole("combobox", { name: "Canonical name" });
       const listbox = await openCombobox(page, field);
 
       // Same rank, same headers — and this field offers the WHOLE canonical
@@ -162,10 +166,14 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       await expect(groups(listbox).nth(2)).toHaveText("All biomarkers");
 
       // Typing still reaches an analyte this profile has never measured — a picker
-      // RANKS, it does not filter.
+      // RANKS, it does not filter — and reaches it by the app's fuzzy, non-prefix
+      // match, which is what a `<select>` could never offer.
       await settledFill(page, field, "tsh");
       await expect(
-        options(listbox).getByRole("button", { name: "TSH", exact: true })
+        listbox.getByRole("button", {
+          name: "Thyroid-Stimulating Hormone (TSH)",
+          exact: true,
+        })
       ).toBeVisible();
     } finally {
       await page.context().close();
