@@ -168,6 +168,58 @@ export function resolveUpdateState({
 }
 
 /**
+ * What to do about a worker that was ALREADY waiting when this page loaded (#1905).
+ *
+ * THE LOOP THIS CLOSES. A manual browser refresh (F5, pull-to-refresh) fetches the
+ * new build's HTML and assets over the network — but a refresh never activates a
+ * WAITING service worker. Platform behaviour: only the skip-waiting handshake, or
+ * closing every tab of the origin, does that. So the fresh load finds
+ * `registration.waiting` still present and re-offers, and the bar comes back offering
+ * an "update" to a page that is already running the new build. Forever, until the
+ * user taps the bar's own Reload. Only the WORKER path loops this way; the sha
+ * fallback's baseline is the freshly-served sha, so a refresh self-clears it.
+ *
+ * THE DISCRIMINATOR is the sha the document was served with against the sha the
+ * server reports. Equal means the page already HAS the new build's assets and the
+ * waiting worker is merely queued to take over subsequent fetches — nothing to
+ * decide, nothing to reload, so activate it silently and never raise the bar. The
+ * bar is then left with exactly its charter (#1700): a deploy discovered MID-SESSION,
+ * where the running document genuinely predates the build.
+ *
+ * `wait` is the third answer and not a hedge: the sha read is a round-trip, and
+ * offering before it lands would flash the bar on every first load after a deploy.
+ * It resolves as soon as that one read settles either way. When the read settles
+ * with no answer at all — /api/version is session-gated, so an anonymous tab can
+ * never learn the deployed sha — we `offer`, which is the behaviour that shipped;
+ * silence is not something to invent for a context we cannot evaluate.
+ */
+export type LoadTimeUpdatePlan = "activate-silently" | "offer" | "wait";
+
+export function loadTimeUpdatePlan({
+  waitingAtLoad,
+  pageSha,
+  deployedSha,
+  deployedSettled,
+}: {
+  /** A worker was waiting when registration first answered — not installed since. */
+  waitingAtLoad: boolean;
+  /** The commit this document was served with. */
+  pageSha: string | null;
+  /** The commit the server reports, once it has answered. */
+  deployedSha: string | null;
+  /** The one sha read has finished, with or without an answer. */
+  deployedSettled: boolean;
+}): LoadTimeUpdatePlan {
+  // Mid-session discovery is the bar's whole purpose; it is not this decision.
+  if (!waitingAtLoad) return "offer";
+  // No baseline, nothing to compare — the page cannot claim to be on the new build.
+  if (!pageSha) return "offer";
+  if (!deployedSettled) return "wait";
+  if (!deployedSha) return "offer";
+  return deployedSha === pageSha ? "activate-silently" : "offer";
+}
+
+/**
  * The ONE reload mechanic, in its two shapes (#1795).
  *
  * `handshake` — a worker is waiting, so the reload must resolve it: post SKIP_WAITING,
