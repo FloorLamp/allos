@@ -6,6 +6,7 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import DemoBanner from "@/components/DemoBanner";
 import { getAppVersion } from "@/lib/version";
 import { isDemoMode } from "@/lib/demo";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -39,11 +40,16 @@ export const viewport: Viewport = {
 };
 
 // Runs before first paint to set the theme class, avoiding a light-mode flash.
-// Must stay in sync with components/ThemeToggle.tsx.
+//
+// This is the one place the rule has to be RETYPED rather than imported: it is a
+// string of source that must execute before any bundle does. The storage key still
+// comes from lib/theme.ts, which is also what components/ThemeToggle.tsx and
+// app/global-error.tsx read — the boundary that cannot use a `dark` class at all,
+// because it replaces this very script (#1906).
 const themeBoot = `
 (function () {
   try {
-    var t = localStorage.getItem('theme') || 'system';
+    var t = localStorage.getItem('${THEME_STORAGE_KEY}') || 'system';
     var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', dark);
   } catch (e) {}

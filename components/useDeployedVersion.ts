@@ -24,11 +24,24 @@ import { UPDATE_CHECK_MS } from "@/lib/sw-update";
 export type DeployedVersion = {
   sha: string | null;
   commitMessage: string | null;
+  /**
+   * This hook has finished asking — the answer below is final for this mode.
+   *
+   * `sha: null, settled: true` is a real outcome, not a transient one: /api/version
+   * is session-gated (#390), so an anonymous tab settles knowing nothing. The
+   * load-time worker decision (#1905) needs to tell "hasn't answered yet" from
+   * "answered with nothing", because only the first is worth holding the bar for.
+   */
+  settled: boolean;
 };
 
 export type VersionWatchMode = "poll" | "once" | "off";
 
-const NOTHING: DeployedVersion = { sha: null, commitMessage: null };
+const NOTHING: DeployedVersion = {
+  sha: null,
+  commitMessage: null,
+  settled: false,
+};
 
 export function useDeployedVersion({
   baseline,
@@ -56,10 +69,16 @@ export function useDeployedVersion({
     const settle = () => {
       settledRef.current = true;
       if (intervalId) clearInterval(intervalId);
+      setDeployed((prev) => (prev.settled ? prev : { ...prev, settled: true }));
     };
 
     async function check() {
-      if (settledRef.current || document.visibilityState === "hidden") return;
+      // Background tabs are not POLLED — but the one-shot read still happens in a
+      // hidden tab: it is what the load-time worker decision waits on (#1905), and
+      // deferring it would leave a tab that loaded in the background holding the bar
+      // until it was looked at.
+      if (settledRef.current) return;
+      if (mode === "poll" && document.visibilityState === "hidden") return;
       try {
         const res = await fetch("/api/version", { cache: "no-store" });
         // The endpoint is session-gated (#390). An anonymous context — the login
@@ -76,10 +95,11 @@ export function useDeployedVersion({
         };
         if (cancelled || settledRef.current) return;
         if (!body.sha) return;
-        setDeployed({
+        setDeployed((prev) => ({
+          ...prev,
           sha: body.sha,
           commitMessage: body.commitMessage ?? null,
-        });
+        }));
         if (mode === "once" || body.sha !== baseline) settle();
       } catch {
         // Network blip, or a deploy caught mid-restart — ask again next tick.
@@ -88,8 +108,13 @@ export function useDeployedVersion({
 
     if (mode === "once") {
       // The worker has already decided an update is pending; this read exists only
-      // to name it, so it happens now and never again.
-      void check();
+      // to name it, so it happens now and never again. It settles on EVERY outcome —
+      // a 5xx, an offline blip, an unparseable body — because the load-time worker
+      // decision (#1905) blocks on this read and a read that never settles would
+      // hold the bar back forever.
+      void check().finally(() => {
+        if (!cancelled) settle();
+      });
       return () => {
         cancelled = true;
       };

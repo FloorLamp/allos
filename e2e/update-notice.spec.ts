@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { followLink } from "./helpers";
+import { UPDATE_PENDING_KEY, UPDATE_PENDING_MARKER } from "@/lib/sw-update";
 
 // ONE update notice per deploy (issue #1795), driven through the FALLBACK detector.
 //
@@ -146,4 +147,47 @@ test("the notice's reload reloads the tab, and nothing re-offers the update afte
   }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: same re-dispatch as above — the listener is attached asynchronously after load, and the response being waited for IS the settle point rather than a timeout
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   await expect(page.getByTestId(RETIRED_BANNER)).toHaveCount(0);
+});
+
+test("the pending update is recorded where the crash boundary can read it (#1906)", async ({
+  page,
+}) => {
+  // THE CONTRACT THIS PINS. A tab with a pending update is running a build whose
+  // hashed chunks the deploy has removed, so a client navigation to a route it has
+  // not visited can throw ABOVE the route group — and app/global-error.tsx replaces
+  // the root layout, so ServiceWorkerRegister is not mounted when that boundary has
+  // to tell deployment skew from an ordinary crash. A per-tab marker is the only
+  // channel that survives; this asserts the registrar actually writes it, and clears
+  // it, so the boundary's decision is fed by the real pending state rather than by a
+  // key nobody sets.
+  await page.goto("/equipment");
+
+  // Before any deploy: no marker, so the boundary would render its card.
+  await expect
+    .poll(() =>
+      page.evaluate((k) => sessionStorage.getItem(k), UPDATE_PENDING_KEY)
+    )
+    .toBeNull();
+
+  await interceptVersion(page);
+  await provokeVersionCheck(page);
+
+  await expect
+    .poll(() =>
+      page.evaluate((k) => sessionStorage.getItem(k), UPDATE_PENDING_KEY)
+    )
+    .toBe(UPDATE_PENDING_MARKER);
+
+  // Dismissing the bar hides the OFFER but does not un-deploy anything: the tab is
+  // still on the old build, so the marker must stay. This is the case a naive
+  // "clear it when the bar goes away" would get wrong, and it is exactly the tab
+  // that goes on to hit a missing chunk.
+  await page
+    .getByTestId("update-ready-bar")
+    .getByTestId("update-ready-dismiss")
+    .click();
+  await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
+  expect(
+    await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_PENDING_KEY)
+  ).toBe(UPDATE_PENDING_MARKER);
 });
