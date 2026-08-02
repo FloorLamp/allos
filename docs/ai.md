@@ -61,7 +61,7 @@ proactive AI features (supplement suggestions + a refreshed daily insight) on a
 on a page view once the period has elapsed, and only when the underlying data
 actually changed (an unchanged input signature skips the run, logged in
 **Settings → Logs & audit → AI logs**). The admin sets a per-profile
-**max runs per day** ceiling under **Settings → Server**. Runs happen only in
+**max runs per day** ceiling under **Settings → Server → AI**. Runs happen only in
 the web app, never the notification tick.
 
 Uploaded medical documents (**Data → Import**) are extracted into structured
@@ -100,8 +100,8 @@ cannot disagree.
 
 ### Provider tiers (Heavy / Light) and local inference
 
-AI config lives in the database under **Settings → Server → AI providers**
-(admin-only), as **two independent tiers**:
+AI config lives in the database under **Settings → Server → AI** (the Server
+group's AI sub-page, admin-only), as **two independent tiers**:
 
 - **Heavy** — document/workout extraction (vision + long context; it sees your
   uploaded records).

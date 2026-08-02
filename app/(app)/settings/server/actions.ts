@@ -6,7 +6,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import {
-  setAiPrefs,
   setPublicUrl,
   isValidTimezone,
   setInstanceTimezone,
@@ -35,65 +34,11 @@ import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { sendEmail } from "@/lib/email";
 import { isValidEmail } from "@/lib/auth-email";
 import { createLogger } from "@/lib/log";
-import { setTierConfig, clearTierApiKey } from "@/lib/settings/ai-tiers";
-import { parseApiShape, type TierName } from "@/lib/ai-tiers";
-import { probeTier } from "@/lib/ai-probe";
 
 const log = createLogger("settings");
 
-// ---- AI provider tiers (global, admin-only) — issue #875 ----
-
-function parseTier(v: FormDataEntryValue | null): TierName {
-  return v === "light" ? "light" : "heavy";
-}
-
-// Save one tier's provider config. The API key field is write-only: a blank submit
-// leaves the stored secret intact (setTierConfig ignores an empty key), and the
-// "remove key" checkbox clears it — the Telegram-bot-token posture applied to AI.
-export async function saveAiTierConfig(formData: FormData) {
-  await requireAdmin();
-  const tier = parseTier(formData.get("tier"));
-  const apiKey = String(formData.get("api_key") ?? "");
-  setTierConfig(tier, {
-    apiShape: parseApiShape(String(formData.get("api_shape") ?? "")),
-    baseUrl: String(formData.get("base_url") ?? ""),
-    model: String(formData.get("model") ?? ""),
-    apiKey,
-  });
-  if (formData.get("clear_api_key") === "1") clearTierApiKey(tier);
-  revalidatePath("/settings/server");
-}
-
-// Test-connection affordance (the register-webhook precedent): ping the tier through
-// the resolver and report reachability + whether the Heavy endpoint accepts an image.
-export async function testAiTier(
-  formData: FormData
-): Promise<{ ok: boolean; message: string }> {
-  await requireAdmin();
-  const tier = parseTier(formData.get("tier"));
-  const result = await probeTier(tier);
-  return { ok: result.ok, message: result.message };
-}
-
-// ---- AI (global, admin-only) ----
-
-export async function saveAiSettings(formData: FormData) {
-  await requireAdmin();
-  // Accept both the "1" our client sends and a native checkbox's "on".
-  const on = (key: string) => {
-    const v = formData.get(key);
-    return v === "1" || v === "on";
-  };
-  // The clamp is applied inside setAiPrefs (pure clampMaxRunsPerDay), so a blank/
-  // bad value falls back to the default 1 rather than disabling the backstop.
-  setAiPrefs({
-    autoSupplementSuggestions: on("auto_supplement_suggestions"),
-    recommendationMaxRunsPerDay: Number(
-      formData.get("recommendation_max_runs_per_day")
-    ),
-  });
-  revalidatePath("/settings/server");
-}
+// The AI actions (provider tiers #875 + automation knobs) live in ../ai/actions.ts
+// since the two AI cards moved to the Settings → Server → AI sub-page (#1870).
 
 // ---- Public URL (global, admin-only) ----
 // Shared by Telegram webhook, Strava OAuth, Health Connect.
