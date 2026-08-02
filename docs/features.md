@@ -102,6 +102,18 @@ separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strengt
 standard, sleep regularity, biological age, and biomarkers in optimal range as
 separate signals, never one invented score.
 
+**Edit dashboard** opens Customize, where every eligible widget — visible,
+hidden, and temporarily without data — can be reordered by its grip and shown or
+hidden by its eye, with Save persisting the layout and Cancel restoring the
+state you entered with. On a wide screen you edit the live cards **in place**,
+because there the grid really is six columns and spans and adjacency are part of
+what you are arranging. On a phone the grid is a single column already and a
+live card is half the screen, so Customize collapses each widget to a **compact
+reorder row** — grip, label, eye, about 48px — which puts the whole list on one
+screen and makes a move a flick instead of several screens of autoscroll. It is
+the same editor either way: same order, same hidden set, same Save/Cancel, same
+keyboard path on the grip.
+
 ### Data quality
 
 A **Data quality** widget surfaces the _structural_ gaps that silently degrade
@@ -2298,9 +2310,12 @@ compact context line such as **Overview · 90D** expands to the full tab, range,
 saved-view, and event-overlay controls.
 
 Starred metric tiles lead with the latest value, support touch drag reordering,
-and retain menu-based move actions for keyboard users. Responsive spacing and
-all drawer, sheet, and toolbar animation honor the operating system's
-reduced-motion preference.
+and retain menu-based move actions for keyboard users. A dragged tile or card
+**translates**, it never rescales — a reorder moves an item, it does not resize
+it — and the dashboard lifts the card you are carrying into a size-locked ghost
+above the list. The dashboard's Customize shows compact reorder rows on a phone
+and in-place cards on a wide screen. Responsive spacing and all drawer, sheet,
+and toolbar animation honor the operating system's reduced-motion preference.
 
 The proposed native companion is a separate future surface; see
 [the mobile companion specification](mobile-companion-spec.md). This section

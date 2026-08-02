@@ -454,6 +454,15 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
   const main = page.getByRole("main");
   await main.getByRole("button", { name: "Edit dashboard" }).click();
 
+  // At `lg`+ the editor keeps the IN-PLACE cards (#1891). Spans and adjacency are
+  // visible on a six-column canvas and are part of what is being edited there, so
+  // the compact reorder rows are the phone's answer only — see
+  // e2e/dashboard-reorder.mobile.spec.ts for the other side of the same switch.
+  await expect(main.getByTestId("dashboard-customize")).toHaveAttribute(
+    "data-presentation",
+    "cards"
+  );
+
   const widgets = main.locator("[data-testid^='dashboard-widget-']");
   await expect(widgets.first()).toBeVisible(); // first-ok: the editor's leading slot IS the subject — "does the top widget move?"
   const idsBefore = await widgets.evaluateAll((els) =>
@@ -488,6 +497,36 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, {
     steps: 12,
   });
+
+  // STILL HOLDING the card. The slots sliding out of the way carry the sorting
+  // strategy's transform on their inline style, and that style is where #1891's
+  // distortion actually lived: `CSS.Transform.toString` emits
+  // `translate3d(…) scaleX(…) scaleY(…)`, and on a grid whose cards differ wildly
+  // in height those scale factors are not 1 — the moving card visibly squashed and
+  // stretched as it crossed shorter and taller neighbours. `CSS.Translate.toString`
+  // emits the translate3d alone.
+  //
+  // This is a PROXY for the distortion, not the distortion itself — a rendered
+  // transform is the cause, not the appearance — but it is an honest one: it reads
+  // the real inline style of a real mid-drag DOM, and it FAILS against the pre-fix
+  // component (verified) because that style carried `scaleX(`.
+  await expect
+    .poll(async () =>
+      widgets.evaluateAll((els) =>
+        els.map((e) => e.getAttribute("style") ?? "")
+      )
+    )
+    .toEqual(expect.arrayContaining([expect.stringContaining("translate3d")]));
+  const midDragStyles = await widgets.evaluateAll((els) =>
+    els.map((e) => e.getAttribute("style") ?? "")
+  );
+  for (const style of midDragStyles) {
+    expect(
+      style,
+      "a sortable slot must translate, never scale (#1891)"
+    ).not.toContain("scale");
+  }
+
   await page.mouse.up();
 
   await expect

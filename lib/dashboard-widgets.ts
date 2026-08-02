@@ -20,6 +20,7 @@
 //     blank card.
 
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import type { ReorderStrategy } from "./drag-order";
 
 export type WidgetSpan = "full" | "two-thirds" | "third" | "half";
 
@@ -227,6 +228,35 @@ export function dashboardGoalsHabitsLayout(
   hasHabits: boolean
 ): "split" | "full" {
   return hasGoals && hasHabits ? "split" : "full";
+}
+
+// How Customize presents itself at a given viewport (issue #1891). ONE question —
+// "is the grid multi-column here?" — with ONE answer, so the presentation and the
+// drag strategy can never disagree about which layout the user is looking at.
+//
+//   • at `lg` and wider the grid really is six columns: the widgets keep their
+//     spans and their neighbours, because on that canvas adjacency and footprint
+//     are the things being edited, and a card is what you edit them ON. Items
+//     reflow in two dimensions, so the rect strategy.
+//   • below `lg` the grid is a SINGLE column already, and a full live widget is
+//     half a phone screen. Reordering ten of them means dragging across several
+//     screens with autoscroll — the worst version of a drag. So the editor
+//     collapses each widget to a compact reorder row (grip, label, eye), which
+//     puts the whole list on one screen and makes a reorder a flick. Nothing
+//     moves sideways in one column, so the vertical strategy.
+//
+// This is a PRESENTATION of the same ordered set, not a second editor: the order
+// and hidden-id state, the controls, and the save/cancel semantics are identical
+// on both sides of the breakpoint.
+export interface DashboardCustomizeMode {
+  compact: boolean;
+  strategy: ReorderStrategy;
+}
+
+export function dashboardCustomizeMode(wide: boolean): DashboardCustomizeMode {
+  return wide
+    ? { compact: false, strategy: "rect" }
+    : { compact: true, strategy: "vertical" };
 }
 
 // The catalog. Array order is the default display order; new widgets appended to
