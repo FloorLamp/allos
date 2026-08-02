@@ -15,7 +15,7 @@
 //     query layer), then windows it here.
 
 import { chartSeries } from "./chart-colors";
-import { shiftDateStr } from "./date";
+import { trailingAverage } from "./trailing-average";
 import { metricDetailHref, type AppRoute } from "./hrefs";
 import { metricSeriesKey, savedRefFromSeriesKey } from "./saved-items";
 import { filterSeriesByRange } from "./trends";
@@ -579,7 +579,15 @@ export function orderBodyMetricTiles<T extends OrderableTile>(
 // Period statistics for a metric detail page: latest / average / min / max / net
 // change over each of the 7/30/90-day trailing windows, computed from the metric's
 // FULL series (independent of the page's range control, so the windows always mean
-// "last N days from today"). A window with no readings reports nulls.
+// "the last N complete days before today"). A window with no readings reports nulls.
+//
+// COMPLETE DAYS ONLY (#1909). These windows used to INCLUDE today, which for a
+// cumulative metric meant the average carried a half-finished day all afternoon:
+// at 2pm a 4,000-step morning dragged the 7-day mean down, and it silently
+// self-corrected at midnight. The window now ends YESTERDAY — the shared
+// `trailingAverage` default — so the average, range and change describe history and
+// nothing about them moves during the day. `latest` is the exception on purpose:
+// recency is today's job, so it stays the newest reading at or before today.
 //
 // COINCIDENT WINDOWS COLLAPSE (#1541). With fewer than 7 days of history — every
 // new install, every freshly connected integration — all three windows contain the
@@ -597,9 +605,12 @@ export interface PeriodStat {
   windows: number[];
   count: number;
   // First / last reading DATE inside the window (null when it holds none) — what
-  // the card is actually summarising, as opposed to what it is labelled.
+  // the card is actually summarising, as opposed to what it is labelled. Never
+  // later than yesterday: the window covers complete days.
   from: string | null;
   to: string | null;
+  // The newest reading at or before TODAY — the one figure here that is allowed to
+  // be today's, and the same value the page's Latest hero shows.
   latest: number | null;
   avg: number | null;
   min: number | null;
@@ -644,41 +655,53 @@ export function collapseCoincidentPeriods(
   return out;
 }
 
+function emptyPeriodStat(days: number): PeriodStat {
+  return {
+    label: `${days}d`,
+    days,
+    windows: [days],
+    count: 0,
+    from: null,
+    to: null,
+    latest: null,
+    avg: null,
+    min: null,
+    max: null,
+    delta: null,
+  };
+}
+
 export function bodyMetricPeriodStats(
   points: readonly { date: string; value: number }[],
   todayStr: string,
   decimals = 1
 ): PeriodStat[] {
   const round = (n: number) => Number(n.toFixed(decimals));
+  // Recency, decided once for every window: the newest reading at or before today.
+  // A window holding any complete-day reading necessarily starts on or before that
+  // reading's date, so this value sits inside the window's span even when it is
+  // today's and the average — complete days only — is not. With nothing at or
+  // before today there is no window to summarise either.
+  const throughToday = points.filter((p) => p.date <= todayStr);
+  if (throughToday.length === 0) {
+    return collapseCoincidentPeriods(PERIOD_WINDOWS.map(emptyPeriodStat));
+  }
+  const latest = throughToday[throughToday.length - 1].value;
+
   const raw = PERIOD_WINDOWS.map((days): PeriodStat => {
-    const cutoff = shiftDateStr(todayStr, -(days - 1));
-    const win = points.filter((p) => p.date >= cutoff);
-    const vals = win.map((p) => p.value);
-    if (vals.length === 0) {
-      return {
-        label: `${days}d`,
-        days,
-        windows: [days],
-        count: 0,
-        from: null,
-        to: null,
-        latest: null,
-        avg: null,
-        min: null,
-        max: null,
-        delta: null,
-      };
-    }
-    const sum = vals.reduce((a, b) => a + b, 0);
+    // Today excluded (the shared default): the summary describes complete days.
+    const win = trailingAverage(points, todayStr, { days, basis: "calendar" });
+    if (win.average == null) return emptyPeriodStat(days);
+    const vals = win.points.map((p) => p.value);
     return {
       label: `${days}d`,
       days,
       windows: [days],
-      count: vals.length,
-      from: win[0].date,
-      to: win[win.length - 1].date,
-      latest: round(vals[vals.length - 1]),
-      avg: round(sum / vals.length),
+      count: win.count,
+      from: win.from,
+      to: win.to,
+      latest: round(latest),
+      avg: round(win.average),
       min: round(Math.min(...vals)),
       max: round(Math.max(...vals)),
       delta: round(vals[vals.length - 1] - vals[0]),

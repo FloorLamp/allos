@@ -284,12 +284,17 @@ rolling averages, per-period rollups, streaks, adherence rates):
   `bodyMetricPeriodStats` (`lib/trends-body-metrics.ts`) carries all three in
   `lib/__tests__/trends-body-metrics.test.ts`, and each asserts the shape a
   SURFACE can render: one card, keyed by the widest window it covers, carrying
-  its reading count and covered span.
+  its reading count and covered span. **The window's boundary is one of those
+  inputs.** #1909 moved these windows to complete days only (they end
+  yesterday), which shifted every calendar cutoff back a day — and a fixture
+  calibrated to the OLD boundary, weigh-ins at exactly −7d and −1d, silently
+  became an all-coincident one. Recalibrating the fixture is the fix; retargeting
+  the assertion to "1 card" would have thrown the signal away.
 - **Assert what the surface renders, differentially.** Prefer "the number of
   stat cards equals the number of DISTINCT windows" over a fixed-presence trio,
   and drive a fixture where that count is a SIGNAL rather than a constant — the
   metric page spec now pairs an all-coincident fixture (3 consecutive days → 1
-  card) with a partial-collapse one (weigh-ins at −7d and −1d → 2 cards, `7d` +
+  card) with a partial-collapse one (weigh-ins at −9d and −1d → 2 cards, `7d` +
   `30–90d`). A presence assertion that would still pass if the windows
   collapsed, merged or split is not measuring the statistic; it is measuring the
   template.

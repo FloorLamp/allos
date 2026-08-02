@@ -570,9 +570,17 @@ function PeriodStatsCard({
         >
           Rolling summary
         </h2>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Rolling 7, 30, and 90-day windows. Change compares the first and
-          latest reading.
+        {/* The exclusion made visible (#1909). These windows end YESTERDAY —
+          today is not history until it ends, and a half-finished day used to
+          drag a cumulative metric's average down all afternoon. Latest is the
+          one figure that still carries today, so the note names both. */}
+        <p
+          className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="metric-period-coverage"
+        >
+          Rolling 7, 30, and 90-day windows through yesterday — complete days
+          only. Average, range, and change cover those days; Latest is the most
+          recent reading, including today&rsquo;s.
         </p>
       </div>
       <div
@@ -610,7 +618,8 @@ function PeriodStatsCard({
 
             {s.count === 0 ? (
               <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
-                Add a reading to see an average, range, and change.
+                Add a reading from a completed day to see an average, range, and
+                change.
               </p>
             ) : (
               <div

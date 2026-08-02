@@ -42,15 +42,19 @@ test.describe("dashboard daily loop (#1221)", () => {
     ).toHaveAttribute("href", "/nutrition");
   });
 
-  test("Steps-today card shows today's steps versus the 7-day average", async () => {
+  test("Steps-today card shows today's steps versus the prior 7 days", async () => {
     await page.goto("/");
     const card = page.getByRole("main").getByTestId("steps-today-widget");
     await expect(card).toBeVisible();
     await expect(card.getByTestId("steps-today-count")).toContainText(/[\d,]+/);
-    await expect(card).toContainText(/7-day average/);
-    // Today (9,400) is above the trailing average → an up delta line renders.
+    // The baseline names the days it covers (#1909). "7-day average" is the phrase
+    // this card must NOT use: the metric detail page's Rolling summary answers a
+    // different question over a different window and would own that label.
+    await expect(card).toContainText(/Prior 7 days · [\d,]+ steps a day/);
+    await expect(card).not.toContainText(/7-day average/);
+    // Today (9,400) is above the baseline → an up delta line renders.
     await expect(card.getByTestId("steps-today-delta")).toContainText(
-      /% vs 7-day average/
+      /% vs prior 7 days/
     );
   });
 
