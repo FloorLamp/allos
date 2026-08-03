@@ -23,6 +23,7 @@ import {
   getWeekStart,
 } from "../settings";
 import { trailingWeeks } from "../week-window";
+import { zonedDateParts } from "../date";
 import type { DisplayFormatPrefs } from "../format-date";
 import {
   foodHabitTrendCells,
@@ -132,10 +133,30 @@ export function getFoodServingsOnDate(
   return m;
 }
 
+// One logged serving as the CORRECTION list renders it (issue #1934): the counts above
+// are aggregates and cannot be corrected, because "Berries ×2 in Morning" names no row.
+// This is the individual event, carrying the id the ⋯ row action edits and the window it
+// currently sits in — derived through the SAME foodEventWindow the tallies use, so the
+// row the user corrects is the row the tally counted.
+export interface FoodMealEvent {
+  id: number;
+  groupKey: string;
+  // Catalog display name, resolved server-side so the list speaks the #1710 vocabulary.
+  name: string;
+  date: string;
+  mealSlot: FoodSlot;
+  // Local wall-clock "HH:MM" of the tap, in the profile's timezone. Shown so two
+  // servings of the same group in one window are distinguishable. `logged_at` itself
+  // stays the audit instant and is never edited.
+  time: string;
+}
+
 export interface FoodMealDay {
   date: string;
   counts: Record<string, number>;
   slotCounts: Record<FoodSlot, Record<string, number>>;
+  // The day's individual servings, newest first — the row-action correction surface.
+  events: FoodMealEvent[];
 }
 
 // Recent meal history for the Food page: the daily source-of-truth counters plus the
@@ -157,6 +178,7 @@ export function getFoodMealDays(
         date,
         counts: {},
         slotCounts: { Morning: {}, Midday: {}, Evening: {} },
+        events: [],
       },
     ])
   );
@@ -178,17 +200,18 @@ export function getFoodMealDays(
 
   const events = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+      `SELECT id, group_key AS name, date, logged_at, meal_slot FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY logged_at, id`
     )
-    .all(profileId, from, to) as FoodLedgerEvent[];
+    .all(profileId, from, to) as (FoodLedgerEvent & { id: number })[];
   const boundaries = profileFoodSlotBoundaries(profileId);
   const tz = getTimezone(profileId);
   for (const event of events) {
     // The reserved protein ranking event is not a food-group serving and has its own
     // grams surface, so it must never appear as a mystery meal chip.
-    if (!foodGroupBySlug(event.name)) continue;
+    const group = foodGroupBySlug(event.name);
+    if (!group) continue;
     const day = byDate.get(event.date);
     if (!day) continue;
     const slot = foodEventWindow(
@@ -199,7 +222,19 @@ export function getFoodMealDays(
     );
     const slotCounts = day.slotCounts[slot];
     slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
+    // Same event, same derived window — the correction row and the tally it feeds are
+    // built in one pass, so the list can never offer a row the tally didn't count.
+    day.events.push({
+      id: event.id,
+      groupKey: event.name,
+      name: group.name,
+      date: event.date,
+      mealSlot: slot,
+      time: zonedDateParts(tz, new Date(event.logged_at)).hhmm,
+    });
   }
+  // Newest first: the serving most likely to need correcting is the one just tapped.
+  for (const day of byDate.values()) day.events.reverse();
 
   return dates.map((date) => byDate.get(date)!);
 }

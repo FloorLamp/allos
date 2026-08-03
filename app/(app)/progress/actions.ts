@@ -9,6 +9,7 @@ import { resolvePhotoDate } from "@/lib/photo/policy";
 import {
   addProgressPhotoCore,
   deleteProgressPhotoCore,
+  updateProgressPhotoCore,
 } from "@/lib/progress-photo-write";
 
 // Server Actions for the physique progress-photo domain (#1119 phase 2). The
@@ -54,6 +55,37 @@ export async function uploadProgressPhoto(
   // photo must revalidate "/" or the nav link stays hidden until an unrelated
   // reload (the sleep/mood precedent, #1282).
   revalidatePath("/");
+  return formOk();
+}
+
+// Correct one progress photo's METADATA — date, pose, caption (issue #1934). No
+// bytes are re-processed and none are touched: this action never reaches
+// processPhoto or the file store, and the core's UPDATE never names stored_path,
+// thumb_path or content_hash. The only repair before this was delete-and-re-upload,
+// which threw away the original file and its place in the series.
+export async function updateProgressPhoto(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("photo_id"));
+  if (!Number.isInteger(id) || id <= 0)
+    return formError("That photo is no longer available.");
+  const pose = String(formData.get("pose") ?? "");
+  const date = String(formData.get("date") ?? "").trim();
+  const captionRaw = formData.get("caption");
+  const caption = typeof captionRaw === "string" ? captionRaw : null;
+
+  const outcome = updateProgressPhotoCore(profile.id, id, {
+    date,
+    pose,
+    caption,
+  });
+  if (outcome.kind === "invalid") return formError(outcome.error);
+  // Profile-scoped by id, so another profile's photo id lands here having written
+  // nothing.
+  if (outcome.kind === "not-found")
+    return formError("That photo is no longer available.");
+  revalidatePath("/progress");
   return formOk();
 }
 

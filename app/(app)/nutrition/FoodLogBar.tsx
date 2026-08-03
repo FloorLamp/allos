@@ -20,8 +20,20 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
-import { logFoodServing, undoFoodServing, type FoodLogResult } from "./actions";
+import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import {
+  logFoodServing,
+  undoFoodServing,
+  updateFoodLogEvent,
+  type FoodEventEditResult,
+  type FoodLogResult,
+} from "./actions";
 import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
+
+// Where one corrected serving landed, with the server's authoritative counts for that
+// coordinate. Named off the action's result so the bar and the write core can never
+// drift on the shape.
+type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
@@ -59,11 +71,24 @@ const QUICK_TIER_SEQUENCE: FoodGroupTier[] = [
   "limit",
 ];
 
+// One logged serving, as the correction list renders it (#1934). The aggregate counts
+// above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row
+// action edits and the window the tallies counted it in.
+export interface FoodLogEvent {
+  id: number;
+  groupKey: string;
+  name: string;
+  date: string;
+  mealSlot: FoodSlot;
+  time: string;
+}
+
 export interface FoodLogDay {
   date: string;
   label: string;
   counts: Record<string, number>;
   slotCounts: Record<FoodSlot, Record<string, number>>;
+  events: FoodLogEvent[];
 }
 
 export default function FoodLogBar({
@@ -116,6 +141,16 @@ export default function FoodLogBar({
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // The serving being corrected, plus its in-flight draft. Null = the modal is closed.
+  const [editing, setEditing] = useState<FoodLogEvent | null>(null);
+  const [draft, setDraft] = useState<{
+    groupKey: string;
+    date: string;
+    mealSlot: FoodSlot;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
@@ -260,6 +295,80 @@ export default function FoodLogBar({
     });
   }
 
+  // Adopt the server's authoritative counts for ONE (date, group, window) coordinate
+  // (#1934). A correction answers with the placement the serving LEFT and the one it
+  // LANDED in; applying both — rather than incrementing here and decrementing there —
+  // is what makes a slot change a MOVE and not a second serving. Note it is a SET, not
+  // a delta, so replaying it can never drift.
+  function applyPlacement(placement: FoodPlacement) {
+    setCountsByDate((all) => {
+      const day = all[placement.date] ?? {};
+      return {
+        ...all,
+        [placement.date]: {
+          ...day,
+          [placement.groupKey]: placement.servings,
+        },
+      };
+    });
+    setSlotCountsByDate((all) => {
+      const day = all[placement.date] ?? {
+        Morning: {},
+        Midday: {},
+        Evening: {},
+      };
+      return {
+        ...all,
+        [placement.date]: {
+          ...day,
+          [placement.mealSlot]: {
+            ...(day[placement.mealSlot] ?? {}),
+            [placement.groupKey]: placement.mealServings,
+          },
+        },
+      };
+    });
+  }
+
+  function openCorrection(event: FoodLogEvent) {
+    setEditing(event);
+    setDraft({
+      groupKey: event.groupKey,
+      date: event.date,
+      mealSlot: event.mealSlot,
+    });
+  }
+
+  async function saveCorrection() {
+    if (!editing || !draft) return;
+    setSaving(true);
+    const fd = new FormData();
+    fd.set("event_id", String(editing.id));
+    fd.set("group_key", draft.groupKey);
+    fd.set("date", draft.date);
+    fd.set("meal_slot", draft.mealSlot);
+    let outcome: FoodEventEditResult;
+    try {
+      outcome = await updateFoodLogEvent(fd);
+    } catch {
+      setSaving(false);
+      toast("Couldn't correct that serving — try again.", { tone: "error" });
+      return;
+    }
+    setSaving(false);
+    if (!outcome.ok) {
+      toast(outcome.error, { tone: "error" });
+      return;
+    }
+    // `from` first, then `to`: when a correction only changes the window, both name the
+    // same (date, group) and the second write settles it at the post-move truth.
+    applyPlacement(outcome.from);
+    applyPlacement(outcome.to);
+    setEditing(null);
+    setDraft(null);
+    toast("Serving corrected.");
+  }
+
   async function bump(slug: string, delta: 1 | -1) {
     // Optimistic: reflect the tap immediately.
     setCount(slug, (n) => n + delta);
@@ -361,6 +470,21 @@ export default function FoodLogBar({
     );
   }, [slotCountsByDate, activeDate]);
   const unassignedTotal = Math.max(0, dayTotal - assignedTotal);
+  // The active day's individual servings, straight from the server (#1934). Deliberately
+  // NOT mirrored into local state: every write here goes through an action that
+  // revalidates /nutrition, so the action's own response already carries the corrected
+  // list — a local copy could only drift from it.
+  const loggedEvents = activeDay.events;
+  // The whole catalog for the correction picker, alphabetical. The LOGGING rows are
+  // frecency-ranked (#591) because they predict the next tap; a correction is a lookup
+  // of a group you already know the name of, so ranking would only hide it.
+  const catalogGroups = useMemo(
+    () =>
+      [...groupsBySlot[FOOD_SLOTS[0]]].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      ),
+    [groupsBySlot]
+  );
 
   const rows = (list: FoodGroup[]) => (
     <ul className="space-y-1.5">
@@ -602,7 +726,10 @@ export default function FoodLogBar({
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                       {meal}
                     </span>
-                    <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                    <span
+                      data-testid={`food-slot-total-${meal.toLowerCase()}`}
+                      className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                    >
                       {total}
                     </span>
                   </span>
@@ -640,6 +767,56 @@ export default function FoodLogBar({
             </p>
           )}
         </section>
+        {loggedEvents.length > 0 && (
+          <section data-testid="food-logged-list">
+            <h3 className="mb-2 section-label">
+              Logged {activeDay.label.toLowerCase()}
+            </h3>
+            <ul className="space-y-1">
+              {loggedEvents.map((event) => (
+                <li
+                  key={event.id}
+                  data-testid={`food-logged-${event.id}`}
+                  data-slot={event.mealSlot}
+                  data-group={event.groupKey}
+                  className="flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-ink-900"
+                >
+                  <FoodGroupIcon
+                    slug={event.groupKey}
+                    className="h-4 w-4 shrink-0 text-slate-400"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
+                    {event.name}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+                    {event.mealSlot} · {event.time}
+                  </span>
+                  <OverflowMenu
+                    label={`Actions for the ${event.name} serving logged at ${event.time}`}
+                    open={openMenuId === event.id}
+                    onOpenChange={(next) =>
+                      setOpenMenuId(next ? event.id : null)
+                    }
+                  >
+                    {({ close }) => (
+                      <button
+                        type="button"
+                        className={MENU_ITEM}
+                        data-testid={`food-logged-correct-${event.id}`}
+                        onClick={() => {
+                          close();
+                          openCorrection(event);
+                        }}
+                      >
+                        Correct this serving
+                      </button>
+                    )}
+                  </OverflowMenu>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section data-testid="food-quick-log">
           <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
           <div className="space-y-1.5">
@@ -697,6 +874,107 @@ export default function FoodLogBar({
               className="btn"
             >
               Done
+            </button>
+          </div>
+        </ModalShell>
+      )}
+      {editing && draft && (
+        <ModalShell
+          title="Correct this serving"
+          onClose={() => {
+            setEditing(null);
+            setDraft(null);
+          }}
+          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+        >
+          <div data-testid="food-correct-modal" className="mt-4 space-y-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Logged at {editing.time}. Correcting moves this serving — the
+              day&rsquo;s totals and meal tallies follow it.
+            </p>
+            <div>
+              <label className="label" htmlFor="food-correct-group">
+                Food group
+              </label>
+              <select
+                id="food-correct-group"
+                data-testid="food-correct-group"
+                className="input py-1.5 text-sm"
+                value={draft.groupKey}
+                onChange={(e) =>
+                  setDraft((d) => d && { ...d, groupKey: e.target.value })
+                }
+              >
+                {catalogGroups.map((group) => (
+                  <option key={group.slug} value={group.slug}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="food-correct-date">
+                Day
+              </label>
+              <select
+                id="food-correct-date"
+                data-testid="food-correct-date"
+                className="input py-1.5 text-sm"
+                value={draft.date}
+                onChange={(e) =>
+                  setDraft((d) => d && { ...d, date: e.target.value })
+                }
+              >
+                {days.map((day) => (
+                  <option key={day.date} value={day.date}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="food-correct-slot">
+                Meal
+              </label>
+              <select
+                id="food-correct-slot"
+                data-testid="food-correct-slot"
+                className="input py-1.5 text-sm"
+                value={draft.mealSlot}
+                onChange={(e) =>
+                  setDraft(
+                    (d) => d && { ...d, mealSlot: e.target.value as FoodSlot }
+                  )
+                }
+              >
+                {FOOD_SLOTS.map((meal) => (
+                  <option key={meal} value={meal}>
+                    {meal}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2 border-t border-black/10 pt-3 dark:border-white/10">
+            <button
+              type="button"
+              data-testid="food-correct-cancel"
+              className="btn-ghost"
+              onClick={() => {
+                setEditing(null);
+                setDraft(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="food-correct-save"
+              className="btn"
+              disabled={saving}
+              onClick={saveCorrection}
+            >
+              {saving ? "Saving…" : "Save correction"}
             </button>
           </div>
         </ModalShell>

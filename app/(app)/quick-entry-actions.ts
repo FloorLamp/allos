@@ -26,6 +26,7 @@ import {
   collectHouseholdRollup,
   currentFoodSlot,
   getFoodMealDays,
+  type FoodMealEvent,
   getFoodGroupLogOrder,
   getTrackedPractices,
   type TrackedPractice,
@@ -93,6 +94,9 @@ export type QuickEntryData =
         label: string;
         counts: Record<string, number>;
         slotCounts: Record<FoodSlot, Record<string, number>>;
+        // The day's individual servings — the ⋯ correction rows (#1934), carried
+        // through so the quick-log sheet offers the same repair the page does.
+        events: FoodMealEvent[];
       }>;
       groupsBySlot: Record<FoodSlot, FoodGroup[]>;
       excludedGroups: string[];

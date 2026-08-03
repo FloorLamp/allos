@@ -102,7 +102,12 @@ judgment anywhere in the core (product-decided, #1119).
 2. Domain write core (`lib/<domain>-photo-write.ts`, auth-blind, profileId-
    first): validate domain fields → per-profile `contentHash` dedup →
    `storeProcessedPhoto` → row insert, all inside `writeTx`; delete unlinks both
-   files. `lib/progress-photo-write.ts` is the template.
+   files. `lib/progress-photo-write.ts` is the template. A METADATA edit (#1934)
+   belongs here too and is the split the domain must keep: the row's descriptive
+   fields (date, series key, caption) are correctable in place, while
+   `stored_path`/`thumb_path`/`content_hash` never appear in an UPDATE's SET list
+   — the bytes are immutable content, so a correction can never re-point a row at
+   different pixels and the per-profile dedup keeps meaning what it meant.
 3. Server Action: `requireWriteAccess` → parse → `processPhoto` →
    `resolvePhotoDate` → core → `revalidatePath`; an action-tier test proves the
    stored file is metadata-free (`spliceExifIntoJpeg` from
