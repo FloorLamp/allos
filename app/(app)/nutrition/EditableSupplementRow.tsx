@@ -24,6 +24,9 @@ import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
 import DoseStatusControl from "@/components/DoseStatusControl";
+import DoseHistoryPanel, {
+  type DoseHistoryEntry,
+} from "@/components/intake/DoseHistoryPanel";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -57,6 +60,10 @@ export default function EditableSupplementRow({
   poolChip = null,
   historicalStatus = null,
   suppressedFoodKeys = [],
+  doseHistory = [],
+  historyMaxDate,
+  defaultHistoryTime,
+  historyWindowDays,
 }: {
   supplement: Supplement;
   dose: SupplementDose;
@@ -79,8 +86,17 @@ export default function EditableSupplementRow({
   historicalStatus?: "taken" | "skipped" | "missed" | null;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
+  // This item's recorded administrations over the page's history window (#1933), for
+  // the Dose history panel — the same panel, over the same ungated shared cores, that
+  // the medication detail page renders. Backfill / amend / delete-with-undo are
+  // adherence machinery, and adherence machinery is not split by kind.
+  doseHistory?: DoseHistoryEntry[];
+  historyMaxDate: string;
+  defaultHistoryTime: string;
+  historyWindowDays: number;
 }) {
   const [editing, setEditing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
@@ -213,6 +229,17 @@ export default function EditableSupplementRow({
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setShowHistory(true);
+                    close();
+                  }}
+                  className={MENU_ITEM}
+                >
+                  Dose history
+                </button>
                 <form
                   action={(fd) =>
                     runAction(
@@ -303,6 +330,41 @@ export default function EditableSupplementRow({
           <AdherenceSummaryLine strip={strip} noteworthyOnly />
         </div>
       </div>
+
+      {showHistory && (
+        <ModalShell
+          title={`${s.name} — dose history`}
+          onClose={() => setShowHistory(false)}
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+        >
+          <div
+            data-testid="supplement-dose-history-panel"
+            className="mt-4 min-h-0 overflow-y-auto px-1"
+          >
+            <DoseHistoryPanel
+              itemId={s.id}
+              itemName={s.name}
+              product={s.product}
+              doses={doses.map((d) => ({
+                id: d.id,
+                amount: d.amount,
+                time_of_day: d.time_of_day,
+              }))}
+              asNeeded={isPrn(s)}
+              courseBound={isMed}
+              history={doseHistory}
+              maxDate={historyMaxDate}
+              defaultTime={defaultHistoryTime}
+              note={`Showing the last ${historyWindowDays} days. A backfill can still reach any past date.`}
+              backfillDisabledReason={
+                doses.length === 0
+                  ? "This item has no dose to log against"
+                  : undefined
+              }
+            />
+          </div>
+        </ModalShell>
+      )}
 
       {editing && (
         <ModalShell

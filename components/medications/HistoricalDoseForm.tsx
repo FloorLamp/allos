@@ -15,24 +15,32 @@ export interface HistoricalDoseOption {
   amount: string | null;
 }
 
+// Backfill / amend one recorded dose. Shared by both intake surfaces since #1933, so
+// its copy names the ITEM, not "the medication": the only medication-specific rule
+// left is the course window, which only an item that HAS courses is bound by
+// (`courseBound`).
 export default function HistoricalDoseForm({
   itemId,
-  medicationName,
+  itemName,
   doses,
   minDate,
   maxDate,
   defaultTime,
   asNeeded,
+  courseBound = true,
   editing,
   onDone,
 }: {
   itemId: number;
-  medicationName: string;
+  itemName: string;
   doses: HistoricalDoseOption[];
   minDate?: string;
   maxDate: string;
   defaultTime: string;
   asNeeded: boolean;
+  // Whether this item's history is bounded by a medication course. False for an item
+  // that keeps no courses (every supplement), whose backfill may reach any past date.
+  courseBound?: boolean;
   editing?: {
     logId: number;
     doseId: number;
@@ -72,8 +80,8 @@ export default function HistoricalDoseForm({
         }
         toast(
           editing
-            ? `Updated dose of ${medicationName}.`
-            : `Logged past dose of ${medicationName}.`
+            ? `Updated dose of ${itemName}.`
+            : `Logged past dose of ${itemName}.`
         );
         onDone();
       }}
@@ -177,13 +185,17 @@ export default function HistoricalDoseForm({
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {editing
           ? `Changing this record won’t change current supply. ${
-              asNeeded
-                ? "An earlier date will move the medication start date back to match."
-                : "The date must remain within a medication course."
+              !courseBound
+                ? "It won’t change the schedule either."
+                : asNeeded
+                  ? "An earlier date will move the medication start date back to match."
+                  : "The date must remain within a medication course."
             }`
-          : asNeeded
-            ? "Choose any past date. If it is before the current start date, the start date will move back to match. This records a separate administration in dose history."
-            : "The date must fall within a medication course and cannot be in the future. This updates adherence history for that date."}
+          : !courseBound
+            ? "Choose any past date that isn’t in the future. This updates adherence history for that date and won’t change the schedule."
+            : asNeeded
+              ? "Choose any past date. If it is before the current start date, the start date will move back to match. This records a separate administration in dose history."
+              : "The date must fall within a medication course and cannot be in the future. This updates adherence history for that date."}
       </p>
       {error ? (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
