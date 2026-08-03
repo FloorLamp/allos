@@ -841,9 +841,13 @@ body-weight (≤7 days back) is snapshotted onto the row so a compare reads "82.
 kg → 78.4 kg" beside the visual.
 
 **Browse** is a date-grouped thumbnail gallery with a pose sub-filter and a
-lightbox (original loads only on open, prev/next paging, caption + weight,
-delete); **Compare** is a two-date timeline — side-by-side or an **onion-skin
-overlay** with a blend slider — over the same series. Factual only,
+lightbox (original loads only on open, prev/next paging, caption + weight, edit
+details, delete); **Compare** is a two-date timeline — side-by-side or an
+**onion-skin overlay** with a blend slider — over the same series. A photo filed
+wrong is **corrected in place**, not re-uploaded: **Edit details** changes the
+date, pose, and caption while the stored image, its thumbnail, and its content
+hash stay exactly as they were, so a retag moves the photo between comparison
+series without losing the original capture. Factual only,
 product-decided: no pose detection, no body-fat estimate, no scoring. The nav
 entry is data-gated (appears with the first photo; the command palette's **Add
 progress photo** action is the ungated entry that also auto-opens capture), the
@@ -1001,7 +1005,12 @@ a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
-is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure
+is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
+meal cards, each with a ⋯ row action to **correct** it — the food group, the day,
+or the meal it belongs to. A correction MOVES the serving: the day's totals and
+the per-meal tallies (the same counts the food nudge reads) follow it, so a
+serving tapped into the wrong meal is repaired rather than deleted and re-logged
+under the current time. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from

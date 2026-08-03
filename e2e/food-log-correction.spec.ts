@@ -23,16 +23,17 @@ async function revealFoodGroup(page: Page, slug: string) {
   }
 }
 
+// The day's serving ROWS. Scoped to <li data-group> inside the list so the section
+// wrapper (whose test id shares the prefix) can never pad a count.
+function loggedRows(page: Page) {
+  return page.getByTestId("food-logged-list").locator("li[data-group]");
+}
+
 // The ids currently rendered in the day's serving list.
 async function loggedIds(page: Page): Promise<string[]> {
-  const ids = await page
-    .locator('[data-testid^="food-logged-"]')
-    .evaluateAll((nodes) =>
-      nodes
-        .map((n) => n.getAttribute("data-testid") ?? "")
-        .filter((t) => /^food-logged-\d+$/.test(t))
-    );
-  return ids;
+  return loggedRows(page).evaluateAll((nodes) =>
+    nodes.map((n) => n.getAttribute("data-testid") ?? "")
+  );
 }
 
 async function slotTotal(page: Page, meal: string): Promise<number> {
@@ -66,9 +67,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
     String(countBefore + 1)
   );
   // The server-rendered list gains exactly this tap's row.
-  await expect(page.locator('[data-testid^="food-logged-"]')).toHaveCount(
-    idsBefore.length + 1
-  );
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const idsAfter = await loggedIds(page);
   const newId = idsAfter.find((id) => !idsBefore.includes(id));
   expect(newId).toBeTruthy();
