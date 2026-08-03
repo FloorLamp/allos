@@ -519,7 +519,13 @@ Document, …) labelled the same way the cards' provenance chips are.
 **Weather-aware suggestions.** When the Weather & UV source is on, outdoor
 activities are quietly **parked** in conditions you don't train in — the ride
 drops out of today's suggestion, the message says why, and the indoor stand-in
-takes its slot ("Too cold for cycling (−2°C) — Stationary Bike instead"). The
+takes its slot ("Too cold for cycling (-2°C) — Stationary Bike instead"). Each
+reason names its figure in **its own unit**: cold and hot in your temperature
+scale, rain as a plain-language description rather than a number — "Too wet for
+cycling (heavy rain in the morning)", because nobody plans a ride off
+millimetres. The timing half is said only when the wet hours genuinely cluster
+into a part of the day; rain that falls all day, or scattered showers, get the
+description alone rather than an invented forecast. The
 threshold is _yours_: it's derived from the conditions you've actually logged
 sessions in, so someone who rides at 3°C keeps being offered the ride and
 someone whose rides all sit above 15°C doesn't. Until there's enough history to

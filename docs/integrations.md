@@ -450,8 +450,8 @@ but a heads-up before you'd burn.
    (stored at ~11 km — city scale, never a street address). This is the only
    prerequisite.
 2. Go to **Data → Import → Weather & UV (Open-Meteo)** and click **Enable**. The
-   hourly **UV index** and **solar irradiance** (shortwave/direct/diffuse W/m²)
-   for that spot then sync automatically every hour via
+   hourly **UV index**, **solar irradiance** (shortwave/direct/diffuse W/m²) and
+   **precipitation** (mm) for that spot then sync automatically every hour via
    [Open-Meteo](https://open-meteo.com/), and you can press **Sync now** any
    time.
 3. Optionally add your **skin type (Fitzpatrick I–VI)** under
@@ -486,10 +486,13 @@ network: the model degrades **live UV → a clear-sky estimate** (Open-Meteo's
 minutes-only behavior**. The overexposure side stays silent without a skin-type
 threshold rather than guessing.
 
-**Cache.** The hourly UV series is cached **per location, shared across
-profiles** (UV at a coordinate+hour is one physical fact), keyed on
-`(lat, lng, hour_ts)` and deduped on that key — a re-fetch of the same hour
-rewrites nothing. Every sync appends an `integration_sync_events` row under the
+**Cache.** The hourly series (UV, irradiance, precipitation) is cached **per
+location, shared across profiles** (the weather at a coordinate+hour is one
+physical fact), keyed on `(lat, lng, hour_ts)` and deduped on that key — a
+re-fetch of the same hour rewrites nothing. The hourly precipitation is what
+lets a weather-parked activity say _when_ the rain falls ("heavy rain in the
+morning") instead of printing a millimetre total; a day with too few cached
+hours simply says nothing about timing. Every sync appends an `integration_sync_events` row under the
 acting profile (visible in **Data → Review**).
 
 ## Comparing sources & picking a primary one

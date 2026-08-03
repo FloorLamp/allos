@@ -140,6 +140,7 @@ function uvHour(date: string, hour: number, uv: number): HourlyUvRow {
     shortwaveRadiation: 800,
     directRadiation: 650,
     diffuseRadiation: 150,
+    precipitationMm: null,
   };
 }
 

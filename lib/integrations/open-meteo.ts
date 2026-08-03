@@ -25,6 +25,9 @@ export interface HourlyUvRow {
   shortwaveRadiation: number | null; // W/m²
   directRadiation: number | null; // W/m²
   diffuseRadiation: number | null; // W/m²
+  // Precipitation that fell in the hour, mm (#1967 — the timing half of a wet park's
+  // plain-language description; the daily total cannot say WHEN it rained).
+  precipitationMm: number | null;
 }
 
 // One DAY of the cached daily series (the location's LOCAL calendar day). The
@@ -107,13 +110,16 @@ const AIR_QUALITY_BASE =
 const TIMEOUT_MS = 15_000;
 
 // The hourly variables we request. uv_index + uv_index_clear_sky (the headline + the
-// clear-sky degradation field) and the three irradiance components (W/m²).
+// clear-sky degradation field), the three irradiance components (W/m²), and hourly
+// precipitation (mm) — which the weather-parking disclosure reads to say WHEN the rain
+// falls, a question the daily total cannot answer (#1967).
 const HOURLY_VARS = [
   "uv_index",
   "uv_index_clear_sky",
   "shortwave_radiation",
   "direct_radiation",
   "diffuse_radiation",
+  "precipitation",
 ] as const;
 
 // The ERA5 archive lags real time by ~5 days; anything on/after this cutoff must come
@@ -160,6 +166,7 @@ export function parseOpenMeteoHourly(json: unknown): HourlyUvRow[] {
   const sw = col("shortwave_radiation");
   const dir = col("direct_radiation");
   const dif = col("diffuse_radiation");
+  const precip = col("precipitation");
 
   const rows: HourlyUvRow[] = [];
   for (let i = 0; i < time.length; i++) {
@@ -174,6 +181,7 @@ export function parseOpenMeteoHourly(json: unknown): HourlyUvRow[] {
       shortwaveRadiation: num(sw[i]),
       directRadiation: num(dir[i]),
       diffuseRadiation: num(dif[i]),
+      precipitationMm: num(precip[i]),
     });
   }
   return rows;

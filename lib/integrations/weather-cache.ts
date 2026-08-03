@@ -29,6 +29,10 @@ export interface CachedUvHour {
   shortwaveRadiation: number | null;
   directRadiation: number | null;
   diffuseRadiation: number | null;
+  // Precipitation in the hour, mm (#1967). Null on every row cached before the column
+  // existed and on any hour the provider omitted it — the readers treat a partial day as
+  // having no timing rather than guessing from the hours they do have.
+  precipitationMm: number | null;
 }
 
 function num(v: unknown): number | null {
@@ -60,21 +64,23 @@ export function upsertUvHours(
 
   const sel = db.prepare(
     `SELECT uv_index, uv_index_clear_sky, shortwave_radiation,
-            direct_radiation, diffuse_radiation
+            direct_radiation, diffuse_radiation, precipitation_mm
        FROM weather_uv_hours
       WHERE lat = ? AND lng = ? AND hour_ts = ?`
   );
   const ins = db.prepare(
     `INSERT INTO weather_uv_hours
        (lat, lng, hour_ts, uv_index, uv_index_clear_sky,
-        shortwave_radiation, direct_radiation, diffuse_radiation, source, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        shortwave_radiation, direct_radiation, diffuse_radiation,
+        precipitation_mm, source, fetched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(lat, lng, hour_ts) DO UPDATE SET
        uv_index = excluded.uv_index,
        uv_index_clear_sky = excluded.uv_index_clear_sky,
        shortwave_radiation = excluded.shortwave_radiation,
        direct_radiation = excluded.direct_radiation,
        diffuse_radiation = excluded.diffuse_radiation,
+       precipitation_mm = excluded.precipitation_mm,
        source = excluded.source,
        fetched_at = excluded.fetched_at`
   );
@@ -88,6 +94,7 @@ export function upsertUvHours(
             shortwave_radiation: number | null;
             direct_radiation: number | null;
             diffuse_radiation: number | null;
+            precipitation_mm: number | null;
           }
         | undefined;
       const hadRow = pre !== undefined;
@@ -97,7 +104,8 @@ export function upsertUvHours(
         eq(num(pre!.uv_index_clear_sky), r.uvIndexClearSky) &&
         eq(num(pre!.shortwave_radiation), r.shortwaveRadiation) &&
         eq(num(pre!.direct_radiation), r.directRadiation) &&
-        eq(num(pre!.diffuse_radiation), r.diffuseRadiation);
+        eq(num(pre!.diffuse_radiation), r.diffuseRadiation) &&
+        eq(num(pre!.precipitation_mm), r.precipitationMm);
       const disposition = classifyUpsert(hadRow, valuesEqual);
       if (disposition !== "unchanged") {
         ins.run(
@@ -109,6 +117,7 @@ export function upsertUvHours(
           r.shortwaveRadiation,
           r.directRadiation,
           r.diffuseRadiation,
+          r.precipitationMm,
           source
         );
       }
@@ -131,7 +140,7 @@ export function getUvHoursForDay(
   const rows = db
     .prepare(
       `SELECT hour_ts, uv_index, uv_index_clear_sky, shortwave_radiation,
-              direct_radiation, diffuse_radiation
+              direct_radiation, diffuse_radiation, precipitation_mm
          FROM weather_uv_hours
         WHERE lat = ? AND lng = ? AND hour_ts LIKE ?
         ORDER BY hour_ts`
@@ -143,6 +152,7 @@ export function getUvHoursForDay(
     shortwave_radiation: number | null;
     direct_radiation: number | null;
     diffuse_radiation: number | null;
+    precipitation_mm: number | null;
   }[];
   return rows.map((r) => ({
     hourTs: r.hour_ts,
@@ -151,6 +161,7 @@ export function getUvHoursForDay(
     shortwaveRadiation: num(r.shortwave_radiation),
     directRadiation: num(r.direct_radiation),
     diffuseRadiation: num(r.diffuse_radiation),
+    precipitationMm: num(r.precipitation_mm),
   }));
 }
 

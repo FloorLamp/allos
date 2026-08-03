@@ -14,7 +14,10 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setHomeLocation, setTimezone } from "@/lib/settings";
-import { upsertWeatherDays } from "@/lib/integrations/weather-cache";
+import {
+  upsertUvHours,
+  upsertWeatherDays,
+} from "@/lib/integrations/weather-cache";
 import type { DailyWeatherRow } from "@/lib/integrations/open-meteo";
 import { gatherCoachingInput } from "@/lib/queries/coaching";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
@@ -23,6 +26,7 @@ import {
   sessionWeather,
 } from "@/lib/queries/weather-training";
 import { contextNotes } from "@/lib/coaching/engine";
+import { recommendCoaching } from "@/lib/coaching";
 import { buildJournalFeedPage } from "@/lib/journal-feed";
 import type { UnitPrefs } from "@/lib/settings";
 
@@ -78,6 +82,30 @@ function cacheDay(
     home.lat,
     home.lng,
     [{ ...emptyDay(date), ...over }],
+    "test"
+  );
+}
+
+// Cache one local day's HOURLY precipitation (mm per hour, index = hour) at the
+// profile's home location — the series the wet-park description's timing clause reads.
+function cacheHours(
+  profileId: number,
+  date: string,
+  mmByHour: readonly number[]
+): void {
+  const home = homeByProfile.get(profileId)!;
+  upsertUvHours(
+    home.lat,
+    home.lng,
+    mmByHour.map((mm, hour) => ({
+      hourTs: `${date}T${String(hour).padStart(2, "0")}:00`,
+      uvIndex: null,
+      uvIndexClearSky: null,
+      shortwaveRadiation: null,
+      directRadiation: null,
+      diffuseRadiation: null,
+      precipitationMm: mm,
+    })),
     "test"
   );
 }
@@ -278,6 +306,76 @@ describe("cross-surface agreement (#221)", () => {
     expect(line).toBeDefined();
     expect(line).toContain("Stationary Bike instead");
     expect(line).toContain("resumes when it warms up");
+  });
+});
+
+describe("the parked figure reads in the reason's own unit (#1967)", () => {
+  it("a WET park describes the rain — never millimetres wearing a °C", () => {
+    // The reported line was "Too wet for cycling (45°C)": the day's precipitation, in
+    // millimetres, formatted as an ambient temperature. End to end, over a real cached
+    // day, the figure is now the day's own weather.
+    const p = newProfile("wt-wet");
+    seedRides(p, "Cycling", [16, 18, 19, 20, 22, 23, 25, 27]);
+    const anchor = today(p);
+    cacheDay(p, anchor, { tempMaxC: 18, precipitationMm: 45, weatherCode: 65 });
+    // A morning of rain in the LOCAL day's hourly cache, so the phrase can place it.
+    cacheHours(
+      p,
+      anchor,
+      Array.from({ length: 24 }, (_, hour) => (hour >= 6 && hour <= 10 ? 6 : 0))
+    );
+
+    const parked = parkedOf(p);
+    expect(parked).toHaveLength(1);
+    expect(parked[0]).toMatchObject({
+      reason: "wet",
+      quantity: "precipitation",
+      value: 45,
+      weatherCode: 65,
+    });
+
+    const nw = recommendNextWorkout(gatherCoachingInput(p, "kg", "km"));
+    const line = contextNotes(nw).find((n) => n.startsWith("Too wet"))!;
+    expect(line).toContain("Too wet for cycling (heavy rain in the morning)");
+    expect(line).not.toContain("°C");
+    expect(line).not.toContain("45");
+  });
+
+  it("renders intensity alone when the hours don't cluster — never invented timing", () => {
+    const p = newProfile("wt-wet-scattered");
+    seedRides(p, "Cycling", [16, 18, 19, 20, 22, 23, 25, 27]);
+    const anchor = today(p);
+    cacheDay(p, anchor, { tempMaxC: 18, precipitationMm: 45, weatherCode: 61 });
+    cacheHours(
+      p,
+      anchor,
+      Array.from({ length: 24 }, () => 2)
+    );
+
+    const nw = recommendNextWorkout(gatherCoachingInput(p, "kg", "km"));
+    const line = contextNotes(nw).find((n) => n.startsWith("Too wet"))!;
+    expect(line).toContain("Too wet for cycling (heavy rain)");
+  });
+
+  it("a COLD park reads in the LOGIN's temperature scale on a surface that has one", () => {
+    // Units belong to the login. The dashboard passes its preference through the gather;
+    // the notification path keeps canonical °C, which is deliberate policy.
+    const p = newProfile("wt-fahrenheit");
+    seedRides(p, "Cycling", [16, 18, 19, 20, 22, 23, 25, 27]);
+    const anchor = today(p);
+    cacheDay(p, anchor, { tempMaxC: 3 });
+
+    const notesOf = (unit: "C" | "F") =>
+      recommendCoaching(gatherCoachingInput(p, "kg", "km", unit)).flatMap(
+        (r) => r.notes ?? []
+      );
+    expect(notesOf("F").find((n) => n.startsWith("Too cold"))).toContain(
+      "(37°F)"
+    );
+    // No login to read a preference from ⇒ canonical °C (the notification path).
+    expect(notesOf("C").find((n) => n.startsWith("Too cold"))).toContain(
+      "(3°C)"
+    );
   });
 });
 
