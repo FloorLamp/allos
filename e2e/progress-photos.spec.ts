@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import sharp from "sharp";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { settledClick, settledSelect } from "./helpers";
 import {
   E2E_LOGIN_PHOTOS,
   E2E_MEMBER_PASSWORD,
@@ -216,6 +216,122 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
         .getByRole("button", { name: "Delete photo" })
     );
     await expect(items).toHaveCount(1);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// Metadata correction (#1934): the row is editable, the BYTES are not.
+//
+// Progress photos were delete-only, so a side photo tagged `front` could only be
+// repaired by deleting and re-uploading — throwing away the original file, its
+// content_hash, and its place in the series. This drives the lightbox "Edit details"
+// action and asserts the thing a pose retag is FOR: the photo moves between comparison
+// series, and its stored artifacts do not change.
+test("retagging a photo's pose moves it between comparison series, leaving the file untouched (#1934)", async ({
+  browser,
+}) => {
+  test.slow(); // two uploads + a route compile on first hit
+  cleanup();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/progress");
+    await expect(
+      page.getByRole("heading", { name: "Progress photos" })
+    ).toBeVisible();
+
+    // Two FRONT photos → a comparable front series of two, side empty.
+    await addPhoto(page, await jpeg({ r: 30, g: 160, b: 90 }), {
+      date: "2026-06-01",
+    });
+    await addPhoto(page, await jpeg({ r: 160, g: 30, b: 90 }), {
+      date: "2026-06-15",
+    });
+    const items = page.locator('[data-testid^="photo-gallery-item-"]');
+    await expect(items).toHaveCount(2);
+
+    // The artifacts BEFORE the correction, straight from the row.
+    const handle = new Database(DB_PATH);
+    let before: {
+      id: number;
+      pose: string;
+      stored_path: string;
+      content_hash: string;
+    }[];
+    try {
+      before = handle
+        .prepare(
+          `SELECT id, pose, stored_path, content_hash FROM progress_photos
+            WHERE profile_id = ? ORDER BY date`
+        )
+        .all(fixtureProfileId()) as typeof before;
+    } finally {
+      handle.close();
+    }
+    expect(before.map((r) => r.pose)).toEqual(["front", "front"]);
+
+    // Compare: the FRONT series has both photos to choose between.
+    await page.getByTestId("progress-view-compare").click();
+    await page.getByTestId("progress-compare-pose-front").click();
+    await expect(page.getByTestId("photo-timeline")).toBeVisible();
+    await expect(
+      page.getByTestId("photo-timeline-a").locator("option")
+    ).toHaveCount(2);
+
+    // Retag the NEWEST photo (grid item 0) as Side, through the lightbox row action.
+    await page.getByTestId("progress-view-grid").click();
+    await page.getByTestId("photo-gallery-series-front").click();
+    await items.nth(0).click();
+    await expect(page.getByTestId("photo-lightbox")).toBeVisible();
+    await page.getByTestId("photo-lightbox-edit").click();
+    await expect(page.getByTestId("progress-edit-modal")).toBeVisible();
+    await settledSelect(page, page.getByTestId("progress-edit-pose"), "side");
+    await settledClick(page, page.getByTestId("progress-edit-save"));
+    await expect(page.getByTestId("progress-edit-modal")).toBeHidden();
+
+    // THE PIN: it MOVED series. Front is down to one, Side holds the other — the
+    // compare timeline reads pose membership, so the retag re-files it.
+    await page.getByTestId("progress-view-compare").click();
+    await page.getByTestId("progress-compare-pose-front").click();
+    // Fewer than two Front photos left → the timeline collapses to its empty hint.
+    await expect(page.getByTestId("photo-timeline-a")).toHaveCount(0);
+    await expect(
+      page.getByText("Add at least two Front photos to compare over time.")
+    ).toBeVisible();
+    await page.getByTestId("progress-compare-pose-side").click();
+    await expect(
+      page.getByText("Add at least two Side photos to compare over time.")
+    ).toBeVisible();
+
+    // The row changed; the stored artifacts did not.
+    const after = new Database(DB_PATH);
+    try {
+      const rows = after
+        .prepare(
+          `SELECT id, pose, stored_path, content_hash FROM progress_photos
+            WHERE profile_id = ? ORDER BY date`
+        )
+        .all(fixtureProfileId()) as typeof before;
+      expect(rows.map((r) => r.pose)).toEqual(["front", "side"]);
+      expect(rows.map((r) => r.stored_path)).toEqual(
+        before.map((r) => r.stored_path)
+      );
+      expect(rows.map((r) => r.content_hash)).toEqual(
+        before.map((r) => r.content_hash)
+      );
+    } finally {
+      after.close();
+    }
+
+    // The bytes still serve: the correction never touched the file store.
+    const served = await page.request.get(
+      `/api/progress-photo/${before[1].id}`
+    );
+    expect(served.status()).toBe(200);
+    expect(served.headers()["content-type"]).toBe("image/jpeg");
   } finally {
     await page.context().close();
   }

@@ -726,7 +726,10 @@ export default function FoodLogBar({
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                       {meal}
                     </span>
-                    <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                    <span
+                      data-testid={`food-slot-total-${meal.toLowerCase()}`}
+                      className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                    >
                       {total}
                     </span>
                   </span>
