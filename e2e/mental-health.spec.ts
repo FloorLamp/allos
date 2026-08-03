@@ -1,8 +1,8 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { settledCheck, settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_LOGIN_MENTAL,
@@ -44,12 +44,9 @@ async function answerAll(page: Page, itemCount: number, value: 0 | 1 | 2 | 3) {
   }
 }
 
-// The id of the score this spec just recorded, read straight from the worker's own
-// SQLite file. The row's testid is `instrument-reading-<id>`, and the History list is
-// a SHARED accumulating surface on this fixture profile, so an unmarked positional
-// locator there would be exactly the hygiene violation the harness forbids — the
-// spec addresses ITS OWN row by id instead (#1396).
-function newestScoreId(): number {
+// The highest instrument-score row id on this fixture profile, read straight from the
+// worker's own SQLite file — 0 when the profile has none yet.
+function maxScoreId(): number {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -58,18 +55,61 @@ function newestScoreId(): number {
         .prepare("SELECT id FROM profiles WHERE name = ?")
         .get(MENTAL_HEALTH_PROFILE) as { id: number }
     ).id;
-    return (
-      db
-        .prepare(
-          `SELECT id FROM medical_records
-            WHERE profile_id = ? AND category = 'instrument'
-            ORDER BY id DESC LIMIT 1`
-        )
-        .get(profileId) as { id: number }
-    ).id;
+    const row = db
+      .prepare(
+        `SELECT MAX(id) AS id FROM medical_records
+          WHERE profile_id = ? AND category = 'instrument'`
+      )
+      .get(profileId) as { id: number | null };
+    return row.id ?? 0;
   } finally {
     db.close();
   }
+}
+
+// The id of the score this spec JUST recorded. The row's testid is
+// `instrument-reading-<id>`, and the History list is a SHARED accumulating surface on
+// this fixture profile, so an unmarked positional locator there would be exactly the
+// hygiene violation the harness forbids — the spec addresses its own row by id (#1396).
+//
+// Taking `before` (the highest id seen BEFORE the submit) and demanding a strictly
+// greater one is what makes that id honest (#1923). "The newest instrument row" is a row
+// that EXISTS whether or not the submit landed: the fixture profile carries seeded scores
+// and earlier tests in this file add more. So a swallowed write handed the spec somebody
+// else's row and every later assertion then failed AGAINST it — a band mismatch pointing
+// at the correction UI, several steps downstream of the write that never happened.
+// The signal awaited is the RENDERED one — the History list growing by a row — not a
+// poll of SQLite. The submit's Server Action revalidates, so once the new row is on the
+// page the write has landed and the id read below needs no retrying of its own.
+async function recordedScoreId(
+  rows: Locator,
+  beforeCount: number,
+  beforeId: number
+): Promise<number> {
+  await expect(
+    rows,
+    "the score submit recorded no new row in the History list"
+  ).toHaveCount(beforeCount + 1);
+  const id = maxScoreId();
+  expect(
+    id,
+    `the History list grew but no new instrument row was written (highest id still ${beforeId})`
+  ).toBeGreaterThan(beforeId);
+  return id;
+}
+
+// Select the outside-total mode and enter a total. BOTH controls are CONTROLLED — the
+// radio is `checked={mode === "outside"}` and the number input is `value={outsideTotal}`
+// — so a raw check()/fill() dispatched before React attaches sets the DOM and moves no
+// state, and hydration reverts it. The settled helpers wait for the fiber before acting
+// (#1923).
+async function enterOutsideTotal(page: Page, total: string) {
+  await settledCheck(
+    page,
+    page.getByLabel("Enter a score from elsewhere"),
+    true
+  );
+  await settledFill(page, page.getByTestId("instrument-outside-total"), total);
 }
 
 test.describe("mental-health instruments (#716)", () => {
@@ -139,8 +179,7 @@ test.describe("mental-health instruments (#716)", () => {
     const before = await rows.count();
 
     await pickInstrument(page, "GAD-7");
-    await page.getByLabel("Enter a score from elsewhere").check();
-    await page.getByTestId("instrument-outside-total").fill("6");
+    await enterOutsideTotal(page, "6");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
     await expect(rows).toHaveCount(before + 1);
@@ -169,12 +208,14 @@ test.describe("correcting a recorded score (#1396)", () => {
   test("a mis-entered outside total can be corrected in place", async () => {
     await page.goto("/records/specialty/mental-health");
     await pickInstrument(page, "GAD-7");
-    await page.getByLabel("Enter a score from elsewhere").check();
     // The issue's case: 21 typed where 12 was meant.
-    await page.getByTestId("instrument-outside-total").fill("21");
+    const rows = page.getByTestId(/^instrument-reading-\d+$/);
+    const beforeCount = await rows.count();
+    const beforeId = maxScoreId();
+    await enterOutsideTotal(page, "21");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
-    const id = newestScoreId();
+    const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
     await expect(
@@ -199,11 +240,13 @@ test.describe("correcting a recorded score (#1396)", () => {
   test("a mis-entered score can be removed from the History list", async () => {
     await page.goto("/records/specialty/mental-health");
     await pickInstrument(page, "GAD-7");
-    await page.getByLabel("Enter a score from elsewhere").check();
-    await page.getByTestId("instrument-outside-total").fill("4");
+    const rows = page.getByTestId(/^instrument-reading-\d+$/);
+    const beforeCount = await rows.count();
+    const beforeId = maxScoreId();
+    await enterOutsideTotal(page, "4");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
-    const id = newestScoreId();
+    const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
 
