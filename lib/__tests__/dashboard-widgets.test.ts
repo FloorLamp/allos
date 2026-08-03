@@ -240,6 +240,13 @@ describe("resolveWidgets / resolveWidgetList", () => {
 // shape as this repo's other registry allowlists (chart-colors-scan,
 // border-alpha-language): every entry carries a justification, and a staleness test
 // removes it once the widget stops violating.
+//
+// It has stayed empty through the one real conflict so far. #1892 gave `vitals-latest`
+// and `cycle-phase` a log affordance in their POPULATED state, which collided with the
+// rule #1890 had written for empty-state CTAs. The owner ruled that the definition
+// governs: both cards became actionable and MOVED into the band, and the stale rule was
+// rewritten at the `actionable` declaration. No exception was carved — which is the
+// point, since a list that absorbs every collision stops meaning anything.
 const ACTIONABLE_ORDER_EXCEPTIONS = new Map<string, string>([
   // Example of the shape an entry takes (do not uncomment — this is the ruling
   // #1890 explicitly left open):
@@ -344,14 +351,17 @@ describe("actionable-first default order (#1890)", () => {
       "data-quality",
       "nutrition-today",
       "steps-today",
+      // Episodic writes close the actionable band — a tap that writes, on a weekly
+      // or per-cycle cadence rather than a daily one (owner ruling on #1890, after
+      // #1892 put a log affordance in each card's POPULATED state).
+      "vitals-latest",
+      "cycle-phase",
       // Glance — read and move on.
       "next-appointment",
       "recent-labs",
       "sleep-last-night",
-      "vitals-latest",
       "weight-trend",
       "healthspan-pillars",
-      "cycle-phase",
       // The calm rollup closes the list (#449), and the opt-in retrospective is last.
       "coaching-observations",
       "weekly-recap",
