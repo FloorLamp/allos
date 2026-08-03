@@ -62,7 +62,10 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     await hydratedClick(page, page.getByTestId("start-workout-mobile"));
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await pickActivity(page, "Barbell Bench Press");
-    await page.getByTestId("set1-weight").focus();
+    await page
+      .getByTestId("next-set-card")
+      .getByRole("button", { name: "Use" })
+      .click();
     await expect(
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible();

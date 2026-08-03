@@ -466,12 +466,35 @@ sites is `settledFill`'s **verify-and-retry**, not its hydration check — which
 is also precisely why the display-differs fields cannot be rescued by it.
 
 **What to do instead.** When a spec fills a control whose `onFocus` mutates
-state (today: `Combobox`, `DateField`, `StrengthSets`' first-set fields), reach
-for `settledFill`/`settledPickOption` — and if the field's rendered text differs
+state (today: `Combobox`, `DateField`), reach for
+`settledFill`/`settledPickOption` — and if the field's rendered text differs
 from its submitted value, do NOT: assert the effect downstream instead, which
 those fields already give you (a `DateField`'s calendar only opens through
 React's `onFocus`, so a swallowed fill fails on the very next line — it is
 self-verifying, which is why no spec uses `settledFill` on one).
+
+#### The StrengthSets half was a PRODUCT bug, and it is gone (#1971)
+
+`StrengthSets`' first-set fields are off that list. The follow-up drove the real
+UI instead of the harness and found the append was not a `fill()` artefact at
+all: **a person reached it every time**. Tab into set 1's weight and type `60` →
+`77.560`; click in and type `60` → `77.605` (the digits land at the caret, and
+the caret is wherever the click was). Unchanged at 120 ms/keystroke and at 6×
+CPU throttle — arrival wrote the field faster than any human can type, so this
+was never a race. The component no longer writes on focus: the suggestion is a
+ghost placeholder plus the Next-set card's **Use** tap, per the repo rule that
+context gates an offer but the user's tap is the write.
+
+Two consequences for specs. Seeding set 1 is now a `Use` click, not a
+`.focus()` — and the two `toPass` blocks that existed _only_ to out-retry the
+focus-write (`form-hygiene.mobile`, `exercise-header.mobile`) are deleted, along
+with the `session-recap` `settledFill`s. A component-level fix removed harness
+debt at four call sites; converting those call sites never would have.
+
+The general lesson, since it will recur: when a helper is load-bearing at a
+call site, ask what the component is doing that makes it necessary. `settledFill`
+was covering for a user-visible defect, and its retry made the defect invisible
+to the suite.
 
 ### The bystander-poll false-settle is APP-WIDE, and a following `goto` LOSES the write (#1437)
 

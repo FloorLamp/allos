@@ -69,10 +69,13 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
   await context.setOffline(true);
 
   await pickActivity(page, "Barbell Bench Press");
-  // Focusing set 1's weight auto-seeds the coached suggestion (#335), making the
-  // form savable — but offline, nothing can persist.
+  // Tapping "Use" seeds set 1 from the coached suggestion (#335/#1971), making
+  // the form savable — but offline, nothing can persist.
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(weight).toHaveValue(/^\d/);
   await page.getByLabel("Activity name").fill(marker);
 

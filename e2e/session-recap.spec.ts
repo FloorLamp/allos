@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { settledFill } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_RECAP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -32,12 +31,7 @@ async function startLiveSession(page: Page, title: string) {
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await pickActivity(page, "Barbell Bench Press");
-  // The first set field focused after a ghost suggestion exists has its fill
-  // CORRUPTED: StrengthSets' weight input is controlled and its onFocus applies
-  // the suggestion (#1941), so fill()'s own focus writes 77.5 into state and the
-  // typed "60" appends to it — a deterministic "77.560" that this spec never
-  // asserted and so never noticed. settledFill's verify-and-retry lands "60".
-  await settledFill(page, page.getByTestId("set1-weight"), "60");
+  await page.getByTestId("set1-weight").fill("60");
   await page.getByTestId("set1-reps-stepper").locator("input").fill("5");
   // A complete set makes the draft savable — the Delete button appears once it
   // persisted (the real saveActivity path).
@@ -67,8 +61,7 @@ async function startPlainSession(page: Page, title: string) {
   // Not live: no live control strip in the plain create form.
   await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
   await pickActivity(page, "Barbell Bench Press");
-  // Same ghost-suggestion corruption as startLiveSession above (#1941).
-  await settledFill(page, page.getByTestId("set1-weight"), "60");
+  await page.getByTestId("set1-weight").fill("60");
   await page.getByTestId("set1-reps-stepper").locator("input").fill("5");
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })

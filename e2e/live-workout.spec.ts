@@ -68,11 +68,15 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
-  // focus set 1's weight to auto-seed it (#335) — completing the set auto-saves
-  // the draft (the Delete button appearing confirms the persist).
+  // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a
+  // field is not consent to have it written) — completing the set auto-saves the
+  // draft (the Delete button appearing confirms the persist).
   await pickActivity(page, "Barbell Bench Press");
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
