@@ -362,6 +362,14 @@ See `docs/internals/e2e-hygiene.md`.
 - Settings autosave on blur/change through the existing save-status helpers.
   Record forms use explicit submission.
 - Free-text notes render through `<NotesText>`.
+- Nav rows are `<PendingNavLink>`, not a bare `<Link>`. `(app)` ships no
+  `loading.tsx` (see the layout comment and #530), so a router transition has no
+  Suspense boundary to reveal and a tap has no visible consequence until the
+  whole destination has rendered — which is what made people tap again, and each
+  extra tap discards the render already in flight. The row reports
+  `useLinkStatus()` and absorbs a repeat tap; `lib/nav-click.ts` owns which
+  clicks count as repeats (never a modified or middle click).
+  See `docs/internals/nav-pending.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
