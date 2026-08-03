@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import PendingNavLink from "@/components/PendingNavLink";
 import {
   IconCamera,
   IconLayoutDashboard,
@@ -282,12 +282,18 @@ function NavLink({
     // `aria-current` carries what the gradient carries: a screen-reader user is told
     // which entry is the page they're on, and it gives the orphan-highlight fix
     // (#1522) a stable, semantic assertion instead of a class-name match.
-    <Link
+    //
+    // PendingNavLink, not a bare <Link> (#1956): a router transition under
+    // `(app)` has no `loading.tsx` to reveal, so without it the tap has no
+    // visible consequence until the whole destination has rendered — which is
+    // what made people tap again, and a second tap restarts the navigation.
+    <PendingNavLink
       href={leaf.href}
-      aria-current={active ? "page" : undefined}
+      label={leaf.label}
+      current={active}
+      icon={<Icon className="h-5 w-5 shrink-0" stroke={1.75} />}
       className={leafClass(active, nested)}
     >
-      <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
       <span className="flex-1">{leaf.label}</span>
       {leaf.badgeKey && badgeCount > 0 && (
         <span
@@ -300,7 +306,7 @@ function NavLink({
           {badgeCount}
         </span>
       )}
-    </Link>
+    </PendingNavLink>
   );
 }
 
