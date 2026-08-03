@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { settledClick, settledClickApplied } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { medicationRow, prnTodayItem } from "./med-card-helpers";
 
@@ -76,13 +76,16 @@ test.describe("Illness front door (#843)", () => {
     // ONE tap activates Illness AND expands the full card (single action). The
     // unified card stays (mood + illness coexist, #992) but its illness branch
     // now defers to the hero.
-    await page.getByTestId("feeling-sick-activate").click();
-    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
-    // whose full-page re-render can exceed the 5s default on a loaded shard
-    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
-      timeout: 20_000,
-    });
+    // The activate button posts a Server Action and the symptom bar exists only in
+    // the tree its revalidate produces, so this is the two-event wait #1858 named:
+    // settledClickApplied covers the action AND the router's apply, in place of the
+    // 20s ceiling this line used to carry (recurring-failure census,
+    // docs/internals/e2e-hygiene.md).
+    await settledClickApplied(
+      page,
+      page.getByTestId("feeling-sick-activate"),
+      page.getByTestId("symptom-log-bar")
+    );
     await expect(page.getByTestId("feeling-sick-activate")).toHaveCount(0);
     await expect(front.getByTestId("mood-episode-note")).toBeVisible();
     await expect(page.getByTestId("symptom-logged-count")).toHaveCount(0);
@@ -142,8 +145,13 @@ test.describe("Illness front door (#843)", () => {
     await createProfileViaFamily(page, "fever7am");
     await page.goto("/");
 
-    // Tap 1 — open the door.
-    await page.getByTestId("feeling-sick-activate").click();
+    // Tap 1 — open the door. The bar is the marker of the activate action's applied
+    // re-render (#1858); the collapsed temperature toggle below lives inside it.
+    await settledClickApplied(
+      page,
+      page.getByTestId("feeling-sick-activate"),
+      page.getByTestId("symptom-log-bar")
+    );
     // Temperature entry is collapsed by default (#857) — expand it.
     await page.getByTestId("temp-quick-toggle").click();
     await expect(page.getByTestId("temp-quick-entry")).toBeVisible();
@@ -178,13 +186,13 @@ test.describe("Illness front door (#843)", () => {
 
     // Entry point 2 — inline on the dashboard symptom card. Open the door first.
     await page.goto("/");
-    await page.getByTestId("feeling-sick-activate").click();
-    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
-    // whose full-page re-render can exceed the 5s default on a loaded shard
-    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
-      timeout: 20_000,
-    });
+    // Same two-event wait as door A (#1858): the action posts, then the router
+    // applies the tree that carries the symptom bar.
+    await settledClickApplied(
+      page,
+      page.getByTestId("feeling-sick-activate"),
+      page.getByTestId("symptom-log-bar")
+    );
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
@@ -211,13 +219,13 @@ test.describe("Illness front door (#843)", () => {
     await page.goto("/");
 
     // 1) Feeling sick? — one tap opens the full card.
-    await page.getByTestId("feeling-sick-activate").click();
-    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
-    // whose full-page re-render can exceed the 5s default on a loaded shard
-    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
-      timeout: 20_000,
-    });
+    // Same two-event wait as door A (#1858): the action posts, then the router
+    // applies the tree that carries the symptom bar.
+    await settledClickApplied(
+      page,
+      page.getByTestId("feeling-sick-activate"),
+      page.getByTestId("symptom-log-bar")
+    );
 
     // 2) Two symptoms at severities. Active-first layout (#857): add from the picker
     // (logs at severity 1), then raise.

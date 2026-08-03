@@ -27,6 +27,15 @@ import {
 //    auto-retrying `expect(...)` — settledClick guarantees the action COMPLETED
 //    server-side; React then applies the revalidated RSC, which the retry catches.)
 //
+// 1b. …and the very next thing you assert is that REVALIDATED RENDER — a marker
+//    that exists only once the router has applied the new tree:
+//        → settledClickApplied(page, locator, marker)
+//    The action's own resolution and the router's apply are two different events
+//    with wildly different latencies (#1964: 0.03–0.39s vs 0.47–3.33s throttled,
+//    with 7× run-to-run spread), and settledClick only ever promised the first.
+//    This helper waits for both, under ONE named ceiling, so the call site declares
+//    which guarantee it needs instead of ceiling-patching the assertion below it.
+//
 // 2. The click is a NAVIGATION to another route (a Next `<Link>`/tab `<a href>`)
 //    and the flake is the pre-hydration swallow (#500/#830):
 //        → followLink(page, locator, /destination-url/)
@@ -639,7 +648,19 @@ export async function settledClick(
 ): Promise<void> {
   const timeout = opts.timeout ?? 15_000;
   const here = new URL(page.url());
-  await expect(locator).toBeVisible();
+  // ONE ceiling, honoured by BOTH halves (#1858). This pre-assert used to run at
+  // Playwright's 5s expect default and ignore `opts.timeout` entirely, so a caller
+  // that widened the ceiling because the PREVIOUS interaction's revalidated render
+  // is slow still lost here — the target of the click is itself part of that
+  // re-render (`wellness-practices`' post-create card, the census row that named
+  // this). The budget is a shared DEADLINE rather than two independent ceilings, so
+  // `{ timeout: 20_000 }` can never consume 40s and re-open the >30s trap the
+  // "declared ceiling above 30s" section of docs/internals/e2e-hygiene.md is about;
+  // the response wait gets whatever the pre-assert did not spend (floored, so it
+  // always gets a real attempt and can report its own diagnosis, not a 0ms expiry).
+  const deadline = Date.now() + timeout;
+  await expect(locator).toBeVisible({ timeout });
+  const rest = Math.max(1_000, deadline - Date.now());
 
   // Requests observed from the moment the click is dispatched. A WeakSet keyed on
   // Playwright's own Request object is exact identity — no URL/timing heuristics —
@@ -688,7 +709,7 @@ export async function settledClick(
         }
         return matches;
       },
-      { timeout }
+      { timeout: rest }
     );
     // Set INSIDE the same synchronous turn as the click: the wait above is already
     // listening (a fast action cannot resolve in the gap), and the browser cannot
@@ -701,7 +722,7 @@ export async function settledClick(
     // click that never happened. Hold the click's failure and report it alongside,
     // the same way followLink surfaces `lastClickError` (#890).
     let clickError: Error | null = null;
-    const clicked = locator.click({ timeout }).catch((err: unknown) => {
+    const clicked = locator.click({ timeout: rest }).catch((err: unknown) => {
       clickError = err instanceof Error ? err : new Error(String(err));
     });
     await Promise.all([settled, clicked]);
@@ -733,6 +754,70 @@ export async function settledClick(
   } finally {
     page.off("request", onRequest);
   }
+}
+
+// Click a Server-Action control AND return only once the router has APPLIED the
+// revalidated tree, proven by a marker that tree renders (issue #1858).
+//
+// WHY THIS IS A SECOND HELPER. `settledClick` guarantees exactly one thing: the
+// action completed SERVER-SIDE. The router applying the revalidated payload is a
+// separate, much slower event, and the two were being spelled the same way at
+// hundreds of call sites — click, then assert the re-rendered DOM on the plain 5s
+// expect default. #1964 measured the gap end to end: the action's own resolution
+// lands 0.03–0.39s after `settledClick` returns even under a 20× CPU throttle,
+// while the apply lags 0.06–0.27s unthrottled and 0.47–3.33s THROTTLED, with 7×
+// run-to-run spread — because `revalidatePath` also invalidates the client router
+// cache, so every visible <Link> re-prefetches (~25 `_rsc` GETs, then the whole set
+// again under a second cache key) on the same main thread that has to render the
+// payload. Five recurring-failure census rows came out of that one gap, four of
+// them closed by raising a named ceiling at the call site. This helper is that
+// ceiling, named ONCE, attached to the guarantee it actually belongs to.
+//
+// THE CONTRACT. When this returns: (1) a correlated Server Action POST completed —
+// everything `settledClick` promises, and nothing more (see its note above); and
+// (2) `applied` is VISIBLE, i.e. the browser has committed a tree containing it.
+//
+// WHAT IT DOES NOT GUARANTEE, said plainly:
+//   • It cannot tell WHICH tree it saw. If `applied` was already visible before the
+//     click, this returns immediately and proves nothing at all. The marker must be
+//     something the mutation PRODUCES or CHANGES — the "prove a guard both ways"
+//     rule in docs/internals/e2e-hygiene.md. Assert-what-changed, not what was
+//     already there.
+//   • A marker a CLIENT component can render from its own state (an optimistic
+//     update, a `useState` flip in the handler) is not evidence of a server render.
+//     Pick a server-rendered marker — the `mood-server-logged` precedent.
+//   • The marker is a POSITIVE one on purpose. An ABSENCE ("the panel closed") is
+//     the #1964 trap: a stale tree and an applied tree are the same DOM when the
+//     thing you are looking for is gone, so the assertion cannot say which it saw.
+//     If absence is what your test is about, pass a positive marker here and assert
+//     the absence on the line below, against a page already proven settled.
+//   • It is not a general "the router applied" signal, and there deliberately is
+//     none: every available signal is heuristic, and a wrong one would buy a new
+//     class of FALSE GREEN. The marker is supplied by the call site because the
+//     call site is the only thing that knows what the re-render should say.
+//
+// The two halves carry SEPARATE ceilings because they fail for different reasons:
+// `timeout` (15s, settledClick's) is "the action never posted", which is nearly
+// always a wrong call site; `appliedTimeout` (20s — the value all four census rows
+// independently converged on, ~6× the worst apply measured) is "the render never
+// arrived". Their sum can exceed the 30s test default, so a call site that raises
+// either adds `test.slow()`, per the "declared ceiling above 30s" rule in
+// docs/internals/e2e-hygiene.md.
+export async function settledClickApplied(
+  page: Page,
+  locator: Locator,
+  applied: Locator,
+  opts: { timeout?: number; url?: RegExp; appliedTimeout?: number } = {}
+): Promise<void> {
+  const { appliedTimeout = 20_000, ...clickOpts } = opts;
+  await settledClick(page, locator, clickOpts);
+  await expect(
+    applied,
+    "[settledClickApplied] the Server Action completed, but the marker proving " +
+      "the router applied the revalidated tree never rendered. Either the " +
+      "re-render is genuinely slower than appliedTimeout (raise it AND add " +
+      "test.slow()), or this marker is not in the tree the action revalidates."
+  ).toBeVisible({ timeout: appliedTimeout });
 }
 
 // Fill a form field so its value durably lands in React STATE, not just the DOM —
