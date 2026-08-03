@@ -4,6 +4,13 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1951,
+          "kind": "feature",
+          "issues": [1934],
+          "title": "Fix a serving logged to the wrong meal, or a photo tagged with the wrong pose",
+          "body": "Things you log with a single tap could only be created or deleted, never corrected \u2014 and deleting and re-logging is not the same, because a re-log lands at the current time and meal. A serving can now be moved to the right food, day or meal from the food log's \u22ef menu, and the day's counts follow it across rather than counting it twice. Progress photos can have their date, pose and caption fixed in place; the picture itself is never touched, so a correction no longer costs you the original file or its place in a comparison."
+        },
+        {
           "pr": 1950,
           "kind": "feature",
           "issues": [1933],
