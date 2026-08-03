@@ -25,7 +25,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   getSupplementDoses,
-  getSupplementLogsForDate,
+  getIntakeLogsForDate,
   getTakenDoseIds,
   getSkippedDoseIds,
   markDoseTaken,
@@ -344,7 +344,7 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
     );
     // Nothing written for the dose, and the victim profile's taken set is clean.
     expect(logRow(doseId, DATE)).toBeUndefined();
-    expect(getSupplementLogsForDate(victim, DATE).has(victimItem)).toBe(false);
+    expect(getIntakeLogsForDate(victim, DATE).has(victimItem)).toBe(false);
     // The victim's supply is untouched (no decrement against a foreign item).
     expect(onHand(victimItem)).toBe(10);
   });

@@ -12,6 +12,14 @@ import { dateStrInTz, parseUtcSql } from "./date";
 // any windowed-history consumer share the window length).
 export const STRIP_DAYS = 14;
 
+// How far back a LIST surface shows recorded administrations in its per-item dose
+// history panel (#1933). Longer than the strip on purpose — the strip answers "how has
+// this been going", the history panel is where a specific wrong entry gets corrected,
+// and the entry you want to fix is often older than two weeks. It is a display bound
+// only: the historical-dose write path refuses the future and imposes no lookback, so
+// a backfill still reaches any past date.
+export const DOSE_HISTORY_DAYS = 90;
+
 // "skipped" (issue #232) is a DELIBERATE decision, distinct from "missed" (a
 // lapse): it is excluded from the adherence denominator and, like "na", is
 // transparent to the streak — it neither counts as follow-through nor breaks it.
@@ -96,7 +104,7 @@ export function aggregateDoseDay(
 
 // A per-dose lookup of which dates were taken vs deliberately skipped (#232),
 // keyed by dose id. Both the supplements page and the notifier build these from
-// getSupplementLogsInRange and feed them into doseStrip.
+// getIntakeLogsInRange and feed them into doseStrip.
 export interface DoseDateStatus {
   taken: Set<string>;
   skipped: Set<string>;

@@ -22,7 +22,7 @@ import {
   getGoals,
   getSupplements,
   getSupplementDoses,
-  getSupplementLogsInRange,
+  getIntakeLogsInRange,
   getActivityDates,
   getRecentDatedExercises,
   getFoodSuggestions,
@@ -1329,7 +1329,7 @@ export function buildAdherencePatternFindings(
   const suppById = new Map(supplements.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profileId);
   const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, ADHERENCE_PATTERN_DAYS)
+    getIntakeLogsInRange(profileId, ADHERENCE_PATTERN_DAYS)
   );
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));

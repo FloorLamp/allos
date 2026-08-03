@@ -5,7 +5,9 @@ import { requireScope } from "@/lib/scope";
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
@@ -13,6 +15,7 @@ import {
   resolveSituationId,
   deleteProfileSetting,
   getSituations,
+  getTimezone,
   setSituationIllnessType,
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
@@ -23,6 +26,11 @@ import {
   setMedicationActive,
   setMedicationEndDate,
   isLinkableSupply,
+  deleteAdministrationLog,
+  // The historical-dose cores keep the shared, kind-neutral names; the aliases only
+  // keep them apart from the Server Actions of the same name defined below.
+  logHistoricalDose as logHistoricalDoseCore,
+  updateHistoricalDose as updateHistoricalDoseCore,
 } from "@/lib/queries";
 import {
   resolveProviderIdByName,
@@ -57,6 +65,7 @@ import {
   type CadenceKind,
 } from "@/lib/intake-cadence";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import type { HistoricalDoseOutcome } from "@/lib/types";
 import type {
   FoodTiming,
   PairRelation,
@@ -1033,6 +1042,160 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   applyDoseStatus(profileId, doseId, today(profileId), target);
   revalidateIntake();
   return formOk();
+}
+
+// ── Historical dose correction (#1933) ──────────────────────────────────────────
+// Backfill / amend / remove one recorded administration. These live HERE, in the
+// kind-agnostic intake action module, because the cores they wrap are shared
+// machinery: /medications and /nutrition?tab=supplements render the same dose-history
+// panel over the same ungated cores, and an action module named for one of the two
+// surfaces would be the split all over again. Each is a thin auth + parse boundary:
+// the auth-blind cores own ownership scoping, course/date rules, duplicate semantics,
+// the amount snapshot, and every supply movement.
+//
+// All three are AUDITED. A dose confirmed by tapping today's check-off is ordinary
+// use; retroactively rewriting what the record says was given is clinically
+// significant — especially where a caregiver amends a dose somebody else gave — so it
+// earns an audit row through the repo's one audit mechanism (recordAudit), carrying
+// identifiers and the affected date only.
+
+// Deliberately backfill one past dose from a dose-history panel. The profile-local
+// wall time is converted here; the core owns everything else, including the optional
+// supply adjustment (pool-aware for a shared bottle, #1374).
+export async function logHistoricalDose(
+  formData: FormData
+): Promise<FormResult> {
+  const { login, profile } = await requireWriteAccess();
+  const itemId = Number(formData.get("id"));
+  const doseId = Number(formData.get("dose_id"));
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "");
+  if (
+    !itemId ||
+    !doseId ||
+    !isRealIsoDate(date) ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+  ) {
+    return formError("Enter a valid dose date and time.");
+  }
+
+  const outcome = logHistoricalDoseCore(
+    profile.id,
+    itemId,
+    doseId,
+    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    strOrNull(formData.get("amount")),
+    formData.get("adjust_supply") === "1"
+  );
+  if (outcome.kind === "logged") {
+    recordAudit({
+      loginId: login.id,
+      profileId: profile.id,
+      action: AUDIT_ACTIONS.doseLogBackfill,
+      target: String(itemId),
+      detail: outcome.date,
+    });
+    revalidateIntake();
+    revalidatePath(`/medications/${itemId}`);
+    return formOk();
+  }
+  return historicalDoseError(outcome);
+}
+
+// Correct an existing history row (time / amount) without changing its original supply
+// effect. The core owns row scoping, course correction, and scheduled/PRN uniqueness.
+export async function updateHistoricalDose(
+  formData: FormData
+): Promise<FormResult> {
+  const { login, profile } = await requireWriteAccess();
+  const itemId = Number(formData.get("id"));
+  const logId = Number(formData.get("log_id"));
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "");
+  if (
+    !itemId ||
+    !logId ||
+    !isRealIsoDate(date) ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+  ) {
+    return formError("Enter a valid dose date and time.");
+  }
+
+  const outcome = updateHistoricalDoseCore(
+    profile.id,
+    itemId,
+    logId,
+    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    strOrNull(formData.get("amount"))
+  );
+  if (outcome.kind === "logged") {
+    recordAudit({
+      loginId: login.id,
+      profileId: profile.id,
+      action: AUDIT_ACTIONS.doseLogAmend,
+      target: String(itemId),
+      detail: outcome.date,
+    });
+    revalidateIntake();
+    revalidatePath(`/medications/${itemId}`);
+    return formOk();
+  }
+  return historicalDoseError(outcome);
+}
+
+// Every refusal the two historical-dose cores can answer with, rendered as the message
+// the surface shows. One mapping, so the backfill and the amendment can never drift
+// into describing the same refusal differently — and so `stale-dose` keeps meaning what
+// it says. Before #1933 a SUPPLEMENT dose came back `stale-dose` from a core that had
+// simply refused its kind, telling the user a dose they were looking at did not exist.
+function historicalDoseError(
+  outcome: Exclude<HistoricalDoseOutcome, { kind: "logged" }>
+): FormResult {
+  switch (outcome.kind) {
+    case "already-taken":
+      return formError(
+        "That scheduled dose is already recorded for this date."
+      );
+    case "already-skipped":
+      return formError("That scheduled dose is marked skipped for this date.");
+    case "duplicate":
+      return formError("A dose is already recorded at about this time.");
+    case "outside-course":
+      return formError("This medication was not active on that date.");
+    case "invalid-time":
+      return formError("Choose a date and time that are not in the future.");
+    case "stale-dose":
+    default:
+      return formError(
+        "That dose is no longer available. Refresh and try again."
+      );
+  }
+}
+
+// Remove one recorded administration with undo (#851 item 11). A mis-tapped confirm
+// otherwise permanently decrements supply, advances the PRN redose window, and counts
+// toward the daily max — so the removal (and its Undo) inverts all three (supply
+// directly, the window/count via the ledger row being gone). Returns the { undoId } the
+// shared useUndoableDelete toast wires to undoDelete → restoreAdministrationLog.
+export async function deleteAdministration(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const { login, profile } = await requireWriteAccess();
+  const logId = Number(formData.get("log_id"));
+  if (!logId) return { undoId: null };
+  const removed = deleteAdministrationLog(profile.id, logId);
+  if (removed) {
+    recordAudit({
+      loginId: login.id,
+      profileId: profile.id,
+      action: AUDIT_ACTIONS.doseLogDelete,
+      target: String(removed.itemId),
+      detail: removed.date,
+    });
+    revalidatePath(`/medications/${removed.itemId}`);
+  }
+  revalidateIntake();
+  return { undoId: removed?.undoId ?? null };
 }
 
 // Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose

@@ -11,7 +11,7 @@ import {
   getSupplementDoses,
   getTakenDoseTimes,
   getSkippedDoseIds,
-  getSupplementLogsInRange,
+  getIntakeLogsInRange,
   getSupplementPairs,
   getRefillRates,
   getPoolChips,
@@ -250,7 +250,7 @@ export function loadMedicationsData(
   const workoutDays = new Set(getActivityDates(profileId));
   const dates = lastNDates(todayStr, STRIP_DAYS);
   const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, STRIP_DAYS)
+    getIntakeLogsInRange(profileId, STRIP_DAYS)
   );
 
   const allCourses = getMedicationCourses(profileId);
@@ -632,9 +632,7 @@ export function getMedicationAdherenceCalendar(
     new Set(getActiveSituations(profileId)),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, days)
-  );
+  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
   const strip = supplementAdherenceStrip(
     med,
     medDoses,

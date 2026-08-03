@@ -3,7 +3,7 @@ import {
   getSupplementDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
-  getSupplementLogsInRange,
+  getIntakeLogsInRange,
   getSupplementPairs,
   getRefillRates,
   getPoolChips,
@@ -24,6 +24,7 @@ import {
   getNavRelevance,
   countVisiblePools,
   getIntakeCatalogOptions,
+  getIntakeDoseHistoryForItems,
 } from "@/lib/queries";
 import { activeByKey, activeFindings } from "@/lib/findings";
 import {
@@ -55,7 +56,14 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { lastNDates, zonedDateParts } from "@/lib/date";
+import {
+  lastNDates,
+  parseUtcSql,
+  shiftDateStr,
+  zonedDateParts,
+} from "@/lib/date";
+import { formatGivenAtClock } from "@/lib/administration-format";
+import type { DoseHistoryEntry } from "@/components/intake/DoseHistoryPanel";
 import {
   getActiveSituations,
   getDisplayFormatPrefs,
@@ -109,6 +117,7 @@ import {
   doseWindowSince,
   supplementAdherenceStrip,
   STRIP_DAYS,
+  DOSE_HISTORY_DAYS,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import {
@@ -247,7 +256,7 @@ export default async function SupplementsTab({
             : formatWeekdayDate(date, formatPrefs),
     }));
   const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profile.id, STRIP_DAYS)
+    getIntakeLogsInRange(profile.id, STRIP_DAYS)
   );
   // Per-supplement adherence strip, aggregated across the supplement's doses:
   // a day is "taken" when all its due doses were logged, "partial" when some
@@ -271,6 +280,35 @@ export default async function SupplementsTab({
   }
   const stripFor = (s: Supplement): AdherenceDot[] =>
     stripBySupp.get(s.id) ?? [];
+
+  // Recent dose history per item (#1933), for the row's Dose history panel — the same
+  // panel and the same ungated cores the medication detail page uses. ONE batched read
+  // for every listed item, not one query per row (#885's N+1 treatment applied to this
+  // page's much longer list). The medication detail page shows a single item's whole
+  // course, so it stays unbounded; a page listing every supplement is bounded to a
+  // recent window and SAYS so in the panel, rather than quietly truncating. The bound
+  // is a display window only: backfilling still reaches any past date (the accepted
+  // window refuses the future and imposes no lookback — #1458).
+  const historySince = shiftDateStr(todayStr, -(DOSE_HISTORY_DAYS - 1));
+  const doseHistoryByItem = getIntakeDoseHistoryForItems(
+    profile.id,
+    supplements.map((s) => s.id),
+    historySince
+  );
+  const historyFor = (s: Supplement): DoseHistoryEntry[] =>
+    (doseHistoryByItem.get(s.id) ?? []).map((row) => {
+      const stored = row.given_at ?? row.taken_at;
+      const instant = parseUtcSql(stored);
+      return {
+        id: row.id,
+        doseId: row.dose_id,
+        date: row.date,
+        time: formatGivenAtClock(tz, stored, formatPrefs.timeFormat),
+        timeValue: instant ? zonedDateParts(tz, instant).hhmm : "",
+        amount: row.amount,
+        product: row.product,
+      };
+    });
 
   // Build dose-level items, partitioned by today's context.
   const itemsFor = (preds: (s: Supplement) => boolean): Item[] =>
@@ -593,6 +631,10 @@ export default async function SupplementsTab({
         poolChip={poolChips.get(it.supplement.id) ?? null}
         historicalStatus={historicalStatus}
         suppressedFoodKeys={suppressedFoodKeys}
+        doseHistory={historyFor(it.supplement)}
+        historyMaxDate={todayStr}
+        defaultHistoryTime={hhmm}
+        historyWindowDays={DOSE_HISTORY_DAYS}
       />
     );
   };

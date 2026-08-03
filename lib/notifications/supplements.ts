@@ -15,7 +15,7 @@ import {
   getActivityDates,
   isPredictedWorkoutDay,
   inferWorkoutSchedule,
-  getSupplementLogsInRange,
+  getIntakeLogsInRange,
   getEffectiveActiveSituations,
 } from "../queries";
 import {
@@ -151,13 +151,13 @@ function gatherWindowDoses(
 
   // Inputs for the per-dose streak + adherence percentage. Anchored on the real
   // today (not `date`, which may be a prior day's reminder tapped late) so the
-  // column window lines up with getSupplementLogsInRange's own today-anchored
+  // column window lines up with getIntakeLogsInRange's own today-anchored
   // range and with adherenceSummary's "last column is today, still pending" rule.
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
   const tz = getTimezone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, ADHERENCE_DAYS)
+    getIntakeLogsInRange(profileId, ADHERENCE_DAYS)
   );
 
   // The demotion candidates for THIS profile, resolved once per gather rather than

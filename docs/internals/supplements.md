@@ -345,9 +345,60 @@ the Today panel uses ONE row primitive
 (`components/medications/TodayMedRow.tsx`) for both scheduled check-off and PRN
 administration rows (kind expressed by the control, not the container); and the
 detail page carries scheduled and as-needed entries in a dated "Dose history"
-roll-up (`getMedicationDoseHistory`), with an inline correction form for
+roll-up (`getIntakeDoseHistory`), with an inline correction form for
 recording and editing a past dose during the medication course; PRN entries may
 predate and move back the recorded start date.
+
+### Historical dose correction (#1933)
+
+Backfilling, amending, and removing a recorded administration is **adherence
+machinery**, so it is not split by kind. Until #1933 it was: the write cores
+carried `s.kind = 'medication'` (backfill, delete) and `s.obligation = 'may'`
+(amend), so supplements had none of it and a scheduled medication log could not
+be corrected at all. `kind` decides clinical identity, not capability (#1664),
+and the refusal LIED — a supplement dose came back `stale-dose`, "that dose
+doesn't exist", from a core that had simply refused its kind.
+
+The ungated cores live in `lib/queries/intake/adherence.ts`: `logHistoricalDose`,
+`updateHistoricalDose`, `updateAdministrationLog`, `deleteAdministrationLog`,
+`restoreAdministrationLog`. The reads that serve both kinds are named for both:
+`getIntakeLogsForDate`, `getIntakeLogsInRange`, `getIntakeDoseHistory`, and the
+batched `getIntakeDoseHistoryForItems`.
+
+One panel renders it on both surfaces — `components/intake/DoseHistoryPanel.tsx`,
+inline in the medication card and behind the supplement row's ⋯ "Dose history"
+disclosure — over the Server Actions in
+`app/(app)/nutrition/supplement-actions.ts` (the kind-agnostic intake action
+module), each rendering its core's typed outcome.
+
+What "everything editable" carries:
+
+- **The course window is a data question, not a kind question.** It binds an item
+  that HAS `medication_courses` rows; a supplement has none, so there is no
+  course for its history to fall outside of (`itemHasCourses`).
+- **Supply is counter-like.** A backfill's optional decrement, the delete's
+  re-credit, and the restore's re-decrement all run through the shared
+  `decrementSupply`/`incrementSupply`, so a pooled item (#1374) moves the
+  household bottle. Amending a time or an amount moves nothing: the counter is in
+  UNITS (`qty_per_dose`) and `amount` is a snapshotted label, so the diff is zero
+  and applying one would be a second, invented movement.
+- **Retired doses and paused items stay editable.** `d.retired = 0` is right for
+  CREATING a backfill (it puts a dose back on the schedule) and wrong for editing
+  an existing row: the schedule was retired, the history is still real.
+- **A log edit never writes the schedule.** `intake_item_doses` is read-only on
+  every one of these paths.
+- **No re-arm.** Any write that un-marks a dose for a day — a delete, or an edit
+  that moves the row to another date — stamps that day's escalation marker
+  (`escalationMarkerKey`, #328), so a retroactive correction can never resurrect
+  a missed-dose push. The attention doctrine's contact-consent rule is
+  asymmetric; this is the direction it forbids. Suppression is per-DATE, so a
+  correction to an older day cannot silence a genuine miss today, and the restore
+  deliberately does not clear the marker.
+- **Audited.** Tapping today's check-off is ordinary use. Retroactively rewriting
+  what the record says was given is clinically significant — especially where a
+  caregiver amends a dose somebody else gave — so the action boundary records
+  `dose-log.backfill` / `dose-log.amend` / `dose-log.delete` (identifiers and the
+  affected date only, never the amount or the name).
 
 **Pre-workout send timing (#1154 Fix A).** `pre_workout` is a day condition; its
 SEND slot is workout-relative when the dose's bucket is `anytime` and a cadence
