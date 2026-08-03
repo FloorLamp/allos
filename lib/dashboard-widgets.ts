@@ -44,9 +44,23 @@ export interface WidgetDef {
   // body carries a decision to make or a log/fix affordance meant to be tapped —
   // the daily check-in, the train/rest call, this week's targets, a one-time
   // structural fix, today's gap against a goal. False for a GLANCE card that reports
-  // a value and expects you to read it and move on. Declared exactly ONCE here:
-  // nothing anywhere else re-derives "is this card actionable" (#221). The default
-  // order is actionable-first, and the registry test enforces it.
+  // a value and expects you to read it and move on.
+  //
+  // THE LINE FOR A DATA-AWARE CARD (owner ruling on #1890, after #1892): an
+  // ONBOARDING-ONLY CTA does not make a card actionable — it is a setup step that
+  // exists only until the domain has data, and it says nothing about what the card
+  // offers thereafter. A LOG AFFORDANCE PRESENT IN THE POPULATED STATE does: the
+  // person who already opens that card every week is offered the write from there.
+  // That is why Latest vitals (its "Log reading" action survives the first reading)
+  // and Cycle phase (the live `cycleControlState` verb) are actionable, while Recent
+  // labs and Weight trend — whose CTAs are pure onboarding — are not. An earlier
+  // wording of this rule ("a data-aware CTA never makes a glance card actionable")
+  // was written when the empty state was the only place such a CTA existed; it did
+  // not survive #1892 and was replaced rather than exempted.
+  //
+  // Declared exactly ONCE here: nothing anywhere else re-derives "is this card
+  // actionable" (#221). The default order is actionable-first, and the registry test
+  // enforces it.
   actionable: boolean;
   span: WidgetSpan;
   // Pinned above the customizable grid, non-hideable, always first (the hero).
@@ -276,12 +290,14 @@ export function dashboardCustomizeMode(wide: boolean): DashboardCustomizeMode {
 // The catalog. Array order is the default display order; new widgets appended to
 // the end appear automatically for existing profiles (see resolveWidgetList).
 //
-// ORDER = ACTIONABLE FIRST (issue #1890). The cards that exist to be tapped today —
-// the daily check-in, the train/rest call, this week's targets, the one-time
-// structural fixes, today's gaps — lead; the glance cards that report a value follow;
-// the calm observational rollup closes the list, per its own #449 charter. Every
-// entry declares `actionable` and the registry test asserts the split, so the
-// principle survives the next widget instead of decaying with it.
+// ORDER = ACTIONABLE FIRST (issue #1890). The cards that carry a tap which writes
+// lead — the daily check-in, the train/rest call, this week's targets, the one-time
+// structural fixes, today's gaps, then the two EPISODIC log cards (latest vitals,
+// cycle phase) whose write is weekly or per-cycle rather than daily. The glance cards
+// that only report a value follow, and the calm observational rollup closes the list
+// per its own #449 charter. Every entry declares `actionable` and the registry test
+// asserts the split, so the principle survives the next widget instead of decaying
+// with it.
 //
 // The registry contains only distinct overview questions. Signals already
 // represented by Needs attention / Upcoming (low supply, immunizations, care plan),
@@ -411,6 +427,61 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: true,
     span: "half",
   },
+  // The two EPISODIC log cards close the actionable band: their write is real but its
+  // cadence is a week or a cycle, not a day, so they sit below the today-shaped cards
+  // above and above every card that offers no write at all.
+  {
+    id: "vitals-latest",
+    label: "Latest vitals",
+    description:
+      "Your most recent blood pressure and resting heart rate, each with a trend arrow — surfaced from Trends → Vitals to the daily glance.",
+    // On by default (promotion, #1066). Data-aware: a profile with no BP/resting-HR
+    // reading gets a log-a-reading CTA. Not fitness-gated — vitals matter for every
+    // profile.
+    defaultOn: true,
+    fitness: false,
+    // ACTIONABLE by the owner's ruling on #1890, after #1892 kept the "Log reading"
+    // action on the card in its POPULATED state — the whole point of that ask being
+    // that the person who logs blood pressure weekly opens this card and previously
+    // found no affordance on it. This entry used to carry the rule "a data-aware CTA
+    // never makes a glance card actionable"; see the `actionable` field above for the
+    // distinction that replaced it (onboarding-only CTA, no; populated-state log
+    // affordance, yes). First of the two episodic log cards: ungated, and its
+    // affordance is unconditional once data exists.
+    actionable: true,
+    span: "half",
+    dataAware: true,
+  },
+  {
+    id: "cycle-phase",
+    label: "Cycle phase",
+    description:
+      "Your current cycle day and derived phase — informational only, never a prediction. Appears only when cycle tracking is relevant for the profile.",
+    // On by default, but gated on the SAME `cycle` relevance bit as the Cycle nav
+    // entry (relevanceKey), so it's hidden entirely unless cycle tracking applies to
+    // the profile.
+    //
+    // DATA-AWARE since #1892. It used to SELF-HIDE when no phase was derivable, which
+    // was the inversion: that is precisely the state of someone who has not logged day
+    // 1, so the card vanished exactly when logging mattered most and the only path was
+    // nav → Medical → Cycles. The #714 tracking-not-forecasting contract governs the
+    // quiet DISPLAY; it never meant "never offer a log button". Its empty variant is
+    // the same card carrying the one cycle offer, so the CTA is a WRITE, not a link.
+    defaultOn: true,
+    fitness: false,
+    // ACTIONABLE by the owner's ruling on #1890: since #1892 the POPULATED card
+    // renders `cycleControlState`'s live verb ("Period started today" / "Period ended
+    // today" / "Still bleeding"), which is a tap that writes. #714 still governs the
+    // DISPLAY — informational, never a prediction — and that is untouched: offering a
+    // log button was never the thing that contract forbade. LAST in the actionable
+    // band, because it is the weakest-reaching of the writes: relevance-gated, so most
+    // profiles never see it, and its offer is deliberately silent between the reopen
+    // and gap windows, so some days there is no button at all.
+    actionable: true,
+    span: "half",
+    dataAware: true,
+    relevanceKey: "cycle",
+  },
   // ── Glance: cards that report a value ────────────────────────────────────────
   {
     id: "next-appointment",
@@ -453,22 +524,6 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     dataAware: true,
   },
   {
-    id: "vitals-latest",
-    label: "Latest vitals",
-    description:
-      "Your most recent blood pressure and resting heart rate, each with a trend arrow — surfaced from Trends → Vitals to the daily glance.",
-    // On by default (promotion, #1066). Data-aware: a profile with no BP/resting-HR
-    // reading gets a log-a-reading CTA. Not fitness-gated — vitals matter for every
-    // profile.
-    defaultOn: true,
-    fitness: false,
-    // Passive: it reports the most recent reading. The empty-state CTA is onboarding,
-    // not a daily action — a data-aware CTA never makes a glance card actionable.
-    actionable: false,
-    span: "half",
-    dataAware: true,
-  },
-  {
     id: "weight-trend",
     label: "Weight trend",
     description: "Your recent body-weight chart.",
@@ -497,30 +552,6 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
-  },
-  {
-    id: "cycle-phase",
-    label: "Cycle phase",
-    description:
-      "Your current cycle day and derived phase — informational only, never a prediction. Appears only when cycle tracking is relevant for the profile.",
-    // On by default, but gated on the SAME `cycle` relevance bit as the Cycle nav
-    // entry (relevanceKey), so it's hidden entirely unless cycle tracking applies to
-    // the profile.
-    //
-    // DATA-AWARE since #1892. It used to SELF-HIDE when no phase was derivable, which
-    // was the inversion: that is precisely the state of someone who has not logged day
-    // 1, so the card vanished exactly when logging mattered most and the only path was
-    // nav → Medical → Cycles. The #714 tracking-not-forecasting contract governs the
-    // quiet DISPLAY; it never meant "never offer a log button". Its empty variant is
-    // the same card carrying the one cycle offer, so the CTA is a WRITE, not a link.
-    defaultOn: true,
-    fitness: false,
-    // Passive by its own #714 contract: informational only, never a prediction and
-    // never a prompt.
-    actionable: false,
-    span: "half",
-    dataAware: true,
-    relevanceKey: "cycle",
   },
   {
     id: "coaching-observations",
