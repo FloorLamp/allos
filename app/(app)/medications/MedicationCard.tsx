@@ -64,6 +64,7 @@ import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
   deleteSupplement,
+  deleteAdministration,
 } from "@/app/(app)/nutrition/supplement-actions";
 import {
   stopMedication,
@@ -72,7 +73,6 @@ import {
   toggleSideEffectResolved,
   deleteSideEffect,
   promoteSideEffectToIntolerance,
-  deleteAdministration,
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";

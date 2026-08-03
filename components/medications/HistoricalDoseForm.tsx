@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import {
   logHistoricalDose,
   updateHistoricalDose,
-} from "@/app/(app)/medications/actions";
+} from "@/app/(app)/nutrition/supplement-actions";
 
 export interface HistoricalDoseOption {
   id: number;

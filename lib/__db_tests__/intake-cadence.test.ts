@@ -36,7 +36,7 @@ import {
   indexTakenByDose,
   adherenceSummary,
 } from "@/lib/supplement-adherence";
-import { getSupplementLogsInRange } from "@/lib/queries";
+import { getIntakeLogsInRange } from "@/lib/queries";
 import { daysOfSupplyLeft } from "@/lib/refill";
 import { cadenceLabel } from "@/lib/intake-cadence";
 import { tapAnswerText } from "@/lib/notifications/callback-data";
@@ -132,7 +132,7 @@ function stripFor(profileId: number, itemId: number, dates: string[]) {
     (d) => d.item_id === itemId
   );
   const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, dates.length + 2)
+    getIntakeLogsInRange(profileId, dates.length + 2)
   );
   return supplementAdherenceStrip(
     item,

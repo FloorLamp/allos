@@ -5,7 +5,7 @@ import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
-  getMedicationDoseHistory,
+  getIntakeDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
   getConditions,
@@ -109,7 +109,7 @@ export default async function MedicationDetailPage(props: {
 
   // Taken-dose history for every medication, not only PRN. Exact intake time
   // + snapshotted amount make a newly backfilled dose visible immediately in History.
-  const doseHistory = getMedicationDoseHistory(
+  const doseHistory = getIntakeDoseHistory(
     profileId,
     m.med.id,
     historyMinDate ?? "0001-01-01"

@@ -96,7 +96,7 @@ export function aggregateDoseDay(
 
 // A per-dose lookup of which dates were taken vs deliberately skipped (#232),
 // keyed by dose id. Both the supplements page and the notifier build these from
-// getSupplementLogsInRange and feed them into doseStrip.
+// getIntakeLogsInRange and feed them into doseStrip.
 export interface DoseDateStatus {
   taken: Set<string>;
   skipped: Set<string>;
