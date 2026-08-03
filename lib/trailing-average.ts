@@ -65,6 +65,14 @@ export interface TrailingWindowSpec {
   // Whether the anchor day itself belongs in the sample. Default FALSE — the
   // window ends on the day BEFORE `todayStr` and covers complete days only.
   includeToday?: boolean;
+  // Declared by a caller whose `points` are TRUNCATED to the window — a gather that
+  // reads only the days the window can contain rather than the whole series. Day
+  // one means "no complete-day history AT ALL", and a truncated series cannot
+  // answer that: a profile that logged a month ago and again today arrives here
+  // looking exactly like a first-ever reading. Such a caller states here whether
+  // anything older exists, so the ONE day-one rule still decides. A caller passing
+  // the full series leaves it alone.
+  hasEarlierHistory?: boolean;
 }
 
 export interface TrailingWindow<P extends TrailingPoint = TrailingPoint> {
@@ -123,7 +131,7 @@ export function trailingAverage<P extends TrailingPoint>(
   todayStr: string,
   spec: TrailingWindowSpec
 ): TrailingWindow<P> {
-  const { days, basis, includeToday = false } = spec;
+  const { days, basis, includeToday = false, hasEarlierHistory = false } = spec;
   const end = includeToday ? todayStr : shiftDateStr(todayStr, -1);
   // Every reading the window could draw on — i.e. the profile's COMPLETE-DAY
   // history when today is excluded. Its emptiness is the day-one trigger below,
@@ -139,8 +147,9 @@ export function trailingAverage<P extends TrailingPoint>(
 
   // Day one: nothing on or before the window's end ANYWHERE in the series, and a
   // reading today. A series with history the window happens to miss (a gap) has
-  // `eligible.length > 0` and stays empty — that window is honestly empty.
-  if (!includeToday && eligible.length === 0) {
+  // `eligible.length > 0` — or, for a caller whose series is truncated to the
+  // window, `hasEarlierHistory` — and stays empty. That window is honestly empty.
+  if (!includeToday && eligible.length === 0 && !hasEarlierHistory) {
     const todays = ascending(points.filter((p) => p.date === todayStr));
     if (todays.length > 0) return summarize(todays, true);
   }

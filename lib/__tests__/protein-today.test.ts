@@ -24,6 +24,7 @@ function makeToday(over: Partial<ProteinToday>): ProteinToday {
     todayGrams: 0,
     target,
     weeklyAverageGrams: null,
+    trailing: { grams: null, dayOne: false },
     ...over,
   };
 }

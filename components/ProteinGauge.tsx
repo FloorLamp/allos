@@ -10,6 +10,12 @@ import type { ProteinToday } from "@/lib/protein";
 // a shortfall color mid-day (a 40 g reading at 11am is normal, not "below") — it's the
 // neutral primary tint at every value. Floor semantics carry through the legend copy
 // ("at least" when the basis includes the estimate floor).
+//
+// The marker is THIS WEEK's daily average, and now says so (#1917). It reads
+// `weeklyAverageGrams` — the very figure the adequacy card beside it reaches its WEEKLY
+// verdict on — so an ambiguous "Avg" was the one label it could not wear once the
+// dashboard card started showing a real trailing 7-day average. Two questions, two
+// numbers, two labels; neither surface has to guess which it is looking at.
 
 function g(n: number): string {
   return String(Math.round(n));
@@ -55,7 +61,7 @@ export default function ProteinGauge({
         role="img"
         aria-label={`Protein ${periodLabel.toLowerCase()} ${todayValueLabel}, goal ${g(target.gramsLow)} to ${g(target.gramsHigh)} grams${
           weeklyAverageGrams != null
-            ? `, usual ${g(weeklyAverageGrams)} grams a day`
+            ? `, this week ${g(weeklyAverageGrams)} grams a day`
             : ""
         }`}
       >
@@ -100,7 +106,7 @@ export default function ProteinGauge({
         {weeklyAverageGrams != null && (
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-0.5 bg-slate-600 dark:bg-slate-200" />
-            <dt>Avg</dt>
+            <dt>This week</dt>
             <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
               ~{g(weeklyAverageGrams)}g
             </dd>

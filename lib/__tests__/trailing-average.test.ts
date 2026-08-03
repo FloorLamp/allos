@@ -259,6 +259,27 @@ describe("the day-one fallback fires on no history, never on a gap (#1909)", () 
     expect(w.average).toBe(76.4);
   });
 
+  it("a TRUNCATED series says so rather than looking like day one", () => {
+    // A gather that reads only the window's days hands over exactly what a
+    // first-ever reading looks like: nothing complete, plus today. The caller
+    // declares the truncation, and the day-one rule still decides — here, against.
+    const truncated = trailingAverage(TODAY_ONLY, TODAY, {
+      days: 7,
+      basis: "calendar",
+      hasEarlierHistory: true,
+    });
+    expect(truncated.dayOneFallback).toBe(false);
+    expect(truncated.average).toBeNull();
+    // …and the same series without earlier history is still day one.
+    expect(
+      trailingAverage(TODAY_ONLY, TODAY, {
+        days: 7,
+        basis: "calendar",
+        hasEarlierHistory: false,
+      }).dayOneFallback
+    ).toBe(true);
+  });
+
   it("a FUTURE-dated first entry is not a day-one reading", () => {
     // An entry dated next week is not today's reading, and a trailing window never
     // reaches forward for one.

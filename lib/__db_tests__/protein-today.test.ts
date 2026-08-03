@@ -119,6 +119,73 @@ describe("getProteinToday (#974)", () => {
     expect(Math.round(t!.todayGrams)).toBe(140);
   });
 
+  // ── The trailing 7-day average (#1917) ────────────────────────────────────────
+  // The gather's job here is ASSEMBLY: per-day parts out of food_log, protein_log
+  // and metric_samples, handed to the pure computation. These pin the seam — the
+  // window's shape is pinned in lib/__tests__/protein-trailing.test.ts.
+
+  it("the trailing average covers seven days, unlike the week-to-date figure", () => {
+    const p = newProfile("trailing-seven-days");
+    const anchor = today(p);
+    seedWeight(p, anchor, 80);
+    // Every complete day in the window carries the same 100 g, so the trailing
+    // figure is 100 wherever the profile's week boundary happens to fall…
+    for (let ago = 1; ago <= 7; ago++) {
+      addProteinGramsCore(p, shiftDateStr(anchor, -ago), 100);
+    }
+    // …while today is deliberately far off, which is what the old week-to-date
+    // number carried into a line labelled "7-day average".
+    addProteinGramsCore(p, anchor, 300);
+
+    const t = getProteinToday(p);
+    expect(t!.trailing.grams).toBe(100);
+    expect(t!.trailing.dayOne).toBe(false);
+    // The week-to-date figure still exists, still includes today, and is still what
+    // the weekly adequacy verdict is reached on — a different question, kept.
+    expect(t!.weeklyAverageGrams).toBe(getProteinAdequacy(p)!.intake.grams);
+    expect(t!.weeklyAverageGrams).toBeGreaterThan(100);
+  });
+
+  it("assembles tracked, logged and estimated days through one composition", () => {
+    const p = newProfile("trailing-parts");
+    const anchor = today(p);
+    seedWeight(p, anchor, 80);
+    const d1 = shiftDateStr(anchor, -1);
+    const d2 = shiftDateStr(anchor, -2);
+    const d3 = shiftDateStr(anchor, -3);
+    seedTrackedProtein(p, d1, 120); // a measured total — overrides
+    logFood(p, d1, "poultry", 1); // …so this 35 g estimate does not count
+    addProteinGramsCore(p, d2, 60);
+    logFood(p, d2, "poultry", 1); // 35 estimated + 60 logged = 95
+    logFood(p, d3, "eggs", 1); // estimated only
+    addProteinGramsCore(p, anchor, 500); // today: never in the window
+
+    const eggs = 12; // one serving of eggs, per the food-group catalog
+    const t = getProteinToday(p);
+    expect(t!.trailing.grams).toBeCloseTo((120 + 95 + eggs) / 3, 6);
+  });
+
+  it("a day-one profile's trailing figure is marked, and the card declines it", () => {
+    const p = newProfile("trailing-day-one");
+    const anchor = today(p);
+    seedWeight(p, anchor, 80);
+    addProteinGramsCore(p, anchor, 84); // the first protein ever logged
+
+    const t = getProteinToday(p);
+    expect(t!.trailing).toEqual({ grams: 84, dayOne: true });
+  });
+
+  it("a stale log leaves the window empty rather than falling back to today", () => {
+    const p = newProfile("trailing-stale");
+    const anchor = today(p);
+    seedWeight(p, anchor, 80);
+    addProteinGramsCore(p, shiftDateStr(anchor, -20), 130);
+    addProteinGramsCore(p, anchor, 84);
+
+    const t = getProteinToday(p);
+    expect(t!.trailing).toEqual({ grams: null, dayOne: false });
+  });
+
   it("null without a bodyweight target", () => {
     const p = newProfile("today-noweight");
     const anchor = today(p);
