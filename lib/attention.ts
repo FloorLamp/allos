@@ -44,7 +44,7 @@ import {
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
 import { itemSuppressionPolicy } from "./upcoming-suppress";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   dataSectionHref,
   integrationDetailHref,
   type AppRoute,
@@ -130,7 +130,7 @@ export function buildFlaggedItem(
     reasons: concatReasons([flaggedReason(b.flag)], [...riskReasons]),
     // #283 bug 5: link the CANONICAL name (not the raw display name) — the view
     // page resolves ?name= as canonical. Shared with biomarkerItems via the helper.
-    href: biomarkerViewHref(b.canonicalName, b.name),
+    href: readingDetailHref(b.canonicalName, b.name),
     dueDate: null,
     dueText: flagLabel(b.flag),
     actionLabel: "Review result",

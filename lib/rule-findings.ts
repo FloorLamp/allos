@@ -143,7 +143,7 @@ import {
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   nutritionTabHref,
   MEDICATIONS_HREF,
   PRACTICES_HREF,
@@ -882,7 +882,7 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
     // direction is coaching-tier too (#449), never a push/hero.
     tone: "info",
     evidence: `${s.evidence} Source: ${s.source}.`,
-    actionHref: biomarkerViewHref(s.triggeredBy[0] ?? null),
+    actionHref: readingDetailHref(s.triggeredBy[0] ?? null),
     actionLabel: "View biomarker",
   };
 }

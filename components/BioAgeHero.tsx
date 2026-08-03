@@ -17,7 +17,7 @@ import {
   type BioAgeDirection,
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
-import { biomarkerViewHref } from "@/lib/hrefs";
+import { readingDetailHref } from "@/lib/hrefs";
 import PhoneFold from "./PhoneFold";
 
 // The biological-age hero (issue #209). Surfaces the derived PhenoAge index (#157)
@@ -38,7 +38,7 @@ import PhoneFold from "./PhoneFold";
 // renders exactly as before. The ESTIMATE CAVEAT never folds: it qualifies the number
 // itself, so it has to travel with it at every width.
 
-const BIOMARKER_VIEW = (name: string) => biomarkerViewHref(name);
+const BIOMARKER_VIEW = (name: string) => readingDetailHref(name);
 
 // Delta colour by direction — younger is the good direction.
 const DELTA_CLASS: Record<BioAgeDirection, string> = {
