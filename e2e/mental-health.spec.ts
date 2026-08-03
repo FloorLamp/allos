@@ -263,10 +263,13 @@ test.describe("correcting a recorded score (#1396)", () => {
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
 
-    await settledClick(
+    // "Remove" does not write: handleDelete awaits the app-wide confirm() first
+    // and only posts if the user says yes. The dialog is this click's whole effect.
+    await hydratedClick(
       page,
       page.getByTestId(`instrument-reading-delete-${id}`)
     );
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
     // Every row's own control is also labelled "Remove" — scope the confirm to the
     // dialog so the click can't land back on the list.
     await settledClick(

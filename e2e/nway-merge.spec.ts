@@ -121,7 +121,11 @@ test.describe("N-way activity merge (#1081)", () => {
       // Merging a materially-conflicting cluster opens the SHARED picker instead
       // of a silent keeper-wins fold. Distances disagree (5/8/12 km), durations
       // agree — so distance is the one surfaced conflict.
-      await settledClick(page, cluster.getByTestId("dup-cluster-merge"));
+      // NOT settledClick, and this is the one control in the failing set whose
+      // behaviour depends on its DATA: onMergeClick posts the merge outright for a
+      // clean cluster (the sibling test above), but a cluster with conflicts only
+      // opens the picker client-side. The write is the confirm below.
+      await hydratedClick(page, cluster.getByTestId("dup-cluster-merge"));
       const dialog = page.getByTestId("merge-conflict-dialog");
       await expect(dialog).toBeVisible();
       await expect(dialog.getByTestId("conflict-distance_km")).toBeVisible();
