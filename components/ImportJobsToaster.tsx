@@ -2,10 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getImportJobStates } from "@/app/(app)/data/actions";
 import { useToast } from "@/components/Toast";
 import { useChromeRefresh } from "@/components/DirtyFormRegistry";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
+import {
+  IMPORT_JOB_STATES_ENDPOINT,
+  isImportJobState,
+  observeStates,
+} from "@/lib/toaster-poll";
 
 // The import-job statuses that count as terminal (extraction no longer running).
 const isImportTerminal = (status: string) =>
@@ -13,15 +17,24 @@ const isImportTerminal = (status: string) =>
 
 // App-wide watcher for async paste/CSV import jobs. Polls their status (fast
 // while something is extracting, slow otherwise) and, when a job transitions out
-// of `processing`, (a) refreshes the current route so the /import list updates
+// of `processing`, (a) asks the chrome for a repaint so the /import list updates
 // and (b) shows a sticky toast — success with a "Review" link to /import, or the
 // error text. Lives in the root layout so the toast still fires if the user
 // navigated away from /import while the extraction ran. Uses the shared useToast
 // (unlike the
 // bespoke ExtractionToaster for medical documents).
 //
-// `profileId` is the session's active profile — the profile `getImportJobStates`
-// is scoped to. Like ExtractionToaster it's a dep of the poll effect and resets
+// OBSERVATION AND REPAINT ARE SEPARATE (#1878). The poll reads a ROUTE HANDLER,
+// not a Server Action: an action's response carries a freshly rendered page tree
+// that Next applies, which repainted the page under a half-typed record form
+// outside everything the dirty-form registry gates. Over `fetch` nothing can
+// repaint, so this loop keeps observing at full cadence — the toast below still
+// fires the instant the job finishes — and the only repaint is the
+// `chromeRefresh()` at the bottom, which defers while a form is dirty and drains
+// on release. See lib/toaster-poll.ts.
+//
+// `profileId` is the session's active profile — the profile /api/jobs/imports is
+// scoped to. Like ExtractionToaster it's a dep of the poll effect and resets
 // the seed on a switch (#296) so the new profile's pre-existing terminal jobs
 // aren't announced as freshly finished.
 export default function ImportJobsToaster({
@@ -66,17 +79,21 @@ export default function ImportJobsToaster({
         timer = setTimeout(poll, 6000);
         return;
       }
-      let jobs: Awaited<ReturnType<typeof getImportJobStates>>;
-      try {
-        jobs = await getImportJobStates();
-      } catch {
-        // Transient failure: do NOT touch prev.current. Seeding it with an empty
-        // set here would defeat the on-load guard (pre-existing ready/failed jobs
-        // would re-announce next tick). Retry soon rather than dropping cadence.
-        if (active) timer = setTimeout(poll, 2000);
+      const observed = await observeStates(
+        IMPORT_JOB_STATES_ENDPOINT,
+        isImportJobState
+      );
+      if (!active) return;
+      if (!observed.ok) {
+        // A refusal is NOT an empty result: do NOT touch prev.current. Seeding it
+        // with an empty set here would defeat the on-load guard (pre-existing
+        // ready/failed jobs would re-announce next tick). Retry soon rather than
+        // dropping cadence. Over `fetch` this covers the offline case, a 401 after
+        // the session lapsed, and a 200 whose body is not the envelope.
+        timer = setTimeout(poll, 2000);
         return;
       }
-      if (!active) return;
+      const jobs = observed.states;
 
       // Announce a job when it finishes. The `before === undefined` terminal case
       // (a job that started AND finished within a single poll interval — a real
@@ -109,9 +126,10 @@ export default function ImportJobsToaster({
             });
           }
         }
-        // Survives the #1473 sweep: this is poll-driven. getImportJobStates is a read
-        // action with no revalidatePath, and the work that changed the rows ran in a
-        // background job, not in an action this client awaited.
+        // Survives the #1473 sweep: this is poll-driven, and since #1878 it is the
+        // ONLY thing here that can repaint — the observation above went over a
+        // route handler, so no action response carried a tree. Deferred while a
+        // record form holds unsaved input; drained, coalesced, on release.
         if (changed) chromeRefresh();
       }
 

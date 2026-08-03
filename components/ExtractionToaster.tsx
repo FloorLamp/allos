@@ -2,10 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getExtractionStates } from "@/app/(app)/medical/document-actions";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
 import { useToast, useDismissToast } from "@/components/Toast";
 import { useChromeRefresh } from "@/components/DirtyFormRegistry";
+import {
+  EXTRACTION_STATES_ENDPOINT,
+  isExtractionState,
+  observeStates,
+} from "@/lib/toaster-poll";
 import { MEDICAL_UPLOAD_TOAST_KEY } from "@/lib/upload-gate";
 
 // The document statuses `getExtractionStates` reports as terminal (no longer
@@ -15,8 +19,8 @@ const isExtractionTerminal = (status: string) =>
 
 // App-wide HEADLESS watcher for background medical-document extraction (#1315).
 // Polls the extraction status (faster while something is processing), and when a
-// document transitions out of `processing` it (a) refreshes the current route so
-// the /medical table updates, and (b) raises a toast — now through the shared
+// document transitions out of `processing` it (a) asks the chrome to repaint the
+// current route so the /medical table updates, and (b) raises a toast — now through the shared
 // ToastProvider (useToast), not a bespoke second renderer. Lives in the root layout
 // so the toast still fires if the user navigated away from /medical.
 //
@@ -27,7 +31,16 @@ const isExtractionTerminal = (status: string) =>
 // place ("Uploaded — reading…" → "12 records ✓") instead of stacking. Subsequent
 // docs each get their own key (doc-<id>) as before.
 //
-// `profileId` is the session's active profile — the profile `getExtractionStates`
+// OBSERVATION AND REPAINT ARE SEPARATE (#1878). The poll reads a ROUTE HANDLER,
+// not a Server Action: an action's response carries a freshly rendered page tree
+// that Next applies, which repainted the page under a half-typed record form
+// outside everything the dirty-form registry gates. Over `fetch` nothing can
+// repaint, so this loop keeps observing at full cadence — the toast below still
+// fires the instant the extraction finishes — and the only repaint is the
+// `chromeRefresh()` at the bottom, which defers while a form is dirty and drains
+// on release. See lib/toaster-poll.ts.
+//
+// `profileId` is the session's active profile — the profile /api/jobs/extractions
 // is scoped to. It's a dep of the poll effect and resets the seed on a switch
 // (#296): the polled set is per-profile but this client component survives a
 // profile switch (router.refresh() re-renders server components, not the layout's
@@ -77,17 +90,21 @@ export default function ExtractionToaster({
         timer = setTimeout(poll, 6000);
         return;
       }
-      let docs: Awaited<ReturnType<typeof getExtractionStates>>;
-      try {
-        docs = await getExtractionStates();
-      } catch {
-        // Transient failure: do NOT touch prev.current. Replacing it with an empty
-        // map would make the next successful poll treat every document as new
-        // (before === undefined) and re-toast finished ones. Retry soon instead.
-        if (active) timer = setTimeout(poll, 2000);
+      const observed = await observeStates(
+        EXTRACTION_STATES_ENDPOINT,
+        isExtractionState
+      );
+      if (!active) return;
+      if (!observed.ok) {
+        // A refusal is NOT an empty result: do NOT touch prev.current. Replacing
+        // it with an empty map would make the next successful poll treat every
+        // document as new (before === undefined) and re-toast finished ones. Retry
+        // soon instead. Over `fetch` this covers the offline case, a 401 after the
+        // session lapsed, and a 200 whose body is not the envelope.
+        timer = setTimeout(poll, 2000);
         return;
       }
-      if (!active) return;
+      const docs = observed.states;
 
       // Diff against the seed. The `before === undefined` terminal case (a small
       // sync CCD/XDM/SHC/FHIR import that lands terminal within one poll, or a
@@ -124,9 +141,10 @@ export default function ExtractionToaster({
           }
         }
       }
-      // Survives the #1473 sweep: poll-driven, same as ImportJobsToaster —
-      // getExtractionStates is a read action and the extraction ran in the
-      // background, so no action response ever carried the new tree.
+      // Survives the #1473 sweep: poll-driven, same as ImportJobsToaster — and
+      // since #1878 it is the ONLY thing here that can repaint, because the
+      // observation above went over a route handler. Deferred while a record form
+      // holds unsaved input; drained, coalesced, on release.
       if (!seeded && changed) chromeRefresh();
 
       const processing = docs.some((d) => d.status === "processing");
