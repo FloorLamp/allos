@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick, settledCheck } from "./helpers";
+import { hydratedClick, settledClick, settledCheck } from "./helpers";
 import {
   E2E_LOGIN_NWAY,
   NWAY_PROFILE,
@@ -139,10 +139,13 @@ test.describe("N-way activity merge (#1081)", () => {
       ).toBeVisible();
 
       // Pick the NON-keeper Manual distance (5 km) and merge.
-      await settledClick(
-        page,
-        dialog.getByRole("radio", { name: "Use Distance from Manual entry" })
-      );
+      // The radio only writes MergeConflictDialog's local `choices`; the merge
+      // POST comes from the confirm below. aria-checked is this click's signal.
+      const manual = dialog.getByRole("radio", {
+        name: "Use Distance from Manual entry",
+      });
+      await hydratedClick(page, manual);
+      await expect(manual).toHaveAttribute("aria-checked", "true");
       await settledClick(page, dialog.getByTestId("merge-conflict-confirm"));
       await expect(cluster).toHaveCount(0);
 

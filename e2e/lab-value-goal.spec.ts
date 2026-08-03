@@ -1,6 +1,11 @@
 import type { Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openCombobox, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  openCombobox,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_LAB_GOAL,
@@ -118,8 +123,10 @@ test.describe("goals can target a lab value (#1853)", () => {
     });
     try {
       await page.goto("/training?tab=goals");
-      await settledClick(page, page.getByRole("button", { name: "New goal" }));
-      await settledClick(page, page.getByTestId("goal-kind-biomarker"));
+      // "New goal" opens the modal (setModal) and the kind pill is a state chip —
+      // neither posts. The combobox the form renders is the signal.
+      await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
+      await hydratedClick(page, page.getByTestId("goal-kind-biomarker"));
 
       const field = page.locator(
         'input[role="combobox"][aria-label="Lab or vital"]'
@@ -157,7 +164,7 @@ test.describe("goals can target a lab value (#1853)", () => {
         /Reference/
       );
 
-      await settledClick(page, page.getByTestId("goal-direction-below"));
+      await hydratedClick(page, page.getByTestId("goal-direction-below"));
       await settledFill(page, page.getByLabel(/Target value/), "6.5");
       await settledClick(
         page,
@@ -175,7 +182,7 @@ test.describe("goals can target a lab value (#1853)", () => {
       const createdCard = page
         .getByTestId("goal-card")
         .filter({ hasText: LAB_GOAL_OVERDUE });
-      await settledClick(
+      await hydratedClick(
         page,
         createdCard.getByTestId("overflow-menu-trigger")
       );

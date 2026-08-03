@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import {
   followLink,
+  hydratedClick,
   settledClick,
   settledFill,
   settledSelect,
@@ -105,7 +106,7 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
 
   test("recording an allergy against a visit through the form's picker surfaces the link", async () => {
     await page.goto("/records/problems/allergies");
-    await settledClick(page, page.getByTestId("add-allergy-panel-toggle"));
+    await hydratedClick(page, page.getByTestId("add-allergy-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add allergy" });
     await expect(dialog).toBeVisible();
 
