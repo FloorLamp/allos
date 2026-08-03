@@ -109,7 +109,6 @@ function dose(
 }
 
 const NONE: AdherenceSummary = {
-  streak: 0,
   pct: null,
   takenDays: 0,
   partialDays: 0,

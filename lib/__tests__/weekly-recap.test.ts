@@ -756,7 +756,7 @@ describe("intake delta line renders once, unprefixed (#1935/#1505)", () => {
     const msg = renderRecapMessage(recap, "Ada")!;
     expect(msg.body).toContain("• Missed: Glycine (2 days)");
     expect(msg.body).not.toContain("Changed:");
-    expect(msg.body.match(/Missed:/g)).toHaveLength(1);
+    expect(String(msg.body).match(/Missed:/g)).toHaveLength(1);
   });
 });
 

@@ -17,7 +17,7 @@
 //     (getFrequencyTargetProgress) — a floor reader would nudge toward MORE — and
 //     never surfaces on Upcoming or in the digest;
 //   • NO GAMIFICATION, structurally: neither scores nor drink logs create an
-//     activities row, so the milestone/streak machinery never sees this domain,
+//     activities row, so the milestone machinery never sees this domain,
 //     and the finding copy carries no streak/badge/milestone language.
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; dates anchored on today.
@@ -273,7 +273,7 @@ describe("cap semantics never leak into floor-semantics surfaces (#998)", () => 
 });
 
 describe("no gamification (#998) — structural exemption + copy guard", () => {
-  it("scores and drink logs create no activities row and no streak/milestone input", () => {
+  it("scores and drink logs create no activities row and no milestone input", () => {
     const p = newProfile("SU exempt");
     const td = today(p);
     recordInstrumentScore(p, { instrument: "AUDIT-C", date: td, total: 4 });
@@ -287,7 +287,7 @@ describe("no gamification (#998) — structural exemption + copy guard", () => {
 
     const input = gatherMilestoneInput(p);
     expect(input.totalWorkouts).toBe(0);
-    expect(input.streak).toBe(0);
+    expect(input.completedGoals).toEqual([]);
   });
 
   it("the over-target finding carries no streak/badge/milestone/celebration language", () => {
@@ -469,7 +469,7 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
 });
 
 describe("no gamification for the new substances (#1078) — structural exemption + copy guard", () => {
-  it("substance_log writes create no activities row and no streak/milestone input", () => {
+  it("substance_log writes create no activities row and no milestone input", () => {
     const p = newProfile("SU nic exempt");
     const td = today(p);
     for (let i = 0; i < 4; i++) logSubstanceUnitCore(p, "nicotine", td);
@@ -482,7 +482,7 @@ describe("no gamification for the new substances (#1078) — structural exemptio
 
     const input = gatherMilestoneInput(p);
     expect(input.totalWorkouts).toBe(0);
-    expect(input.streak).toBe(0);
+    expect(input.completedGoals).toEqual([]);
   });
 
   it("the per-substance finding copy carries no streak/badge/milestone/celebration language", () => {
