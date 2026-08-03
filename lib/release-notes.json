@@ -4,6 +4,20 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1950,
+          "kind": "feature",
+          "issues": [1933],
+          "title": "Correct a dose you logged wrong \u2014 supplements too, not just medications",
+          "body": "Backfilling a dose you forgot to tick, fixing the time or amount on one you logged wrong, and removing a mis-tap with an undo now work for supplements exactly as they do for medications, from the same \u22ef menu on the dose history. Scheduled medication doses became correctable too \u2014 previously only as-needed ones were. Stock counts follow along: removing a logged dose puts the unit back in the bottle, including a bottle shared across the household. Correcting a dose from days ago will never resurrect a missed-dose reminder for that day."
+        },
+        {
+          "pr": 1946,
+          "kind": "feature",
+          "issues": [1890],
+          "title": "The dashboard leads with the cards you can act on",
+          "body": "Latest vitals and Cycle phase now sit with the cards that offer you something to do, rather than among the read-only summaries \u2014 both carry a logging action once they have data, so they belong there. A dashboard you have already arranged yourself is untouched; this changes only the order you start from."
+        },
+        {
           "pr": 1943,
           "kind": "fix",
           "issues": [1909, 1917],
