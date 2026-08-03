@@ -113,7 +113,7 @@ Medications page surfaces a PRN med as a Today-panel administration row + the
 day's ledger on its detail page ("2 today · last 4:02pm") instead of a binary
 check-off pill; a SCHEDULED med keeps the tri-state `DoseStatusControl` (in the
 Today panel). Migration 041 backfills `given_at = taken_at` for every existing
-row, so scheduled adherence strips/streaks/escalation read bit-identically
+row, so scheduled adherence strips/percentages/escalation read bit-identically
 (pinned by the `administration-ledger` DB-tier regression fixture). The passport
 reads structured `kind='medication'` rows as its primary medication source, with
 `medical_records` `category='prescription'` still a fallback for un-modeled
