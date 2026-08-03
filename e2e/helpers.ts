@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -30,10 +35,16 @@ import { expect, type Locator, type Page } from "@playwright/test";
 //    tolerates the un-hydrated window by retrying.
 //
 // 3. Everything else — a pure client toggle, a value that settles in place, a
-//    toast that appears — needs NO special helper. Assert it with a plain
+//    toast that appears — needs NO settle on the network. Assert it with a plain
 //    auto-retrying `expect(locator).toBeVisible()` / `.toHaveText(...)`. Playwright
 //    retries the assertion for you; that IS the wait. Reaching for a helper here
 //    only hides which state you actually depend on.
+//        → hydratedClick(page, locator) when the CLICK ITSELF can be lost — a
+//          disclosure/chip/menu whose handler React may not have attached yet, and
+//          which a retry loop would toggle back. Then assert what it revealed.
+//    Do NOT reach for settledClick here. A client toggle posts nothing, so there is
+//    nothing to settle on; before #1952 it appeared to work only because it accepted
+//    a bystander's POST, which is the silent-green failure that issue is about.
 //
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
@@ -573,35 +584,96 @@ export async function settledCheckSave(
 // state (decision tree above). If a click fires an action AND navigates, this
 // still resolves on the action POST.
 //
-// ALSO NOT RELIABLE on a page with steady background action-POST traffic (the
-// dashboard's watchers/pollers): the wait can resolve on a bystander POST while
-// the mutation's own request is still in flight — and a follow-up `page.reload()`
-// then aborts it (the write is lost, not just late). There, prefer asserting a
-// SERVER-rendered marker that only the completed mutation can produce
-// (the wellbeing card's `mood-server-logged` marker is the precedent) — the
-// assertion's own retry is the settle.
+// THE WAIT IS CORRELATED WITH THE CLICK (#1952). It used to accept ANY same-origin
+// POST, which is not a contract at all: it cannot tell this click's action from a
+// bystander's, and the failure mode is SILENT — a spec pointed at a control that
+// posts NOTHING passes on somebody else's traffic, and only goes red when that
+// traffic disappears. That is exactly what happened: both completion toasters used
+// to observe through a read Server Action (a POST) every few seconds on every
+// authenticated page, ~22 specs were coasting on it, and moving that poll to a
+// `fetch` GET (#1949) turned all of them red at once. Two filters replace "any
+// POST":
+//
+//   1. The request must have STARTED AFTER the click. We collect `page.on("request")`
+//      from the instant before `locator.click()`, so a poll already in flight when
+//      the click landed can no longer satisfy the wait. That is the #1437
+//      false-settle (settle on a bystander, then `goto` aborts the real write).
+//   2. The request must target THIS PAGE'S ROUTE. Next posts a Server Action to the
+//      current document URL, so the action's pathname is the page's pathname; a
+//      route-handler POST (`/api/…`) is by construction NOT the click's action.
+//      Pass `opts.url` for the rare click that legitimately posts elsewhere.
+//
+// WHAT THIS DOES NOT GUARANTEE, said plainly: two Server Actions on the SAME route
+// are indistinguishable from outside the browser — same method, same URL, no
+// per-action marker Playwright exposes. So a background actor that posts an action
+// to the current route AFTER the click can still satisfy this wait. Nothing in the
+// app does that today (#1949 left the toasters on `fetch` GETs), and adding one
+// would be visible in `lib/__tests__/chrome-refresh-scan.test.ts`'s chrome-actor
+// list — but the guarantee is "an action POST to this route, caused no earlier than
+// this click", not "this click's action". Where that residue matters (a settled
+// click followed by a NAVIGATION), keep asserting the durable server-rendered
+// marker the completed mutation produces before navigating — the rule this module's
+// #1437 note already states, and the wellbeing card's `mood-server-logged`
+// precedent.
 export async function settledClick(
   page: Page,
   locator: Locator,
-  opts: { timeout?: number } = {}
+  opts: { timeout?: number; url?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 15_000;
-  const origin = new URL(page.url()).origin;
+  const here = new URL(page.url());
   await expect(locator).toBeVisible();
-  await Promise.all([
-    page.waitForResponse(
+
+  // Requests observed from the moment the click is dispatched. A WeakSet keyed on
+  // Playwright's own Request object is exact identity — no URL/timing heuristics —
+  // and `response.request()` returns that same object.
+  const causedByClick = new WeakSet<Request>();
+  let collecting = false;
+  const onRequest = (request: Request) => {
+    if (collecting) causedByClick.add(request);
+  };
+  page.on("request", onRequest);
+  try {
+    const settled = page.waitForResponse(
       (resp) => {
-        if (resp.request().method() !== "POST") return false;
+        const request = resp.request();
+        if (request.method() !== "POST") return false;
+        if (!causedByClick.has(request)) return false;
         try {
-          return new URL(resp.url()).origin === origin;
+          const target = new URL(resp.url());
+          if (target.origin !== here.origin) return false;
+          return opts.url
+            ? opts.url.test(resp.url())
+            : target.pathname === here.pathname;
         } catch {
           return false;
         }
       },
       { timeout }
-    ),
-    locator.click({ timeout }),
-  ]);
+    );
+    // Set INSIDE the same synchronous turn as the click: the wait above is already
+    // listening (a fast action cannot resolve in the gap), and the browser cannot
+    // have issued the click's request before the click.
+    collecting = true;
+    await Promise.all([settled, locator.click({ timeout })]);
+  } catch (err) {
+    // The old helper's timeout said only "waiting for event response", which reads
+    // as a slow server on a control that was never going to post. Name the real
+    // question instead — #1952's whole lesson is that this timeout usually means
+    // the call site is wrong, not the app.
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    if (wrapped.message.includes("waitForResponse")) {
+      wrapped.message +=
+        `\n\n[settledClick] no same-origin POST to ${here.pathname} started after ` +
+        `this click. If this control is a pure CLIENT toggle (a disclosure, a chip, ` +
+        `an overflow menu, a dialog opener) it never posts: use hydratedClick and ` +
+        `assert what it reveals. If it navigates, use followLink. If it posts ` +
+        `somewhere other than this route, pass { url }.`;
+    }
+    throw wrapped;
+  } finally {
+    page.off("request", onRequest);
+  }
 }
 
 // Fill a form field so its value durably lands in React STATE, not just the DOM —
