@@ -658,7 +658,11 @@ describe("bedtime supplements on the Sleep page", () => {
     });
   });
 
-  it("preserves resolved bedtime logs after retirement or pause without inventing a retimed slot", () => {
+  // A logged night survives every later change to the dose row — retirement,
+  // pause, or an edit after the fact (#1972). The one dose still excluded is the
+  // one whose CURRENT slot is no longer bedtime: that log belongs to some other
+  // part of the day, and nothing here claims otherwise.
+  it("preserves resolved bedtime logs after retirement, pause, or a later edit", () => {
     const historyProfileId = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('ChangedBedtime')").run()
         .lastInsertRowid
@@ -738,10 +742,147 @@ describe("bedtime supplements on the Sleep page", () => {
         (row) => row.date === wakeDay
       )?.bedtimeSupplements
     ).toMatchObject({
-      due: 2,
-      taken: 1,
+      due: 3,
+      taken: 2,
       skipped: 1,
       state: "partial",
     });
+  });
+
+  // Issue #1972. The reported shape: a bedtime dose is backfilled for a past
+  // night and the dose row is edited afterwards (or edited first and backfilled
+  // after). The log is a FACT about that night; nothing about how the dose row
+  // looks today may retract it. The unlogged night below is the judgment side and
+  // stays blank — that half is unchanged by this fix.
+  it("keeps a backfilled bedtime dose that was edited after the night (#1972)", () => {
+    const profile = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('BackfilledBedtime')")
+        .run().lastInsertRowid
+    );
+    setTimezone(profile, "UTC");
+    const wakeDay = today(profile);
+    const sleepDate = shiftDateStr(wakeDay, -1);
+    const earlyWakeDay = shiftDateStr(wakeDay, -4);
+    const earlySleepDate = shiftDateStr(earlyWakeDay, -1);
+    upsertMetricSamples(
+      profile,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          420,
+          `${sleepDate}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          earlyWakeDay,
+          420,
+          `${earlySleepDate}T23:00:00Z`,
+          `${earlyWakeDay}T06:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, created_at)
+           VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'should', ?)`
+        )
+        .run(profile, `${shiftDateStr(sleepDate, -1)} 00:00:00`).lastInsertRowid
+    );
+    // Created the day before the night, then edited the morning AFTER it.
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, created_at, updated_at)
+           VALUES (?, '1 cap', 'Before sleep', 'any', 0, ?, ?)`
+        )
+        .run(
+          itemId,
+          `${shiftDateStr(sleepDate, -1)} 00:00:00`,
+          `${wakeDay} 09:30:00`
+        ).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, ?, ?, 'taken')`
+    ).run(doseId, itemId, sleepDate);
+
+    const history = getSleepMoodData(profile, 7).history;
+    expect(
+      history.find((row) => row.date === wakeDay)?.bedtimeSupplements
+    ).toMatchObject({
+      sleepDate,
+      due: 1,
+      taken: 1,
+      skipped: 0,
+      state: "taken",
+    });
+    // A night before the dose existed carries no log, so the schedule still
+    // decides — and it says the dose was not applicable yet.
+    expect(
+      history.find((row) => row.date === earlyWakeDay)?.bedtimeSupplements
+    ).toBeNull();
+  });
+
+  it("keeps a bedtime log whose dose was last edited before the night (#1972)", () => {
+    const profile = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('EditedBeforeNight')")
+        .run().lastInsertRowid
+    );
+    setTimezone(profile, "UTC");
+    const wakeDay = today(profile);
+    const sleepDate = shiftDateStr(wakeDay, -1);
+    upsertMetricSamples(
+      profile,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          420,
+          `${sleepDate}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, created_at)
+           VALUES (?, 'Glycine', 1, 'supplement', 'daily', 'should', ?)`
+        )
+        .run(profile, `${shiftDateStr(sleepDate, -7)} 00:00:00`).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, created_at, updated_at)
+           VALUES (?, '1 cap', 'Before sleep', 'any', 0, ?, ?)`
+        )
+        .run(
+          itemId,
+          `${shiftDateStr(sleepDate, -7)} 00:00:00`,
+          `${shiftDateStr(sleepDate, -2)} 08:00:00`
+        ).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, ?, ?, 'taken')`
+    ).run(doseId, itemId, sleepDate);
+
+    expect(
+      getSleepMoodData(profile, 7).history.find((row) => row.date === wakeDay)
+        ?.bedtimeSupplements
+    ).toMatchObject({ sleepDate, due: 1, taken: 1, state: "taken" });
   });
 });
