@@ -124,6 +124,7 @@ describe("trailingAverage — the declared option surface (#1909)", () => {
       from: null,
       to: null,
       average: null,
+      dayOneFallback: false,
     });
     // A calendar window whose span holds nothing, though the series has history.
     const OLD_ONLY = GAPPY.filter((p) => p.date < "2026-07-10");
@@ -178,6 +179,156 @@ describe("trailingAverage — the declared option surface (#1909)", () => {
 // ── The #221 pin ────────────────────────────────────────────────────────────────
 // Both surfaces' numbers must BE the helper's output. A future third caller that
 // grows its own average shows up here as a disagreement, not as a support ticket.
+// (See the day-one matrix above for the fallback every caller inherits.)
+describe("the day-one fallback fires on no history, never on a gap (#1909)", () => {
+  const TODAY_ONLY = series([[TODAY, 76.4]]);
+
+  it("a FIRST-EVER reading falls back to today, and says so", () => {
+    for (const basis of ["calendar", "data-bearing"] as const) {
+      const w = trailingAverage(TODAY_ONLY, TODAY, { days: 7, basis });
+      expect(w.dayOneFallback, basis).toBe(true);
+      expect(w.average, basis).toBe(76.4);
+      expect(w.count, basis).toBe(1);
+      expect(w.from, basis).toBe(TODAY);
+      expect(w.to, basis).toBe(TODAY);
+    }
+  });
+
+  it("readings that exist but all sit OUTSIDE the window stay EMPTY", () => {
+    // Three weeks of silence after a run of readings: the profile HAS complete-day
+    // history, so its 7-day calendar window is legitimately empty. Falling back
+    // here would print today's reading as though it were a 7-day average — the
+    // defect #1909 removed.
+    const STALE = series([
+      ["2026-07-01", 80],
+      ["2026-07-02", 81],
+      [TODAY, 76.4],
+    ]);
+    const w = trailingAverage(STALE, TODAY, { days: 7, basis: "calendar" });
+    expect(w.dayOneFallback).toBe(false);
+    expect(w.average).toBeNull();
+    expect(w.count).toBe(0);
+  });
+
+  it("a single COMPLETE day of history is history — no fallback", () => {
+    // The day after day one. Yesterday's reading is the whole sample, today's is
+    // excluded again, and the number goes back to meaning what the label says.
+    const w = trailingAverage(
+      series([
+        ["2026-07-22", 80],
+        [TODAY, 76.4],
+      ]),
+      TODAY,
+      { days: 7, basis: "calendar" }
+    );
+    expect(w.dayOneFallback).toBe(false);
+    expect(w.average).toBe(80);
+    expect(w.to).toBe("2026-07-22");
+  });
+
+  it("ordinary history is untouched by the fallback", () => {
+    const w = trailingAverage(
+      series([
+        ["2026-07-20", 4000],
+        ["2026-07-21", 5000],
+        ["2026-07-22", 6000],
+        [TODAY, 100],
+      ]),
+      TODAY,
+      { days: 7, basis: "calendar" }
+    );
+    expect(w.dayOneFallback).toBe(false);
+    expect(w.average).toBe(5000);
+  });
+
+  it("no reading today and no history at all is still EMPTY, not zero", () => {
+    expect(
+      trailingAverage([], TODAY, { days: 7, basis: "data-bearing" })
+    ).toMatchObject({ average: null, dayOneFallback: false });
+  });
+
+  it("never fires when the caller asked for today in the window", () => {
+    // includeToday already puts today in the sample, so there is nothing to fall
+    // back to — and a caller that opted in must not be told its number is one.
+    const w = trailingAverage(TODAY_ONLY, TODAY, {
+      days: 7,
+      basis: "calendar",
+      includeToday: true,
+    });
+    expect(w.dayOneFallback).toBe(false);
+    expect(w.average).toBe(76.4);
+  });
+
+  it("a TRUNCATED series says so rather than looking like day one", () => {
+    // A gather that reads only the window's days hands over exactly what a
+    // first-ever reading looks like: nothing complete, plus today. The caller
+    // declares the truncation, and the day-one rule still decides — here, against.
+    const truncated = trailingAverage(TODAY_ONLY, TODAY, {
+      days: 7,
+      basis: "calendar",
+      hasEarlierHistory: true,
+    });
+    expect(truncated.dayOneFallback).toBe(false);
+    expect(truncated.average).toBeNull();
+    // …and the same series without earlier history is still day one.
+    expect(
+      trailingAverage(TODAY_ONLY, TODAY, {
+        days: 7,
+        basis: "calendar",
+        hasEarlierHistory: false,
+      }).dayOneFallback
+    ).toBe(true);
+  });
+
+  it("a FUTURE-dated first entry is not a day-one reading", () => {
+    // An entry dated next week is not today's reading, and a trailing window never
+    // reaches forward for one.
+    const w = trailingAverage(series([["2026-08-01", 76.4]]), TODAY, {
+      days: 7,
+      basis: "calendar",
+    });
+    expect(w.dayOneFallback).toBe(false);
+    expect(w.average).toBeNull();
+  });
+
+  // ── What each consumer DOES with it ──────────────────────────────────────────
+  it("the metric detail card shows the reading, marked as today's", () => {
+    const stats = bodyMetricPeriodStats(TODAY_ONLY, TODAY, 1);
+    // Every window holds the same one reading, so they collapse to one stat.
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({
+      dayOne: true,
+      count: 1,
+      avg: 76.4,
+      latest: 76.4,
+      from: TODAY,
+      to: TODAY,
+    });
+  });
+
+  it("the Steps card DECLINES it — today cannot be its own baseline", () => {
+    const summary = summarizeStepsToday(series([[TODAY, 8432]]), TODAY)!;
+    expect(summary.today).toBe(8432);
+    // No baseline, so no delta and no direction: the card compares today against
+    // PRIOR days, and there are none.
+    expect(summary.average7).toBeNull();
+    expect(summary.deltaPct).toBeNull();
+    expect(summary.direction).toBeNull();
+  });
+
+  it("both consumers return to normal the moment a day completes", () => {
+    const withYesterday = series([
+      ["2026-07-22", 9000],
+      [TODAY, 8432],
+    ]);
+    expect(summarizeStepsToday(withYesterday, TODAY)!.average7).toBe(9000);
+    expect(bodyMetricPeriodStats(withYesterday, TODAY, 0)[0]).toMatchObject({
+      dayOne: false,
+      avg: 9000,
+    });
+  });
+});
+
 describe("both '7-day average' surfaces delegate to the one helper (#221/#1909)", () => {
   const POINTS = series([
     ["2026-07-14", 6200],
@@ -267,15 +418,41 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
     expect(stats.map((s) => s.latest)).toEqual(stats.map(() => 4000));
   });
 
-  it("summarises nothing until a day is complete", () => {
-    // A first-ever reading, logged today: there is no complete day to average, and
-    // the card says so instead of averaging a day that is still running.
+  it("shows a first-ever reading as TODAY's, not as an average", () => {
+    // A first-ever reading, logged today. There is still no complete day to
+    // average — but the card no longer reads "No readings" all day (#1909's
+    // follow-up ruling): it shows the reading and `dayOne` tells the surface to
+    // label it "Today's reading" rather than an average of finished days.
     const stats = bodyMetricPeriodStats(
       [{ date: TODAY, value: 4000 }],
       TODAY,
       0
     );
     expect(stats).toHaveLength(1);
-    expect(stats[0]).toMatchObject({ count: 0, avg: null, latest: null });
+    expect(stats[0]).toMatchObject({
+      dayOne: true,
+      count: 1,
+      avg: 4000,
+      latest: 4000,
+    });
+  });
+
+  it("a stale series still summarises nothing in its 7-day window", () => {
+    // History exists but stopped three weeks ago; today carries a fresh reading.
+    // The 7d window is honestly empty — the day-one fallback is for a first
+    // reading, never for a gap — while 30d/90d still summarise the old run.
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-06-30", value: 9000 },
+        { date: "2026-07-01", value: 11000 },
+        { date: TODAY, value: 4000 },
+      ],
+      TODAY,
+      0
+    );
+    const sevenDay = stats.find((s) => s.windows.includes(7))!;
+    expect(sevenDay).toMatchObject({ count: 0, avg: null, dayOne: false });
+    const wider = stats.find((s) => s.windows.includes(30))!;
+    expect(wider).toMatchObject({ count: 2, avg: 10000, dayOne: false });
   });
 });

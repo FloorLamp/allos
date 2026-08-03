@@ -731,6 +731,17 @@ different questions, so they no longer wear the same name. Both compute through
 one shared helper whose window basis and today-inclusion are declared per
 caller.
 
+**Day one is the one exception, and it says so.** On the day of a first-ever
+reading there is no complete day to average, and the Rolling summary used to read
+"No readings" all day — exactly when someone is checking whether their entry
+landed. The shared helper now falls back to **today's reading** when a profile has
+**no complete-day history at all**, and the card labels the figure "Today's
+reading" rather than presenting it as an average. A gap is not day one: a profile
+with readings from three weeks ago has history, so its 7-day window stays
+honestly empty rather than showing today's number under an average's label. The
+Steps-today card declines the fallback — its question is today versus prior days,
+and today cannot be its own baseline.
+
 ### The Overview surface: starred grid and body census
 
 The starred grid answers two questions: **what you saved** and **what changed**.
@@ -1012,11 +1023,18 @@ first-class **food-habit target** — a `food_group` scope on the same
 the same weekly serving rollup (one question, one computation) and it can be
 adopted by a **Protocol** as an intervention. A behind-target habit surfaces as
 a calm, dismissible **coaching** observation (never a notification). A **protein
-gauge** draws today's intake and the weekly average against a goal-scaled g/kg
-band (lean mass preferred when it's tracked); the goal behind that band is yours
+gauge** draws today's intake and **this week's** daily average against a
+goal-scaled g/kg band (lean mass preferred when it's tracked); the goal behind
+that band is yours
 to set — **Settings → Nutrition → Protein goal** (RDA baseline / Active / Muscle
 gain / Cut), an informational range rather than a prescription, seeded to Active
-when onboarding's fitness path is chosen. This
+when onboarding's fitness path is chosen. **Two protein averages, two labels.**
+The gauge's marker and the adequacy verdict are **week-to-date** — that is the
+question "am I meeting my target this week?" is asked over, and the surfaces say
+"this week". The dashboard's Nutrition card says "7-day average" and now shows
+one: a trailing seven **calendar** days of complete days, through the same shared
+helper the other trailing averages use. Days without a log stay unknown rather
+than counting as zero. This
 granularity is where dietary evidence actually lives ("2 servings of fatty fish
 a week") and is sufficient for the biomarker→food and habit-target features;
 full macro tracking stays possible later as an additive tier. Informational, not

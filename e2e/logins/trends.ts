@@ -114,6 +114,35 @@ export const TRENDS_RANK_PLAIN_PROFILE = "Trends Rank Plain (e2e)";
 export const E2E_LOGIN_TRENDS_PIN = "e2e_trends_pin";
 export const TRENDS_PIN_PROFILE = "Trends Pin (e2e)";
 
+// ── Day one, and what a "7-day average" covers (issues #1909 / #1917) ────────
+// A dedicated WRITE-granted member whose profile is seeded with NO readings at
+// all, because the state under test is the ABSENCE of history: on the day of a
+// first-ever weigh-in the Rolling summary has no complete day to average, and it
+// must show that reading labelled as today's rather than "No readings".
+//
+// Dedicated ON PURPOSE (#868): "this profile has never recorded this metric" is a
+// state no shared fixture can be in for long — one neighbour's weigh-in destroys
+// it — and the spec deliberately drives the profile THROUGH the states either
+// side of day one (a stale reading, then a full week), so it owns every
+// body_metrics / protein_log row on it and re-seeds them at test start.
+//
+// The same profile carries the nutrition half: every COMPLETE day in the trailing
+// window logs the same protein, so the dashboard card's "7-day average" is one
+// exact number whatever weekday the frozen clock lands on — while today logs a
+// deliberately different one, which is what the old week-to-date figure carried
+// into a line labelled "7-day average".
+export const E2E_LOGIN_DAY_ONE = "e2e_day_one";
+export const DAY_ONE_PROFILE = "Day One (e2e)";
+export const DAY_ONE_WEIGHT_KG = 76.4;
+// A weigh-in far enough back that the 7-day window cannot reach it (the "a gap is
+// not day one" case), while 30d and 90d still summarise it.
+export const DAY_ONE_STALE_DAYS_AGO = 20;
+export const DAY_ONE_STALE_WEIGHT_KG = 81.2;
+// Protein grams: the same figure on every complete day in the window, and a very
+// different one today.
+export const DAY_ONE_PROTEIN_COMPLETE_DAY = 100;
+export const DAY_ONE_PROTEIN_TODAY = 300;
+
 // ── Relevance-ranked biomarker pickers (issue #1675) ─────────────────────────
 // A dedicated WRITE-granted member whose profile owns exactly the facts the rank
 // reads, so "the markers that matter lead" is observable rather than guessed:

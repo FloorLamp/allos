@@ -47,10 +47,14 @@ import { bodyweightAsOf } from "../bodyweight";
 import {
   proteinIntake,
   proteinTarget,
+  proteinTrailingAverage,
+  proteinTrailingWindowStart,
   assessProteinAdequacy,
   estimatedProteinGrams,
   type ProteinAdequacy,
+  type ProteinDayParts,
   type ProteinToday,
+  type ProteinTrailing,
 } from "../protein";
 import {
   fiberIntake,
@@ -635,6 +639,83 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   return assessProteinAdequacy(intake, target);
 }
 
+// The TRAILING 7-day protein average (issue #1917) — the number a card labelled
+// "7-day average" shows, as opposed to getProteinAdequacy's week-to-date figure
+// above (which still answers "am I meeting my target this week?" for the adequacy
+// card, its coaching finding, and the Food-tab gauge's marker).
+//
+// This gather only ASSEMBLES: it reads each day's three protein parts from the same
+// profile-scoped sources the adequacy gather uses, and hands them to the pure
+// `proteinTrailingAverage`, which composes each day through `proteinIntake` and
+// takes the window through the ONE shared `trailingAverage` helper. No window
+// arithmetic and no mean live here — that is the whole point of #1909's boundary.
+function getProteinTrailing(
+  profileId: number,
+  todayStr: string
+): ProteinTrailing {
+  const since = proteinTrailingWindowStart(todayStr);
+
+  const estimatedByDate = new Map<
+    string,
+    { slug: string; servings: number }[]
+  >();
+  for (const e of getFoodLogEntries(profileId, since)) {
+    const list = estimatedByDate.get(e.date);
+    const serving = { slug: e.group_key, servings: e.servings };
+    if (list) list.push(serving);
+    else estimatedByDate.set(e.date, [serving]);
+  }
+
+  const loggedByDate = new Map<string, number>();
+  for (const r of getProteinLogEntries(profileId, since)) {
+    loggedByDate.set(r.date, (loggedByDate.get(r.date) ?? 0) + r.grams);
+  }
+
+  const trackedByDate = new Map<string, number>();
+  for (const r of getMetricDailyTotals(profileId, "protein_g")) {
+    if (r.date >= since) trackedByDate.set(r.date, r.value);
+  }
+
+  const dates = new Set([
+    ...estimatedByDate.keys(),
+    ...loggedByDate.keys(),
+    ...trackedByDate.keys(),
+  ]);
+  const days: ProteinDayParts[] = [...dates].map((date) => ({
+    date,
+    dailyTracked: trackedByDate.get(date) ?? null,
+    dailyLogged: loggedByDate.get(date) ?? null,
+    dailyEstimated: estimatedProteinGrams(estimatedByDate.get(date) ?? []),
+  }));
+  // The reads above stop at the window, so the series alone cannot tell a FIRST-ever
+  // log from a stale one: both arrive as "nothing complete". One existence check per
+  // source answers it, and the day-one decision stays the shared helper's.
+  return proteinTrailingAverage(days, todayStr, {
+    hasEarlierHistory: hasProteinSignalBefore(profileId, since),
+  });
+}
+
+// Whether the profile logged, tracked or estimated any protein BEFORE `date` — the
+// truncation fact the trailing window needs, as three indexed existence probes
+// rather than a second read of the whole history. Profile-scoped.
+function hasProteinSignalBefore(profileId: number, date: string): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS hit FROM food_log
+         WHERE profile_id = ? AND date < ? AND servings > 0
+       UNION ALL
+       SELECT 1 AS hit FROM protein_log
+         WHERE profile_id = ? AND date < ? AND grams > 0
+       UNION ALL
+       SELECT 1 AS hit FROM metric_samples
+         WHERE profile_id = ? AND metric = 'protein_g' AND date < ?
+       LIMIT 1`
+    )
+    .get(profileId, date, profileId, date, profileId, date) as
+    { hit: number } | undefined;
+  return row != null;
+}
+
 // The protein target as of a calendar day. The recent-day picker needs historical
 // estimates to use weight available on that day rather than leaking a later weigh-in
 // backward. Lean mass remains the profile's latest preferred target basis, matching the
@@ -684,6 +765,9 @@ export function getProteinOnDate(
     todayGrams: dayGrams,
     target,
     weeklyAverageGrams: null,
+    // Null for the same reason the weekly marker is: a HISTORICAL day must not be
+    // mixed with a window anchored on today. getProteinToday fills both in.
+    trailing: { grams: null, dayOne: false },
   };
 }
 
@@ -698,11 +782,16 @@ export function getProteinToday(profileId: number): ProteinToday | null {
   const onDate = getProteinOnDate(profileId, t);
 
   // Weekly marker — EXACTLY the adequacy computation's daily-average figure (#221), read
-  // from the SAME gather so the two can never disagree.
+  // from the SAME gather so the two can never disagree. WEEK-TO-DATE: it is the number
+  // the weekly adequacy verdict is reached on, and the gauge's marker labels it as such.
   const weeklyAverageGrams =
     getProteinAdequacy(profileId)?.intake.grams ?? null;
 
-  if (onDate) return { ...onDate, weeklyAverageGrams };
+  // …and the TRAILING 7-day average (#1917), a different question with its own
+  // computation, for the surfaces that say "7-day average".
+  const trailing = getProteinTrailing(profileId, t);
+
+  if (onDate) return { ...onDate, weeklyAverageGrams, trailing };
 
   // Suppress when there's no protein data at all (a bodyweight-only profile that has
   // never logged) — never a bare "0 g" nudge or empty gauge.
@@ -715,6 +804,7 @@ export function getProteinToday(profileId: number): ProteinToday | null {
     todayGrams: 0,
     target,
     weeklyAverageGrams,
+    trailing,
   };
 }
 
