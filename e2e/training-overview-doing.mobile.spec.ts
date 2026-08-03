@@ -66,6 +66,15 @@ test("Overview leads with today's session, then the week, then the findings roll
 
   // Muscle coverage follows the week (and the findings card, when one is firing).
   expect(weekTop).toBeLessThan(await topOf(page, "muscle-coverage"));
+
+  // #1937: the week tile is Sessions + Days. The "Streak" tile that used to sit
+  // beside them is gone — it restated the active-day count next to it, and did so
+  // less honestly (it counted ACTIVE days with a rest day of tolerance, so a
+  // Mon/Wed/Fri rhythm read as a five-day run across nine days).
+  const week = page.getByTestId("training-week");
+  await expect(week.getByText("Sessions", { exact: true })).toBeVisible();
+  await expect(week.getByText("Days", { exact: true })).toBeVisible();
+  await expect(week.getByText("Streak", { exact: true })).toHaveCount(0);
 });
 
 test("a later deep-linked Training tab is brought into the visible tab row", async ({

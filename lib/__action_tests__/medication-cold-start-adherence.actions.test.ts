@@ -77,7 +77,6 @@ describe("medication cold-start adherence (#1442)", () => {
     // today is still pending. The card hides the line instead of printing a number.
     expect(a.applicableDays).toBe(0);
     expect(a.pct).toBeNull();
-    expect(a.streak).toBe(0);
     expect(a.skippedDays).toBe(0);
   });
 
@@ -128,8 +127,8 @@ describe("medication cold-start adherence (#1442)", () => {
 
     const a = cardAdherence(profile.id, "Metformin (test)");
     expect(a.applicableDays).toBe(2);
+    expect(a.takenDays).toBe(2);
     expect(a.pct).toBe(100);
-    expect(a.streak).toBe(2);
   });
 
   it("keeps a backfilled history visible when the row is newer than its logs", async () => {
@@ -162,7 +161,7 @@ describe("medication cold-start adherence (#1442)", () => {
 
     const a = cardAdherence(profile.id, "Levothyroxine (test)");
     expect(a.applicableDays).toBe(5);
+    expect(a.takenDays).toBe(5);
     expect(a.pct).toBe(100);
-    expect(a.streak).toBe(5);
   });
 });

@@ -16,13 +16,25 @@ function recap(over: Partial<WeeklyRecap> = {}): WeeklyRecap {
     end: "2026-07-09",
     headline: "4 workouts, 2 PRs",
     lines: [
-      { key: "workouts", label: "Workouts", value: "4", delta: "3 last week" },
-      { key: "prs", label: "PRs", value: "2", delta: "Bench press, Squat" },
+      {
+        key: "workouts",
+        label: "Workouts",
+        value: "4",
+        comparison: { kind: "prior", text: "3 last week" },
+      },
+      {
+        key: "prs",
+        label: "PRs",
+        value: "2",
+        comparison: { kind: "none" },
+        note: "Bench press, Squat",
+      },
       {
         key: "adherence",
         label: "Adherence",
         value: "90%",
-        delta: "9/10 doses",
+        comparison: { kind: "none" },
+        note: "9/10 doses",
       },
     ],
     isEmpty: false,

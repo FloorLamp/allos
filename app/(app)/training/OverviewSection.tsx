@@ -423,7 +423,7 @@ export default async function OverviewSection() {
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             This week
           </h3>
-          <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-center">
             <div>
               <dt className="section-label">Sessions</dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
@@ -434,12 +434,6 @@ export default async function OverviewSection() {
               <dt className="section-label">Days</dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                 {summary.activeDays}
-              </dd>
-            </div>
-            <div>
-              <dt className="section-label">Streak</dt>
-              <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                {summary.streak}
               </dd>
             </div>
           </dl>

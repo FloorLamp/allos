@@ -90,7 +90,7 @@ describe("training reads", () => {
   it("getJournalWeekSummary + getDashboardStats aggregate the fixture", () => {
     const wk = getJournalWeekSummary(fx.profileId);
     expect(wk.sessions).toBe(2);
-    expect(wk.streak).toBeGreaterThanOrEqual(1); // trained today
+    expect(wk.activeDays).toBeGreaterThanOrEqual(1); // trained today
     const dash = getDashboardStats(fx.profileId);
     expect(dash.activityCount).toBe(2);
     expect(dash.activeGoals).toBe(1);

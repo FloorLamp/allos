@@ -4,7 +4,7 @@
 // the pending ones) is what lets a reminder reflect what's been taken this
 // session; once every dose is taken the same renderer produces a completion
 // summary that lists what was taken, instead of a bare "all done". Each line
-// carries its take-with (food) condition plus a streak + adherence percentage.
+// carries its take-with (food) condition plus an adherence percentage.
 
 import type { AdherenceSummary } from "../supplement-adherence";
 import {
@@ -130,7 +130,7 @@ export function intakeItemNoun(kinds: Iterable<SupplementKind>): string {
 
 // A dose due in a window, paired with its supplement, whether it's already been
 // taken or deliberately skipped (#232) today, and its adherence over the recent
-// window (streak + percentage). A dose is "pending" only when neither taken nor
+// window (the adherence percentage). A dose is "pending" only when neither taken nor
 // skipped — both resolutions clear it from the reminder.
 export interface WindowDose {
   dose: SupplementDose;
@@ -164,11 +164,12 @@ function foodNote(dose: SupplementDose): string {
     : FOOD_TIMING_LABELS[dose.food_timing].toLowerCase();
 }
 
-// Streak (once it's worth celebrating) and adherence percentage, matching the
-// supplements page's thresholds.
+// The adherence percentage, matching what the supplements page shows. The "🔥 Nd"
+// streak that led this note is gone (#1936) — same run-with-a-cliff the page dropped,
+// and a reminder is the last place to carry one: the message that arrives when you
+// have NOT yet taken today's dose should not also tell you what you stand to lose.
 function adherenceNotes(a: AdherenceSummary): string[] {
   const notes: string[] = [];
-  if (a.streak >= 2) notes.push(`🔥 ${a.streak}d`);
   if (a.pct !== null) notes.push(`${a.pct}%`);
   return notes;
 }
@@ -176,7 +177,7 @@ function adherenceNotes(a: AdherenceSummary): string[] {
 // One body line: ✅ once taken, ⏭ once deliberately skipped (#232), otherwise the
 // priority marker (🔴 mandatory, • everything else), then the amount and a
 // "·"-separated tail of the take-with condition (pending only — it's guidance for
-// taking) and streak/adherence.
+// taking) and the adherence percentage.
 function doseLine(
   e: WindowDose,
   showFood: boolean,
@@ -231,7 +232,7 @@ function doseLine(
 // tap, and its take-with condition shown) are listed first and already-taken
 // ones after, so the message reflects what's been taken this session. When
 // nothing is left pending the message becomes a completion summary — the title
-// is marked done, the body lists every dose taken with its streak + adherence,
+// is marked done, the body lists every dose taken with its adherence percentage,
 // and there are no buttons.
 export function renderWindowMessage(
   profileId: number,

@@ -618,9 +618,11 @@ export function restReasons(
   }
 
   // Overtraining — consecutive LOADING days, or (mutually exclusive) a heavy trailing
-  // window of them. This is NOT the user-facing "streak" (#1398: that's activityStreak,
-  // rest-tolerant, over activity dates) — a different question with its own label
-  // ("trained N days in a row"), so it keeps the strict count over hard-session dates.
+  // window of them. THE LAST REMAINING CONSECUTIVE-DAY COUNT IN THE APP: #1935 through
+  // #1939 retired every user-facing streak, and this survives because it points the
+  // other way — it exists to say "trained N days in a row, take a rest day", not to
+  // hand the user a run to keep. Its own label, its own question, the strict count over
+  // hard-session dates. Pinned by lib/__tests__/streak-scope.test.ts.
   // currentStreak counts the consecutive-day run; both triggers key on
   // loadDates (hard sessions) so a logged easy recovery day breaks the streak instead
   // of extending it (#754), making the nudge's "a rest or light day" advice actually

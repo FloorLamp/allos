@@ -909,6 +909,45 @@ The right question when adding a domain is therefore not "what priority band doe
 this get" but "**did the user promise anything?**" A no makes obligation
 inapplicable, and the domain's quiet state is simply "we still record it".
 
+## 3b. Runs are not a reportable shape (#1935/#1936/#1937/#1939)
+
+An owner ruling that belongs beside the obligation table, because it settles what
+the system may COUNT rather than what it may send. A figure that measures an
+unbroken RUN — consecutive days active, consecutive days with every due dose
+taken — is not reported to the user, on any surface, in any domain.
+
+The objection is not that runs are unmotivating. It is that a run has a **cliff
+where a rate degrades gracefully**, and the cliff lands on exactly the behaviours
+this app exists to accommodate: a deload week, a rest-day recommendation, an
+illness episode that pauses schedules, a travel week, a deliberate skip (#232).
+The app cannot recommend rest on one side of a screen and print "you broke your
+run" on the other. A run also measures continuity of APP-LOGGED behaviour rather
+than health, which fails the same test the coverage rule applies elsewhere.
+
+What was retired, and it was the whole family at once: the weekly-recap streak
+line (#1935), the per-supplement 🔥 chip and its Telegram note (#1936), the
+Training/Journal activity streak on four surfaces (#1937), and the `streak:` /
+`adherence:` milestones — mint AND existing rows, via migration 148 (#1939).
+
+What survives, and why the line falls there:
+
+- **Rates and totals.** Adherence %, active days, workouts logged. A missed day
+  NUDGES these; it cannot zero them.
+- **Milestones that cannot be broken.** `workouts:` (gaps do not undo a total)
+  and `goal:` (a user-declared intent met). Push stays on for both: they fire a
+  handful of times a year, and a rare positive send does not compete with the
+  safety tier.
+- **Runs the system reads but never shows as an achievement.** The coaching
+  overtraining detector counts consecutive hard-session days to say "a rest or
+  light day will help you recover" — the app telling you to STOP. Same math,
+  opposite direction; `lib/__tests__/streak-scope.test.ts` pins it as the only
+  surviving caller of `lib/streak`. The intake-delta engine likewise reads a
+  broken taken-run as EVIDENCE that something changed, and reports the change,
+  not the run.
+
+The test for a new case is the direction of the cliff: a run the system uses to
+reduce what it asks of you is fine; a run the user can lose is not.
+
 ## 4. The right-sizing family
 
 Several issues converge on one pattern: the system NOTICES that a commitment has
