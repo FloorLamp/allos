@@ -246,6 +246,21 @@ export async function setWebhook(url: string, secret: string): Promise<void> {
   });
 }
 
+// Register the bot's command list, which is what populates Telegram's own `/`
+// autocomplete menu (#1895). Without it the commands exist but are invisible: the only
+// way to learn a verb is to be told one out of band.
+//
+// INSTANCE-LEVEL BY NECESSITY. Telegram scopes this per bot (or per chat, via a scope
+// argument the self-hosted instance has no cheap way to keep current for every chat it
+// joins), while relevance is per chat. So the registered list stays GENERIC — every verb
+// this build ships — and the handlers keep owning per-chat gating; `/help` is the
+// per-chat-honest answer.
+export async function setMyCommands(
+  commands: readonly { command: string; description: string }[]
+): Promise<void> {
+  await call("setMyCommands", { commands });
+}
+
 // Remove a registered webhook — required before getUpdates works (Telegram
 // rejects polling with 409 while a webhook is set).
 export async function deleteWebhook(): Promise<void> {

@@ -857,6 +857,58 @@ joins peers on one line (`,` joins peers within one group). Applied wherever the
 above lines touch; a line that predates the rule and was not otherwise edited
 still follows it or is a candidate for the next pass.
 
+## The Telegram command vocabulary (#1895)
+
+**The defect was silence.** The bot understood `/dose`, `/symptom` and `/temp`, and
+every handler no-opped on non-matching text with nothing answering afterwards. So
+`/start` — the first thing Telegram shows a new user, before they have typed a word
+— vanished. `/help` vanished. A typo'd `/doze` vanished. From the chat's side the
+bot was indistinguishable from broken, and the only way to learn a verb was to be
+told one out of band.
+
+**The rule.** A slash command in a chat the bot is in gets an answer. Always —
+either the command's own reply or a short pointer at `/help`. Ordinary text is the
+only thing that may go unanswered, because chat in a group the bot sits in is not
+addressed to it (the free-text symptom intake, #877, claims it or nothing does).
+
+**One registry, one gate** (`lib/notifications/telegram-commands.ts`, pure). It
+holds the verbs, their aliases (`/symptoms`, `/temperature`), their one-line
+descriptions, and their per-chat relevance predicate. `commandsForChat` is read by
+BOTH `/help` and the dispatcher's gate, so the help text can never advertise a verb
+that then refuses — the failure mode that makes a help text worse than none.
+`lib/notifications/telegram-help.ts` resolves the chat's facts and sends the meta
+replies; `handleIncomingMessage` is still the single router, now a switch over the
+parsed verb, and a DB-tier completeness pin fails the build if a verb in the
+registry has no route.
+
+**Three different answers, deliberately.** An unknown verb echoes what was typed
+(so a typo reads as a typo) and points at `/help`. A REAL verb gated off for this
+chat says so instead — "not set up here" and "not a thing" send you looking in two
+different places. An UNLINKED chat is told that nothing is wired up yet, which is
+what is actually wrong.
+
+**Registration is instance-level, relevance is per-chat.** `setMyCommands`
+populates Telegram's own `/` autocomplete menu, and Telegram scopes it per bot —
+there is no per-chat variant a self-hosted instance can keep current for every chat
+it joins. So the registered list stays GENERIC (every verb the build ships) and the
+handlers keep owning per-chat gating; `/help` is the per-chat-honest answer. It is
+registered by the same Settings → Server action that registers the webhook, since
+that is the one moment the operator is provably holding a working token — and
+deliberately NOT fatal: a failed menu registration must not report a working
+webhook as broken, so it degrades to a named caveat in the action's message.
+
+**`/mood` on demand.** The scheduled check-in rides the evening slot; if it
+scrolled away or the day got away from someone there was no path back to it. The
+command is a RE-RENDER of `buildMoodCheckin` — the same builder the tick calls, so
+the faces, the token shape and the auto-pause affordance are whatever the send
+renderer says they are (#221, no second engine). ONE message with per-profile
+prefixed buttons in a shared chat (the `/dose` precedent — never a guess about
+whose day is being logged, and one message rather than N keeps the (chat, kind)
+supersede invariant from closing a sibling the same command just sent). A build
+that yields nothing is answered honestly — "already checked in today" — never with
+an empty keyboard, because a command that silently produced nothing is the defect
+this feature exists to remove.
+
 ## Live-message reconciliation (#1779)
 
 **The defect.** Every inline keyboard the app sent was a frozen snapshot that

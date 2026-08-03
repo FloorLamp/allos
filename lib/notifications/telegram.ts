@@ -80,6 +80,7 @@ export {
   getUpdates,
   messageKeyboard,
   renderMessageHtml,
+  setMyCommands,
   setWebhook,
   type InlineKeyboard,
   type TelegramCallbackQuery,
