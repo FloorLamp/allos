@@ -14,6 +14,11 @@
 //
 // There is deliberately no third answer. "Not covered yet" is exactly the state that
 // produced the defect.
+//
+// Since #1898 the module carries a SECOND declaration, keyed by message KIND rather
+// than button prefix — see KIND_REISSUE below.
+
+import type { NotificationKind } from "./types";
 
 // The reconciler families. Each is one small read-only predicate over the SAME ledger
 // the tap handler writes to — never a second dueness model (#221).
@@ -143,6 +148,168 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
       "flips one digest category's demotion (#1714); a preference is whatever it currently is and cannot go stale",
   },
 ];
+
+// ── THE RE-ISSUE DECLARATION (issue #1898) ───────────────────────────────────
+//
+// #1779 made stale keyboards HONEST — every registered message gets its counts and
+// buttons refreshed hourly. Nothing made them SINGULAR. Repeated `/dose` or `/symptom`
+// calls accumulate live keyboards in a chat: each is safe to tap (typed-outcome cores)
+// and each stays fresh (the sweep edits all of them), so the reconciler pays an hourly
+// Telegram edit per duplicate, forever, to keep clutter honest.
+//
+// THE INVARIANT: ONE LIVE KEYBOARD PER (chat, kind). A send of a re-issuable kind
+// re-issues THE keyboard; it never adds another. #947 solved this for the food nudge by
+// hand; this declares, per kind, whether that rationale applies — and the completeness
+// scan (lib/__tests__/reconcile-registry.test.ts) fails the build for a kind that never
+// answered the question, exactly as the prefix table above does for buttons.
+//
+// "Not re-issuable" is the DEFAULT ANSWER FOR STATE-CLAIM KINDS and it is not a gap: a
+// morning dose reminder and an evening one are two different claims, both legitimately
+// live, and closing one because the other sent would destroy an outstanding safety
+// prompt. Every `false` therefore carries its reason, so the two cases — "we decided
+// against it" and "nobody looked" — stay distinguishable.
+
+export interface KindReissueEntry {
+  kind: NotificationKind;
+  // True ⇒ a new send of this kind supersedes the chat's previous one: the older
+  // message's keyboard is removed and its text closed with the attributed supersede
+  // line (#1822's honest-subject convention).
+  reissuable: boolean;
+  // Why. Required in BOTH directions — a `true` has to say what makes re-sending an
+  // act of replacement rather than an addition.
+  why: string;
+}
+
+export const KIND_REISSUE: readonly KindReissueEntry[] = [
+  // ── Re-issuable ────────────────────────────────────────────────────────────
+  {
+    kind: "prn-list",
+    reissuable: true,
+    why: "`/dose` renders the chat's as-needed list from live state; typing it again means 'show me that again', so the earlier copy is superseded by definition — and its buttons carry send-time redose counters that the new list has already recomputed.",
+  },
+  {
+    kind: "symptom",
+    reissuable: true,
+    why: "`/symptom` renders the recency-ranked grid on demand. A second call re-ranks it, so the earlier grid is a stale ordering of the same question, and two open grids in one chat make 'which one did I tap' unanswerable.",
+  },
+  {
+    kind: "mood",
+    reissuable: true,
+    why: "One wellbeing check-in per day, re-sent (or asked for) as one question. A second live face-picker in the chat would let the same day be answered twice from two messages, and the newer send is the one whose date the tokens carry.",
+  },
+
+  // ── Not re-issuable ────────────────────────────────────────────────────────
+  {
+    kind: "temp",
+    reissuable: false,
+    why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. Superseding on (chat, kind) would close the sibling prompt the same command just sent — the invariant's own mechanism destroying the message it was meant to protect.",
+  },
+  {
+    kind: "food",
+    reissuable: false,
+    why: "The food nudge already holds the single-live invariant through its own #947/#1945 pointer rotation, whose strip is conditioned on the NEW message actually carrying a `food:` quick-log token. The generic (chat, kind) rule cannot express that condition, and without it a view-control-only nudge (#1807's '➖ Show less' shape) would close the only keyboard in the chat that can still log a serving.",
+  },
+  {
+    kind: "dose",
+    reissuable: false,
+    why: "Tick-owned and per-SLOT: the morning session and the evening session are two outstanding claims, both true at once. Closing one because the other sent would remove a safety prompt nobody answered.",
+  },
+  {
+    kind: "redose",
+    reissuable: false,
+    why: "One notice per PRN redose window; two windows can be open for two different items, and neither supersedes the other.",
+  },
+  {
+    kind: "escalation",
+    reissuable: false,
+    why: "Safety tier, per missed dose. A second escalation is a second unanswered dose, never a re-issue of the first.",
+  },
+  {
+    kind: "followup",
+    reissuable: false,
+    why: "Two sends ever, per tracked follow-up item (#1866), each about its own overdue date — additive by construction.",
+  },
+  {
+    kind: "refill",
+    reissuable: false,
+    why: "Per item running low; several items can be short at once and each nudge names its own.",
+  },
+  {
+    kind: "preventive",
+    reissuable: false,
+    why: "Per due screening. Two recommendations coming due in one week are two separate asks.",
+  },
+  {
+    kind: "illness-care",
+    reissuable: false,
+    why: "A care finding derived from logged symptoms (#805); each send is about a different trajectory the bus decided to surface, not a re-render of the last one.",
+  },
+  {
+    kind: "practice",
+    reissuable: false,
+    why: "Per practice behind its weekly floor — the nudge names which one, and a second practice falling behind is a second message.",
+  },
+  {
+    kind: "workout",
+    reissuable: false,
+    why: "Schedule-driven training reminder; each is tied to the session it is nudging.",
+  },
+  {
+    kind: "workout-stale",
+    reissuable: false,
+    why: "One per unfinished session draft (#1205). Two drafts left running are two messages, each with its own finish/discard pair.",
+  },
+  {
+    kind: "workout-recap",
+    reissuable: false,
+    why: "A recap line about ONE logged session — a record of something that happened, which a later session never supersedes.",
+  },
+  {
+    kind: "ease-back",
+    reissuable: false,
+    why: "One-shot per illness episode (#837); there is no second send to supersede the first.",
+  },
+  {
+    kind: "digest",
+    reissuable: false,
+    why: "One per day, and the day-rollover arm of the sweep already closes yesterday's. Its keyboard is the offer tail, whose pointer the tick re-labels in place rather than re-sending.",
+  },
+  {
+    kind: "upcoming",
+    reissuable: false,
+    why: "Folded into the digest by #1108 — nothing dispatches it, so there is nothing to re-issue. The kind stays in the union for stored disabled-kind blobs.",
+  },
+  {
+    kind: "weekly-recap",
+    reissuable: false,
+    why: "One per week, about the seven days it names; a later week's recap is a different subject.",
+  },
+  {
+    kind: "milestone",
+    reissuable: false,
+    why: "Each milestone is its own event. Superseding would erase the note about the previous one.",
+  },
+  {
+    kind: "test",
+    reissuable: false,
+    why: "A send-test exists to prove a message ARRIVED; closing the previous test would delete the evidence the user pressed the button to get.",
+  },
+  {
+    kind: "other",
+    reissuable: false,
+    why: "The unclassified catch-all. Everything with no kind lands here, so superseding on it would let any two unrelated messages close each other — the one bucket where the invariant must never apply.",
+  },
+];
+
+const BY_KIND = new Map(KIND_REISSUE.map((e) => [e.kind as string, e]));
+
+// Does a new send of `kind` supersede the chat's previous live keyboard of that kind?
+// An UNKNOWN kind answers false — a kind that slipped past the completeness scan must
+// fail safe (leave the older message alone) rather than close something nobody reasoned
+// about. The scan is what makes "unknown" a build failure instead of a silent no-op.
+export function isReissuableKind(kind: string | null | undefined): boolean {
+  return kind == null ? false : (BY_KIND.get(kind)?.reissuable ?? false);
+}
 
 const BY_PREFIX = new Map(RECONCILE_PREFIXES.map((e) => [e.prefix, e]));
 

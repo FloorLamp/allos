@@ -101,7 +101,11 @@ export type ReconcileDecision =
   // keeping: remove only the tappable state claims.
   | { action: "strip-all"; keyboard: InlineKeyboard };
 
-export type CloseReason = "resolved" | "rollover";
+// `superseded` is NEVER produced by decideReconcile below — a sweep cannot know that a
+// newer message exists. It is the send path's close reason (#1898): re-issuing a
+// keyboard closes the one it replaces, and it does so through this same vocabulary so
+// the chat only ever sees one closing convention.
+export type CloseReason = "resolved" | "rollover" | "superseded";
 
 export interface ReconcileInput {
   keyboard: InlineKeyboard;
@@ -158,6 +162,10 @@ export function decideReconcile(input: ReconcileInput): ReconcileDecision {
 export const RECONCILE_CLOSING: Record<CloseReason, string> = {
   resolved: "Handled in the app — nothing left here.",
   rollover: "This is yesterday's message.",
+  // Points DOWN the chat rather than merely stating a fact: the replacement is the very
+  // next thing the user will scroll past, and a closed message that doesn't say where
+  // the buttons went reads as a failure.
+  superseded: "Superseded — use the message below.",
 };
 
 // The same two sentences as a TAIL, for when the subject leads the line:
@@ -165,6 +173,7 @@ export const RECONCILE_CLOSING: Record<CloseReason, string> = {
 const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
   resolved: "handled in the app.",
   rollover: "this was yesterday's message.",
+  superseded: "superseded, use the message below.",
 };
 
 // The text a closed message collapses to, naming its own subject. `title` is the message's

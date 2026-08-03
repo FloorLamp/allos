@@ -46,6 +46,9 @@ export const ALL_NOTIFICATION_KINDS = [
   "upcoming",
   "weekly-recap",
   "milestone",
+  "prn-list",
+  "symptom",
+  "temp",
   "test",
   "other",
 ] as const satisfies readonly NotificationKind[];
@@ -245,6 +248,11 @@ export const NON_CONFIGURABLE_KINDS: Readonly<
     "The overdue safety-follow-up escalation (#1866, owner ruling): the tracked due date IS the consent — same structure as a dose reminder — so there is deliberately NO notification setting anywhere. Two sends ever; the per-item resolve/decline terminator is the only off-switch.",
   "ease-back":
     "The one-shot post-illness re-entry note (#837) — a single message per episode, not a recurring kind to schedule.",
+  "prn-list":
+    "The reply to a `/dose` command (#797). The user asked for it in the chat one second earlier, so a preference that could silence the answer to a direct request would be a bug, not a setting. Kinded only so the single-live invariant (#1898) can key on it.",
+  symptom:
+    "The reply to a `/symptom` command (#859) — a direct request answered in place, with no scheduled send behind it to configure.",
+  temp: "The reply prompt for a `/temp` command (#859) — same reasoning as the other on-demand replies: the request IS the consent.",
 };
 
 // The kinds a user can route per channel — the matrix rows. Derived from the ONE

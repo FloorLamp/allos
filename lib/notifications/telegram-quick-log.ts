@@ -21,6 +21,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(chatId, {
       title: "💊 Log a PRN dose",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "prn-list",
     });
     return;
   }
@@ -57,6 +58,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(chatId, {
       title: "💊 Log a PRN dose",
       body: "No as-needed medications are set up. Add one under Medications in the app.",
+      kind: "prn-list",
     });
     return;
   }
@@ -65,6 +67,7 @@ export async function handleDoseCommand(
     title: "💊 Log a PRN dose",
     body: "Tap a medication to record a dose now:",
     actions,
+    kind: "prn-list",
   });
 }
 
@@ -173,6 +176,7 @@ export async function handleSymptomCommand(
     await sendTelegramMessage(chatId, {
       title: "Log a symptom",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "symptom",
     });
     return;
   }
@@ -193,6 +197,7 @@ export async function handleSymptomCommand(
     title: "Log a symptom",
     body: "Tap a symptom, then choose how bad it is:",
     actions,
+    kind: "symptom",
   });
 }
 
@@ -221,6 +226,7 @@ export async function handleSymptomPick(
     title: `🤒 Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
+    kind: "symptom",
   });
   await answerCallbackQuery(cq.id);
 }
@@ -351,6 +357,7 @@ export async function handleTempCommand(
     await sendTelegramMessage(chatId, {
       title: "Log a temperature",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "temp",
     });
     return;
   }
@@ -363,6 +370,7 @@ export async function handleTempCommand(
       body:
         `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
         `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
+      kind: "temp",
     });
   }
 }
@@ -443,20 +451,149 @@ export async function handleTempReply(
   return true;
 }
 
-// The ONE inbound text-message dispatcher (webhook + poller both call this): a reply to
-// a temp prompt first, then the slash commands. Keeps routing in one place so both
-// transports behave identically.
+// `/mood` command (#1895): the daily wellbeing check-in keyboard, ON DEMAND. Scheduled
+// sends ride the evening slot; if the nudge scrolled away, was never enabled for that
+// hour, or the day simply got away from someone, there was no path to it from the chat.
+//
+// A RE-RENDER, never a second engine (#221): it calls the SAME `buildMoodCheckin` the
+// tick calls, so the faces, the token shape and the auto-pause "keep these coming"
+// affordance are whatever the send renderer says they are.
+//
+// ONE MESSAGE, per-profile buttons — the `/dose` precedent. A multi-profile chat gets
+// each member's faces prefixed with their name rather than a guess about whose day is
+// being logged, and one message rather than N keeps the (chat, kind) supersede
+// invariant (#1898) from closing a sibling the same command just sent.
+//
+// A build that yields NOTHING is answered honestly rather than with an empty keyboard:
+// `buildMoodCheckin` returns null for a day already logged, and saying so is the whole
+// point — a command that silently produced nothing is the defect #1895 exists to fix.
+export async function handleMoodCommand(
+  message: TelegramMessage
+): Promise<void> {
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  const actions: NotificationAction[] = [];
+  const alreadyLogged: string[] = [];
+  for (const pid of profileIds) {
+    const name = getProfileNameById(pid) ?? "Profile";
+    const built = buildMoodCheckin(pid, today(pid));
+    if (!built) {
+      if (getMoodOnDate(pid, today(pid)) != null) alreadyLogged.push(name);
+      continue;
+    }
+    for (const a of built.actions ?? []) {
+      actions.push({
+        ...a,
+        label: multi ? `${name}: ${a.label}` : a.label,
+        // Keep each profile's faces on their own row in a shared chat.
+        row: multi ? `mood-${pid}` : a.row,
+      });
+    }
+  }
+
+  if (actions.length === 0) {
+    await sendTelegramMessage(chatId, {
+      title: "🙂 Check-in",
+      body: alreadyLogged.length
+        ? `Already checked in today${multi ? ` (${alreadyLogged.join(", ")})` : ""} — open the app to change it.`
+        : "The daily check-in is off. Turn it on under Settings → Notifications.",
+      kind: "mood",
+    });
+    return;
+  }
+
+  await sendTelegramMessage(chatId, {
+    title: "🙂 How are you today?",
+    body: "One tap logs your day — or just skip this.",
+    actions,
+    kind: "mood",
+  });
+}
+
+// The ONE inbound text-message dispatcher (webhook + poller both call this), and since
+// #1895 the ONE router for the command vocabulary too.
+//
+// THE RULE IT ENFORCES: a slash command in a chat the bot is in gets an answer. Always.
+// Before #1895 every handler no-opped on non-matching text and nothing answered
+// afterwards, so `/start` — the first thing Telegram shows a new user — `/help`, and a
+// typo'd `/doze` all vanished into silence, which from the chat's side is
+// indistinguishable from the bot being broken.
+//
+// Order matters and is deliberate:
+//
+//   1. a REPLY to a `/temp` prompt, which is not a command and must not be re-parsed;
+//   2. a slash command, routed by the parsed verb (aliases resolved) — one switch, so a
+//      verb in the vocabulary that nobody wired up is a compile-time gap rather than a
+//      silent one;
+//   3. ordinary text, which is NOT addressed to the bot and is the only case that may
+//      go unanswered — the free-text symptom intake (#877) claims it or nothing does.
 export async function handleIncomingMessage(
   message: TelegramMessage
 ): Promise<void> {
   if (await handleTempReply(message)) return;
-  await handleSymptomCommand(message);
-  await handleTempCommand(message);
-  await handleDoseCommand(message);
-  // Free-text symptom intake (#877): a plain sentence during an open episode maps onto
-  // the vocabulary and replies with confirm buttons — runs AFTER the command handlers
-  // (which no-op on non-command text) and only when a temp reply didn't claim it.
-  await handleSymptomTextIntake(message);
+
+  const parsed = parseCommand(message.text);
+  if (!parsed) {
+    // Free-text symptom intake (#877): a plain sentence during an open episode maps
+    // onto the vocabulary and replies with confirm buttons. Deliberately conservative
+    // and unchanged by this issue.
+    await handleSymptomTextIntake(message);
+    return;
+  }
+
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const ctx = chatCommandContext(chatId);
+
+  // A slash-word this build does not ship. Echoed back so a typo reads as a typo.
+  if (!parsed.name) {
+    await sendUnknownCommand(chatId, parsed.typed);
+    return;
+  }
+
+  if (!isCommandAvailable(parsed.name, ctx)) {
+    // An UNLINKED chat is told what is actually wrong (nothing is wired up yet), not
+    // that this one verb is unavailable — the same answer /help gives it.
+    if (!ctx.linked) {
+      await sendHelp(chatId, ctx);
+      return;
+    }
+    // A real verb, gated off for this chat. Answered differently from an unknown one:
+    // "not set up here" and "not a thing" send you looking in two different places.
+    await sendUnavailable(chatId, parsed.name);
+    return;
+  }
+
+  switch (parsed.name) {
+    case "help":
+      await sendHelp(chatId, ctx);
+      return;
+    case "start":
+      await sendStart(chatId, ctx);
+      return;
+    case "dose":
+      await handleDoseCommand(message);
+      return;
+    case "symptom":
+      await handleSymptomCommand(message);
+      return;
+    case "temp":
+      await handleTempCommand(message);
+      return;
+    case "mood":
+      await handleMoodCommand(message);
+      return;
+    default:
+      // A verb declared in TELEGRAM_COMMANDS with no route here. Unreachable while the
+      // completeness pin in lib/__db_tests__/telegram-commands.test.ts is green, and it
+      // still answers rather than falling silent.
+      await sendUnknownCommand(chatId, parsed.typed);
+      return;
+  }
 }
 
 // Free-text symptom intake (issue #877): map a plain-text message onto the symptom
@@ -575,6 +712,16 @@ import {
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
+import { buildMoodCheckin } from "./mood";
+import { parseCommand } from "./telegram-commands";
+import {
+  chatCommandContext,
+  isCommandAvailable,
+  sendHelp,
+  sendStart,
+  sendUnavailable,
+  sendUnknownCommand,
+} from "./telegram-help";
 import { getPublicUrl } from "../settings";
 import {
   administrationLogged,

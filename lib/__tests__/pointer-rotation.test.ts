@@ -117,3 +117,100 @@ describe("samePointerTarget", () => {
     ).toBe(false);
   });
 });
+
+// ── ONE LIVE KEYBOARD PER (chat, kind) — issue #1898 ─────────────────────────
+//
+// The rotation above keys on a pointer the OUTGOING message yields. The generalization
+// keys on the pointer TABLE instead, so a kind with no identifying token of its own
+// (`/dose`, `/symptom`, and #1895's commands) gets the same single-live invariant. The
+// end-to-end write path is covered in lib/__db_tests__/kind-supersede.test.ts.
+
+import { planKindSupersede } from "@/lib/notifications/pointer-rotation";
+
+type P = { chatId: string | number; messageId: number; kind: string };
+const REISSUABLE = (k: string) => k === "prn-list" || k === "symptom";
+const at = (
+  messageId: number,
+  kind: string,
+  chatId: string | number = CHAT
+): P => ({ chatId, messageId, kind });
+
+describe("planKindSupersede (#1898)", () => {
+  it("a second send of a re-issuable kind supersedes the first", () => {
+    expect(
+      planKindSupersede([at(10, "prn-list")], at(11, "prn-list"), REISSUABLE)
+    ).toEqual([at(10, "prn-list")]);
+  });
+
+  it("the first send of a kind supersedes nothing", () => {
+    expect(planKindSupersede([], at(11, "prn-list"), REISSUABLE)).toEqual([]);
+  });
+
+  it("a kind that did NOT declare itself re-issuable closes nothing", () => {
+    // Two dose reminders are two outstanding claims — the morning session and the
+    // evening one — and closing either would remove a safety prompt nobody answered.
+    expect(
+      planKindSupersede([at(10, "dose")], at(11, "dose"), REISSUABLE)
+    ).toEqual([]);
+  });
+
+  it("never reaches across kinds", () => {
+    expect(
+      planKindSupersede(
+        [at(10, "symptom"), at(11, "dose")],
+        at(12, "symptom"),
+        REISSUABLE
+      )
+    ).toEqual([at(10, "symptom")]);
+  });
+
+  it("never reaches across CHATS — a fan-out copy is not a duplicate", () => {
+    // One profile's message goes to the family group AND a caregiver's private chat.
+    // Re-issuing into the group must not close the caregiver's copy.
+    const other = "-1005550299";
+    expect(
+      planKindSupersede(
+        [at(10, "symptom", other), at(11, "symptom")],
+        at(12, "symptom"),
+        REISSUABLE
+      )
+    ).toEqual([at(11, "symptom")]);
+  });
+
+  it("compares chat ids across the string/number boundary", () => {
+    expect(
+      planKindSupersede(
+        [at(10, "symptom", "5550100")],
+        at(11, "symptom", 5550100),
+        REISSUABLE
+      )
+    ).toEqual([at(10, "symptom", "5550100")]);
+  });
+
+  it("a send that recorded no pointer supersedes nothing", () => {
+    // The symmetry that makes #1945's stranding class unrepresentable: no record, no
+    // strip. A message with no delivered keyboard has replaced nothing.
+    expect(planKindSupersede([at(10, "prn-list")], null, REISSUABLE)).toEqual(
+      []
+    );
+  });
+
+  it("a delivery the chat already holds cannot close itself", () => {
+    expect(
+      planKindSupersede([at(10, "prn-list")], at(10, "prn-list"), REISSUABLE)
+    ).toEqual([]);
+  });
+
+  it("closes EVERY earlier live copy, not just the newest", () => {
+    // The invariant is "one", not "one more than last time": a chat that accumulated
+    // duplicates before this shipped converges on the next send rather than shedding
+    // one per call.
+    expect(
+      planKindSupersede(
+        [at(10, "prn-list"), at(11, "prn-list"), at(12, "prn-list")],
+        at(13, "prn-list"),
+        REISSUABLE
+      )
+    ).toEqual([at(10, "prn-list"), at(11, "prn-list"), at(12, "prn-list")]);
+  });
+});

@@ -31,6 +31,15 @@ export type NotificationKind =
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary
   | "milestone" // milestone reached
+  // ── On-demand command replies (#1895's vocabulary, kinded for #1898) ───────
+  // These are RE-ISSUABLE: the user asks for the keyboard, so asking again must
+  // re-issue THE keyboard rather than stack another one in the chat. They carry a
+  // kind for exactly that reason — the single-live invariant is keyed on
+  // (chat, kind), and an unkinded send collapses into the "other" catch-all where
+  // superseding would close unrelated messages.
+  | "prn-list" // the /dose as-needed medication list (#797)
+  | "symptom" // the /symptom grid + its severity picker (#859)
+  | "temp" // the /temp reply prompt (#859)
   | "test" // a send-test from Settings
   | "other"; // unclassified / default
 
