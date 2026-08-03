@@ -696,9 +696,12 @@ Charts and analysis live in four tabs:
 
 **Practices** (`/trends#practices`) is the wellness lens: for each practice you
 have given a weekly cadence, one cell per completed week — at your weekly
-maximum, floor met, or under floor — a consistency line with the current streak,
-sessions per week charted against the min–max band you declared, and an average
-session length for the modalities that record minutes. It renders only where you
+maximum, floor met, or under floor — a consistency line stating how many of those
+weeks met the floor, sessions per week charted against the min–max band you
+declared, and an average session length for the modalities that record minutes.
+The consistency line is a rate and nothing else — it counted an "N-week streak"
+until #1966 retired that, on the same reasoning as the rest of the streak family:
+one missed week made a real habit read as zero. It renders only where you
 track a practice, is calm by design (an under-floor week is a neutral cell, never
 a warning), and every card taps through to **Wellness**, which still owns
 logging, editing, and the full session history. A practice with sessions but no

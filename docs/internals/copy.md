@@ -107,7 +107,8 @@ as-is.
 `"🎉"` and celebration stay **out of medical surfaces** (#716's no-gamification
 rule is the anchor). Training is the one domain where a small cheer is allowed
 at all — a 100th logged workout is worth a quiet word and a lab result is not —
-but the licence is narrow and does not extend to a RUN. #1935/#1936/#1937/#1939
+but the licence is narrow and does not extend to a RUN.
+#1935/#1936/#1937/#1939, finished by #1966's Practices "N-week streak",
 retired every streak the app showed a user: a figure with a cliff turns the
 cheer into a loss to avoid, on the same screens that recommend rest days,
 deload weeks and deliberate skips. Celebrate a total or a declared goal met;
