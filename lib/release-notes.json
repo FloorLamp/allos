@@ -4,6 +4,13 @@
       "date": "2026-08-03",
       "entries": [
         {
+          "pr": 1974,
+          "kind": "feature",
+          "issues": [1963],
+          "title": "Remove the exact serving you meant, not whichever one was logged last",
+          "body": "The food log's \u22ef menu now offers \"Remove this serving\" beside \"Correct this serving\", so you can take out the one you are pointing at. The quick minus button beside each food is unchanged \u2014 it still removes the most recent serving of that food from the meal, which is what you want when you have just tapped one too many.\n\nThe two now agree about what a serving is. Before, if you had moved a serving into a meal and then wanted it gone, the minus button could take a different one instead, because it goes by when a serving was first tapped rather than by which one you had just been working with."
+        },
+        {
           "pr": 1975,
           "kind": "fix",
           "issues": [1971],
