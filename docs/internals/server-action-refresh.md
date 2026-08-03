@@ -44,7 +44,10 @@ behind it. In practice that is one of:
 - **Not a Server Action at all.** The write went through a route handler via
   `fetch()` (`TakeoutUpload`, `OfflineQueueProvider`'s `/api/offline-replay`).
 - **Poll-driven.** A background job changed rows and a toaster noticed by polling
-  a read action (`ImportJobsToaster`, `ExtractionToaster`).
+  a **route handler** — `/api/jobs/imports`, `/api/jobs/extractions`
+  (`ImportJobsToaster`, `ExtractionToaster`). They polled a read _action_ until
+  #1878; see "A chrome actor observes over `fetch`" below for why that had to
+  change.
 - **User gesture.** `PullToRefresh` — there is no action, the gesture _is_ the
   request.
 - **An action that deliberately does not revalidate** but still writes something
@@ -91,7 +94,9 @@ form saving an appointment **titleless**.
 The fix is a **dirty-form registry**: `lib/dirty-forms.ts` holds the decision,
 `components/DirtyFormRegistry.tsx` is the DOM binding, and it is mounted once in
 the authenticated shell. Chrome refreshes defer while any form holds unsaved
-input and run when the last one releases.
+input and run when the last one releases. Every chrome-initiated repaint routes
+through it — including the toasters' poll, which reaches it by observing over a
+route handler instead of an action (see below).
 
 ### Chrome-initiated is an opt-in, never a heuristic
 
@@ -128,21 +133,52 @@ server last rendered into it. A form that registered on mount and never released
 would suppress every background refresh for the life of the page — a cure worse
 than the disease.
 
-### Two measured facts worth keeping
+### A chrome actor observes over `fetch`
 
-Both were measured against the version of Next this repo pins, driving the real
-app in Chromium, and both bound what this fix can claim:
+`router.refresh()` is **not** the only way a chrome tick repaints the page. A
+Server Action's response carries a freshly rendered page tree that Next's router
+applies — no refresh call anywhere in it. The toasters polled through a read
+action, so a background job finishing repainted the page under a half-typed form
+outside everything the registry gates. Measured before the fix: a row inserted
+behind `/records/history/visits` appeared while the registry read
+`data-owed=1, data-refreshes=0`.
 
-1. **React preserves an uncontrolled input across an RSC re-render.** A chrome
-   `router.refresh()` on `/records/history/visits` leaves the `<input>` node
-   itself in place with its typed value intact. The wipe therefore needs the
-   form's subtree to be **unmounted**, not merely re-rendered — which is what the
-   #1877 artifact had, and what makes the failure rare and silent rather than
-   constant.
-2. **`router.refresh()` is not the only way a chrome tick repaints the page.**
-   The toasters poll through a Server Action, and that action's response carries
-   a freshly rendered tree which the client applies — with no `router.refresh()`
-   involved. So a background poll can still deliver new server data underneath a
-   dirty form even while its explicit refresh is deferred. Gating the poll itself
-   is a separate, larger decision (it would also delay telling the user their
-   import finished) and has deliberately **not** been taken here.
+**Why a pure _read_ action did it too.** Next skips the page re-render for an
+action that did not revalidate (`action-handler.js` → `skipPageRendering`), so
+"it's only a read" looked like protection. It is not, in this app:
+`middleware.ts` slides the session cookie on **every** request, action POSTs
+included, and Next records a cookie mutation as a revalidation
+(`adapters/request-cookies.js` sets `pathWasRevalidated`). Every action response
+here therefore carries a full page render — a property of the app, not of the
+action, which is why the fix could not be "make the action not revalidate".
+
+So, since #1878: **a background actor observes over `fetch` of a route handler,
+and repaints only through `useChromeRefresh()`.** A JSON response cannot carry an
+RSC tree, which is what lets observation and repaint come apart —
+
+- the poll keeps its full cadence, so the toast still says "your import finished"
+  the moment it does;
+- the repaint goes through the one registry, deferring while a form is dirty and
+  draining coalesced on release;
+- there is no second "should I poll" flag, and there must not be one — the owed
+  count in `lib/dirty-forms.ts` is the only place that knows a repaint is
+  pending.
+
+The accepted cost is timing: with a form dirty, the /import list or the /medical
+table shows the finished job a few seconds later than the toast announced it.
+`lib/toaster-poll.ts` holds the mechanism and the wire parser (a failed
+observation is a typed refusal the poller retries — reading a 401 as "no jobs"
+would wipe its seed and re-announce every finished job), and
+`lib/__tests__/chrome-refresh-scan.test.ts` fails any listed chrome actor that
+imports a `"use server"` module.
+
+### One measured fact worth keeping
+
+Measured against the version of Next this repo pins, driving the real app in
+Chromium, and it bounds what the registry alone can claim:
+
+**React preserves an uncontrolled input across an RSC re-render.** A chrome
+`router.refresh()` on `/records/history/visits` leaves the `<input>` node itself
+in place with its typed value intact. The wipe therefore needs the form's subtree
+to be **unmounted**, not merely re-rendered — which is what the #1877 artifact
+had, and what makes the failure rare and silent rather than constant.

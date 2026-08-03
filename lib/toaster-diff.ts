@@ -1,11 +1,11 @@
 // Pure diff logic shared by the app-wide completion toasters (ExtractionToaster
 // for medical-document extraction, ImportJobsToaster for paste/CSV import jobs).
 //
-// Both poll a server action that returns the full set of the session's ACTIVE
-// profile's documents/jobs with their current status, and toast when an item
-// transitions into a terminal state. They diff each poll against a seed map
-// captured on the first poll (seeded silently, so pre-existing terminal items
-// don't re-announce on load).
+// Both poll a route handler (/api/jobs/*, see lib/toaster-poll.ts) that returns
+// the full set of the session's ACTIVE profile's documents/jobs with their current
+// status, and toast when an item transitions into a terminal state. They diff each
+// poll against a seed map captured on the first poll (seeded silently, so
+// pre-existing terminal items don't re-announce on load).
 //
 // The subtlety this module isolates — and the bug it fixes (#296) — is that the
 // polled set is scoped to whichever profile is active, but the seed ref survives

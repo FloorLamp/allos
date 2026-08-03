@@ -12,7 +12,7 @@ import {
 } from "@/lib/toaster-poll";
 import { MEDICAL_UPLOAD_TOAST_KEY } from "@/lib/upload-gate";
 
-// The document statuses `getExtractionStates` reports as terminal (no longer
+// The document statuses /api/jobs/extractions reports as terminal (no longer
 // processing). `done` toasts as a success; `failed`/`skipped` as an error.
 const isExtractionTerminal = (status: string) =>
   status === "done" || status === "failed" || status === "skipped";

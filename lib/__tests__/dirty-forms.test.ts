@@ -233,6 +233,52 @@ describe("reduceDirtyForms", () => {
     expect(refreshIsOwed(cycle2.state)).toBe(true);
   });
 
+  it("keeps a poll's repaint on the same accounting as an explicit refresh", () => {
+    // The #1878 ruling's first constraint: the toasters' poll defers through THIS
+    // registry and THIS owed/drain accounting, not a parallel "should I poll"
+    // flag. So a poll that saw a job finish emits the same `chrome-refresh` event
+    // the offline queue's post-sync repaint emits, and the state machine cannot
+    // tell them apart — which is the point. There is no third event type here,
+    // and if one ever appears it means the mechanism forked.
+    const events: DirtyFormEvent["type"][] = [];
+    let state = EMPTY_DIRTY_FORM_STATE;
+    for (const event of [
+      { type: "dirty", formId: "visit-add" },
+      { type: "chrome-refresh" }, // extraction poll: a document finished
+      { type: "chrome-refresh" }, // import poll: a paste job finished
+    ] as const) {
+      events.push(event.type);
+      state = reduceDirtyForms(state, event).state;
+    }
+    expect(new Set(events)).toEqual(new Set(["dirty", "chrome-refresh"]));
+    expect(state.owed).toBe(2);
+  });
+
+  it("lets a poll keep observing while only its repaint waits", () => {
+    // The ruling's second constraint: a deferred poll must not stall the poll
+    // loop. Observation — the toast that says "your import finished" — is not in
+    // this state machine at all, so nothing here can throttle it; the poll goes on
+    // ticking and the ONLY thing that waits is the repaint. Twelve ticks of a
+    // 2-second cadence over the ~25 seconds someone spends filling a visit form
+    // leave twelve toasts raised and exactly one repaint owed.
+    let state: DirtyFormState = { dirty: ["visit-add"], owed: 0 };
+    let refreshes = 0;
+    for (let tick = 0; tick < 12; tick += 1) {
+      const next = reduceDirtyForms(state, { type: "chrome-refresh" });
+      state = next.state;
+      if (next.refreshNow) refreshes += 1;
+    }
+    expect(refreshes).toBe(0);
+    expect(state.owed).toBe(12);
+
+    // And the release pays the whole debt with ONE repaint, which necessarily
+    // carries the newest server data — a repaint is a fresh render, not a replay
+    // of the twelve moments that asked for it.
+    const drained = run([{ type: "clean", formId: "visit-add" }], state);
+    expect(drained.refreshes).toBe(1);
+    expect(refreshIsOwed(drained.state)).toBe(false);
+  });
+
   it("never mutates the state it is given", () => {
     const start: DirtyFormState = { dirty: ["visit-add"], owed: 1 };
     const snapshot = JSON.stringify(start);
