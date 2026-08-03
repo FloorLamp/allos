@@ -1,0 +1,379 @@
+// ONE READING SHAPE OVER THE THREE READING STORES (#1997 phase 1).
+//
+// The app stores dated numeric readings in three places and, until this module,
+// every consumer knew which one it was reading:
+//
+//   • `body_metrics`   — WIDE, one row per day, up to three measures on it
+//                        (weight / body fat / resting HR), source-tagged, no
+//                        clinical context.
+//   • `metric_samples` — TALL, `metric`/`value` keyed, an absolute start/end
+//                        instant per row, source-tagged, no clinical context.
+//   • `medical_records`— OBSERVATIONS: a canonical name, the reporting lab's own
+//                        range, a flag, and links to the document / encounter /
+//                        provider the reading came from.
+//
+// That coupling is the root of a family of bugs (#1909's two period models,
+// #1932's wrong renderer, #1933/#1934's three editability contracts, #1996's
+// stranded clinical knowledge, #1931's per-store side-state), because a surface
+// that names a TABLE cannot ask a question about a QUANTITY.
+//
+// So this module declares the quantity-level shape. A `Reading` is keyed by
+// #482 IDENTITY — the same `biomarkerFamily()` every biomarker surface already
+// partitions on, and the same one `biomarker_family()` reaches from SQL — so the
+// clinical knowledge that is keyed by identity (canonical ranges, age bands,
+// direction) resolves for a reading NATIVELY, whatever store the row sits in.
+//
+// PHASE 1 IS A READ MODEL AND NOTHING ELSE. No schema change, no migration, no
+// write path: `lib/queries/readings.ts` PRESENTS the existing rows in this shape,
+// the stores keep their own writers, and every store-specific reader keeps
+// working unchanged. Write consolidation (phase 2) and any physical merge
+// (phase 3) are separate, later, and explicitly not started here.
+//
+// THE GRAIN BOUNDARY IS EXPLICIT. This model covers dated readings ABOVE MINUTE
+// GRAIN. `hr_minutes` is deliberately outside it — it is already excluded from
+// provenance for volume reasons, and a per-minute stream is not the thing a
+// judgement, a period average, or a readings table is asking about.
+//
+// PURE: no DB, no queries import, so the mapping and the identity resolution are
+// unit-testable and can be reused by any layer.
+
+import { biomarkerFamily } from "./canonical-name";
+import type { BodyMetricColumn } from "./metric-readings";
+
+// The three physical stores a Reading can be presented from. `medical_records` is
+// the OBSERVATION store (provenance-carrying); the other two are STREAMS.
+export type ReadingStore =
+  "body_metrics" | "metric_samples" | "medical_records";
+
+// How a reading came to exist. Deliberately coarse and about PROVENANCE, not about
+// which table it landed in — the whole point of the model is that those are
+// different questions:
+//
+//   • "lab"      — an observation carrying clinical provenance: a document, an
+//                  encounter, or a performing provider. A clinic-measured value.
+//   • "import"   — a row a bulk/document import produced without any of those
+//                  links (a `document:<id>` source stamp on a stream row).
+//   • "wearable" — a device/integration sync (the row's `source` is an
+//                  integration id).
+//   • "manual"   — the user typed it (no source, or the literal 'manual').
+export type ReadingSource = "wearable" | "manual" | "import" | "lab";
+
+// The observation-only half. ABSENT (not null) on a stream reading: a wearable
+// reading has no document, no encounter, no reporting lab and no lab-stated range,
+// and giving it empty ones is exactly the provenance apparatus #1996 argues a
+// stream must never grow.
+export interface ReadingProvenance {
+  documentId?: number;
+  encounterId?: number;
+  providerId?: number;
+  /** The name the source actually printed, when it differs from the canonical. */
+  reportedName?: string;
+  /** The reporting lab's OWN stated range, verbatim. */
+  reportedRange?: string;
+  /** The stored out-of-range flag the ingest derived. */
+  flag?: string;
+}
+
+// ONE dated reading of ONE quantity.
+//
+// `rowId`/`store`/`sourceKey` are not decoration: a reading surface must still be
+// able to reach the physical row a value came from (to edit it, to explain it, to
+// say which device reported it), and a model that erases that would force every
+// consumer straight back to naming a table.
+export interface Reading {
+  /** The #482 canonical family — the key clinical knowledge resolves through. */
+  identity: string;
+  value: number;
+  /** The reading's own unit ("bpm", "%"). "" when the row states none. */
+  unit: string;
+  /** The profile-local day. */
+  date: string;
+  /** The absolute instant, where the store records one (metric_samples). */
+  measuredAt: string | null;
+  source: ReadingSource;
+  /** The physical row this reading is presented from. */
+  store: ReadingStore;
+  rowId: number;
+  /** The row's raw `source` column — an integration id, 'manual', or null. */
+  sourceKey: string | null;
+  /** The #133 edit lock: the user hand-corrected this row. */
+  edited: boolean;
+  notes: string | null;
+  provenance?: ReadingProvenance;
+}
+
+// A STREAM store's column/metric and the canonical biomarker name it measures —
+// the missing half of the identity map (#1996). `CONTINUOUS_READING_METRIC` in
+// lib/reading-cadence.ts is the other half (canonical name → metric slug); this is
+// the one that lets a wearable row resolve the clinical knowledge that is filed
+// under a canonical NAME.
+//
+// DISCIPLINE, same as the family table's: only register a stream key that measures
+// the SAME quantity as the canonical entry. Weight, height, HRV, steps and the rest
+// are absent because the canonical vocabulary has no entry for them — an invented
+// mapping would grant a reading a band that was never curated for it.
+export interface StreamReadingSource {
+  store: "body_metrics" | "metric_samples";
+  /** The `body_metrics` column, or the `metric_samples` metric key. */
+  key: BodyMetricColumn | string;
+  /** The canonical biomarker name this stream measures. */
+  canonical: string;
+  /** The unit the stream stores in (canonical for that quantity). */
+  unit: string;
+}
+
+export const STREAM_READING_SOURCES: readonly StreamReadingSource[] = [
+  // The reported instance (#1996): a wearable resting heart rate streams here
+  // while "Resting Heart Rate" observations — and the age bands that judge a
+  // child's 120 bpm — live in medical_records under that canonical name.
+  {
+    store: "body_metrics",
+    key: "resting_hr",
+    canonical: "Resting Heart Rate",
+    unit: "bpm",
+  },
+  // The same shape, found by the #1996 audit: body fat streams from a smart scale
+  // and has a curated "Body Fat Percentage" entry.
+  {
+    store: "body_metrics",
+    key: "body_fat_pct",
+    canonical: "Body Fat Percentage",
+    unit: "%",
+  },
+];
+
+/** The #482 identity a canonical biomarker name resolves to. */
+export function readingIdentity(name: string | null | undefined): string {
+  return biomarkerFamily(name);
+}
+
+/**
+ * The stream stores whose rows are readings of `identity`. Empty for an identity
+ * that only ever lands in `medical_records` (every episodic marker, and the vitals
+ * that store as observations).
+ */
+export function streamSourcesForIdentity(
+  identity: string
+): StreamReadingSource[] {
+  const key = identity.trim().toLowerCase();
+  return STREAM_READING_SOURCES.filter(
+    (s) => readingIdentity(s.canonical).toLowerCase() === key
+  );
+}
+
+/**
+ * The identity a stream store's key measures, or null when that key carries no
+ * canonical knowledge (weight, steps, sleep — most of the stream vocabulary).
+ */
+export function identityForStreamKey(
+  store: "body_metrics" | "metric_samples",
+  key: string
+): string | null {
+  const src = STREAM_READING_SOURCES.find(
+    (s) => s.store === store && s.key === key
+  );
+  return src ? readingIdentity(src.canonical) : null;
+}
+
+// ---- Source classification -------------------------------------------------
+
+/**
+ * Classify a row's provenance. Uniform across the stores ON PURPOSE: the Health
+ * Connect parser writes SpO2 into `medical_records` and resting HR into
+ * `body_metrics`, so "which table" says nothing about where a reading came from —
+ * only the row's own links and source stamp do.
+ */
+export function readingSourceFor(input: {
+  sourceKey: string | null | undefined;
+  documentId?: number | null;
+  encounterId?: number | null;
+  providerId?: number | null;
+}): ReadingSource {
+  if (
+    input.documentId != null ||
+    input.encounterId != null ||
+    input.providerId != null
+  ) {
+    return "lab";
+  }
+  const key = (input.sourceKey ?? "").trim();
+  if (!key || key.toLowerCase() === "manual") return "manual";
+  // A document-derived stream row carries the document in its source stamp rather
+  // than in an FK (the stream stores have none).
+  if (key.toLowerCase().startsWith("document:")) return "import";
+  return "wearable";
+}
+
+// ---- Row → Reading ---------------------------------------------------------
+
+/** The `body_metrics` fields a reading is presented from. */
+export interface BodyMetricReadingRow {
+  id: number;
+  date: string;
+  value: number;
+  source: string | null;
+  edited?: number | null;
+  notes?: string | null;
+}
+
+/** The `metric_samples` fields a reading is presented from. */
+export interface MetricSampleReadingRow {
+  id: number;
+  date: string;
+  value: number;
+  source: string | null;
+  start_time?: string | null;
+  edited?: number | null;
+}
+
+/** The `medical_records` fields a reading is presented from. */
+export interface ObservationReadingRow {
+  id: number;
+  date: string;
+  value_num: number | null;
+  unit?: string | null;
+  name?: string | null;
+  canonical_name?: string | null;
+  source?: string | null;
+  edited?: number | null;
+  notes?: string | null;
+  flag?: string | null;
+  reference_range?: string | null;
+  document_id?: number | null;
+  encounter_id?: number | null;
+  provider_id?: number | null;
+}
+
+export function readingFromBodyMetric(
+  row: BodyMetricReadingRow,
+  src: StreamReadingSource
+): Reading {
+  return {
+    identity: readingIdentity(src.canonical),
+    value: row.value,
+    unit: src.unit,
+    date: row.date,
+    // body_metrics is a per-DAY row; it records no instant.
+    measuredAt: null,
+    source: readingSourceFor({ sourceKey: row.source }),
+    store: "body_metrics",
+    rowId: row.id,
+    sourceKey: row.source,
+    edited: row.edited === 1,
+    notes: row.notes ?? null,
+  };
+}
+
+export function readingFromMetricSample(
+  row: MetricSampleReadingRow,
+  src: StreamReadingSource
+): Reading {
+  return {
+    identity: readingIdentity(src.canonical),
+    value: row.value,
+    unit: src.unit,
+    date: row.date,
+    measuredAt: row.start_time ?? null,
+    source: readingSourceFor({ sourceKey: row.source }),
+    store: "metric_samples",
+    rowId: row.id,
+    sourceKey: row.source ?? null,
+    edited: row.edited === 1,
+    notes: null,
+  };
+}
+
+/**
+ * Present one observation row, or null when it carries no numeric value (a
+ * qualitative result is a reading of a different question and has no place in a
+ * numeric series).
+ *
+ * Provenance is attached only when the row actually has some — see
+ * ReadingProvenance on why an empty apparatus would be a lie.
+ */
+export function readingFromObservation(
+  row: ObservationReadingRow
+): Reading | null {
+  if (row.value_num == null) return null;
+  const displayName = row.canonical_name?.trim() || row.name?.trim() || "";
+  const provenance: ReadingProvenance = {};
+  if (row.document_id != null) provenance.documentId = row.document_id;
+  if (row.encounter_id != null) provenance.encounterId = row.encounter_id;
+  if (row.provider_id != null) provenance.providerId = row.provider_id;
+  const reportedName = row.name?.trim();
+  if (reportedName && reportedName !== displayName)
+    provenance.reportedName = reportedName;
+  const reportedRange = row.reference_range?.trim();
+  if (reportedRange) provenance.reportedRange = reportedRange;
+  const flag = row.flag?.trim();
+  if (flag) provenance.flag = flag;
+  return {
+    identity: readingIdentity(displayName),
+    value: row.value_num,
+    unit: row.unit?.trim() ?? "",
+    date: row.date,
+    measuredAt: null,
+    source: readingSourceFor({
+      sourceKey: row.source,
+      documentId: row.document_id,
+      encounterId: row.encounter_id,
+      providerId: row.provider_id,
+    }),
+    store: "medical_records",
+    rowId: row.id,
+    sourceKey: row.source ?? null,
+    edited: row.edited === 1,
+    notes: row.notes ?? null,
+    ...(Object.keys(provenance).length > 0 ? { provenance } : {}),
+  };
+}
+
+// ---- Series assembly -------------------------------------------------------
+
+/**
+ * Collapse readings that are the SAME physical measurement presented twice.
+ *
+ * The key is (date, raw source, value). Date and source are what #1997 names; the
+ * VALUE is in the key because it must be: a same-day fever curve is several
+ * genuinely different Body Temperature readings from one source on one date
+ * (#800/#843), and a (date, source) key alone would silently drop all but one of
+ * them. What it does collapse is the real duplicate — one reading represented in
+ * two stores, or a re-push landing beside its own earlier row — which is the
+ * double-count a cross-store series would otherwise introduce.
+ *
+ * The representative is the reading that carries the MOST: an observation with
+ * provenance wins over a bare stream row, so folding stores together never costs a
+ * document link. Ties keep the first, so the caller's order decides.
+ */
+export function dedupeReadings(readings: readonly Reading[]): Reading[] {
+  const byKey = new Map<string, Reading>();
+  for (const r of readings) {
+    const key = `${r.identity.toLowerCase()}|${r.date}|${(
+      r.sourceKey ?? ""
+    ).toLowerCase()}|${r.value}`;
+    const kept = byKey.get(key);
+    if (!kept) {
+      byKey.set(key, r);
+      continue;
+    }
+    if (!kept.provenance && r.provenance) byKey.set(key, r);
+  }
+  return [...byKey.values()];
+}
+
+/** Oldest → newest, the order every series surface reads in. */
+export function sortReadings(readings: readonly Reading[]): Reading[] {
+  return [...readings].sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.measuredAt ?? "").localeCompare(b.measuredAt ?? "") ||
+      a.rowId - b.rowId
+  );
+}
+
+/** The chart/period-stat shape: one point per reading, oldest first. */
+export function readingPoints(
+  readings: readonly Reading[]
+): { date: string; value: number }[] {
+  return sortReadings(readings).map((r) => ({ date: r.date, value: r.value }));
+}

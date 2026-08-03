@@ -57,6 +57,9 @@ export * from "./queries/data-quality";
 export * from "./queries/surgery-bridge";
 export * from "./queries/intraday";
 export * from "./queries/trends-context";
+// The unified reading series (#1997 phase 1) — one identity-keyed shape over
+// body_metrics / metric_samples / medical_records.
+export * from "./queries/readings";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";
