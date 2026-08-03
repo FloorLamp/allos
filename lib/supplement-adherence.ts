@@ -1,7 +1,15 @@
 // Adherence over a rolling window of daily states, ordered oldest-first (the
 // last element is today). Consumed by the supplements page to summarize each
-// supplement's recent adherence as a streak + percentage instead of a per-day
+// supplement's recent adherence as a percentage + day counts instead of a per-day
 // dot strip.
+//
+// THERE IS NO STREAK HERE ANY MORE (#1936, owner-decided). The "🔥 Nd" figure this
+// module used to expose measured continuity of app-logged behavior rather than
+// health, and it had a CLIFF where the percentage beside it degrades gracefully: a
+// paused item, an illness episode, a travel week, or a single deliberate skip
+// (#232) reset it to zero, which is precisely what the rest of the dose machinery
+// is built to accommodate without judgment. The percentage already answers "am I
+// consistent?", and a missed day nudges it instead of zeroing it.
 
 import type { Supplement } from "./types";
 import { isDueOn } from "./supplement-schedule";
@@ -13,8 +21,8 @@ import { dateStrInTz, parseUtcSql } from "./date";
 export const STRIP_DAYS = 14;
 
 // "skipped" (issue #232) is a DELIBERATE decision, distinct from "missed" (a
-// lapse): it is excluded from the adherence denominator and, like "na", is
-// transparent to the streak — it neither counts as follow-through nor breaks it.
+// lapse): it is excluded from the adherence denominator, like "na" — it is neither
+// follow-through nor a lapse.
 export type AdherenceState = "taken" | "partial" | "skipped" | "missed" | "na";
 
 export interface AdherenceDot {
@@ -23,10 +31,6 @@ export interface AdherenceDot {
 }
 
 export interface AdherenceSummary {
-  // Consecutive days ending at the most recent completed day where at least some
-  // dose was taken (fully or partially). "na" (not due) and "skipped" (a
-  // decision) days are transparent — they neither count nor break the run.
-  streak: number;
   // Percent of due days taken over the window (0–100), with partial days
   // counting as half. Skipped days are excluded from the denominator (adherence
   // measures follow-through on INTENDED doses).
@@ -51,14 +55,17 @@ export interface AdherenceSummary {
 export interface AdherenceSummaryVisibility {
   show: boolean;
   showDetail: boolean;
-  showStreak: boolean;
   showSkipped: boolean;
 }
 
-// Resting supplement rows should surface adherence only when it carries signal:
-// an imperfect follow-through rate, a deliberate skip, or a streak long enough to
-// feel earned. Medication surfaces retain the full summary by using the default
-// mode. Pure so the UI threshold stays explicit and pinned.
+// Resting supplement rows should surface adherence only when it carries signal: an
+// imperfect follow-through rate or a deliberate skip. Medication surfaces retain
+// the full summary by using the default mode. Pure so the UI threshold stays
+// explicit and pinned.
+//
+// `show` used to OR in a long-enough streak (#1936). With that reason gone, a row
+// visible ONLY because of its streak falls back to its ordinary rendering — it does
+// not vanish, because nothing about the row changed except that one chip.
 export function adherenceSummaryVisibility(
   summary: AdherenceSummary,
   noteworthyOnly = false
@@ -67,11 +74,9 @@ export function adherenceSummaryVisibility(
   const showDetail =
     summary.pct !== null &&
     (!noteworthyOnly || summary.pct < 100 || showSkipped);
-  const showStreak = summary.streak >= (noteworthyOnly ? 3 : 2);
   return {
-    show: showDetail || showStreak || showSkipped,
+    show: showDetail || showSkipped,
     showDetail,
-    showStreak,
     showSkipped,
   };
 }
@@ -295,7 +300,7 @@ export function supplementAdherenceStrip(
 }
 
 // Drop a trailing "missed" day — today, still pending: nothing logged yet, so it
-// should penalize neither the percentage/streak (adherenceSummary) nor the pattern
+// should penalize neither the percentage (adherenceSummary) nor the pattern
 // detectors (#430.3). A day still in progress reads as "missed" all day otherwise,
 // which can tip a boundary (a false Friday miss viewed Friday morning). Both the
 // medicine page's summary and the pattern builder share this ONE guard so the
@@ -311,8 +316,8 @@ export function stripWithoutTrailingPending(
 
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
   // A trailing "missed" today means today is still pending — nothing logged
-  // yet. Drop it so a day still in progress penalizes neither the percentage
-  // nor the streak (both would otherwise read it as a miss all day).
+  // yet. Drop it so a day still in progress does not penalize the percentage
+  // (which would otherwise read it as a miss all day).
   const settled = stripWithoutTrailingPending(strip);
 
   // "skipped" days are a decision, not an intended dose — excluded from the
@@ -330,14 +335,5 @@ export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
       ? Math.round(((takenDays + partialDays * 0.5) / applicableDays) * 100)
       : null;
 
-  let streak = 0;
-  for (let i = settled.length - 1; i >= 0; i--) {
-    const st = settled[i].state;
-    if (st === "na" || st === "skipped") continue; // transparent to the streak
-    if (st === "taken" || st === "partial")
-      streak++; // partial keeps it alive
-    else break; // only a fully missed day ends the run
-  }
-
-  return { streak, pct, takenDays, partialDays, skippedDays, applicableDays };
+  return { pct, takenDays, partialDays, skippedDays, applicableDays };
 }

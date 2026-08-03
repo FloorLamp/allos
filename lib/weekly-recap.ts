@@ -1,11 +1,27 @@
 // Weekly recap (issue #32) — a PURE, rule-based summary of the last seven days:
-// workouts + training volume, personal records, supplement adherence, a robust
-// body-weight trend, and streak status. No DB, no network, no AI — so it runs in
-// the dashboard widget, the weekly notification, and the unit tests alike, and
-// works with zero AI configuration. The DB gather lives in
+// workouts, personal records, supplement adherence, a robust body-weight trend,
+// aerobic base, and sleep regularity. No DB, no network, no AI — so it runs in the
+// dashboard widget, the weekly notification, and the unit tests alike, and works
+// with zero AI configuration. The DB gather lives in
 // lib/notifications/weekly-recap-data.ts (mirroring the digest's data/render
 // split); this module turns the gathered facts into a line model and renders the
 // notification message.
+//
+// COVERAGE RULE (#1935, owner-decided) — the recap's comparative advantage over the
+// daily digest is showing what you CANNOT see day to day, so that is the inclusion
+// test: does this fact only become visible at week scale? Three lines failed it and
+// were cut. Training VOLUME is a session fact aggregated, noisy against exercise
+// selection and rep ranges, and its percentage was "fewer sessions" restated with
+// false precision one line below the workout count that already said so. ESTIMATED
+// CALORIES failed harder — a low-confidence derived number compared against another
+// estimate compounds the error. And the STREAK line measured app engagement rather
+// than health, with a cliff where a rate degrades gracefully, punishing exactly
+// what this app is built to accommodate: deload weeks, rest-day recommendations,
+// illness pauses. Machinery on one side saying "rest today" and a counter on the
+// other saying "you broke your run." Consistency is still reported — as the rates
+// that survive (adherence %, workouts + composition), which a missed day nudges
+// instead of zeroing. "A summary, never a score to beat" is the whole recap's
+// contract, not just the mood line's.
 //
 // Week definition — the WEEKLY recap (7-day period) uses the profile's ONE
 // definition of "this week" (lib/week-window.ts, honoring `week_mode`), so the
@@ -92,7 +108,7 @@ export function resolveRecapWindow(
   };
 }
 
-// A short noun for the period length, used in the delta phrasing ("last week"
+// A short noun for the period length, used in the comparison phrasing ("last week"
 // vs "last month"). 7 -> "week", 30/31 -> "month", anything else -> "period",
 // so the default (7) preserves the original "last week"/"this week" wording.
 export function periodNounFor(days: number): string {
@@ -126,7 +142,7 @@ export interface RecapInput {
   weightUnit: WeightUnit;
   // Length of the recap window in days. Defaults to 7 (trailing week) when
   // omitted, so pre-#20 callers are unchanged; a monthly recap passes 30. Drives
-  // both the window math and the "last week"/"last month" delta wording.
+  // both the window math and the "last week"/"last month" comparison wording.
   periodDays?: number;
   // The profile's week definition, applied to the 7-day weekly recap so its
   // window matches the routine counters / journal (issue #223). Omitted ⇒
@@ -143,15 +159,6 @@ export interface RecapInput {
   // Workouts (one per activity) in the current and previous seven-day windows.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
-  // Strength training volume (kg lifted) summed over each window.
-  volumeKg: number;
-  prevVolumeKg: number;
-  // Total ESTIMATED calorie burn (issue #151) from MANUAL activities in each
-  // window — MET dataset × nearest bodyweight × duration (lib/calorie-estimate).
-  // Both optional/null when nothing estimable was logged; the line is then omitted.
-  // Always an estimate, kept distinct from any device-measured energy.
-  estimatedKcal?: number | null;
-  prevEstimatedKcal?: number | null;
   // Personal records (strength + cardio) dated within the current window; labels
   // are short display names ("Bench press", "Running") for the summary line.
   prLabels: string[];
@@ -162,14 +169,17 @@ export interface RecapInput {
   // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
   // ONE shared `intakeDeltaLine` the morning digest and the household card also
   // render. Null/absent on a quiet window, which is the signal to omit the row: a
-  // percentage always has a value, a delta exists only when something changed.
+  // percentage always has a value, a change line exists only when something moved.
   intakeDeltaLine?: string | null;
   // Body weights logged within the window, oldest-first (already sorted by the
   // gather). Used for a robust (median-endpoint) net-change trend.
   weights: RecapWeight[];
-  // Streak status as of today (active-day count + strict consecutive-day count).
-  streak: number;
-  strictStreak: number;
+  // Body weights logged within the PREVIOUS window, oldest-first — the week-over-week
+  // comparison the weight line was missing (#1935). Its last reading is the same
+  // figure the line's value shows, one window back, so the comparison is the plain
+  // "prior" idiom the workouts line uses and not a fourth invented statistic.
+  // Optional: an absent/empty list simply yields no comparison.
+  prevWeights?: RecapWeight[];
   // Goals marked achieved with a target date inside the window (best-effort dating).
   goalsCompleted: string[];
   // Distinct days within the window that fell inside a flagged-illness episode
@@ -190,7 +200,7 @@ export interface RecapInput {
   // Mood check-in summary (#992): mean valence + days logged over the window.
   // Null/omitted when the profile hasn't OPTED IN to the recap mood line
   // (mood_recap_enabled — off by default) or logged nothing — the line is omitted
-  // then. A gentle summary only, never a delta/score-to-beat (the no-gamification
+  // then. A gentle summary only, never a score-to-beat (the no-gamification
   // contract), which is why it deliberately carries no previous-window comparison.
   mood?: { avgValence: number; daysLogged: number } | null;
   // A fitness check COMPLETED within the window (#1307) — the same battery-completion
@@ -205,14 +215,92 @@ export interface RecapInput {
   } | null;
 }
 
+// Every line key the recap can emit. A closed union so a new line cannot be added
+// without also declaring how (or whether) it compares — see RECAP_COMPARISON_KINDS.
+export type RecapLineKey =
+  | "recovery"
+  | "workouts"
+  | "prs"
+  | "intake-deltas"
+  | "adherence"
+  | "weight"
+  | "zone2"
+  | "sleepRegularity"
+  | "mood"
+  | "goals"
+  | "fitness-check";
+
+// HOW a line compares itself to something (#1935). The old untyped `delta` slot was
+// doing five unrelated jobs in eleven lines — a raw prior-window figure, a
+// percentage, a second streak, a target ratio, a weekend shift — plus three silent
+// omissions, and the reader had no way to know which idiom a given parenthetical
+// was speaking. That is a missing type, not a copy problem. Now every line either
+// compares ONE declared way or says explicitly that it does not, and adding a line
+// forces its author to answer the question.
+//
+//   "prior"   — the SAME figure, one window back ("3 last week").
+//   "percent" — change against the prior window as a percentage.
+//   "target"  — measured against a declared target, not against the past.
+//   "none"    — this line makes no comparison (and the data may be why).
+export type RecapComparisonKind = "prior" | "percent" | "target" | "none";
+
+export type RecapComparison =
+  | { kind: "none" }
+  | { kind: "prior"; text: string }
+  | { kind: "percent"; text: string }
+  | { kind: "target"; text: string };
+
+const NO_COMPARISON: RecapComparison = { kind: "none" };
+
+// The ONE comparison idiom each line is allowed to speak. A line may fall back to
+// "none" when the data for its idiom is missing (no prior weigh-in, no Zone 2
+// target), but it may never compare a SECOND way — that is the drift the untyped
+// slot allowed. Pinned by lib/__tests__/weekly-recap.test.ts, so a new key is a
+// type error here until its author declares one.
+export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
+  {
+    recovery: "none", // a fact about the window, not a trend
+    workouts: "prior",
+    prs: "none", // which lifts, not how many more than last week
+    "intake-deltas": "none", // the shared line is ITSELF the week-over-week change
+    adherence: "none", // a rate; its note carries the dose counts
+    weight: "prior",
+    zone2: "target", // measured against the weekly target, never against last week
+    sleepRegularity: "none", // its note carries the weekend shift, not a comparison
+    mood: "none", // a summary, never a score to beat (#992/#716)
+    goals: "none",
+    "fitness-check": "none",
+  };
+
 export interface RecapLine {
   // A short machine label used as a stable key and (title-cased) as the row label.
-  key: string;
+  key: RecapLineKey;
   label: string;
   value: string;
-  // Optional trend annotation ("+8%", "−0.5 kg", "3 last week"). Never a value the
-  // line can't stand without.
-  delta?: string;
+  // How this line compares itself — exactly one declared idiom, or "none".
+  comparison: RecapComparison;
+  // Supporting detail that is NOT a comparison: which lifts set the PRs, the dose
+  // counts behind an adherence percentage, the weekend shift behind an SRI. Kept
+  // separate from `comparison` so the two can never be confused for each other
+  // again.
+  note?: string;
+  // True when `value` is a complete, self-labeled line and the row label must not
+  // be printed in front of it — the shared intake delta line (#1505) already leads
+  // with its own "Missed:"/"Resumed:" prefixes, and nesting it under a second label
+  // produced "Changed: Missed: Glycine (2 days)" (#1935). Surfaces render the label
+  // for accessibility only.
+  bare?: boolean;
+}
+
+// The parenthetical a surface prints after a line's value: the non-comparative note
+// first, then the declared comparison, "·"-separated. ONE composition for the card
+// and the notification (#221) — neither may reassemble the pieces itself.
+export function recapLineAnnotation(line: RecapLine): string | undefined {
+  const parts = [
+    line.note,
+    line.comparison.kind === "none" ? undefined : line.comparison.text,
+  ].filter((p): p is string => !!p);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 export interface WeeklyRecap {
@@ -225,15 +313,6 @@ export interface WeeklyRecap {
   // True when the week had no workouts, no adherence, and no weight readings — the
   // caller then skips the notification (the widget still renders a quiet nudge).
   isEmpty: boolean;
-}
-
-function pct(cur: number, prev: number): number | null {
-  if (prev <= 0) return null;
-  return Math.round(((cur - prev) / prev) * 100);
-}
-
-function signed(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
 }
 
 function countByType(workouts: RecapWorkout[]): Record<WorkoutType, number> {
@@ -267,8 +346,8 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
 }
 
 // Assemble the recap line model from the gathered facts. Quiet and factual: plain
-// counts and deltas, no exclamation, no score. Sections with nothing to say are
-// omitted entirely.
+// counts and one declared comparison per line, no exclamation, no score. Sections
+// with nothing to say are omitted entirely.
 export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   const days = input.periodDays ?? 7;
   const win = resolveRecapWindow(
@@ -285,16 +364,17 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
 
   // Recovery context (issue #837): a sick week reads as a sick week, not a failed
   // one. Leads the lines so the low numbers below are read in context — the app's
-  // own tracked illness state, not a scold. No delta (it's a fact, not a trend).
+  // own tracked illness state, not a scold. No comparison (a fact, not a trend).
   if (illnessDays > 0) {
     lines.push({
       key: "recovery",
       label: "Recovery",
       value: `sick ${illnessDays} day${illnessDays === 1 ? "" : "s"} this ${noun}`,
+      comparison: NO_COMPARISON,
     });
   }
 
-  // Workouts + volume.
+  // Workouts and their composition — the training fact that only week scale shows.
   const counts = countByType(input.workouts);
   const workoutCount = input.workouts.length;
   const prevCount = input.prevWorkouts.length;
@@ -306,37 +386,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       value: breakdown
         ? `${workoutCount} (${breakdown})`
         : String(workoutCount),
-      delta: `${prevCount} last ${noun}`,
-    });
-  }
-
-  if (input.volumeKg > 0 || input.prevVolumeKg > 0) {
-    const disp = Math.round(kgTo(input.volumeKg, wu)).toLocaleString("en-US");
-    const p = pct(input.volumeKg, input.prevVolumeKg);
-    lines.push({
-      key: "volume",
-      label: "Volume",
-      value: `${disp} ${wu}`,
-      delta: p == null ? undefined : `${signed(p)}%`,
-    });
-  }
-
-  // Estimated calorie burn (issue #151) from manual activities. The "≈" and the
-  // "estimated" annotation keep it visually distinct from a measured total — it is
-  // a MET-based estimate, never a device reading.
-  const estKcal =
-    input.estimatedKcal != null ? Math.round(input.estimatedKcal) : 0;
-  const prevEstKcal =
-    input.prevEstimatedKcal != null ? Math.round(input.prevEstimatedKcal) : 0;
-  if (estKcal > 0 || prevEstKcal > 0) {
-    lines.push({
-      key: "calories",
-      label: "Calories",
-      value: `≈${estKcal.toLocaleString("en-US")} kcal`,
-      delta:
-        prevEstKcal > 0
-          ? `estimated · ${prevEstKcal.toLocaleString("en-US")} last ${noun}`
-          : "estimated",
+      comparison: { kind: "prior", text: `${prevCount} last ${noun}` },
     });
   }
 
@@ -348,18 +398,27 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       key: "prs",
       label: "PRs",
       value: `${input.prLabels.length}`,
-      delta: extra > 0 ? `${shown} +${extra} more` : shown,
+      comparison: NO_COMPARISON,
+      note: extra > 0 ? `${shown} +${extra} more` : shown,
     });
   }
 
   // Intake state changes (#1505 part 3) lead the intake report: WHICH pushed
   // obligations moved is the news, the percentage below is the supporting detail.
   // Rendered from the preformatted shared line, never recomputed here.
+  //
+  // Rendered BARE (#1935): the shared line already leads with its own "Missed:" /
+  // "Resumed:" prefixes, so hanging it under a second label read "Changed: Missed:
+  // Glycine (2 days)" — labelled twice, and "Changed" is the wrong word for a miss
+  // anyway (nothing changed; something did not happen). The label survives for
+  // accessibility and as the row key; it is not printed in front of the value.
   if (input.intakeDeltaLine) {
     lines.push({
       key: "intake-deltas",
-      label: "Changed",
+      label: "Intake",
       value: input.intakeDeltaLine,
+      comparison: NO_COMPARISON,
+      bare: true,
     });
   }
 
@@ -375,7 +434,8 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         key: "adherence",
         label: "Adherence",
         value: `${p}%`,
-        delta: `${taken}/${intended} doses${skipNote}`,
+        comparison: NO_COMPARISON,
+        note: `${taken}/${intended} doses${skipNote}`,
       });
     } else {
       // Every due dose was skipped — no percentage to report, just the count.
@@ -383,39 +443,44 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         key: "adherence",
         label: "Adherence",
         value: `${skipped} skipped`,
-        delta: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
+        comparison: NO_COMPARISON,
+        note: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
       });
     }
   }
 
-  // Body-weight trend (robust net change over the window).
+  // Body weight: the latest reading, its week-over-week comparison, and the robust
+  // net change WITHIN the window as the note. The comparison is the plain "prior"
+  // idiom — the same figure (a weigh-in) one window back — which is what the line
+  // was missing (#1935): a weekly delta matters more here than on any other line,
+  // and a week with a single weigh-in used to carry no delta at all because the
+  // within-window trend needs two readings.
   const trend = weightTrendKg(input.weights);
+  const prevWeights = input.prevWeights ?? [];
   if (input.weights.length > 0) {
     const latest = input.weights[input.weights.length - 1].weightKg;
-    let delta: string | undefined;
+    let note: string | undefined;
     if (trend != null) {
       const dispDelta = kgTo(Math.abs(trend), wu);
       const arrow = trend > 0 ? "+" : trend < 0 ? "−" : "±";
-      delta = `${arrow}${dispDelta.toFixed(1)} ${wu} this ${noun}`;
+      note = `${arrow}${dispDelta.toFixed(1)} ${wu} this ${noun}`;
     }
+    const prior =
+      prevWeights.length > 0
+        ? prevWeights[prevWeights.length - 1].weightKg
+        : null;
     lines.push({
       key: "weight",
       label: "Weight",
       value: fmtWeight(latest, wu),
-      delta,
-    });
-  }
-
-  // Streak status.
-  if (input.streak > 0) {
-    lines.push({
-      key: "streak",
-      label: "Streak",
-      value: `${input.streak} active day${input.streak === 1 ? "" : "s"}`,
-      delta:
-        input.strictStreak > 0
-          ? `${input.strictStreak}-day consecutive`
-          : undefined,
+      comparison:
+        prior != null
+          ? {
+              kind: "prior",
+              text: `${fmtWeight(prior, wu)} last ${noun}`,
+            }
+          : NO_COMPARISON,
+      note,
     });
   }
 
@@ -429,9 +494,12 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       key: "zone2",
       label: "Zone 2",
       value: `${input.zone2Min} min`,
-      delta: target
-        ? `${Math.round((input.zone2Min / target) * 100)}% of ${target} min target`
-        : undefined,
+      comparison: target
+        ? {
+            kind: "target",
+            text: `${Math.round((input.zone2Min / target) * 100)}% of ${target} min target`,
+          }
+        : NO_COMPARISON,
     });
   }
 
@@ -447,18 +515,29 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       key: "sleepRegularity",
       label: "Sleep regularity",
       value: sriPresentation(input.sri).text,
-      delta: shiftH,
+      comparison: NO_COMPARISON,
+      note: shiftH,
     });
   }
 
-  // Mood (#992): a gentle, opt-in summary of the window's check-ins. No delta on
-  // purpose — a summary, never a score to beat (the no-gamification contract).
+  // Mood (#992): a gentle, opt-in summary of the window's check-ins. No comparison
+  // on purpose — a summary, never a score to beat (the no-gamification contract).
+  //
+  // A SINGLE check-in is reported as itself, not as an "average" (#1935): averaging
+  // one value is not an average, and dressing one low day as a weekly statistic is
+  // exactly the over-claim #992 guards against. The averaging language appears only
+  // once there is something to average.
   if (input.mood != null && input.mood.daysLogged > 0) {
     const avg = Math.round(input.mood.avgValence * 10) / 10;
+    const days = input.mood.daysLogged;
     lines.push({
       key: "mood",
       label: "Mood",
-      value: `averaged ${avg}/5 over ${input.mood.daysLogged} check-in${input.mood.daysLogged === 1 ? "" : "s"}`,
+      value:
+        days === 1
+          ? `one check-in: ${avg}/5`
+          : `averaged ${avg}/5 over ${days} check-ins`,
+      comparison: NO_COMPARISON,
     });
   }
 
@@ -468,7 +547,8 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       key: "goals",
       label: "Goals reached",
       value: `${input.goalsCompleted.length}`,
-      delta: input.goalsCompleted.slice(0, 3).join(", "),
+      comparison: NO_COMPARISON,
+      note: input.goalsCompleted.slice(0, 3).join(", "),
     });
   }
 
@@ -484,7 +564,12 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
               : ""
           }`
         : "battery refreshed";
-    lines.push({ key: "fitness-check", label: "Fitness check", value });
+    lines.push({
+      key: "fitness-check",
+      label: "Fitness check",
+      value,
+      comparison: NO_COMPARISON,
+    });
   }
 
   const isEmpty =
@@ -575,7 +660,13 @@ export function renderRecapMessage(
   const body = narr
     ? narr
     : recap.lines
-        .map((l) => `• ${l.label}: ${l.value}${l.delta ? ` (${l.delta})` : ""}`)
+        .map((l) => {
+          const ann = recapLineAnnotation(l);
+          // A bare line is already self-labelled (the shared intake delta line) —
+          // printing the row label in front of it would label it twice (#1935).
+          const head = l.bare ? l.value : `${l.label}: ${l.value}`;
+          return `• ${head}${ann ? ` (${ann})` : ""}`;
+        })
         .join("\n");
   const who = profileName ? ` — ${profileName}` : "";
   // The recap was the only builder that took no deepLinkBase and returned no actions

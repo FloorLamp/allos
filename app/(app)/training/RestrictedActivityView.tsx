@@ -44,7 +44,6 @@ export default async function RestrictedActivityView() {
         {week.sessions === 0
           ? "No sessions yet this week."
           : `${week.sessions} session${week.sessions === 1 ? "" : "s"} this week`}
-        {week.streak > 0 ? ` · ${week.streak}-day streak` : ""}
       </p>
       <ActivityLogPanel
         activities={activities.slice(0, 30)}

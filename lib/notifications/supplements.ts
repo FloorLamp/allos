@@ -56,7 +56,7 @@ import { getOfferedIntakeForSlot } from "../queries/intake";
 
 export type { ReminderWindow, IntakeSendSlot };
 
-// Rolling window for the streak + adherence percentage shown on each line —
+// Rolling window for the adherence percentage shown on each line —
 // matches the supplements page's strip length.
 const ADHERENCE_DAYS = 14;
 
@@ -149,7 +149,7 @@ function gatherWindowDoses(
   // pseudo-slot instead of folding into Morning.
   const workoutTimed = preWorkoutTimed(profileId);
 
-  // Inputs for the per-dose streak + adherence percentage. Anchored on the real
+  // Inputs for the per-dose adherence percentage. Anchored on the real
   // today (not `date`, which may be a prior day's reminder tapped late) so the
   // column window lines up with getSupplementLogsInRange's own today-anchored
   // range and with adherenceSummary's "last column is today, still pending" rule.

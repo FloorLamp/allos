@@ -87,7 +87,6 @@ export default async function HistorySection() {
       weekSummary={{
         sessions: summary.sessions,
         activeDays: summary.activeDays,
-        streak: summary.streak,
         targets,
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
