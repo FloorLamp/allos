@@ -598,23 +598,40 @@ export async function settledCheckSave(
 //      from the instant before `locator.click()`, so a poll already in flight when
 //      the click landed can no longer satisfy the wait. That is the #1437
 //      false-settle (settle on a bystander, then `goto` aborts the real write).
-//   2. The request must target THIS PAGE'S ROUTE. Next posts a Server Action to the
-//      current document URL, so the action's pathname is the page's pathname; a
-//      route-handler POST (`/api/…`) is by construction NOT the click's action.
-//      Pass `opts.url` for the rare click that legitimately posts elsewhere.
+//   2. The request must be a SERVER ACTION, which Next marks with a `next-action`
+//      header carrying the action id. A route-handler POST (`/api/…`) has no such
+//      header and is by construction not the click's action.
 //
-// WHAT THIS DOES NOT GUARANTEE, said plainly: two Server Actions on the SAME route
-// are indistinguishable from outside the browser — same method, same URL, no
-// per-action marker Playwright exposes. So a background actor that posts an action
-// to the current route AFTER the click can still satisfy this wait. Nothing in the
-// app does that today (#1949 left the toasters on `fetch` GETs), and adding one
-// would be visible in `lib/__tests__/chrome-refresh-scan.test.ts`'s chrome-actor
-// list — but the guarantee is "an action POST to this route, caused no earlier than
-// this click", not "this click's action". Where that residue matters (a settled
-// click followed by a NAVIGATION), keep asserting the durable server-rendered
-// marker the completed mutation produces before navigating — the rule this module's
-// #1437 note already states, and the wellbeing card's `mood-server-logged`
-// precedent.
+//      This started life as "must target this page's route", which is true of a
+//      Server Action — Next posts one to the current document URL — but pinning
+//      that route when the wait is ARMED turned out to be brittle in exactly the
+//      way `followLink` documents above: the App Router can commit a destination
+//      and then UNWIND to the source route while the interaction is still running.
+//      When it does, the click's own action posts from the route the page has
+//      unwound to, the arm-time pin rejects it, and the timeout blames the call
+//      site for a navigation that happened underneath it (measured on
+//      `illness-episode-followups`, where the Save action and both toaster polls
+//      all posted to `/` after an unwind off `/medical/episodes/2`). Keying on the
+//      header identifies the same class of request without caring which route it
+//      leaves from, so it is both tighter (a same-route `/api` POST no longer
+//      qualifies) and immune to the unwind.
+//
+//      The one Server Action WITHOUT that header is a pre-hydration native `<form>`
+//      submit, which carries its action id in the body instead — that one is still
+//      matched on the route, which it necessarily posts to, being a document
+//      navigation. `opts.url` overrides both for a click that posts elsewhere.
+//
+// WHAT THIS DOES NOT GUARANTEE, said plainly: two Server Actions are
+// indistinguishable from outside the browser unless you pin their action ids, which
+// are build-generated hashes no spec should hard-code. So a background actor that
+// posts an action AFTER the click can still satisfy this wait. Nothing in the app
+// does that today (#1949 left the toasters on `fetch` GETs), and adding one would be
+// visible in `lib/__tests__/chrome-refresh-scan.test.ts`'s chrome-actor list — but
+// the guarantee is "a Server Action POST, caused no earlier than this click", not
+// "this click's action". Where that residue matters (a settled click followed by a
+// NAVIGATION), keep asserting the durable server-rendered marker the completed
+// mutation produces before navigating — the rule this module's #1437 note already
+// states, and the wellbeing card's `mood-server-logged` precedent.
 export async function settledClick(
   page: Page,
   locator: Locator,
@@ -632,22 +649,44 @@ export async function settledClick(
   const onRequest = (request: Request) => {
     if (collecting) causedByClick.add(request);
   };
+  // Every same-origin POST seen during the wait, with the reason it was refused.
+  // A timeout here is nearly always a question about WHICH post happened, so the
+  // failure answers it instead of making the next reader re-instrument (#1952).
+  const rejected: string[] = [];
   page.on("request", onRequest);
   try {
     const settled = page.waitForResponse(
       (resp) => {
         const request = resp.request();
         if (request.method() !== "POST") return false;
-        if (!causedByClick.has(request)) return false;
+        let target: URL;
         try {
-          const target = new URL(resp.url());
-          if (target.origin !== here.origin) return false;
-          return opts.url
-            ? opts.url.test(resp.url())
-            : target.pathname === here.pathname;
+          target = new URL(resp.url());
         } catch {
           return false;
         }
+        if (target.origin !== here.origin) return false;
+        if (!causedByClick.has(request)) {
+          rejected.push(`${target.pathname} (already in flight at click time)`);
+          return false;
+        }
+        // Next stamps every hydrated Server Action with the id it is dispatching;
+        // a pre-hydration native form submit has no header and is matched on the
+        // route it necessarily posts to.
+        const isServerAction = request.headers()["next-action"] != null;
+        const matches = opts.url
+          ? opts.url.test(resp.url())
+          : isServerAction || target.pathname === here.pathname;
+        if (!matches) {
+          rejected.push(
+            `${target.pathname} (started after the click, but ` +
+              (opts.url
+                ? `does not match ${opts.url}`
+                : `carries no next-action header and is not this page's route`) +
+              `)`
+          );
+        }
+        return matches;
       },
       { timeout }
     );
@@ -655,7 +694,20 @@ export async function settledClick(
     // listening (a fast action cannot resolve in the gap), and the browser cannot
     // have issued the click's request before the click.
     collecting = true;
-    await Promise.all([settled, locator.click({ timeout })]);
+    // The click and the wait share one deadline, so a click that never becomes
+    // actionable (a disabled Save, a button under a closing popover) expires at the
+    // same moment as the response wait — and `Promise.all` then reports whichever
+    // rejected first, which is usually the wait. That would blame "no POST" for a
+    // click that never happened. Hold the click's failure and report it alongside,
+    // the same way followLink surfaces `lastClickError` (#890).
+    let clickError: Error | null = null;
+    const clicked = locator.click({ timeout }).catch((err: unknown) => {
+      clickError = err instanceof Error ? err : new Error(String(err));
+    });
+    await Promise.all([settled, clicked]);
+    // The response landed, but the click behind it did not: something else on the
+    // page produced that POST, so the caller's premise is already false.
+    if (clickError) throw clickError;
   } catch (err) {
     // The old helper's timeout said only "waiting for event response", which reads
     // as a slow server on a control that was never going to post. Name the real
@@ -664,11 +716,18 @@ export async function settledClick(
     const wrapped = err instanceof Error ? err : new Error(String(err));
     if (wrapped.message.includes("waitForResponse")) {
       wrapped.message +=
-        `\n\n[settledClick] no same-origin POST to ${here.pathname} started after ` +
+        `\n\n[settledClick] armed on ${here.pathname}; page is now ${new URL(page.url()).pathname}.` +
+        `\n[settledClick] no same-origin POST to ${here.pathname} started after ` +
         `this click. If this control is a pure CLIENT toggle (a disclosure, a chip, ` +
         `an overflow menu, a dialog opener) it never posts: use hydratedClick and ` +
         `assert what it reveals. If it navigates, use followLink. If it posts ` +
-        `somewhere other than this route, pass { url }.`;
+        `somewhere other than this route, pass { url }.` +
+        (rejected.length
+          ? `\n[settledClick] same-origin POSTs seen while waiting:\n  - ${rejected.join("\n  - ")}`
+          : `\n[settledClick] NO same-origin POST was seen at all during the wait — ` +
+            `not even a background one. The page produced no traffic, so the old ` +
+            `"any POST" helper would have timed out here too; suspect a stalled or ` +
+            `navigated page rather than this contract.`);
     }
     throw wrapped;
   } finally {

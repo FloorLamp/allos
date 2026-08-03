@@ -486,19 +486,38 @@ traffic goes away. #1949 removed the traffic and all 22 went red at once.
    window opened in the same synchronous turn as `locator.click()`, matched on
    Playwright's `Request` object identity. A poll already in flight when the click
    landed can no longer satisfy the wait, which is the #1437 false-settle above.
-2. **Targets this page's route** — Next posts a Server Action to the current
-   document URL, so a route-handler POST (`/api/…`) is by construction not the
-   click's action. `opts.url` covers a click that legitimately posts elsewhere.
+2. **Is a Server Action** — Next stamps every hydrated action dispatch with a
+   `next-action` header carrying the action id, and a route-handler POST (`/api/…`)
+   has none. The pre-hydration native `<form>` submit is the one action without that
+   header (its id rides the body), so it is still matched on the route it
+   necessarily posts to. `opts.url` overrides both.
 
-**What it does not guarantee, stated plainly:** two Server Actions on the SAME
-route are indistinguishable from outside the browser — same method, same URL, no
-per-action marker Playwright exposes. A background actor that posted an action to
-the current route AFTER the click would still satisfy the wait. Nothing does that
+   This filter was originally "targets this page's route", and that is where the
+   first regression came from: it is true of a Server Action, but pinning the route
+   at ARM time breaks on the unwind `followLink` documents — the App Router can
+   commit a destination and then fall back to the source route mid-interaction. On
+   `illness-episode-followups` it did exactly that, and the Save action **and** both
+   toaster polls posted to `/` after unwinding off `/medical/episodes/2`, so the
+   arm-time pin rejected the click's own action and blamed the call site for a
+   navigation underneath it. Keying on the header is both tighter (a same-route
+   `/api` POST no longer qualifies) and immune to the unwind. **A same-route filter
+   that needs per-call-site `{ url }` opt-outs would have been the weaker design;
+   this one needs none.**
+
+**What it does not guarantee, stated plainly:** two Server Actions are
+indistinguishable from outside the browser unless you pin their action ids, which
+are build-generated hashes no spec should hard-code. A background actor that posted
+an action AFTER the click would still satisfy the wait. Nothing does that
 today, and `chrome-refresh-scan`'s chrome-actor list is where such an actor would
 have to appear — but the guarantee is "an action POST to this route, caused no
 earlier than this click", not "this click's action". Where that residue matters
 (a settled click followed by a navigation), the durable-marker rule above still
 applies.
+
+When this wait does time out, the failure now reports the page it armed on, the
+page the browser is on NOW, every same-origin POST it saw with the reason each was
+refused, and the click's own error if the click never landed — so the next reader
+does not have to re-instrument the helper to find out which of those happened.
 
 **The lesson for the call site, which is the half that actually recurs:** a
 control that opens something — a disclosure, a chip, an overflow menu, a confirm
