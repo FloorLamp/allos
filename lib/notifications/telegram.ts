@@ -53,8 +53,21 @@ import {
   type InlineKeyboard,
 } from "./telegram-api";
 import { deliveredKeyboard } from "./delivered-keyboard";
-import { planPointerRotation, type PointerTarget } from "./pointer-rotation";
-import { recordMessagePointer } from "./message-pointers";
+import {
+  planKindSupersede,
+  planPointerRotation,
+  type PointerTarget,
+} from "./pointer-rotation";
+import {
+  claimMessagePointerClose,
+  liveMessagePointersForKind,
+  recordMessagePointer,
+  restoreMessagePointer,
+  type MessagePointer,
+} from "./message-pointers";
+import { isReissuableKind } from "./reconcile-registry";
+import { reconcileClosingText } from "./reconcile-core";
+import { classifyTelegramFailure } from "./telegram-error";
 
 const log = createLogger("telegram");
 
@@ -118,6 +131,7 @@ export const telegramChannel: NotificationChannel = {
         // like a fan-out copy — a caregiver's escalation chat is the last place a
         // false "still outstanding" belongs (#1779).
         recordPointer(profileId, chatId, messageId, msg);
+        await supersedePriorKeyboards(profileId, chatId, messageId, msg);
       }
       return;
     }
@@ -159,6 +173,9 @@ export const telegramChannel: NotificationChannel = {
       // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
       // group's copy can correct the copies in every other subscriber's chat.
       recordPointer(profileId, chatId, messageId, msg);
+      // ONE LIVE KEYBOARD PER (chat, kind) (#1898): a re-issuable kind closes the copy
+      // it replaces. AFTER the record, so the chat never briefly holds none.
+      await supersedePriorKeyboards(profileId, chatId, messageId, msg);
     }
   },
 };
@@ -200,6 +217,100 @@ function recordPointer(
     // — in a shared chat, whose message it closed.
     title: msg.title,
   });
+}
+
+// ONE LIVE KEYBOARD PER (chat, kind) — issue #1898.
+//
+// Called immediately after `recordPointer`, from every send path in this module, for
+// exactly the reason the pointer record itself lives here: this is the only place that
+// holds both the delivered message id and the guarded keyboard-edit primitive.
+//
+// WHAT IT CLOSES. The pointers this profile still holds for the SAME chat and the SAME
+// kind, when the kind declared itself re-issuable (KIND_REISSUE). The targets come from
+// the #1779 pointer table, never from the outgoing message, which is what makes #1945's
+// stranding class unrepresentable rather than merely guarded: every target is a delivery
+// that was actually recorded, so a send can never close a message no later send could
+// name. The trigger is symmetrical — a send that recorded no pointer of its own (no
+// delivered keyboard) has superseded nothing and closes nothing.
+//
+// ORDER, AND WHY IT IS THE ONE FROM #1945. Record first, close second. A network edit
+// and a DB write cannot share a transaction, so atomicity is bought at the decision: the
+// new pointer exists before anybody's keyboard is taken away, so a failure anywhere in
+// this function leaves the chat with MORE live keyboards than the invariant wants —
+// never zero.
+//
+// CLAIM-FIRST (#1788), the same compare-and-swap the sweep uses: a supersede racing the
+// hourly reconcile must not have both of them edit the same message. Whoever claims the
+// row makes the call; the loser does nothing. And on a TRANSIENT failure the claim is
+// released (#1885) so the pointer survives — which is what makes a failed close
+// self-healing here in a way #947's bespoke strip never was: the row is still a target
+// for the sweep AND for the next send of this kind, instead of leaving one extra live
+// keyboard until the day rollover.
+//
+// STRICTLY BEST-EFFORT throughout, like every other pointer write in this module: the
+// message has already been delivered, so nothing below may throw into dispatch()'s
+// per-channel result or touch notify_lifecycle.
+async function supersedePriorKeyboards(
+  profileId: number,
+  chatId: string | number,
+  messageId: number | undefined,
+  msg: NotificationMessage
+): Promise<void> {
+  try {
+    if (messageId == null || !profileId) return;
+    const kind = msg.kind ?? "other";
+    // Cheap gate before any query: most sends are of a kind that never supersedes.
+    if (!isReissuableKind(kind)) return;
+    // The just-sent message must itself be a keyboard, or it replaced nothing.
+    if (deliveredKeyboard(msg).length === 0) return;
+    const targets = planKindSupersede(
+      liveMessagePointersForKind(profileId, chatId, kind),
+      { chatId, messageId, kind },
+      isReissuableKind
+    );
+    for (const target of targets) await closeSuperseded(profileId, target);
+  } catch (e) {
+    log.info("supersede: failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// Close ONE superseded message. Mirrors the sweep's close arm exactly (claim, edit,
+// release-on-transient / forget-on-permanent) so the two paths cannot drift about what a
+// failed edit means.
+async function closeSuperseded(
+  profileId: number,
+  target: MessagePointer
+): Promise<void> {
+  if (!claimMessagePointerClose(profileId, target.id, target.version)) return;
+  try {
+    // The close NAMES ITS SUBJECT (#1822 item 7) from the title the pointer recorded at
+    // send time, attribution prefix included — so in a shared chat it is clear WHOSE
+    // keyboard was replaced, not just that one was.
+    await closeMessage(
+      target.chatId,
+      target.messageId,
+      reconcileClosingText("superseded", target.title)
+    );
+  } catch (e) {
+    const permanent = classifyTelegramFailure(e) === "permanent";
+    // Transient: the message is still in the chat showing its keyboard, and the claim
+    // already deleted the row. Put it back, so the next sweep — or the next send of this
+    // kind — tries again. Retries stay bounded by the pointer's own retention horizon.
+    if (!permanent) restoreMessagePointer(target);
+    log.info(
+      permanent
+        ? "supersede: close failed, pointer dropped (ignored)"
+        : "supersede: close deferred (transient, pointer kept)",
+      {
+        profile: profileId,
+        chat: target.chatId,
+        err: e instanceof Error ? e.message : String(e),
+      }
+    );
+  }
 }
 
 // Rotate ONE per-profile "last live keyboard" pointer: strip the message the pointer
@@ -335,7 +446,12 @@ export async function sendTelegramMessage(
   msg: NotificationMessage
 ): Promise<void> {
   const messageId = await sendMessageRaw(chatId, msg);
-  recordPointer(profileIdForExplicitSend(chatId), chatId, messageId, msg);
+  // The chat-addressed send is what the on-demand COMMANDS use (#797/#859/#1895), which
+  // is where re-issue matters most: typing `/dose` twice must re-issue the list, not
+  // stack a second live keyboard beside it.
+  const profileId = profileIdForExplicitSend(chatId);
+  recordPointer(profileId, chatId, messageId, msg);
+  await supersedePriorKeyboards(profileId, chatId, messageId, msg);
 }
 
 // The subject a chat-addressed send is ABOUT, for the pointer's profile scope. An

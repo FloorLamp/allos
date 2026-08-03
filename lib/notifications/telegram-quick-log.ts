@@ -21,6 +21,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(chatId, {
       title: "💊 Log a PRN dose",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "prn-list",
     });
     return;
   }
@@ -57,6 +58,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(chatId, {
       title: "💊 Log a PRN dose",
       body: "No as-needed medications are set up. Add one under Medications in the app.",
+      kind: "prn-list",
     });
     return;
   }
@@ -65,6 +67,7 @@ export async function handleDoseCommand(
     title: "💊 Log a PRN dose",
     body: "Tap a medication to record a dose now:",
     actions,
+    kind: "prn-list",
   });
 }
 
@@ -173,6 +176,7 @@ export async function handleSymptomCommand(
     await sendTelegramMessage(chatId, {
       title: "Log a symptom",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "symptom",
     });
     return;
   }
@@ -193,6 +197,7 @@ export async function handleSymptomCommand(
     title: "Log a symptom",
     body: "Tap a symptom, then choose how bad it is:",
     actions,
+    kind: "symptom",
   });
 }
 
@@ -221,6 +226,7 @@ export async function handleSymptomPick(
     title: `🤒 Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
+    kind: "symptom",
   });
   await answerCallbackQuery(cq.id);
 }
@@ -351,6 +357,7 @@ export async function handleTempCommand(
     await sendTelegramMessage(chatId, {
       title: "Log a temperature",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+      kind: "temp",
     });
     return;
   }
@@ -363,6 +370,7 @@ export async function handleTempCommand(
       body:
         `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
         `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
+      kind: "temp",
     });
   }
 }

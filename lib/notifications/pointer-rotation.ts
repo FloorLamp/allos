@@ -57,3 +57,58 @@ export function planPointerRotation<P extends PointerTarget>(
   const strip = prev && !samePointerTarget(prev, next) ? prev : null;
   return { action: "rotate", record: next, strip };
 }
+
+// ── ONE LIVE KEYBOARD PER (chat, kind) — issue #1898 ─────────────────────────
+//
+// The rotation above is the SINGLE-POINTER shape: one stored id per profile, rotated on
+// every send. It fits a family whose "is this a re-issue?" test lives in the outgoing
+// message's own tokens (the food nudge's `food:` quick-log button).
+//
+// Most kinds have no such token and, until now, no supersede at all: `/dose` and
+// `/symptom` stack a fresh live keyboard in the chat on every call, and #1895's
+// on-demand commands multiply the opportunities. Each duplicate is safe to tap and
+// stays fresh — which is the cost: the #1779 sweep pays an hourly Telegram edit per
+// stale duplicate, forever, to keep clutter honest.
+//
+// The generalization reads its strip targets from the #1779 POINTER TABLE instead of
+// from the outgoing message. That is what makes the #1945 stranding class
+// unrepresentable here rather than merely guarded against: a target is a delivery that
+// was actually recorded, so a send can never strip a message that no later send could
+// name. The trigger is symmetrical — the just-sent message must itself have been
+// recordable (it carries a delivered keyboard), or it has superseded nothing.
+//
+// A kind must DECLARE re-issuability (KIND_REISSUE in ./reconcile-registry). Passing
+// the predicate in keeps this module pure and keeps the declaration in the registry the
+// completeness scan reads.
+
+// The minimum a supersede candidate must carry: where it lives, and what it is.
+export interface KindedPointer extends PointerTarget {
+  kind: string;
+}
+
+// Which of `live` a send of `sent` supersedes.
+//
+// Empty — never a partial answer — when the kind is not re-issuable, or when the send
+// recorded no pointer of its own (`sent === null`). Both are the same rule as `skip`
+// above: nothing has superseded anything, so nobody's keyboard is closed.
+//
+// The CHAT is compared here rather than assumed of the caller's query: a fan-out
+// delivers one message per recipient chat and the pointer store is per profile, so a
+// list scoped only by kind would let a send into the family group close the copy sitting
+// in a caregiver's private chat. Chat ids arrive as string or number, so compare as
+// strings. Same-message is excluded so a delivery that resolved to an id the chat
+// already holds cannot close itself.
+export function planKindSupersede<C extends KindedPointer>(
+  live: readonly C[],
+  sent: KindedPointer | null | undefined,
+  isReissuable: (kind: string) => boolean
+): C[] {
+  if (!sent) return [];
+  if (!isReissuable(sent.kind)) return [];
+  return live.filter(
+    (p) =>
+      p.kind === sent.kind &&
+      String(p.chatId) === String(sent.chatId) &&
+      !samePointerTarget(p, sent)
+  );
+}

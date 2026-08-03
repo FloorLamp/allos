@@ -995,6 +995,52 @@ also fails on a stale entry. An UNKNOWN prefix is deliberately not treated as
 inert: an unreasoned button leaves its message untouched rather than being closed
 on a guess.
 
+**One live keyboard per (chat, kind) — the re-issue invariant (#1898).** The sweep
+made stale keyboards HONEST; nothing made them SINGULAR. Repeated `/dose` or
+`/symptom` calls accumulated live keyboards in a chat: each safe to tap (typed
+outcomes) and each kept fresh by the sweep — which is the cost, an hourly Telegram
+edit per stale duplicate, forever, to keep clutter honest. **A send of a
+re-issuable kind re-issues THE keyboard; it never adds another.** On sending kind K
+to chat C, the chokepoint closes this profile's other live K-pointers in C with the
+attributed supersede line ("[Norton] 💊 Log a PRN dose — superseded, use the message
+below."), through the same `reconcileClosingText` vocabulary the sweep uses.
+
+Two properties carry it. The strip targets come from the **pointer table**, never
+from the outgoing message, so a target is always a delivery that was actually
+recorded — #1945's stranding class is unrepresentable here rather than guarded
+against. And the trigger is symmetrical: a send that recorded no pointer of its own
+(no delivered keyboard) has superseded nothing and closes nothing. Ordering is
+#1945's — **record first, close second** — so a failure anywhere leaves the chat
+with MORE live keyboards than the invariant wants, never zero. The close is
+claimed with the same #1788 compare-and-swap the sweep uses (a supersede racing a
+reconcile does not double-edit) and released on a transient failure (#1885), which
+is what makes it self-healing: a close that fails is retried by the next send of
+that kind AND by the next sweep, instead of leaving one extra live keyboard until
+day-rollover the way #947's bespoke strip did.
+
+**Re-issuability is DECLARED, per kind** (`KIND_REISSUE` in
+`lib/notifications/reconcile-registry.ts`), and the completeness guard fails the
+build for a kind that never answered. "No" is the right answer for every
+state-claim kind and is not a gap: a morning dose reminder and an evening one are
+two outstanding claims, both true at once, so closing either would remove a safety
+prompt nobody answered. The `false` entries therefore carry reasons too, so
+"decided against" stays distinguishable from "nobody looked". Two entries are worth
+naming:
+
+- **`temp` is not re-issuable** because a `/temp` call in a multi-profile chat
+  sends one prompt PER profile in a single invocation — superseding on (chat, kind)
+  would close the sibling prompt the same command just sent.
+- **`food` is not re-issuable** because the nudge already holds the invariant
+  through its own #947/#1945 rotation, whose strip is conditioned on the NEW message
+  carrying a `food:` quick-log token. The generic rule cannot express that
+  condition, and without it a view-control-only nudge (#1807's "➖ Show less" shape)
+  would close the only keyboard in the chat that can still log a serving.
+
+The on-demand command replies carry real kinds (`prn-list`, `symptom`, `temp`) for
+exactly this reason: an un-kinded send collapses into the `other` catch-all, which
+is the one bucket where superseding must never apply, since any two unrelated
+messages would then close each other.
+
 **Deliberately out of scope.** No write-path coupling: the Server Action layer
 stays free of Telegram calls. A fire-and-forget edit from the action layer could
 be added on top later, but it cannot replace this (no retry, a second concurrent
