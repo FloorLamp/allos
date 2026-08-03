@@ -4,6 +4,13 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1949,
+          "kind": "fix",
+          "issues": [1878],
+          "title": "A finished import no longer wipes the form you are typing",
+          "body": "When an import or a document extraction finished in the background, the page refreshed itself \u2014 and if you were part-way through writing up a visit, the form went blank under you. The notification that the job finished still arrives the moment it does; only the page refresh now waits until you have saved or cleared what you were writing. The one trade is small and deliberate: while a form holds unsaved text, the list behind it catches up a few seconds later than the notification says it did."
+        },
+        {
           "pr": 1955,
           "kind": "feature",
           "issues": [1935, 1936, 1937, 1939],
