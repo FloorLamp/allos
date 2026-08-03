@@ -58,7 +58,7 @@ import {
 import { dentalFollowUpAdapter, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpAdapter, SKIN_FOLLOWUP_KIND } from "./followup-skin";
 import { followUpSourceReason } from "./reasons";
-import { biomarkerViewHref } from "./hrefs";
+import { readingDetailHref } from "./hrefs";
 import type { UpcomingItem } from "./upcoming";
 import type {
   CarePlanItem,
@@ -93,7 +93,7 @@ const IMAGING_DOMAIN: FollowUpDomain<ImagingStudy> = {
 };
 
 // Flagged labs: the follow-up's source flagged reading + its serial trend live on the
-// biomarker detail page, keyed by the reading's canonical name (#482); the biomarkerViewHref
+// biomarker detail page, keyed by the reading's canonical name (#482); the readingDetailHref
 // rule gates on canonicalization and falls back to the biomarkers list otherwise.
 const LABS_DOMAIN: FollowUpDomain<LabFollowUpRecord> = {
   kind: LABS_FOLLOWUP_KIND,
@@ -101,7 +101,7 @@ const LABS_DOMAIN: FollowUpDomain<LabFollowUpRecord> = {
   loadRecords: getLabFollowUpRecords,
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
-  hrefFor: (r) => biomarkerViewHref(r.canonical_name, r.name),
+  hrefFor: (r) => readingDetailHref(r.canonical_name, r.name),
 };
 
 // IOP glaucoma follow-up (#698 §6): an elevated intraocular pressure awaiting a
@@ -115,7 +115,7 @@ const IOP_DOMAIN: FollowUpDomain<IopFollowUpRecord> = {
   loadRecords: getIopFollowUpRecords,
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
-  hrefFor: (r) => biomarkerViewHref(r.canonical_name, r.name),
+  hrefFor: (r) => readingDetailHref(r.canonical_name, r.name),
 };
 
 // Dental follow-up (#705 ask 5): a "watch #14, recheck in 6 months" caries watch or a

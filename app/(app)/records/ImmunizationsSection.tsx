@@ -21,7 +21,7 @@ import {
   type ImmunizationFilter,
 } from "@/lib/immunization-status";
 import { EmptyState } from "@/components/ui";
-import { dataSectionHref } from "@/lib/hrefs";
+import { dataSectionHref, readingDetailHref } from "@/lib/hrefs";
 import { Notice } from "@/components/Notice";
 import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
@@ -373,7 +373,7 @@ export default function ImmunizationsSection({
                     >
                       <div className="min-w-0">
                         <Link
-                          href={`/biomarkers/view?name=${encodeURIComponent(t.marker)}`}
+                          href={readingDetailHref(t.marker)}
                           className="truncate text-sm font-medium text-slate-800 hover:underline dark:text-slate-100"
                         >
                           {t.marker}

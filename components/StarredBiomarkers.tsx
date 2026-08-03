@@ -17,6 +17,7 @@ import {
 } from "@/lib/settings";
 import { ageFromBirthdate } from "@/lib/date";
 import { today } from "@/lib/db";
+import { readingDetailHref } from "@/lib/hrefs";
 import { requireSession } from "@/lib/auth";
 import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "@/lib/phone-fold";
 import BiomarkerScale from "./BiomarkerScale";
@@ -113,7 +114,7 @@ export default async function StarredBiomarkers({
     return (
       <Link
         key={b.canonical_name}
-        href={`/biomarkers/view?name=${encodeURIComponent(b.canonical_name)}`}
+        href={readingDetailHref(b.canonical_name)}
         data-testid="starred-tile"
         className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-sm dark:border-white/10"
       >

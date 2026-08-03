@@ -63,6 +63,10 @@ import {
   METRIC_READINGS_LIMIT,
   getMetricReadings,
 } from "@/lib/metric-readings";
+import { getPanelSiblings } from "@/lib/queries/panel-siblings";
+import { pediatricBpContextFor } from "@/lib/queries/bp-context";
+import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
+import { PediatricBpCard } from "@/components/PediatricBpCard";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import StarButton from "@/components/StarButton";
@@ -346,6 +350,33 @@ export default async function BodyMetricDetailPage(props: {
 
   const latest =
     fullSeries.length > 0 ? fullSeries[fullSeries.length - 1] : null;
+
+  // Context that travels with a CONTINUOUS VITAL (#1932). These metrics are
+  // `medical_records` readings under a canonical name — the same rows the reading
+  // detail page charts for every episodic marker — so the two clinical companions
+  // that page carried for them come along to the surface they now render on,
+  // rather than being lost in the move or re-implemented here:
+  //   • the pediatric BP percentile + AAP category (#150), which is how a CHILD's
+  //     blood pressure must be judged (adult cutoffs call an elevated child fine);
+  //   • the panel cross-reference (#1502) — an SpO2 arrived with a blood pressure
+  //     and a respiratory rate, and each chip lands on ITS own cadence's surface.
+  // Null for every other kind: a body_metrics or metric_samples series has no
+  // canonical name, no panel, and no pediatric BP interpretation.
+  const vitalCanonical =
+    METRIC_READING_STORE[kind]?.table === "medical_records"
+      ? METRIC_READING_STORE[kind].canonical
+      : null;
+  const panelSiblings = vitalCanonical
+    ? getPanelSiblings(profile.id, vitalCanonical)
+    : null;
+  const bpCtx = vitalCanonical
+    ? pediatricBpContextFor(
+        profile.id,
+        vitalCanonical,
+        latest?.value ?? null,
+        latest?.date ?? null
+      )
+    : null;
   const latestDisplay =
     latest == null
       ? null
@@ -424,6 +455,11 @@ export default async function BodyMetricDetailPage(props: {
           </div>
         )}
 
+        {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
+            shown INSTEAD OF the adult thresholds; hidden for adults and for every
+            metric that is not blood pressure. */}
+        <PediatricBpCard ctx={bpCtx} />
+
         {/* The SAME shared range + event-control composition as the Trends hub.
             BodyTrendCharts registers the annotation kinds it actually draws; the
             provider hoists their controls into DateRangeControl's companion slot
@@ -476,6 +512,16 @@ export default async function BodyMetricDetailPage(props: {
             desktopSidebar
           />
         </div>
+
+        {/* "Part of your Vital signs panel · also measured …" (#1502/#1932): the
+            cross-reference across the cadence split, so a vital's page still says
+            what it arrived with. */}
+        {panelSiblings && (
+          <PanelSiblingsCard
+            panelId={panelSiblings.panelId}
+            names={panelSiblings.names}
+          />
+        )}
 
         {sourceComparisonKey && (
           <SourceComparison

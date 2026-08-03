@@ -1,7 +1,7 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   dataSectionHref,
   importHref,
   protocolHref,
@@ -477,7 +477,7 @@ export function medicalRecordHref(
 ): AppRoute {
   if (documentId != null) return importHref(documentId);
   if (names.length === 1 && firstName) {
-    return biomarkerViewHref(firstName);
+    return readingDetailHref(firstName);
   }
   return "/results/biomarkers";
 }
