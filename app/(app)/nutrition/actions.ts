@@ -6,6 +6,7 @@ import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import {
+  deleteFoodLogEventCore,
   logFoodServingCore,
   undoFoodServingCore,
   updateFoodLogEventCore,
@@ -174,6 +175,42 @@ export async function updateFoodLogEvent(
   revalidatePath("/trends");
   revalidatePath("/");
   return { ok: true, from: outcome.from, to: outcome.to };
+}
+
+// The row-scoped removal's answer (issue #1963): the placement the serving VACATED,
+// carrying the authoritative post-write day counter and slot tally for that coordinate.
+// The bar SETS both from these numbers rather than decrementing locally, exactly as it
+// does for a correction's `from`/`to`.
+export type FoodEventDeleteResult =
+  { ok: true; vacated: FoodEventPlacement } | { ok: false; error: string };
+
+// Remove ONE named logged serving (issue #1963). The bar's "−" is group-scoped and pops
+// the newest tap in the window by `logged_at`; since #1934 a corrected serving keeps its
+// original tap instant, so it is not necessarily the newest thing in the window it was
+// moved into and the group control could take a neighbour. The ⋯ menu already asserts a
+// per-row identity — this is the removal that honours it. `undoFoodServing` is unchanged.
+//
+// This action owns the gate + validation + revalidation; the ledger/counter removal is
+// the auth-blind core (deleteFoodLogEventCore) in ONE IMMEDIATE transaction. The core's
+// statements are id + profile_id scoped, so another profile's event id answers
+// "not-found" and writes nothing.
+export async function deleteFoodLogEvent(
+  formData: FormData
+): Promise<FoodEventDeleteResult> {
+  const { profile } = await requireWriteAccess();
+  const eventId = Number(formData.get("event_id"));
+  if (!Number.isInteger(eventId) || eventId <= 0)
+    return formError("That serving is no longer available.");
+
+  const outcome = deleteFoodLogEventCore(profile.id, eventId);
+  if (outcome.kind === "not-found")
+    return formError("That serving is no longer available.");
+  if (outcome.kind === "not-deletable")
+    return formError("Protein logs are removed from the protein total.");
+  revalidatePath("/nutrition");
+  revalidatePath("/trends");
+  revalidatePath("/");
+  return { ok: true, vacated: outcome.vacated };
 }
 
 // ---- Protein-grams quick-add (issue #824) ----

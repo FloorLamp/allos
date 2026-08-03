@@ -1,10 +1,11 @@
-// SERVER-ACTION TIER (issue #1934) — the correction paths for the two one-tap stores.
+// SERVER-ACTION TIER (issues #1934, #1963) — the row-scoped repair paths for the two
+// one-tap stores: correct a serving/photo, and (since #1963) REMOVE one named serving.
 //
 // The cores are auth-blind; the gate lives here. This tier proves the part the DB tier
-// structurally cannot see: that `updateFoodLogEvent` and `updateProgressPhoto` run
-// through requireWriteAccess, answer with TYPED outcomes rather than confirming
-// unconditionally, revalidate the surfaces the corrected value is rendered on, and
-// refuse a row belonging to ANOTHER profile while writing nothing.
+// structurally cannot see: that `updateFoodLogEvent`, `deleteFoodLogEvent`, and
+// `updateProgressPhoto` run through requireWriteAccess, answer with TYPED outcomes rather
+// than confirming unconditionally, revalidate the surfaces the changed value is rendered
+// on, and refuse a row belonging to ANOTHER profile while writing nothing.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import fs from "node:fs";
@@ -12,12 +13,17 @@ import path from "node:path";
 import sharp from "sharp";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
-import { updateFoodLogEvent } from "@/app/(app)/nutrition/actions";
+import {
+  deleteFoodLogEvent,
+  updateFoodLogEvent,
+} from "@/app/(app)/nutrition/actions";
 import {
   uploadProgressPhoto,
   updateProgressPhoto,
 } from "@/app/(app)/progress/actions";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { getFoodMealDays, getFoodSlotServingsOnDate } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -180,6 +186,128 @@ describe("updateFoodLogEvent (#1934)", () => {
       ok: false,
       error: "That serving is no longer available.",
     });
+    expect(counters(profile.id)).toEqual([
+      { date, group_key: "berries", servings: 1 },
+    ]);
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+});
+
+// ---- Row-scoped serving removal (issue #1963) ----
+
+describe("deleteFoodLogEvent (#1963)", () => {
+  it("removes the named serving and answers with the vacated placement", async () => {
+    const login = createLogin();
+    const profile = createProfile(`food-remove ${login.id}`, login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const eventId = seedServing(profile.id, date);
+
+    const res = await deleteFoodLogEvent(fd({ event_id: eventId }));
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // The bar SETS the coordinate from these numbers rather than decrementing locally.
+    expect(res.vacated).toEqual({
+      date,
+      groupKey: "berries",
+      mealSlot: "Morning",
+      servings: 0,
+      mealServings: 0,
+    });
+
+    expect(counters(profile.id)).toEqual([]);
+    expect(
+      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
+    ).toBeUndefined();
+    const [day] = getFoodMealDays(profile.id, [date]);
+    expect(day.events).toHaveLength(0);
+    // The removal is rendered on the Food tab, the trends rollup, and the dashboard.
+    expect(revalidate).toHaveBeenCalledWith("/nutrition");
+    expect(revalidate).toHaveBeenCalledWith("/trends");
+    expect(revalidate).toHaveBeenCalledWith("/");
+  });
+
+  it("refuses without write access and leaves the serving alone", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile(`food-remove-readonly ${login.id}`, login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const eventId = seedServing(profile.id, date);
+
+    actAs(login, profile, "read");
+    await expect(
+      deleteFoodLogEvent(fd({ event_id: eventId }))
+    ).rejects.toThrow();
+
+    expect(counters(profile.id)).toEqual([
+      { date, group_key: "berries", servings: 1 },
+    ]);
+    expect(
+      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
+    ).toBe(1);
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+
+  it("refuses another profile's serving without touching it", async () => {
+    const ownerLogin = createLogin();
+    const owner = createProfile(
+      `food-remove-owner ${ownerLogin.id}`,
+      ownerLogin.id
+    );
+    actAs(ownerLogin, owner);
+    const date = today(owner.id);
+    const eventId = seedServing(owner.id, date);
+
+    const intruderLogin = createLogin();
+    const intruder = createProfile(
+      `food-remove-intruder ${intruderLogin.id}`,
+      intruderLogin.id
+    );
+    actAs(intruderLogin, intruder);
+    revalidate.mockClear();
+
+    expect(await deleteFoodLogEvent(fd({ event_id: eventId }))).toEqual({
+      ok: false,
+      error: "That serving is no longer available.",
+    });
+    expect(counters(owner.id)).toEqual([
+      { date, group_key: "berries", servings: 1 },
+    ]);
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+
+  it("answers typed errors for a bad id and for the protein ranking row", async () => {
+    const login = createLogin();
+    const profile = createProfile(`food-remove-bad ${login.id}`, login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    seedServing(profile.id, date);
+
+    expect(await deleteFoodLogEvent(fd({ event_id: 0 }))).toEqual({
+      ok: false,
+      error: "That serving is no longer available.",
+    });
+    expect(await deleteFoodLogEvent(fd({ event_id: 9_999_999 }))).toEqual({
+      ok: false,
+      error: "That serving is no longer available.",
+    });
+
+    // `__protein__` never renders as a serving row (getFoodMealDays skips it), so this id
+    // can only arrive forged or stale — and its truth is the protein grams total.
+    addProteinGramsCore(profile.id, date, 25, `${date}T18:00:00Z`);
+    const proteinId = (
+      db
+        .prepare(
+          `SELECT id FROM food_log_events
+            WHERE profile_id = ? AND group_key = ? ORDER BY id DESC LIMIT 1`
+        )
+        .get(profile.id, PROTEIN_NUDGE_KEY) as { id: number }
+    ).id;
+    expect(await deleteFoodLogEvent(fd({ event_id: proteinId }))).toEqual({
+      ok: false,
+      error: "Protein logs are removed from the protein total.",
+    });
+
     expect(counters(profile.id)).toEqual([
       { date, group_key: "berries", servings: 1 },
     ]);
