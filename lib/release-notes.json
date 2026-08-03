@@ -4,6 +4,13 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1955,
+          "kind": "feature",
+          "issues": [1935, 1936, 1937, 1939],
+          "title": "Streaks are gone \u2014 the numbers that survive are the ones that describe you fairly",
+          "body": "The day-count streaks are retired: the one on your weekly recap, the \ud83d\udd25 beside each supplement, the \"N-day streak\" on the training surfaces, and the badges awarded for keeping a run going. They measured how unbroken your logging was rather than how you were doing, and they had a cliff \u2014 one paused item, one illness, one deliberate skip, one trip, and the number went to zero as though the effort before it had not happened.\n\nWhat replaces them is what was already there and more honest: days active, and your adherence percentage. The weekly recap also drops the lines that never earned week-scale framing. One streak is deliberately kept and you will still see it \u2014 the coaching nudge that notices you have trained several days in a row and suggests a rest day. That one exists to tell you to stop, not to keep going."
+        },
+        {
           "pr": 1951,
           "kind": "feature",
           "issues": [1934],
