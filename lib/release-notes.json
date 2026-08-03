@@ -4,95 +4,116 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1929,
+          "kind": "feature",
+          "issues": [1890],
+          "title": "The dashboard opens with the cards you can act on",
+          "body": "A fresh dashboard now leads with the cards that offer you something to do \u2014 log a dose, record a reading, start a session \u2014 and puts the read-only summaries behind them. Cards that only display a number no longer sit above the ones waiting on a tap. A dashboard you have already arranged yourself is left exactly as you arranged it; this changes only the order you start from."
+        },
+        {
+          "pr": 1928,
+          "kind": "feature",
+          "issues": [1892],
+          "title": "Log a cycle day from the dashboard or the quick-log sheet",
+          "body": "Cycle logging is now reachable from the dashboard card and from the quick-log sheet, not only from the cycles page. The phase card also stops going quiet at the moment logging matters most: when a period is due or already running, it shows the log affordance rather than hiding until the data catches up."
+        },
+        {
+          "pr": 1926,
+          "kind": "fix",
+          "issues": [1891],
+          "title": "Rearranging dashboard cards on a phone",
+          "body": "Dragging a dashboard card on a phone no longer resizes it mid-drag or leaves the dragged copy intercepting taps, and the reorder rows are compact enough to see several at once on a small screen. Saving a new arrangement now reliably takes the first tap."
+        },
+        {
           "pr": 1925,
           "kind": "fix",
           "issues": [1878],
           "title": "Background updates wait while you are part-way through a form",
-          "body": "The app repaints itself in the background when things finish elsewhere — the offline queue syncing, an import completing, a document finishing extraction. Those repaints now hold off while you have unsaved text in a record form, and land as soon as you save or clear it, so a half-filled form is not disturbed under you. Repaints you ask for yourself are unaffected: pulling to refresh still refreshes immediately, because that is the whole point of the gesture."
+          "body": "The app repaints itself in the background when things finish elsewhere \u2014 the offline queue syncing, an import completing, a document finishing extraction. Those repaints now hold off while you have unsaved text in a record form, and land as soon as you save or clear it, so a half-filled form is not disturbed under you. Repaints you ask for yourself are unaffected: pulling to refresh still refreshes immediately, because that is the whole point of the gesture."
         },
         {
           "pr": 1924,
           "kind": "fix",
           "issues": [1893],
           "title": "Tapping \"Start workout\" during a workout no longer restarts its clock",
-          "body": "With a workout running and minimised to the dock, every entry point still said \"Start workout\" — and tapping one silently reset that session's elapsed time and cleared what it held. Those entry points now read \"Resume workout\" while a session is live and reopen the one you were in, with its clock untouched. Refills also gained a small note saying when you just refilled, so an accidental double-tap is visible rather than silently adding a second bottle; it tells you, it does not stop you, because restocking two at once is a real thing to do."
+          "body": "With a workout running and minimised to the dock, every entry point still said \"Start workout\" \u2014 and tapping one silently reset that session's elapsed time and cleared what it held. Those entry points now read \"Resume workout\" while a session is live and reopen the one you were in, with its clock untouched. Refills also gained a small note saying when you just refilled, so an accidental double-tap is visible rather than silently adding a second bottle; it tells you, it does not stop you, because restocking two at once is a real thing to do."
         },
         {
           "pr": 1920,
           "kind": "feature",
           "issues": [1853],
           "title": "Goals can target a lab value or a vital",
-          "body": "Goals could only track weight, body fat and resting heart rate, so \"LDL under 100 by June\" had nowhere to live and sat as plain text beside the very chart that could have answered it. A goal can now name a biomarker with a target and a direction, and its progress reads the same series the trends pages draw. Pacing works per result rather than per day — a lab goal advances when a result arrives, not on a calendar, so it will not tell you that you are behind on a day nothing was measured."
+          "body": "Goals could only track weight, body fat and resting heart rate, so \"LDL under 100 by June\" had nowhere to live and sat as plain text beside the very chart that could have answered it. A goal can now name a biomarker with a target and a direction, and its progress reads the same series the trends pages draw. Pacing works per result rather than per day \u2014 a lab goal advances when a result arrives, not on a calendar, so it will not tell you that you are behind on a day nothing was measured."
         },
         {
           "pr": 1918,
           "kind": "fix",
           "issues": [1905, 1906],
           "title": "Refreshing clears the update bar, and a stale tab recovers itself instead of showing a broken light card",
-          "body": "With \"Update ready\" showing, refreshing the page did not make it go away — the refresh fetched the new build, but the update it was offering stayed pending, so the bar returned offering an update the page was already running. A refresh now takes the waiting update when the page is already on that build, silently and with no second reload. Separately, navigating to a page a stale tab had not visited yet could land on an error card that was hard-coded light — in dark mode it read as the app breaking — and whose \"Try again\" could never work, because retrying reruns the same stale code. That case now reloads onto the current build automatically, at most once, and the card behind it follows your theme and offers a reload that actually fixes it."
+          "body": "With \"Update ready\" showing, refreshing the page did not make it go away \u2014 the refresh fetched the new build, but the update it was offering stayed pending, so the bar returned offering an update the page was already running. A refresh now takes the waiting update when the page is already on that build, silently and with no second reload. Separately, navigating to a page a stale tab had not visited yet could land on an error card that was hard-coded light \u2014 in dark mode it read as the app breaking \u2014 and whose \"Try again\" could never work, because retrying reruns the same stale code. That case now reloads onto the current build automatically, at most once, and the card behind it follows your theme and offers a reload that actually fixes it."
         },
         {
           "pr": 1916,
           "kind": "fix",
           "issues": [1909],
           "title": "Two \"7-day averages\" that disagreed now agree, and period averages stop counting a half-finished today",
-          "body": "The dashboard and the metric detail page both showed a \"7-day average\" and could show different numbers for the same metric on the same day, because one excluded today and the other included it. They now compute the same way. The detail page's 7-, 30- and 90-day averages also stop including today: for anything that accumulates through the day, such as steps, the average was dragged down every afternoon by a day that was not over and quietly corrected itself at midnight. Averages now cover complete days only, the latest reading still shows today's value, and the labels say which is which — \"vs prior 7 days\" and \"through yesterday\"."
+          "body": "The dashboard and the metric detail page both showed a \"7-day average\" and could show different numbers for the same metric on the same day, because one excluded today and the other included it. They now compute the same way. The detail page's 7-, 30- and 90-day averages also stop including today: for anything that accumulates through the day, such as steps, the average was dragged down every afternoon by a day that was not over and quietly corrected itself at midnight. Averages now cover complete days only, the latest reading still shows today's value, and the labels say which is which \u2014 \"vs prior 7 days\" and \"through yesterday\"."
         },
         {
           "pr": 1911,
           "kind": "feature",
           "issues": [1600],
           "title": "Hearing gets a home, and the ototoxic warning finally says what it is warning about",
-          "body": "Audiograms had nowhere to live: the analytes and reference ranges were already curated, but there was no way to enter a hearing test. Records → Specialty now has a Hearing pane beside Vision, storing each ear-and-frequency threshold alongside every other reading so it trends, flags and exports like the rest. Retesting a single frequency now updates only that frequency instead of blanking the others. The medication warning for hearing-toxic drugs also changed: where it used to say only that you were on one, it can now cite your own audiogram — \"a documented threshold shift since January: 15 dB across 4 and 8 kHz, right ear\". With no audiogram on file it says nothing extra rather than prompting you for a test you never had."
+          "body": "Audiograms had nowhere to live: the analytes and reference ranges were already curated, but there was no way to enter a hearing test. Records \u2192 Specialty now has a Hearing pane beside Vision, storing each ear-and-frequency threshold alongside every other reading so it trends, flags and exports like the rest. Retesting a single frequency now updates only that frequency instead of blanking the others. The medication warning for hearing-toxic drugs also changed: where it used to say only that you were on one, it can now cite your own audiogram \u2014 \"a documented threshold shift since January: 15 dB across 4 and 8 kHz, right ear\". With no audiogram on file it says nothing extra rather than prompting you for a test you never had."
         },
         {
           "pr": 1910,
           "kind": "feature",
           "issues": [1675],
           "title": "Biomarker pickers put what matters to you first",
-          "body": "Every biomarker picker — starring a trend, choosing what to compare, naming a result, mapping an import — was a flat alphabetical list of roughly two hundred analytes, so the one you actually track sat wherever the alphabet put it. Opening a picker now leads with anything due for a retest or currently flagged, then the standard metrics, then the markers you have recorded before, then everything else; typing still searches the whole list. All four pickers use the same control and the same order, so moving between them does not mean relearning where things are."
+          "body": "Every biomarker picker \u2014 starring a trend, choosing what to compare, naming a result, mapping an import \u2014 was a flat alphabetical list of roughly two hundred analytes, so the one you actually track sat wherever the alphabet put it. Opening a picker now leads with anything due for a retest or currently flagged, then the standard metrics, then the markers you have recorded before, then everything else; typing still searches the whole list. All four pickers use the same control and the same order, so moving between them does not mean relearning where things are."
         },
         {
           "pr": 1908,
           "kind": "feature",
           "issues": [1403, 1407],
           "title": "A left knee is no longer the same as a right one, and an adopted parent no longer counts as inherited risk",
-          "body": "Conditions can now record which side they affect, how severe they are, and their stage, and family history can record age and cause of death plus whether a relative is biological, half, adopted or step. Both were previously impossible to state and were dropped on import even when the source document said so. Two things change beyond the record itself: a left-knee and a right-knee diagnosis no longer collapse into one row on the problem list, and screening cadence now skips a relative you have marked non-biological instead of weighing their history as inherited. A biological relative's stated cause of death also counts toward that cadence — \"father, heart attack at 52\" previously sat in a field nothing read."
+          "body": "Conditions can now record which side they affect, how severe they are, and their stage, and family history can record age and cause of death plus whether a relative is biological, half, adopted or step. Both were previously impossible to state and were dropped on import even when the source document said so. Two things change beyond the record itself: a left-knee and a right-knee diagnosis no longer collapse into one row on the problem list, and screening cadence now skips a relative you have marked non-biological instead of weighing their history as inherited. A biological relative's stated cause of death also counts toward that cadence \u2014 \"father, heart attack at 52\" previously sat in a field nothing read."
         },
         {
           "pr": 1899,
           "kind": "feature",
           "issues": [1868],
           "title": "Notification settings stop asking the same question twice",
-          "body": "The Home Assistant card listed all thirteen reminder kinds and so did the routing matrix's Home Assistant column — twenty-six checkboxes for thirteen choices. The card now keeps the connection settings and the matrix is the one editor. Each channel column also gains a select-all in its header, so switching a whole channel off is one tap instead of thirteen — except your dose reminders, missed-dose escalations, and redose notices, which keep their own boxes so a safety reminder can never be silenced by a single undifferentiated tap."
+          "body": "The Home Assistant card listed all thirteen reminder kinds and so did the routing matrix's Home Assistant column \u2014 twenty-six checkboxes for thirteen choices. The card now keeps the connection settings and the matrix is the one editor. Each channel column also gains a select-all in its header, so switching a whole channel off is one tap instead of thirteen \u2014 except your dose reminders, missed-dose escalations, and redose notices, which keep their own boxes so a safety reminder can never be silenced by a single undifferentiated tap."
         },
         {
           "pr": 1900,
           "kind": "security",
           "issues": [1882, 1883],
           "title": "Secrets stay masked in the console too, and busy logs stop losing lines",
-          "body": "Values that look like credentials were already masked before being written to the log files, but the copy echoed to the container console was not — the audience most likely to have the log in front of them saw the unmasked version. Both destinations now pass through the same masking step. Separately, the log files trimmed themselves by rewriting the whole file, which could silently drop an entry written by the notification service at the same moment; trimming is now safe against a second writer."
+          "body": "Values that look like credentials were already masked before being written to the log files, but the copy echoed to the container console was not \u2014 the audience most likely to have the log in front of them saw the unmasked version. Both destinations now pass through the same masking step. Separately, the log files trimmed themselves by rewriting the whole file, which could silently drop an entry written by the notification service at the same moment; trimming is now safe against a second writer."
         },
         {
           "pr": 1896,
           "kind": "fix",
           "issues": [1884],
           "title": "Undoing a merge of several activities no longer loses one of them",
-          "body": "When a merge of three or more activities was undone, each restore ran independently — so if one failed, the surviving activity's data could end up unreachable: not on the restored rows, and no longer on the kept one. Undo now removes exactly the contribution of the activity being restored, leaving the rest intact, and retrying the failed one finishes the job."
+          "body": "When a merge of three or more activities was undone, each restore ran independently \u2014 so if one failed, the surviving activity's data could end up unreachable: not on the restored rows, and no longer on the kept one. Undo now removes exactly the contribution of the activity being restored, leaving the rest intact, and retrying the failed one finishes the job."
         },
         {
           "pr": 1894,
           "kind": "fix",
           "issues": [1885],
           "title": "A brief Telegram outage no longer strands a message with stale buttons",
-          "body": "When the app updates a Telegram message and Telegram is briefly unreachable, it used to forget that message permanently — leaving buttons on screen that no longer did anything and could never be corrected. It now tells a temporary failure apart from a genuinely dead message, and retries the temporary ones on the next check."
+          "body": "When the app updates a Telegram message and Telegram is briefly unreachable, it used to forget that message permanently \u2014 leaving buttons on screen that no longer did anything and could never be corrected. It now tells a temporary failure apart from a genuinely dead message, and retries the temporary ones on the next check."
         },
         {
           "pr": 1887,
           "kind": "feature",
           "issues": [1836, 1874, 1875],
           "title": "Patient portals shows the actual structure: portal, login, patient",
-          "body": "The portals page is now built from the objects it manages — each portal a permanent section, its logins inside it, and the patients under the login they arrived on. Mapping a patient means tapping a family member's face rather than picking from a dropdown, and when the same person shows up on two logins the page offers the match instead of looking like a duplicate. Portal names, logins, and software tags are editable in place, and changing which profile a patient maps to is a single atomic switch. Members now only see the logins covering profiles they can reach, and permanently refusing a patient is an admin action."
+          "body": "The portals page is now built from the objects it manages \u2014 each portal a permanent section, its logins inside it, and the patients under the login they arrived on. Mapping a patient means tapping a family member's face rather than picking from a dropdown, and when the same person shows up on two logins the page offers the match instead of looking like a duplicate. Portal names, logins, and software tags are editable in place, and changing which profile a patient maps to is a single atomic switch. Members now only see the logins covering profiles they can reach, and permanently refusing a patient is an admin action."
         },
         {
           "pr": 1804,
@@ -106,7 +127,7 @@
           "kind": "fix",
           "issues": [1880],
           "title": "A flaky data source stops crying wolf",
-          "body": "A source that fails one hour and succeeds the next — a weather service having a bad afternoon — used to report itself as broken, badge and all, even though nothing was missing. It now says plainly that it is working with interruptions, and only escalates after three failures in a row or when nothing has arrived for a day. A source that does need attention is shown once, with its reason and all its actions together, and the run history groups repeated failures instead of alternating stripes."
+          "body": "A source that fails one hour and succeeds the next \u2014 a weather service having a bad afternoon \u2014 used to report itself as broken, badge and all, even though nothing was missing. It now says plainly that it is working with interruptions, and only escalates after three failures in a row or when nothing has arrived for a day. A source that does need attention is shown once, with its reason and all its actions together, and the run history groups repeated failures instead of alternating stripes."
         },
         {
           "pr": 1881,
@@ -120,14 +141,14 @@
           "kind": "feature",
           "issues": [1866],
           "title": "Overdue safety follow-ups finally reach you",
-          "body": "A follow-up you tracked with a due date — the scan recommended in March — now sends a reminder when it goes overdue, and one more some weeks later, then stops. There is no new setting to find: recording the follow-up with a date is the ask, and the off switch is marking it done or saying you have decided against it, either of which ends it for good."
+          "body": "A follow-up you tracked with a due date \u2014 the scan recommended in March \u2014 now sends a reminder when it goes overdue, and one more some weeks later, then stops. There is no new setting to find: recording the follow-up with a date is the ask, and the off switch is marking it done or saying you have decided against it, either of which ends it for good."
         },
         {
           "pr": 1872,
           "kind": "fix",
           "issues": [1854],
           "title": "As-needed dose limits can count milligrams, not just doses",
-          "body": "Because the safety counter groups the same ingredient across items, 200 mg and 800 mg ibuprofen were both simply \"a dose\" — so three prescription tablets read as calm while six low-dose ones tripped the limit. You can now record a milligrams-per-day maximum, and when every logged dose has a known amount the counter compares real exposure and says which basis it used."
+          "body": "Because the safety counter groups the same ingredient across items, 200 mg and 800 mg ibuprofen were both simply \"a dose\" \u2014 so three prescription tablets read as calm while six low-dose ones tripped the limit. You can now record a milligrams-per-day maximum, and when every logged dose has a known amount the counter compares real exposure and says which basis it used."
         }
       ]
     },
@@ -139,42 +160,42 @@
           "kind": "feature",
           "issues": [1603],
           "title": "Fix a whole run of bad data at once",
-          "body": "A miscalibrated scale or an import that landed pounds as kilograms no longer means dozens of row-at-a-time edits. Data → Review grows a \"Fix a run of data\" panel: pick the field, source, and date range, preview every change (with a plain warning that corrected device rows stop receiving sync updates), then apply in one pass — with a 24-hour undo that restores values while leaving anything you edited afterwards alone. The Body weight chart links straight into it with \"Fix a range\"."
+          "body": "A miscalibrated scale or an import that landed pounds as kilograms no longer means dozens of row-at-a-time edits. Data \u2192 Review grows a \"Fix a run of data\" panel: pick the field, source, and date range, preview every change (with a plain warning that corrected device rows stop receiving sync updates), then apply in one pass \u2014 with a 24-hour undo that restores values while leaving anything you edited afterwards alone. The Body weight chart links straight into it with \"Fix a range\"."
         },
         {
           "pr": 1839,
           "kind": "feature",
           "issues": [1596],
           "title": "Workouts and food logging work offline",
-          "body": "The two gym-and-kitchen moments that still needed signal now queue like doses and weigh-ins: a workout session logged entirely offline is captured when you close the editor and syncs on reconnect (exactly once, sets and all), and the one-tap food serving and protein quick-adds queue too. Undo taps stay online-only — removing something you can't see the current total for would be a guess."
+          "body": "The two gym-and-kitchen moments that still needed signal now queue like doses and weigh-ins: a workout session logged entirely offline is captured when you close the editor and syncs on reconnect (exactly once, sets and all), and the one-tap food serving and protein quick-adds queue too. Undo taps stay online-only \u2014 removing something you can't see the current total for would be a guess."
         },
         {
           "pr": 1840,
           "kind": "feature",
           "issues": [1431],
           "title": "Merging duplicate activities: pick any copy's value, per field",
-          "body": "When merging duplicate activities that genuinely disagree — say three copies with three distances — the conflict preview now lists every copy's value as a choice per field, pre-selected to the record you're keeping. Change the keeper and the preview re-orients. Works the same on the Review resolver and the Journal's multi-select merge."
+          "body": "When merging duplicate activities that genuinely disagree \u2014 say three copies with three distances \u2014 the conflict preview now lists every copy's value as a choice per field, pre-selected to the record you're keeping. Change the keeper and the preview re-orients. Works the same on the Review resolver and the Journal's multi-select merge."
         },
         {
           "pr": 1835,
           "kind": "feature",
           "issues": [1826],
           "title": "Patient portals is now a guided setup flow",
-          "body": "The portals page shows one step at a time — from \"register your first portal\" through mapping discovered patients to a steady-state status view — with a single next-step button instead of eight cards of forms. Everything else lives under a collapsed Manage section (where portals can now also be renamed), copy is shorter, and the page is narrower. Setup surfaces you've finished simply stop appearing."
+          "body": "The portals page shows one step at a time \u2014 from \"register your first portal\" through mapping discovered patients to a steady-state status view \u2014 with a single next-step button instead of eight cards of forms. Everything else lives under a collapsed Manage section (where portals can now also be renamed), copy is shorter, and the page is narrower. Setup surfaces you've finished simply stop appearing."
         },
         {
           "pr": 1834,
           "kind": "fix",
           "issues": [1822],
           "title": "Nudges say things worth reading",
-          "body": "\"With 0 days left\" now reads \"only today left\" everywhere, praise skips generic session names instead of saying \"Nice workout today\", the workout nudge no longer states the same shortfall twice, limit-tier food groups sink to the end of the quick-log keyboard, the protein line drops its hedging, and a message that resolves itself now says what it was about (\"Morning food log — handled in the app\")."
+          "body": "\"With 0 days left\" now reads \"only today left\" everywhere, praise skips generic session names instead of saying \"Nice workout today\", the workout nudge no longer states the same shortfall twice, limit-tier food groups sink to the end of the quick-log keyboard, the protein line drops its hedging, and a message that resolves itself now says what it was about (\"Morning food log \u2014 handled in the app\")."
         },
         {
           "pr": 1833,
           "kind": "fix",
           "issues": [1828, 1829],
           "title": "Duplicate documents stop being re-uploaded forever, and logins can be named by email",
-          "body": "When the import tool offers a file whose records are already fully imported, allos now remembers that verdict and tells the tool not to send it again — and forgets automatically if you later delete the covering document, so nothing is ever silently skipped. Portal logins can now be named with an email address (\"mom@gmail.com\"); web addresses remain rejected everywhere. A migration applies automatically."
+          "body": "When the import tool offers a file whose records are already fully imported, allos now remembers that verdict and tells the tool not to send it again \u2014 and forgets automatically if you later delete the covering document, so nothing is ever silently skipped. Portal logins can now be named with an email address (\"mom@gmail.com\"); web addresses remain rejected everywhere. A migration applies automatically."
         },
         {
           "pr": 1832,
@@ -195,7 +216,7 @@
           "kind": "fix",
           "issues": [1433],
           "title": "A brand-new profile no longer opens on a wall of red \"Overdue\" screenings",
-          "body": "Screenings with no recorded history now show as a calm \"No record yet — add a past date or schedule\" setup list instead of red Overdue rows. Nothing about them is counted as late, badged, or sent as a reminder — real overdue states, backed by a recorded date, look exactly as before."
+          "body": "Screenings with no recorded history now show as a calm \"No record yet \u2014 add a past date or schedule\" setup list instead of red Overdue rows. Nothing about them is counted as late, badged, or sent as a reminder \u2014 real overdue states, backed by a recorded date, look exactly as before."
         },
         {
           "pr": 1824,
@@ -216,42 +237,42 @@
           "kind": "feature",
           "issues": [1679, 1680],
           "title": "Next-period forecasting and trying-to-conceive tracking",
-          "body": "The Cycle page (and a dashboard tile) now project your next period as a date window with an honest confidence label derived from your own cycle variability — never a bare date, never before three completed cycles, and paused entirely during pregnancy or after menopause. A new trying-to-conceive section records LH tests, waking temperature, and cervical mucus as ordinary observations and derives an evidence-based fertile window; it stays off until you turn it on."
+          "body": "The Cycle page (and a dashboard tile) now project your next period as a date window with an honest confidence label derived from your own cycle variability \u2014 never a bare date, never before three completed cycles, and paused entirely during pregnancy or after menopause. A new trying-to-conceive section records LH tests, waking temperature, and cervical mucus as ordinary observations and derives an evidence-based fertile window; it stays off until you turn it on."
         },
         {
           "pr": 1816,
           "kind": "feature",
           "issues": [1677],
           "title": "Pickers now lead with what you actually use",
-          "body": "The medication, supplement, brand, provider, and specialty pickers no longer open on the alphabet. Your own current medications and supplements come first, then a sensible common-choices list, then everything else A–Z — and the vaccine picker is now age-aware, leading with the doses that are plausibly next for this person instead of an infant schedule. Everything stays searchable; only the order changed."
+          "body": "The medication, supplement, brand, provider, and specialty pickers no longer open on the alphabet. Your own current medications and supplements come first, then a sensible common-choices list, then everything else A\u2013Z \u2014 and the vaccine picker is now age-aware, leading with the doses that are plausibly next for this person instead of an infant schedule. Everything stays searchable; only the order changed."
         },
         {
           "pr": 1815,
           "kind": "feature",
           "issues": [1632],
           "title": "Trends now shows how consistent your wellness practices have been",
-          "body": "The Trends overview gained a Practices section: one cell per completed week showing whether each practice hit its weekly range, your sessions-per-week charted against the band you declared, and average session length for practices that record minutes. It's calm by design — an under-target week is a neutral cell, never a warning — and every card links back to Wellness."
+          "body": "The Trends overview gained a Practices section: one cell per completed week showing whether each practice hit its weekly range, your sessions-per-week charted against the band you declared, and average session length for practices that record minutes. It's calm by design \u2014 an under-target week is a neutral cell, never a warning \u2014 and every card links back to Wellness."
         },
         {
           "pr": 1814,
           "kind": "feature",
           "issues": [1807],
           "title": "The food nudge keyboard can now be collapsed",
-          "body": "The Telegram food nudge's \"Show more\" now has a matching \"Show less\" that folds the keyboard back a page (never below the compact default), and the \"More…\" link that left the chat for the app is gone — the buttons are the whole flow. A keyboard you've expanded also stays the size you chose when the message later updates itself."
+          "body": "The Telegram food nudge's \"Show more\" now has a matching \"Show less\" that folds the keyboard back a page (never below the compact default), and the \"More\u2026\" link that left the chat for the app is gone \u2014 the buttons are the whole flow. A keyboard you've expanded also stays the size you chose when the message later updates itself."
         },
         {
           "pr": 1811,
           "kind": "feature",
           "issues": [1801],
           "title": "One identity bar and one profile switcher, everywhere",
-          "body": "Multi-profile instances get a single identity bar — stacked avatars of the profiles in your view with the acting profile always first, ringed, and named. On a phone it replaces the wordmark in the top bar, so \"whose data is this?\" is answerable without opening anything; on desktop it sits at the top of the sidebar. Tapping it opens one switcher panel (a drawer from the top on phones, an expanding list on desktop) where each person has two separate controls: switch who you're acting as, or toggle them in and out of your view. The old bottom-of-sidebar profile menu and the view-strip banner are retired; \"Signed in as\" moved next to Log out, and the import-review count now badges the Data entry in navigation. Single-profile instances are unchanged."
+          "body": "Multi-profile instances get a single identity bar \u2014 stacked avatars of the profiles in your view with the acting profile always first, ringed, and named. On a phone it replaces the wordmark in the top bar, so \"whose data is this?\" is answerable without opening anything; on desktop it sits at the top of the sidebar. Tapping it opens one switcher panel (a drawer from the top on phones, an expanding list on desktop) where each person has two separate controls: switch who you're acting as, or toggle them in and out of your view. The old bottom-of-sidebar profile menu and the view-strip banner are retired; \"Signed in as\" moved next to Log out, and the import-review count now badges the Data entry in navigation. Single-profile instances are unchanged."
         },
         {
           "pr": 1812,
           "kind": "fix",
           "issues": [1808, 1809],
           "title": "Documents and training goals delete cleanly again",
-          "body": "Deleting a document whose extracted medication an illness episode later stopped used to fail with a database error — the episode's stop record blocked it. Stop records now keep the medication's name as their own snapshot, so the episode still says what it stopped while the document deletes, reprocesses, and reassigns cleanly (a migration applies automatically). Deleting a training goal a protocol referenced was blocked the same way: the protocol now simply loses its adherence link and survives, matching how other areas already behave."
+          "body": "Deleting a document whose extracted medication an illness episode later stopped used to fail with a database error \u2014 the episode's stop record blocked it. Stop records now keep the medication's name as their own snapshot, so the episode still says what it stopped while the document deletes, reprocesses, and reassigns cleanly (a migration applies automatically). Deleting a training goal a protocol referenced was blocked the same way: the protocol now simply loses its adherence link and survives, matching how other areas already behave."
         },
         {
           "pr": 1810,
@@ -265,14 +286,14 @@
           "kind": "fix",
           "issues": [1795],
           "title": "One update notice per deploy",
-          "body": "A new deploy used to raise two separate notices — a banner at the top and a bar at the bottom, each with its own reload button, and taking one could re-offer the update you'd just taken. There is now a single \"Update ready\" notice that names what was deployed, and its reload always lands you on the new version with nothing re-offering it afterwards."
+          "body": "A new deploy used to raise two separate notices \u2014 a banner at the top and a bar at the bottom, each with its own reload button, and taking one could re-offer the update you'd just taken. There is now a single \"Update ready\" notice that names what was deployed, and its reload always lands you on the new version with nothing re-offering it afterwards."
         },
         {
           "pr": 1803,
           "kind": "feature",
           "issues": [1670],
           "title": "Weekly targets you've been under for a month get a gentle right-size offer",
-          "body": "When a weekly goal — a wellness practice, a training routine, or a food habit — has been under its target for four straight completed weeks, its page now offers to lower the target to the pace you actually keep, or to stop tracking it while keeping every logged session. Nothing changes unless you tap it, substance limits are never touched, and the Telegram pace nudge carries the same one-tap offer only when it was already messaging you."
+          "body": "When a weekly goal \u2014 a wellness practice, a training routine, or a food habit \u2014 has been under its target for four straight completed weeks, its page now offers to lower the target to the pace you actually keep, or to stop tracking it while keeping every logged session. Nothing changes unless you tap it, substance limits are never touched, and the Telegram pace nudge carries the same one-tap offer only when it was already messaging you."
         },
         {
           "pr": 1800,
@@ -300,40 +321,40 @@
           "kind": "fix",
           "issues": [1787],
           "title": "Portal sync problems stay within their own household",
-          "body": "The patient-portals status card could show another household's portal failure message — including its free-text error — to anyone with a login on the instance. Portal run reports are now scoped by reachability: you see failures only for portal accounts bound to profiles you can access (plus unplaced first-contact runs, for the people who manage those). Portal names in the shared registry remain instance-wide, as designed."
+          "body": "The patient-portals status card could show another household's portal failure message \u2014 including its free-text error \u2014 to anyone with a login on the instance. Portal run reports are now scoped by reachability: you see failures only for portal accounts bound to profiles you can access (plus unplaced first-contact runs, for the people who manage those). Portal names in the shared registry remain instance-wide, as designed."
         },
         {
           "pr": 1786,
           "kind": "fix",
           "issues": [1780],
           "title": "One person on two portal logins no longer imports twice",
-          "body": "Portals regenerate their export files on every request, so the same records could arrive looking like brand-new documents — especially when one person is reachable through two portal logins — and every visit ended up recorded twice. Allos now recognizes a health-record file by the clinical entry ids inside it, not just its bytes: an offer whose records exactly match a document already held is refused as already imported, a portal sync's repeat offers land no rows at all, and partly-overlapping exports still store normally. Existing documents are recognized retroactively. Operators: migration 136 applies automatically."
+          "body": "Portals regenerate their export files on every request, so the same records could arrive looking like brand-new documents \u2014 especially when one person is reachable through two portal logins \u2014 and every visit ended up recorded twice. Allos now recognizes a health-record file by the clinical entry ids inside it, not just its bytes: an offer whose records exactly match a document already held is refused as already imported, a portal sync's repeat offers land no rows at all, and partly-overlapping exports still store normally. Existing documents are recognized retroactively. Operators: migration 136 applies automatically."
         },
         {
           "pr": 1784,
           "kind": "feature",
           "issues": [1779],
           "title": "Telegram messages now correct themselves when things change in the app",
-          "body": "Take a dose in the app, and the Telegram reminder that offered a ✅ Taken button stops presenting it as outstanding: on the next hourly tick, every live message re-checks its buttons against what actually happened — resolved actions are stripped, fully handled messages close with an honest line, and yesterday's buttons never stay tappable into today. A confirmation from one family member's chat also corrects everyone else's copy. Silent and cheap by design: an unchanged message is never edited."
+          "body": "Take a dose in the app, and the Telegram reminder that offered a \u2705 Taken button stops presenting it as outstanding: on the next hourly tick, every live message re-checks its buttons against what actually happened \u2014 resolved actions are stripped, fully handled messages close with an honest line, and yesterday's buttons never stay tappable into today. A confirmation from one family member's chat also corrects everyone else's copy. Silent and cheap by design: an unchanged message is never edited."
         },
         {
           "pr": 1782,
           "kind": "feature",
           "issues": [1771, 1772],
           "title": "One language for integration status, and a sync history that reads like a log",
-          "body": "A provider's status now looks the same everywhere — the Integrations grid, its setup page, and Data → Review speak one vocabulary (Connected, Partial sync, Sync failing, Needs reconnect) with one timestamp style and one accounting. The setup page becomes the provider's home with a proper history table: a reason on every failure row, no-op runs collapsed, and weather reported in forecast language (“Forecast refreshed · 16 readings revised”) instead of record counts. Review is now an inbox: only providers needing attention expand; healthy ones collapse to a line. The “What this wrote” drill-down also stops appearing on syncs that never record per-record detail."
+          "body": "A provider's status now looks the same everywhere \u2014 the Integrations grid, its setup page, and Data \u2192 Review speak one vocabulary (Connected, Partial sync, Sync failing, Needs reconnect) with one timestamp style and one accounting. The setup page becomes the provider's home with a proper history table: a reason on every failure row, no-op runs collapsed, and weather reported in forecast language (\u201cForecast refreshed \u00b7 16 readings revised\u201d) instead of record counts. Review is now an inbox: only providers needing attention expand; healthy ones collapse to a line. The \u201cWhat this wrote\u201d drill-down also stops appearing on syncs that never record per-record detail."
         },
         {
           "pr": 1768,
           "kind": "feature",
           "title": "The morning digest now tells you what changed",
-          "body": "Out-of-range vitals, your daily check-in, new symptoms, and what synced overnight can now appear in the digest's New section — ranked so a flagged result always leads, capped so a busy day says “+2 more” instead of flooding. On favorable days a sunlight line names the window (“Sunny, UV moderate until 4pm”), and an optional daily step target adds a calm verdict for yesterday plus one quiet afternoon note when the day is well behind — counted, never escalated, and stale sync data stays silent rather than guessing.",
+          "body": "Out-of-range vitals, your daily check-in, new symptoms, and what synced overnight can now appear in the digest's New section \u2014 ranked so a flagged result always leads, capped so a busy day says \u201c+2 more\u201d instead of flooding. On favorable days a sunlight line names the window (\u201cSunny, UV moderate until 4pm\u201d), and an optional daily step target adds a calm verdict for yesterday plus one quiet afternoon note when the day is well behind \u2014 counted, never escalated, and stale sync data stays silent rather than guessing.",
           "issues": [1713, 1723]
         },
         {
           "pr": 1769,
           "kind": "feature",
-          "title": "Lipid ratios computed for you — and a lighter Biomarkers page",
+          "title": "Lipid ratios computed for you \u2014 and a lighter Biomarkers page",
           "body": "LDL/HDL and Cholesterol/HDL ratios now appear beside your labs even when the lab didn't print them, computed from the same draw and flagged against their reference bands. The Biomarkers browser also stops shipping your entire lab history to the browser on every visit: panels load their readings when you open them, so decades of results cost nothing until asked for.",
           "issues": [1651, 1582]
         },
@@ -341,21 +362,21 @@
           "pr": 1770,
           "kind": "feature",
           "title": "Pickers instead of blank boxes across ten medical forms",
-          "body": "Allergen, gene, condition, family-history, visit-type, care-plan, side-effect and activity fields now offer their real vocabularies as you type — with free text always allowed. This matters for safety: a recognized allergen or gene spelling is stored in the exact form the drug-allergy and pharmacogenomic cross-checks match on. Picking a condition by name now applies its ICD-10 code automatically, the way medication picks apply their RxNorm code, and the care-plan status picker says plainly which statuses keep nudging Upcoming and which stop.",
+          "body": "Allergen, gene, condition, family-history, visit-type, care-plan, side-effect and activity fields now offer their real vocabularies as you type \u2014 with free text always allowed. This matters for safety: a recognized allergen or gene spelling is stored in the exact form the drug-allergy and pharmacogenomic cross-checks match on. Picking a condition by name now applies its ICD-10 code automatically, the way medication picks apply their RxNorm code, and the care-plan status picker says plainly which statuses keep nudging Upcoming and which stop.",
           "issues": [1676]
         },
         {
           "pr": 1774,
           "kind": "feature",
           "title": "Tune your morning digest from the digest itself",
-          "body": "A ⚙️ Tune button on the digest expands in place into per-category toggles: turn a category down to notable-only and routine lines stop while anything important still comes through — an out-of-range reading, a notable mood shift, an unusual night's sleep. Flagged results can never be silenced, demoting everything makes the digest short but never gone, and the same toggles live in Settings → Notifications. In a household, no one's tap thins anyone else's digest.",
+          "body": "A \u2699\ufe0f Tune button on the digest expands in place into per-category toggles: turn a category down to notable-only and routine lines stop while anything important still comes through \u2014 an out-of-range reading, a notable mood shift, an unusual night's sleep. Flagged results can never be silenced, demoting everything makes the digest short but never gone, and the same toggles live in Settings \u2192 Notifications. In a household, no one's tap thins anyone else's digest.",
           "issues": [1714]
         },
         {
           "pr": 1781,
           "kind": "feature",
-          "title": "Deleted documents stay deleted — and portal syncs stop re-uploading what you already have",
-          "body": "The portal tool can now ask Allos what it already holds before sending anything, so daily syncs stop re-uploading megabytes and stop inflating the import feed with skipped rows — and a document that quietly went missing gets noticed and re-sent on the next run. Deleting a document now leaves a memory: an automated sync can never bring it back, a new “blocked from re-acquisition” list in Data → Review shows what's blocked with a one-tap Allow again, and re-uploading the file yourself also unblocks it. Operators: migration 134 applies automatically.",
+          "title": "Deleted documents stay deleted \u2014 and portal syncs stop re-uploading what you already have",
+          "body": "The portal tool can now ask Allos what it already holds before sending anything, so daily syncs stop re-uploading megabytes and stop inflating the import feed with skipped rows \u2014 and a document that quietly went missing gets noticed and re-sent on the next run. Deleting a document now leaves a memory: an automated sync can never bring it back, a new \u201cblocked from re-acquisition\u201d list in Data \u2192 Review shows what's blocked with a one-tap Allow again, and re-uploading the file yourself also unblocks it. Operators: migration 134 applies automatically.",
           "issues": [1776, 1777]
         }
       ]
@@ -381,84 +402,84 @@
           "pr": 1767,
           "kind": "feature",
           "title": "Monday's workout suggestion remembers Saturday",
-          "body": "Next-workout focus now respects muscle recovery across the week boundary: big muscle groups rest a couple of days, small ones a day, and the least-recently-trained region leads. When everything you train is still fresh, the day is framed as a recovery day instead of forcing a pick — and when the week genuinely can't be met without today, the suggestion says both facts out loud (“Back was Saturday — 1/2 with today left.”). Phones also regain the Equipment door on the Training header.",
+          "body": "Next-workout focus now respects muscle recovery across the week boundary: big muscle groups rest a couple of days, small ones a day, and the least-recently-trained region leads. When everything you train is still fresh, the day is framed as a recovery day instead of forcing a pick \u2014 and when the week genuinely can't be met without today, the suggestion says both facts out loud (\u201cBack was Saturday \u2014 1/2 with today left.\u201d). Phones also regain the Equipment door on the Training header.",
           "issues": [1673, 1661]
         },
         {
           "pr": 1761,
           "kind": "feature",
-          "title": "Your portal reminds the right person — and the tool learns its own config",
-          "body": "Allos now notices when a patient portal hasn't been checked in a while — or when someone just had an appointment and new results are likely waiting — and quietly asks the right person: the one whose login actually runs the portal tool, on their own Upcoming list and morning digest. A \"Request sync\" button covers the case where the person managing Allos isn't the person at the right computer. Asks expire on their own, are answered automatically by the next run (even a failed one — you went to the machine), and never escalate. And the portal tool can now fetch its own configuration from Allos — portal and login names, spelled exactly right — so a typo'd slug stops being a mystery refusal.",
+          "title": "Your portal reminds the right person \u2014 and the tool learns its own config",
+          "body": "Allos now notices when a patient portal hasn't been checked in a while \u2014 or when someone just had an appointment and new results are likely waiting \u2014 and quietly asks the right person: the one whose login actually runs the portal tool, on their own Upcoming list and morning digest. A \"Request sync\" button covers the case where the person managing Allos isn't the person at the right computer. Asks expire on their own, are answered automatically by the next run (even a failed one \u2014 you went to the machine), and never escalate. And the portal tool can now fetch its own configuration from Allos \u2014 portal and login names, spelled exactly right \u2014 so a typo'd slug stops being a mystery refusal.",
           "issues": [1757, 1759]
         },
         {
           "pr": 1758,
           "kind": "fix",
           "title": "Portal setup gets honest about its first run",
-          "body": "The very first portal sync no longer looks like nothing happened: the status line now says \"The tool reported 3 patients — map them below to finish setup\" instead of \"No run reported yet.\" The tool can also report a portal-wide failure (a changed login page, a moved download) without inventing a patient, and the count of patients waiting to be mapped is now the number that are actually new. Plus a safety catch on mapping: the profile picker no longer preselects anyone, so a mis-click can't file a patient under whoever sorts first — and the show-once API token finally has a copy button.",
+          "body": "The very first portal sync no longer looks like nothing happened: the status line now says \"The tool reported 3 patients \u2014 map them below to finish setup\" instead of \"No run reported yet.\" The tool can also report a portal-wide failure (a changed login page, a moved download) without inventing a patient, and the count of patients waiting to be mapped is now the number that are actually new. Plus a safety catch on mapping: the profile picker no longer preselects anyone, so a mis-click can't file a patient under whoever sorts first \u2014 and the show-once API token finally has a copy button.",
           "issues": [1756]
         },
         {
           "pr": 1753,
           "kind": "feature",
           "title": "Patient portals grow up: household logins, discovered patients, and a truer name",
-          "body": "The portal integration is now \"Patient portals\" — MyChart was just the first door; any portal with a standard health-record export works the same way. Households with two portal logins get accounts (\"Mom\", \"Dad\"), so two patients who share a name on different logins can never collide onto one profile. The companion tool now reports the patient list it sees, and the card turns that into waiting-to-be-mapped entries any caregiver with write access can bind — or mark ignored for patients you don't want synced. Sync status shows per portal, per login, per patient.",
+          "body": "The portal integration is now \"Patient portals\" \u2014 MyChart was just the first door; any portal with a standard health-record export works the same way. Households with two portal logins get accounts (\"Mom\", \"Dad\"), so two patients who share a name on different logins can never collide onto one profile. The companion tool now reports the patient list it sees, and the card turns that into waiting-to-be-mapped entries any caregiver with write access can bind \u2014 or mark ignored for patients you don't want synced. Sync status shows per portal, per login, per patient.",
           "issues": [1739]
         },
         {
           "pr": 1752,
           "kind": "feature",
           "title": "Documents remember which portal they came from",
-          "body": "A record uploaded through a portal now carries \"Acquired via <portal>\" in Data → Review and on the document itself. When two providers' portals disagree about an immunization, which copy came from where finally has an answer — and a hand-uploaded file says exactly that, by saying nothing.",
+          "body": "A record uploaded through a portal now carries \"Acquired via <portal>\" in Data \u2192 Review and on the document itself. When two providers' portals disagree about an immunization, which copy came from where finally has an answer \u2014 and a hand-uploaded file says exactly that, by saying nothing.",
           "issues": [1748]
         },
         {
           "pr": 1751,
           "kind": "fix",
           "title": "Portal mapping deletions are now properly fenced",
-          "body": "Removing a portal patient mapping now verifies you can write to the profile the mapping actually points at — resolved on the server, never trusted from the form. A crafted request can no longer delete another profile's mapping, and a concurrent re-bind makes the delete refuse rather than proceed on stale authority.",
+          "body": "Removing a portal patient mapping now verifies you can write to the profile the mapping actually points at \u2014 resolved on the server, never trusted from the form. A crafted request can no longer delete another profile's mapping, and a concurrent re-bind makes the delete refuse rather than proceed on stale authority.",
           "issues": [1747]
         },
         {
           "pr": 1745,
           "kind": "feature",
-          "title": "Training that checks the forecast — without overruling you",
-          "body": "Outdoor suggestions now know the weather, and your tolerance is learned from your own history: if you ride at 3 °C, nothing parks your bike at 3 °C. In genuinely hostile conditions the suggestion swaps to a mapped indoor alternative and says exactly why — never a silent disappearance — and a parked activity no longer piles up 'staleness' pressure while it waits out the season. When good outdoor days are scarce, the morning digest and Upcoming name the week's best window for your ride. Logged outdoor sessions also carry a small conditions stamp (\"31°C · clear\"), so a slow run in the heat explains itself.",
+          "title": "Training that checks the forecast \u2014 without overruling you",
+          "body": "Outdoor suggestions now know the weather, and your tolerance is learned from your own history: if you ride at 3 \u00b0C, nothing parks your bike at 3 \u00b0C. In genuinely hostile conditions the suggestion swaps to a mapped indoor alternative and says exactly why \u2014 never a silent disappearance \u2014 and a parked activity no longer piles up 'staleness' pressure while it waits out the season. When good outdoor days are scarce, the morning digest and Upcoming name the week's best window for your ride. Logged outdoor sessions also carry a small conditions stamp (\"31\u00b0C \u00b7 clear\"), so a slow run in the heat explains itself.",
           "issues": [1724, 1728]
         },
         {
           "pr": 1743,
           "kind": "feature",
           "title": "Weather becomes context: heatwaves, pollen, and med-aware sun safety",
-          "body": "Allos now caches daily weather and air quality for your home location and derives five situations from it — heatwave, cold snap, pressure swing, high pollen, poor air quality. They behave like the situations you already use: an antihistamine keyed to high pollen comes due while the pollen holds, the digest mentions the conditions, and Trends can ask whether a pressure swing explains a rough night. And if a medication in your stack makes sun or heat riskier — a photosensitizing antibiotic, a diuretic in a heatwave — the day's safety note says so, quietly, on the surfaces you already read.",
+          "body": "Allos now caches daily weather and air quality for your home location and derives five situations from it \u2014 heatwave, cold snap, pressure swing, high pollen, poor air quality. They behave like the situations you already use: an antihistamine keyed to high pollen comes due while the pollen holds, the digest mentions the conditions, and Trends can ask whether a pressure swing explains a rough night. And if a medication in your stack makes sun or heat riskier \u2014 a photosensitizing antibiotic, a diuretic in a heatwave \u2014 the day's safety note says so, quietly, on the surfaces you already read.",
           "issues": [1726, 1727]
         },
         {
           "pr": 1742,
           "kind": "feature",
-          "title": "Patient portals get real names — and syncs tell you whose data arrived",
-          "body": "If your health system's portal was swallowed by a merger (MyChart, we see you), Allos now keeps a registry of portals under Settings → Integrations, with each connected account mapped to the profile it feeds. Sync reports name the portal and the person, so a household with two MyChart logins can finally tell whose labs just landed. Identities Allos hasn't seen before are surfaced instead of guessed at — nothing is ever silently filed to the wrong person.",
+          "title": "Patient portals get real names \u2014 and syncs tell you whose data arrived",
+          "body": "If your health system's portal was swallowed by a merger (MyChart, we see you), Allos now keeps a registry of portals under Settings \u2192 Integrations, with each connected account mapped to the profile it feeds. Sync reports name the portal and the person, so a household with two MyChart logins can finally tell whose labs just landed. Identities Allos hasn't seen before are surfaced instead of guessed at \u2014 nothing is ever silently filed to the wrong person.",
           "issues": [1735]
         },
         {
           "pr": 1740,
           "kind": "feature",
-          "title": "Upload documents from anywhere — tokens, an API, and a tiny CLI",
-          "body": "You can now mint API tokens under Settings → Account & security: login-tied, scoped to document upload only, shown once, and revocable per device. With one, a new authenticated endpoint accepts document uploads from outside the browser — same ingest pipeline, same per-profile dedup, honest per-file results — and a dependency-free command-line script uploads a folder of files from any machine. Name a token per device so retiring one never disturbs the others.",
+          "title": "Upload documents from anywhere \u2014 tokens, an API, and a tiny CLI",
+          "body": "You can now mint API tokens under Settings \u2192 Account & security: login-tied, scoped to document upload only, shown once, and revocable per device. With one, a new authenticated endpoint accepts document uploads from outside the browser \u2014 same ingest pipeline, same per-profile dedup, honest per-file results \u2014 and a dependency-free command-line script uploads a folder of files from any machine. Name a token per device so retiring one never disturbs the others.",
           "issues": [1734]
         },
         {
           "pr": 1736,
           "kind": "feature",
           "title": "Nudges that read like they know you",
-          "body": "A sweep over every message the app sends. The protein line now says when you've reached your goal instead of implying a shortfall; the workout nudge leads with the exact target driving its suggestion; the daily digest previews today's recommended workout and drops its redundant tail on Telegram. A second same-day workout nudge acknowledges the session you already did, and if mood check-ins are about to auto-pause, the final reminder says so — pausing quietly unless you ask to keep them.",
+          "body": "A sweep over every message the app sends. The protein line now says when you've reached your goal instead of implying a shortfall; the workout nudge leads with the exact target driving its suggestion; the daily digest previews today's recommended workout and drops its redundant tail on Telegram. A second same-day workout nudge acknowledges the session you already did, and if mood check-ins are about to auto-pause, the final reminder says so \u2014 pausing quietly unless you ask to keep them.",
           "issues": [1722, 1710, 1709, 1712, 1672, 1668]
         },
         {
           "pr": 1733,
           "kind": "fix",
           "title": "The safety tier stops lying",
-          "body": "Missed-dose escalations now reach every channel you configured — Web Push and Home Assistant included, not just Telegram — and a broken safety channel finally shows up in delivery health. Escalations state how long a dose has been unconfirmed and offer a one-tap Skip. The /dose command shows the same redose safety verdicts as the app, push notifications stop asking you to tap buttons they can't show, a next-morning tap on yesterday's household round is refused instead of mislogged, and shared-chat messages always name whose dose they mean.",
+          "body": "Missed-dose escalations now reach every channel you configured \u2014 Web Push and Home Assistant included, not just Telegram \u2014 and a broken safety channel finally shows up in delivery health. Escalations state how long a dose has been unconfirmed and offer a one-tap Skip. The /dose command shows the same redose safety verdicts as the app, push notifications stop asking you to tap buttons they can't show, a next-morning tap on yesterday's household round is refused instead of mislogged, and shared-chat messages always name whose dose they mean.",
           "issues": [1716, 1717, 1718, 1719, 1720, 1721]
         }
       ]
@@ -469,7 +490,7 @@
         {
           "pr": 1730,
           "kind": "fix",
-          "title": "Imaging saves show up reliably — and failures say so",
+          "title": "Imaging saves show up reliably \u2014 and failures say so",
           "body": "Adding an imaging study could occasionally leave the list unchanged even though the save landed, because the page's refresh path pointed at a redirect stub. Saves now repaint the imaging list directly, and a refused submission shows its error instead of silently rendering nothing.",
           "issues": []
         },
@@ -477,35 +498,35 @@
           "pr": 1729,
           "kind": "fix",
           "title": "Biomarkers on your phone: results first",
-          "body": "On a phone, the Biomarkers page used to open with nearly 1,900 pixels of summary cards before the first actual panel of results. The panel index now leads — visible on the first screen — with the trajectory warning keeping its headline up top and folding its details, while the starred lens and bio-age cards follow whole below. Desktop is unchanged.",
+          "body": "On a phone, the Biomarkers page used to open with nearly 1,900 pixels of summary cards before the first actual panel of results. The panel index now leads \u2014 visible on the first screen \u2014 with the trajectory warning keeping its headline up top and folding its details, while the starred lens and bio-age cards follow whole below. Desktop is unchanged.",
           "issues": [1647]
         },
         {
           "pr": 1715,
           "kind": "fix",
-          "title": "Broken syncs finally speak up — and food taps count right",
-          "body": "A revoked or persistently failing integration used to sit quietly on-device while your data went stale. The morning digest now names each broken source with a link to fix it, and a connection that simply stopped syncing — recording nothing at all — raises its own attention item with per-provider staleness thresholds. Also fixed: tapping a Telegram food nudge outside its original window now counts toward the right meal, so the button's (n) tally matches what you actually logged.",
+          "title": "Broken syncs finally speak up \u2014 and food taps count right",
+          "body": "A revoked or persistently failing integration used to sit quietly on-device while your data went stale. The morning digest now names each broken source with a link to fix it, and a connection that simply stopped syncing \u2014 recording nothing at all \u2014 raises its own attention item with per-provider staleness thresholds. Also fixed: tapping a Telegram food nudge outside its original window now counts toward the right meal, so the button's (n) tally matches what you actually logged.",
           "issues": [1685, 1704]
         },
         {
           "pr": 1711,
           "kind": "fix",
           "title": "Journal search now searches your whole history",
-          "body": "Searching or filtering the training log used to look only at the days already loaded on screen — a matching workout from months ago simply didn't exist as far as the page knew. Search and every filter now query your entire ledger, paging over the matches themselves, with a new source filter and a fault count that reflects your whole history. An unfiltered journal loads exactly as fast as before.",
+          "body": "Searching or filtering the training log used to look only at the days already loaded on screen \u2014 a matching workout from months ago simply didn't exist as far as the page knew. Search and every filter now query your entire ledger, paging over the matches themselves, with a new source filter and a fault count that reflects your whole history. An unfiltered journal loads exactly as fast as before.",
           "issues": [1634]
         },
         {
           "pr": 1707,
           "kind": "fix",
-          "title": "Cycle tracking stops lying to you — in both directions",
-          "body": "The \"Period started today\" quick action no longer confirms success when nothing was written — it tells you a period is already open, refuses an implausibly soon restart, and shows where you are in your cycle instead of offering the wrong button the moment a period ends. A one-tap \"Still bleeding\" reopens a just-ended period. And a forgotten \"ended\" tap no longer reads as menstrual forever: after ten days the app treats the period as probably over and asks you to set the end date — your record is never changed behind your back. New entries are checked for overlaps, future dates, and impossible ranges, with every refusal naming the conflict.",
+          "title": "Cycle tracking stops lying to you \u2014 in both directions",
+          "body": "The \"Period started today\" quick action no longer confirms success when nothing was written \u2014 it tells you a period is already open, refuses an implausibly soon restart, and shows where you are in your cycle instead of offering the wrong button the moment a period ends. A one-tap \"Still bleeding\" reopens a just-ended period. And a forgotten \"ended\" tap no longer reads as menstrual forever: after ten days the app treats the period as probably over and asks you to set the end date \u2014 your record is never changed behind your back. New entries are checked for overlaps, future dates, and impossible ranges, with every refusal naming the conflict.",
           "issues": [1681, 1682]
         },
         {
           "pr": 1706,
           "kind": "feature",
           "title": "Your half-entered workout survives anything",
-          "body": "Long forms now keep a local draft as you type: reload, crash, or a deploy mid-entry, and a banner offers your unsaved work back — Resume or Discard, your choice, never applied silently, always cleared once you actually save. Drafts stay on your device only and are wiped on logout. App updates also stopped yanking pages out from under you: a new version now waits with a small \"Update ready\" note, and you reload when you're ready — it even mentions if you have unsaved work open.",
+          "body": "Long forms now keep a local draft as you type: reload, crash, or a deploy mid-entry, and a banner offers your unsaved work back \u2014 Resume or Discard, your choice, never applied silently, always cleared once you actually save. Drafts stay on your device only and are wiped on logout. App updates also stopped yanking pages out from under you: a new version now waits with a small \"Update ready\" note, and you reload when you're ready \u2014 it even mentions if you have unsaved work open.",
           "issues": [1699, 1700]
         },
         {
@@ -519,28 +540,28 @@
           "pr": 1701,
           "kind": "feature",
           "title": "Upcoming stops drowning you in routine",
-          "body": "The planning page's scheduled doses now fold into one line per band — \"14 doses today · 9 taken\" — expandable to the exact rows with their confirm buttons intact, and routine interaction/gene notes roll up the same way. Safety never folds: a missed-dose escalation or an as-needed limit warning always renders individually, above the fold, and allergy conflicts keep their place at the top. The genuinely attention-worthy items stop being needles in a haystack.",
+          "body": "The planning page's scheduled doses now fold into one line per band \u2014 \"14 doses today \u00b7 9 taken\" \u2014 expandable to the exact rows with their confirm buttons intact, and routine interaction/gene notes roll up the same way. Safety never folds: a missed-dose escalation or an as-needed limit warning always renders individually, above the fold, and allergy conflicts keep their place at the top. The genuinely attention-worthy items stop being needles in a haystack.",
           "issues": [1504]
         },
         {
           "pr": 1698,
           "kind": "feature",
           "title": "File a document or log a practice without leaving where you are",
-          "body": "The quick-log sheet gains an Add document row that opens the familiar upload form in place — camera included, so photographing a paper result is one tap — and a Log practice row listing your tracked practices with this week's standing. The command palette learned both too: search for \"scan\" or \"lab report\" to file a document, or type \"log sauna\" to record a practice — a bare practice name stays a search, so you never log by accident.",
+          "body": "The quick-log sheet gains an Add document row that opens the familiar upload form in place \u2014 camera included, so photographing a paper result is one tap \u2014 and a Log practice row listing your tracked practices with this week's standing. The command palette learned both too: search for \"scan\" or \"lab report\" to file a document, or type \"log sauna\" to record a practice \u2014 a bare practice name stays a search, so you never log by accident.",
           "issues": [1525, 1633]
         },
         {
           "pr": 1697,
           "kind": "feature",
-          "title": "Weekly, alternating-day, and taper schedules — without giving up reminders",
-          "body": "Intake items can finally say when they actually happen: weekly (methotrexate, a GLP-1 shot), alternating days, every N days, or specific weekdays. A weekly medication now reminds and escalates on its day and stays silent the other six — no more choosing between daily nagging and demoting it to no reminders at all. Off-day quick-logs still work and ask an honest confirm; adherence math counts only the days a dose was actually owed.",
+          "title": "Weekly, alternating-day, and taper schedules \u2014 without giving up reminders",
+          "body": "Intake items can finally say when they actually happen: weekly (methotrexate, a GLP-1 shot), alternating days, every N days, or specific weekdays. A weekly medication now reminds and escalates on its day and stays silent the other six \u2014 no more choosing between daily nagging and demoting it to no reminders at all. Off-day quick-logs still work and ask an honest confirm; adherence math counts only the days a dose was actually owed.",
           "issues": [1602]
         },
         {
           "pr": 1693,
           "kind": "fix",
-          "title": "Charts you can actually read on a phone — and a day chart you can touch",
-          "body": "Chart text now has a real minimum: labels are sized against how small the chart can actually render, so nothing shrinks below legibility (two charts were quietly under the floor and got fixed). The day-at-a-glance chart labels your wake and bed times, names its activity blocks, and drops the machine-analysis tick marks. The intraday chart gained a touch layer: scrub for an exact heart-rate reading, drag or tap to zoom, all with the keyboard supported — and annotation labels now stay inside the plot instead of smearing past its edge.",
+          "title": "Charts you can actually read on a phone \u2014 and a day chart you can touch",
+          "body": "Chart text now has a real minimum: labels are sized against how small the chart can actually render, so nothing shrinks below legibility (two charts were quietly under the floor and got fixed). The day-at-a-glance chart labels your wake and bed times, names its activity blocks, and drops the machine-analysis tick marks. The intraday chart gained a touch layer: scrub for an exact heart-rate reading, drag or tap to zoom, all with the keyboard supported \u2014 and annotation labels now stay inside the plot instead of smearing past its edge.",
           "issues": [1573, 1518, 1512, 1515]
         },
         {
@@ -554,35 +575,35 @@
           "pr": 1688,
           "kind": "feature",
           "title": "Skin lesions and allergies join the visit trail",
-          "body": "The last two clinical observations without a visit link now have one: a skin lesion or an allergy can be tied to the encounter where it was noted, and an allergy can also record which provider confirmed it. They join the same link, suggestion, and unlink flow every other record type uses, and imported allergy records pick up their visit automatically when the document names one. Deleting a visit never deletes the observation — the record outlives the appointment.",
+          "body": "The last two clinical observations without a visit link now have one: a skin lesion or an allergy can be tied to the encounter where it was noted, and an allergy can also record which provider confirmed it. They join the same link, suggestion, and unlink flow every other record type uses, and imported allergy records pick up their visit automatically when the document names one. Deleting a visit never deletes the observation \u2014 the record outlives the appointment.",
           "issues": [1526]
         },
         {
           "pr": 1683,
           "kind": "feature",
           "title": "Trends opens on one page: your stars, then your body",
-          "body": "The Overview and Body tabs merged into a single landing surface: the trending digest up top, your starred cards in the order you arranged them, and the full body census streaming in below — now one flat ranked stack instead of titled boxes, so your stars and the everyday-first order decide what leads. Fitness, Nutrition, and Insights remain their own tabs. Old bookmarks to the Body tab land on the merged page, and the page arrives as fast as the old Overview tab did alone.",
+          "body": "The Overview and Body tabs merged into a single landing surface: the trending digest up top, your starred cards in the order you arranged them, and the full body census streaming in below \u2014 now one flat ranked stack instead of titled boxes, so your stars and the everyday-first order decide what leads. Fitness, Nutrition, and Insights remain their own tabs. Old bookmarks to the Body tab land on the merged page, and the page arrives as fast as the old Overview tab did alone.",
           "issues": [1644, 1674]
         },
         {
           "pr": 1686,
           "kind": "feature",
           "title": "The review inbox now tells you what to double-check",
-          "body": "Document extraction now reports how sure it was about each captured row. The import detail page gains a \"Check these first\" card that ranks the least-certain rows to the top with the model's stated reason, and Data → Review badges each document with how many rows deserve a look. Nothing is blocked or hidden by this — a document extracted before this feature simply shows no badge, and a row the model was confident about behaves exactly as before.",
+          "body": "Document extraction now reports how sure it was about each captured row. The import detail page gains a \"Check these first\" card that ranks the least-certain rows to the top with the model's stated reason, and Data \u2192 Review badges each document with how many rows deserve a look. Nothing is blocked or hidden by this \u2014 a document extracted before this feature simply shows no badge, and a row the model was confident about behaves exactly as before.",
           "issues": [1601]
         },
         {
           "pr": 1664,
           "kind": "feature",
           "title": "Must, should, may: your supplements and meds now carry an honest obligation",
-          "body": "Priority levels and the separate as-needed flag collapse into one clear setting: must (missing it is an incident — reminders and escalation), should (reminded and counted, never escalated), and may (never pushed, no misses — it simply stays one tap away in its usual slot). Rarely-taken supplements get a gentle Demote offer on their own reminder, never a new notification; accepting moves them into a calm \"available\" shelf on Upcoming instead of deleting anything. Medications default to must, and lowering one spells out exactly what safety net you are giving up — while interaction, gene, and upper-limit warnings fire identically no matter the level. Daily digests now lead with what actually changed — notably missed and resumed — instead of a fraction.",
+          "body": "Priority levels and the separate as-needed flag collapse into one clear setting: must (missing it is an incident \u2014 reminders and escalation), should (reminded and counted, never escalated), and may (never pushed, no misses \u2014 it simply stays one tap away in its usual slot). Rarely-taken supplements get a gentle Demote offer on their own reminder, never a new notification; accepting moves them into a calm \"available\" shelf on Upcoming instead of deleting anything. Medications default to must, and lowering one spells out exactly what safety net you are giving up \u2014 while interaction, gene, and upper-limit warnings fire identically no matter the level. Daily digests now lead with what actually changed \u2014 notably missed and resumed \u2014 instead of a fraction.",
           "issues": [1505]
         },
         {
           "pr": 1678,
           "kind": "feature",
           "title": "Wellness practices grow up: findable, editable, and safely deletable",
-          "body": "The Wellness page now shows up in navigation, recent pages, and the command palette. Practices gained the full lifecycle they were missing: cadence rules that refuse impossible values out loud, protection against two practices silently sharing one history, session editing, a shared history/progress/heatmap view, and — at last — the choice between stop tracking (keeps your history) and permanent deletion (with undo). Protocol pages were tightened alongside, and protocol outcomes now rank by which biomarkers actually have before-and-after data to show.",
+          "body": "The Wellness page now shows up in navigation, recent pages, and the command palette. Practices gained the full lifecycle they were missing: cadence rules that refuse impossible values out loud, protection against two practices silently sharing one history, session editing, a shared history/progress/heatmap view, and \u2014 at last \u2014 the choice between stop tracking (keeps your history) and permanent deletion (with undo). Protocol pages were tightened alongside, and protocol outcomes now rank by which biomarkers actually have before-and-after data to show.",
           "issues": [1618, 1619, 1620, 1621, 1622, 1623, 1624]
         }
       ]
@@ -593,8 +614,8 @@
         {
           "pr": 1669,
           "kind": "feature",
-          "title": "All your scans, one source — and a strict mode that means it",
-          "body": "Readings extracted from medical documents used to be one source per report, so \"my DEXA scans\" could never be picked as a single series. The source picker now offers Documents — every report together — and the comparison chart draws them as one sparse line alongside the per-report series. Pair it with the new \"Only this source\" checkbox and the chart shows exactly that source: days it did not cover stay honestly empty instead of borrowing another source's number, totals count only its rows, and latest-value tiles show an empty state rather than a stand-in. Unchecking restores the familiar fallback behavior exactly.",
+          "title": "All your scans, one source \u2014 and a strict mode that means it",
+          "body": "Readings extracted from medical documents used to be one source per report, so \"my DEXA scans\" could never be picked as a single series. The source picker now offers Documents \u2014 every report together \u2014 and the comparison chart draws them as one sparse line alongside the per-report series. Pair it with the new \"Only this source\" checkbox and the chart shows exactly that source: days it did not cover stay honestly empty instead of borrowing another source's number, totals count only its rows, and latest-value tiles show an empty state rather than a stand-in. Unchecking restores the familiar fallback behavior exactly.",
           "issues": [1640, 1642]
         },
         {
@@ -606,98 +627,98 @@
         {
           "pr": 1666,
           "kind": "feature",
-          "title": "Pin your Body cards with a star — and the default order finally makes sense",
-          "body": "The Trends Body tab now honors a ★ on any card: starred cards jump to the top and stay there, and you can drag your starred set into whatever sequence you like from Overview. Unstar a card and it returns to its ranked slot. The ranked default underneath was re-sequenced to lead with everyday metrics (weight, sleep, steps) instead of burying them, and life-stage cards (like cycle tracking) keep their place above everything when they apply.",
+          "title": "Pin your Body cards with a star \u2014 and the default order finally makes sense",
+          "body": "The Trends Body tab now honors a \u2605 on any card: starred cards jump to the top and stay there, and you can drag your starred set into whatever sequence you like from Overview. Unstar a card and it returns to its ranked slot. The ranked default underneath was re-sequenced to lead with everyday metrics (weight, sleep, steps) instead of burying them, and life-stage cards (like cycle tracking) keep their place above everything when they apply.",
           "issues": [1643, 1659]
         },
         {
           "pr": 1662,
-          "title": "The 'just recovered' dashboard calms down — and dismissals finally stick",
-          "body": "After an illness ends, the dashboard used to stack three separate household bands. They now fold into one coherent recovered state: the reopen line carries the household-history link inline, the household strip absorbs it during the 8–14-day tail, and a quiet household shows the link without conjuring an empty strip. Dismissing the \"Recently resolved — reopen?\" line now sticks across reloads — it was the only X in the app that came back — while other caregivers on their own logins still see it, and nothing about the reopen window itself changes. The Now strip also stacks its two cards full-width on phones instead of squeezing them side by side.",
+          "title": "The 'just recovered' dashboard calms down \u2014 and dismissals finally stick",
+          "body": "After an illness ends, the dashboard used to stack three separate household bands. They now fold into one coherent recovered state: the reopen line carries the household-history link inline, the household strip absorbs it during the 8\u201314-day tail, and a quiet household shows the link without conjuring an empty strip. Dismissing the \"Recently resolved \u2014 reopen?\" line now sticks across reloads \u2014 it was the only X in the app that came back \u2014 while other caregivers on their own logins still see it, and nothing about the reopen window itself changes. The Now strip also stacks its two cards full-width on phones instead of squeezing them side by side.",
           "kind": "fix",
           "issues": [1547, 1548, 1549]
         },
         {
           "pr": 1660,
           "title": "Registries live where you use them, and an empty Timeline points somewhere",
-          "body": "The medicine cabinet left the sidebar: like the equipment registry, it's now reached from where you actually use it — doors on the Medications page, the Supplements tab, and Household — and visiting either registry highlights its parent nav section instead of stranding you with nothing lit. Every old URL still works. A brand-new profile's empty Timeline now offers real next steps (log something, connect a source, upload a document) instead of a bare \"No timeline events yet.\" — and only when the account is genuinely empty, never when a filter simply matched nothing.",
+          "body": "The medicine cabinet left the sidebar: like the equipment registry, it's now reached from where you actually use it \u2014 doors on the Medications page, the Supplements tab, and Household \u2014 and visiting either registry highlights its parent nav section instead of stranding you with nothing lit. Every old URL still works. A brand-new profile's empty Timeline now offers real next steps (log something, connect a source, upload a document) instead of a bare \"No timeline events yet.\" \u2014 and only when the account is genuinely empty, never when a filter simply matched nothing.",
           "kind": "feature",
           "issues": [1522, 1410, 1599]
         },
         {
           "pr": 1657,
           "title": "Invites without passwords, and honest answers at the door",
-          "body": "Inviting someone to your instance got simpler and safer. With an email invite, you no longer invent an interim password for them — the account is unusable until they set their own through the invite link. New logins can be granted profile access at creation (defaulting sensibly when a same-named profile exists), so nobody lands in an account that can see nothing. And if a login does end up without access — say its last grant was revoked — signing in now says so plainly instead of silently bouncing back to the form, stale sessions are cleaned up rather than lingering as \"active\", and the attempt is recorded for the admin. Profiles with identical names are now told apart everywhere you pick one. Also: asking your records a plural question (\"any allergies?\") now finds singular-named entries.",
+          "body": "Inviting someone to your instance got simpler and safer. With an email invite, you no longer invent an interim password for them \u2014 the account is unusable until they set their own through the invite link. New logins can be granted profile access at creation (defaulting sensibly when a same-named profile exists), so nobody lands in an account that can see nothing. And if a login does end up without access \u2014 say its last grant was revoked \u2014 signing in now says so plainly instead of silently bouncing back to the form, stale sessions are cleaned up rather than lingering as \"active\", and the attempt is recorded for the admin. Profiles with identical names are now told apart everywhere you pick one. Also: asking your records a plural question (\"any allergies?\") now finds singular-named entries.",
           "kind": "feature",
           "issues": [1434, 1597]
         },
         {
           "pr": 1656,
           "title": "Every icon button explains itself",
-          "body": "All 96 icon-only buttons in the app — including every Delete and Remove — now show a tooltip on hover and carry a proper screen-reader name. A build-time guard keeps it that way: a new icon button can't ship without one. On touch screens, where there is no hover, every destructive icon action already asks for confirmation before acting — that safety net is now enforced too.",
+          "body": "All 96 icon-only buttons in the app \u2014 including every Delete and Remove \u2014 now show a tooltip on hover and carry a proper screen-reader name. A build-time guard keeps it that way: a new icon button can't ship without one. On touch screens, where there is no hover, every destructive icon action already asks for confirmation before acting \u2014 that safety net is now enforced too.",
           "kind": "fix",
           "issues": [1535]
         },
         {
           "pr": 1649,
           "title": "Your protein goal is finally yours to set",
-          "body": "The protein band on the Nutrition gauge has always adapted to a training goal — but there was nowhere to set one, so everyone silently sat on the \"Active\" band. Settings → Nutrition now has the picker (RDA baseline / Active / Muscle gain / Cut), saving as you change it, with the band shown in real g/kg terms. It's an informational range, not a prescription. Two consistency fixes rode along: each dashboard insight now appears in exactly one card (data-quality gaps no longer show in both the Data quality widget and the Coaching observations rollup — and hiding the widget hands its items back to the rollup instead of losing them), and \"activity streak\" now means one thing everywhere — the rest-tolerant streak; the strict consecutive-days number, where it appears, is labeled as exactly that.",
+          "body": "The protein band on the Nutrition gauge has always adapted to a training goal \u2014 but there was nowhere to set one, so everyone silently sat on the \"Active\" band. Settings \u2192 Nutrition now has the picker (RDA baseline / Active / Muscle gain / Cut), saving as you change it, with the band shown in real g/kg terms. It's an informational range, not a prescription. Two consistency fixes rode along: each dashboard insight now appears in exactly one card (data-quality gaps no longer show in both the Data quality widget and the Coaching observations rollup \u2014 and hiding the widget hands its items back to the rollup instead of losing them), and \"activity streak\" now means one thing everywhere \u2014 the rest-tolerant streak; the strict consecutive-days number, where it appears, is labeled as exactly that.",
           "kind": "fix",
           "issues": [1503, 1533, 1398]
         },
         {
           "pr": 1648,
           "title": "Screening scores can be corrected, and the passport learns what forms ask",
-          "body": "A mistyped PHQ-9 or AUDIT-C score is no longer permanent: screening results now offer Correct and Remove, with removal undoable — and correcting a score below threshold releases the crisis banner it tripped. Allergies gain the fields that make them real safety data: criticality (could a future exposure be life-threatening?), verification status (suspected / confirmed / refuted), and multiple graded reactions per allergen — a refuted allergy stops gating your medication checks, and high-criticality allergies lead the emergency card. Immunizations gain lot number, route, and site — what school, travel, and employment forms actually ask — plus structured exemption types for declinations. Everything unstated stays unstated; existing records keep meaning exactly what they meant.",
+          "body": "A mistyped PHQ-9 or AUDIT-C score is no longer permanent: screening results now offer Correct and Remove, with removal undoable \u2014 and correcting a score below threshold releases the crisis banner it tripped. Allergies gain the fields that make them real safety data: criticality (could a future exposure be life-threatening?), verification status (suspected / confirmed / refuted), and multiple graded reactions per allergen \u2014 a refuted allergy stops gating your medication checks, and high-criticality allergies lead the emergency card. Immunizations gain lot number, route, and site \u2014 what school, travel, and employment forms actually ask \u2014 plus structured exemption types for declinations. Everything unstated stays unstated; existing records keep meaning exactly what they meant.",
           "kind": "feature",
           "issues": [1396, 1405, 1406]
         },
         {
           "pr": 1646,
-          "title": "The Biomarkers index shows itself whole — and fits a phone",
-          "body": "The Biomarkers browser dropped its pager: the collapsed panel index is its own natural bound, so panels never straddle a page break, counts are always whole, and opening a group survives every filter change. Sorting defaults to name (newest reading first under each), the panel filter only offers panels that can actually return results for the surfaces the browser shows, and on phones the starred card and the biological-age hero fold behind honest toggles — reclaiming about 740 vertical pixels so the index is far closer to the first screen.",
+          "title": "The Biomarkers index shows itself whole \u2014 and fits a phone",
+          "body": "The Biomarkers browser dropped its pager: the collapsed panel index is its own natural bound, so panels never straddle a page break, counts are always whole, and opening a group survives every filter change. Sorting defaults to name (newest reading first under each), the panel filter only offers panels that can actually return results for the surfaces the browser shows, and on phones the starred card and the biological-age hero fold behind honest toggles \u2014 reclaiming about 740 vertical pixels so the index is far closer to the first screen.",
           "kind": "feature",
           "issues": [1581, 1578]
         },
         {
           "pr": 1641,
           "title": "Machine-aware progress reaches comparisons, Trends, PRs, and goals",
-          "body": "The equipment-aware strength tracking from earlier today now runs end to end. The Trends strength-progression chart shows one labeled series per machine (\"Machine Chest Press (Hotel chest press)\") instead of blending them; personal records are per-machine everywhere they appear — Trends, Training, the weekly recap, and coaching; the Analyze comparison offers a labeled machine picker so you compare like against like; and a weight goal can now name the machine it's set on. Goals you already have keep their movement-wide meaning — nothing re-scopes — and a goal that names no machine still counts every context. Deleting equipment widens its goals back to movement-wide rather than orphaning them.",
+          "body": "The equipment-aware strength tracking from earlier today now runs end to end. The Trends strength-progression chart shows one labeled series per machine (\"Machine Chest Press (Hotel chest press)\") instead of blending them; personal records are per-machine everywhere they appear \u2014 Trends, Training, the weekly recap, and coaching; the Analyze comparison offers a labeled machine picker so you compare like against like; and a weight goal can now name the machine it's set on. Goals you already have keep their movement-wide meaning \u2014 nothing re-scopes \u2014 and a goal that names no machine still counts every context. Deleting equipment widens its goals back to movement-wide rather than orphaning them.",
           "kind": "feature",
           "issues": [1610]
         },
         {
           "pr": 1639,
-          "title": "Corrected lab results stop erasing history — and readings learn how they were drawn",
-          "body": "When a lab re-issues a result — a corrected potassium, an amended differential — the previous value is now preserved beside the reading instead of being silently overwritten: the biomarker page shows \"Corrected — was 5.2 mmol/L\" under the live value, which never charts or counts twice. Readings can also record their result status (preliminary / final / corrected / amended), whether the draw was fasting, the specimen (serum, plasma, urine…), and the clinician who ordered the test separately from the lab that ran it. Everything stays honest by default: an unstated attribute stays unstated — never a guessed \"final\" or \"non-fasting\" — and your own hand-corrected readings are still never touched by a re-sync. One filing fix rode along: a freeform lab spelling now files under its family's clinical panel instead of stranding in \"Other\".",
+          "title": "Corrected lab results stop erasing history \u2014 and readings learn how they were drawn",
+          "body": "When a lab re-issues a result \u2014 a corrected potassium, an amended differential \u2014 the previous value is now preserved beside the reading instead of being silently overwritten: the biomarker page shows \"Corrected \u2014 was 5.2 mmol/L\" under the live value, which never charts or counts twice. Readings can also record their result status (preliminary / final / corrected / amended), whether the draw was fasting, the specimen (serum, plasma, urine\u2026), and the clinician who ordered the test separately from the lab that ran it. Everything stays honest by default: an unstated attribute stays unstated \u2014 never a guessed \"final\" or \"non-fasting\" \u2014 and your own hand-corrected readings are still never touched by a re-sync. One filing fix rode along: a freeform lab spelling now files under its family's clinical panel instead of stranding in \"Other\".",
           "kind": "feature",
           "issues": [1404, 1629]
         },
         {
           "pr": 1630,
           "title": "Syncs stop overstating themselves",
-          "body": "Three honesty fixes for Data → Review. A Strava, Oura, or Withings sync cut short by the provider (a page cap or rate limit) now shows a caution icon and a \"partial\" chip with a plain explanation — the next sync picks up where it left off — instead of reading as a clean green run. A phone push that fails partway now reports exactly which records landed before the stop, with the same drill-in as a successful sync. And Weather & UV finally has a home in Review's Connected sources, so its sync history is reachable from its settings page. Separately, two devices that agree on a reading — say both recorded 55 bpm resting heart rate — no longer appear in Review as a conflict to resolve: identical numbers are normal multi-source coverage, and only genuine disagreements ask for your decision. Recovery baselines now count each day once, however many devices covered it.",
+          "body": "Three honesty fixes for Data \u2192 Review. A Strava, Oura, or Withings sync cut short by the provider (a page cap or rate limit) now shows a caution icon and a \"partial\" chip with a plain explanation \u2014 the next sync picks up where it left off \u2014 instead of reading as a clean green run. A phone push that fails partway now reports exactly which records landed before the stop, with the same drill-in as a successful sync. And Weather & UV finally has a home in Review's Connected sources, so its sync history is reachable from its settings page. Separately, two devices that agree on a reading \u2014 say both recorded 55 bpm resting heart rate \u2014 no longer appear in Review as a conflict to resolve: identical numbers are normal multi-source coverage, and only genuine disagreements ask for your decision. Recovery baselines now count each day once, however many devices covered it.",
           "kind": "fix",
           "issues": [1614, 1615]
         },
         {
           "pr": 1628,
           "title": "Your strength history knows which machine you were on",
-          "body": "Two chest-press machines — home and hotel — used to share one progression: the app would seed the hotel machine with the home machine's 80 kg and blend both into one PR track and one plateau signal. Sets have always recorded which registered equipment they were performed on; now the history, suggestions, comparisons, and plateau detection respect it. A freshly registered machine starts clean instead of borrowing another machine's numbers, plateau alerts name the machine they're about, and dismissing one machine's alert leaves the other's live. You can also register new equipment right inside the workout form — logging on an unfamiliar gym's machine no longer means abandoning your in-progress session. One heads-up: previously dismissed plateau notices may reappear once as their tracking keys migrate; dismiss them again and they stay dismissed.",
+          "body": "Two chest-press machines \u2014 home and hotel \u2014 used to share one progression: the app would seed the hotel machine with the home machine's 80 kg and blend both into one PR track and one plateau signal. Sets have always recorded which registered equipment they were performed on; now the history, suggestions, comparisons, and plateau detection respect it. A freshly registered machine starts clean instead of borrowing another machine's numbers, plateau alerts name the machine they're about, and dismissing one machine's alert leaves the other's live. You can also register new equipment right inside the workout form \u2014 logging on an unfamiliar gym's machine no longer means abandoning your in-progress session. One heads-up: previously dismissed plateau notices may reappear once as their tracking keys migrate; dismiss them again and they stay dismissed.",
           "kind": "feature",
           "issues": [1611, 1399]
         },
         {
           "pr": 1627,
           "title": "A1c reminders keep their quarterly clock",
-          "body": "Labs often report Hemoglobin A1c alongside its estimated-average-glucose re-expression from one draw. When the eAG line happened to be the newest reading, the retest reminder silently fell back to a generic annual interval instead of the quarterly cadence A1c calls for — exactly wrong for the people tracking it most closely. Every member of a biomarker family now shares the family's retest clock and its reminder reads consistently (\"Retest Hemoglobin A1c\"), and a freeform lab spelling the catalog doesn't list can no longer show up twice for the same draw or be counted as two different current readings.",
+          "body": "Labs often report Hemoglobin A1c alongside its estimated-average-glucose re-expression from one draw. When the eAG line happened to be the newest reading, the retest reminder silently fell back to a generic annual interval instead of the quarterly cadence A1c calls for \u2014 exactly wrong for the people tracking it most closely. Every member of a biomarker family now shares the family's retest clock and its reminder reads consistently (\"Retest Hemoglobin A1c\"), and a freeform lab spelling the catalog doesn't list can no longer show up twice for the same draw or be counted as two different current readings.",
           "kind": "fix",
           "issues": [1394, 1395, 1401]
         },
         {
           "pr": 1625,
           "title": "The strength editor works like a phone app on phones",
-          "body": "Logging sets at the gym got a real phone layout. Each set is now two clean rows — \"Set 3\" with its RPE, warm-up, and remove controls on one line, full-width weight × reps steppers underneath — instead of three disconnected bands. The exercise header gives the lift name the whole row, so \"Barbell Bench Press\" no longer truncates, and the how-to, reorder, and remove buttons moved to their own toolbar with proper finger-sized targets. Desktop keeps its familiar compact table.",
+          "body": "Logging sets at the gym got a real phone layout. Each set is now two clean rows \u2014 \"Set 3\" with its RPE, warm-up, and remove controls on one line, full-width weight \u00d7 reps steppers underneath \u2014 instead of three disconnected bands. The exercise header gives the lift name the whole row, so \"Barbell Bench Press\" no longer truncates, and the how-to, reorder, and remove buttons moved to their own toolbar with proper finger-sized targets. Desktop keeps its familiar compact table.",
           "kind": "fix",
           "issues": [1612, 1613]
         }
@@ -709,35 +730,35 @@
         {
           "pr": 1617,
           "title": "Fitbit archive imports: right categories, honest accounting",
-          "body": "Exercises imported from a Fitbit (Google Takeout) archive now land as what they actually were: stationary bike, jump rope, rowing machine, Tabata, TRX, rollerblading and dozens more get the correct activity category and grouping, and meditation sessions become wellness practices instead of workouts. Your existing history is corrected automatically — rows you hand-edited are left untouched. The importer also reports honestly in Data → Review: every attempt appears with what it inserted, updated, or skipped, you can drill into exactly which records a run wrote, and an import that fails partway now says precisely what landed before it stopped — and is always safe to re-run.",
+          "body": "Exercises imported from a Fitbit (Google Takeout) archive now land as what they actually were: stationary bike, jump rope, rowing machine, Tabata, TRX, rollerblading and dozens more get the correct activity category and grouping, and meditation sessions become wellness practices instead of workouts. Your existing history is corrected automatically \u2014 rows you hand-edited are left untouched. The importer also reports honestly in Data \u2192 Review: every attempt appears with what it inserted, updated, or skipped, you can drill into exactly which records a run wrote, and an import that fails partway now says precisely what landed before it stopped \u2014 and is always safe to re-run.",
           "kind": "fix",
           "issues": []
         },
         {
           "pr": 1609,
           "title": "Protocols round out: one-tap logging, read-only endings, day-by-day heatmaps",
-          "body": "Logging an intervention now takes one tap from the protocol itself — activity, food-group, and wellness-practice interventions each hand off to their own logging form, from the detail page or the dashboard widget. Ended protocols become read-only for new experiment data (you can still fix a mis-logged session or run it again), so a finished experiment's numbers stay what they were. And every protocol card gains a per-day heatmap of its window — see at a glance which days you actually did the thing, with a compact rendering for long windows and phones.",
+          "body": "Logging an intervention now takes one tap from the protocol itself \u2014 activity, food-group, and wellness-practice interventions each hand off to their own logging form, from the detail page or the dashboard widget. Ended protocols become read-only for new experiment data (you can still fix a mis-logged session or run it again), so a finished experiment's numbers stay what they were. And every protocol card gains a per-day heatmap of its window \u2014 see at a glance which days you actually did the thing, with a compact rendering for long windows and phones.",
           "kind": "feature",
           "issues": [1584, 1588, 1592]
         },
         {
           "pr": 1607,
           "title": "Protocol lifecycle grows up: modal editing, resume, run again",
-          "body": "Edit, End, Delete, Resume, and Run again now live together in the protocol page's ⋯ menu. A protocol ended in the last 7 days can resume in place as if nothing happened; an older one starts a fresh run while keeping the historical record intact. Creating and editing both open in the same roomy modal instead of the narrow list rail, and destructive confirmations use the app's own dialogs — no more native browser popups.",
+          "body": "Edit, End, Delete, Resume, and Run again now live together in the protocol page's \u22ef menu. A protocol ended in the last 7 days can resume in place as if nothing happened; an older one starts a fresh run while keeping the historical record intact. Creating and editing both open in the same roomy modal instead of the narrow list rail, and destructive confirmations use the app's own dialogs \u2014 no more native browser popups.",
           "kind": "feature",
           "issues": [1587, 1589]
         },
         {
           "pr": 1608,
           "title": "The docs caught up with the app",
-          "body": "The README is now a real product and self-hosting guide, and the feature reference describes the app as it actually is today — retired navigation, old settings layouts, and already-shipped work are no longer described as current or future behavior. If you set up Allos from the docs, they now tell the truth end to end.",
+          "body": "The README is now a real product and self-hosting guide, and the feature reference describes the app as it actually is today \u2014 retired navigation, old settings layouts, and already-shipped work are no longer described as current or future behavior. If you set up Allos from the docs, they now tell the truth end to end.",
           "kind": "feature",
           "issues": []
         },
         {
           "pr": 1594,
           "title": "Starting a protocol got much lighter",
-          "body": "The New protocol form no longer sits fully expanded on the Longevity page — it opens in place when you ask for it, with protocol templates built into the same form (template deep links still work). Picking what to measure is a searchable selector with sensible ranking, familiar aliases, and selected chips, instead of a wall of hundreds of checkboxes. Measures that exist as both a body metric and a lab value are now one logical choice, with same-day readings preferring your scale's number.",
+          "body": "The New protocol form no longer sits fully expanded on the Longevity page \u2014 it opens in place when you ask for it, with protocol templates built into the same form (template deep links still work). Picking what to measure is a searchable selector with sensible ranking, familiar aliases, and selected chips, instead of a wall of hundreds of checkboxes. Measures that exist as both a body metric and a lab value are now one logical choice, with same-day readings preferring your scale's number.",
           "kind": "feature",
           "issues": [1500, 1586]
         }
@@ -749,14 +770,14 @@
         {
           "pr": 1577,
           "title": "Your lab history, folded into panels you can scan",
-          "body": "The Biomarkers list — the longest page in the app — now groups your readings by clinical panel: each panel shows as one line with its analyte count and how many are currently flagged (\"Lipids · 6 · 1 flagged\"), and taps open to the readings. Flagged panels identify themselves at a glance, searching or filtering opens the matching groups automatically, and the roughly ten separate trajectory-watch cards folded into a single expandable card (each item can still be dismissed individually). Entry forms sit behind \"+ Add\". The page dropped from about thirteen thousand pixels to under three thousand.",
+          "body": "The Biomarkers list \u2014 the longest page in the app \u2014 now groups your readings by clinical panel: each panel shows as one line with its analyte count and how many are currently flagged (\"Lipids \u00b7 6 \u00b7 1 flagged\"), and taps open to the readings. Flagged panels identify themselves at a glance, searching or filtering opens the matching groups automatically, and the roughly ten separate trajectory-watch cards folded into a single expandable card (each item can still be dismissed individually). Entry forms sit behind \"+ Add\". The page dropped from about thirteen thousand pixels to under three thousand.",
           "kind": "feature",
           "issues": [1499]
         },
         {
           "pr": 1593,
           "title": "Wellness practices become first-class",
-          "body": "Sauna, meditation, red light, breathwork — practices now have their own home on the Wellness surface: define a practice, set a weekly cadence target, log sessions with time and duration, and correct history when you got it wrong. Practices show up properly in protocols, Upcoming, and the dashboard, and route to their own logging flow instead of the training editor. Renaming a practice keeps its whole history and targets attached, regardless of capitalization or spacing.",
+          "body": "Sauna, meditation, red light, breathwork \u2014 practices now have their own home on the Wellness surface: define a practice, set a weekly cadence target, log sessions with time and duration, and correct history when you got it wrong. Practices show up properly in protocols, Upcoming, and the dashboard, and route to their own logging flow instead of the training editor. Renaming a practice keeps its whole history and targets attached, regardless of capitalization or spacing.",
           "kind": "feature",
           "issues": [1583, 1585, 1590, 1591]
         }
@@ -768,98 +789,98 @@
         {
           "pr": 1574,
           "title": "Search results take you to the thing you searched for",
-          "body": "Picking an activity from the command palette now opens that day's Timeline instead of the generic Training page (which, if you were already on it, made the palette look broken — nothing changed on screen). A medication result opens that medication's page, a vaccine result opens its per-vaccine page with your dose history and schedule, and a goal lands on the goals tab. Biomarker names also got a cleanup: rows now show the clean catalog name (\"Uric Acid\") instead of the lab's shouting case (\"URIC ACID\") wherever the reading is the point — import-review and \"as reported\" views deliberately keep the document's original text.",
+          "body": "Picking an activity from the command palette now opens that day's Timeline instead of the generic Training page (which, if you were already on it, made the palette look broken \u2014 nothing changed on screen). A medication result opens that medication's page, a vaccine result opens its per-vaccine page with your dose history and schedule, and a goal lands on the goals tab. Biomarker names also got a cleanup: rows now show the clean catalog name (\"Uric Acid\") instead of the lab's shouting case (\"URIC ACID\") wherever the reading is the point \u2014 import-review and \"as reported\" views deliberately keep the document's original text.",
           "kind": "fix",
           "issues": [1568, 1501]
         },
         {
           "pr": 1572,
           "title": "Trends ties off: annotation controls in the context bar, complete saved views, honest volume bars",
-          "body": "The event/protocol-window toggles moved into the context bar's expanded controls — one set for the whole page instead of a repeated row above each chart, returning about 60px on phones. A saved view now captures everything about where you were, including the Body tab's tiles-vs-all layout, and views saved under the old tab names keep working. The range pills scroll with a fade when they overflow a phone screen, training volume draws as bars instead of a noisy line, and the normalize toggle is finally finger-sized.",
+          "body": "The event/protocol-window toggles moved into the context bar's expanded controls \u2014 one set for the whole page instead of a repeated row above each chart, returning about 60px on phones. A saved view now captures everything about where you were, including the Body tab's tiles-vs-all layout, and views saved under the old tab names keep working. The range pills scroll with a fade when they overflow a phone screen, training volume draws as bars instead of a noisy line, and the normalize toggle is finally finger-sized.",
           "kind": "feature",
           "issues": [1493, 1485]
         },
         {
           "pr": 1569,
-          "title": "Your labs, organized by panel — everywhere",
-          "body": "Allos now knows which clinical panel every catalog biomarker belongs to — Lipids, Complete blood count, Thyroid, and thirty-one more. The Timeline titles a lab draw by what was measured (\"Lipids results — 6 results, 1 out of range\") instead of the lab company's name; the Biomarkers list can filter by panel as a real clinical facet; and each biomarker's detail page offers the rest of its panel one tap away. Readings the catalog doesn't recognize keep their original grouping.",
+          "title": "Your labs, organized by panel \u2014 everywhere",
+          "body": "Allos now knows which clinical panel every catalog biomarker belongs to \u2014 Lipids, Complete blood count, Thyroid, and thirty-one more. The Timeline titles a lab draw by what was measured (\"Lipids results \u2014 6 results, 1 out of range\") instead of the lab company's name; the Biomarkers list can filter by panel as a real clinical facet; and each biomarker's detail page offers the rest of its panel one tap away. Readings the catalog doesn't recognize keep their original grouping.",
           "kind": "feature",
           "issues": [1502]
         },
         {
           "pr": 1566,
           "title": "Trends charts open in the order that matters for you",
-          "body": "The Body tab's default chart order now starts from who the profile is: growth charts lead for a child, the series your active conditions watch (blood pressure for hypertension, oxygen for asthma) move up, a metric with a live goal rises, and empty charts can never sit above charts with data. Nothing reshuffles day to day — the order comes from stable facts, not the latest sync — and once you drag your own arrangement, it's yours permanently.",
+          "body": "The Body tab's default chart order now starts from who the profile is: growth charts lead for a child, the series your active conditions watch (blood pressure for hypertension, oxygen for asthma) move up, a metric with a live goal rises, and empty charts can never sit above charts with data. Nothing reshuffles day to day \u2014 the order comes from stable facts, not the latest sync \u2014 and once you drag your own arrangement, it's yours permanently.",
           "kind": "feature",
           "issues": [1490]
         },
         {
           "pr": 1564,
           "title": "Nutrition gets one workspace for food and supplements",
-          "body": "The Nutrition page was redesigned around a shared Food | Supplements workspace: the same recent-day and time-slot controls on both tabs, compact date menus on phones, supplement add/edit in a focused modal, and date-specific protein and fiber feedback with weekly summaries. Meals you log for an earlier day now stay on that day's slot. Supplement schedules also stopped showing newly added doses on days before the dose existed — history stays honest.",
+          "body": "The Nutrition page was redesigned around a shared Food | Supplements workspace: the same recent-day and time-slot controls on both tabs, compact date menus on phones, supplement add/edit in a focused modal, and date-specific protein and fiber feedback with weekly summaries. Meals you log for an earlier day now stay on that day's slot. Supplement schedules also stopped showing newly added doses on days before the dose existed \u2014 history stays honest.",
           "kind": "feature",
           "issues": []
         },
         {
           "pr": 1561,
           "title": "Phone screens: metric details, the view strip, and Timeline all slim down",
-          "body": "Three phone-size cleanups. A metric's detail page no longer shows three identical stat cards when you have under a week of data — coincident windows collapse into one honestly-labelled card, the “Change” stat names the actual date it compares against, a caption notes when your selected range outruns the data, and step/hydration/calorie charts now start their axis at zero. The view strip at the top of list pages drops its card frame on phones, returning about 30px of every screen to content. And the Timeline: the day switcher stays pinned while you scroll, the filter block collapses to a single summary line, and symptom entry sits behind “+ Log symptom” — opening automatically on days that already have symptoms or an active illness.",
+          "body": "Three phone-size cleanups. A metric's detail page no longer shows three identical stat cards when you have under a week of data \u2014 coincident windows collapse into one honestly-labelled card, the \u201cChange\u201d stat names the actual date it compares against, a caption notes when your selected range outruns the data, and step/hydration/calorie charts now start their axis at zero. The view strip at the top of list pages drops its card frame on phones, returning about 30px of every screen to content. And the Timeline: the day switcher stays pinned while you scroll, the filter block collapses to a single summary line, and symptom entry sits behind \u201c+ Log symptom\u201d \u2014 opening automatically on days that already have symptoms or an active illness.",
           "kind": "feature",
           "issues": [1541, 1539, 1517]
         },
         {
           "pr": 1560,
-          "title": "Tap any chart to go deeper — and edit its readings",
-          "body": "Every full-size chart on Trends now links through to a detail view — tap the title or the expand icon; the plot itself still pans and zooms without hijacking your touch. Charts that summarize several things (nutrition macros, training volume, heart-rate zones) land on their real home pages, and the sun/outdoor-time chart — the tab's last dead end — gets a detail page of its own. Each metric detail page also gains a Readings table: every stored reading, with in-place edit and delete. A reading you hand-correct is protected from being overwritten by the next sync, and a deleted one stays deleted.",
+          "title": "Tap any chart to go deeper \u2014 and edit its readings",
+          "body": "Every full-size chart on Trends now links through to a detail view \u2014 tap the title or the expand icon; the plot itself still pans and zooms without hijacking your touch. Charts that summarize several things (nutrition macros, training volume, heart-rate zones) land on their real home pages, and the sun/outdoor-time chart \u2014 the tab's last dead end \u2014 gets a detail page of its own. Each metric detail page also gains a Readings table: every stored reading, with in-place edit and delete. A reading you hand-correct is protected from being overwritten by the next sync, and a deleted one stays deleted.",
           "kind": "feature",
           "issues": [1488, 1397]
         },
         {
           "pr": 1562,
-          "title": "Health Connect syncs catch more duplicates — and more readings",
-          "body": "Fixes from real-world payloads: possible-duplicate detection now groups same-day readings even when the source apps label their type differently, so cross-app duplicates actually surface for review; skin-temperature variation — the one reading that can legitimately be negative — is now accepted instead of dropped; and sleep-stage durations keep their precision instead of rounding.",
+          "title": "Health Connect syncs catch more duplicates \u2014 and more readings",
+          "body": "Fixes from real-world payloads: possible-duplicate detection now groups same-day readings even when the source apps label their type differently, so cross-app duplicates actually surface for review; skin-temperature variation \u2014 the one reading that can legitimately be negative \u2014 is now accepted instead of dropped; and sleep-stage durations keep their precision instead of rounding.",
           "kind": "fix",
           "issues": []
         },
         {
           "pr": 1558,
-          "title": "Trends chrome gets out of the way — and tiles drag",
-          "body": "On a phone, Trends now opens with a one-line context bar — \"Overview · 90D\" — instead of two rows of pills and tabs: tap it to change the range or tab, and it slides away with the top bar as you scroll, returning the moment you scroll up. The window label is always visible, so a chart is never shown without knowing what period you're looking at. Your first chart now sits inside the opening screen. Reordering saved tiles is a long-press drag — the same gesture the dashboard uses — with the up/down controls still available in each tile's menu. This also fixed a bug where those arrows sometimes visibly did nothing.",
+          "title": "Trends chrome gets out of the way \u2014 and tiles drag",
+          "body": "On a phone, Trends now opens with a one-line context bar \u2014 \"Overview \u00b7 90D\" \u2014 instead of two rows of pills and tabs: tap it to change the range or tab, and it slides away with the top bar as you scroll, returning the moment you scroll up. The window label is always visible, so a chart is never shown without knowing what period you're looking at. Your first chart now sits inside the opening screen. Reordering saved tiles is a long-press drag \u2014 the same gesture the dashboard uses \u2014 with the up/down controls still available in each tile's menu. This also fixed a bug where those arrows sometimes visibly did nothing.",
           "kind": "feature",
           "issues": [1485]
         },
         {
           "pr": 1555,
           "title": "Training opens on what you're doing today",
-          "body": "The Training overview now leads with today's session, then your week, with everything else in calm order behind it — and the wall of per-muscle coaching notices is one expandable card (each notice can still be dismissed individually inside it). The long PR lists show their top three with the rest one tap away, and the charts moved to Trends → Fitness where the date range applies to them. The page is about half its former height, and switching tabs no longer does the work of building all six behind the scenes.",
+          "body": "The Training overview now leads with today's session, then your week, with everything else in calm order behind it \u2014 and the wall of per-muscle coaching notices is one expandable card (each notice can still be dismissed individually inside it). The long PR lists show their top three with the rest one tap away, and the charts moved to Trends \u2192 Fitness where the date range applies to them. The page is about half its former height, and switching tabs no longer does the work of building all six behind the scenes.",
           "kind": "feature",
           "issues": [1496]
         },
         {
           "pr": 1554,
-          "title": "Trends → Fitness respects your date range",
-          "body": "The Fitness tab stopped mirroring the Training page and became true trends content: four sections — volume (as bars, with the activity heatmap sized to your window), zones and cardio, strength progression, and sport — all honoring the same date range as every other tab. Records set in your window show as a top-three list with the full history one tap away on Training. Old links into the tab's former sub-tabs land correctly.",
+          "title": "Trends \u2192 Fitness respects your date range",
+          "body": "The Fitness tab stopped mirroring the Training page and became true trends content: four sections \u2014 volume (as bars, with the activity heatmap sized to your window), zones and cardio, strength progression, and sport \u2014 all honoring the same date range as every other tab. Records set in your window show as a top-three list with the full history one tap away on Training. Old links into the tab's former sub-tabs land correctly.",
           "kind": "feature",
           "issues": [1492]
         },
         {
           "pr": 1546,
-          "title": "A logged workout is a logged workout — and day one reads honestly",
-          "body": "Two fixes to how the app reads your data. Logging a finished session with just a duration (\"Walking, 30 minutes, done\") no longer convinces every page you're mid-workout — the live dock, the \"Still working out?\" nag, and the household chip now correctly treat it as completed. And a medication added moments ago no longer shows \"0% adherence\" — the worst possible number for \"no history yet\": days before a dose existed don't count against it, the card simply shows no percentage until there's real history, and a week where you genuinely missed every dose keeps its honest 0%. Medications brought in from an imported record keep their full history.",
+          "title": "A logged workout is a logged workout \u2014 and day one reads honestly",
+          "body": "Two fixes to how the app reads your data. Logging a finished session with just a duration (\"Walking, 30 minutes, done\") no longer convinces every page you're mid-workout \u2014 the live dock, the \"Still working out?\" nag, and the household chip now correctly treat it as completed. And a medication added moments ago no longer shows \"0% adherence\" \u2014 the worst possible number for \"no history yet\": days before a dose existed don't count against it, the card simply shows no percentage until there's real history, and a week where you genuinely missed every dose keeps its honest 0%. Medications brought in from an imported record keep their full history.",
           "kind": "fix",
           "issues": [1441, 1442]
         },
         {
           "pr": 1542,
           "title": "The update notice stops floating, and small fixes land where you log",
-          "body": "The \"Refresh to update\" notice after a server update is now a banner at the top of the page instead of a permanent floating bubble over the bottom corner of your phone — same message, out of your way. Toasts and the offline pill also learned to stack above the live-workout dock instead of covering it. In the activity editor, the Form check section now appears while you're still creating an activity (as soon as it autosaves), the reps steppers finally step down as well as up, and the phone bar drops its repeat-last button — that shortcut lives in search and each journal card's menu, where it always also lived.",
+          "body": "The \"Refresh to update\" notice after a server update is now a banner at the top of the page instead of a permanent floating bubble over the bottom corner of your phone \u2014 same message, out of your way. Toasts and the offline pill also learned to stack above the live-workout dock instead of covering it. In the activity editor, the Form check section now appears while you're still creating an activity (as soon as it autosaves), the reps steppers finally step down as well as up, and the phone bar drops its repeat-last button \u2014 that shortcut lives in search and each journal card's menu, where it always also lived.",
           "kind": "fix",
           "issues": [1520, 1524, 1509]
         },
         {
           "pr": 1540,
           "title": "Five Trends tabs, and Compare finds its home",
-          "body": "The Trends strip is down to five tabs in the order you actually use them — Overview, Body, Fitness, Nutrition, Insights — and all five now fit a phone screen without clipping. Compare didn't disappear: it's a section of Insights now, alongside the AI insights and situation analytics, and every old Compare link or saved comparison lands there intact. One quiet improvement for families: a child's profile now sees the Insights tab too — with the comparison tools that were always age-neutral — while the training-restricted content stays hidden.",
+          "body": "The Trends strip is down to five tabs in the order you actually use them \u2014 Overview, Body, Fitness, Nutrition, Insights \u2014 and all five now fit a phone screen without clipping. Compare didn't disappear: it's a section of Insights now, alongside the AI insights and situation analytics, and every old Compare link or saved comparison lands there intact. One quiet improvement for families: a child's profile now sees the Insights tab too \u2014 with the comparison tools that were always age-neutral \u2014 while the training-restricted content stays hidden.",
           "kind": "feature",
           "issues": [1489]
         }
@@ -874,140 +895,140 @@
         {
           "pr": 1530,
           "title": "One Body tab, one place to log your numbers",
-          "body": "Trends loses its Vitals/Body split: one Body tab now leads with today's readings and the 1D intraday view, then your vitals charts (blood pressure, oxygen, resting heart rate — charted exactly once, goal line intact — HRV, and the fever view), then weight and body fat, with the tab strip down to six entries and old Vitals links landing in the right place. Logging is one combined \"Log measurements\" form — weight, body fat, blood pressure, glucose, oxygen, temperature, sleep, HRV, and growth fields for kids — behind a + Log button on desktop and the quick-log sheet's single Measurements item on your phone. The three fitness-check tests (grip, chair stand, balance) moved to the guided flow on Training, where timed tests belong — same records, same percentiles.",
+          "body": "Trends loses its Vitals/Body split: one Body tab now leads with today's readings and the 1D intraday view, then your vitals charts (blood pressure, oxygen, resting heart rate \u2014 charted exactly once, goal line intact \u2014 HRV, and the fever view), then weight and body fat, with the tab strip down to six entries and old Vitals links landing in the right place. Logging is one combined \"Log measurements\" form \u2014 weight, body fat, blood pressure, glucose, oxygen, temperature, sleep, HRV, and growth fields for kids \u2014 behind a + Log button on desktop and the quick-log sheet's single Measurements item on your phone. The three fitness-check tests (grip, chair stand, balance) moved to the guided flow on Training, where timed tests belong \u2014 same records, same percentiles.",
           "kind": "feature",
           "issues": [1486]
         },
         {
           "pr": 1529,
           "title": "Settings, reorganized around what things are about",
-          "body": "Settings is no longer three navigation systems around two very long pages: it's now an index of eleven topic groups — Account & security, Display & units, Health profile, Training, Nutrition, Coaching & AI, Notifications, Privacy, plus the admin People & access, Server, and Logs & audit — each a short page that states who it applies to (your login, this profile, or the server). The Notifications page drops from three screens to three sections with exactly one row per message kind (enable, timing, and channels together — the old duplicate toggle-card and routing matrix are gone, with no change to what's configurable). The active-sessions list finally reads as devices (\"Chrome · Linux\") instead of 22 identical truncated browser strings, collapsed to the recent few. One heads-up: old settings URLs from before the reorganization aren't redirected — use the index once and you're re-oriented.",
+          "body": "Settings is no longer three navigation systems around two very long pages: it's now an index of eleven topic groups \u2014 Account & security, Display & units, Health profile, Training, Nutrition, Coaching & AI, Notifications, Privacy, plus the admin People & access, Server, and Logs & audit \u2014 each a short page that states who it applies to (your login, this profile, or the server). The Notifications page drops from three screens to three sections with exactly one row per message kind (enable, timing, and channels together \u2014 the old duplicate toggle-card and routing matrix are gone, with no change to what's configurable). The active-sessions list finally reads as devices (\"Chrome \u00b7 Linux\") instead of 22 identical truncated browser strings, collapsed to the recent few. One heads-up: old settings URLs from before the reorganization aren't redirected \u2014 use the index once and you're re-oriented.",
           "kind": "feature",
           "issues": [1462, 1451]
         },
         {
           "pr": 1523,
           "title": "Your Trends Overview is now yours to curate",
-          "body": "The Overview tab shows exactly two things: what changed (the movers digest) and what you starred — nothing unconditional. The standard tiles (weight, body fat, resting heart rate, training volume) are still there on day one, but as ordinary saved tiles you can unstar or reorder like anything else; the domain tabs keep showing everything. Tiles also got denser on phones — two abreast, the latest value as the headline number, controls tucked into a corner menu — and a saved metric with no readings in the window compacts to a one-line row below the populated tiles instead of a full-height empty box. Unstar everything and the page tells you how to build it back rather than going blank.",
+          "body": "The Overview tab shows exactly two things: what changed (the movers digest) and what you starred \u2014 nothing unconditional. The standard tiles (weight, body fat, resting heart rate, training volume) are still there on day one, but as ordinary saved tiles you can unstar or reorder like anything else; the domain tabs keep showing everything. Tiles also got denser on phones \u2014 two abreast, the latest value as the headline number, controls tucked into a corner menu \u2014 and a saved metric with no readings in the window compacts to a one-line row below the populated tiles instead of a full-height empty box. Unstar everything and the page tells you how to build it back rather than going blank.",
           "kind": "feature",
           "issues": [1487, 1485]
         },
         {
           "pr": 1521,
           "title": "Dates read one way everywhere",
-          "body": "A sweep over every visible date: the same style now means the same thing across pages (day-of-week where it helps, the year only when it isn't this year), timestamps stop mixing formats mid-page, and a handful of form papercuts went with it — labels no longer clip their descenders, and disabled fields actually look disabled instead of just refusing input.",
+          "body": "A sweep over every visible date: the same style now means the same thing across pages (day-of-week where it helps, the year only when it isn't this year), timestamps stop mixing formats mid-page, and a handful of form papercuts went with it \u2014 labels no longer clip their descenders, and disabled fields actually look disabled instead of just refusing input.",
           "kind": "fix",
           "issues": [1448, 1450]
         },
         {
           "pr": 1507,
           "title": "Trends opens on the last 90 days",
-          "body": "Trends now defaults to a 90-day window instead of all time, so every chart leads with recent change rather than a lifetime average — and \"All time\" is still one tap away (links and saved views that meant all-time keep meaning it). A saved biomarker with no readings in the window shows its latest reading with an honest age (\"55 ng/mL · 5 mo ago\") instead of an empty tile, so stale never reads as current.",
+          "body": "Trends now defaults to a 90-day window instead of all time, so every chart leads with recent change rather than a lifetime average \u2014 and \"All time\" is still one tap away (links and saved views that meant all-time keep meaning it). A saved biomarker with no readings in the window shows its latest reading with an honest age (\"55 ng/mL \u00b7 5 mo ago\") instead of an empty tile, so stale never reads as current.",
           "kind": "feature",
           "issues": [1485]
         },
         {
           "pr": 1514,
           "title": "Upcoming rows get one menu, and copy reads right",
-          "body": "Preventive items on Upcoming showed two identical \"⋯\" menus (two independent menus composing on one row) — now one merged menu, with a fixed-width status column so the Overdue label stops jumping and a mobile action row that folds secondary actions into the menu instead of wrapping. A copy sweep also fixed a subtle rendering bug that ate the space after bold text on ten pages, singular/plural slips (\"1 errors\"), and developer jargon in help text.",
+          "body": "Preventive items on Upcoming showed two identical \"\u22ef\" menus (two independent menus composing on one row) \u2014 now one merged menu, with a fixed-width status column so the Overdue label stops jumping and a mobile action row that folds secondary actions into the menu instead of wrapping. A copy sweep also fixed a subtle rendering bug that ate the space after bold text on ten pages, singular/plural slips (\"1 errors\"), and developer jargon in help text.",
           "kind": "fix",
           "issues": [1446, 1447]
         },
         {
           "pr": 1508,
           "title": "Health-record pages read as one family",
-          "body": "The Problems tab joins the records pattern — Conditions and Allergies as proper sub-pages with the family's pill navigation, so an allergy link lands on the list itself. Filters unify into one outline-pill style across the record tabs, heading sizes settle into one hierarchy, and the journal's form-check section now appears only on activities that actually have clips, with adding one moved into the activity editor.",
+          "body": "The Problems tab joins the records pattern \u2014 Conditions and Allergies as proper sub-pages with the family's pill navigation, so an allergy link lands on the list itself. Filters unify into one outline-pill style across the record tabs, heading sizes settle into one hierarchy, and the journal's form-check section now appears only on activities that actually have clips, with adding one moved into the activity editor.",
           "kind": "feature",
           "issues": [1449, 1457]
         },
         {
           "pr": 1494,
           "title": "Share a lab PDF straight into your record",
-          "body": "Install the app and your phone's share sheet gains an Allos target: share a PDF or a photo of a document from any app and it lands in the medical-upload pipeline — same per-person storage, duplicate detection, and AI extraction as the upload form — then opens the stored document so you can watch extraction and reassign it if it belongs to another family member. The upload form also gains a take-a-photo option on phones.",
+          "body": "Install the app and your phone's share sheet gains an Allos target: share a PDF or a photo of a document from any app and it lands in the medical-upload pipeline \u2014 same per-person storage, duplicate detection, and AI extraction as the upload form \u2014 then opens the stored document so you can watch extraction and reassign it if it belongs to another family member. The upload form also gains a take-a-photo option on phones.",
           "kind": "feature",
           "issues": [1423]
         },
         {
           "pr": 1495,
           "title": "Home-screen shortcuts and a badge that counts what needs you",
-          "body": "Long-press the installed app's icon for shortcuts straight into logging — food, a dose, weight, vitals, an activity, or search. The app icon also carries a badge with the same count as the dashboard's Needs-attention card, clearing when the day is handled (refreshes on open in this first version).",
+          "body": "Long-press the installed app's icon for shortcuts straight into logging \u2014 food, a dose, weight, vitals, an activity, or search. The app icon also carries a badge with the same count as the dashboard's Needs-attention card, clearing when the day is handled (refreshes on open in this first version).",
           "kind": "feature",
           "issues": [1424]
         },
         {
           "pr": 1481,
           "title": "Overlays that move as one, and swipes that go somewhere",
-          "body": "The drawer, bottom sheets, and the workout dock now share one motion system — same timing, same drag handle, same scrim — and one drag gesture with the right outcome per surface: swiping a sheet down dismisses it, swiping the workout dock minimizes it (a live workout is never discardable by gesture). The drawer opens with an edge swipe, and the Timeline's day view pages between days with a horizontal swipe or its new arrows. All of it is instant under reduced-motion.",
+          "body": "The drawer, bottom sheets, and the workout dock now share one motion system \u2014 same timing, same drag handle, same scrim \u2014 and one drag gesture with the right outcome per surface: swiping a sheet down dismisses it, swiping the workout dock minimizes it (a live workout is never discardable by gesture). The drawer opens with an edge swipe, and the Timeline's day view pages between days with a horizontal swipe or its new arrows. All of it is instant under reduced-motion.",
           "kind": "feature",
           "issues": [1425, 1469]
         },
         {
           "pr": 1483,
           "title": "Redose guidance with just an interval, and a household dose round",
-          "body": "Setting only a minimum interval on an as-needed medication now shows the \"Next dose in ~Nh\" guidance — it previously required the optional daily maximum too. And caregivers can subscribe their Telegram reminder to a household round: one message covering the family members you select, each section with one-tap confirms that check your current access at the moment you tap and answer honestly if a dose was already handled.",
+          "body": "Setting only a minimum interval on an as-needed medication now shows the \"Next dose in ~Nh\" guidance \u2014 it previously required the optional daily maximum too. And caregivers can subscribe their Telegram reminder to a household round: one message covering the family members you select, each section with one-tap confirms that check your current access at the moment you tap and answer honestly if a dose was already handled.",
           "kind": "fix",
           "issues": [1458, 1459]
         },
         {
           "pr": 1480,
           "title": "One star to save it everywhere",
-          "body": "Starring and pinning were two separate gestures for the same intent — a biomarker you cared about had to be starred for the Results status card and separately pinned to earn a Trends chart tile, and the two sets silently drifted apart. They're now one: starring a biomarker puts it on the Results card, gives it a Trends chart tile, and includes it in the profile summary, with a reorder control on Trends replacing the old pin toggle. Existing stars and pins merge automatically, keeping each save's original date and your tile order. One change to know: restoring a saved Trends view no longer alters which biomarkers are saved — views keep their date range and compare state only.",
+          "body": "Starring and pinning were two separate gestures for the same intent \u2014 a biomarker you cared about had to be starred for the Results status card and separately pinned to earn a Trends chart tile, and the two sets silently drifted apart. They're now one: starring a biomarker puts it on the Results card, gives it a Trends chart tile, and includes it in the profile summary, with a reorder control on Trends replacing the old pin toggle. Existing stars and pins merge automatically, keeping each save's original date and your tile order. One change to know: restoring a saved Trends view no longer alters which biomarkers are saved \u2014 views keep their date range and compare state only.",
           "kind": "feature",
           "issues": [1456]
         },
         {
           "pr": 1482,
           "title": "Tables become cards on your phone",
-          "body": "Wide tables no longer ask for a sideways swipe on a phone: below tablet width the biomarkers table and the training Analyze table re-stack as readable cards — same data, labeled fields, nothing hidden. The biomarker panel, category, and notes columns that used to be dropped on small screens come back as labeled lines, and sorting stays available through a compact selector. More tables convert as they're next touched.",
+          "body": "Wide tables no longer ask for a sideways swipe on a phone: below tablet width the biomarkers table and the training Analyze table re-stack as readable cards \u2014 same data, labeled fields, nothing hidden. The biomarker panel, category, and notes columns that used to be dropped on small screens come back as labeled lines, and sorting stays available through a compact selector. More tables convert as they're next touched.",
           "kind": "feature",
           "issues": [1426]
         },
         {
           "pr": 1476,
           "title": "Quick-log never takes you away",
-          "body": "Every item on the mobile quick-log sheet — food, dose, weight, and now vitals — opens its form right where you are and returns you there after saving, instead of navigating you to another page mid-check. The dose option shows today's due doses with one-tap confirms that answer honestly (a dose someone else already marked, or a paused medication, says so instead of claiming \"logged\"). Confirmation dialogs now rise as thumb-reachable sheets on phones, and the installed app gains pull-to-refresh.",
+          "body": "Every item on the mobile quick-log sheet \u2014 food, dose, weight, and now vitals \u2014 opens its form right where you are and returns you there after saving, instead of navigating you to another page mid-check. The dose option shows today's due doses with one-tap confirms that answer honestly (a dose someone else already marked, or a paused medication, says so instead of claiming \"logged\"). Confirmation dialogs now rise as thumb-reachable sheets on phones, and the installed app gains pull-to-refresh.",
           "kind": "feature",
           "issues": [1428, 1468, 1467]
         },
         {
           "pr": 1477,
           "title": "Vitals: today at a glance, and a real 1D view",
-          "body": "Trends → Vitals now leads with a Today strip — your latest readings with their times, linking to the day's timeline — and gains a 1D option that swaps the charts to a true intraday view: your minute-by-minute heart rate edge-to-edge on a phone (wear gaps shown as gaps, never bridged), with blood-pressure and oxygen readings placed at their actual clock times. The quick-add forms collapse to a \"+ Log vitals\" chip on mobile, taking the first chart from two screens down to inside the opening view.",
+          "body": "Trends \u2192 Vitals now leads with a Today strip \u2014 your latest readings with their times, linking to the day's timeline \u2014 and gains a 1D option that swaps the charts to a true intraday view: your minute-by-minute heart rate edge-to-edge on a phone (wear gaps shown as gaps, never bridged), with blood-pressure and oxygen readings placed at their actual clock times. The quick-add forms collapse to a \"+ Log vitals\" chip on mobile, taking the first chart from two screens down to inside the opening view.",
           "kind": "feature",
           "issues": [1466]
         },
         {
           "pr": 1475,
           "title": "Charts you can actually tell apart",
-          "body": "The chart palette was rebuilt against real accessibility math — the two nearly-identical greens are gone (one is now a clear blue), warm colors darkened for contrast, and every future palette edit is auto-checked in CI for colorblind separation and contrast in both themes. Charts lose the gray default-grid look (quieter axes, dots only where they help, legends on every multi-series chart), heatmap calendars share one blessed color ramp, mini trend tiles become true sparklines with their range as text, and chart motion is a single quick draw-in that fully respects reduced-motion.",
+          "body": "The chart palette was rebuilt against real accessibility math \u2014 the two nearly-identical greens are gone (one is now a clear blue), warm colors darkened for contrast, and every future palette edit is auto-checked in CI for colorblind separation and contrast in both themes. Charts lose the gray default-grid look (quieter axes, dots only where they help, legends on every multi-series chart), heatmap calendars share one blessed color ramp, mini trend tiles become true sparklines with their range as text, and chart motion is a single quick draw-in that fully respects reduced-motion.",
           "kind": "feature",
           "issues": [1445]
         },
         {
           "pr": 1471,
           "title": "The dashboard learns what time it is",
-          "body": "A compact \"Now\" strip tops the dashboard with the one or two of your existing cards that matter this minute — last night's sleep in the morning after your typical wake time, the workout recap in the hour after a session, nutrition around your mealtimes, the evening check-in while it's still unlogged. It promotes cards you already show (never one you've hidden), stays empty when nothing is timely, and your own grid order below is untouched. The \"Needs attention\" hero can now be collapsed to a one-line count on your phone — it always stays present with its count, and a day carrying a safety item (a missed critical dose) refuses to collapse at all.",
+          "body": "A compact \"Now\" strip tops the dashboard with the one or two of your existing cards that matter this minute \u2014 last night's sleep in the morning after your typical wake time, the workout recap in the hour after a session, nutrition around your mealtimes, the evening check-in while it's still unlogged. It promotes cards you already show (never one you've hidden), stays empty when nothing is timely, and your own grid order below is untouched. The \"Needs attention\" hero can now be collapsed to a one-line count on your phone \u2014 it always stays present with its count, and a day carrying a safety item (a missed critical dose) refuses to collapse at all.",
           "kind": "feature",
           "issues": [1413]
         },
         {
           "pr": 1470,
           "title": "Trends opens on your charts",
-          "body": "On a phone, Trends used to spend almost two screens on date forms and browsing aids before the first chart. Now the quick-range chips lead (with saved views riding the same row), the From/To form tucks behind a Custom… chip — already open when you arrive on a shared link with custom dates — the movers card shows its top three with the rest one tap away, and the starred-biomarker status card lives on Results → Biomarkers, its one home. First chart on the seeded profile: from about two screens down to inside the opening view. The Timeline gets the same tidier date controls for free.",
+          "body": "On a phone, Trends used to spend almost two screens on date forms and browsing aids before the first chart. Now the quick-range chips lead (with saved views riding the same row), the From/To form tucks behind a Custom\u2026 chip \u2014 already open when you arrive on a shared link with custom dates \u2014 the movers card shows its top three with the rest one tap away, and the starred-biomarker status card lives on Results \u2192 Biomarkers, its one home. First chart on the seeded profile: from about two screens down to inside the opening view. The Timeline gets the same tidier date controls for free.",
           "kind": "feature",
           "issues": [1455]
         },
         {
           "pr": 1452,
           "title": "A phone-first shell",
-          "body": "On a phone the app now has its own chrome: the top bar slides away as you scroll and returns the moment you scroll up, taking the multi-profile \"Viewing N profiles\" banner with it so you always know whose data you're reading. The bar carries one-tap Search and a contextual + button that starts the current page's obvious log — food on Nutrition, a dose on Medications, weight on Body — with a quick-log sheet behind it for everything else. The drawer learns your most-visited pages as Frequent shortcuts (kept on your device only), spacing tightens below tablet width, and every animation honors your system's reduced-motion setting.",
+          "body": "On a phone the app now has its own chrome: the top bar slides away as you scroll and returns the moment you scroll up, taking the multi-profile \"Viewing N profiles\" banner with it so you always know whose data you're reading. The bar carries one-tap Search and a contextual + button that starts the current page's obvious log \u2014 food on Nutrition, a dose on Medications, weight on Body \u2014 with a quick-log sheet behind it for everything else. The drawer learns your most-visited pages as Frequent shortcuts (kept on your device only), spacing tightens below tablet width, and every animation honors your system's reduced-motion setting.",
           "kind": "feature",
           "issues": [1416]
         },
         {
           "pr": 1460,
           "title": "Offline dose logs are timed right and never lie",
-          "body": "A dose you confirm without signal is now logged at the moment you tapped it — not when your phone reconnected — so adherence history reflects when you actually took it. Replays also go through the exact same checks as a normal tap: a medication you paused, a dose the day already resolved, or an entry that sat queued too long is parked in the review panel with a plain-language reason instead of being reported as synced. This also fixes a real bug where a queued confirm could log a dose — and burn supply — for a paused medication.",
+          "body": "A dose you confirm without signal is now logged at the moment you tapped it \u2014 not when your phone reconnected \u2014 so adherence history reflects when you actually took it. Replays also go through the exact same checks as a normal tap: a medication you paused, a dose the day already resolved, or an entry that sat queued too long is parked in the review panel with a plain-language reason instead of being reported as synced. This also fixes a real bug where a queued confirm could log a dose \u2014 and burn supply \u2014 for a paused medication.",
           "kind": "fix",
           "issues": [1427]
         }
@@ -1023,21 +1044,21 @@
         {
           "pr": 1439,
           "title": "Share one bottle across the household",
-          "body": "A medication or supplement can now link to a shared bottle in the new household cabinet. Everyone's doses draw from the same count — each person at their own dose size — days-remaining reflects the whole household's pace, and a low bottle raises exactly one alert, never one per person. Items you don't share keep their private counts.",
+          "body": "A medication or supplement can now link to a shared bottle in the new household cabinet. Everyone's doses draw from the same count \u2014 each person at their own dose size \u2014 days-remaining reflects the whole household's pace, and a low bottle raises exactly one alert, never one per person. Items you don't share keep their private counts.",
           "kind": "feature",
           "issues": [1374]
         },
         {
           "pr": 1432,
           "title": "Release notes, right here in the app",
-          "body": "This page is new. It ships with the app itself, so after an update you can see what changed without leaving Allos — even offline. The small dot on the What's new link marks notes you haven't read yet and clears when you visit.",
+          "body": "This page is new. It ships with the app itself, so after an update you can see what changed without leaving Allos \u2014 even offline. The small dot on the What's new link marks notes you haven't read yet and clears when you visit.",
           "kind": "feature",
           "issues": [1421]
         },
         {
           "pr": 1436,
           "title": "Steadier phone-at-the-gym flow",
-          "body": "During a live workout the screen now stays awake only while the workout is actually in front of you — minimizing it to the dock releases the screen again (previously the phone could stay awake indefinitely). The rest timer's finish and each set check-off also give a short vibration cue on phones that support it, skipped when reduced motion is on.",
+          "body": "During a live workout the screen now stays awake only while the workout is actually in front of you \u2014 minimizing it to the dock releases the screen again (previously the phone could stay awake indefinitely). The rest timer's finish and each set check-off also give a short vibration cue on phones that support it, skipped when reduced motion is on.",
           "kind": "fix",
           "issues": [1422]
         },
@@ -1051,7 +1072,7 @@
         {
           "pr": 1419,
           "title": "Merge duplicate workouts in one step",
-          "body": "The same workout arriving from more than one source can now be merged as a whole group — the cluster card on Data → Review, or several entries selected together in the Journal. After a sync, near-certain duplicates are merged for you; every automatic merge is listed so you can look at what it did and undo it.",
+          "body": "The same workout arriving from more than one source can now be merged as a whole group \u2014 the cluster card on Data \u2192 Review, or several entries selected together in the Journal. After a sync, near-certain duplicates are merged for you; every automatic merge is listed so you can look at what it did and undo it.",
           "issues": [1081]
         },
         {
@@ -1078,35 +1099,35 @@
         {
           "pr": 1391,
           "title": "Sun and outdoor time on Trends",
-          "body": "Trends → Vitals now charts daylight and outdoor time alongside your other vitals. A per-profile setting for which days are free of a fixed schedule sharpens the social jetlag reading for anyone whose week is not Monday to Friday.",
+          "body": "Trends \u2192 Vitals now charts daylight and outdoor time alongside your other vitals. A per-profile setting for which days are free of a fixed schedule sharpens the social jetlag reading for anyone whose week is not Monday to Friday.",
           "kind": "feature",
           "issues": [1171, 1241]
         },
         {
           "pr": 1390,
           "title": "Allergies and gene results name the medications they affect",
-          "body": "An allergy row now lists the active medications it conflicts with, and a pharmacogenomic variant row lists the medications it affects — the same warnings, and the same dismissals, already shown on the medication side. Procedures and conditions also link back to the visit they came from.",
+          "body": "An allergy row now lists the active medications it conflicts with, and a pharmacogenomic variant row lists the medications it affects \u2014 the same warnings, and the same dismissals, already shown on the medication side. Procedures and conditions also link back to the visit they came from.",
           "kind": "feature",
           "issues": [1354]
         },
         {
           "pr": 1388,
           "title": "Report narratives now visible",
-          "body": "Narrative text read out of a report — ECG, stress test, imaging — is now shown on Results → Reports instead of being stored where nothing displayed it.",
+          "body": "Narrative text read out of a report \u2014 ECG, stress test, imaging \u2014 is now shown on Results \u2192 Reports instead of being stored where nothing displayed it.",
           "kind": "fix",
           "issues": []
         },
         {
           "pr": 1387,
           "title": "Biomarkers for several people at once",
-          "body": "Results → Biomarkers can now show more than one household member together, each with their own section, reference ranges and starred markers.",
+          "body": "Results \u2192 Biomarkers can now show more than one household member together, each with their own section, reference ranges and starred markers.",
           "kind": "feature",
           "issues": [1331]
         }
       ],
       "operatorNotes": [
         "Health Connect ingest tokens can no longer be re-displayed after this upgrade. Use Rotate on the Health Connect page to mint a new one; phones already paired keep working with their existing token.",
-        "Database migrations 109–111 apply automatically on the first boot after upgrading."
+        "Database migrations 109\u2013111 apply automatically on the first boot after upgrading."
       ]
     }
   ]
