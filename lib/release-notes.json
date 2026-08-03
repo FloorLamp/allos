@@ -1,6 +1,18 @@
 {
   "days": [
     {
+      "date": "2026-08-03",
+      "entries": [
+        {
+          "pr": 1975,
+          "kind": "fix",
+          "issues": [1971],
+          "title": "The weight you type into a set is the weight you get",
+          "body": "When you logged a set for a lift you have history for, the first set's weight and reps filled themselves in with the coached suggestion the moment your cursor arrived in the field \u2014 before you had typed anything. If you were entering your own numbers, yours landed on top of the suggested ones instead of replacing them: meaning to log 60 kg gave you 77.560, or 77.605 depending on where in the field you had tapped. Both look like real loads, so a set could be saved wrong without anything looking amiss.\n\nThose fields now stay empty until you type in them, and what you type is the whole value. The coached suggestion has not gone anywhere: it is still previewed in grey inside the set, and the \"Next set\" card above still has its \"Use\" button, which fills weight and reps in one tap. The one change to that path is that taking the suggestion is now that tap, rather than something that happened by itself when you moved into the field.\n\nIf you have a saved set whose load looks oddly long \u2014 a suggested weight with your own digits buried in it \u2014 that is where it came from, and it is worth correcting."
+        }
+      ]
+    },
+    {
       "date": "2026-08-02",
       "entries": [
         {

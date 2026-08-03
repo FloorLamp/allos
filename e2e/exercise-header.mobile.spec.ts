@@ -69,16 +69,11 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   const firstName = page.getByPlaceholder(/What did you do/);
   await pickActivity(page, firstName, "Barbell Bench Press");
 
-  // Complete set 1 so a second part can be added. Focusing the weight applies
-  // the coached suggestion (which fills reps too), so the fill is retried until
-  // the typed value is the one that stuck — the #1450 spec's note.
+  // Complete set 1 so a second part can be added. The weight field is plain now:
+  // #1971 retired the focus-applied suggestion, so a typed value is the value.
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
-  await expect(weight).toHaveValue(/^\d/);
-  await expect(async () => {
-    await weight.fill("60");
-    await expect(weight).toHaveValue("60", { timeout: 2_000 });
-  }).toPass({ timeout: 15_000 }); // topass-ok: the focus-applied suggestion can overwrite a fill that lands first — one non-atomic step a bare expect cannot re-drive
+  await weight.fill("60");
+  await expect(weight).toHaveValue("60");
   await settledFill(page, page.getByTestId("set1-reps"), "5");
 
   // Wait for the draft row to exist BEFORE adding the second part, so the

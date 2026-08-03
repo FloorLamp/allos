@@ -425,16 +425,25 @@ export default function StrengthSets({
   const canAddSet = !!last && setComplete(p.name, last, p.perSide);
   const total = partTotal(p);
   // A pristine part (no set started): its set 1 shows the suggestion as ghost
-  // placeholders, and focusing an input fills it — auto-consuming the coached
-  // next set without a "Use" tap (#335). Once anything is typed it's no longer
-  // pristine, so the ghosts vanish and never fight real input.
+  // PLACEHOLDERS (#335). Once anything is typed it's no longer pristine, so the
+  // ghosts vanish and never fight real input.
+  //
+  // The ghost is an OFFER, never a write. #335 originally also applied the
+  // suggestion from the fields' `onFocus` — "no Use tap needed" — and #1971
+  // measured what that costs: arriving in set 1's weight field writes 77.5 into
+  // it, and the digits the person then types land ON TOP of a value they never
+  // asked for. Tab in and type "60" → "77.560"; click in and type "60" →
+  // "77.605" (the caret sits wherever the click landed). Deterministic at every
+  // typing speed and at 6x CPU throttle — not a race. Focus is ARRIVAL, not
+  // intent, and this repo's rule is that context gates an offer but the user's
+  // tap is the write. The tap is the Next-set card's "Use" button below.
   const partUntouched = p.sets.every(
     (s) =>
       !setComplete(p.name, s, p.perSide) && !setPartial(p.name, s, p.perSide)
   );
-  // The bilateral suggestion to auto-seed set 1 with (ghost + focus-fill). Only
-  // for a fresh bilateral part with a weighted suggestion — per-side seeds via
-  // its own Use button, and a bodyweight suggestion has no weight ghost.
+  // The bilateral suggestion to ghost set 1 with. Only for a fresh bilateral
+  // part with a weighted suggestion — per-side offers via its own Use button,
+  // and a bodyweight suggestion has no weight ghost.
   const ghost = !p.perSide && partUntouched ? suggestion : null;
   // Live version of the journal card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
@@ -546,7 +555,6 @@ export default function StrengthSets({
     onChange: (v: string) => void,
     blocked: boolean,
     ghostReps?: number | null,
-    onGhostFocus?: () => void,
     onEnter?: () => void,
     segmented = false,
     testId?: string
@@ -560,7 +568,6 @@ export default function StrengthSets({
           data-testid={testId}
           value={value}
           onChange={(e) => onChange(stripNonPositive(e.target.value))}
-          onFocus={onGhostFocus}
           onKeyDown={
             onEnter
               ? (e) => {
@@ -1187,7 +1194,6 @@ export default function StrengthSets({
                               ),
                             flags.effort,
                             null,
-                            undefined,
                             canAddSet ? onAddSet : undefined,
                             true
                           )}
@@ -1213,7 +1219,6 @@ export default function StrengthSets({
                             ),
                           flags.effort,
                           null,
-                          undefined,
                           canAddSet ? onAddSet : undefined
                         )
                       )}
@@ -1258,11 +1263,6 @@ export default function StrengthSets({
                           weight: stripNegative(e.target.value),
                         })
                       }
-                      onFocus={
-                        si === 0 && ghost
-                          ? () => onApplySuggestion(ghost)
-                          : undefined
-                      }
                       placeholder={
                         si === 0 && ghost && !ghost.bodyweight
                           ? String(
@@ -1294,11 +1294,6 @@ export default function StrengthSets({
                       onUpdateSet(si, {
                         weight: stripNegative(e.target.value),
                       })
-                    }
-                    onFocus={
-                      si === 0 && ghost
-                        ? () => onApplySuggestion(ghost)
-                        : undefined
                     }
                     placeholder={
                       si === 0 && ghost && !ghost.bodyweight
@@ -1348,9 +1343,6 @@ export default function StrengthSets({
                       (v) => onUpdateSet(si, { reps: v }),
                       sideFlags(s.weight, s.reps, s.duration).effort,
                       si === 0 && ghost ? ghost.reps : null,
-                      si === 0 && ghost
-                        ? () => onApplySuggestion(ghost)
-                        : undefined,
                       canAddSet ? onAddSet : undefined,
                       true,
                       `set${si + 1}-reps`
@@ -1371,9 +1363,6 @@ export default function StrengthSets({
                     (v) => onUpdateSet(si, { duration: v }),
                     sideFlags(s.weight, s.reps, s.duration).effort,
                     null,
-                    si === 0 && ghost
-                      ? () => onApplySuggestion(ghost)
-                      : undefined,
                     canAddSet ? onAddSet : undefined
                   )
                 )}

@@ -97,7 +97,10 @@ async function startLiveWorkout(page: Page) {
 async function completeFirstSet(page: Page) {
   await pickActivity(page, "Barbell Bench Press");
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(weight).toHaveValue(/^\d/);
   // The Delete button appearing confirms the draft persisted (so it's ours to clean up).
   await expect(

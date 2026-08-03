@@ -66,15 +66,12 @@ async function openEditor(page: Page): Promise<void> {
     .click();
 }
 
-// Fill set 1's weight past its ghost SUGGESTION (see the note in the #1450 test:
-// focusing the field applies the coached load, so a bare fill races it).
+// Fill set 1's weight. Plain now: #1971 retired the focus-applied suggestion, so
+// the field no longer writes itself out from under the value being typed.
 async function fillSet1Weight(page: Page, value: string): Promise<void> {
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
-  await expect(async () => {
-    await weight.fill(value);
-    await expect(weight).toHaveValue(value, { timeout: 2_000 });
-  }).toPass({ timeout: 15_000 }); // topass-ok: the focus-applied suggestion can overwrite a fill that lands first — one non-atomic step a bare expect cannot re-drive
+  await weight.fill(value);
+  await expect(weight).toHaveValue(value);
 }
 
 // Delete the auto-saved draft so the worker's DB is left as this spec found it.
@@ -104,14 +101,8 @@ test("the live set row shows a 4-character load at 390px (#1450)", async ({
   const weightInput = page.getByTestId("set1-weight");
   await expect(weightInput).toBeVisible();
 
-  // Set 1's weight carries a ghost SUGGESTION that the field applies on focus
-  // (StrengthSets' onApplySuggestion), so a bare fill races it: the fill lands,
-  // then the suggested load overwrites it ("82.7775"). Let the suggestion settle
-  // first, then retry the fill until the value we typed is the one that stuck.
-  await weightInput.focus();
-  await expect(weightInput).toHaveValue(/^\d/);
-
-  // The whole point: a realistic 4-character load must be readable back.
+  // The whole point: a realistic 4-character load must be readable back. Set 1's
+  // suggestion is a ghost PLACEHOLDER only (#1971), so this types cleanly.
   await fillSet1Weight(page, "77.5");
   expect(
     await isClipped(page, "set1-weight"),

@@ -289,7 +289,10 @@ test("a live session is server-backed, so it writes no competing draft (#1699/#4
       .first() // first-ok: transient combobox list this spec just opened by typing
       .click();
     const weight = page.getByTestId("set1-weight");
-    await weight.focus();
+    await page
+      .getByTestId("next-set-card")
+      .getByRole("button", { name: "Use" })
+      .click();
     await expect(weight).toHaveValue(/^\d/);
 
     // The server row appearing is the positive signal that the live session is
