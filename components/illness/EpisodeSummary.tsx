@@ -194,7 +194,10 @@ export default function EpisodeSummary({
           </div>
           <div>
             <dt className="section-label">Day</dt>
-            <dd className="text-slate-700 dark:text-slate-200">
+            <dd
+              className="text-slate-700 dark:text-slate-200"
+              data-testid="episode-summary-day"
+            >
               {day != null ? day : "—"}
             </dd>
           </div>
