@@ -80,9 +80,7 @@ export function getIntakeHistory(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profileId, days)
-  );
+  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
 
   const out: IntakeHistoryEntry[] = [];
   for (const item of items) {

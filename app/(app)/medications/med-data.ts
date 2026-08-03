@@ -632,9 +632,7 @@ export function getMedicationAdherenceCalendar(
     new Set(getActiveSituations(profileId)),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profileId, days)
-  );
+  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
   const strip = supplementAdherenceStrip(
     med,
     medDoses,
