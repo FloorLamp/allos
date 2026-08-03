@@ -10,7 +10,9 @@
 // Then the rest of the seam:
 //   • an unattended FAILED run leaves the request open; an attended one answers it;
 //   • a per-identity `declined` suppresses staleness and post-visit for THAT identity
-//     only, and a later successful collection clears it;
+//     only, and a later successful collection clears it — including that a REFUSED report
+//     clears nothing, because the self-clear is scoped by the token's write set rather
+//     than by where it happens to sit relative to the route's gate (#1960);
 //   • `GET /api/documents/requests`: the auth gate, the write-set scoping, open-and-
 //     unexpired only, and no address-shaped field anywhere in the answer;
 //   • migration 146's columns and its behaviour-preserving backfill.
@@ -619,6 +621,61 @@ describe("declined — one login, three patients, three answers", () => {
     );
     expect(res.status).toBe(200); // the run report itself is account-level and stands
     expect(declinedFor(f.account.id, `PROXY ${f.tag}`)).toBe(false);
+  });
+
+  it("a REFUSED downloaded report clears nothing — the 403 and the non-write are one fact (#1960)", async () => {
+    // The household case: profile A and profile B on ONE shared portal login, and a
+    // caregiver token that may write A only. The report names B.
+    //
+    // `clearIdentityDeclined` used to run BEFORE this route's write gate and scope itself
+    // on the profile the run RESOLVED to — which authorizes nothing, because resolution is
+    // an auth-blind lookup. The caller got its 403 and B's standing state had already been
+    // mutated. The 403 alone never proved anything: it was returned before the fix too.
+    const mine = makeProfile("Gate mine");
+    const theirs = makeProfile("Gate theirs");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+    ).run(memberLogin, mine);
+    // Nothing at all is granted on `theirs` — not read, not write.
+    const portal = createPortal("Gate portal", "mychart");
+    if (!portal.ok) throw new Error("fixture");
+    const account = accountsForPortal(portal.id).find((a) => a.implicit)!;
+    expect(bindPortalIdentity(account.id, "GATE MINE", mine).ok).toBe(true);
+    expect(bindPortalIdentity(account.id, "GATE THEIRS", theirs).ok).toBe(true);
+
+    // Their binding carries a standing "the portal declines this person".
+    db.prepare(
+      "UPDATE portal_identities SET declined = 1 WHERE account_id = ? AND patient_label = ?"
+    ).run(account.id, "GATE THEIRS");
+    expect(declinedFor(account.id, "GATE THEIRS")).toBe(true);
+
+    const res = await SYNC_REPORT(
+      report(memberToken, {
+        status: "downloaded",
+        portal: "gate-portal",
+        patient: "GATE THEIRS",
+        inserted: 1,
+      })
+    );
+    expect(res.status).toBe(403);
+    // THE ASSERTION THIS TEST EXISTS FOR.
+    expect(declinedFor(account.id, "GATE THEIRS")).toBe(true);
+
+    // …and the same report for the profile this token MAY write still clears, so the
+    // intersection scoped the write rather than disabling it.
+    db.prepare(
+      "UPDATE portal_identities SET declined = 1 WHERE account_id = ? AND patient_label = ?"
+    ).run(account.id, "GATE MINE");
+    const ok = await SYNC_REPORT(
+      report(memberToken, {
+        status: "downloaded",
+        portal: "gate-portal",
+        patient: "GATE MINE",
+        inserted: 1,
+      })
+    );
+    expect(ok.status).toBe(200);
+    expect(declinedFor(account.id, "GATE MINE")).toBe(false);
   });
 
   it("a later successful collection clears it, with no human involved", async () => {
