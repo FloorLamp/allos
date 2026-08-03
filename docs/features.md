@@ -1024,11 +1024,16 @@ legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
 is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
-meal cards, each with a ⋯ row action to **correct** it — the food group, the day,
-or the meal it belongs to. A correction MOVES the serving: the day's totals and
-the per-meal tallies (the same counts the food nudge reads) follow it, so a
-serving tapped into the wrong meal is repaired rather than deleted and re-logged
-under the current time. A **weekly rollup** — ONE pure
+meal cards, each with ⋯ row actions to **correct** it — the food group, the day,
+or the meal it belongs to — or to **remove** that one serving. A correction MOVES
+the serving: the day's totals and the per-meal tallies (the same counts the food
+nudge reads) follow it, so a serving tapped into the wrong meal is repaired
+rather than deleted and re-logged under the current time. "Remove this serving"
+is ROW-scoped and is the removal that honours that per-row identity: the group
+row's "−" is the quick group-level control and pops the newest tap in the meal,
+which — since a correction deliberately preserves the tap instant — need not be
+the serving you just moved there. Both write the ledger row and the day counter
+in one transaction, dropping the counter row at zero. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
