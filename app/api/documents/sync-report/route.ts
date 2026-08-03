@@ -357,11 +357,18 @@ export async function POST(req: Request): Promise<Response> {
     // out. Self-clearing and state-driven: a portal that starts offering the download
     // again needs nobody to notice. `nothing-new` deliberately does NOT clear it — a run
     // that found nothing new never proved the download is on offer.
+    //
+    // The resolved profile is intersected with the token's write set (#1960), the same way
+    // the per-identity outcomes above are. This call sits BEFORE the write gate below, and
+    // for a while that made it a real cross-profile write: an unauthorized token got its
+    // 403 and had already cleared the flag. The intersection is what makes it safe, not
+    // its position — reordering this handler cannot reintroduce the bug.
     if (ev.ok && status === "downloaded") {
       clearIdentityDeclined(
         resolved.accountId,
         resolved.patientLabel,
-        resolved.profileId
+        resolved.profileId,
+        writableProfileIds
       );
     }
   }

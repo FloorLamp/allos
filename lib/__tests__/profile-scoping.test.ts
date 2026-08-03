@@ -126,7 +126,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/portals.ts",
     includes:
       "SELECT id, profile_id AS profileId FROM portal_identities WHERE account_id = ? AND patient_label = ?",
-    why: "applyIdentityOutcomes / clearIdentityDeclined (#1889): the same resolve-the-owner lookup as portalIdentityProfile, keyed on the EXTERNAL identity a run report names rather than on a surrogate id the client could not know. It asks 'whose binding is this, so I can check the reporting token may write it' — filtering by profile_id would presuppose that answer. The resolved id is immediately intersected with the token's write set, and the UPDATE that follows IS profile-scoped (id AND profile_id, a compare-and-swap)",
+    why: "applyIdentityOutcomes / clearIdentityDeclined (#1889): the same resolve-the-owner lookup as portalIdentityProfile, keyed on the EXTERNAL identity a run report names rather than on a surrogate id the client could not know. It asks 'whose binding is this, so I can check the reporting token may write it' — filtering by profile_id would presuppose that answer. BOTH functions intersect against the token's write set inside the core (#1960 moved clearIdentityDeclined onto that footing after its one caller was calling it before its own write gate), and the UPDATE that follows IS profile-scoped (id AND profile_id, a compare-and-swap)",
   },
   {
     file: "lib/portals.ts",
