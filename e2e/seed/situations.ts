@@ -15,6 +15,10 @@ import {
   TTC_PROFILE,
   E2E_LOGIN_CYCLE_STALE,
   CYCLE_STALE_PROFILE,
+  E2E_LOGIN_CYCLE_CTA,
+  CYCLE_CTA_PROFILE,
+  E2E_LOGIN_CYCLE_GAP,
+  CYCLE_GAP_PROFILE,
   E2E_LOGIN_DERIVED,
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
@@ -102,6 +106,47 @@ export function seedCycleAndDerived(): void {
   console.log(
     `e2e: seeded stale-open-period fixture — profile ${staleProfileId} (${CYCLE_STALE_PROFILE}) (#1682)`
   );
+
+  // ── Cycle log-affordance fixtures (#1892) ────────────────────────────────────
+  // Two dedicated adult FEMALE profiles, cycle-relevant by LIFE STAGE (sex +
+  // premenopausal status) rather than by data — which is the only way to reach the
+  // state this issue is about: a profile the domain applies to that has logged
+  // nothing yet. Before #1892 that state hid the dashboard card entirely.
+  //
+  //   CTA — no cycle rows. The card is the offer ("Period started today"). The spec
+  //         OWNS its mutations and clears the profile's cycles before each test.
+  //   GAP — one period ended 5 days ago: past the reopen window, short of the
+  //         plausible gap, so the card shows the derived phase and NO button. The
+  //         spec is read-only here, so it survives --repeat-each untouched.
+  //
+  // Dates are relative to each profile's own today. Synthetic, no PHI.
+  {
+    const ctaId = fixtureProfileId(CYCLE_CTA_PROFILE);
+    const ctaAnchor = today(ctaId);
+    db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(ctaId);
+    setProfileSetting(ctaId, "sex", "female");
+    setProfileSetting(ctaId, "reproductive_status", "premenopausal");
+    setProfileSetting(ctaId, "birthdate", shiftDateStr(ctaAnchor, -365 * 29));
+    seedMemberLogin(E2E_LOGIN_CYCLE_CTA, ctaId, "write");
+    console.log(
+      `e2e: seeded cycle log-CTA fixture — profile ${ctaId} (${CYCLE_CTA_PROFILE}) (#1892)`
+    );
+
+    const gapId = fixtureProfileId(CYCLE_GAP_PROFILE);
+    const gapAnchor = today(gapId);
+    db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(gapId);
+    setProfileSetting(gapId, "sex", "female");
+    setProfileSetting(gapId, "reproductive_status", "premenopausal");
+    setProfileSetting(gapId, "birthdate", shiftDateStr(gapAnchor, -365 * 31));
+    db.prepare(
+      `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+       VALUES (?, ?, ?, 'medium')`
+    ).run(gapId, shiftDateStr(gapAnchor, -9), shiftDateStr(gapAnchor, -5));
+    seedMemberLogin(E2E_LOGIN_CYCLE_GAP, gapId, "write");
+    console.log(
+      `e2e: seeded cycle plausible-gap fixture — profile ${gapId} (${CYCLE_GAP_PROFILE}) (#1892)`
+    );
+  }
 
   // ── Trying-to-conceive fixture (#1679/#1680) ─────────────────────────────────
   // A dedicated adult FEMALE profile with SIX regular ~28-day cycles (so the next-period

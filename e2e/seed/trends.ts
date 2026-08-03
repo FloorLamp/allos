@@ -9,6 +9,7 @@ import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
 import { setUserBirthdate, setUserSex } from "../../lib/settings";
+import { reconcileFlags } from "../../lib/queries";
 import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
@@ -34,6 +35,13 @@ import {
   TRENDS_RANK_PLAIN_PROFILE,
   E2E_LOGIN_TRENDS_PIN,
   TRENDS_PIN_PROFILE,
+  E2E_LOGIN_DAY_ONE,
+  DAY_ONE_PROFILE,
+  E2E_LOGIN_BIOMARKER_PICKER,
+  BIOMARKER_PICKER_PROFILE,
+  BIOMARKER_PICKER_OVERDUE,
+  BIOMARKER_PICKER_FLAGGED,
+  BIOMARKER_PICKER_MEASURED,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -66,7 +74,12 @@ export function seedBodyMobile(): void {
       `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
      VALUES (?, ?, ?, ?, 'e2e:trends-body')`
     );
-    const oldBodyDay = shiftDateStr(tbToday, -7);
+    // −9d, not −7d: the metric page's rolling windows cover COMPLETE days (#1909),
+    // so the 7-day window spans yesterday back through tbToday−7. A weigh-in ON
+    // that boundary would land inside all three windows and collapse them into one
+    // card, costing the partial-collapse signal the spec measures. Nine days back
+    // keeps the old weigh-in outside 7d and inside 30d/90d, which is the point.
+    const oldBodyDay = shiftDateStr(tbToday, -9);
     const recentBodyDay = shiftDateStr(tbToday, -1);
     insBm.run(tbId, oldBodyDay, 78.4, 58);
     insBm.run(tbId, recentBodyDay, 77.9, 56);
@@ -594,4 +607,90 @@ export function seedPinnedCardOrder(): void {
   console.log(
     `e2e: seeded Trends ★-pin fixture — profile ${id} (${TRENDS_PIN_PROFILE}) (#1643)`
   );
+}
+
+// ── Day one and the trailing-average labels (#1909 / #1917) ──
+export function seedDayOneAverages(): void {
+  // Seeded EMPTY on purpose — see the constants' header in e2e/logins/trends.ts.
+  // The state under test is the absence of history, so the only thing a shared
+  // seeder can safely give this fixture is a profile, a login and an adult
+  // birthdate; every reading is the spec's, written and cleared at test start so
+  // --repeat-each starts from the same nothing.
+  const id = fixtureProfileId(DAY_ONE_PROFILE);
+  const anchor = today(id);
+  setUserBirthdate(id, shiftDateStr(anchor, -365 * 34));
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(id);
+  seedMemberLogin(E2E_LOGIN_DAY_ONE, id, "write");
+  console.log(
+    `e2e: seeded day-one averages fixture — profile ${id} (${DAY_ONE_PROFILE}) (#1909/#1917)`
+  );
+}
+
+// ── Relevance-ranked biomarker pickers (#1675) ──
+export function seedBiomarkerPickerRank(): void {
+  // The fixture behind e2e/biomarker-picker-rank.spec.ts. See the constants' header in
+  // e2e/logins/trends.ts for why it is a dedicated, write-granted profile.
+  //
+  // Three analytes, one per group boundary the rank has to draw, and deliberately in
+  // ANTI-alphabetical relevance order: Albumin (the alphabetically first, and the one
+  // a plain A–Z picker led with) is the LEAST relevant of the three.
+  const pid = fixtureProfileId(BIOMARKER_PICKER_PROFILE);
+  seedMemberLogin(E2E_LOGIN_BIOMARKER_PICKER, pid, "write");
+  setUserBirthdate(pid, "1985-04-12");
+  setUserSex(pid, "female");
+  const pickerToday = today(pid);
+
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name IN (?, ?, ?)`
+  ).run(
+    pid,
+    BIOMARKER_PICKER_OVERDUE,
+    BIOMARKER_PICKER_FLAGGED,
+    BIOMARKER_PICKER_MEASURED
+  );
+  const insRecord = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, canonical_name, value_num, source)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, 'manual')`
+  );
+  // Overdue: HbA1c redraws every 90 days, so ~400 days is unambiguously stale.
+  insRecord.run(
+    pid,
+    shiftDateStr(pickerToday, -400),
+    BIOMARKER_PICKER_OVERDUE,
+    "5.4",
+    "%",
+    BIOMARKER_PICKER_OVERDUE,
+    5.4
+  );
+  // Flagged but FRESH — the flag is what promotes it, not a stale draw.
+  insRecord.run(
+    pid,
+    shiftDateStr(pickerToday, -10),
+    BIOMARKER_PICKER_FLAGGED,
+    "205",
+    "mg/dL",
+    BIOMARKER_PICKER_FLAGGED,
+    205
+  );
+  // Measured, in range, fresh: the profile's own marker, and nothing more.
+  insRecord.run(
+    pid,
+    shiftDateStr(pickerToday, -10),
+    BIOMARKER_PICKER_MEASURED,
+    "4.5",
+    "g/dL",
+    BIOMARKER_PICKER_MEASURED,
+    4.5
+  );
+  reconcileFlags(pid);
+
+  // The spec stars through the picker and unstars from the tile; make sure a previous
+  // run (or a reused dev server) can't leave the analyte already saved, which would
+  // withdraw it from the picker's options.
+  db.prepare(
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+  ).run(pid);
 }

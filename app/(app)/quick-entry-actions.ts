@@ -16,10 +16,17 @@ import {
   showHeadCircEntry,
 } from "@/lib/growth-metrics";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
+import { listCyclePeriods } from "@/lib/cycle-store";
+import {
+  cycleControlState,
+  type CycleControlState,
+} from "@/lib/cycle-plausibility";
 import {
   collectHouseholdRollup,
   currentFoodSlot,
   getFoodMealDays,
+  type FoodMealEvent,
   getFoodGroupLogOrder,
   getTrackedPractices,
   type TrackedPractice,
@@ -87,6 +94,9 @@ export type QuickEntryData =
         label: string;
         counts: Record<string, number>;
         slotCounts: Record<FoodSlot, Record<string, number>>;
+        // The day's individual servings — the ⋯ correction rows (#1934), carried
+        // through so the quick-log sheet offers the same repair the page does.
+        events: FoodMealEvent[];
       }>;
       groupsBySlot: Record<FoodSlot, FoodGroup[]>;
       excludedGroups: string[];
@@ -99,6 +109,15 @@ export type QuickEntryData =
       // computation the Wellness page reads.
       form: "practice";
       practices: TrackedPractice[];
+    }
+  | {
+      // The ONE cycle offer state (#1892) — the same `cycleControlState` the Cycle
+      // page control and the dashboard phase widget render, resolved here so the
+      // overlay's button decides nothing. Gathered ON OPEN, which is the only way
+      // the sheet's verb can be current: a layout-time snapshot would be exactly as
+      // stale as the page it rode in on.
+      form: "cycle";
+      state: CycleControlState;
     }
   | {
       // Nothing to gather for the upload form beyond the demo gate the Data page
@@ -185,6 +204,23 @@ export async function loadQuickEntry(
       };
     }
     return { form: "practice", practices };
+  }
+
+  if (form === "cycle") {
+    // Relevance-gated server-side on the SAME `cycle` bit as the sheet row, the Cycle
+    // nav entry, and the dashboard widget — so a hand-written `?quick=log-period` deep
+    // link cannot reach the offer on a profile the domain does not apply to.
+    if (!getNavRelevance(profile.id).cycle) {
+      return {
+        form: "unavailable",
+        message:
+          "Cycle tracking isn't set up for this profile. Turn it on by recording a period under Medical \u2192 Cycle.",
+      };
+    }
+    return {
+      form: "cycle",
+      state: cycleControlState(listCyclePeriods(profile.id), date),
+    };
   }
 
   if (form === "document") {

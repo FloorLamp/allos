@@ -129,4 +129,58 @@ describe("foodNudgePointerFromMessage", () => {
       foodNudgePointerFromMessage({ title: "x", body: "y", kind: "food" }, 1, 1)
     ).toBeNull();
   });
+
+  // The pointer describes what the CHAT IS SHOWING, so it must be read off the
+  // delivered (post-cap) keyboard, not the pre-cap `msg.actions` (#1945). A quick-log
+  // row the button cap dropped never reached the chat, so it cannot justify a pointer
+  // — otherwise the next send strips a message on the strength of buttons nobody has.
+  // The shape below is synthetic (a real nudge carries ~8 buttons); the rule is not.
+  it("ignores a quick-log button dropped by the 100-button cap", () => {
+    const filler = Array.from({ length: 100 }, (_, i) => ({
+      label: `f${i}`,
+      data: `foodmore:5:Morning:2026-07-18`,
+      row: `r${i}`,
+    }));
+    const capped: NotificationMessage = {
+      title: "🍽️ Morning food log",
+      body: "…",
+      kind: "food",
+      actions: [
+        ...filler,
+        {
+          label: "Leafy greens",
+          data: "food:5:Morning:2026-07-18:leafy_greens",
+          row: "food0",
+        },
+      ],
+    };
+    expect(foodNudgePointerFromMessage(capped, 5550100, 88)).toBeNull();
+  });
+
+  it("still reads a quick-log button that fits under the cap", () => {
+    const filler = Array.from({ length: 98 }, (_, i) => ({
+      label: `f${i}`,
+      data: `foodmore:5:Morning:2026-07-18`,
+      row: `r${i}`,
+    }));
+    const fits: NotificationMessage = {
+      title: "🍽️ Morning food log",
+      body: "…",
+      kind: "food",
+      actions: [
+        ...filler,
+        {
+          label: "Leafy greens",
+          data: "food:5:Morning:2026-07-18:leafy_greens",
+          row: "food0",
+        },
+      ],
+    };
+    expect(foodNudgePointerFromMessage(fits, 5550100, 88)).toEqual({
+      chatId: 5550100,
+      messageId: 88,
+      date: "2026-07-18",
+      window: "Morning",
+    });
+  });
 });

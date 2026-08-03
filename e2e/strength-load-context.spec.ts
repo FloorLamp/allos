@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_LOAD_CONTEXT,
@@ -145,7 +145,8 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     const page = await signIn(browser);
     await page.goto("/training?tab=goals");
 
-    await settledClick(page, page.getByRole("button", { name: "New goal" }));
+    // Opens the goal modal in client state; the dialog is the signal.
+    await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
 
@@ -179,7 +180,8 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
 
     // A rep target is not load-sensitive in the same way, so it keeps the
     // movement-wide default rather than forcing a machine.
-    await settledClick(
+    // A metric pill (setMetric) — the required/value assertions below are the signal.
+    await hydratedClick(
       page,
       dialog.getByRole("button", { name: "Reps", exact: true })
     );

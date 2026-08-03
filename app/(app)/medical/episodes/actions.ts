@@ -288,7 +288,7 @@ export async function deleteEpisodeDoseAction(
       : null;
   const undoId =
     owned && eventDateInEpisode(owned.date, row!)
-      ? deleteAdministrationLog(profileId, id)
+      ? (deleteAdministrationLog(profileId, id)?.undoId ?? null)
       : null;
   revalidateEpisodeEvents();
   return { undoId };

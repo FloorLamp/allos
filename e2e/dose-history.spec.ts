@@ -80,3 +80,63 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await expect(confirmedEvent.getByText(name).first()).toBeVisible(); // first-ok: the supplement name inside the scoped confirmed-doses event — order-agnostic
   await expect(confirmedEvent.getByText("500 mg").first()).toBeVisible(); // first-ok: the dose amount inside the scoped confirmed-doses event — order-agnostic
 });
+
+// #1933: historical dose correction is shared adherence machinery, so the supplements
+// tab offers the SAME ⋯ actions the medication detail page does — backfill, amend,
+// delete-with-undo — over the same ungated cores. Before this, a supplement's dose
+// history had no affordances at all, and the write core answered "that dose doesn't
+// exist" to a dose that plainly did. This drives the real UI: confirm a dose, open the
+// row's Dose history panel, and amend the recorded entry end to end.
+test("a supplement's dose history offers the medication row actions, and an edit round-trips", async ({
+  page,
+}, testInfo) => {
+  const name = `Backfill Guard ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  await page.goto("/nutrition?tab=supplements");
+
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(name);
+  await addDialog.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addDialog).toHaveCount(0);
+
+  const row = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
+    .locator("div.card")
+    .filter({ hasText: name });
+  await row.getByRole("button", { name: "Mark taken" }).click();
+  await expect(
+    row.getByRole("button", { name: "Mark not taken" })
+  ).toBeVisible();
+
+  // ── The row's ⋯ menu now reaches dose history ──────────────────────────────
+  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await page.getByRole("menuitem", { name: "Dose history" }).click();
+  const panel = row.getByTestId("supplement-dose-history-panel");
+  await expect(
+    panel.getByRole("button", { name: "Log past dose" })
+  ).toBeVisible();
+
+  const entry = panel.getByTestId("dose-history-row");
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toContainText("250 mg");
+
+  // ── The same ⋯ row actions the medication history offers ───────────────────
+  await entry.getByRole("button", { name: "Dose actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+
+  // ── The amendment round-trips: the snapshotted amount is corrected in place ─
+  const form = panel.getByTestId("historical-dose-form");
+  await expect(form).toContainText("won’t change the schedule either");
+  await form.getByLabel("Amount").fill("375 mg");
+  await form.getByRole("button", { name: "Save changes" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(panel.getByTestId("dose-history-row")).toContainText("375 mg");
+
+  // The SCHEDULE is untouched by the correction — the row still reads 250 mg.
+  await expect(row).toContainText("250 mg");
+});

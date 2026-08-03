@@ -147,6 +147,47 @@ export function cycleControlState(
   };
 }
 
+// ---- The ONE offer (#1892) --------------------------------------------------
+//
+// `cycleControlState` says what is TRUE; this says what a one-tap affordance may
+// OFFER, and names the write that tap will perform. Three surfaces render it — the
+// Cycle page control, the dashboard phase widget, and the quick-log sheet's overlay —
+// and none of them re-derives it (`lib/__tests__/cycle-offer-renderers.test.ts` is the
+// #221 pin). Same shape as lib/workout-offer.ts: labels are exported constants, so a
+// surface cannot spell the verb its own way.
+//
+// AT MOST ONE offer at a time, which is a fact about the constants rather than a
+// choice made here: `canReopen` holds only within REOPEN_PERIOD_MAX_AGE_DAYS (3) of an
+// end, and `canStart` only once MIN_PLAUSIBLE_PERIOD_GAP_DAYS (10) have elapsed since
+// one, so the two windows cannot overlap; and both are false while a period is open.
+// Between them — days 4–9 after an end — there is NO offer, and that silence is the
+// point: a tap there would mint an implausible back-to-back period, so the dated form
+// on the Cycle page owns that exception.
+
+export const START_PERIOD_LABEL = "Period started today";
+export const END_PERIOD_LABEL = "Period ended today";
+export const REOPEN_PERIOD_LABEL = "Still bleeding";
+
+// Which write core the tap reaches: startPeriodCore / endPeriodCore / reopenPeriodCore.
+export type CyclePeriodWrite = "start" | "end" | "reopen";
+
+export interface CycleOffer {
+  write: CyclePeriodWrite;
+  // The button's text. ALWAYS names the write it will perform.
+  label: string;
+}
+
+// The one action a cycle affordance may offer on this state, or null when none is
+// plausible. Ordered open → reopen → start, most-specific first; the windows are
+// disjoint (see above), so the order documents intent rather than resolving a tie.
+export function cycleOffer(state: CycleControlState): CycleOffer | null {
+  if (state.openPeriodId != null)
+    return { write: "end", label: END_PERIOD_LABEL };
+  if (state.canReopen) return { write: "reopen", label: REOPEN_PERIOD_LABEL };
+  if (state.canStart) return { write: "start", label: START_PERIOD_LABEL };
+  return null;
+}
+
 // ---- Write refusals (#1682 c/d) ---------------------------------------------
 
 // A period a write would store: `id` is null for a new row, or the row being edited (which

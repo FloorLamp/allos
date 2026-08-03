@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
-import { getNavRelevance } from "@/lib/queries/nav-relevance";
+import {
+  getNavRelevance,
+  getRecordsSpecialtyRelevance,
+} from "@/lib/queries/nav-relevance";
+import { visibleSpecialtyPanes } from "../../nav";
 import VisionSection from "../../VisionSection";
 import { SectionSubtitle } from "../../SectionHeader";
 import PageContainer from "@/components/PageContainer";
@@ -14,7 +18,13 @@ export const dynamic = "force-dynamic";
 // also arrive via Data → Import, so hiding the empty section never strands creation.
 export default async function RecordsVisionPage() {
   const { login, profile } = await requireSession();
-  if (!getNavRelevance(profile.id).vision) redirect("/records/specialty/skin");
+  // Bounce to the FIRST VISIBLE pane, computed from the same gated pane list the
+  // sub-tab strip and the bare-group redirect use — never a hard-coded sibling route,
+  // which silently rots the moment a pane is added ahead of it (#1600 added Hearing).
+  if (!getNavRelevance(profile.id).vision)
+    redirect(
+      visibleSpecialtyPanes(getRecordsSpecialtyRelevance(profile.id))[0].href
+    );
   return (
     <PageContainer width="flow" data-testid="records-vision">
       <SectionSubtitle title="Vision">

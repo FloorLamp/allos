@@ -210,7 +210,12 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
       dayField: "recap_day",
       hourField: "recap_hour",
     },
-    more: "Workouts, volume, PRs, adherence, weight, and streak. Weeks with nothing to report are skipped.",
+    // Names the lines the recap ACTUALLY composes (lib/weekly-recap.ts). It
+    // advertised "volume" and "streak" until #1966 noticed: #1935 cut both of
+    // those lines, and this Settings blurb was the one place the sweep missed,
+    // so the notification's own description promised two things it no longer
+    // sent.
+    more: "Workouts, PRs, adherence, weight, sleep, and goals. Weeks with nothing to report are skipped.",
   },
   {
     kind: "milestone",

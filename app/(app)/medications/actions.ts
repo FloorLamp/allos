@@ -13,9 +13,6 @@ import {
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
-  logHistoricalMedicationDose,
-  updateHistoricalMedicationDose,
-  deleteAdministrationLog,
   dismissFinding,
   restoreFinding,
   refillSupply,
@@ -249,137 +246,6 @@ export async function logMedicationAdministration(
   }
 }
 
-// Deliberately backfill one medication dose from its detail-page history. The
-// profile-local wall time is converted at the action boundary; the auth-blind core
-// owns course/date validation, duplicate semantics, amount snapshotting, and the
-// optional supply adjustment.
-export async function logHistoricalDose(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const itemId = Number(formData.get("id"));
-  const doseId = Number(formData.get("dose_id"));
-  const date = String(formData.get("date") ?? "");
-  const time = String(formData.get("time") ?? "");
-  if (
-    !itemId ||
-    !doseId ||
-    !isRealIsoDate(date) ||
-    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-  ) {
-    return formError("Enter a valid dose date and time.");
-  }
-
-  const outcome = logHistoricalMedicationDose(
-    profile.id,
-    itemId,
-    doseId,
-    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
-    strOrNull(formData.get("amount")),
-    formData.get("adjust_supply") === "1"
-  );
-  if (outcome.kind === "logged") {
-    revalidatePath("/medications");
-    revalidatePath(`/medications/${itemId}`);
-    revalidatePath("/nutrition");
-    revalidatePath("/");
-    return formOk();
-  }
-  switch (outcome.kind) {
-    case "already-taken":
-      return formError(
-        "That scheduled dose is already recorded for this date."
-      );
-    case "already-skipped":
-      return formError("That scheduled dose is marked skipped for this date.");
-    case "duplicate":
-      return formError("A dose is already recorded at about this time.");
-    case "outside-course":
-      return formError("This medication was not active on that date.");
-    case "invalid-time":
-      return formError("Choose a date and time that are not in the future.");
-    case "stale-dose":
-    default:
-      return formError(
-        "That dose is no longer available. Refresh and try again."
-      );
-  }
-}
-
-// Correct an existing history row without changing its original supply effect. The
-// auth-blind core owns row/profile scoping, course correction, and scheduled/PRN
-// uniqueness; this boundary only validates and converts the profile-local wall time.
-export async function updateHistoricalDose(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const itemId = Number(formData.get("id"));
-  const logId = Number(formData.get("log_id"));
-  const date = String(formData.get("date") ?? "");
-  const time = String(formData.get("time") ?? "");
-  if (
-    !itemId ||
-    !logId ||
-    !isRealIsoDate(date) ||
-    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-  ) {
-    return formError("Enter a valid dose date and time.");
-  }
-
-  const outcome = updateHistoricalMedicationDose(
-    profile.id,
-    itemId,
-    logId,
-    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
-    strOrNull(formData.get("amount"))
-  );
-  if (outcome.kind === "logged") {
-    revalidatePath("/medications");
-    revalidatePath(`/medications/${itemId}`);
-    revalidatePath("/nutrition");
-    revalidatePath("/");
-    return formOk();
-  }
-  switch (outcome.kind) {
-    case "already-taken":
-      return formError(
-        "That scheduled dose is already recorded for this date."
-      );
-    case "already-skipped":
-      return formError("That scheduled dose is marked skipped for this date.");
-    case "duplicate":
-      return formError("A dose is already recorded at about this time.");
-    case "outside-course":
-      return formError("This medication was not active on that date.");
-    case "invalid-time":
-      return formError("Choose a date and time that are not in the future.");
-    case "stale-dose":
-    default:
-      return formError(
-        "That dose is no longer available. Refresh and try again."
-      );
-  }
-}
-
-// Remove one taken medication ledger row with undo (#851 item 11). A mis-tapped Log otherwise
-// permanently decrements supply, advances the redose window, and counts toward the
-// daily max — so the removal (and its Undo) inverts all three (supply directly, the
-// window/count via the ledger row being gone). Returns the { undoId } the shared
-// useUndoableDelete toast wires to undoDelete → restoreAdministrationLog. The auth gate
-// lives here; the auth-blind core verifies ownership through the parent item.
-export async function deleteAdministration(
-  formData: FormData
-): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
-  const logId = Number(formData.get("log_id"));
-  if (!logId) return { undoId: null };
-  const undoId = deleteAdministrationLog(profile.id, logId);
-  revalidatePath("/medications");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
-  return { undoId };
-}
-
 // Dismiss a dormant-PRN sweep suggestion (issue #880 item 3, #203 id-keyed hygiene):
 // silence one "no doses in 90+ days" card through the shared findings-suppression bus.
 // Guarded to the dormant-prn namespace so it can only ever silence one of those keys. The
@@ -449,9 +315,18 @@ export async function createMedicationShareLinkAction(
 // remembered last-fill size is used when it's absent (the one-tap case). A successful
 // refill clears the low-supply episode marker so a later drop re-fires a fresh nudge
 // (issue #325 parity with restart).
+//
+// The success arm carries the core's own numbers back (#1893): a refill is ADDITIVE, so
+// the affordance needs to know what THIS tap added in order to say "Refilled just now
+// (+90)" for a short window — the #798 informational treatment for an accidental
+// double-tap. Plain serializable fields, never the better-sqlite3 row.
+export type RefillActionResult =
+  | { ok: true; fillSize: number; newQuantity: number }
+  | { ok: false; error: string };
+
 export async function refillMedication(
   formData: FormData
-): Promise<FormResult> {
+): Promise<RefillActionResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
@@ -468,7 +343,11 @@ export async function refillMedication(
       revalidatePath("/medications");
       revalidatePath("/nutrition");
       revalidatePath("/");
-      return formOk();
+      return {
+        ok: true,
+        fillSize: outcome.fillSize,
+        newQuantity: outcome.newQuantity,
+      };
     case "needs-size":
       return formError("How many units did you refill? Enter the fill size.");
     case "untracked":

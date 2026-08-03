@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
-import { settledClick, followLink } from "./helpers";
+import { hydratedClick, settledClick, followLink } from "./helpers";
 import { medicationsToday, scheduledTodayItem } from "./med-card-helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -269,13 +269,18 @@ test.describe("shared supply pools", () => {
         /\bmx-auto\b/
       );
       const editable = bottleCard(page, SUPPLY_EDIT_BOTTLE);
-      await settledClick(
+      // The overflow trigger and its Edit item are onClick-only client state
+      // (SharedSupplyCard) — the qty input the Edit reveals is the signal.
+      await hydratedClick(
         page,
         editable.getByRole("button", {
           name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
         })
       );
-      await settledClick(page, page.getByTestId("shared-supply-edit"));
+      await hydratedClick(page, page.getByTestId("shared-supply-edit"));
+      await expect(
+        editable.getByTestId("shared-supply-qty-input")
+      ).toBeVisible();
       await editable.getByTestId("shared-supply-qty-input").fill("123");
       const save = editable.getByTestId("shared-supply-save");
       await expect(save).toHaveClass(/\bbtn\b/);
@@ -288,13 +293,15 @@ test.describe("shared supply pools", () => {
       // Both actions live in the card's standard overflow. Delete opens the
       // app-wide confirmation sheet rather than expanding bespoke controls into
       // the edit form; cancel it so this fixture remains repeat-safe.
-      await settledClick(
+      await hydratedClick(
         page,
         editable.getByRole("button", {
           name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
         })
       );
-      await settledClick(page, page.getByTestId("shared-supply-delete"));
+      // Delete only opens the confirm sheet (a promise, not a write) — the
+      // dialog asserted immediately below is the signal.
+      await hydratedClick(page, page.getByTestId("shared-supply-delete"));
       const dialog = page.getByTestId("confirm-dialog");
       await expect(dialog).toBeVisible();
       await expect(
@@ -304,7 +311,9 @@ test.describe("shared supply pools", () => {
       await expect(
         dialog.getByRole("button", { name: "Delete", exact: true })
       ).toHaveClass(/\bbtn-danger\b/);
-      await settledClick(
+      // Cancel resolves the confirm with false: nothing is written, so there is
+      // no POST — the dialog's disappearance is the signal.
+      await hydratedClick(
         page,
         dialog.getByRole("button", { name: "Cancel", exact: true })
       );

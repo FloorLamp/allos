@@ -21,6 +21,7 @@ import {
   seedActivityFormPaths,
   seedEndurancePlans,
   seedTrainingRollup,
+  seedLabValueGoal,
   seedLoadContexts,
 } from "./seed/training";
 import { seedIntegrationSyncEvents } from "./seed/integrations";
@@ -105,6 +106,8 @@ import {
   seedCompareFold,
   seedFitnessLens,
   seedRankedCardOrder,
+  seedBiomarkerPickerRank,
+  seedDayOneAverages,
   seedPinnedCardOrder,
 } from "./seed/trends";
 
@@ -180,6 +183,7 @@ seedFitnessLens();
 seedRankedCardOrder();
 seedPinnedCardOrder();
 seedTrainingRollup();
+seedLabValueGoal();
 seedLoadContexts();
 seedTimelineChrome();
 seedTimelineEmpty();
@@ -192,3 +196,7 @@ seedReportPanes();
 // rows, so every existing fixture's row ids stay exactly where they were.
 seedUpcomingAggregate();
 seedPortalHouseholds();
+// Appended LAST (#1675): a new profile plus its own lab rows, so every existing
+// fixture's row ids stay exactly where they were.
+seedBiomarkerPickerRank();
+seedDayOneAverages();

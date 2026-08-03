@@ -36,6 +36,18 @@ So the dock's drag is wired to `onMinimize` and is **disabled entirely** when
 there is no minimize to reach (a retro log/edit): it never falls back to a
 discard.
 
+The same reasoning applies to the affordance that OPENS the editor (#1893). A
+minimized session's elapsed timer ticks off `liveStartEpoch`, and `openLive()`
+used to re-stamp it unconditionally — so the bolt, the palette's live action,
+the Journal aside, and the routine card each said "Start workout" mid-workout
+and, when tapped, reset the running clock and dropped the sets already logged.
+A stray flick can't discard a session, but a deliberate tap on a mislabelled
+button could. All four surfaces now render one derivation
+(`workoutOffer`, `lib/workout-offer.ts`): with a session live they read "Resume
+workout" and reopen the docked session with its epoch untouched, and both
+`openLive`/`openSession` enforce that internally so a stale caller can't stomp
+it either. See [stateful affordances](./stateful-affordances.md).
+
 ## What IS shared
 
 `components/overlay/` — the one import an overlay surface needs:

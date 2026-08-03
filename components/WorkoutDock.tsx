@@ -71,6 +71,11 @@ export default function WorkoutDock({
       ref={edgeRef}
       className={`fixed inset-x-0 bottom-0 ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 print:hidden`}
       data-testid="workout-dock"
+      // The session's start instant, exposed because it — not the rendered minute
+      // count — is the invariant a resume must preserve (#1893). The elapsed text is
+      // whole minutes, so a reset clock is invisible in it for a whole minute; the
+      // browser test pins THIS across a minimize → resume → minimize round trip.
+      data-start-epoch={startEpochMs}
     >
       <button
         type="button"

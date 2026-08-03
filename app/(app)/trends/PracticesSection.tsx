@@ -40,8 +40,12 @@ import LineChartCard from "@/components/LineChartCard";
 // REACH POLICY. Practice signals are coaching-tier — calm and hideable — so this
 // surface carries no badge, no count, no "behind" state and no rose: an
 // under-floor week takes the NEUTRAL cell, and being at the ceiling is a success,
-// never a warning (#1259). It is also an entry point BACK to /wellness (#1620):
-// every card taps through to the page that owns logging and editing.
+// never a warning (#1259). It carries no RUN either (#1966): the card's note used
+// to append an "N-week streak" to the met-week rate, which gave one missed week a
+// cliff on the one surface whose whole point is that an under-floor week is a
+// fact rather than a nag. The cells and the rate stay; the run is gone. It is
+// also an entry point BACK to /wellness (#1620): every card taps through to the
+// page that owns logging and editing.
 //
 // WHY IT RENDERS INLINE, not through the census's Suspense boundary: this is two
 // bounded queries (the shared completed-weeks history read plus one grouped tally

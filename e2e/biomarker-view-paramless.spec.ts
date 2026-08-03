@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 // all-pages census: a generic "Biomarker" h1, no subtitle, a bare no-CTA "No
 // biomarker selected." line, and an otherwise blank canvas.
 //
-// Nothing in the app links there: `biomarkerViewHref` (lib/hrefs.ts) already
+// Nothing in the app links there: `readingDetailHref` (lib/hrefs.ts) already
 // returns the biomarkers LIST when it has no canonical name, so the paramless
 // route is only reachable by a hand-typed URL or a stale bookmark. It now
 // redirects to the same list that helper falls back to — one constant

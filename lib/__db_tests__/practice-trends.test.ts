@@ -154,17 +154,17 @@ describe("the Trends wellness lens read (#1632)", () => {
     expect(practice.sessions).toBe(13);
   });
 
-  it("rolls the ledger up into consistency and the current streak", () => {
+  it("rolls the ledger up into a consistency RATE, never a run (#1966)", () => {
     const pid = makeProfile("lens-consistency");
     seedLedger(pid);
 
     const [practice] = getPracticeTrends(pid, 4);
+    // Three met weeks out of four — the same figure whichever of the four fell
+    // under. The retired streak fields are gone from the shape entirely.
     expect(practice.consistency).toEqual({
       weeks: 4,
       met: 3,
       rate: 0.75,
-      currentStreak: 3,
-      bestStreak: 3,
     });
   });
 

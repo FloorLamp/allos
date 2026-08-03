@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   MouseSensor,
   PointerSensor,
@@ -11,13 +12,16 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   rectSortingStrategy,
   sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  type SortingStrategy,
 } from "@dnd-kit/sortable";
-import { reorderIds } from "@/lib/drag-order";
+import { reorderIds, type ReorderStrategy } from "@/lib/drag-order";
 
 // The app's ONE drag-reorder mechanism (issue #1485 C).
 //
@@ -75,24 +79,65 @@ export function useReorderSensors(lift: LiftMode) {
   return lift === "handle" ? handleSensors : longPressSensors;
 }
 
+// LAYOUT STRATEGY. dnd-kit's sorting strategy decides where every OTHER item
+// slides while one is held, and it is a genuine per-surface fact rather than a
+// default worth hiding: a wrapped grid and a single column want different
+// answers. It is therefore a required prop — both consumers state theirs (#1891).
+//
+//   • "rect"     — a wrapped, multi-column grid. Items reflow in two dimensions.
+//   • "vertical" — a single column. Items only ever move up or down, and the
+//                  vertical strategy's arithmetic is exactly that.
+//
+// Note that the strategy's transform is NOT what a consumer should apply whole:
+// `rectSortingStrategy` returns scaleX/scaleY alongside the translation, morphing
+// the moving item toward the dimensions of the slot it passes over. With uniform
+// items that scale is ~1 and invisible; with items of varying height (the
+// dashboard's cards) it visibly squashes and stretches the dragged card. Consumers
+// apply `CSS.Translate.toString(transform)` — the translation only. See
+// lib/__tests__/sortable-transform-scan.test.ts, which pins that.
+//
+// The vocabulary itself lives in lib/drag-order.ts beside the list math, so a pure
+// module can decide a strategy without importing this client component.
+const STRATEGIES: Record<ReorderStrategy, SortingStrategy> = {
+  rect: rectSortingStrategy,
+  vertical: verticalListSortingStrategy,
+};
+
 // Wrap a set of `useSortable` items. `ids` is the ordered list the drag moves
 // within — it is the MODEL's order, not necessarily the rendered one (the Trends
 // grid sinks its empty tiles below the populated ones for layout while keeping
 // every tile's slot in the saved order), so `onReorder` always hands back a
 // complete, reordered copy of `ids`.
+//
+// `renderOverlay`, when supplied, lifts the dragged item into a `DragOverlay`: a
+// copy rendered above the list, sized once from the item's measured rect and
+// translated with the pointer, so what the user is carrying keeps ONE size for the
+// whole gesture no matter what it passes over. The in-list original stays put
+// (dimmed by its consumer) as the slot the drop will land in. Omit it and the
+// surface keeps the plain in-place lift — the Trends tiles are uniform and their
+// lift is already stable, so they do.
 export default function SortableOrder({
   ids,
   onReorder,
   lift,
+  strategy,
+  renderOverlay,
   children,
 }: {
   ids: string[];
   onReorder: (next: string[]) => void;
   lift: LiftMode;
+  strategy: ReorderStrategy;
+  renderOverlay?: (id: string) => ReactNode;
   children: ReactNode;
 }) {
   const sensors = useReorderSensors(lift);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  function onDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id));
+  }
   function onDragEnd(e: DragEndEvent) {
+    setActiveId(null);
     const next = reorderIds(
       ids,
       String(e.active.id),
@@ -106,11 +151,16 @@ export default function SortableOrder({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onDragCancel={() => setActiveId(null)}
     >
-      <SortableContext items={ids} strategy={rectSortingStrategy}>
+      <SortableContext items={ids} strategy={STRATEGIES[strategy]}>
         {children}
       </SortableContext>
+      {renderOverlay && (
+        <DragOverlay>{activeId ? renderOverlay(activeId) : null}</DragOverlay>
+      )}
     </DndContext>
   );
 }

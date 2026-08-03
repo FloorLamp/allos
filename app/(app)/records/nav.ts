@@ -37,7 +37,7 @@ export type RecordsGroup = {
 };
 
 // Vision/Dental are DATA-GATED (getNavRelevance): a hidden section omits its sub-tab
-// AND its route re-gates server-side. Skin/Mental health always render (their
+// AND its route re-gates server-side. Hearing/Skin/Mental health always render (their
 // in-page forms are the only creation path). Substance use is LIFE-STAGE gated
 // (#1174/#1175): shown for adults + unknown age, hidden for a KNOWN minor — its
 // AUDIT/DAST instruments are adult-validated. This shapes only the Specialty group.
@@ -84,6 +84,16 @@ const SPECIALTY_ALL: (RecordsPane & {
     href: "/records/specialty/vision",
     gated: "vision",
   },
+  // Hearing (#1600) sits directly beside Vision — the sense-organ pair — and is
+  // deliberately UNGATED: its in-page audiogram form is the only creation path today
+  // (audiometry import comes later), so a data gate would make the first hearing test
+  // unreachable. Vision/Dental can gate because Data → Import also creates their rows.
+  {
+    id: "hearing",
+    label: "Hearing",
+    href: "/records/specialty/hearing",
+    gated: null,
+  },
   {
     id: "dental",
     label: "Dental",
@@ -108,7 +118,7 @@ const SPECIALTY_ALL: (RecordsPane & {
 ];
 
 // The Specialty panes visible for a profile, in fixed order — Vision/Dental drop
-// when their relevance bit is false; Skin/Mental health always stay.
+// when their relevance bit is false; Hearing/Skin/Mental health always stay.
 export function visibleSpecialtyPanes(
   relevance: RecordsRelevance
 ): RecordsPane[] {

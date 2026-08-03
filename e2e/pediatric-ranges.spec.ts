@@ -1,12 +1,16 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 // Pediatric reference ranges + pediatric BP percentiles (issue #150). For a CHILD
-// profile the biomarker detail page interprets labs and vitals by AGE, not the
-// adult thresholds:
+// profile a reading is interpreted by AGE, not by the adult thresholds:
 //   • Alkaline phosphatase 300 U/L reads "Above range" for an adult (ref 40–129)
 //     but is NORMAL for a 1-year-old (age-band 140–420) — the canonical false-high.
 //   • Blood pressure is judged by the AAP 2017 age/sex/height percentile (Elevated
 //     for age) instead of the adult cutoffs, which call the same reading fine.
+// Since #1932 the two live on different surfaces — a lab is episodic and stays on
+// /biomarkers/view; blood pressure is a CONTINUOUS vital and renders on its metric
+// detail page, which its pediatric card travelled to. The BP tests below still open
+// the old URL on purpose: it proves the stale-bookmark redirect AND the card in one
+// navigation.
 // The seeded family includes an ~18-month-old child ("Riley (child)") carrying
 // both readings. These share ONE authenticated session (active profile is
 // server-side state), so they run serially and restore the "admin" profile after.
@@ -58,6 +62,7 @@ test.describe.serial("pediatric reference ranges", () => {
   }) => {
     await switchProfile(page, "Riley (child)");
     await page.goto("/biomarkers/view?name=Blood%20Pressure%20Systolic");
+    await page.waitForURL(/\/trends\/metric\/systolic/);
 
     const bp = page.getByTestId("pediatric-bp-context");
     await expect(bp).toBeVisible();
@@ -73,6 +78,7 @@ test.describe.serial("pediatric reference ranges", () => {
   }) => {
     await switchProfile(page, "admin");
     await page.goto("/biomarkers/view?name=Blood%20Pressure%20Systolic");
+    await page.waitForURL(/\/trends\/metric\/systolic/);
     // No pediatric BP interpretation for an adult, whatever readings exist.
     await expect(page.getByTestId("pediatric-bp-context")).toHaveCount(0);
   });

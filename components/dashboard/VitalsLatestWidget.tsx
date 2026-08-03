@@ -5,6 +5,7 @@ import {
   IconMinus,
 } from "@tabler/icons-react";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
+import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import type { TrendDirection } from "@/lib/latest-trend";
 
 // The prepared model the page builds from the SAME series queries behind Trends →
@@ -52,6 +53,12 @@ function DirArrow({
 // resting heart rate, each with a trend arrow vs the prior reading — a thin FORMATTER
 // over the prepared model above. Informational glance; the full trend lives on Trends
 // → Vitals.
+//
+// The "Log reading" action (#1892) is in the NON-EMPTY state on purpose. The card used
+// to offer logging only while the domain was empty, which inverted who got the
+// affordance: the weekly BP logger — the person who actually opens this card — had
+// none, while the person who had never logged got one. It opens the same shared
+// measurements quick-entry the empty CTA opens; no second form, no second write path.
 export default function VitalsLatestWidget({
   model,
 }: {
@@ -60,7 +67,11 @@ export default function VitalsLatestWidget({
   const { bp, restingHr } = model;
   return (
     <div className="card" data-testid="vitals-latest-widget">
-      <WidgetHeader title="Latest vitals" href="/trends#body" />
+      <WidgetHeader
+        title="Latest vitals"
+        href="/trends#body"
+        action={<LogReadingButton />}
+      />
       <div className="flex items-start gap-3">
         <IconHeartbeat
           className="mt-1 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400"

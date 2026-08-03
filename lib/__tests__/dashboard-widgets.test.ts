@@ -226,6 +226,149 @@ describe("resolveWidgets / resolveWidgetList", () => {
   });
 });
 
+// ── Issue #1890 — actionable-first default order ──────────────────────────────
+// Owner principle: a card you are meant to ACT on comes before a card you merely
+// read. `actionable` is declared once per widget in the registry (#221 — nothing
+// re-derives it), and this guard keeps the DEFAULT order honest as the catalog
+// grows. The failure it exists for is widget #18 quietly landing a glance card
+// above the daily check-in, the way Recent labs and Next appointment had taken the
+// two prime post-hero slots while "How are you today?" sat second-to-last.
+//
+// A violation is allowed — but only as a NAMED entry below: widget id → the owner
+// ruling that justifies it. The list is EMPTY today, and that is the point: a future
+// exception is a stated decision with a name on it, not a silent reordering. Same
+// shape as this repo's other registry allowlists (chart-colors-scan,
+// border-alpha-language): every entry carries a justification, and a staleness test
+// removes it once the widget stops violating.
+//
+// It has stayed empty through the one real conflict so far. #1892 gave `vitals-latest`
+// and `cycle-phase` a log affordance in their POPULATED state, which collided with the
+// rule #1890 had written for empty-state CTAs. The owner ruled that the definition
+// governs: both cards became actionable and MOVED into the band, and the stale rule was
+// rewritten at the `actionable` declaration. No exception was carved — which is the
+// point, since a list that absorbs every collision stops meaning anything.
+const ACTIONABLE_ORDER_EXCEPTIONS = new Map<string, string>([
+  // Example of the shape an entry takes (do not uncomment — this is the ruling
+  // #1890 explicitly left open):
+  // ["healthspan-pillars", "owner ruling #NNNN — the differentiator headline keeps
+  //   a prime slot even though it is a glance card"],
+]);
+
+// The ids that break actionable-first in `defs`: every actionable widget sitting
+// after the first glance card. (The dual — a glance card ahead of an actionable one
+// — is the same defect from the other side; naming the actionable stragglers points
+// the failure at the card that should move UP, which is the fix that matches the
+// principle.)
+function actionableOrderOffenders(
+  defs: readonly { id: string; actionable: boolean }[],
+  exempt: ReadonlySet<string>
+): string[] {
+  const considered = defs.filter((w) => !exempt.has(w.id));
+  const firstGlance = considered.findIndex((w) => !w.actionable);
+  if (firstGlance === -1) return [];
+  return considered
+    .slice(firstGlance)
+    .filter((w) => w.actionable)
+    .map((w) => w.id);
+}
+
+describe("actionable-first default order (#1890)", () => {
+  it("every widget declares `actionable` explicitly", () => {
+    // TypeScript already requires the field; this pins that it stays REQUIRED and
+    // boolean. Making it optional with an implicit default would let a new widget
+    // omit it and land in whichever tier the default happened to pick — exactly the
+    // quiet drift the ordering guard exists to prevent.
+    for (const widget of DASHBOARD_WIDGETS) {
+      expect(
+        Object.prototype.hasOwnProperty.call(widget, "actionable"),
+        `${widget.id} must declare actionable`
+      ).toBe(true);
+      expect(typeof widget.actionable, `${widget.id}.actionable`).toBe(
+        "boolean"
+      );
+    }
+  });
+
+  it("in the default order, every actionable widget precedes every glance card", () => {
+    const offenders = actionableOrderOffenders(
+      customizable,
+      new Set(ACTIONABLE_ORDER_EXCEPTIONS.keys())
+    );
+    expect(
+      offenders,
+      `these actionable widgets sit below a glance card — move them up, or add a ` +
+        `named ACTIONABLE_ORDER_EXCEPTIONS entry recording the owner ruling: ${offenders.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("holds for a restricted profile too (the gated views are subsequences)", () => {
+    // Filtering never reorders, so an actionable-first catalog stays actionable-first
+    // for a child profile or one with the food/cycle bits off. Asserted rather than
+    // argued, since it is the order a real profile sees.
+    const exempt = new Set(ACTIONABLE_ORDER_EXCEPTIONS.keys());
+    expect(
+      actionableOrderOffenders(customizableWidgetDefs(true), exempt)
+    ).toEqual([]);
+    expect(
+      actionableOrderOffenders(
+        customizableWidgetDefs(false, { foodLogging: false, cycle: false }),
+        exempt
+      )
+    ).toEqual([]);
+  });
+
+  it("every exception is real, justified, and still needed (no stale entries)", () => {
+    const catalogIds = new Set(DASHBOARD_WIDGETS.map((w) => w.id));
+    for (const [id, reason] of ACTIONABLE_ORDER_EXCEPTIONS) {
+      expect(catalogIds.has(id), `${id} is not a catalog widget`).toBe(true);
+      expect(
+        reason.trim().length,
+        `${id} needs a justification`
+      ).toBeGreaterThan(0);
+      // Drop just this entry: the order must actually break without it. If it does
+      // not, the widget has since moved into its proper tier and the exception —
+      // and the ruling it records — should be deleted.
+      const others = new Set(
+        [...ACTIONABLE_ORDER_EXCEPTIONS.keys()].filter((k) => k !== id)
+      );
+      expect(
+        actionableOrderOffenders(customizable, others).length,
+        `${id} no longer violates actionable-first — delete its exception`
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("pins the default order the owner ruled (#1890)", () => {
+    // The prescription itself, in test form. Changing this list is a product
+    // decision: a new widget takes the slot its `actionable` tier earns it, and the
+    // guard above is what makes that placement non-negotiable.
+    expect(customizable.map((w) => w.id)).toEqual([
+      // Actionable — tapped today.
+      "symptom-log",
+      "coaching",
+      "goals-habits",
+      "active-protocols",
+      "data-quality",
+      "nutrition-today",
+      "steps-today",
+      // Episodic writes close the actionable band — a tap that writes, on a weekly
+      // or per-cycle cadence rather than a daily one (owner ruling on #1890, after
+      // #1892 put a log affordance in each card's POPULATED state).
+      "vitals-latest",
+      "cycle-phase",
+      // Glance — read and move on.
+      "next-appointment",
+      "recent-labs",
+      "sleep-last-night",
+      "weight-trend",
+      "healthspan-pillars",
+      // The calm rollup closes the list (#449), and the opt-in retrospective is last.
+      "coaching-observations",
+      "weekly-recap",
+    ]);
+  });
+});
+
 // Issue #171 — the pinned "Needs attention" hero.
 describe("pinned widgets (the hero)", () => {
   it("exactly one pinned widget exists: the needs-attention hero", () => {

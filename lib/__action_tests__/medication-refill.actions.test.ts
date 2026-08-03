@@ -112,4 +112,26 @@ describe("refillMedication (#852 item 3)", () => {
     expect(res.ok).toBe(false);
     expect(onHand(id).quantity_on_hand).toBe(3);
   });
+
+  // #1893: the success arm carries the core's OWN numbers back, so the affordance can
+  // say "Refilled just now (+90)" for a short window (the #798 informational treatment
+  // for an accidental double-tap). The one-tap path is the case the client cannot
+  // compute for itself — the size came from `last_fill_size`, not from the form.
+  it("returns the fill size and resulting quantity on the one-tap path (#1893)", async () => {
+    const { profile } = seedActor();
+    const id = seedMed(profile.id, { quantityOnHand: 2, lastFill: 90 });
+    const res = await refillMedication(fd({ id }));
+    expect(res).toEqual({ ok: true, fillSize: 90, newQuantity: 92 });
+  });
+
+  // The second tap of a double-tap is a real, ADDITIVE write — it is never blocked, and
+  // it reports its own fill honestly. The recency line tells; it does not gate (#798).
+  it("a second tap adds a second fill and reports it (#1893)", async () => {
+    const { profile } = seedActor();
+    const id = seedMed(profile.id, { quantityOnHand: 2, lastFill: 90 });
+    await refillMedication(fd({ id }));
+    const second = await refillMedication(fd({ id }));
+    expect(second).toEqual({ ok: true, fillSize: 90, newQuantity: 182 });
+    expect(onHand(id).quantity_on_hand).toBe(182);
+  });
 });

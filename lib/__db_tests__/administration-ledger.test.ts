@@ -167,7 +167,7 @@ describe("migration 041 — administration ledger: scheduled adherence is bit-id
     expect(mismatches).toBe(0);
 
     // (dose,date,status) triples — the input to getTakenDoseIds / getSkippedDoseIds /
-    // getSupplementLogsInRange (the strip/streak/escalation reads) — are unchanged.
+    // getIntakeLogsInRange (the strip/streak/escalation reads) — are unchanged.
     const after = logTriples(mem);
     expect(after).toEqual(before);
 

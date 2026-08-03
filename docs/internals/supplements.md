@@ -113,7 +113,7 @@ Medications page surfaces a PRN med as a Today-panel administration row + the
 day's ledger on its detail page ("2 today · last 4:02pm") instead of a binary
 check-off pill; a SCHEDULED med keeps the tri-state `DoseStatusControl` (in the
 Today panel). Migration 041 backfills `given_at = taken_at` for every existing
-row, so scheduled adherence strips/streaks/escalation read bit-identically
+row, so scheduled adherence strips/percentages/escalation read bit-identically
 (pinned by the `administration-ledger` DB-tier regression fixture). The passport
 reads structured `kind='medication'` rows as its primary medication source, with
 `medical_records` `category='prescription'` still a fallback for un-modeled
@@ -345,9 +345,60 @@ the Today panel uses ONE row primitive
 (`components/medications/TodayMedRow.tsx`) for both scheduled check-off and PRN
 administration rows (kind expressed by the control, not the container); and the
 detail page carries scheduled and as-needed entries in a dated "Dose history"
-roll-up (`getMedicationDoseHistory`), with an inline correction form for
+roll-up (`getIntakeDoseHistory`), with an inline correction form for
 recording and editing a past dose during the medication course; PRN entries may
 predate and move back the recorded start date.
+
+### Historical dose correction (#1933)
+
+Backfilling, amending, and removing a recorded administration is **adherence
+machinery**, so it is not split by kind. Until #1933 it was: the write cores
+carried `s.kind = 'medication'` (backfill, delete) and `s.obligation = 'may'`
+(amend), so supplements had none of it and a scheduled medication log could not
+be corrected at all. `kind` decides clinical identity, not capability (#1664),
+and the refusal LIED — a supplement dose came back `stale-dose`, "that dose
+doesn't exist", from a core that had simply refused its kind.
+
+The ungated cores live in `lib/queries/intake/adherence.ts`: `logHistoricalDose`,
+`updateHistoricalDose`, `updateAdministrationLog`, `deleteAdministrationLog`,
+`restoreAdministrationLog`. The reads that serve both kinds are named for both:
+`getIntakeLogsForDate`, `getIntakeLogsInRange`, `getIntakeDoseHistory`, and the
+batched `getIntakeDoseHistoryForItems`.
+
+One panel renders it on both surfaces — `components/intake/DoseHistoryPanel.tsx`,
+inline in the medication card and behind the supplement row's ⋯ "Dose history"
+disclosure — over the Server Actions in
+`app/(app)/nutrition/supplement-actions.ts` (the kind-agnostic intake action
+module), each rendering its core's typed outcome.
+
+What "everything editable" carries:
+
+- **The course window is a data question, not a kind question.** It binds an item
+  that HAS `medication_courses` rows; a supplement has none, so there is no
+  course for its history to fall outside of (`itemHasCourses`).
+- **Supply is counter-like.** A backfill's optional decrement, the delete's
+  re-credit, and the restore's re-decrement all run through the shared
+  `decrementSupply`/`incrementSupply`, so a pooled item (#1374) moves the
+  household bottle. Amending a time or an amount moves nothing: the counter is in
+  UNITS (`qty_per_dose`) and `amount` is a snapshotted label, so the diff is zero
+  and applying one would be a second, invented movement.
+- **Retired doses and paused items stay editable.** `d.retired = 0` is right for
+  CREATING a backfill (it puts a dose back on the schedule) and wrong for editing
+  an existing row: the schedule was retired, the history is still real.
+- **A log edit never writes the schedule.** `intake_item_doses` is read-only on
+  every one of these paths.
+- **No re-arm.** Any write that un-marks a dose for a day — a delete, or an edit
+  that moves the row to another date — stamps that day's escalation marker
+  (`escalationMarkerKey`, #328), so a retroactive correction can never resurrect
+  a missed-dose push. The attention doctrine's contact-consent rule is
+  asymmetric; this is the direction it forbids. Suppression is per-DATE, so a
+  correction to an older day cannot silence a genuine miss today, and the restore
+  deliberately does not clear the marker.
+- **Audited.** Tapping today's check-off is ordinary use. Retroactively rewriting
+  what the record says was given is clinically significant — especially where a
+  caregiver amends a dose somebody else gave — so the action boundary records
+  `dose-log.backfill` / `dose-log.amend` / `dose-log.delete` (identifiers and the
+  affected date only, never the amount or the name).
 
 **Pre-workout send timing (#1154 Fix A).** `pre_workout` is a day condition; its
 SEND slot is workout-relative when the dose's bucket is `anytime` and a cadence
@@ -612,8 +663,28 @@ household cockpit's cross-profile confirm, Telegram taps), `logAdministration`
 (PRN quick-log, `/dose`), the historical-dose backfill, the offline replay, and
 the administration undo/restore inverse. `refillSupply` (the one-tap "Refilled")
 tops up the pool, while `last_fill_size` stays on the ITEM ("I buy the 90-count
-bottle" is a fact about how one person restocks). **Linking clears the item's
-private count** — keeping a second count IS the phantom-double-supply bug —
+bottle" is a fact about how one person restocks).
+
+Both counters are registered gated tables (`STATEFUL_WRITE_TABLES`, #1893):
+outside `refill.ts` and `supply-pool.ts` no module may write `quantity_on_hand`
+on `intake_items` or `shared_supplies`, so a fourth write path can't reappear
+and clobber a concurrent taker's decrement. The item FORM's absolute write is a
+reviewed allowlist entry — it is the #467 compare-and-set over the
+`quantity_on_hand_loaded` snapshot, not a blind clobber. The gate is
+column-narrowed, so name/dose/cadence edits stay ordinary last-write-wins form
+writes. See [stateful affordances](./stateful-affordances.md).
+
+A refill is **additive**, so the one-tap affordance is deliberately not gated:
+two bottles is a legitimate restock and blocking the second tap would refuse a
+real write. Instead it carries the #798 informational treatment — for
+`REFILL_RECENCY_WINDOW_MS` after a successful tap it shows
+"Refilled just now (+90)" beside a button that stays fully enabled
+(`refillRecencyLine`, `lib/refill-recency.ts`). `refillMedication` returns the
+core's own `fillSize`/`newQuantity` so the one-tap path — where the size came
+from `last_fill_size`, not the form — can name what it actually added.
+
+**Linking clears the item's private count** — keeping a second count IS the
+phantom-double-supply bug —
 which also means a pooled item drops out of the per-item refill candidate set
 (`quantity_on_hand != null`) by construction, so one bottle can never surface
 twice.

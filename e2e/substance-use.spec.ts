@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_SUBSTANCE,
   E2E_LOGIN_CHILD,
@@ -35,7 +35,7 @@ async function weekCount(page: Page, substance: string): Promise<number> {
 async function openScreening(page: Page) {
   const form = page.getByTestId("substance-instruments-form");
   if (!(await form.isVisible().catch(() => false))) {
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-substance-screening-panel-toggle")
     );
@@ -116,7 +116,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("substance-instrument-select-DAST-10")
     );
@@ -154,7 +154,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("substance-instrument-select-AUDIT")
     );
@@ -260,10 +260,11 @@ test("known-minor: the substance-use section + its jump-link are absent, and the
       subTabs.getByRole("link", { name: "Mental health" })
     ).toBeVisible();
 
-    // A direct URL re-gates server-side to the first visible pane (Skin) — the
-    // section never renders for a minor.
+    // A direct URL re-gates server-side to the FIRST VISIBLE pane — the section never
+    // renders for a minor. That pane is Hearing since #1600 (ungated, ahead of Skin);
+    // the route computes it from the shared gated list rather than naming a sibling.
     await page.goto("/records/specialty/substance-use");
-    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await expect(page).toHaveURL(/\/records\/specialty\/hearing$/);
     await expect(page.getByTestId("records-substance-use")).toHaveCount(0);
   } finally {
     await page.context().close();

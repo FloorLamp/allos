@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { settledClick, followLink } from "./helpers";
+import { settledClick, settledPickOption, followLink } from "./helpers";
 import type { Locator } from "@playwright/test";
 
 // #1485 G — Trends opens on 90D, and a sparse series shows its latest reading.
@@ -110,7 +110,13 @@ test("a sparse saved biomarker shows its latest reading and age, not 'No data'",
 }) => {
   await page.goto("/trends");
   const picker = page.getByTestId("save-trend-picker");
-  await picker.getByRole("combobox").selectOption(`bio:${SPARSE_ANALYTE}`);
+  // The picker is the shared Combobox since #1675 (a ranked, group-headed list), so
+  // the analyte is chosen by its LABEL through the app's own fuzzy search.
+  await settledPickOption(
+    page,
+    picker.locator('input[role="combobox"]'),
+    SPARSE_ANALYTE
+  );
   await settledClick(page, picker.getByRole("button", { name: "Star" }));
 
   const tile = page

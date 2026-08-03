@@ -31,7 +31,7 @@ export default function TodaysSessionCard({
   // are already deload-adjusted (lighter load, fewer sets); the badge names it.
   deloadWeek?: boolean;
 }) {
-  const { openSession, canStartWorkout } = useActivityEditor();
+  const { openSession, canStartWorkout, workoutOffer } = useActivityEditor();
 
   return (
     <div className="card" data-testid="todays-session-card">
@@ -85,9 +85,17 @@ export default function TodaysSessionCard({
               type="button"
               className="btn"
               data-testid="log-this-session"
+              data-workout-offer={workoutOffer.kind}
               onClick={() => openSession(prefill)}
             >
-              Log this session
+              {/* The label names the write (#1893/#1892): while a session is already
+                  live this reads "Resume workout" and openSession reopens it, because
+                  handing the routine slate over used to reset the running clock and
+                  drop the sets already logged. The routine day is still one tap away
+                  once that session is finished. */}
+              {workoutOffer.kind === "resume"
+                ? workoutOffer.label
+                : "Log this session"}
             </button>
           </div>
         )}

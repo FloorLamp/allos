@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IconBolt,
   IconChevronUp,
+  IconDroplet,
   IconFileText,
   IconHeartbeat,
   IconMenu2,
@@ -95,6 +96,7 @@ const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
   // exhaustive so adding a registry icon stays a compile error here rather than a
   // missing glyph on the bar.
   sparkles: IconSparkles,
+  droplet: IconDroplet,
   document: IconFileText,
 };
 
@@ -162,7 +164,7 @@ export default function MobileNav({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { openCreate, openLive } = useActivityEditor();
+  const { openCreate, openLive, workoutOffer } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
@@ -313,9 +315,14 @@ export default function MobileNav({
                 {showsActivityShortcuts(primary) && (
                   <button
                     type="button"
-                    aria-label="Start workout"
-                    title="Start workout"
+                    // The label IS the offer (#1893): with a session already live this
+                    // reads "Resume workout" and reopens the docked session, because
+                    // the old unconditional "Start workout" tap reset its clock. One
+                    // derivation (lib/workout-offer), four surfaces.
+                    aria-label={workoutOffer.label}
+                    title={workoutOffer.label}
                     data-testid="start-workout-mobile"
+                    data-workout-offer={workoutOffer.kind}
                     onClick={() => openLive()}
                     className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
                   >
@@ -409,6 +416,9 @@ export default function MobileNav({
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         restricted={restricted}
+        // The same server-resolved relevance bitset the drawer's nav entries gate on,
+        // so the sheet's period row and the Cycle nav entry appear together (#1892).
+        cycleRelevant={relevance.cycle}
       />
     </>
   );

@@ -33,9 +33,12 @@ const ALLOWLIST = new Map<string, string>([
     "app/layout.tsx",
     "theme-color <meta> tags (mirror globals.css backgrounds)",
   ],
-  // The root error boundary replaces <html>, so Tailwind isn't available; it
-  // styles itself with inline literal colors.
-  ["app/global-error.tsx", "pre-Tailwind root error page, inline styles only"],
+  // (app/global-error.tsx used to be allowlisted here: the root error boundary
+  // replaces <html>, so Tailwind isn't available and it styled itself with
+  // inline literal colors. Making that card theme-aware for #1906 moved both
+  // palettes into `errorCardPalette()` in lib/theme.ts — which is where a
+  // designed light/dark pair belongs anyway — so the exception is gone rather
+  // than merely re-justified.)
   // next/og icon generation background — image metadata, literal color.
   ["app/apple-icon.tsx", "generated app icon background"],
   // Real-world IPF/Olympic barbell plate color code (red/blue/yellow/green/…)

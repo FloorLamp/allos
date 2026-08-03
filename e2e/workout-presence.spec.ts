@@ -96,7 +96,10 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   // Log a set so the draft auto-saves (the Delete button confirms the persist) —
   // that INSERT is the active session the dock reads.
   await pickActivity(page, "Barbell Bench Press");
-  await page.getByTestId("set1-weight").focus();
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();

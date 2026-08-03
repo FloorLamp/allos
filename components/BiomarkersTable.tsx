@@ -24,7 +24,7 @@ import {
   humanizeAge,
 } from "@/lib/reference-range";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
+import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import {
@@ -147,7 +147,7 @@ function nameCell(r: {
   return (
     <span>
       <Link
-        href={biomarkerViewHref(r.canonical_name)}
+        href={readingDetailHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
         title={`View ${r.canonical_name} over time`}
       >

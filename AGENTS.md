@@ -289,6 +289,23 @@ write, cached-integrity, or configured backup-staleness failures without
 exposing paths, versions, or health data. Keep status composition in
 `lib/health-status.ts`; the endpoint itself must stay cheap.
 
+### Deploys and deployment skew
+
+A deploy leaves open tabs on a build the server no longer serves. The service
+worker installs and **waits** rather than taking over, one merged pending state
+raises one "Update ready" bar, only the tab that tapped ever reloads, and a
+manual refresh consumes a load-time waiting worker silently instead of
+re-offering it. A tab that navigates while still stale hits a deleted chunk; the
+top-level error boundary recognises that signature and hard-reloads **once**,
+under a rationed `sessionStorage` guard, before rendering any card.
+
+Every one of those decisions is pure and lives in `lib/sw-update.ts` (with the
+theme half in `lib/theme.ts`, which `app/global-error.tsx` needs because it
+replaces the root layout and its theme-boot script). Do not re-derive
+"is an update pending" or "is this skew" in a component.
+
+See `docs/internals/deploy-skew.md`.
+
 ## Testing conventions
 
 The repository has three execution tiers:
@@ -345,6 +362,14 @@ See `docs/internals/e2e-hygiene.md`.
 - Settings autosave on blur/change through the existing save-status helpers.
   Record forms use explicit submission.
 - Free-text notes render through `<NotesText>`.
+- Nav rows are `<PendingNavLink>`, not a bare `<Link>`. `(app)` ships no
+  `loading.tsx` (see the layout comment and #530), so a router transition has no
+  Suspense boundary to reveal and a tap has no visible consequence until the
+  whole destination has rendered — which is what made people tap again, and each
+  extra tap discards the render already in flight. The row reports
+  `useLinkStatus()` and absorbs a repeat tap; `lib/nav-click.ts` owns which
+  clicks count as repeats (never a modified or middle click).
+  See `docs/internals/nav-pending.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
@@ -394,6 +419,16 @@ See `docs/internals/e2e-hygiene.md`.
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
   which SQL reaches through the `biomarker_family()` user function). Labels must
   include the attribute that actually distinguishes otherwise identical choices.
+- Additive writes may stay plain; **lifecycle writes render from state**. A
+  one-tap affordance over a transition (period start, episode close, live
+  session, supply counter) renders a shared offer state so its label names the
+  write it will perform, and its write core enforces the same conditions with
+  typed refusals. `lib/stateful-writes.ts` (`STATEFUL_WRITE_TABLES`) registers
+  the gated tables; the scan in `lib/__tests__/stateful-writes.test.ts` fails any
+  raw `INSERT`/`UPDATE`/`DELETE` reaching past a registered core. The scan
+  guarantees no silent corruption; the audit upgrades refusals into good UX. Do
+  not "upgrade" genuinely additive affordances (weight, food servings). See
+  `docs/internals/stateful-affordances.md`.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
   hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:

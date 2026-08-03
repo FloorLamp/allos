@@ -8,8 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { useChromeRefresh } from "@/components/DirtyFormRegistry";
 import {
   BOTTOM_EDGE_ALERT_LAYER,
   BOTTOM_EDGE_GUTTER_LEFT,
@@ -122,7 +122,11 @@ export default function OfflineQueueProvider({
   // into a permanent 1.5s poll loop.
   const retriedAfterFailure = useRef(false);
   const toast = useToast();
-  const router = useRouter();
+  // CHROME-INITIATED (#1878): this repaint answers a background sync landing —
+  // reconnect, a service-worker Background Sync message — not anything the user
+  // just did, so it defers while a record form holds unsaved input and runs when
+  // that form releases. Never dropped, only delayed.
+  const chromeRefresh = useChromeRefresh();
 
   const refreshCount = useCallback(async () => {
     setPending(await countIntents());
@@ -157,9 +161,9 @@ export default function OfflineQueueProvider({
       // Survives the #1473 sweep: the queue replays through the /api/offline-replay
       // route handler (and the service worker), never a Server Action, so nothing
       // else brings the newly-landed rows into the current view.
-      router.refresh();
+      chromeRefresh();
     },
-    [toast, router]
+    [toast, chromeRefresh]
   );
 
   const flush = useCallback(async () => {

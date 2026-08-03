@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { isMinor } from "@/lib/life-stage";
 import { getUserAge, getDisplayFormatPrefs } from "@/lib/settings";
+import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
+import { visibleSpecialtyPanes } from "../../nav";
 import { isSubstanceInstrument } from "@/lib/substance-use";
 import SubstanceUseSection from "../../SubstanceUseSection";
 import { SectionSubtitle } from "../../SectionHeader";
@@ -23,7 +25,11 @@ export default async function RecordsSubstanceUsePage(props: {
   searchParams: Promise<{ screen?: string | string[] }>;
 }) {
   const { login, profile } = await requireSession();
-  if (isMinor(getUserAge(profile.id))) redirect("/records/specialty/skin");
+  // The first VISIBLE pane, from the shared gated list (see the Vision pane's note).
+  if (isMinor(getUserAge(profile.id)))
+    redirect(
+      visibleSpecialtyPanes(getRecordsSpecialtyRelevance(profile.id))[0].href
+    );
   // Deep-link preselect (#1083): a preventive drug/alcohol-screening row/nudge lands
   // here with `?screen=<INSTRUMENT>`. Validate against the known instruments; an
   // unknown/absent value falls through to the form's AUDIT-C default.

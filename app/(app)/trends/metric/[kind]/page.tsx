@@ -63,6 +63,10 @@ import {
   METRIC_READINGS_LIMIT,
   getMetricReadings,
 } from "@/lib/metric-readings";
+import { getPanelSiblings } from "@/lib/queries/panel-siblings";
+import { pediatricBpContextFor } from "@/lib/queries/bp-context";
+import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
+import { PediatricBpCard } from "@/components/PediatricBpCard";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import StarButton from "@/components/StarButton";
@@ -346,6 +350,33 @@ export default async function BodyMetricDetailPage(props: {
 
   const latest =
     fullSeries.length > 0 ? fullSeries[fullSeries.length - 1] : null;
+
+  // Context that travels with a CONTINUOUS VITAL (#1932). These metrics are
+  // `medical_records` readings under a canonical name — the same rows the reading
+  // detail page charts for every episodic marker — so the two clinical companions
+  // that page carried for them come along to the surface they now render on,
+  // rather than being lost in the move or re-implemented here:
+  //   • the pediatric BP percentile + AAP category (#150), which is how a CHILD's
+  //     blood pressure must be judged (adult cutoffs call an elevated child fine);
+  //   • the panel cross-reference (#1502) — an SpO2 arrived with a blood pressure
+  //     and a respiratory rate, and each chip lands on ITS own cadence's surface.
+  // Null for every other kind: a body_metrics or metric_samples series has no
+  // canonical name, no panel, and no pediatric BP interpretation.
+  const vitalCanonical =
+    METRIC_READING_STORE[kind]?.table === "medical_records"
+      ? METRIC_READING_STORE[kind].canonical
+      : null;
+  const panelSiblings = vitalCanonical
+    ? getPanelSiblings(profile.id, vitalCanonical)
+    : null;
+  const bpCtx = vitalCanonical
+    ? pediatricBpContextFor(
+        profile.id,
+        vitalCanonical,
+        latest?.value ?? null,
+        latest?.date ?? null
+      )
+    : null;
   const latestDisplay =
     latest == null
       ? null
@@ -424,6 +455,11 @@ export default async function BodyMetricDetailPage(props: {
           </div>
         )}
 
+        {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
+            shown INSTEAD OF the adult thresholds; hidden for adults and for every
+            metric that is not blood pressure. */}
+        <PediatricBpCard ctx={bpCtx} />
+
         {/* The SAME shared range + event-control composition as the Trends hub.
             BodyTrendCharts registers the annotation kinds it actually draws; the
             provider hoists their controls into DateRangeControl's companion slot
@@ -476,6 +512,16 @@ export default async function BodyMetricDetailPage(props: {
             desktopSidebar
           />
         </div>
+
+        {/* "Part of your Vital signs panel · also measured …" (#1502/#1932): the
+            cross-reference across the cadence split, so a vital's page still says
+            what it arrived with. */}
+        {panelSiblings && (
+          <PanelSiblingsCard
+            panelId={panelSiblings.panelId}
+            names={panelSiblings.names}
+          />
+        )}
 
         {sourceComparisonKey && (
           <SourceComparison
@@ -556,6 +602,11 @@ function PeriodStatsCard({
           s.from === s.to ? "" : `–${formatMonthDay(s.to, formatPrefs)}`
         }`
       : null;
+  // Day one (#1909's follow-up): the profile's only reading is today's, so every
+  // window carries the shared helper's fallback and the card shows THAT reading
+  // rather than "No readings". The note must not claim "through yesterday" while
+  // it is doing so — the coverage sentence changes with the number it describes.
+  const dayOne = stats.length > 0 && stats.every((s) => s.dayOne);
 
   return (
     <section
@@ -570,9 +621,27 @@ function PeriodStatsCard({
         >
           Rolling summary
         </h2>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Rolling 7, 30, and 90-day windows. Change compares the first and
-          latest reading.
+        {/* The exclusion made visible (#1909). These windows end YESTERDAY —
+          today is not history until it ends, and a half-finished day used to
+          drag a cumulative metric's average down all afternoon. Latest is the
+          one figure that still carries today, so the note names both. */}
+        <p
+          className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="metric-period-coverage"
+        >
+          {dayOne ? (
+            <>
+              This is your first reading, so there is no completed day to
+              average yet — the figure below is today&rsquo;s reading. Rolling
+              7, 30, and 90-day averages start once a day is complete.
+            </>
+          ) : (
+            <>
+              Rolling 7, 30, and 90-day windows through yesterday — complete
+              days only. Average, range, and change cover those days; Latest is
+              the most recent reading, including today&rsquo;s.
+            </>
+          )}
         </p>
       </div>
       <div
@@ -610,8 +679,24 @@ function PeriodStatsCard({
 
             {s.count === 0 ? (
               <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
-                Add a reading to see an average, range, and change.
+                Add a reading from a completed day to see an average, range, and
+                change.
               </p>
+            ) : s.dayOne ? (
+              /* Day one: the figure is TODAY's reading, not an average, so it
+                 carries its own label and its own test id — an average and a
+                 single in-progress reading must never be addressable as the
+                 same thing. Range and Change are omitted: over one reading they
+                 are v–v and +0, which reads as information and is not. */
+              <div className="mt-4">
+                <div
+                  data-testid={`period-today-reading-${s.days}`}
+                  className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
+                >
+                  {withUnit(s.avg)}
+                </div>
+                <div className="mt-1 section-label">Today&rsquo;s reading</div>
+              </div>
             ) : (
               <div
                 className={

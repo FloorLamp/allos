@@ -30,6 +30,8 @@
 // "informational, not prescriptive" framing follow the RDA-adequacy precedent (#578, lib/dri).
 
 import { foodGroupBySlug } from "./food-groups";
+import { shiftDateStr } from "./date";
+import { trailingAverage } from "./trailing-average";
 
 // ---- Intake: tracked OVERRIDES (estimated + logged) ------------------------
 
@@ -360,6 +362,102 @@ export function proteinAdequacyEvidence(a: ProteinAdequacy): string {
   return `Target ${a.target.gPerKgLow}–${a.target.gPerKgHigh} g/kg (ISSN position stand). Informational, not prescriptive.`;
 }
 
+// ---- The trailing 7-day average (issue #1917) ------------------------------
+//
+// The dashboard's Nutrition-today card printed "7-day average" over
+// getProteinAdequacy's WEEK-TO-DATE figure: on a Tuesday it covered two days, it
+// reset at every week boundary, and it carried a partial today that dragged the
+// mean down all afternoon. The label named a computation the code did not perform.
+//
+// So protein becomes the fourth consumer of `trailingAverage` (#1909, the #221
+// rule) and the label is already correct. Two declared choices:
+//
+//   - `basis: "calendar"`. The label says SEVEN DAYS, so the window must be seven
+//     days. Food logging is gappy, and that cuts AGAINST the data-bearing basis
+//     here rather than for it: "the last 7 days that carry a log" would happily
+//     reach back a month for a profile that logged a week in March and stopped,
+//     then print that month-old number under a label naming the last week. The
+//     steps card can afford data-bearing because a watch feeds it daily and its
+//     question is "my usual day"; this card's question is "the last week".
+//   - Unlogged days are UNKNOWN, not zero. The mean is over the days inside the
+//     window that carry an intake — the same per-basis-average design the adequacy
+//     gather uses, so a person who logged four days of the seven reads their
+//     average logged day rather than a figure diluted by three silent ones.
+//
+// The week-to-date figure is NOT retired: `getProteinAdequacy` still answers "am I
+// meeting my protein target this week?" for the adequacy card, its coaching
+// finding, and the Food-tab gauge's this-week marker. Two questions, two
+// computations, two labels.
+
+// The window the card's label names.
+export const PROTEIN_TRAILING_DAYS = 7;
+
+// The oldest date a trailing-7 window can reach: the gather's SQL cutoff. Derived
+// here so the window's arithmetic sits with the computation that owns it rather
+// than in a query module that would then have to be trusted to agree with it.
+export function proteinTrailingWindowStart(todayStr: string): string {
+  return shiftDateStr(todayStr, -PROTEIN_TRAILING_DAYS);
+}
+
+// One day's raw intake parts, as the gather reads them — composed through the SAME
+// proteinIntake engine as every other protein figure, so a day inside the window
+// and a day on the card are the same arithmetic.
+export interface ProteinDayParts {
+  date: string;
+  dailyTracked: number | null;
+  dailyLogged: number | null;
+  dailyEstimated: number;
+}
+
+export interface ProteinTrailing {
+  // The mean per-day grams over the window, or null when it holds no logged day.
+  grams: number | null;
+  // TRUE when `grams` is TODAY's intake rather than a completed-day average: the
+  // profile has no complete-day protein history at all (the #1909 day-one rule,
+  // inherited from the shared helper — never re-derived here). A surface must
+  // qualify it or decline it; it must never call it a 7-day average.
+  dayOne: boolean;
+}
+
+// The per-day intake series a trailing window is taken over: one point per day that
+// carries any protein signal, days without one simply absent (unknown, not zero).
+export function proteinDailyGrams(
+  days: readonly ProteinDayParts[]
+): { date: string; value: number }[] {
+  const out: { date: string; value: number }[] = [];
+  for (const d of days) {
+    const intake = proteinIntake({
+      dailyTracked: d.dailyTracked,
+      dailyLogged: d.dailyLogged,
+      dailyEstimated: d.dailyEstimated,
+    });
+    if (intake) out.push({ date: d.date, value: intake.grams });
+  }
+  return out;
+}
+
+// The trailing 7-day per-day protein average — the number the "7-day average" label
+// has always claimed. Complete days only, through the ONE shared helper.
+//
+// `hasEarlierHistory` is passed straight through because the gather reads only the
+// window's days: a profile that logged a month ago and again today would otherwise
+// arrive here indistinguishable from a first-ever log, and the day-one fallback
+// would print today's intake under a seven-day label — the defect, restored. The
+// gather answers that question with one existence check; the RULE stays the shared
+// helper's.
+export function proteinTrailingAverage(
+  days: readonly ProteinDayParts[],
+  todayStr: string,
+  opts: { hasEarlierHistory?: boolean } = {}
+): ProteinTrailing {
+  const window = trailingAverage(proteinDailyGrams(days), todayStr, {
+    days: PROTEIN_TRAILING_DAYS,
+    basis: "calendar",
+    hasEarlierHistory: opts.hasEarlierHistory ?? false,
+  });
+  return { grams: window.average, dayOne: window.dayOneFallback };
+}
+
 // ---- Today gauge (issue #974): today so far · weekly average · goal band ----
 //
 // The band gauge on the Food tab shows THREE protein numbers in one visual: today so far
@@ -380,9 +478,16 @@ export interface ProteinToday {
   todayGrams: number;
   // The goal-scaled band (always present — the gather returns null without a target).
   target: ProteinTarget;
-  // This week's daily-average intake — EXACTLY getProteinAdequacy(...).intake.grams for the
-  // same profile (#221). Null when there's no logged intake this week.
+  // THIS WEEK's daily-average intake — EXACTLY getProteinAdequacy(...).intake.grams for
+  // the same profile (#221), i.e. the figure the adequacy verdict is reached on. Null
+  // when there's no logged intake this week. The Food-tab gauge's marker, where the
+  // card beside it states a WEEKLY verdict; a surface rendering it must say "this
+  // week", never "7-day average" (#1917).
   weeklyAverageGrams: number | null;
+  // The TRAILING 7-day complete-day average (#1917) — a different question from the
+  // week-to-date figure above, computed through the shared trailingAverage helper.
+  // This is what a card labelled "7-day average" shows.
+  trailing: ProteinTrailing;
 }
 
 // ---- Today's protein STATUS (issues #974 / #1710) ----

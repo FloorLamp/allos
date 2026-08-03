@@ -45,7 +45,13 @@ export default function PhotoGallery({
   seriesFilter?: string | null;
   onSeriesFilterChange?: (key: string | null) => void;
   // Domain-owned lightbox actions for a photo (delete button, compare link…).
-  renderActions?: (photo: GalleryPhoto) => ReactNode;
+  // `close` lets an action dismiss the lightbox — a domain edit that changes the
+  // photo's SERIES or DATE re-sorts the filtered set under the open index, so the
+  // honest move is to return to the grid rather than page a stale position.
+  renderActions?: (
+    photo: GalleryPhoto,
+    helpers: { close: () => void }
+  ) => ReactNode;
 }) {
   const usable = useMemo(() => selectableDomains(domains), [domains]);
   const [domainKey, setDomainKey] = useState<string | null>(
@@ -253,7 +259,7 @@ export default function PhotoGallery({
             </div>
             {renderActions ? (
               <div className="flex items-center gap-2">
-                {renderActions(open)}
+                {renderActions(open, { close: () => setLightbox(null) })}
               </div>
             ) : null}
           </div>

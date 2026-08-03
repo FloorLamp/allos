@@ -44,6 +44,7 @@ export type QuickLogIcon =
   | "scale"
   | "heartbeat"
   | "sparkles"
+  | "droplet"
   | "document";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
@@ -54,8 +55,11 @@ export type QuickLogIcon =
 // `practice` is the tracked wellness practices with the SAME one-tap LogPracticeButton
 // the Wellness card carries (#1633); `document` mounts the SAME UploadForm Data → File
 // upload renders, camera input included (#1525).
+// `cycle` is the ONE period offer (#1892) — the overlay renders the SAME
+// `cycleControlState` the Cycle page control and the dashboard phase widget render,
+// gathered on open so a sheet opened this morning cannot offer yesterday's verb.
 export type QuickEntryForm =
-  "food" | "measurements" | "dose" | "practice" | "document";
+  "food" | "measurements" | "dose" | "practice" | "cycle" | "document";
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
@@ -81,6 +85,11 @@ export interface QuickLogItem {
   // age-restricted profile (lib/age-gate.ts) has no training surface at all, so
   // the bar hides its create actions entirely there — same posture as today.
   training?: boolean;
+  // True for the entries only a CYCLE-RELEVANT profile should see (#1892). Gated on
+  // the SAME `cycle` relevance bit as the Cycle nav entry and the dashboard phase
+  // widget (lib/nav-relevance.cycleTrackingRelevant), so a period row can never leak
+  // into the sheet of a profile the whole domain does not apply to.
+  cycle?: boolean;
 }
 
 export const LOG_ACTIVITY_ID = "log-activity";
@@ -138,6 +147,24 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // LogPracticeButton the Wellness card renders over the same logPractice action — no
     // second write path, and the sheet lists exactly the practices you track.
     target: { kind: "overlay", form: "practice" },
+  },
+  {
+    id: "log-period",
+    label: "Log period",
+    hint: "Start or end today's period",
+    icon: "droplet",
+    // #1892 — the missing quick-log path. #1506's charter is exactly "logging
+    // actions", and period day 1 is the app's most time-sensitive one: both the phase
+    // derivation and the regularity data depend on catching it.
+    //
+    // The ROW names the domain; the VERB lives one tap in, on the offer button the
+    // overlay renders from the freshly-gathered `cycleControlState` — the same state,
+    // and the same <PeriodOfferButton>, the Cycle page control and the dashboard
+    // widget render. It is deliberately not a dynamic row label: that would need a
+    // LAYOUT-TIME snapshot of the state on every one of ~60 routes, and a snapshot is
+    // exactly as stale as the page (the #1468 reason the overlay gathers on open).
+    target: { kind: "overlay", form: "cycle" },
+    cycle: true,
   },
   {
     id: "add-document",
@@ -206,11 +233,22 @@ export function showsActivityShortcuts(primary: QuickLogItem): boolean {
   return primary.target.kind === "activity";
 }
 
-// The sheet's menu for a given profile: an age-restricted profile has no
-// training surface, so the training-only entries are dropped (the same gate the
-// bar's create actions have always carried).
-export function quickLogMenu(restricted: boolean): QuickLogItem[] {
-  return restricted
-    ? QUICK_LOG_ITEMS.filter((i) => !i.training)
-    : QUICK_LOG_ITEMS;
+// The sheet's menu for a given profile. Two per-entry gates, both mirroring a gate the
+// app already applies elsewhere:
+//
+//   • `restricted` — an age-restricted profile has no training surface, so the
+//     training-only entries drop (the gate the bar's create actions have always
+//     carried).
+//   • `cycleRelevant` — the #1042 `cycle` relevance bit, the SAME one gating the Cycle
+//     nav entry and the dashboard phase widget (#1892). Defaults TRUE for the same
+//     reason DEFAULT_NAV_RELEVANCE does: a caller that hasn't threaded the bitset must
+//     never over-hide. The overlay re-checks it server-side, so a deep link cannot
+//     reach the offer on a profile the domain does not apply to either.
+export function quickLogMenu(
+  restricted: boolean,
+  cycleRelevant = true
+): QuickLogItem[] {
+  return QUICK_LOG_ITEMS.filter(
+    (i) => !(i.training && restricted) && !(i.cycle && !cycleRelevant)
+  );
 }

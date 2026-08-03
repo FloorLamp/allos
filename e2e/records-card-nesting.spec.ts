@@ -13,6 +13,7 @@ const RECORD_PANES = [
   "/records/care/overview",
   "/records/care/providers",
   "/records/specialty/vision",
+  "/records/specialty/hearing",
   "/records/specialty/dental",
   "/records/specialty/skin",
   "/records/specialty/mental-health",

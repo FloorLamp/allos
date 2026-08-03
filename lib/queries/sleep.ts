@@ -26,7 +26,7 @@ import {
   getSupplementDosesForHistory,
   getSupplements,
 } from "./intake/schedule";
-import { getSupplementLogsInRange } from "./intake/adherence";
+import { getIntakeLogsInRange } from "./intake/adherence";
 import { today } from "../db";
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "../date";
 import {
@@ -40,6 +40,7 @@ import { indexTakenByDose } from "../supplement-adherence";
 import { doseDueOn, timeBucket } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
+  bedtimeDoseDisposition,
   summarizeBedtimeSupplements,
   type BedtimeSupplementSummary,
 } from "../sleep-bedtime-supplements";
@@ -311,7 +312,7 @@ function bedtimeSupplementsByWakeDay(
   if (supplementDoses.length === 0) return new Map();
 
   const statusByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, windowDays + 1)
+    getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
   const situationsOn = situationHistoryResolver(
@@ -327,27 +328,24 @@ function bedtimeSupplementsByWakeDay(
       const taken = status?.taken.has(sleepDate) ?? false;
       const skipped = status?.skipped.has(sleepDate) ?? false;
       const resolved = taken || skipped;
-      const isBedtimeDose = timeBucket(dose.time_of_day) === "Before sleep";
-      const isCurrentBedtimeDose =
-        item.active === 1 && dose.retired === 0 && isBedtimeDose;
-      // Resolved logs preserve factual taken/skipped state for a paused or
-      // retired bedtime dose. A later dose edit does not preserve the previous
-      // slot, however, so either direction of a possible re-time is excluded
-      // rather than attributing an old log to bedtime without evidence.
-      const changedAfterNight =
-        dose.updated_at != null && dose.updated_at.slice(0, 10) > sleepDate;
-      const historicalResolved =
-        resolved && isBedtimeDose && !changedAfterNight;
-      if (resolved ? !historicalResolved : !isCurrentBedtimeDose) return [];
-
-      const since = doseAdherenceSince(
-        item.created_at,
-        dose.created_at,
-        dose.updated_at
-      );
-      if (!resolved && since != null && sleepDate < since) return [];
+      // The fact/judgment split lives in the pure bedtimeDoseDisposition: a night
+      // with a taken/skipped log renders on the strength of that log alone (so a
+      // paused, retired, or later-edited dose keeps its history — #1972), while an
+      // unlogged night is still judged by the dose's lifetime and schedule below.
+      const disposition = bedtimeDoseDisposition({
+        sleepDate,
+        logged: resolved,
+        isBedtimeDose: timeBucket(dose.time_of_day) === "Before sleep",
+        isCurrentDose: item.active === 1 && dose.retired === 0,
+        adherenceSince: doseAdherenceSince(
+          item.created_at,
+          dose.created_at,
+          dose.updated_at
+        ),
+      });
+      if (disposition === "excluded") return [];
       if (
-        !resolved &&
+        disposition === "scheduled" &&
         !doseDueOn(item, dose, {
           date: sleepDate,
           isWorkoutDay: workoutDays.has(sleepDate),

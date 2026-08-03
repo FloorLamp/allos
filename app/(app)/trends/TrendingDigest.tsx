@@ -18,7 +18,7 @@ import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
 import DigestOverflow from "./DigestOverflow";
 import { PRACTICE_DIGEST_PREFIX } from "@/lib/trends-practices";
-import { biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
+import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
 
 // How many ranked movers render inline before the "show all N" disclosure (#1455).
 const LEAD_CHIPS = 3;
@@ -57,7 +57,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
 
   const hrefFor = (item: TrendItem): AppRoute | null => {
     if (item.key.startsWith("bio:"))
-      return biomarkerViewHref(item.key.slice("bio:".length));
+      return readingDetailHref(item.key.slice("bio:".length));
     // A practice chip taps through to the page that owns the habit (#1620).
     if (item.key.startsWith(PRACTICE_DIGEST_PREFIX)) return "/wellness";
     return null;

@@ -4,8 +4,17 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
-import { goalMatchesExercise } from "../../goals";
+import {
+  biomarkerGoalCheckIn,
+  biomarkerTargetOf,
+  computeBiomarkerGoalProgress,
+  isBiomarkerGoal,
+} from "../../biomarker-goal";
+import { retestDaysForBiomarker } from "../../biomarker-retest";
+import { biomarkerFamily } from "../../canonical-name";
+import { goalMatchesExercise, isGoalLive } from "../../goals";
 import type { BodyMetricKind, Goal } from "../../types";
+import { biomarkerPlots } from "../biomarker-plot";
 import { getLatestBodyMetric } from "../metrics";
 
 // Training-SPECIFIC goal reads. The scope-kind-generic `frequency_targets`
@@ -49,6 +58,45 @@ export function getGoalProgressMap(
     };
     for (const g of bodyGoals) {
       out.set(g.id, computeBodyGoalProgress(g, latest[g.body_metric!]));
+    }
+  }
+
+  // Biomarker goals (#1853): the latest reading of the analyte's #482 FAMILY, in the
+  // unit its own chart is labelled with. Both come from `biomarkerPlot` — the SAME
+  // plot the biomarker detail page draws — so a goal card and the chart it describes
+  // can never disagree about the value or the unit (#221). The check-in rhythm is the
+  // analyte's curated retest cadence, resolved through the shared
+  // retestDaysForBiomarker lookup rather than a goals-only interval table.
+  //
+  // The plots are gathered for EVERY targeted analyte in one pass (#1961), the same
+  // shape as the exercise-goal loop below: a per-goal `biomarkerPlot` re-queried the
+  // series and re-read the profile's demographics once per goal, which is an N+1 in
+  // the goal count.
+  const bmTargets = goals.filter(isBiomarkerGoal).flatMap((g) => {
+    const target = biomarkerTargetOf(g);
+    return target ? [{ g, target }] : [];
+  });
+  if (bmTargets.length) {
+    const plots = biomarkerPlots(
+      profileId,
+      bmTargets.map((x) => x.target.name)
+    );
+    const bmToday = today(profileId);
+    for (const { g, target } of bmTargets) {
+      const plot = plots.get(target.name) ?? null;
+      const progress = computeBiomarkerGoalProgress(
+        target,
+        plot?.points ?? [],
+        plot?.unit ?? target.unit
+      );
+      out.set(g.id, {
+        ...progress,
+        checkIn: biomarkerGoalCheckIn(
+          progress.asOf,
+          retestDaysForBiomarker(target.name),
+          bmToday
+        ),
+      });
     }
   }
 
@@ -122,4 +170,29 @@ export function getGoalProgressMap(
     out.set(g.id, computeGoalProgress(g, matched, t));
   }
   return out;
+}
+
+// The LIVE biomarker goals a given analyte carries (#1853) — what a biomarker's own
+// detail page needs in order to show the target beside the series it describes,
+// which is the whole point of the issue: "LDL under 100 by June" belonged next to the
+// LDL chart, not in a freeform text field on another page.
+//
+// Matching is by the #482 FAMILY, not by raw name, and deliberately so: the readings
+// that advance the goal are the family's readings (getBiomarkerSeries collapses them
+// into one series), so the goal must appear on exactly the page that charts them. A
+// goal anchored on "Hemoglobin A1c" therefore also shows on the page for its eAG
+// re-expression — one series, one target, one answer.
+//
+// Reads through getGoals, which is already profile-scoped; no new owned SQL.
+export function getBiomarkerGoals(
+  profileId: number,
+  canonical: string
+): Goal[] {
+  const family = biomarkerFamily(canonical).toLowerCase();
+  return getGoals(profileId).filter(
+    (g) =>
+      isGoalLive(g) &&
+      isBiomarkerGoal(g) &&
+      biomarkerFamily(g.biomarker_name!).toLowerCase() === family
+  );
 }

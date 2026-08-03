@@ -12,6 +12,7 @@
 //   - composeRecapNarrativeOffline: the deterministic fallback prose.
 // All three are unit-tested with no network (lib/__tests__/recap-narrative.test.ts).
 
+import { recapLineAnnotation } from "./weekly-recap";
 import type { WeeklyRecap, RecapLine } from "./weekly-recap";
 
 // The AI narrative periods (issue #20). "week" = trailing 7 days, "month" = 30.
@@ -34,16 +35,20 @@ export function periodAdjective(period: NarrativePeriod): string {
 }
 
 export const RECAP_NARRATIVE_SYSTEM = `You are a knowledgeable, encouraging personal health and fitness coach writing a short PERIOD recap (weekly or monthly) for a single user.
-You are given a pre-computed set of factual recap lines (training, volume, PRs, adherence, body-weight trend, streak, goals). Write a concise, warm narrative (about 120-180 words) that:
+You are given a pre-computed set of factual recap lines (training, PRs, adherence, body-weight trend, goals). Write a concise, warm narrative (about 120-180 words) that:
 1. Opens with a one-line summary of the period.
-2. Connects 2-4 of the actual numbers into observations about momentum and consistency (reference the real figures and deltas you were given).
+2. Connects 2-4 of the actual numbers into observations about momentum and consistency (reference the real figures and comparisons you were given).
 3. Ends with one concrete, encouraging suggestion for the next period.
 Only use facts present in the provided lines — never invent numbers, workouts, or trends. Do not give medical diagnoses; for any concerning body-metric change, gently suggest discussing it with a clinician. Use a motivating, human tone; no bullet lists in your reply.`;
 
-// One "Label: value (delta)" clause per recap line, in the recap's own order.
+// One "Label: value (note · comparison)" clause per recap line, in the recap's own
+// order. A bare line (the self-labelled intake delta line, #1935) contributes its
+// value alone — prefixing it with the row label would label it twice, here as much
+// as on the card.
 function lineClause(line: RecapLine): string {
-  const delta = line.delta ? ` (${line.delta})` : "";
-  return `${line.label}: ${line.value}${delta}`;
+  const ann = recapLineAnnotation(line);
+  const head = line.bare ? line.value : `${line.label}: ${line.value}`;
+  return `${head}${ann ? ` (${ann})` : ""}`;
 }
 
 // Assemble the user prompt from a rule-based recap. The recap facts are fenced in
@@ -84,8 +89,11 @@ function joinClauses(parts: string[]): string {
 
 // A single line rendered as an inline prose clause ("4 workouts (3 last week)").
 function proseClause(line: RecapLine): string {
-  const delta = line.delta ? ` (${line.delta})` : "";
-  return `${line.value}${delta} ${line.label.toLowerCase()}`;
+  const ann = recapLineAnnotation(line);
+  const tail = ann ? ` (${ann})` : "";
+  return line.bare
+    ? line.value
+    : `${line.value}${tail} ${line.label.toLowerCase()}`;
 }
 
 // The deterministic offline fallback: turn the recap lines into a short prose

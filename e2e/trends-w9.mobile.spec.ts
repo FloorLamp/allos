@@ -122,9 +122,10 @@ test.describe("the compare block at 390px (#1493 B)", () => {
     await expect(b).toBeVisible();
 
     // They stack (B below A) rather than sharing a cramped row, and each takes the
-    // card's full content width — which is why they stayed native `<select>`s
-    // instead of becoming a hand-built sheet: the OS picker IS the phone
-    // affordance, and it is the accessible one.
+    // card's full content width. #1675 converted them from native `<select>`s to the
+    // shared Combobox — the one autocomplete the app already ships, so the phone
+    // affordance is still a single full-width control that opens a scrollable list,
+    // not a hand-built sheet, and it gained the fuzzy search a `<select>` cannot give.
     const boxA = (await a.boundingBox())!;
     const boxB = (await b.boundingBox())!;
     expect(boxB.y).toBeGreaterThan(boxA.y + boxA.height - 1);

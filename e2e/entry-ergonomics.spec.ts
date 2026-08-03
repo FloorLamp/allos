@@ -638,7 +638,7 @@ test("the activity form keeps workout entry primary and context visible across b
   );
 });
 
-test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)", async ({
+test("a fresh strength part OFFERS the coached suggestion; arriving in the field never writes it (#335/#1971)", async ({
   page,
 }) => {
   await page.goto("/training"); // default "Log" tab renders the Journal feed
@@ -658,13 +658,29 @@ test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)"
   await expect(page.getByText("Next set")).toBeVisible();
 
   // Set 1's weight shows the suggested load as a ghost PLACEHOLDER (a number,
-  // not the bare "kg" unit) — the auto-seed, no "Use" tap needed (#335).
+  // not the bare "kg" unit) — the offer (#335).
   const weight = page.getByTestId("set1-weight");
   await expect(weight).toHaveAttribute("placeholder", /^\d/);
 
-  // Focusing the field fills it (weight + reps) from the suggestion, completing
-  // the set so it auto-saves — the Delete button appearing confirms the persist.
+  // #1971, the regression this test exists for. Arrival is not consent: focusing
+  // the field must leave it EMPTY, and the digits the lifter then types must be
+  // the whole value. When set 1's onFocus applied the suggestion, tabbing in and
+  // typing "60" produced "77.560" and clicking in produced "77.605" — silently,
+  // at every typing speed. Drive it the way a person does: focus, then type.
   await weight.focus();
+  await expect(weight).toHaveValue("");
+  await page.keyboard.type("60", { delay: 40 });
+  await expect(weight).toHaveValue("60");
+  // The suggestion did not seed reps behind the lifter's back either.
+  await expect(page.getByTestId("set1-reps")).toHaveValue("");
+
+  // The offer is still one tap away: "Use" fills weight + reps, completing the
+  // set so it auto-saves — the Delete button appearing confirms the persist.
+  await page.getByTestId("set1-weight").fill("");
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })

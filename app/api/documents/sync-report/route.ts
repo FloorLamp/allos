@@ -5,12 +5,15 @@ import { authenticateApiToken } from "@/lib/api-tokens";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import {
   isSyncReportStatus,
-  parseDiscoveredLabels,
+  parseReportedIdentities,
   parseSyncReportCounts,
+  parseSyncReportProvenance,
   parseSyncReportTarget,
   syncReportEvent,
 } from "@/lib/acquirer-identity";
 import {
+  applyIdentityOutcomes,
+  clearIdentityDeclined,
   recordDiscoveredIdentities,
   recordPendingIdentity,
   recordPortalRunReport,
@@ -49,6 +52,36 @@ import { createLogger } from "@/lib/log";
 // while a human debugging with curl may name a `profile`. A resolved identity is
 // intersected with the token's write set here too — the binding says where a run belongs,
 // never that this token may write there.
+//
+// WHAT KIND OF RUN THIS WAS (#1888, #1889) — two optional booleans, both ABSENT-MEANS-
+// TRUE, both orthogonal to `status` (which says how the run went, and stays the closed
+// three-value enum):
+//
+//   `contacted: false` — a DELIVERY, not a visit. The acquirer's standalone `push` sends
+//   records already on disk and opens no portal, yet it reports, because the report is
+//   also how bindings are discovered. Such a report still records its sync event, still
+//   advances the per-identity "Last synced" chips, still feeds Data → Review and the
+//   integrations accounting — documents genuinely arrived. What it deliberately does NOT
+//   do is answer an open sync request or advance the staleness clock: nobody checked the
+//   portal, and an unchecked portal that looks checked is the one failure this feature
+//   cannot have.
+//
+//   `attended: false` — NOBODY WAS AT THE KEYBOARD. A scheduled run that succeeds answers
+//   a request as any run does; a scheduled run that FAILS does not, because nobody acted
+//   and the ask would vanish at the exact point it became true. Its reason is carried
+//   forward onto the request's own Upcoming/digest line instead ("the scheduled run
+//   couldn't sign in … someone needs to go to the machine").
+//
+// The decision lives in ONE pure predicate pair (lib/acquirer-identity.ts:
+// reportCountsAsCheck and the two derived from it), applied once HERE at ingest and read
+// downstream as columns, so no reader restates it.
+//
+// THE `identities` LIST MAY NOW CARRY A PER-IDENTITY OUTCOME (#1889): `["JANE DOE"]`
+// still means "I saw this label", while `[{ patient: "JANE DOE", outcome: "declined" }]`
+// adds what the run managed for that person. One sign-in collects for every patient a
+// login reaches, so one run routinely has different answers per patient — the account
+// holder downloads fine while two proxies are refused — and a run-level word cannot say
+// that. `declined` becomes identity-level standing state, never a repeated failure event.
 //
 // TWO RUNS HAVE NO PROFILE, and both used to vanish (#1756):
 //
@@ -141,7 +174,29 @@ export async function POST(req: Request): Promise<Response> {
   // signed in far enough to enumerate the proxy list and THEN broke has still taught us
   // who is on that login. Bounded and sanitized by parseDiscoveredLabels before anything
   // is stored.
-  const discovered = parseDiscoveredLabels(body.identities);
+  const reported = parseReportedIdentities(body.identities);
+  const discovered = reported.map((e) => e.label);
+
+  // WHAT KIND OF RUN THIS WAS (#1888, #1889) — orthogonal to `status`, which says how the
+  // run went. Absent means true for both, so a client that has never heard of either
+  // field keeps its exact current meaning.
+  const provenance = parseSyncReportProvenance({
+    contacted: body.contacted,
+    attended: body.attended,
+  });
+
+  // The reporting token's WRITE set, resolved once at the auth boundary. Per-identity
+  // outcomes (#1889) are writes to profile-owned bindings, and one portal login can cover
+  // several household members — so a caregiver token that may write only one of them must
+  // not be able to change standing state on another's binding. Reach first, then access,
+  // the order every gate here uses.
+  const writableProfileIds = accessibleProfilesForLogin(login.id)
+    .filter(
+      (p) =>
+        !isDemoRestricted(isDemoMode(), login.role) &&
+        accessForProfile(login.id, login.role, p.id) === "write"
+    )
+    .map((p) => p.id);
 
   const counts = parseSyncReportCounts({
     inserted: body.inserted,
@@ -192,11 +247,17 @@ export async function POST(req: Request): Promise<Response> {
     if (discovered.length > 0) {
       newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
     }
+    // PER-IDENTITY OUTCOMES (#1889). A portal-level failure can still carry them: the run
+    // signed in far enough to see the proxy list, was refused two of the three downloads,
+    // and then broke. Applied to BOUND identities only — an outcome for a label nobody has
+    // mapped yet is a no-op, because there is no binding to hold standing state on.
+    applyIdentityOutcomes(account.account.id, reported, writableProfileIds);
     recordPortalRunReport(account.account, {
       ok: false,
       status,
       message,
       discovered: newlyWaiting,
+      ...provenance,
       // WHO ran the tool (#1757). Recorded on every reporting path so a sync-request
       // nudge can reach the login that actually operates this portal login, instead of
       // broadcasting to everyone who manages a mapped profile.
@@ -238,6 +299,11 @@ export async function POST(req: Request): Promise<Response> {
         newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
         revalidatePath("/integrations/patient-portals");
       }
+      // PER-IDENTITY OUTCOMES (#1889): what this run actually managed for each patient on
+      // the login, which one run routinely answers differently per person. Recorded
+      // against the LOGIN, before the reporting patient is resolved, so a run whose own
+      // identity is unmapped still tells the truth about the ones that are.
+      applyIdentityOutcomes(account.account.id, reported, writableProfileIds);
     }
     const resolved = resolvePortalIdentity(
       target.target.portalSlug,
@@ -262,6 +328,7 @@ export async function POST(req: Request): Promise<Response> {
           status,
           message,
           discovered: newlyWaiting,
+          ...provenance,
           reportedByLoginId: login.id,
         });
       }
@@ -285,6 +352,25 @@ export async function POST(req: Request): Promise<Response> {
       accountId: resolved.accountId,
       patientLabel: resolved.patientLabel,
     };
+    // A SUCCESSFUL DOWNLOAD IS ITSELF A COLLECTION (#1889), so it clears any standing
+    // "the portal declines this person" without the client having to spell the outcome
+    // out. Self-clearing and state-driven: a portal that starts offering the download
+    // again needs nobody to notice. `nothing-new` deliberately does NOT clear it — a run
+    // that found nothing new never proved the download is on offer.
+    //
+    // The resolved profile is intersected with the token's write set (#1960), the same way
+    // the per-identity outcomes above are. This call sits BEFORE the write gate below, and
+    // for a while that made it a real cross-profile write: an unauthorized token got its
+    // 403 and had already cleared the flag. The intersection is what makes it safe, not
+    // its position — reordering this handler cannot reintroduce the bug.
+    if (ev.ok && status === "downloaded") {
+      clearIdentityDeclined(
+        resolved.accountId,
+        resolved.patientLabel,
+        resolved.profileId,
+        writableProfileIds
+      );
+    }
   }
 
   const reachable = accessibleProfilesForLogin(login.id).some(
@@ -350,6 +436,7 @@ export async function POST(req: Request): Promise<Response> {
         status,
         message,
         discovered: newlyWaiting,
+        ...provenance,
         reportedByLoginId: login.id,
       });
     }

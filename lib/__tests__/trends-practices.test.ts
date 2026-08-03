@@ -69,19 +69,26 @@ describe("summarizePracticeWeeks", () => {
     expect(c.rate).toBeCloseTo(0.75);
   });
 
-  it("reads the current streak from the NEWEST end", () => {
-    // Oldest first: the run that matters is the one that reaches the last cell.
-    const c = summarizePracticeWeeks(
-      weeks(["met", "met", "met", "under", "met", "met"])
+  it("counts an interrupted history the same as an unbroken one (#1966)", () => {
+    // The ruling, as a property: the two ledgers below hold the same four met
+    // weeks out of six, one with the misses in the middle and one with them at
+    // the newest end. The retired streak read those as 2 and 0; the rate that
+    // replaced it reads both as what they are — the same consistency.
+    const interrupted = summarizePracticeWeeks(
+      weeks(["met", "met", "met", "under", "met", "under"])
     );
-    expect(c.currentStreak).toBe(2);
-    expect(c.bestStreak).toBe(3);
+    const trailing = summarizePracticeWeeks(
+      weeks(["met", "met", "met", "met", "under", "under"])
+    );
+    expect(interrupted).toEqual(trailing);
+    expect(interrupted.met).toBe(4);
+    expect(interrupted.rate).toBeCloseTo(4 / 6);
   });
 
-  it("reports no streak when the most recent week fell under", () => {
+  it("lets one missed week nudge the rate rather than zero it", () => {
     const c = summarizePracticeWeeks(weeks(["met", "met", "under"]));
-    expect(c.currentStreak).toBe(0);
-    expect(c.bestStreak).toBe(2);
+    expect(c.met).toBe(2);
+    expect(c.rate).toBeCloseTo(2 / 3);
   });
 
   it("has no rate without completed weeks", () => {
@@ -89,14 +96,14 @@ describe("summarizePracticeWeeks", () => {
       weeks: 0,
       met: 0,
       rate: null,
-      currentStreak: 0,
-      bestStreak: 0,
     });
   });
 });
 
 describe("practiceConsistencyText", () => {
-  it("states weeks met, and the streak only once there is one", () => {
+  it("states weeks met, and nothing about a run (#1966)", () => {
+    // The fixture that used to end "· 2-week streak": two met weeks reaching the
+    // newest cell. The sentence is now the rate alone.
     const text = practiceConsistencyText(
       summarizePracticeWeeks([
         { verdict: "met" },
@@ -105,13 +112,19 @@ describe("practiceConsistencyText", () => {
         { verdict: "met" },
       ])
     );
-    expect(text).toBe("Floor met in 3 of 4 completed weeks · 2-week streak");
+    expect(text).toBe("Floor met in 3 of 4 completed weeks");
+    expect(text).not.toMatch(/streak/i);
   });
 
-  it("omits a one-week streak", () => {
+  it("says the same thing whichever week was missed", () => {
     expect(
       practiceConsistencyText(
         summarizePracticeWeeks([{ verdict: "under" }, { verdict: "met" }])
+      )
+    ).toBe("Floor met in 1 of 2 completed weeks");
+    expect(
+      practiceConsistencyText(
+        summarizePracticeWeeks([{ verdict: "met" }, { verdict: "under" }])
       )
     ).toBe("Floor met in 1 of 2 completed weeks");
   });

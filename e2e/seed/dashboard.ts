@@ -84,6 +84,8 @@ import {
   ONBOARDING_PROFILE,
   E2E_LOGIN_WHATSNEW,
   WHATS_NEW_PROFILE,
+  E2E_LOGIN_REORDER,
+  REORDER_PROFILE,
   NO_GEAR_PROFILE,
   DUP_REVIEW_PROFILE,
 } from "../fixture-logins";
@@ -692,7 +694,7 @@ export function seedDailyLoop(): void {
     insBm.run(dailyId, dToday, 63.6, 58);
 
     // Steps: today + a trailing week (additive; one source per day) so the Steps-today
-    // card shows today vs the 7-day average with a direction arrow.
+    // card shows today vs the prior 7 days with a direction arrow.
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
     ).run(dailyId);
@@ -917,6 +919,18 @@ export function seedWhatsNew(): void {
     seedMemberLogin(E2E_LOGIN_WHATSNEW, whatsNewId, "write");
     console.log(
       `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
+    );
+  }
+
+  // ── #1891 phone dashboard-reorder fixture ────────────────────────────────────
+  // A dedicated login + profile whose `dashboard_layout` the reorder spec OWNS (it
+  // saves an order and a hidden id). No health data: Customize lists every eligible
+  // widget regardless, which is exactly the list the spec reorders. Idempotent.
+  {
+    const reorderId = fixtureProfileId(REORDER_PROFILE);
+    seedMemberLogin(E2E_LOGIN_REORDER, reorderId, "write");
+    console.log(
+      `e2e: seeded dashboard-reorder fixture — login ${E2E_LOGIN_REORDER} granted profile ${reorderId} (${REORDER_PROFILE}) (#1891)`
     );
   }
 }

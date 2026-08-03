@@ -165,7 +165,7 @@ model**:
 **The scope rule this establishes** (the real defense against endpoint sprawl):
 an appliance read endpoint must be a formatter over an existing shared `lib/`
 model — the Upcoming bus here; the digest or weekly-recap models if a
-stats/summary tile is ever wanted (recent activities, streak, weekly counts
+stats/summary tile is ever wanted (recent activities, weekly counts
 would be `GET /summary` over the digest/recap models — a later PR, same posture,
 explicitly NOT a new computation). Anything that would require a **new** engine
 or raw record access is out of scope, full stop.
@@ -280,7 +280,7 @@ instance before release:
    (`setActiveSituations`), which already alters supplement schedules. A write,
    but to an existing model; needs the same opt-in posture as `/event`. Decide
    with the vocabulary growth.
-2. **`/summary` (stats tiles)** — recent activities, streak, weekly counts as HA
+2. **`/summary` (stats tiles)** — recent activities, weekly counts as HA
    sensors. Deferred; when wanted it's a formatter over the existing
    digest/weekly-recap models (per the scope rule above), never a new
    computation.

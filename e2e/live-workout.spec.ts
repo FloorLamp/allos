@@ -68,11 +68,15 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
-  // focus set 1's weight to auto-seed it (#335) — completing the set auto-saves
-  // the draft (the Delete button appearing confirms the persist).
+  // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a
+  // field is not consent to have it written) — completing the set auto-saves the
+  // draft (the Delete button appearing confirms the persist).
   await pickActivity(page, "Barbell Bench Press");
   const weight = page.getByTestId("set1-weight");
-  await weight.focus();
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
@@ -101,6 +105,51 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+});
+
+// Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp
+// `liveStartEpoch` from the wall clock unconditionally, which is exactly the instant the #921
+// dock's elapsed timer ticks off: tapping an entry point mid-workout silently reset the
+// running session's clock. Every entry point now renders one offer state and resumes.
+//
+// The assertion is the EPOCH, not the label. The dock prints whole minutes, so a reset
+// clock is invisible in the rendered text for a full minute — a label-only assertion
+// would pass against the very bug this fixes.
+test("mid-session, the workout entry point resumes and the session clock survives (#1893)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const entry = page.getByRole("main").getByTestId("start-workout");
+  await expect(entry).toHaveAttribute("data-workout-offer", "start");
+  await expect(entry).toHaveText("Start workout");
+  await entry.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+
+  // Minimize to the dock — the form stays MOUNTED and the clock keeps running.
+  await page.getByTestId("minimize-workout").click();
+  const dock = page.getByTestId("workout-dock");
+  await expect(dock).toBeVisible();
+  const startedAt = await dock.getAttribute("data-start-epoch");
+  expect(startedAt).toMatch(/^\d+$/);
+
+  // The SAME control now offers the resume, and says so.
+  await expect(entry).toHaveAttribute("data-workout-offer", "resume");
+  await expect(entry).toHaveText("Resume workout");
+
+  // Tapping it reopens the running session instead of starting a new one.
+  await entry.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.getByTestId("minimize-workout").click();
+  await expect(dock).toBeVisible();
+  // The pin: the same start instant, so the same elapsed time continues.
+  await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
+
+  // No set was logged, so nothing auto-saved — restore and close without a draft.
+  await page.getByTestId("workout-dock-open").click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dock).toHaveCount(0);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {

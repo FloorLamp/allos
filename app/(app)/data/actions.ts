@@ -179,15 +179,8 @@ export interface ImportJob {
   result: ImportResult | null;
 }
 
-// Lightweight per-job status snapshot for the client poller (no heavy
-// result_json), so it can detect processing → ready/failed transitions.
-export interface ImportJobState {
-  id: number;
-  type: ImportType;
-  status: ImportJob["status"];
-  summary: string | null;
-  error: string | null;
-}
+// The poller's lightweight per-job snapshot moved to lib/toaster-poll.ts with the
+// poll itself (#1878): it is now a WIRE shape, owned by the module that parses it.
 
 // Kick off an extraction in the background. Inserts a 'processing' job row and
 // returns immediately with its id; the actual AI call runs fire-and-forget in the
@@ -309,15 +302,11 @@ export async function getImportJobs(): Promise<ImportJob[]> {
   });
 }
 
-// Lightweight status snapshot the client poller reads on an interval.
-export async function getImportJobStates(): Promise<ImportJobState[]> {
-  const { profile } = await requireSession();
-  return db
-    .prepare(
-      "SELECT id, type, status, summary, error FROM import_jobs WHERE profile_id = ? ORDER BY id"
-    )
-    .all(profile.id) as ImportJobState[];
-}
+// The client poller's status snapshot USED to live here as a read action. It is
+// now the route handler app/api/jobs/imports — a Server Action's response carries
+// a freshly rendered page tree that Next applies, so polling one repainted the
+// page under a half-typed record form outside the dirty-form registry (#1878).
+// See lib/toaster-poll.ts.
 
 // Commit a reviewed job's stored result via the existing commit paths, then
 // delete the job row. Reads the result from the DB (never trusts client-passed

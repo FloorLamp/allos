@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -22,6 +27,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
 //    auto-retrying `expect(...)` — settledClick guarantees the action COMPLETED
 //    server-side; React then applies the revalidated RSC, which the retry catches.)
 //
+// 1b. …and the very next thing you assert is that REVALIDATED RENDER — a marker
+//    that exists only once the router has applied the new tree:
+//        → settledClickApplied(page, locator, marker)
+//    The action's own resolution and the router's apply are two different events
+//    with wildly different latencies (#1964: 0.03–0.39s vs 0.47–3.33s throttled,
+//    with 7× run-to-run spread), and settledClick only ever promised the first.
+//    This helper waits for both, under ONE named ceiling, so the call site declares
+//    which guarantee it needs instead of ceiling-patching the assertion below it.
+//
 // 2. The click is a NAVIGATION to another route (a Next `<Link>`/tab `<a href>`)
 //    and the flake is the pre-hydration swallow (#500/#830):
 //        → followLink(page, locator, /destination-url/)
@@ -30,10 +44,16 @@ import { expect, type Locator, type Page } from "@playwright/test";
 //    tolerates the un-hydrated window by retrying.
 //
 // 3. Everything else — a pure client toggle, a value that settles in place, a
-//    toast that appears — needs NO special helper. Assert it with a plain
+//    toast that appears — needs NO settle on the network. Assert it with a plain
 //    auto-retrying `expect(locator).toBeVisible()` / `.toHaveText(...)`. Playwright
 //    retries the assertion for you; that IS the wait. Reaching for a helper here
 //    only hides which state you actually depend on.
+//        → hydratedClick(page, locator) when the CLICK ITSELF can be lost — a
+//          disclosure/chip/menu whose handler React may not have attached yet, and
+//          which a retry loop would toggle back. Then assert what it revealed.
+//    Do NOT reach for settledClick here. A client toggle posts nothing, so there is
+//    nothing to settle on; before #1952 it appeared to work only because it accepted
+//    a bystander's POST, which is the silent-green failure that issue is about.
 //
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
@@ -573,35 +593,231 @@ export async function settledCheckSave(
 // state (decision tree above). If a click fires an action AND navigates, this
 // still resolves on the action POST.
 //
-// ALSO NOT RELIABLE on a page with steady background action-POST traffic (the
-// dashboard's watchers/pollers): the wait can resolve on a bystander POST while
-// the mutation's own request is still in flight — and a follow-up `page.reload()`
-// then aborts it (the write is lost, not just late). There, prefer asserting a
-// SERVER-rendered marker that only the completed mutation can produce
-// (the wellbeing card's `mood-server-logged` marker is the precedent) — the
-// assertion's own retry is the settle.
+// THE WAIT IS CORRELATED WITH THE CLICK (#1952). It used to accept ANY same-origin
+// POST, which is not a contract at all: it cannot tell this click's action from a
+// bystander's, and the failure mode is SILENT — a spec pointed at a control that
+// posts NOTHING passes on somebody else's traffic, and only goes red when that
+// traffic disappears. That is exactly what happened: both completion toasters used
+// to observe through a read Server Action (a POST) every few seconds on every
+// authenticated page, ~22 specs were coasting on it, and moving that poll to a
+// `fetch` GET (#1949) turned all of them red at once. Two filters replace "any
+// POST":
+//
+//   1. The request must have STARTED AFTER the click. We collect `page.on("request")`
+//      from the instant before `locator.click()`, so a poll already in flight when
+//      the click landed can no longer satisfy the wait. That is the #1437
+//      false-settle (settle on a bystander, then `goto` aborts the real write).
+//   2. The request must be a SERVER ACTION, which Next marks with a `next-action`
+//      header carrying the action id. A route-handler POST (`/api/…`) has no such
+//      header and is by construction not the click's action.
+//
+//      This started life as "must target this page's route", which is true of a
+//      Server Action — Next posts one to the current document URL — but pinning
+//      that route when the wait is ARMED turned out to be brittle in exactly the
+//      way `followLink` documents above: the App Router can commit a destination
+//      and then UNWIND to the source route while the interaction is still running.
+//      When it does, the click's own action posts from the route the page has
+//      unwound to, the arm-time pin rejects it, and the timeout blames the call
+//      site for a navigation that happened underneath it (measured on
+//      `illness-episode-followups`, where the Save action and both toaster polls
+//      all posted to `/` after an unwind off `/medical/episodes/2`). Keying on the
+//      header identifies the same class of request without caring which route it
+//      leaves from, so it is both tighter (a same-route `/api` POST no longer
+//      qualifies) and immune to the unwind.
+//
+//      The one Server Action WITHOUT that header is a pre-hydration native `<form>`
+//      submit, which carries its action id in the body instead — that one is still
+//      matched on the route, which it necessarily posts to, being a document
+//      navigation. `opts.url` overrides both for a click that posts elsewhere.
+//
+// WHAT THIS DOES NOT GUARANTEE, said plainly: two Server Actions are
+// indistinguishable from outside the browser unless you pin their action ids, which
+// are build-generated hashes no spec should hard-code. So a background actor that
+// posts an action AFTER the click can still satisfy this wait. Nothing in the app
+// does that today (#1949 left the toasters on `fetch` GETs), and adding one would be
+// visible in `lib/__tests__/chrome-refresh-scan.test.ts`'s chrome-actor list — but
+// the guarantee is "a Server Action POST, caused no earlier than this click", not
+// "this click's action". Where that residue matters (a settled click followed by a
+// NAVIGATION), keep asserting the durable server-rendered marker the completed
+// mutation produces before navigating — the rule this module's #1437 note already
+// states, and the wellbeing card's `mood-server-logged` precedent.
 export async function settledClick(
   page: Page,
   locator: Locator,
-  opts: { timeout?: number } = {}
+  opts: { timeout?: number; url?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 15_000;
-  const origin = new URL(page.url()).origin;
-  await expect(locator).toBeVisible();
-  await Promise.all([
-    page.waitForResponse(
+  const here = new URL(page.url());
+  // ONE ceiling, honoured by BOTH halves (#1858). This pre-assert used to run at
+  // Playwright's 5s expect default and ignore `opts.timeout` entirely, so a caller
+  // that widened the ceiling because the PREVIOUS interaction's revalidated render
+  // is slow still lost here — the target of the click is itself part of that
+  // re-render (`wellness-practices`' post-create card, the census row that named
+  // this). The budget is a shared DEADLINE rather than two independent ceilings, so
+  // `{ timeout: 20_000 }` can never consume 40s and re-open the >30s trap the
+  // "declared ceiling above 30s" section of docs/internals/e2e-hygiene.md is about;
+  // the response wait gets whatever the pre-assert did not spend (floored, so it
+  // always gets a real attempt and can report its own diagnosis, not a 0ms expiry).
+  const deadline = Date.now() + timeout;
+  await expect(locator).toBeVisible({ timeout });
+  const rest = Math.max(1_000, deadline - Date.now());
+
+  // Requests observed from the moment the click is dispatched. A WeakSet keyed on
+  // Playwright's own Request object is exact identity — no URL/timing heuristics —
+  // and `response.request()` returns that same object.
+  const causedByClick = new WeakSet<Request>();
+  let collecting = false;
+  const onRequest = (request: Request) => {
+    if (collecting) causedByClick.add(request);
+  };
+  // Every same-origin POST seen during the wait, with the reason it was refused.
+  // A timeout here is nearly always a question about WHICH post happened, so the
+  // failure answers it instead of making the next reader re-instrument (#1952).
+  const rejected: string[] = [];
+  page.on("request", onRequest);
+  try {
+    const settled = page.waitForResponse(
       (resp) => {
-        if (resp.request().method() !== "POST") return false;
+        const request = resp.request();
+        if (request.method() !== "POST") return false;
+        let target: URL;
         try {
-          return new URL(resp.url()).origin === origin;
+          target = new URL(resp.url());
         } catch {
           return false;
         }
+        if (target.origin !== here.origin) return false;
+        if (!causedByClick.has(request)) {
+          rejected.push(`${target.pathname} (already in flight at click time)`);
+          return false;
+        }
+        // Next stamps every hydrated Server Action with the id it is dispatching;
+        // a pre-hydration native form submit has no header and is matched on the
+        // route it necessarily posts to.
+        const isServerAction = request.headers()["next-action"] != null;
+        const matches = opts.url
+          ? opts.url.test(resp.url())
+          : isServerAction || target.pathname === here.pathname;
+        if (!matches) {
+          rejected.push(
+            `${target.pathname} (started after the click, but ` +
+              (opts.url
+                ? `does not match ${opts.url}`
+                : `carries no next-action header and is not this page's route`) +
+              `)`
+          );
+        }
+        return matches;
       },
-      { timeout }
-    ),
-    locator.click({ timeout }),
-  ]);
+      { timeout: rest }
+    );
+    // Set INSIDE the same synchronous turn as the click: the wait above is already
+    // listening (a fast action cannot resolve in the gap), and the browser cannot
+    // have issued the click's request before the click.
+    collecting = true;
+    // The click and the wait share one deadline, so a click that never becomes
+    // actionable (a disabled Save, a button under a closing popover) expires at the
+    // same moment as the response wait — and `Promise.all` then reports whichever
+    // rejected first, which is usually the wait. That would blame "no POST" for a
+    // click that never happened. Hold the click's failure and report it alongside,
+    // the same way followLink surfaces `lastClickError` (#890).
+    let clickError: Error | null = null;
+    const clicked = locator.click({ timeout: rest }).catch((err: unknown) => {
+      clickError = err instanceof Error ? err : new Error(String(err));
+    });
+    await Promise.all([settled, clicked]);
+    // The response landed, but the click behind it did not: something else on the
+    // page produced that POST, so the caller's premise is already false.
+    if (clickError) throw clickError;
+  } catch (err) {
+    // The old helper's timeout said only "waiting for event response", which reads
+    // as a slow server on a control that was never going to post. Name the real
+    // question instead — #1952's whole lesson is that this timeout usually means
+    // the call site is wrong, not the app.
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    if (wrapped.message.includes("waitForResponse")) {
+      wrapped.message +=
+        `\n\n[settledClick] armed on ${here.pathname}; page is now ${new URL(page.url()).pathname}.` +
+        `\n[settledClick] no same-origin POST to ${here.pathname} started after ` +
+        `this click. If this control is a pure CLIENT toggle (a disclosure, a chip, ` +
+        `an overflow menu, a dialog opener) it never posts: use hydratedClick and ` +
+        `assert what it reveals. If it navigates, use followLink. If it posts ` +
+        `somewhere other than this route, pass { url }.` +
+        (rejected.length
+          ? `\n[settledClick] same-origin POSTs seen while waiting:\n  - ${rejected.join("\n  - ")}`
+          : `\n[settledClick] NO same-origin POST was seen at all during the wait — ` +
+            `not even a background one. The page produced no traffic, so the old ` +
+            `"any POST" helper would have timed out here too; suspect a stalled or ` +
+            `navigated page rather than this contract.`);
+    }
+    throw wrapped;
+  } finally {
+    page.off("request", onRequest);
+  }
+}
+
+// Click a Server-Action control AND return only once the router has APPLIED the
+// revalidated tree, proven by a marker that tree renders (issue #1858).
+//
+// WHY THIS IS A SECOND HELPER. `settledClick` guarantees exactly one thing: the
+// action completed SERVER-SIDE. The router applying the revalidated payload is a
+// separate, much slower event, and the two were being spelled the same way at
+// hundreds of call sites — click, then assert the re-rendered DOM on the plain 5s
+// expect default. #1964 measured the gap end to end: the action's own resolution
+// lands 0.03–0.39s after `settledClick` returns even under a 20× CPU throttle,
+// while the apply lags 0.06–0.27s unthrottled and 0.47–3.33s THROTTLED, with 7×
+// run-to-run spread — because `revalidatePath` also invalidates the client router
+// cache, so every visible <Link> re-prefetches (~25 `_rsc` GETs, then the whole set
+// again under a second cache key) on the same main thread that has to render the
+// payload. Five recurring-failure census rows came out of that one gap, four of
+// them closed by raising a named ceiling at the call site. This helper is that
+// ceiling, named ONCE, attached to the guarantee it actually belongs to.
+//
+// THE CONTRACT. When this returns: (1) a correlated Server Action POST completed —
+// everything `settledClick` promises, and nothing more (see its note above); and
+// (2) `applied` is VISIBLE, i.e. the browser has committed a tree containing it.
+//
+// WHAT IT DOES NOT GUARANTEE, said plainly:
+//   • It cannot tell WHICH tree it saw. If `applied` was already visible before the
+//     click, this returns immediately and proves nothing at all. The marker must be
+//     something the mutation PRODUCES or CHANGES — the "prove a guard both ways"
+//     rule in docs/internals/e2e-hygiene.md. Assert-what-changed, not what was
+//     already there.
+//   • A marker a CLIENT component can render from its own state (an optimistic
+//     update, a `useState` flip in the handler) is not evidence of a server render.
+//     Pick a server-rendered marker — the `mood-server-logged` precedent.
+//   • The marker is a POSITIVE one on purpose. An ABSENCE ("the panel closed") is
+//     the #1964 trap: a stale tree and an applied tree are the same DOM when the
+//     thing you are looking for is gone, so the assertion cannot say which it saw.
+//     If absence is what your test is about, pass a positive marker here and assert
+//     the absence on the line below, against a page already proven settled.
+//   • It is not a general "the router applied" signal, and there deliberately is
+//     none: every available signal is heuristic, and a wrong one would buy a new
+//     class of FALSE GREEN. The marker is supplied by the call site because the
+//     call site is the only thing that knows what the re-render should say.
+//
+// The two halves carry SEPARATE ceilings because they fail for different reasons:
+// `timeout` (15s, settledClick's) is "the action never posted", which is nearly
+// always a wrong call site; `appliedTimeout` (20s — the value all four census rows
+// independently converged on, ~6× the worst apply measured) is "the render never
+// arrived". Their sum can exceed the 30s test default, so a call site that raises
+// either adds `test.slow()`, per the "declared ceiling above 30s" rule in
+// docs/internals/e2e-hygiene.md.
+export async function settledClickApplied(
+  page: Page,
+  locator: Locator,
+  applied: Locator,
+  opts: { timeout?: number; url?: RegExp; appliedTimeout?: number } = {}
+): Promise<void> {
+  const { appliedTimeout = 20_000, ...clickOpts } = opts;
+  await settledClick(page, locator, clickOpts);
+  await expect(
+    applied,
+    "[settledClickApplied] the Server Action completed, but the marker proving " +
+      "the router applied the revalidated tree never rendered. Either the " +
+      "re-render is genuinely slower than appliedTimeout (raise it AND add " +
+      "test.slow()), or this marker is not in the tree the action revalidates."
+  ).toBeVisible({ timeout: appliedTimeout });
 }
 
 // Fill a form field so its value durably lands in React STATE, not just the DOM —
@@ -626,6 +842,20 @@ export async function settledClick(
 // or navigation kept it. When the fill feeds a save whose success is SILENT (empty
 // is valid), also confirm the PERSISTED effect after saving (reload + assert), the
 // email-auth precedent.
+//
+// DO NOT USE on a field whose RENDERED text differs from the value you fill — it
+// would HANG, not fail. The self-check below is `toHaveValue(value)`, and a
+// `DateField` re-renders `2026-08-03` as `Aug 3, 2026` (its input's `value` is
+// `formatDateWithYear(val)`), so the post-condition can never hold and this retries
+// to its timeout on a fill that WORKED. Those fields are self-verifying anyway —
+// a DateField's calendar opens only through React's `onFocus`, so a swallowed fill
+// fails on the very next line. Assert the downstream effect instead. (#1941)
+//
+// The retry loop — not the hydration check — is what rescues a control whose
+// `onFocus` WRITES state (`Combobox` opens its listbox; `StrengthSets`' first-set
+// fields apply the ghost suggestion). `.fill()` focuses before it types, so that
+// write interleaves with the clear-and-type and the first attempt lands corrupted
+// or empty; the second attempt sticks. (#1941)
 export async function settledFill(
   page: Page,
   field: Locator,
@@ -835,4 +1065,59 @@ export function installStreamRevealGuard(page: Page): void {
       return result;
     };
   }
+}
+
+// Open the shared Combobox's dropdown (components/Combobox.tsx) on an EMPTY query —
+// which, for a picker that passes `groupFor`, is its relevance view (#1675).
+//
+// Same hydration root cause as settledFill/settledSelect: the list opens from the
+// input's React `onFocus`, so a click landing before React attaches focuses the DOM
+// node and nothing else — and because the node is then already focused, a retry that
+// simply clicks again fires no second focus event. Waiting for the fiber markers first
+// is what makes the open reliable; the assertion sits inside the retry so a slow
+// hydration re-clicks rather than leaving the caller to time out on a closed list.
+export async function openCombobox(
+  page: Page,
+  field: Locator,
+  opts: { timeout?: number } = {}
+): Promise<Locator> {
+  const timeout = opts.timeout ?? 15_000;
+  await expect(field).toBeVisible();
+  await expect(async () => {
+    const hydrated = await field.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "combobox not hydrated yet").toBe(true);
+    await field.click();
+    await expect(page.getByRole("listbox")).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout });
+  return page.getByRole("listbox");
+}
+
+// Choose a shared-Combobox option by its VISIBLE LABEL — the combobox analog of
+// settledSelect, for the pickers #1675 converted from `<select>`s.
+//
+// Typing the label first is deliberate: it is the app's own fuzzy search, so the row
+// is found the way a user finds it, and the list is narrowed to the intended match
+// instead of relying on a position in a ~200-row ranked list. The option is addressed
+// by its ACCESSIBLE NAME with `exact`, so two rows that read the same fail loudly here
+// (the #531 rule the option builder enforces) rather than picking an arbitrary one.
+export async function settledPickOption(
+  page: Page,
+  field: Locator,
+  label: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 15_000;
+  await expect(async () => {
+    await settledFill(page, field, label, { timeout: 5_000 });
+    const option = page
+      .getByRole("listbox")
+      .getByRole("button", { name: label, exact: true });
+    await expect(option).toBeVisible({ timeout: 2_000 });
+    await option.click();
+    await expect(field).toHaveValue(label, { timeout: 2_000 });
+  }).toPass({ timeout });
 }

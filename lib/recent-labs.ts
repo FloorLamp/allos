@@ -7,7 +7,7 @@ import {
   type FlagTone,
 } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
-import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import { readingDetailHref, type AppRoute } from "./hrefs";
 import { daysBetweenDateStr } from "./date";
 
 // Recency floor (#1216): a reading older than this many days is "stale" — still
@@ -98,7 +98,7 @@ export function recentLabHighlights(
         unit: r.unit,
         flag: r.flag,
         date: r.date,
-        href: biomarkerViewHref(r.canonical_name, r.name),
+        href: readingDetailHref(r.canonical_name, r.name),
         stale: age != null && age > RECENT_LAB_STALE_DAYS,
       };
     });

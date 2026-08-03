@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
@@ -67,7 +67,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
   }) => {
     test.slow();
     await page.goto("/records/specialty/dental");
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-dental-record-panel-toggle")
     );
@@ -121,7 +121,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // The created provider now exists — reopening the picker offers it (proving the
     // create-on-type name reached the registry).
     await page.reload();
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-dental-record-panel-toggle")
     );

@@ -383,9 +383,49 @@ A request is **never a schedule**: nothing is promised to run at a time, and the
 row carries only the portal and login short ids — never an address. It
 **expires** after a week rather than sitting there forever, and it **answers
 itself**: the next reported run for that login clears it, including a failed one
-(the person went to the machine; whether the run then worked is what the login
-row's status is for). The companion tool never learns requests exist — there is nothing
-new on the wire and nothing to acknowledge.
+where somebody was at the machine (they went and did the thing; whether the run
+then worked is what the login row's status is for).
+
+**Two reports deliberately do not clear it**, because in both cases nobody
+actually checked the portal:
+
+- **A delivery, not a visit.** The companion tool can send records it already has
+  on disk without opening a portal at all. Such a report still records its sync
+  event, still moves each patient's **"Last synced"** line, and still shows up in
+  **Data → Review** and the integrations accounting — the documents genuinely
+  arrived. What it does **not** do is answer a request or move the
+  checked-the-portal clock, so a login that is only ever pushed to still becomes
+  due for a real check.
+- **A scheduled run that failed with nobody there.** The device-trust cookie
+  expired, or the portal asked for a code — which is exactly when someone _does_
+  need to go to the machine. The ask stays, and picks up the reason the run gave:
+  _"The scheduled run couldn't finish (passkey prompt) — someone needs to go to
+  the machine."_ A scheduled run that **succeeds** clears the request as any run
+  does: the records arrived, which is all the request ever wanted.
+
+**A tool may ask what is wanted, but nothing else.** Now that a portal login can
+sign itself in unattended, a scheduled pass can read the open requests
+(`GET /api/documents/requests`) and run the ones it can run by itself — which is
+worth having, because an after-a-visit request fires the moment new records
+appear rather than waiting for tomorrow's fixed schedule. The answer is
+**short ids only, never an address**, open and unexpired requests only, and only
+for the logins that token could file documents for. There is nothing to claim,
+nothing to acknowledge, and no way for a tool to create or close a request except
+by reporting a run as it always has. Requests still reach a **person** through
+Upcoming and the digest, unchanged. If somebody else answers a request between
+the tool's asking and its running, nothing goes wrong: the run's own report
+closes it, and a second copy of the same document is refused as a duplicate.
+
+**When a portal simply won't hand a patient's records over.** One login often
+covers several people, and a portal will sometimes show a proxy their visit list
+while offering no download at all. That is a settled answer, not a fault — the
+same tomorrow and next month, and nothing anyone running the tool can fix — so
+allos records it **per patient**, on that patient's own row: _"the portal doesn't
+offer downloads for this proxy — nothing to fix."_ It is said once, quietly. It
+raises no failure badge and no notification, and it stops the staleness and
+after-a-visit nudges **for that person only** — the others on the same login are
+untouched, which is the whole reason it is recorded per patient rather than per
+run. It clears itself the first time that patient's records do come through.
 
 **Who hears about it, and how loudly.** The reminder goes to the login whose
 token actually reports runs for that portal login — your phone about your portal
@@ -410,8 +450,8 @@ but a heads-up before you'd burn.
    (stored at ~11 km — city scale, never a street address). This is the only
    prerequisite.
 2. Go to **Data → Import → Weather & UV (Open-Meteo)** and click **Enable**. The
-   hourly **UV index** and **solar irradiance** (shortwave/direct/diffuse W/m²)
-   for that spot then sync automatically every hour via
+   hourly **UV index**, **solar irradiance** (shortwave/direct/diffuse W/m²) and
+   **precipitation** (mm) for that spot then sync automatically every hour via
    [Open-Meteo](https://open-meteo.com/), and you can press **Sync now** any
    time.
 3. Optionally add your **skin type (Fitzpatrick I–VI)** under
@@ -446,10 +486,13 @@ network: the model degrades **live UV → a clear-sky estimate** (Open-Meteo's
 minutes-only behavior**. The overexposure side stays silent without a skin-type
 threshold rather than guessing.
 
-**Cache.** The hourly UV series is cached **per location, shared across
-profiles** (UV at a coordinate+hour is one physical fact), keyed on
-`(lat, lng, hour_ts)` and deduped on that key — a re-fetch of the same hour
-rewrites nothing. Every sync appends an `integration_sync_events` row under the
+**Cache.** The hourly series (UV, irradiance, precipitation) is cached **per
+location, shared across profiles** (the weather at a coordinate+hour is one
+physical fact), keyed on `(lat, lng, hour_ts)` and deduped on that key — a
+re-fetch of the same hour rewrites nothing. The hourly precipitation is what
+lets a weather-parked activity say _when_ the rain falls ("heavy rain in the
+morning") instead of printing a millimetre total; a day with too few cached
+hours simply says nothing about timing. Every sync appends an `integration_sync_events` row under the
 acting profile (visible in **Data → Review**).
 
 ## Comparing sources & picking a primary one

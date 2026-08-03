@@ -81,6 +81,15 @@ export const AUDIT_ACTIONS = {
   // the whole biomarker history" must be logged here too — not only when the ZIP
   // button was used. target = the dataset key, detail = the row count that left.
   exportDataset: "export.dataset",
+  // Retroactive dose-ledger corrections (#1933). A dose LOG written by tapping today's
+  // check-off is ordinary use and is not audited — the ledger row is its own record.
+  // A HISTORICAL correction is different: backfilling, amending, or removing an
+  // administration record rewrites what the chart says was given, and a caregiver may
+  // be correcting a dose somebody else gave. target = the intake item id, detail = the
+  // affected date (identifiers and dates only — never the amount, product, or name).
+  doseLogBackfill: "dose-log.backfill",
+  doseLogAmend: "dose-log.amend",
+  doseLogDelete: "dose-log.delete",
 } as const;
 
 // DELIBERATELY UNAUDITED PHI egress, recorded here so it reads as a decision, not a

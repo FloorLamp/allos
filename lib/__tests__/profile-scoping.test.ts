@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import {
   isCrossProfileSqlModule,
   usesProfileIdInList,
 } from "@/lib/cross-profile";
+import {
+  REPO,
+  execArgs,
+  norm,
+  prepareArgs,
+  readSource,
+  relPath,
+  sourceFiles,
+} from "./sql-scan";
 
 // Static leak-detection for the multi-user conversion. This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
@@ -17,8 +25,10 @@ import {
 // profile_id). It is a coarse guard, not a proof: the SHORT allowlist below
 // carves out the handful of statements that are safe for reasons text can't see
 // (an id already fetched by a profile-scoped query, or SQL composed at runtime).
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+//
+// The source enumeration and the `.prepare`/`.exec` argument extraction live in
+// ./sql-scan.ts, shared with the #1893 gated-table write scan — one scanner, two
+// questions asked of the same statements.
 
 // The directly profile-owned tables (those carrying a profile_id column). A
 // `.prepare` statement naming any of these must also name profile_id. This is now
@@ -111,6 +121,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes:
       "SELECT 1 FROM portal_identities WHERE account_id = ? AND patient_label = ?",
     why: "recordPendingForAccount (#1739): asks only whether this (login, label) has ALREADY BEEN ANSWERED — bound or ignored — so an identity a run rediscovers every hour is not re-offered as pending. It is an existence probe on the external identity key; it reads no profile_id and returns no row data, and the pending table it guards carries no profile at all",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT id, profile_id AS profileId FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "applyIdentityOutcomes / clearIdentityDeclined (#1889): the same resolve-the-owner lookup as portalIdentityProfile, keyed on the EXTERNAL identity a run report names rather than on a surrogate id the client could not know. It asks 'whose binding is this, so I can check the reporting token may write it' — filtering by profile_id would presuppose that answer. BOTH functions intersect against the token's write set inside the core (#1960 moved clearIdentityDeclined onto that footing after its one caller was calling it before its own write gate), and the UPDATE that follows IS profile-scoped (id AND profile_id, a compare-and-swap)",
   },
   {
     file: "lib/portals.ts",
@@ -403,6 +419,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 123 one-shot GLOBAL dedupe read: enumerates every profile's practice targets to collapse normalized-identity duplicates before adding the UNIQUE index — profile_id is carried into the per-owner keeper map, and every mutation it drives is profile-scoped.",
   },
   {
+    file: "lib/migrations/versions/148-retire-run-milestones.ts",
+    includes: "DELETE FROM milestones",
+    why: "migration 148 (#1939) one-shot GLOBAL retirement: the `streak:` and `adherence:` milestone families were retired for EVERY profile at once, so the delete is deliberately unscoped — a per-profile version would leave the ruling half-applied on whichever profiles the loop missed. It can only remove rows the engine no longer mints, and it names the retired discriminators explicitly, so no other profile's milestone (workouts:, goal:, endurance-plan:) is reachable by it.",
+  },
+  {
     file: "lib/migrations/versions/123-practice-target-unique.ts",
     includes: "SELECT id, profile_id, practice FROM practice_logs ORDER BY id",
     why: "migration 123 one-shot GLOBAL log reconciliation: enumerates practice logs with their profile_id, resolves each against that profile's keeper map, and re-keys each mutation by id AND profile_id; histories never cross profiles.",
@@ -481,99 +502,6 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   },
 ];
 
-function walk(dir: string, out: string[]) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      if (e.name === "node_modules" || e.name === ".next") continue;
-      walk(p, out);
-    } else if (e.isFile()) {
-      out.push(p);
-    }
-  }
-}
-
-// The source surfaces to scan: all of lib (minus tests), every server-action
-// file, and every route handler.
-function sourceFiles(): string[] {
-  const all: string[] = [];
-  walk(path.join(REPO, "lib"), all);
-  walk(path.join(REPO, "app"), all);
-  return all.filter((f) => {
-    const rel = path.relative(REPO, f);
-    if (!f.endsWith(".ts") && !f.endsWith(".tsx")) return false;
-    if (rel.includes("__tests__") || f.endsWith(".test.ts")) return false;
-    if (rel.startsWith("lib/")) return true;
-    return (
-      f.endsWith("actions.ts") ||
-      f.endsWith("route.ts") ||
-      f.endsWith("route.tsx")
-    );
-  });
-}
-
-// Extract the first argument of every call matching `opener` (a global RegExp that
-// ends at the call's opening paren, e.g. /\.prepare\s*\(/g or /\.exec\s*\(/g).
-// Returns either the string literal's contents (kind "sql") or the raw expression
-// text (kind "expr").
-function firstStringArgs(
-  src: string,
-  opener: RegExp
-): { kind: "sql" | "expr"; text: string }[] {
-  const out: { kind: "sql" | "expr"; text: string }[] = [];
-  const re = new RegExp(opener.source, "g");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) {
-    let i = m.index + m[0].length;
-    while (i < src.length && /\s/.test(src[i])) i++;
-    const q = src[i];
-    if (q === "`" || q === '"' || q === "'") {
-      // Read to the matching, unescaped closing quote/backtick. Template
-      // interpolations in this codebase never contain a backtick, so a naive
-      // scan to the next backtick is safe.
-      let j = i + 1;
-      let buf = "";
-      while (j < src.length) {
-        const c = src[j];
-        if (c === "\\") {
-          buf += src[j + 1] ?? "";
-          j += 2;
-          continue;
-        }
-        if (c === q) break;
-        buf += c;
-        j++;
-      }
-      out.push({ kind: "sql", text: buf });
-      re.lastIndex = j + 1;
-    } else {
-      // Non-literal expression argument: capture up to the matching ')'.
-      let depth = 1;
-      let j = i;
-      let buf = "";
-      while (j < src.length && depth > 0) {
-        const c = src[j];
-        if (c === "(") depth++;
-        else if (c === ")") {
-          depth--;
-          if (depth === 0) break;
-        }
-        buf += c;
-        j++;
-      }
-      out.push({ kind: "expr", text: buf.trim() });
-      re.lastIndex = j;
-    }
-  }
-  return out;
-}
-
-// The `.prepare(` and `.exec(` argument extractors (both parametrize firstStringArgs).
-const prepareArgs = (src: string) => firstStringArgs(src, /\.prepare\s*\(/g);
-const execArgs = (src: string) => firstStringArgs(src, /\.exec\s*\(/g);
-
-const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-
 // POSITIONAL profile_id check (issue #1208 fix 1). The old guard passed any
 // owned-table statement that merely MENTIONED `profile_id` anywhere — including as a
 // bare SELECT column (`SELECT profile_id FROM t WHERE id = ?` is an id-only lookup
@@ -619,8 +547,8 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
     const violations: string[] = [];
 
     for (const file of files) {
-      const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const src = fs.readFileSync(file, "utf8");
+      const rel = relPath(file);
+      const src = readSource(file);
       for (const arg of prepareArgs(src)) {
         if (arg.kind === "expr") {
           const ok = ALLOW_NON_LITERAL.some(
@@ -666,9 +594,9 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
     const violations: string[] = [];
 
     for (const file of files) {
-      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const rel = relPath(file);
       if (rel.startsWith("lib/migrations/versions/")) continue; // schema/one-shot DDL
-      const src = fs.readFileSync(file, "utf8");
+      const src = readSource(file);
       for (const arg of execArgs(src)) {
         if (arg.kind !== "sql") continue; // a computed exec arg can't be inspected
         const sql = norm(arg.text);
@@ -773,8 +701,8 @@ describe("cross-profile scoping: profile_id IN only in registered modules", () =
     const violations: string[] = [];
 
     for (const file of files) {
-      const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const src = fs.readFileSync(file, "utf8");
+      const rel = relPath(file);
+      const src = readSource(file);
       for (const arg of prepareArgs(src)) {
         if (arg.kind !== "sql") continue; // non-literal args handled by the rule above
         const sql = norm(arg.text);

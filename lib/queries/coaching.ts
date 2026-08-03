@@ -33,6 +33,7 @@ import {
   getProfileSetting,
   setProfileSetting,
   type DistanceUnit,
+  type TemperatureUnit,
   type WeightUnit,
 } from "../settings";
 import { sameSituation, BUILTIN_POOR_SLEEP_SITUATION } from "../situations";
@@ -46,7 +47,11 @@ import {
   type ConditionConsideration,
 } from "../condition-training-considerations";
 import { getReportedBurden } from "./reported-burden";
-import { canDoIndoorActivity, getToleranceEnvelopes } from "./weather-training";
+import {
+  canDoIndoorActivity,
+  getPrecipitationHours,
+  getToleranceEnvelopes,
+} from "./weather-training";
 import { getWeatherDay } from "./weather-situations";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
@@ -161,7 +166,11 @@ export function getConditionConsiderations(
 export function gatherCoachingInput(
   profileId: number,
   weightUnit: WeightUnit,
-  distanceUnit: DistanceUnit
+  distanceUnit: DistanceUnit,
+  // The LOGIN's temperature scale (#1967) for the weather-parking figure. Defaults to
+  // canonical °C: the notification path has no login to read a preference from, and
+  // emitting canonical units there is deliberate policy.
+  temperatureUnit: TemperatureUnit = "C"
 ): CoachingInput {
   const todayStr = today(profileId);
   const illness = getIllnessCoachingContext(profileId, todayStr);
@@ -184,6 +193,10 @@ export function gatherCoachingInput(
       today: getWeatherDay(profileId, todayStr),
       envelopes: getToleranceEnvelopes(profileId, todayStr),
       canDo: (candidate: string) => canDoIndoorActivity(profileId, candidate),
+      // Today's hourly precipitation (#1967), so a WET park can say when the rain
+      // falls instead of printing millimetres — or say nothing about timing when the
+      // hours don't cluster.
+      hoursToday: getPrecipitationHours(profileId, todayStr),
     },
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
@@ -219,6 +232,7 @@ export function gatherCoachingInput(
     // the user is in the middle of. One computation, read here so every surface agrees.
     workoutActive: getWorkoutPresence(profileId).state === "active",
     weightUnit,
+    temperatureUnit,
   };
 }
 

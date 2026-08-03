@@ -42,15 +42,19 @@ test.describe("dashboard daily loop (#1221)", () => {
     ).toHaveAttribute("href", "/nutrition");
   });
 
-  test("Steps-today card shows today's steps versus the 7-day average", async () => {
+  test("Steps-today card shows today's steps versus the prior 7 days", async () => {
     await page.goto("/");
     const card = page.getByRole("main").getByTestId("steps-today-widget");
     await expect(card).toBeVisible();
     await expect(card.getByTestId("steps-today-count")).toContainText(/[\d,]+/);
-    await expect(card).toContainText(/7-day average/);
-    // Today (9,400) is above the trailing average → an up delta line renders.
+    // The baseline names the days it covers (#1909). "7-day average" is the phrase
+    // this card must NOT use: the metric detail page's Rolling summary answers a
+    // different question over a different window and would own that label.
+    await expect(card).toContainText(/Prior 7 days · [\d,]+ steps a day/);
+    await expect(card).not.toContainText(/7-day average/);
+    // Today (9,400) is above the baseline → an up delta line renders.
     await expect(card.getByTestId("steps-today-delta")).toContainText(
-      /% vs 7-day average/
+      /% vs prior 7 days/
     );
   });
 
@@ -64,6 +68,17 @@ test.describe("dashboard daily loop (#1221)", () => {
     );
     await expect(card.getByTestId("vitals-latest-resting-hr")).toContainText(
       /bpm resting/
+    );
+    // #1892: the log affordance is present WITH data, not only without it. It used to
+    // live in the empty state alone, so the person who logs BP weekly — the one who
+    // actually opens this card — had none. It opens the same shared measurements
+    // quick-entry the empty CTA opens.
+    const logReading = card.getByTestId("vitals-log-reading");
+    await expect(logReading).toHaveText(/Log reading/);
+    await logReading.click();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "measurements"
     );
   });
 

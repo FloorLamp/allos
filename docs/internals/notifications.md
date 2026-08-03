@@ -287,7 +287,14 @@ escalation: a skip is a RECORDED DELIBERATE DECISION — distinct from silence �
 written through the same `markDoseSkipped` core, so the ledger cannot tell an
 escalation skip from a reminder skip, and the existing `skippedDoseIds` gate
 ends the escalation loop with no marker of its own. Without it, "we decided not
-to give it" forced a false confirm, an indefinite ack, or an app visit. Payloads carry **ids only** (never
+to give it" forced a false confirm, an indefinite ack, or an app visit.
+**A history correction never re-arms an escalation (#1933):** deleting a taken
+dose log, or amending one onto a different date, leaves that day unconfirmed —
+so the write core stamps the dose's per-day escalation marker for the day it
+vacated, exactly as a real escalation or an ack would. The system may reduce
+contact unilaterally and may never increase it off its own reading of state, and
+a bookkeeping correction is not a request to be chased. The suppression is
+per-DATE, so a correction to an older day cannot silence a genuine miss today. Payloads carry **ids only** (never
 names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers
 from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
 unconditionally confirm; a stale/foreign tap gets the outdated-message
@@ -455,6 +462,43 @@ logging in place, the ranked buttons plus "Show more" cover the real vocabulary,
 and the long tail was not worth a keyboard row on every send. Other messages' deep
 links (refill's "Open form", the household round's "Open Household →") are
 untouched — this is a food-nudge ruling, not a policy against deep links.
+
+**Strip and record are ONE decision (#1945).** A pointer rotation performs two
+writes that must agree about the world: close the keyboard of the message the
+pointer names, and record the just-sent message in its place. The food rotation
+performed them under DIFFERENT conditions — strip whenever a previous pointer
+existed, record only when the new message yielded a pointer — so a nudge whose
+keyboard carried no `food:` quick-log token (the #1807 "Show less"-only shape, a
+protein-button-only keyboard) stripped its predecessor and then failed to name
+itself. The pointer went on naming the message just stripped, the next nudge
+re-stripped that dead id (a swallowed "message is not modified"), and the
+in-between message kept a live keyboard **nothing would ever close** — whose
+tokens carry its send-time date, which is the whole reason #947 strips at all.
+The reported shape was one slot stripped with its neighbours still live.
+
+The ordering is now one pure decision, `planPointerRotation`
+(`lib/notifications/pointer-rotation.ts`), shared by the food nudge (#947) and
+the household round (#1719) so the two copies of the mechanism cannot drift
+again. Its `skip` arm carries **no strip target at all** — "strip, record
+nothing" is not a representable plan — and a send that yields no pointer leaves
+the previous keyboard alone, which is correct: nothing superseded it. A network
+edit and a settings write cannot share a transaction, so the execution order
+carries the rest: the plan captures the strip target before anything is written,
+then the chokepoint **records first and strips second**, so a settings-write
+throw takes the strip down with it and a failed strip lands on a pointer that is
+already right. Residual, unchanged: a rotation is still best-effort against
+Telegram, so a strip that fails leaves one extra live keyboard until the #1779
+sweep's day-rollover close reaches it.
+
+**Pointers read the DELIVERED keyboard.** Both extractors
+(`foodNudgePointerFromMessage`, `isHouseholdRoundMessage`) scanned the uncapped
+`msg.actions` while #1779's `recordPointer` re-derived the post-cap
+`capTelegramKeyboard(messageKeyboard(msg))` that actually rides the wire, so a
+nudge whose quick-log rows were dropped by the 100-button cap could record a
+pointer describing buttons the chat never received. All three now read one named
+derivation, `deliveredKeyboard` / `deliveredCallbackTokens`
+(`lib/notifications/delivered-keyboard.ts`) — the same "re-derive, don't guess"
+rule, in one place.
 
 **The workout nudge's copy rules (#1672/#1673/#1709, amended by #1822).** Three
 rules govern the message that fires on a day someone already trained:

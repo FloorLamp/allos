@@ -69,7 +69,6 @@ export interface TargetChip {
 export interface WeekSummary {
   sessions: number;
   activeDays: number;
-  streak: number;
   targets: TargetChip[];
 }
 
@@ -162,6 +161,7 @@ export default function JournalView({
     close,
     registerDock,
     canStartWorkout,
+    workoutOffer,
   } = useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
 
@@ -708,10 +708,13 @@ export default function JournalView({
           type="button"
           onClick={openLive}
           data-testid="start-workout"
+          data-workout-offer={workoutOffer.kind}
           className="btn-ghost"
         >
           <IconBolt className="h-4 w-4" stroke={2} />
-          Start workout
+          {/* The label IS the offer (#1893) — "Resume workout" while a session is
+              live, because openLive reopens it rather than resetting its clock. */}
+          {workoutOffer.label}
         </button>
       )}
       <button type="button" onClick={() => openCreate()} className="btn">
@@ -743,15 +746,6 @@ export default function JournalView({
                   {weekSummary.activeDays}/7
                 </span>{" "}
                 days active
-              </span>
-              <span aria-hidden className="text-slate-300 dark:text-slate-600">
-                ·
-              </span>
-              <span>
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  {weekSummary.streak}
-                </span>
-                -day streak
               </span>
             </span>
           }

@@ -63,6 +63,10 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // The per-identity document INVENTORY a client diffs against before sending bytes
   // (#1776). Same token, same scope, same reason for being listed as its siblings.
   "/api/documents/held",
+  // The OPEN SYNC REQUESTS a scheduled acquirer volunteers for (#1889). Same token, same
+  // scope, same reason for being listed as its siblings: a bearer GET from a tool on the
+  // user's own machine, which carries no cookie.
+  "/api/documents/requests",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

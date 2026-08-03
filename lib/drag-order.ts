@@ -11,6 +11,13 @@
 // render (a revalidation landing mid-drag, a tile that left the window) would move
 // the wrong row. An id that is not in the list is simply a no-op.
 
+// How the OTHER items lay themselves out while one is held (#1891). The shared
+// wrapper hard-coded dnd-kit's rect strategy; a single-column list wants the
+// vertical one, so the choice became a `SortableOrder` prop and its vocabulary
+// lives here, beside the list math, where a pure caller can name it without
+// importing a client component.
+export type ReorderStrategy = "rect" | "vertical";
+
 // Move `activeId` to `overId`'s slot, shifting everything between them — the
 // standard sortable semantics (dnd-kit's arrayMove), expressed over the ids so the
 // caller never has to hold indices.

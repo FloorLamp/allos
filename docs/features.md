@@ -90,11 +90,49 @@ biomarkers, biological age, recent activity, immunizations, today's insight,
 streak, low supply, active goals, and weekly routine were retired because Needs
 attention/Upcoming or a richer remaining card already answers them. Legacy saved
 layouts discard those ids safely. Empty data-aware widgets still show a one-tap
-setup CTA. Biomarker stars remain available on Biomarkers and Trends as personal
+setup CTA — and where the thing that fills a domain is a LOG rather than a
+pipeline, that CTA opens the log in place and **stays on the card once data
+exists** (#1892). Latest vitals keeps a small **"Log reading"** action in its
+populated state, opening the same measurements quick-entry its empty CTA opens:
+the affordance used to vanish the moment the first reading landed, so the person
+who logs blood pressure weekly — the one who actually opens that card — had
+none. Biomarker stars remain available on Biomarkers and Trends as personal
 pins—what someone wants to follow even while normal—and are deliberately
 separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
 standard, sleep regularity, biological age, and biomarkers in optimal range as
 separate signals, never one invented score.
+
+The default order is **actionable first**: the cards you are meant to act on
+today lead — the **"How are you today?"** check-in, the coaching train/rest call,
+**Goals and habits**, **Data quality**'s one-time fixes, and today's nutrition
+and steps gaps (plus **Active protocols** when you opt in, since its rows carry
+pending log actions) — followed by the two cards whose tap writes on a longer
+cadence, **Latest vitals** and **Cycle phase**. Then the glance cards you read
+and move on from: next appointment, recent labs, last night's sleep, weight
+trend, healthspan pillars. **Coaching observations** closes the list, which is
+what its own charter asks for — FYIs, not alerts — and the opt-in **Weekly
+recap** stays last. What makes a card actionable is what its **populated** body
+offers, not what its empty state offers: a one-time setup CTA that disappears
+after the first reading is onboarding, while a log button that stays on the card
+you already check every week is an action — which is why latest vitals and cycle
+phase sit in the acting band and recent labs and weight trend do not. Each card
+declares whether it is actionable, and a registry test keeps the split honest as
+new widgets arrive, so a glance card cannot quietly take a prime slot. This is
+the order a **fresh** dashboard starts in; a dashboard you have already arranged
+keeps exactly the order you gave it, and a card added by a later release joins in
+its default position.
+
+**Edit dashboard** opens Customize, where every eligible widget — visible,
+hidden, and temporarily without data — can be reordered by its grip and shown or
+hidden by its eye, with Save persisting the layout and Cancel restoring the
+state you entered with. On a wide screen you edit the live cards **in place**,
+because there the grid really is six columns and spans and adjacency are part of
+what you are arranging. On a phone the grid is a single column already and a
+live card is half the screen, so Customize collapses each widget to a **compact
+reorder row** — grip, label, eye, about 48px — which puts the whole list on one
+screen and makes a move a flick instead of several screens of autoscroll. It is
+the same editor either way: same order, same hidden set, same Save/Cancel, same
+keyboard path on the grip.
 
 ### Data quality
 
@@ -481,7 +519,13 @@ Document, …) labelled the same way the cards' provenance chips are.
 **Weather-aware suggestions.** When the Weather & UV source is on, outdoor
 activities are quietly **parked** in conditions you don't train in — the ride
 drops out of today's suggestion, the message says why, and the indoor stand-in
-takes its slot ("Too cold for cycling (−2°C) — Stationary Bike instead"). The
+takes its slot ("Too cold for cycling (-2°C) — Stationary Bike instead"). Each
+reason names its figure in **its own unit**: cold and hot in your temperature
+scale, rain as a plain-language description rather than a number — "Too wet for
+cycling (heavy rain in the morning)", because nobody plans a ride off
+millimetres. The timing half is said only when the wet hours genuinely cluster
+into a part of the day; rain that falls all day, or scattered showers, get the
+description alone rather than an invented forecast. The
 threshold is _yours_: it's derived from the conditions you've actually logged
 sessions in, so someone who rides at 3°C keeps being offered the ride and
 someone whose rides all sit above 15°C doesn't. Until there's enough history to
@@ -524,17 +568,22 @@ record's value (the keeper's pre-selected) so you pick which to keep per field.
 Manually logged activities also get an
 **estimated calorie burn** — computed from a baked MET (metabolic-equivalent)
 table, the activity's type/intensity/duration, and your nearest bodyweight —
-which auto-fills on the activity form (editable, so you can override it) and
-rolls into the weekly recap; it's always shown as an estimate (`≈`) and kept
-separate from device-measured calories (imported activities keep their device
-value). For logging at the gym rather than after the fact, **Start workout**
+which auto-fills on the activity form (editable, so you can override it); it's
+always shown as an estimate (`≈`) and kept separate from device-measured
+calories (imported activities keep their device value). It does **not** ride the
+weekly recap — comparing one week's estimate against another's compounds the
+error, so the recap reports what only week scale makes visible instead. For logging at the gym rather than after the fact, **Start workout**
 (the command palette, the Journal header, or the mobile top bar) opens the same
 editor in a **live** layout: today's date and start time are pre-stamped, each
 lift's coached next set is pre-seeded so you just confirm it, and a client-side
 **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter
 for accessories — with preset chips and a beep/vibrate at zero) starts
 automatically when you log the next set; **Finish workout** stamps your end time
-and drops back to the normal form for notes and intensity. It's a
+and drops back to the normal form for notes and intensity. While a session is
+running, every one of those entry points — including "Log this session" on
+Today's session — reads **Resume workout** and reopens the session you already
+have going, with its clock and its logged sets intact; you can never restart a
+workout you're in the middle of by tapping the wrong thing. It's a
 strength-focused surface, so it's hidden for age-restricted profiles. A
 non-strength session can also be tagged with the **gear** it used — a bike for a
 ride, shoes for a run — picked from your **Equipment** registry, with the picker
@@ -653,9 +702,12 @@ Charts and analysis live in four tabs:
 
 **Practices** (`/trends#practices`) is the wellness lens: for each practice you
 have given a weekly cadence, one cell per completed week — at your weekly
-maximum, floor met, or under floor — a consistency line with the current streak,
-sessions per week charted against the min–max band you declared, and an average
-session length for the modalities that record minutes. It renders only where you
+maximum, floor met, or under floor — a consistency line stating how many of those
+weeks met the floor, sessions per week charted against the min–max band you
+declared, and an average session length for the modalities that record minutes.
+The consistency line is a rate and nothing else — it counted an "N-week streak"
+until #1966 retired that, on the same reasoning as the rest of the streak family:
+one missed week made a real habit read as zero. It renders only where you
 track a practice, is calm by design (an under-floor week is a neutral cell, never
 a warning), and every card taps through to **Wellness**, which still owns
 logging, editing, and the full session history. A practice with sessions but no
@@ -679,6 +731,32 @@ event overlays, and every starred tile opens the corresponding full chart rather
 than maintaining a second interpretation. A hub configuration is carried by the
 URL — the range, tab, and compare params are shareable and bookmarkable — not by
 a stored view list.
+
+**Trailing averages cover complete days.** A metric's detail page carries a
+**Rolling summary** — 7, 30, and 90-day windows with an average, range, and
+change each, independent of the chart's range control and collapsed into one
+card wherever the windows genuinely hold the same readings. Those windows end
+**yesterday**: today is not history until it ends, and for a cumulative metric
+such as steps an included today used to drag the average down all afternoon and
+silently correct itself at midnight. **Latest** is the exception and still shows
+today's reading — recency is today's job, the average is history's — and the
+card's note says both. The dashboard's Steps-today card compares today against
+its own baseline, the last seven days that carry a reading, and labels it
+**"prior 7 days"** rather than a second "7-day average": the two surfaces answer
+different questions, so they no longer wear the same name. Both compute through
+one shared helper whose window basis and today-inclusion are declared per
+caller.
+
+**Day one is the one exception, and it says so.** On the day of a first-ever
+reading there is no complete day to average, and the Rolling summary used to read
+"No readings" all day — exactly when someone is checking whether their entry
+landed. The shared helper now falls back to **today's reading** when a profile has
+**no complete-day history at all**, and the card labels the figure "Today's
+reading" rather than presenting it as an average. A gap is not day one: a profile
+with readings from three weeks ago has history, so its 7-day window stays
+honestly empty rather than showing today's number under an average's label. The
+Steps-today card declines the fallback — its question is today versus prior days,
+and today cannot be its own baseline.
 
 ### The Overview surface: starred grid and body census
 
@@ -790,9 +868,13 @@ body-weight (≤7 days back) is snapshotted onto the row so a compare reads "82.
 kg → 78.4 kg" beside the visual.
 
 **Browse** is a date-grouped thumbnail gallery with a pose sub-filter and a
-lightbox (original loads only on open, prev/next paging, caption + weight,
-delete); **Compare** is a two-date timeline — side-by-side or an **onion-skin
-overlay** with a blend slider — over the same series. Factual only,
+lightbox (original loads only on open, prev/next paging, caption + weight, edit
+details, delete); **Compare** is a two-date timeline — side-by-side or an
+**onion-skin overlay** with a blend slider — over the same series. A photo filed
+wrong is **corrected in place**, not re-uploaded: **Edit details** changes the
+date, pose, and caption while the stored image, its thumbnail, and its content
+hash stay exactly as they were, so a retag moves the photo between comparison
+series without losing the original capture. Factual only,
 product-decided: no pose detection, no body-fat estimate, no scoring. The nav
 entry is data-gated (appears with the first photo; the command palette's **Add
 progress photo** action is the ungated entry that also auto-opens capture), the
@@ -918,6 +1000,29 @@ that's off pace for its target date surfaces a calm **Goal pacing** note
 alongside a gentle safe-rate caution when weight is dropping faster than
 ~1%/week — each dismissible.
 
+A goal can also target a **lab or vital**: "LDL under 100 by June", "A1c below
+7", "BP systolic under 120". Pick the marker, a direction (under / over), a
+number and an optional date. The picker is the same relevance-ranked biomarker
+list every other biomarker field uses — markers due for retest or flagged lead,
+then your own markers, then the full vocabulary — and it states the analyte's
+reference range beside the number so a target is set next to the thresholds the
+app already holds. The value is stored with the unit the marker's own chart is
+labelled in, so a mg/dL target is never compared against an mmol/L result.
+
+Progress reads the same series the marker's detail page charts, matched by
+biomarker family (an A1c goal is advanced by the eAG re-expression of the same
+draw), and the target renders on that page too — beside the series it describes.
+Weight, body fat and resting HR keep their own **Body metric** goal and are not
+offered here, so each measure has exactly one kind of goal.
+
+**A lab goal paces per result, not per day.** A body-weight goal is measured
+every morning, so its pace can fairly be judged every morning; a lab value
+changes when a tube is drawn. Between draws the verdict is held where the last
+result left it — a lab goal never slides to "behind" on a day nothing was
+measured — and the card says when the next result is due instead, on the
+marker's own retest cadence. An off-pace lab goal joins the same calm,
+dismissible **Goal pacing** note; it never escalates and never notifies.
+
 ## Nutrition
 
 Route: `/nutrition`.
@@ -927,7 +1032,17 @@ a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
-is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure
+is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
+meal cards, each with ⋯ row actions to **correct** it — the food group, the day,
+or the meal it belongs to — or to **remove** that one serving. A correction MOVES
+the serving: the day's totals and the per-meal tallies (the same counts the food
+nudge reads) follow it, so a serving tapped into the wrong meal is repaired
+rather than deleted and re-logged under the current time. "Remove this serving"
+is ROW-scoped and is the removal that honours that per-row identity: the group
+row's "−" is the quick group-level control and pops the newest tap in the meal,
+which — since a correction deliberately preserves the tap instant — need not be
+the serving you just moved there. Both write the ledger row and the day counter
+in one transaction, dropping the counter row at zero. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
@@ -938,11 +1053,18 @@ first-class **food-habit target** — a `food_group` scope on the same
 the same weekly serving rollup (one question, one computation) and it can be
 adopted by a **Protocol** as an intervention. A behind-target habit surfaces as
 a calm, dismissible **coaching** observation (never a notification). A **protein
-gauge** draws today's intake and the weekly average against a goal-scaled g/kg
-band (lean mass preferred when it's tracked); the goal behind that band is yours
+gauge** draws today's intake and **this week's** daily average against a
+goal-scaled g/kg band (lean mass preferred when it's tracked); the goal behind
+that band is yours
 to set — **Settings → Nutrition → Protein goal** (RDA baseline / Active / Muscle
 gain / Cut), an informational range rather than a prescription, seeded to Active
-when onboarding's fitness path is chosen. This
+when onboarding's fitness path is chosen. **Two protein averages, two labels.**
+The gauge's marker and the adequacy verdict are **week-to-date** — that is the
+question "am I meeting my target this week?" is asked over, and the surfaces say
+"this week". The dashboard's Nutrition card says "7-day average" and now shows
+one: a trailing seven **calendar** days of complete days, through the same shared
+helper the other trailing averages use. Days without a log stay unknown rather
+than counting as zero. This
 granularity is where dietary evidence actually lives ("2 servings of fatty fish
 a week") and is sufficient for the biomarker→food and habit-target features;
 full macro tracking stays possible later as an additive tier. Informational, not
@@ -974,7 +1096,28 @@ to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
 `/results/biomarkers` / `/results/imaging` / `/results/genomics` — bare
 `/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
 `/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/biomarkers/view` survives at its own route). The record-style
+detail page `/biomarkers/view` survives at its own route).
+
+**One renderer per cadence (#1932).** A dated reading opens on the surface its
+arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
+(`lib/hrefs.ts`) is the ONE helper every list, search hit, finding, panel chip
+and import drilldown asks — so no call site decides for itself. A **continuous**
+vital (blood pressure, SpO2, respiratory rate, body temperature) opens on its
+metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
+7/30/90-day summary, and the readings table with row actions. Every **episodic**
+reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
+markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
+measures) — opens on `/biomarkers/view`, which reads it against its reference and
+optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
+test audits it against every canonical `vitals` entry, so a newly added vital
+cannot ship unclassified, and the DB-tier test pins that each continuous
+reading's metric kind really stores that canonical name. A vitals URL under
+`/biomarkers/view` redirects to the metric page (current-IA plumbing for a stale
+bookmark, not a compatibility shim — both routes are live), and blood pressure's
+pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
+travelled with the reading to that surface.
+
+The record-style
 index pages (conditions, allergies, procedures, immunizations, family history,
 visits, providers, background, care plan, and health goals) likewise share one
 merged **Health record** page (#1042 phase 6, retabbed in #1079: `/records`,
@@ -982,16 +1125,16 @@ Medical → Health record, organized as two-level tabs — a group tab **History
 **Problems** / **Care** / **Specialty** then a section sub-tab. History → Visits
 · Procedures · Immunizations; Problems → one stacked pane Conditions +
 Allergies; Care → Overview (Background + Family history + Care plan + Health
-goals) · Providers; Specialty → Vision · Dental · Skin · Mental health ·
-Substance use. Bare `/records` lands on `/records/history/visits`; the old
+goals) · Providers; Specialty → Vision · Hearing · Dental · Skin · Mental
+health · Substance use. Bare `/records` lands on `/records/history/visits`; the old
 `/conditions`, `/allergies`, `/procedures`, `/immunizations`, `/family-history`,
 `/encounters`, `/providers`, `/care-plan`, `/care-goals`, and
 `/medical/background` index routes were removed in #1635 and 404, while the
 per-provider, per-encounter, and per-vaccine detail pages survive at their own
 routes; (**Coverage gaps** was briefly a section here through #1042 phase 6 —
 #1086 moved it to Data → Coverage as a catalog/data-management workflow, and the
-old `/coverage` route is likewise gone;) the five specialty surfaces — Vision /
-Dental / Skin / Mental health / Substance use — are the Specialty group's
+old `/coverage` route is likewise gone;) the six specialty surfaces — Vision /
+Hearing / Dental / Skin / Mental health / Substance use — are the Specialty group's
 sub-tabs; the old `/vision`, `/dental`, `/skin`, and `/medical/instruments`
 routes were removed too (as was `/medical/substance-use`, ahead of #1635), with Vision/Dental
 data-gated on data presence (a hidden sub-tab's route re-gates server-side),
@@ -1145,19 +1288,40 @@ the ABCDE observations into a verdict.
 
 ### Hearing
 
-Audiogram **pure-tone thresholds** stored per ear per frequency (250 Hz–8 kHz)
-that reuse the biomarker store and trend/flag against the WHO ≤25 dB HL band —
-each ear/frequency stays its own independently-flagging series (deliberately
-never collapsed, so a normal frequency can't hide a flagged one) — extracted
-from an uploaded audiogram report or entered manually; a new age-related
-**hearing screening** preventive rule (a `hearing` audiology
-appointment/audiogram satisfies it) that recorded **noise exposure** (Settings →
-Health risk factors) or an active **ototoxic medication** brings due sooner; and
-an **ototoxic-medication** awareness note — an active aminoglycoside / cisplatin
-/ high-dose loop diuretic / high-dose salicylate / vancomycin / quinine surfaces
-a calm, cited hearing-safety note on Medications, Supplements, and Upcoming,
-informational and never prescriptive. Hearing aids are tracked in the
-**Equipment** registry rather than a second medical-device table.
+The Hearing tab (`/records/specialty/hearing`), under Medical → Health record,
+sits beside Vision and is **always rendered** — its in-page audiogram form is
+the only creation path today, so a data gate would make the first hearing test
+unreachable (audiometry import is a later change). Enter one dated hearing test
+at a time: a pure-tone air-conduction threshold in dB HL per ear per test
+frequency (250 Hz–8 kHz), any of the twelve fields left blank meaning "not
+tested". Each test lists with its per-ear **pure-tone average** and descriptive
+grade, thresholds above the normal band marked, and a **threshold-shift** card
+when the numbers have significantly moved since the earliest test on file (the
+ASHA ototoxicity-monitoring criteria: 20 dB at one frequency, or 10 dB at two
+adjacent frequencies).
+
+**Where the readings live (#1600):** an audiogram is dated per-subject readings,
+so it reuses the **observation store** rather than minting a table — each
+threshold is a canonical `vitals` `medical_records` row
+("Hearing Threshold, Right Ear 4 kHz", `dB HL`), which is the same store, the
+same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
+on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
+series (deliberately never collapsed into one "hearing" family, so a normal
+frequency can't hide a flagged one). This change added **no migration**.
+
+Around the record: a new age-related **hearing screening** preventive rule (a
+`hearing` audiology appointment/audiogram satisfies it) that recorded **noise
+exposure** (Settings → Health risk factors) or an active **ototoxic medication**
+brings due sooner; and an **ototoxic-medication** awareness note — an active
+aminoglycoside / cisplatin / high-dose loop diuretic / high-dose salicylate /
+vancomycin / quinine surfaces a calm, cited hearing-safety note on Medications,
+Supplements, and Upcoming. That note now **cites the newest audiogram** when one
+is on file, and names a documented threshold shift when there is one — the
+"on an ototoxic drug _and_ the thresholds have moved" conjunction it previously
+could not see. With no audiogram on file it says nothing extra: the note may
+become more specific, never more insistent. Informational and never
+prescriptive throughout. Hearing aids are tracked in the **Equipment** registry
+rather than a second medical-device table.
 
 ### The problem list and family history carry their clinical detail
 
@@ -1409,6 +1573,28 @@ period ended by mistake within a small recency window (it refuses an older one
 rather than silently merging two cycles). Every quick action answers from its
 write core's **typed outcome** — a tap that changes nothing says so, and never
 reports success.
+
+**That control has three renderers, not three implementations** (#1892). The
+same one-tap offer sits on the **dashboard Cycle-phase card** and in the **phone's
+quick-log sheet** ("Log period"), and all three surfaces render the SAME
+server-resolved control state, so they can never disagree about which verb is
+available. The label always names the write it will perform — _Period started
+today_ / _Period ended today_ / _Still bleeding_ — and between the reopen window
+closing and a new period becoming plausible there is deliberately **no button at
+all**, because a tap there would record something the domain cannot mean; the
+dated form owns that exception. A tap from a page that has gone stale (a
+dashboard tab open since yesterday, a period logged on another device) hits the
+same write core and gets its honest refusal, never a double-log.
+
+The dashboard card **no longer self-hides when nothing is derivable yet**. That
+was precisely the state of someone who had not logged day 1, so the card
+vanished exactly when logging mattered most and the only path was
+nav → Medical → Cycle. It is now the registry's data-aware CTA — "Log your period
+to start tracking" plus the offer button — on the SAME `cycle` relevance bit as
+the nav entry, so it never reaches a profile the domain does not apply to. The
+sheet's period row is gated on that same bit, server-side as well as in the menu.
+The #714 tracking-not-forecasting contract governs the DISPLAY, which stays as
+quiet as ever: **never predicting has never meant never offering a log button**.
 
 Cycle writes carry **plausibility guards** (#1682), all in one pure module so
 the form, the quick actions, and any future import path share them:
@@ -2207,9 +2393,12 @@ compact context line such as **Overview · 90D** expands to the full tab, range,
 saved-view, and event-overlay controls.
 
 Starred metric tiles lead with the latest value, support touch drag reordering,
-and retain menu-based move actions for keyboard users. Responsive spacing and
-all drawer, sheet, and toolbar animation honor the operating system's
-reduced-motion preference.
+and retain menu-based move actions for keyboard users. A dragged tile or card
+**translates**, it never rescales — a reorder moves an item, it does not resize
+it — and the dashboard lifts the card you are carrying into a size-locked ghost
+above the list. The dashboard's Customize shows compact reorder rows on a phone
+and in-place cards on a wide screen. Responsive spacing and all drawer, sheet,
+and toolbar animation honor the operating system's reduced-motion preference.
 
 The proposed native companion is a separate future surface; see
 [the mobile companion specification](mobile-companion-spec.md). This section

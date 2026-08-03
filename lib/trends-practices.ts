@@ -30,8 +30,8 @@ import { frequencyRangeState } from "./practice";
 //   • "at-ceiling" — the week reached the optional weekly maximum. A calm done.
 //   • "met"        — the floor was cleared (and there was no ceiling to reach).
 //   • "under"      — the floor was not cleared.
-// `at-ceiling` implies `met` (a valid cadence always has ceiling > floor), so a
-// streak of met weeks counts both.
+// `at-ceiling` implies `met` (a valid cadence always has ceiling > floor), so the
+// met COUNT includes both.
 export type PracticeWeekVerdict = "at-ceiling" | "met" | "under";
 
 // The verdict for a COMPLETED week. `elapsedDays` is 7 because the week is over —
@@ -64,6 +64,11 @@ export const PRACTICE_VERDICT_LABEL: Record<PracticeWeekVerdict, string> = {
 // Consistency over the window
 // ---------------------------------------------------------------------------
 
+// Consistency is a RATE over the window, never a run (#1966). A rate degrades
+// gracefully where a run has a cliff, and the cliff would land on exactly the
+// weeks this app exists to accommodate — an illness, a travel week, a deliberate
+// pause. One under-floor week nudges "3 of 4"; it used to zero an "N-week
+// streak" that a genuine habit had earned.
 export interface PracticeConsistency {
   /** Completed weeks considered. */
   weeks: number;
@@ -71,39 +76,26 @@ export interface PracticeConsistency {
   met: number;
   /** met / weeks, or null when there are no completed weeks. */
   rate: number | null;
-  /** Consecutive met weeks ending with the MOST RECENT completed week. */
-  currentStreak: number;
-  /** The longest run of met weeks anywhere in the window. */
-  bestStreak: number;
 }
 
 // Roll a practice's completed weeks (OLDEST FIRST, the render order of the strip)
 // into the consistency headline. Deliberately a count of weeks rather than of
 // sessions: the question is "how often did this actually happen the way I meant
 // it to", and the range model answers that per week.
+//
+// Order-independent by construction, which is the point: no cell in the ledger
+// counts for more than any other because of where it sits in the run.
 export function summarizePracticeWeeks(
   weeks: readonly { verdict: PracticeWeekVerdict }[]
 ): PracticeConsistency {
   let met = 0;
-  let run = 0;
-  let best = 0;
   for (const week of weeks) {
-    if (practiceWeekMet(week.verdict)) {
-      met += 1;
-      run += 1;
-      if (run > best) best = run;
-    } else {
-      run = 0;
-    }
+    if (practiceWeekMet(week.verdict)) met += 1;
   }
   return {
     weeks: weeks.length,
     met,
     rate: weeks.length === 0 ? null : met / weeks.length,
-    // `run` ends on the newest week because the input is oldest-first, so it IS
-    // the current streak — no second pass.
-    currentStreak: run,
-    bestStreak: best,
   };
 }
 
@@ -111,11 +103,9 @@ export function summarizePracticeWeeks(
 // the strip caption, the chart note and any later surface cannot drift.
 export function practiceConsistencyText(c: PracticeConsistency): string {
   if (c.weeks === 0) return "No completed weeks yet";
-  const base = `Floor met in ${c.met} of ${c.weeks} completed ${
+  return `Floor met in ${c.met} of ${c.weeks} completed ${
     c.weeks === 1 ? "week" : "weeks"
   }`;
-  if (c.currentStreak >= 2) return `${base} · ${c.currentStreak}-week streak`;
-  return base;
 }
 
 // ---------------------------------------------------------------------------

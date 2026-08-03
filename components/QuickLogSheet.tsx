@@ -3,6 +3,7 @@
 import {
   IconBarbell,
   IconChevronRight,
+  IconDroplet,
   IconFileText,
   IconHeartbeat,
   IconPill,
@@ -41,6 +42,8 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   // The glyphs these surfaces already wear: the Wellness nav's sparkles and the
   // search palette's document page.
   sparkles: IconSparkles,
+  // The glyph the Cycle nav entry and the dashboard phase card already wear (#1892).
+  droplet: IconDroplet,
   document: IconFileText,
 };
 
@@ -48,16 +51,20 @@ export default function QuickLogSheet({
   open,
   onClose,
   restricted = false,
+  cycleRelevant = true,
 }: {
   open: boolean;
   onClose: () => void;
   // An age-restricted profile has no training surface, so the activity entry is
   // dropped (lib/quick-log.ts owns that rule).
   restricted?: boolean;
+  // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
+  // gating the Cycle nav entry and the dashboard phase widget (#1892).
+  cycleRelevant?: boolean;
 }) {
   const { openCreate } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
-  const items = quickLogMenu(restricted);
+  const items = quickLogMenu(restricted, cycleRelevant);
 
   function run(item: QuickLogItem) {
     // Close first: whatever opens next is its own overlay, and stacking a second

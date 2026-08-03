@@ -56,7 +56,7 @@ const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
   "healthspan-pillars": "Key long-term health signals.",
   "weight-trend": "Recent weight changes.",
   "nutrition-today": "Today's protein against your goal.",
-  "steps-today": "Steps today versus your 7-day average.",
+  "steps-today": "Steps today versus your prior 7 days.",
   "vitals-latest": "Your latest blood pressure and resting heart rate.",
   "cycle-phase": "Your current cycle day and phase.",
   "goals-habits": "Goals and weekly habits.",

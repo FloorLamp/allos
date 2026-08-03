@@ -116,6 +116,7 @@ describe("renderFoodNudge", () => {
       todayGrams: todayIntake.grams,
       target,
       weeklyAverageGrams: 95,
+      trailing: { grams: 92, dayOne: false },
     };
     const msg = renderFoodNudge(
       1,

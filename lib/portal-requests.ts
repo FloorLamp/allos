@@ -25,9 +25,21 @@ import {
 // ── WHAT A REQUEST IS ────────────────────────────────────────────────────────
 //
 // One row per portal LOGIN (migration 133 keys on `account_id`), holding the open ask if
-// there is one. Openness is DERIVED at read time — not expired, and no run report for
-// that login at-or-after the request — so the tool never learns requests exist and there
-// is no second write path on the report endpoint to keep consistent.
+// there is one. Openness is DERIVED at read time — not expired, and no ANSWERING report
+// for that login at-or-after the request — so there is no second write path on the report
+// endpoint to keep consistent.
+//
+// WHICH REPORTS ANSWER is one pure predicate, `reportAnswersRequest`, applied once at
+// ingest and read here as a column (see CHECK_CLOCK_COLS). A delivery-only push does not
+// answer (#1888: nobody contacted the portal) and neither does a failed UNATTENDED run
+// (#1889: nobody acted, and the ask must not disappear at the exact point it became true).
+//
+// A TOOL MAY NOW READ the open list (#1889, `GET /api/documents/requests`), which the
+// original design deliberately withheld. That line was drawn when an unattended run was
+// impossible, so a request could only ever reach a person; the endpoint preserves
+// everything the line protected — slugs only, no claim state, no acknowledgment, no push
+// channel — and requests still reach the person through Upcoming and the digest,
+// unchanged. There is still no write path for a tool here.
 
 export interface SyncRequest extends SyncRequestFacts {
   portalId: number;
@@ -37,21 +49,44 @@ export interface SyncRequest extends SyncRequestFacts {
   accountSlug: string;
   accountName: string;
   accountImplicit: boolean;
-  // The account's most recent run report, whatever its outcome — the answering signal.
+  // The account's most recent ANSWERING report — a report that actually contacted the
+  // portal, and either brought records back or had a person at the machine.
   lastReportAt: string | null;
-  // The most recent SUCCESSFUL run for this login. The staleness clock reads this one:
+  // The most recent SUCCESSFUL check for this login. The staleness clock reads this one:
   // a failed run is not a check, and letting it advance the clock would silence the
-  // nudge precisely when the portal stopped working. Answering deliberately reads the
-  // other one (a failed run still means the person went to the machine).
+  // nudge precisely when the portal stopped working.
   lastOkAt: string | null;
+  // WHY THE MACHINE GAVE UP, when the last thing that happened here was a scheduled run
+  // failing with nobody at the keyboard (#1889). Null the rest of the time. The request
+  // stays open in that case — the ask disappearing at the exact point it became true is
+  // the bug — and this is what turns "still open" into a sentence worth reading.
+  unattendedFailure: { at: string; message: string | null } | null;
 }
+
+// ── THE CHECKED-THE-PORTAL CLOCK, SPELLED ONCE (#1888) ───────────────────────
+//
+// Both consumers below — the answering signal and the staleness clock — read THESE TWO
+// COLUMNS and nothing else. Neither restates "contacted !== false" in SQL, because two
+// hand-written predicates that happen to agree today is exactly the drift that produced
+// #1888: `lastReportAt` came from `rr.at` unconditionally and `lastOkAt` from
+// `CASE WHEN rr.ok = 1 …`, so a delivery-only push answered a request nobody had acted on
+// AND reset the staleness clock.
+//
+// The columns are stamped by recordPortalRunReport (lib/portals.ts) through the ONE named
+// pure predicate — `reportCountsAsCheck`, and the two derived predicates that build on it
+// — so the semantic lives in one function and every consumer, present or future, joins
+// the same rule by reading the same fragment. A third consumer (a card status line, a
+// digest line) must embed THIS constant rather than write a variant.
+const CHECK_CLOCK_COLS = `rr.checked_at AS lastReportAt,
+  rr.checked_ok_at AS lastOkAt`;
 
 const REQUEST_COLS = `r.account_id AS accountId, r.portal_id AS portalId,
   p.slug AS portalSlug, p.name AS portalName,
   a.slug AS accountSlug, a.name AS accountName, a.implicit AS accountImplicit,
   r.reason AS reason, r.created_at AS createdAt, r.expires_at AS expiresAt,
-  rr.at AS lastReportAt,
-  CASE WHEN rr.ok = 1 THEN rr.at ELSE NULL END AS lastOkAt`;
+  rr.unattended_fail_at AS unattendedFailAt,
+  rr.unattended_fail_message AS unattendedFailMessage,
+  ${CHECK_CLOCK_COLS}`;
 
 const REQUEST_FROM = `FROM portal_sync_requests r
   JOIN portals p ON p.id = r.portal_id
@@ -80,6 +115,12 @@ function toRequest(row: Record<string, unknown>): SyncRequest {
     expiresAt: row.expiresAt as string,
     lastReportAt: (row.lastReportAt as string | null) ?? null,
     lastOkAt: (row.lastOkAt as string | null) ?? null,
+    unattendedFailure: row.unattendedFailAt
+      ? {
+          at: row.unattendedFailAt as string,
+          message: (row.unattendedFailMessage as string | null) ?? null,
+        }
+      : null,
   };
 }
 
@@ -105,6 +146,29 @@ export function openSyncRequests(now: string = sqlNow()): SyncRequest[] {
   );
 }
 
+// The open requests a TOKEN may see (issue #1889) — the volunteer list an acquirer polls.
+//
+// CROSS-PROFILE READER CONVENTION: the route resolves the token login's WRITE set at the
+// auth boundary and hands the already-authorized ids in; this module never imports
+// lib/auth. The rule is the `held` endpoint's, applied to a list instead of to one
+// identity: a request is visible when the portal login it names covers at least one
+// profile this token could actually write to. A token that could not file a single
+// document from that run has no business being told the run is wanted.
+//
+// Filtered in JS over `mappedProfilesForAccount` rather than in SQL: a household has a
+// handful of portal logins, and the mapping read is the same one the routing already
+// makes — one question, one computation.
+export function openSyncRequestsForProfiles(
+  writableProfileIds: readonly number[],
+  now: string = sqlNow()
+): SyncRequest[] {
+  const allowed = new Set(writableProfileIds);
+  if (allowed.size === 0) return [];
+  return openSyncRequests(now).filter((r) =>
+    mappedProfilesForAccount(r.accountId).some((id) => allowed.has(id))
+  );
+}
+
 // ── Creation ─────────────────────────────────────────────────────────────────
 
 export type SyncRequestOutcome =
@@ -127,8 +191,15 @@ const MAPPED_COUNT_STMT = db.prepare(
     WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL`
 );
 
-// How many patients on this portal login are bound to a profile. Zero silences every
+// How many patients on this portal login are bound to a profile. Zero refuses every
 // creator — see isStalenessDue's header for why that is checked first.
+//
+// DECLINED IDENTITIES STILL COUNT HERE, deliberately (#1889). This gate is about whether
+// a request could reach anybody at all; the declined suppression is about whether the
+// SYSTEM should raise one unprompted. A person pressing "Request sync" has decided for
+// themselves, and the attention doctrine lets the system reduce contact unilaterally,
+// never overrule a user's own action. The automatic creators read the collectable count
+// instead (STALENESS_CANDIDATES_STMT, POST_VISIT_ACCOUNTS_STMT).
 export function mappedPatientCount(accountId: number): number {
   return (MAPPED_COUNT_STMT.get(accountId) as { n: number }).n;
 }
@@ -193,14 +264,20 @@ export function requestSync(
 
 // ── Creator 1: staleness ─────────────────────────────────────────────────────
 
+// The staleness consumer reads the SAME clock fragment as the answering one above — the
+// two projections are one constant, so a change to what "checked" means can only ever
+// move both (#1888's first constraint). `mapped` counts COLLECTABLE patients: an identity
+// the portal declines is not one, so it feeds the mappedPatients input the existing rule
+// already gates on rather than earning a new suppression path (#1889).
 const STALENESS_CANDIDATES_STMT = db.prepare(
   `SELECT a.id AS accountId,
           (SELECT COUNT(*) FROM portal_identities i
-            WHERE i.account_id = a.id AND i.ignored = 0 AND i.profile_id IS NOT NULL)
+            WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0
+              AND i.profile_id IS NOT NULL)
             AS mapped,
-          (SELECT r.at FROM portal_run_reports r
-            WHERE r.account_id = a.id AND r.ok = 1) AS lastOkAt
+          ${CHECK_CLOCK_COLS}
      FROM portal_accounts a
+     LEFT JOIN portal_run_reports rr ON rr.account_id = a.id
     ORDER BY a.id`
 );
 
@@ -233,6 +310,7 @@ export function evaluateStalenessRequests(
   for (const row of STALENESS_CANDIDATES_STMT.all() as {
     accountId: number;
     mapped: number;
+    lastReportAt: string | null;
     lastOkAt: string | null;
   }[]) {
     const today = accountToday(row.accountId, todayFor);
@@ -266,11 +344,19 @@ export function evaluateStalenessRequests(
 // overwhelming majority of them arrived from the very portal this would nudge, so keying
 // on them would nudge a household to re-fetch what it just fetched. A cancelled
 // appointment is excluded: nothing happened, so nothing was published.
+//
+// A DECLINED identity raises nothing (#1889): the portal will not offer that person's
+// records however recently they were seen, so the visit is real and the ask would be a
+// pointless nag. The suppression is structural — the join IS the mapping, so an identity
+// the portal refuses simply is not one of the mappings a visit can reach. An identity the
+// portal still serves on the same login is unaffected, which is the whole reason the
+// state is per-identity rather than per-run.
 const POST_VISIT_ACCOUNTS_STMT = db.prepare(
   `SELECT DISTINCT i.account_id AS accountId
      FROM appointments ap
      JOIN portal_identities i ON i.profile_id = ap.profile_id
     WHERE i.ignored = 0
+      AND i.declined = 0
       AND i.profile_id IS NOT NULL
       AND ap.status <> 'cancelled'
       AND date(ap.scheduled_at) <= ?
