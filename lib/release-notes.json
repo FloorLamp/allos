@@ -4,6 +4,13 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1943,
+          "kind": "fix",
+          "issues": [1909, 1917],
+          "title": "Seven-day averages now cover seven days \u2014 and your first reading shows up the day you take it",
+          "body": "Two summary numbers disagreed about what a week meant. The Nutrition card's \"7-day average\" was really an average of this week so far \u2014 on a Tuesday it covered two days, it reset every Monday, and it was dragged down all afternoon by a day you had not finished eating. It is now a genuine average of the last seven complete days, and the gauge's \"Avg\" marker says \"This week\" so the two numbers no longer look like the same one.\n\nThe day you record a first-ever weight or reading, the rolling summary used to say \"No readings\" \u2014 exactly when you were checking whether the entry had worked. It now shows that reading, labelled as today's rather than dressed up as an average. A profile that simply has not logged in a few weeks still reads as empty, because an old number is not a recent average."
+        },
+        {
           "pr": 1929,
           "kind": "feature",
           "issues": [1890],
