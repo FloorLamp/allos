@@ -233,12 +233,12 @@ export default function EditableSupplementRow({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setShowHistory(true);
+                    setShowHistory((open) => !open);
                     close();
                   }}
                   className={MENU_ITEM}
                 >
-                  Dose history
+                  {showHistory ? "Hide dose history" : "Dose history"}
                 </button>
                 <form
                   action={(fd) =>
@@ -329,17 +329,14 @@ export default function EditableSupplementRow({
           />
           <AdherenceSummaryLine strip={strip} noteworthyOnly />
         </div>
-      </div>
-
-      {showHistory && (
-        <ModalShell
-          title={`${s.name} — dose history`}
-          onClose={() => setShowHistory(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
-        >
+        {/* Dose history is a DISCLOSURE inside the row, not a modal: the ⋯ row
+          actions portal above the page but below a modal backdrop, so a menu
+          rendered inside a dialog would be unclickable. Inline also matches the
+          medication card, which renders the same panel in place. */}
+        {showHistory && (
           <div
             data-testid="supplement-dose-history-panel"
-            className="mt-4 min-h-0 overflow-y-auto px-1"
+            className="col-span-2 col-start-1 row-start-3 mt-3 min-w-0 border-t border-black/5 pt-3 dark:border-white/5"
           >
             <DoseHistoryPanel
               itemId={s.id}
@@ -363,8 +360,8 @@ export default function EditableSupplementRow({
               }
             />
           </div>
-        </ModalShell>
-      )}
+        )}
+      </div>
 
       {editing && (
         <ModalShell
