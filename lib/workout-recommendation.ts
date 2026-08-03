@@ -47,7 +47,9 @@ import type {
 import {
   parkedVerdict,
   pickIndoorAlternative,
+  type ParkQuantity,
   type ParkReason,
+  type PrecipitationHour,
   type ToleranceEnvelope,
 } from "./weather-training";
 import type { WeatherDay } from "./weather-situations";
@@ -455,15 +457,27 @@ export interface WeatherTrainingContext {
   // Whether the profile can actually do an indoor candidate (logged it, or owns the
   // gear). The engine never invents a machine someone doesn't have.
   canDo: (candidate: string) => boolean;
+  // Today's HOURLY precipitation in the profile's local day (#1967), for the timing
+  // clause of a wet park's description. Absent/empty ⇒ the description renders intensity
+  // alone, which is the intended degradation — never an invented "until the afternoon".
+  hoursToday?: readonly PrecipitationHour[];
 }
 
 // One parked outdoor activity, with everything a surface needs to disclose it.
 export interface ParkedActivity {
   activity: string;
   reason: ParkReason;
+  // What `value` measures — °C for cold/hot, mm for wet (#1967). Carried rather than
+  // re-derived so no surface has to remember which reason means which unit.
+  quantity: ParkQuantity;
   // The condition value in canonical units (°C for cold/hot, mm for wet). The surface
-  // formats it in the login's units.
+  // formats it through parkedFigure, in the login's units.
   value: number | null;
+  // The day's WMO weather code and hourly precipitation — the facts a WET park's
+  // plain-language description is built from ("heavy rain in the morning"). Carried here
+  // so the disclosure formatter needs nothing but the ParkedActivity.
+  weatherCode: number | null;
+  precipitationHours: readonly PrecipitationHour[];
   // The indoor stand-in offered in its place, or null when the profile can do none of
   // the mapped alternatives — the caller then falls through to its normal next-best
   // pick, with this disclosure still rendered.
@@ -1152,11 +1166,15 @@ function resolveParked(
       weather.today,
       weather.envelopes.get(key) ?? null
     );
-    if (!verdict.parked || verdict.reason == null) continue;
+    if (!verdict.parked || verdict.reason == null || verdict.quantity == null)
+      continue;
     out.push({
       activity: c.activity,
       reason: verdict.reason,
+      quantity: verdict.quantity,
       value: verdict.value,
+      weatherCode: weather.today.weatherCode,
+      precipitationHours: weather.hoursToday ?? [],
       alternative: pickIndoorAlternative(c.activity, weather.canDo),
       revealed: verdict.revealed,
     });

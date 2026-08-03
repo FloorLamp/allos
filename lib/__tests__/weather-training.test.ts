@@ -4,18 +4,27 @@ import {
   FALLBACK_MIN_TEMP_C,
   FORECAST_HORIZON_DAYS,
   MIN_REVEALED_SESSIONS,
+  MIN_TIMING_HOURS,
+  PARK_REASON_QUANTITY,
+  WET_HOUR_MM,
+  dayPartOfHour,
   deriveEnvelope,
   fallbackEnvelope,
   isLastViableDay,
   parkedDisclosureLine,
+  parkedFigure,
   parkedVerdict,
   pickIndoorAlternative,
   planningLine,
   planningWorthSurfacing,
+  precipitationPhrase,
   remainingViableDays,
   scanViableDays,
   conditionsStamp,
   weatherCodeLabel,
+  type ParkQuantity,
+  type ParkReason,
+  type PrecipitationHour,
   type SessionWeather,
 } from "@/lib/weather-training";
 import {
@@ -269,10 +278,14 @@ describe("the disclosure always says why (#838/#1724)", () => {
         activity: "Cycling",
         reason: "cold",
         alternative: "Stationary Bike",
-        figure: "−2°C",
+        value: -2,
+        weatherCode: null,
+        temperatureUnit: "C",
       })
     ).toBe(
-      "Too cold for cycling (−2°C) — Stationary Bike instead. Outdoor cycling resumes when it warms up."
+      // fmtAmbientTemp renders the ASCII hyphen every other ambient-temperature surface
+      // shows; the figure is the shared formatter's, not this line's.
+      "Too cold for cycling (-2°C) — Stationary Bike instead. Outdoor cycling resumes when it warms up."
     );
   });
 
@@ -281,10 +294,282 @@ describe("the disclosure always says why (#838/#1724)", () => {
       activity: "Cycling",
       reason: "wet",
       alternative: null,
-      figure: null,
+      value: null,
+      weatherCode: null,
+      temperatureUnit: "C",
     });
     expect(line).toContain("Too wet for cycling");
     expect(line).toContain("resumes when it dries out");
+  });
+
+  it("renders the WET park's description, never a temperature (#1967)", () => {
+    // The reported line was "Too wet for cycling (45°C)" — 45 mm of rain wearing a
+    // temperature unit. The disclosure now formats the figure itself, so no caller is
+    // in a position to hand it the wrong one.
+    const line = parkedDisclosureLine({
+      activity: "Cycling",
+      reason: "wet",
+      alternative: "Stationary Bike",
+      value: 45,
+      weatherCode: 65,
+      temperatureUnit: "C",
+    });
+    expect(line).toContain("Too wet for cycling (heavy rain)");
+    expect(line).not.toContain("°C");
+    expect(line).not.toContain("45");
+  });
+});
+
+// ---- The figure a park discloses (#1967) --------------------------------------------
+//
+// THE BUG THIS PINS: every reason's value used to be formatted as an ambient temperature,
+// so rainfall in millimetres rendered as "45°C". The table below is one row per REASON —
+// a new reason with no unit of its own is a visible gap here, and a compile error at
+// PARK_REASON_QUANTITY.
+
+describe("every park reason formats in its OWN unit (#1967)", () => {
+  const CASES: {
+    reason: ParkReason;
+    quantity: ParkQuantity;
+    value: number;
+    weatherCode: number | null;
+    inC: string;
+    inF: string;
+  }[] = [
+    {
+      reason: "cold",
+      quantity: "temperature",
+      value: -2,
+      weatherCode: 71,
+      inC: "-2°C",
+      inF: "28°F",
+    },
+    {
+      reason: "hot",
+      quantity: "temperature",
+      value: 38,
+      weatherCode: 0,
+      inC: "38°C",
+      inF: "100°F",
+    },
+    {
+      // Millimetres decide the adjective and are never printed; the type comes from the
+      // WMO code. The figure is the SAME in both scales — it is not a temperature.
+      reason: "wet",
+      quantity: "precipitation",
+      value: 45,
+      weatherCode: 65,
+      inC: "heavy rain",
+      inF: "heavy rain",
+    },
+  ];
+
+  it("covers every reason the parking engine can produce", () => {
+    expect(CASES.map((c) => c.reason).sort()).toEqual(
+      Object.keys(PARK_REASON_QUANTITY).sort()
+    );
+  });
+
+  for (const c of CASES) {
+    it(`formats a ${c.reason} park as a ${c.quantity}`, () => {
+      expect(PARK_REASON_QUANTITY[c.reason]).toBe(c.quantity);
+      expect(
+        parkedFigure({
+          reason: c.reason,
+          value: c.value,
+          weatherCode: c.weatherCode,
+          temperatureUnit: "C",
+        })
+      ).toBe(c.inC);
+      // Units belong to the LOGIN: a °F reader sees °F, and a non-temperature figure is
+      // unmoved by the preference.
+      expect(
+        parkedFigure({
+          reason: c.reason,
+          value: c.value,
+          weatherCode: c.weatherCode,
+          temperatureUnit: "F",
+        })
+      ).toBe(c.inF);
+    });
+
+    it(`renders no figure at all for a ${c.reason} park with no value`, () => {
+      expect(
+        parkedFigure({
+          reason: c.reason,
+          value: null,
+          weatherCode: c.reason === "wet" ? c.weatherCode : null,
+          temperatureUnit: "C",
+        })
+      ).toBe(c.reason === "wet" ? "rain" : null);
+    });
+  }
+
+  it("a wet park never renders a temperature or millimetres — the regression pin", () => {
+    for (const unit of ["C", "F"] as const) {
+      const figure = parkedFigure({
+        reason: "wet",
+        value: 45,
+        weatherCode: 65,
+        temperatureUnit: unit,
+      });
+      expect(figure).not.toMatch(/°/);
+      expect(figure).not.toMatch(/mm/);
+      expect(figure).not.toMatch(/45/);
+    }
+  });
+
+  it("the verdict carries its own quantity, so no consumer has to guess", () => {
+    const env = fallbackEnvelope("Cycling");
+    expect(
+      parkedVerdict("Cycling", day(TODAY, { tempMaxC: -30 }), env)
+    ).toMatchObject({ reason: "cold", quantity: "temperature" });
+    expect(
+      parkedVerdict("Cycling", day(TODAY, { precipitationMm: 60 }), env)
+    ).toMatchObject({ reason: "wet", quantity: "precipitation" });
+    // Not parked ⇒ no reason and no quantity to speak of.
+    expect(
+      parkedVerdict("Cycling", day(TODAY, { tempMaxC: 18 }), env)
+    ).toMatchObject({ parked: false, reason: null, quantity: null });
+  });
+});
+
+describe("the precipitation description (#1967)", () => {
+  // A full day of cached hours, wet in the given hours only.
+  function hours(
+    wet: readonly number[],
+    mm = 3,
+    count = 24
+  ): PrecipitationHour[] {
+    return Array.from({ length: count }, (_, hour) => ({
+      hour,
+      precipitationMm: wet.includes(hour) ? mm : 0,
+    }));
+  }
+
+  it("takes the TYPE from the weather code, across the whole precipitation family", () => {
+    const cases: [number, string][] = [
+      [55, "drizzle"],
+      [65, "rain"],
+      [75, "snow"],
+      [81, "showers"],
+      [85, "snow showers"],
+      [95, "thunderstorm"],
+    ];
+    for (const [code, label] of cases) {
+      expect(
+        precipitationPhrase({ weatherCode: code, precipitationMm: 18 })
+      ).toBe(label);
+    }
+  });
+
+  it("takes the INTENSITY from the day's total, which is never itself printed", () => {
+    expect(precipitationPhrase({ weatherCode: 53, precipitationMm: 4 })).toBe(
+      "light drizzle"
+    );
+    expect(precipitationPhrase({ weatherCode: 63, precipitationMm: 18 })).toBe(
+      "rain"
+    );
+    expect(precipitationPhrase({ weatherCode: 63, precipitationMm: 45 })).toBe(
+      "heavy rain"
+    );
+    // A thunderstorm carries its own intensity — no adjective is added.
+    expect(precipitationPhrase({ weatherCode: 95, precipitationMm: 45 })).toBe(
+      "thunderstorm"
+    );
+  });
+
+  it("says nothing at all when the code names no precipitation", () => {
+    // Silence over guessing: "Too wet" already carries the fact; without a code there
+    // is no honest way to say whether it is rain, snow or a thunderstorm.
+    expect(precipitationPhrase({ weatherCode: 0, precipitationMm: 45 })).toBe(
+      null
+    );
+    expect(precipitationPhrase({ weatherCode: 3, precipitationMm: 45 })).toBe(
+      null
+    );
+    expect(
+      precipitationPhrase({ weatherCode: null, precipitationMm: 45 })
+    ).toBe(null);
+  });
+
+  it("names the day-part when the wet hours cluster into one", () => {
+    expect(
+      precipitationPhrase({
+        weatherCode: 65,
+        precipitationMm: 45,
+        hours: hours([6, 7, 8, 9, 10]),
+      })
+    ).toBe("heavy rain in the morning");
+    expect(
+      precipitationPhrase({
+        weatherCode: 61,
+        precipitationMm: 4,
+        hours: hours([19, 20, 21]),
+      })
+    ).toBe("light rain in the evening");
+  });
+
+  it("says NOTHING about timing rather than inventing precision", () => {
+    const all = (h: readonly number[]) =>
+      precipitationPhrase({
+        weatherCode: 65,
+        precipitationMm: 45,
+        hours: hours(h),
+      });
+    // All day — no day-part is truer than any other.
+    expect(all([...Array(24).keys()])).toBe("heavy rain");
+    // Scattered across parts — a cluster it is not.
+    expect(all([7, 14, 20])).toBe("heavy rain");
+    // Straddling two parts — neither is the answer.
+    expect(all([10, 11, 12, 13])).toBe("heavy rain");
+    // Overnight belongs to no named part, so it gets no clause.
+    expect(all([1, 2, 3])).toBe("heavy rain");
+    // Nothing wet in the hourly series at all (a daily total with no hourly detail).
+    expect(all([])).toBe("heavy rain");
+  });
+
+  it("a PARTIALLY cached day yields no timing — the missing hours might be wet too", () => {
+    expect(
+      precipitationPhrase({
+        weatherCode: 65,
+        precipitationMm: 45,
+        hours: hours([6, 7, 8], 3, MIN_TIMING_HOURS - 1),
+      })
+    ).toBe("heavy rain");
+    // One more cached hour and the day is complete enough to speak.
+    expect(
+      precipitationPhrase({
+        weatherCode: 65,
+        precipitationMm: 45,
+        hours: hours([6, 7, 8], 3, MIN_TIMING_HOURS),
+      })
+    ).toBe("heavy rain in the morning");
+  });
+
+  it("a trace hour is not rain", () => {
+    const trace = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      precipitationMm: hour === 20 ? WET_HOUR_MM : 0,
+    }));
+    trace[7].precipitationMm = 4;
+    trace[8].precipitationMm = 4;
+    // The 20:00 trace does not drag the phrase out of the morning.
+    expect(
+      precipitationPhrase({
+        weatherCode: 65,
+        precipitationMm: 45,
+        hours: trace,
+      })
+    ).toBe("heavy rain in the morning");
+  });
+
+  it("maps hours to the day-parts people mean", () => {
+    expect(dayPartOfHour(8)).toBe("morning");
+    expect(dayPartOfHour(14)).toBe("afternoon");
+    expect(dayPartOfHour(20)).toBe("evening");
+    expect(dayPartOfHour(3)).toBeNull();
+    expect(dayPartOfHour(23)).toBeNull();
   });
 });
 
