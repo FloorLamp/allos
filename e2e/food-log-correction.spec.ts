@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { settledClick, settledSelect } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Correcting an already-logged serving from the food log (#1934).
 //
@@ -14,6 +16,14 @@ import { settledClick, settledSelect } from "./helpers";
 // Fixture discipline: the test logs its OWN serving, identifies that row by the id that
 // appears in the list (never an exact count over the shared seed), corrects it, and
 // removes it again — so it leaves the shared profile exactly as it found it.
+//
+// That last step is ROW-ADDRESSED on purpose (#1959). The bar's "−" is group-scoped —
+// `bump(slug, -1)` → `undoFoodServingCore`, which pops the NEWEST event in the window by
+// `logged_at` — while a corrected serving deliberately keeps its original tap instant
+// (lib/food-log-write.ts: "`logged_at` is deliberately NOT edited"). So a serving moved
+// INTO Evening is not necessarily the newest thing in Evening, and the group control can
+// legitimately take a seeded neighbour instead. Asking it to pick this test's row was
+// never a promise it makes; the teardown addresses the row the test wrote, by id.
 
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
@@ -34,6 +44,36 @@ async function loggedIds(page: Page): Promise<string[]> {
   return loggedRows(page).evaluateAll((nodes) =>
     nodes.map((n) => n.getAttribute("data-testid") ?? "")
   );
+}
+
+// Give back the ONE serving this test logged, addressed by its event id. Mirrors the
+// two-table discipline of `undoFoodServingCore`: the ledger row and the day counter move
+// together, and the counter row is dropped at zero — so the profile is left exactly as
+// found, not merely one row lighter.
+function removeOwnServing(eventId: number): void {
+  const db = new Database(workerDbPath());
+  try {
+    const row = db
+      .prepare(
+        `SELECT profile_id, date, group_key FROM food_log_events WHERE id = ?`
+      )
+      .get(eventId) as
+      { profile_id: number; date: string; group_key: string } | undefined;
+    // The row this test created must still be there; if it is not, the correction under
+    // test lost it and the teardown should say so rather than silently no-op.
+    if (!row) throw new Error(`food_log_events row ${eventId} is already gone`);
+    db.prepare(`DELETE FROM food_log_events WHERE id = ?`).run(eventId);
+    db.prepare(
+      `UPDATE food_log SET servings = servings - 1
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
+    ).run(row.profile_id, row.date, row.group_key);
+    db.prepare(
+      `DELETE FROM food_log
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+    ).run(row.profile_id, row.date, row.group_key);
+  } finally {
+    db.close();
+  }
 }
 
 async function slotTotal(page: Page, meal: string): Promise<number> {
@@ -107,11 +147,13 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
     "Evening"
   );
 
-  // Leave the fixture as found: undo the serving from the window it now lives in.
-  await page.getByTestId("food-slot-evening").click();
-  await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
-  await revealFoodGroup(page, "nuts_seeds");
-  await page.getByTestId("undo-nuts_seeds").click();
+  // Leave the fixture as found — see the row-addressed note at the top of this file.
+  // The reload is what proves it: the server re-derives the list and the meal tallies
+  // from the two tables, so the row being gone AND Evening being back at its pre-test
+  // total together say the restore was complete, not just half-applied.
+  removeOwnServing(Number(eventId));
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(page.getByTestId(newId!)).toHaveCount(0);
   await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
     String(eveningBefore)
