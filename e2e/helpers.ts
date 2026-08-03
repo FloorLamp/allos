@@ -757,6 +757,20 @@ export async function settledClick(
 // or navigation kept it. When the fill feeds a save whose success is SILENT (empty
 // is valid), also confirm the PERSISTED effect after saving (reload + assert), the
 // email-auth precedent.
+//
+// DO NOT USE on a field whose RENDERED text differs from the value you fill — it
+// would HANG, not fail. The self-check below is `toHaveValue(value)`, and a
+// `DateField` re-renders `2026-08-03` as `Aug 3, 2026` (its input's `value` is
+// `formatDateWithYear(val)`), so the post-condition can never hold and this retries
+// to its timeout on a fill that WORKED. Those fields are self-verifying anyway —
+// a DateField's calendar opens only through React's `onFocus`, so a swallowed fill
+// fails on the very next line. Assert the downstream effect instead. (#1941)
+//
+// The retry loop — not the hydration check — is what rescues a control whose
+// `onFocus` WRITES state (`Combobox` opens its listbox; `StrengthSets`' first-set
+// fields apply the ghost suggestion). `.fill()` focuses before it types, so that
+// write interleaves with the clear-and-type and the first attempt lands corrupted
+// or empty; the second attempt sticks. (#1941)
 export async function settledFill(
   page: Page,
   field: Locator,
