@@ -287,7 +287,14 @@ escalation: a skip is a RECORDED DELIBERATE DECISION — distinct from silence �
 written through the same `markDoseSkipped` core, so the ledger cannot tell an
 escalation skip from a reminder skip, and the existing `skippedDoseIds` gate
 ends the escalation loop with no marker of its own. Without it, "we decided not
-to give it" forced a false confirm, an indefinite ack, or an app visit. Payloads carry **ids only** (never
+to give it" forced a false confirm, an indefinite ack, or an app visit.
+**A history correction never re-arms an escalation (#1933):** deleting a taken
+dose log, or amending one onto a different date, leaves that day unconfirmed —
+so the write core stamps the dose's per-day escalation marker for the day it
+vacated, exactly as a real escalation or an ack would. The system may reduce
+contact unilaterally and may never increase it off its own reading of state, and
+a bookkeeping correction is not a request to be chased. The suppression is
+per-DATE, so a correction to an older day cannot silence a genuine miss today. Payloads carry **ids only** (never
 names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers
 from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
 unconditionally confirm; a stale/foreign tap gets the outdated-message
