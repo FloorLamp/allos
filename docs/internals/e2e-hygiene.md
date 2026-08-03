@@ -422,6 +422,57 @@ line-26 flake). `settledCheck` waits for the same hydration markers, then
 it subsumes a `if (!await box.isChecked())` guard) and confirms it holds. Its
 text-input sibling stays `settledFill`.
 
+### Why there is NO "controlled input ⇒ must use `settledFill`" scan (#1941)
+
+#1941 proposed a pure-tier scan in the `page-width-scan` family: resolve every
+raw `.fill()`/`.check()`/`.selectOption()` in `e2e/**` to the component it
+drives, and fail the ones landing on a controlled input. It was not built, and
+the reason is a measurement rather than an opinion.
+
+The suite was instrumented at the Playwright **locator layer** — every raw
+interaction reported, from the live DOM, the `__reactProps$` of the element
+Playwright itself had resolved (so resolution was exact, sidestepping the
+`getByLabel`/template-literal resolution problems the issue lists as open
+questions). Over a
+full 4-shard run: **801 interactions, 554 of them raw, across 463 distinct call
+sites. 320 of those sites sit on a controlled input.**
+
+Three findings killed the rule:
+
+1. **The hazard it screens for did not occur.** Of 277 raw fills on controlled
+   inputs, **zero** were lost to the pre-hydration revert. Every one found its
+   element already hydrated — raw fills overwhelmingly happen after an awaited
+   interaction, long past the hydration window.
+2. **The mandated helper is unusable on 31 of the 320.** `settledFill` verifies
+   itself with `toHaveValue(value)`, and a `DateField` re-renders `2026-08-03`
+   as `Aug 3, 2026` (`components/DateField.tsx` — the input's `value` is
+   `formatDateWithYear(val)`). The post-condition can never hold, so the helper
+   retries to its timeout **on a fill that worked**. A rule mandating it there
+   would convert green specs into hangs.
+3. **The real defects are selected by a different predicate.** Both bad writes
+   found trace to a controlled input whose **`onFocus` writes React state** —
+   `fill()` focuses before it types, so that write interleaves with the
+   clear-and-type. `Combobox`'s `onFocus` does `setOpen(true)` (re-render
+   rewrites the DOM value from state → the #1944 swallow); `StrengthSets`'
+   set-1 weight `onFocus` applies the ghost suggestion (→ the typed value
+   APPENDS to it, `60` becoming `77.560`).
+
+That predicate is a property of **three components**, not of 320 call sites, so
+a call-site scan is the wrong shape for it — it would demand ~290 conversions
+that protect nothing while missing the mechanism that actually bites. Worth
+noting too that the worst instance was **deterministic** (9 runs of 9), not a
+race: no amount of hydration-waiting would have caught it. What saves these
+sites is `settledFill`'s **verify-and-retry**, not its hydration check — which
+is also precisely why the display-differs fields cannot be rescued by it.
+
+**What to do instead.** When a spec fills a control whose `onFocus` mutates
+state (today: `Combobox`, `DateField`, `StrengthSets`' first-set fields), reach
+for `settledFill`/`settledPickOption` — and if the field's rendered text differs
+from its submitted value, do NOT: assert the effect downstream instead, which
+those fields already give you (a `DateField`'s calendar only opens through
+React's `onFocus`, so a swallowed fill fails on the very next line — it is
+self-verifying, which is why no spec uses `settledFill` on one).
+
 ### The bystander-poll false-settle is APP-WIDE, and a following `goto` LOSES the write (#1437)
 
 The `settledClick` caveat first written for the Family screen (#1111) is not
