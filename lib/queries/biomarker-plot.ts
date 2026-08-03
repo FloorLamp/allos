@@ -13,12 +13,12 @@
 // Imports the specific query modules rather than the ../queries barrel, so nothing
 // here can pull the barrel back into a module the barrel itself re-exports.
 
-import { getBiomarkerSeriesWithDerived } from "./derived";
+import { getBiomarkerSeriesWithDerivedFor } from "./derived";
 import { getCanonicalBiomarker } from "./medical";
 import {
   getUserSex,
-  getUserAgeOn,
   getUserReproductiveStatus,
+  userAgeResolver,
 } from "../settings";
 import {
   referenceRange,
@@ -56,13 +56,83 @@ export function biomarkerPlot(
   profileId: number,
   canonical: string
 ): BiomarkerPlot | null {
-  const series = getBiomarkerSeriesWithDerived(profileId, canonical);
+  return biomarkerPlots(profileId, [canonical]).get(canonical) ?? null;
+}
+
+// The SAME plots for SEVERAL analytes in ONE pass (#1961), keyed by the exact
+// requested name (null for a name with no readings, exactly as biomarkerPlot
+// returns). `biomarkerPlot` is a one-element call of this, so the batched and
+// unbatched answers are one computation, not two that agree today.
+//
+// Every per-analyte read that ISN'T per-analyte is hoisted out of the loop: the
+// series (one query for the whole batch, see getBiomarkerSeriesFor) and the three
+// demographic reads, which describe the PROFILE and were re-read per call. They stay
+// LAZY so a batch whose analytes all have zero readings still issues none of them —
+// the unbatched path returned null before reading any.
+//
+// The canonical-biomarker lookup stays per analyte: it is what makes two members of
+// one family (A1c and its eAG re-expression) plot in DIFFERENT units, so collapsing
+// it to the family would change rendered numbers.
+export function biomarkerPlots(
+  profileId: number,
+  canonicals: readonly string[]
+): Map<string, BiomarkerPlot | null> {
+  const out = new Map<string, BiomarkerPlot | null>();
+  const names = [...new Set(canonicals)];
+  if (names.length === 0) return out;
+
+  const seriesByName = getBiomarkerSeriesWithDerivedFor(profileId, names);
+
+  const sex = once(() => getUserSex(profileId));
+  const status = once(() => getUserReproductiveStatus(profileId));
+  const ageResolver = once(() => userAgeResolver(profileId));
+
+  for (const canonical of names) {
+    out.set(
+      canonical,
+      shapePlot(seriesByName.get(canonical) ?? [], canonical, {
+        sex,
+        status,
+        ageOn: (on) => ageResolver()(on),
+      })
+    );
+  }
+  return out;
+}
+
+// Run `fn` at most once, memoizing whatever it returned — including null, which a
+// nullish-coalescing memo would re-read every time (an unset sex is the common case).
+function once<T>(fn: () => T): () => T {
+  let done = false;
+  let value: T;
+  return () => {
+    if (!done) {
+      value = fn();
+      done = true;
+    }
+    return value;
+  };
+}
+
+// The plot shaping itself — one analyte's family series (stored ∪ derived) turned
+// into points/unit/range. Split out only so the single and batched entry points run
+// the identical body; the demographics arrive as thunks so a series-less analyte
+// costs nothing.
+function shapePlot(
+  series: MedicalRecord[],
+  canonical: string,
+  demographics: {
+    sex: () => ReturnType<typeof getUserSex>;
+    status: () => ReturnType<typeof getUserReproductiveStatus>;
+    ageOn: (on: string | null) => number | null;
+  }
+): BiomarkerPlot | null {
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
-  const sex = getUserSex(profileId);
+  const sex = demographics.sex();
   const latestDate = series[series.length - 1]?.date ?? null;
-  const age = getUserAgeOn(profileId, latestDate);
-  const status = getUserReproductiveStatus(profileId);
+  const age = demographics.ageOn(latestDate);
+  const status = demographics.status();
 
   // exact value_num, or an inexact-but-bounded reading plotted at its limit.
   const plottable = series.flatMap((r) => {
