@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 
 // Pause-during-situation (#1296): the INVERSE situational condition. This spec OWNS its
 // fixtures (create-and-clean, unique names) — it adds a daily supplement paused during a
@@ -18,8 +18,17 @@ test("a pause link holds the item while its situation is active, then resumes", 
   // ── Add a daily supplement paused during a unique situation ─────────────────
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
-  await addDialog.getByLabel("Name").fill(SUPP);
-  await addDialog.getByLabel("Pause during situation").fill(SITUATION);
+  // Both fields are <Combobox>es — CONTROLLED (`value=` + `onChange=`). A raw fill()
+  // dispatched before React attaches sets the DOM and moves no state, and hydration
+  // reverts it; the supplement is then created with no pause situation, the situation
+  // row is never written, and this test fails ~20 lines below on a chip that was never
+  // going to exist. Observed on CI shard 3 (#1941).
+  await settledFill(page, addDialog.getByLabel("Name"), SUPP);
+  await settledFill(
+    page,
+    addDialog.getByLabel("Pause during situation"),
+    SITUATION
+  );
   await settledClick(
     page,
     addDialog.getByRole("button", { name: "Add", exact: true })
