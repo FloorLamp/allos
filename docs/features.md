@@ -1023,11 +1023,18 @@ first-class **food-habit target** — a `food_group` scope on the same
 the same weekly serving rollup (one question, one computation) and it can be
 adopted by a **Protocol** as an intervention. A behind-target habit surfaces as
 a calm, dismissible **coaching** observation (never a notification). A **protein
-gauge** draws today's intake and the weekly average against a goal-scaled g/kg
-band (lean mass preferred when it's tracked); the goal behind that band is yours
+gauge** draws today's intake and **this week's** daily average against a
+goal-scaled g/kg band (lean mass preferred when it's tracked); the goal behind
+that band is yours
 to set — **Settings → Nutrition → Protein goal** (RDA baseline / Active / Muscle
 gain / Cut), an informational range rather than a prescription, seeded to Active
-when onboarding's fitness path is chosen. This
+when onboarding's fitness path is chosen. **Two protein averages, two labels.**
+The gauge's marker and the adequacy verdict are **week-to-date** — that is the
+question "am I meeting my target this week?" is asked over, and the surfaces say
+"this week". The dashboard's Nutrition card says "7-day average" and now shows
+one: a trailing seven **calendar** days of complete days, through the same shared
+helper the other trailing averages use. Days without a log stay unknown rather
+than counting as zero. This
 granularity is where dietary evidence actually lives ("2 servings of fatty fish
 a week") and is sufficient for the biomarker→food and habit-target features;
 full macro tracking stays possible later as an additive tier. Informational, not

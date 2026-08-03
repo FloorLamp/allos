@@ -107,6 +107,7 @@ import {
   seedFitnessLens,
   seedRankedCardOrder,
   seedBiomarkerPickerRank,
+  seedDayOneAverages,
   seedPinnedCardOrder,
 } from "./seed/trends";
 
@@ -198,3 +199,4 @@ seedPortalHouseholds();
 // Appended LAST (#1675): a new profile plus its own lab rows, so every existing
 // fixture's row ids stay exactly where they were.
 seedBiomarkerPickerRank();
+seedDayOneAverages();

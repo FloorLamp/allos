@@ -35,6 +35,8 @@ import {
   TRENDS_RANK_PLAIN_PROFILE,
   E2E_LOGIN_TRENDS_PIN,
   TRENDS_PIN_PROFILE,
+  E2E_LOGIN_DAY_ONE,
+  DAY_ONE_PROFILE,
   E2E_LOGIN_BIOMARKER_PICKER,
   BIOMARKER_PICKER_PROFILE,
   BIOMARKER_PICKER_OVERDUE,
@@ -604,6 +606,25 @@ export function seedPinnedCardOrder(): void {
   seedMemberLogin(E2E_LOGIN_TRENDS_PIN, id, "write");
   console.log(
     `e2e: seeded Trends ★-pin fixture — profile ${id} (${TRENDS_PIN_PROFILE}) (#1643)`
+  );
+}
+
+// ── Day one and the trailing-average labels (#1909 / #1917) ──
+export function seedDayOneAverages(): void {
+  // Seeded EMPTY on purpose — see the constants' header in e2e/logins/trends.ts.
+  // The state under test is the absence of history, so the only thing a shared
+  // seeder can safely give this fixture is a profile, a login and an adult
+  // birthdate; every reading is the spec's, written and cleared at test start so
+  // --repeat-each starts from the same nothing.
+  const id = fixtureProfileId(DAY_ONE_PROFILE);
+  const anchor = today(id);
+  setUserBirthdate(id, shiftDateStr(anchor, -365 * 34));
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(id);
+  seedMemberLogin(E2E_LOGIN_DAY_ONE, id, "write");
+  console.log(
+    `e2e: seeded day-one averages fixture — profile ${id} (${DAY_ONE_PROFILE}) (#1909/#1917)`
   );
 }
 
