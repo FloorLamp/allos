@@ -12,7 +12,7 @@
 
 import {
   getAllBiomarkerSeries,
-  getBiomarkerSeries,
+  getBiomarkerSeriesFor,
   getCanonicalBiomarker,
   getUsedCanonicalNames,
 } from "./medical";
@@ -223,12 +223,50 @@ export function getBiomarkerSeriesWithDerived(
   profileId: number,
   canonical: string
 ): MedicalRecord[] {
-  const stored = getBiomarkerSeries(profileId, canonical);
-  const derived = getDerivedBiomarkerSeriesFor(profileId, canonical);
-  if (derived.length === 0) return stored;
-  return [...stored, ...derived].sort((a, b) =>
-    a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
+  return getBiomarkerSeriesWithDerivedFor(profileId, [canonical]).get(
+    canonical
+  )!;
+}
+
+// getBiomarkerSeriesWithDerived for SEVERAL analytes in ONE pass (#1961), keyed by
+// the exact requested name. The single-analyte function above is now a one-element
+// call of this one, so the batched and unbatched answers are the same code, not two
+// implementations that agree today.
+//
+// Two reads are hoisted out of the per-analyte loop: the stored series (one
+// getBiomarkerSeriesFor query for the whole batch instead of one per analyte) and
+// the derived computation (one grouped pass shared by every requested analyte —
+// getDerivedComputation's cache() is inert outside a server request, so the sidecar
+// scripts and the DB test tier were re-running it per analyte).
+//
+// The derived pass is still SKIPPED entirely unless some requested name is a derived
+// index, matching getDerivedBiomarkerSeriesFor's early return: a batch of ordinary
+// stored analytes must not start paying for a computation it never asked for.
+export function getBiomarkerSeriesWithDerivedFor(
+  profileId: number,
+  canonicals: readonly string[]
+): Map<string, MedicalRecord[]> {
+  const names = [...new Set(canonicals)];
+  const stored = getBiomarkerSeriesFor(profileId, names);
+  const wantsDerived = names.some((n) =>
+    (DERIVED_NAMES as readonly string[]).includes(n)
   );
+  const derivedAll = wantsDerived ? getDerivedBiomarkerReadings(profileId) : [];
+
+  const out = new Map<string, MedicalRecord[]>();
+  for (const name of names) {
+    const rows = stored.get(name) ?? [];
+    const derived = derivedAll.filter((r) => r.name === name);
+    out.set(
+      name,
+      derived.length === 0
+        ? rows
+        : [...rows, ...derived].sort((a, b) =>
+            a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
+          )
+    );
+  }
+  return out;
 }
 
 // One complete PhenoAge draw, shaped for the biological-age hero (issue #209): the
