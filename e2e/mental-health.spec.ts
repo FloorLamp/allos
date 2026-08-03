@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledCheck, settledClick, settledFill } from "./helpers";
@@ -78,15 +78,23 @@ function maxScoreId(): number {
 // and earlier tests in this file add more. So a swallowed write handed the spec somebody
 // else's row and every later assertion then failed AGAINST it — a band mismatch pointing
 // at the correction UI, several steps downstream of the write that never happened.
-async function recordedScoreId(before: number): Promise<number> {
-  let id = before;
-  await expect(async () => {
-    id = maxScoreId();
-    expect(
-      id,
-      `the score submit recorded no new row (highest id still ${before})`
-    ).toBeGreaterThan(before);
-  }).toPass({ timeout: 10_000 });
+// The signal awaited is the RENDERED one — the History list growing by a row — not a
+// poll of SQLite. The submit's Server Action revalidates, so once the new row is on the
+// page the write has landed and the id read below needs no retrying of its own.
+async function recordedScoreId(
+  rows: Locator,
+  beforeCount: number,
+  beforeId: number
+): Promise<number> {
+  await expect(
+    rows,
+    "the score submit recorded no new row in the History list"
+  ).toHaveCount(beforeCount + 1);
+  const id = maxScoreId();
+  expect(
+    id,
+    `the History list grew but no new instrument row was written (highest id still ${beforeId})`
+  ).toBeGreaterThan(beforeId);
   return id;
 }
 
@@ -201,11 +209,13 @@ test.describe("correcting a recorded score (#1396)", () => {
     await page.goto("/records/specialty/mental-health");
     await pickInstrument(page, "GAD-7");
     // The issue's case: 21 typed where 12 was meant.
-    const before = maxScoreId();
+    const rows = page.getByTestId(/^instrument-reading-\d+$/);
+    const beforeCount = await rows.count();
+    const beforeId = maxScoreId();
     await enterOutsideTotal(page, "21");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
-    const id = await recordedScoreId(before);
+    const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
     await expect(
@@ -230,11 +240,13 @@ test.describe("correcting a recorded score (#1396)", () => {
   test("a mis-entered score can be removed from the History list", async () => {
     await page.goto("/records/specialty/mental-health");
     await pickInstrument(page, "GAD-7");
-    const before = maxScoreId();
+    const rows = page.getByTestId(/^instrument-reading-\d+$/);
+    const beforeCount = await rows.count();
+    const beforeId = maxScoreId();
     await enterOutsideTotal(page, "4");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
-    const id = await recordedScoreId(before);
+    const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
 
