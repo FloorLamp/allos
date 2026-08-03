@@ -327,7 +327,9 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   const activityName = `E2E Cardio Protocol ${frozenNow().getTime()}`;
   await createProtocol(activityName, "cardio");
   const activityCard = page.getByTestId("protocol-practice-card");
-  await settledClick(
+  // ProtocolLogButton posts nothing — it opens the owning logger through the
+  // activity-editor context. The form it opens is the signal.
+  await hydratedClick(
     page,
     activityCard.getByRole("button", { name: "Log cardio session" })
   );
@@ -370,7 +372,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   const foodName = `E2E Food Protocol ${frozenNow().getTime()}`;
   await createProtocol(foodName, "food_group:fatty_fish");
   const foodCard = page.getByTestId("protocol-practice-card");
-  await settledClick(
+  await hydratedClick(
     page,
     foodCard.getByRole("button", { name: "Log servings" })
   );

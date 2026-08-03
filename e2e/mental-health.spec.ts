@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledCheck, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  settledCheck,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_LOGIN_MENTAL,
@@ -23,13 +28,14 @@ import {
 
 async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7") {
   await openScreening(page);
-  await settledClick(page, page.getByTestId(`instrument-select-${key}`));
+  // A picker chip: onClick only calls pickInstrument (client state).
+  await hydratedClick(page, page.getByTestId(`instrument-select-${key}`));
 }
 
 async function openScreening(page: Page) {
   const form = page.getByTestId("instruments-form");
   if (!(await form.isVisible().catch(() => false))) {
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-mental-health-screening-panel-toggle")
     );
@@ -222,7 +228,14 @@ test.describe("correcting a recorded score (#1396)", () => {
       page.getByTestId(`instrument-reading-band-${id}`)
     ).toContainText("Severe");
 
-    await settledClick(page, page.getByTestId(`instrument-reading-edit-${id}`));
+    // "Correct" only flips editingId; the edit form it reveals is the signal.
+    await hydratedClick(
+      page,
+      page.getByTestId(`instrument-reading-edit-${id}`)
+    );
+    await expect(
+      page.getByTestId(`instrument-reading-edit-form-${id}`)
+    ).toBeVisible();
     await page.getByTestId(`instrument-reading-total-${id}`).fill("12");
     await settledClick(
       page,
@@ -250,10 +263,13 @@ test.describe("correcting a recorded score (#1396)", () => {
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
 
-    await settledClick(
+    // "Remove" does not write: handleDelete awaits the app-wide confirm() first
+    // and only posts if the user says yes. The dialog is this click's whole effect.
+    await hydratedClick(
       page,
       page.getByTestId(`instrument-reading-delete-${id}`)
     );
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
     // Every row's own control is also labelled "Remove" — scope the confirm to the
     // dialog so the click can't land back on the list.
     await settledClick(

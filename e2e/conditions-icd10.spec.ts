@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledClick, settledFill } from "./helpers";
+import { hydratedClick, settledFill } from "./helpers";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
 // the user CONFIRMS ("Use code"), which fills the code + code-system fields; on save
 // the stored code renders in the conditions table. This drives the real form and
@@ -8,7 +8,7 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
   page,
 }) => {
   await page.goto("/records/problems/conditions");
-  await settledClick(page, page.getByTestId("add-condition-panel-toggle"));
+  await hydratedClick(page, page.getByTestId("add-condition-panel-toggle"));
 
   // Scope to the Conditions section — on the merged Health record page (#1042
   // phase 6) other sections carry a "Condition" field (Family history) and an
@@ -57,7 +57,7 @@ test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", 
   page,
 }) => {
   await page.goto("/records/problems/conditions");
-  await settledClick(page, page.getByTestId("add-condition-panel-toggle"));
+  await hydratedClick(page, page.getByTestId("add-condition-panel-toggle"));
 
   const dialog = page.getByRole("dialog", { name: "Add condition" });
   const nameField = dialog.getByLabel("Condition", { exact: true });
@@ -95,8 +95,12 @@ test("picking a family-history condition applies its ICD-10-CM code too (#1676)"
 }) => {
   await page.goto("/records/care/overview");
   const section = page.getByTestId("records-family-history");
-  await settledClick(page, section.locator("summary"));
-  await settledClick(page, page.getByTestId("add-family-history-panel-toggle"));
+  // Native <details> — no JS, no POST. The reveal is the signal.
+  await section.locator("summary").click();
+  await hydratedClick(
+    page,
+    page.getByTestId("add-family-history-panel-toggle")
+  );
 
   // Scope to the Family history section: the stacked Care › Overview pane renders
   // several forms, and "Condition" is not unique across the page.

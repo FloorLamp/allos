@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { settledClick, settledFill, settledSelect } from "./helpers";
+import { hydratedClick, settledFill, settledSelect } from "./helpers";
 
 // The Care › Overview sections are <details> disclosures (#1804). A save
 // revalidates the server tree, and the re-rendered <details> comes back CLOSED —
@@ -13,7 +13,8 @@ async function openFamilySection(page: Page) {
   const isOpen = await section.evaluate(
     (el) => (el as HTMLDetailsElement).open
   );
-  if (!isOpen) await settledClick(page, section.locator("summary"));
+  // Native <details> — no JS, no POST; the toggle it reveals is the signal.
+  if (!isOpen) await section.locator("summary").click();
   await expect(
     page.getByTestId("add-family-history-panel-toggle")
   ).toBeVisible();
@@ -38,7 +39,7 @@ test.describe("Condition laterality / severity / stage (#1403)", () => {
     test.slow();
 
     await page.goto("/records/problems/conditions");
-    await settledClick(page, page.getByTestId("add-condition-panel-toggle"));
+    await hydratedClick(page, page.getByTestId("add-condition-panel-toggle"));
 
     const dialog = page.getByRole("dialog", { name: "Add condition" });
     const nameField = dialog.getByLabel("Condition", { exact: true });
@@ -108,7 +109,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
 
     await page.goto("/records/care/overview#family-history");
     let section = await openFamilySection(page);
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-family-history-panel-toggle")
     );
@@ -142,7 +143,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     // purpose: a relation already spelling out "stepmother" states the discriminator
     // itself, and the label deliberately does not repeat what the text says.
     section = await openFamilySection(page);
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-family-history-panel-toggle")
     );

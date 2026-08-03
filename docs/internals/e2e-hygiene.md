@@ -368,11 +368,12 @@ decision tree; the summary:
 
 | Situation                                                                                                            | Use                                                                                                                              |
 | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits the action's same-origin POST response before returning                                   |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits an action POST that started AFTER the click and targets this page's route (#1952)         |
 | Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                      |
 | **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state             |
 | **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard |
 | A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                  |
+| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)    |
 | A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                       |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
@@ -382,7 +383,9 @@ flake) or too long (slow suite) and asserts nothing.
 
 `settledClick` works only when the click fires exactly one same-origin POST; for
 a click that fires NO action (a client toggle, an `<a href>` nav) there is no
-POST to await and it times out — that's what `followLink`/`expect` are for.
+POST to await and it times out — that's what `followLink`/`hydratedClick`/`expect`
+are for. Its timeout message says so explicitly, because that timeout almost
+always means the CALL SITE is wrong rather than the app being slow (#1952).
 
 ### The pre-hydration fill-revert (`settledFill`, #1188)
 
@@ -429,10 +432,12 @@ Playwright's side those are indistinguishable from the action a click fires.
 Measured while idle on `/records/history/visits`: **2 POSTs every 6s**, on every
 authenticated route.
 
-`settledClick` arms a same-origin POST wait, so it can resolve on one of those
-polls while the click's own action is still in flight. Usually harmless — the
-follow-up retrying `expect` absorbs the lag. It is NOT harmless when the next
-line NAVIGATES:
+**#1949 moved both polls to a `fetch` GET, and #1952 correlated the wait** (see
+below) — but the doctrine stands, because the poll is not the only thing that can
+POST to a route you are standing on. `settledClick` used to arm a wait for ANY
+same-origin POST, so it could resolve on one of those polls while the click's own
+action was still in flight. Usually harmless — the follow-up retrying `expect`
+absorbs the lag. It is NOT harmless when the next line NAVIGATES:
 
 ```ts
 await settledClick(
@@ -465,6 +470,62 @@ crucially — nothing navigates away while the action is still in flight. Same
 shape as the `mood-server-logged` precedent in `helpers.ts`. Keep spec CLEANUP
 under this rule too: a cleanup click followed by a `goto` can drop the cleanup
 and hand the next spec a mutated shared profile.
+
+### "Any POST" was never a contract (#1952)
+
+The bystander poll above had a second, quieter victim. Because the wait accepted
+ANY same-origin POST, a `settledClick` aimed at a control that posts **nothing**
+was satisfied by the toasters' poll — so ~22 tests across 14 spec files asserted
+nothing about their own click and passed anyway. That is the worst shape a green
+test can have: it does not fail when the product breaks, it fails when unrelated
+traffic goes away. #1949 removed the traffic and all 22 went red at once.
+
+`settledClick` now correlates. Two filters replace "any POST":
+
+1. **Started after the click** — requests are collected from a `page.on("request")`
+   window opened in the same synchronous turn as `locator.click()`, matched on
+   Playwright's `Request` object identity. A poll already in flight when the click
+   landed can no longer satisfy the wait, which is the #1437 false-settle above.
+2. **Is a Server Action** — Next stamps every hydrated action dispatch with a
+   `next-action` header carrying the action id, and a route-handler POST (`/api/…`)
+   has none. The pre-hydration native `<form>` submit is the one action without that
+   header (its id rides the body), so it is still matched on the route it
+   necessarily posts to. `opts.url` overrides both.
+
+   This filter was originally "targets this page's route", and that is where the
+   first regression came from: it is true of a Server Action, but pinning the route
+   at ARM time breaks on the unwind `followLink` documents — the App Router can
+   commit a destination and then fall back to the source route mid-interaction. On
+   `illness-episode-followups` it did exactly that, and the Save action **and** both
+   toaster polls posted to `/` after unwinding off `/medical/episodes/2`, so the
+   arm-time pin rejected the click's own action and blamed the call site for a
+   navigation underneath it. Keying on the header is both tighter (a same-route
+   `/api` POST no longer qualifies) and immune to the unwind. **A same-route filter
+   that needs per-call-site `{ url }` opt-outs would have been the weaker design;
+   this one needs none.**
+
+**What it does not guarantee, stated plainly:** two Server Actions are
+indistinguishable from outside the browser unless you pin their action ids, which
+are build-generated hashes no spec should hard-code. A background actor that posted
+an action AFTER the click would still satisfy the wait. Nothing does that
+today, and `chrome-refresh-scan`'s chrome-actor list is where such an actor would
+have to appear — but the guarantee is "an action POST to this route, caused no
+earlier than this click", not "this click's action". Where that residue matters
+(a settled click followed by a navigation), the durable-marker rule above still
+applies.
+
+When this wait does time out, the failure now reports the page it armed on, the
+page the browser is on NOW, every same-origin POST it saw with the reason each was
+refused, and the click's own error if the click never landed — so the next reader
+does not have to re-instrument the helper to find out which of those happened.
+
+**The lesson for the call site, which is the half that actually recurs:** a
+control that opens something — a disclosure, a chip, an overflow menu, a confirm
+sheet — posts nothing, and the thing it opened is the honest signal. Two of the
+sites this issue corrected only post in the OTHER branch of their own logic:
+`dup-cluster-merge` submits a clean cluster but merely opens the picker for a
+conflicting one, and a row's "Remove" awaits `confirm()` and posts only on yes.
+The testid is not the signal; what the handler does with the state it is in is.
 
 ## Where fixtures live (the #1511 split)
 
