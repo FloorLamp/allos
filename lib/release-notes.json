@@ -4,6 +4,13 @@
       "date": "2026-08-02",
       "entries": [
         {
+          "pr": 1968,
+          "kind": "fix",
+          "issues": [1956],
+          "title": "Tapping a sidebar link shows you it worked",
+          "body": "Opening a section from the sidebar used to give no sign that anything had happened \u2014 the old page just sat there for a second or so while the new one was prepared out of sight. It looked frozen, so the natural response was to tap again, and that made it worse: every tap threw away the page being prepared and started over, so a link tapped impatiently could take much longer to open, or not open at all.\n\nNow the row you tapped shows a spinner straight away and keeps it until the new page is on screen, and tapping the same row again while it is loading does nothing rather than starting over. Opening a link in a new tab or window with a modifier key works exactly as before."
+        },
+        {
           "pr": 1949,
           "kind": "fix",
           "issues": [1878],
