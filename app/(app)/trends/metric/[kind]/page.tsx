@@ -556,6 +556,11 @@ function PeriodStatsCard({
           s.from === s.to ? "" : `–${formatMonthDay(s.to, formatPrefs)}`
         }`
       : null;
+  // Day one (#1909's follow-up): the profile's only reading is today's, so every
+  // window carries the shared helper's fallback and the card shows THAT reading
+  // rather than "No readings". The note must not claim "through yesterday" while
+  // it is doing so — the coverage sentence changes with the number it describes.
+  const dayOne = stats.length > 0 && stats.every((s) => s.dayOne);
 
   return (
     <section
@@ -578,9 +583,19 @@ function PeriodStatsCard({
           className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
           data-testid="metric-period-coverage"
         >
-          Rolling 7, 30, and 90-day windows through yesterday — complete days
-          only. Average, range, and change cover those days; Latest is the most
-          recent reading, including today&rsquo;s.
+          {dayOne ? (
+            <>
+              This is your first reading, so there is no completed day to
+              average yet — the figure below is today&rsquo;s reading. Rolling
+              7, 30, and 90-day averages start once a day is complete.
+            </>
+          ) : (
+            <>
+              Rolling 7, 30, and 90-day windows through yesterday — complete
+              days only. Average, range, and change cover those days; Latest is
+              the most recent reading, including today&rsquo;s.
+            </>
+          )}
         </p>
       </div>
       <div
@@ -621,6 +636,21 @@ function PeriodStatsCard({
                 Add a reading from a completed day to see an average, range, and
                 change.
               </p>
+            ) : s.dayOne ? (
+              /* Day one: the figure is TODAY's reading, not an average, so it
+                 carries its own label and its own test id — an average and a
+                 single in-progress reading must never be addressable as the
+                 same thing. Range and Change are omitted: over one reading they
+                 are v–v and +0, which reads as information and is not. */
+              <div className="mt-4">
+                <div
+                  data-testid={`period-today-reading-${s.days}`}
+                  className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
+                >
+                  {withUnit(s.avg)}
+                </div>
+                <div className="mt-1 section-label">Today&rsquo;s reading</div>
+              </div>
             ) : (
               <div
                 className={

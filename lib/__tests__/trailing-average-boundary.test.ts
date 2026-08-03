@@ -127,6 +127,10 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
     expect(helper.includes('"calendar"')).toBe(true);
     // Today-excluded is the DEFAULT, not something every caller must remember.
     expect(/includeToday\s*=\s*false/.test(helper)).toBe(true);
+    // The DAY-ONE rule is the helper's too (#1909's follow-up ruling): one place
+    // decides that a profile with no complete-day history at all falls back to
+    // today's reading, so four surfaces cannot grow four versions of "day one".
+    expect(/dayOneFallback/.test(helper)).toBe(true);
 
     for (const rel of CALLERS) {
       const code = stripCommentsAndStrings(read(rel));
@@ -137,6 +141,13 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
       expect(read(rel), `${rel} should import it`).toMatch(
         /import \{ trailingAverage \} from "\.\/trailing-average"/
       );
+      // …and must HANDLE the day-one window rather than passing it through as an
+      // average. Qualify it ("today's reading") or decline it — silence is the one
+      // option that mislabels a number.
+      expect(
+        code,
+        `${rel} should read dayOneFallback and either qualify or decline it`
+      ).toContain("dayOneFallback");
     }
   });
 

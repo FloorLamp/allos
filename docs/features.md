@@ -731,6 +731,17 @@ different questions, so they no longer wear the same name. Both compute through
 one shared helper whose window basis and today-inclusion are declared per
 caller.
 
+**Day one is the one exception, and it says so.** On the day of a first-ever
+reading there is no complete day to average, and the Rolling summary used to read
+"No readings" all day — exactly when someone is checking whether their entry
+landed. The shared helper now falls back to **today's reading** when a profile has
+**no complete-day history at all**, and the card labels the figure "Today's
+reading" rather than presenting it as an average. A gap is not day one: a profile
+with readings from three weeks ago has history, so its 7-day window stays
+honestly empty rather than showing today's number under an average's label. The
+Steps-today card declines the fallback — its question is today versus prior days,
+and today cannot be its own baseline.
+
 ### The Overview surface: starred grid and body census
 
 The starred grid answers two questions: **what you saved** and **what changed**.
