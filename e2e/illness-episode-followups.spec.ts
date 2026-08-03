@@ -592,8 +592,34 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         page,
         page.getByTestId("episode-editor").getByRole("button", { name: "Save" })
       );
+      // Two different waits, and they are NOT interchangeable (#1964).
+      //
+      // The modal closes from the action's OWN resolution — EpisodeEditor calls
+      // onClose the moment editEpisodeAction returns ok — so its disappearance
+      // proves the save was ACCEPTED (a refusal keeps it open with the message) and
+      // nothing at all about the page having re-rendered. The yesterday toggle, by
+      // contrast, only goes away once the router APPLIES the revalidated tree.
+      // Measured over 40 instrumented runs: the close lands 0.03–0.39 s after
+      // settledClick returns even under a 20× CPU throttle, while the toggle lags
+      // 0.06–0.27 s unthrottled and 0.47–3.33 s throttled — 8–40× longer and with 7×
+      // run-to-run spread, because revalidatePath also invalidates the client router
+      // cache and every visible <Link> re-prefetches (~25 RSC GETs, twice) across the
+      // same main thread that has to render the payload.
+      //
+      // Asserting the ABSENCE straight after the close is what flaked: a stale toggle
+      // and a page that never updated are the same DOM, so that count poll was the
+      // only thing absorbing the whole apply window, on the 5 s default, with a bare
+      // "expected 0, got 1" when it lost. Wait for the re-render's POSITIVE marker
+      // first — the day counter is the same server computation of "which days does
+      // this episode span" that decides whether yesterday is offered at all, so it
+      // reads 1 exactly when the toggle is gone — and the absence below then reads a
+      // page already proven settled. Do not swap this for a bigger timeout: the wait
+      // that was missing is a state, not a duration.
       await expect(page.getByTestId("episode-editor")).toHaveCount(0);
+      await expect(page.getByTestId("episode-summary-day")).toHaveText("1");
       await expect(page.getByTestId("symptom-day-toggle")).toHaveCount(0);
+      // The dashboard's own copy of the bar, on a freshly server-rendered document —
+      // the race-free half of the proof, unchanged.
       await page.goto("/");
       await expect(page.getByTestId("symptom-day-toggle")).toHaveCount(0);
     } finally {
