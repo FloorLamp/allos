@@ -17,6 +17,7 @@
 // ONE pointer per RECEIVER profile (the subscriber whose chat the round lands in),
 // overwritten on every send — id-keyed, no cleanup class (#203).
 
+import { deliveredCallbackTokens } from "./delivered-keyboard";
 import type { NotificationMessage } from "./types";
 
 export interface HouseholdRoundPointer {
@@ -68,10 +69,12 @@ export function parseHouseholdRoundPointer(
 // (deliberately, #1459 — it IS a dose reminder and inherits that kind's safety-tier
 // routing), so the kind alone cannot tell them apart; the token can, and only a round
 // mints one.
+//
+// Read off the DELIVERED (post-cap) keyboard for the same reason the food extractor is
+// (#1945): a confirm row the button cap dropped is not in the chat, so it cannot be
+// what a later strip would be closing.
 export function isHouseholdRoundMessage(msg: NotificationMessage): boolean {
-  return (msg.actions ?? []).some(
-    (a) => typeof a.data === "string" && a.data.startsWith("hh:")
-  );
+  return deliveredCallbackTokens(msg).some((t) => t.startsWith("hh:"));
 }
 
 // Build the pointer for a just-sent round, or null when the message isn't a round (so

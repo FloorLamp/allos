@@ -52,7 +52,8 @@ import {
   sendMessageRaw,
   type InlineKeyboard,
 } from "./telegram-api";
-import { capTelegramKeyboard } from "./telegram-limits";
+import { deliveredKeyboard } from "./delivered-keyboard";
+import { planPointerRotation, type PointerTarget } from "./pointer-rotation";
 import { recordMessagePointer } from "./message-pointers";
 
 const log = createLogger("telegram");
@@ -170,7 +171,9 @@ export const telegramChannel: NotificationChannel = {
 // `capTelegramKeyboard(messageKeyboard(msg))` pair internally to decide what rides the
 // wire; calling the same pure pair here reproduces it exactly rather than widening the
 // guarded primitive's return type, which every test that stubs the transport would
-// then have to know about. Both are total functions of `msg`.
+// then have to know about. Both are total functions of `msg`, and since #1945 the pair
+// has ONE name — `deliveredKeyboard` — that the pointer EXTRACTORS read too, so no
+// reader of "what the chat is showing" can drift back onto the uncapped `msg.actions`.
 function recordPointer(
   profileId: number,
   chatId: string | number,
@@ -182,7 +185,7 @@ function recordPointer(
   // there is nobody for the sweep to reconcile on behalf of, so store nothing rather
   // than invent an owner.
   if (!profileId) return;
-  const { keyboard } = capTelegramKeyboard(messageKeyboard(msg));
+  const keyboard = deliveredKeyboard(msg);
   if (keyboard.length === 0) return;
   recordMessagePointer({
     profileId,
@@ -199,92 +202,104 @@ function recordPointer(
   });
 }
 
-// After a food nudge sends, strip the PREVIOUS nudge's keyboard and record the new
-// message as the pointer (#947). Best-effort throughout: Telegram refuses edits on
-// messages older than ~48 h and the message may be gone, so a strip failure is
-// swallowed at log level and NEVER re-thrown — delivery already succeeded, and the
-// notify_last_error marker means delivery is broken, which it isn't. The pointer is
-// overwritten every send (id-keyed, no cleanup class, #203).
-async function rotateFoodNudgePointer(
+// Rotate ONE per-profile "last live keyboard" pointer: strip the message the pointer
+// currently names and record the just-sent one in its place. Shared by the food nudge
+// (#947) and the household round (#1719) because they are the same mechanism, and
+// #1945 showed what happens when two copies of it drift — the food copy stripped
+// unconditionally while recording conditionally, so a send whose extraction returned
+// null closed its predecessor's keyboard and then failed to name itself, stranding the
+// pointer on an already-stripped message and leaving the new one live forever.
+//
+// The pair is decided ONCE, by the pure `planPointerRotation`, whose `skip` arm carries
+// no strip target at all — "strip without recording" is not a representable plan. A
+// network edit and a settings write cannot share a transaction, so the execution ORDER
+// carries the rest: the plan captures the strip target before anything is written, then
+// the pointer is RECORDED FIRST and the predecessor stripped second. A settings-write
+// throw therefore takes the strip down with it (neither happens, the previous keyboard
+// stays live and correct), and a strip failure lands on a pointer that is already right.
+//
+// Best-effort throughout: Telegram refuses edits on messages older than ~48 h and the
+// message may be gone, so every failure is swallowed at log level and NEVER re-thrown —
+// delivery already succeeded, and notify_last_error means delivery is broken, which it
+// isn't.
+async function rotatePointer<P extends PointerTarget>(
+  label: string,
   profileId: number,
-  chatId: string | number,
-  messageId: number,
-  msg: NotificationMessage
+  extract: () => P | null,
+  readPrev: () => PointerTarget | null,
+  writeNext: (pointer: P) => void
 ): Promise<void> {
   try {
-    const prev = getFoodNudgePointer(profileId);
-    if (
-      prev &&
-      !(String(prev.chatId) === String(chatId) && prev.messageId === messageId)
-    ) {
-      // Strip the old keyboard in place (text untouched) through the guarded
-      // primitive. A "message is not modified" is already swallowed inside it; a
-      // "message to edit not found" / "message can't be edited" (too old) throws and
-      // is caught here — the point is that a fresh keyboard now exists.
-      await editMessageReplyMarkupRaw(prev.chatId, prev.messageId, []).catch(
-        (e) => {
-          log.info("food nudge: previous keyboard strip failed (ignored)", {
-            profile: profileId,
-            err: e instanceof Error ? e.message : String(e),
-          });
-        }
-      );
-    }
-    const pointer = foodNudgePointerFromMessage(msg, chatId, messageId);
-    if (pointer) setFoodNudgePointer(profileId, pointer);
+    // No pointer for this send: nothing has superseded the stored one, so the stored
+    // one is not even read. This is the guard the food rotation lacked.
+    const next = extract();
+    const plan = planPointerRotation(next ? readPrev() : null, next);
+    if (plan.action === "skip") return;
+    writeNext(plan.record);
+    if (!plan.strip) return;
+    // Strip the old keyboard in place (text untouched) through the guarded primitive.
+    // A "message is not modified" is already swallowed inside it; a "message to edit
+    // not found" / "message can't be edited" (too old) throws and is caught here — the
+    // point is that a fresh keyboard now exists.
+    await editMessageReplyMarkupRaw(
+      plan.strip.chatId,
+      plan.strip.messageId,
+      []
+    ).catch((e) => {
+      log.info(`${label}: previous keyboard strip failed (ignored)`, {
+        profile: profileId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    });
   } catch (e) {
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
-    log.info("food nudge: pointer rotation failed (ignored)", {
+    log.info(`${label}: pointer rotation failed (ignored)`, {
       profile: profileId,
       err: e instanceof Error ? e.message : String(e),
     });
   }
 }
 
-// After a household round sends, strip the PREVIOUS round's keyboard and record the
-// new message as the pointer (#1719) — the #947 mechanism, one message class over. A
-// no-op for any message that isn't a round. Best-effort throughout for the same
-// reasons as the food rotation: Telegram refuses edits on old messages, the delivery
-// already succeeded, and a bookkeeping failure must never look like a broken channel.
+// After a food nudge sends (#947). The pointer is overwritten every send (id-keyed, no
+// cleanup class, #203). A nudge with no delivered quick-log button yields no pointer and
+// so leaves the previous keyboard alone — correct, since nothing superseded it.
+async function rotateFoodNudgePointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number,
+  msg: NotificationMessage
+): Promise<void> {
+  await rotatePointer(
+    "food nudge",
+    profileId,
+    () => foodNudgePointerFromMessage(msg, chatId, messageId),
+    () => getFoodNudgePointer(profileId),
+    (pointer) => setFoodNudgePointer(profileId, pointer)
+  );
+}
+
+// After a household round sends (#1719) — the #947 mechanism, one message class over. A
+// no-op for any message that isn't a round.
 async function rotateHouseholdRoundPointer(
   profileId: number,
   chatId: string | number,
   messageId: number,
   msg: NotificationMessage
 ): Promise<void> {
-  const pointer = householdRoundPointerFromMessage(
-    msg,
-    chatId,
-    messageId,
-    today(profileId)
+  await rotatePointer(
+    "household round",
+    profileId,
+    () =>
+      householdRoundPointerFromMessage(
+        msg,
+        chatId,
+        messageId,
+        today(profileId)
+      ),
+    () => getHouseholdRoundPointer(profileId),
+    (pointer) => setHouseholdRoundPointer(profileId, pointer)
   );
-  if (!pointer) return;
-  try {
-    const prev = getHouseholdRoundPointer(profileId);
-    if (
-      prev &&
-      !(String(prev.chatId) === String(chatId) && prev.messageId === messageId)
-    ) {
-      await editMessageReplyMarkupRaw(prev.chatId, prev.messageId, []).catch(
-        (e) => {
-          log.info(
-            "household round: previous keyboard strip failed (ignored)",
-            {
-              profile: profileId,
-              err: e instanceof Error ? e.message : String(e),
-            }
-          );
-        }
-      );
-    }
-    setHouseholdRoundPointer(profileId, pointer);
-  } catch (e) {
-    log.info("household round: pointer rotation failed (ignored)", {
-      profile: profileId,
-      err: e instanceof Error ? e.message : String(e),
-    });
-  }
 }
 
 // Store the just-sent digest's message id so the tick can re-label its offer tail at
