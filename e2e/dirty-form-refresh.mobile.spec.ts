@@ -1,7 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
-import { workerAuthPath } from "./worker-env";
+import { workerAuthPath, workerDbPath } from "./worker-env";
 
 // The complementary half of the dirty-form registry (issue #1878): a refresh the
 // USER asked for is never deferred.
@@ -18,11 +19,62 @@ import { workerAuthPath } from "./worker-env";
 // dirty, the pull still refreshes, and the registry never even hears about it
 // (`data-owed` stays 0, so nothing was queued and silently swallowed).
 //
+// Since the #1878 ruling the chrome half includes the toasters' POLL, which now
+// observes over a route handler so only `useChromeRefresh` can repaint. That makes
+// this spec sharper rather than redundant: one page, one dirty form, both actors
+// firing — the user's pull goes through immediately, and the poll's repaint sits
+// owed at the same moment. Neither behaviour is inferable from the other.
+//
 // The two emulation seams (standalone display-mode, and counting refreshes at
 // all) are the ones e2e/pull-to-refresh.mobile.spec.ts documents; this reuses
-// them. Read-only: it types into a form and never submits.
+// them. Read-only through the UI: it types into a form and never submits.
+//
+// Spec-owned fixture: one medical document it inserts and deletes.
 
 const INDICATOR = "pull-to-refresh";
+const DB_PATH = workerDbPath();
+const DOC = "e2e-dirty-form-pull.pdf";
+
+function cleanup() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle.prepare("DELETE FROM medical_documents WHERE filename = ?").run(DOC);
+  } finally {
+    handle.close();
+  }
+}
+
+/** Park a document mid-extraction so the toaster polls at its fast cadence. */
+function seedProcessingDocument() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        `INSERT INTO medical_documents
+           (profile_id, filename, stored_path, extraction_status, extracted_count)
+         VALUES (1, ?, ?, 'processing', 0)`
+      )
+      .run(DOC, `data/uploads/${DOC}`);
+  } finally {
+    handle.close();
+  }
+}
+
+/** Finish it, from outside the browser — the background event the chrome reacts to. */
+function finishDocument() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        `UPDATE medical_documents
+            SET extraction_status = 'done', extracted_count = 2
+          WHERE filename = ?`
+      )
+      .run(DOC);
+  } finally {
+    handle.close();
+  }
+}
 
 async function emulateStandalone(page: Page) {
   await page.addInitScript(() => {
@@ -69,10 +121,14 @@ async function pullDown(page: Page, distance: number) {
   }, distance);
 }
 
+test.beforeEach(cleanup);
+test.afterAll(cleanup);
+
 test("a pull-to-refresh still refreshes while a record form holds unsaved input", async ({
   browser,
 }) => {
   test.slow();
+  seedProcessingDocument();
   const context = await browser.newContext({
     // A raw context does not inherit the `mobile` project's `use` block.
     viewport: { width: 390, height: 844 },
@@ -109,6 +165,20 @@ test("a pull-to-refresh still refreshes while a record form holds unsaved input"
     // queued-and-swallowed on the way.
     await expect(registry).toHaveAttribute("data-owed", "0");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
+
+    // The form is still dirty. Now the CHROME acts, on the same page, in the same
+    // breath: the background extraction finishes and the toaster's poll sees it.
+    // Its repaint is owed — the opposite treatment from the pull above, decided by
+    // WHO asked rather than by anything about the page.
+    finishDocument();
+    await expect(page.getByText(`${DOC}: imported 2 records.`)).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(registry).toHaveAttribute("data-owed", "1");
+    await expect(registry).toHaveAttribute("data-refreshes", "0");
+    // The user's pull is untouched by any of it — still exactly the one refresh
+    // they asked for, never re-run and never rolled into the chrome's debt.
+    await expect(indicator).toHaveAttribute("data-refreshes", "1");
   } finally {
     await context.close();
   }

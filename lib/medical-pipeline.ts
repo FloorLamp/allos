@@ -5,8 +5,9 @@
 // the pipeline is reachable from the DB test tier (the actions there are thin
 // auth-and-revalidate wrappers over these functions). Record CRUD (addRecord/
 // updateRecord/deleteRecord) stays in app/(app)/medical/actions.ts; the
-// reassign/delete/getExtractionStates actions stay in document-actions.ts because
-// they are already thin and auth-shaped.
+// reassign/delete actions stay in document-actions.ts because they are already
+// thin and auth-shaped. (The extraction-status snapshot the toaster polls is no
+// longer an action at all — it is app/api/jobs/extractions, see #1878.)
 //
 // The import footprint (clearImportedDocumentRows / the reassign move set /
 // extracted_count) is untouched here — it lives in lib/import-persist and stays

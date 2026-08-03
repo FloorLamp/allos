@@ -390,28 +390,13 @@ export async function reassignDocument(
   };
 }
 
-export interface ExtractionState {
-  id: number;
-  filename: string;
-  status: string;
-  count: number;
-  error: string | null;
-}
-
-// Lightweight status snapshot for the client toaster to poll. The table is
-// small (one row per uploaded document), so returning all rows is cheap and
-// lets the client detect status transitions (e.g. processing → done) and show
-// the failure reason on error.
-export async function getExtractionStates(): Promise<ExtractionState[]> {
-  const { profile } = await requireSession();
-  return db
-    .prepare(
-      `SELECT id, filename, extraction_status AS status, extracted_count AS count,
-              extraction_error AS error
-       FROM medical_documents WHERE profile_id = ?`
-    )
-    .all(profile.id) as ExtractionState[];
-}
+// The client toaster's status snapshot USED to live here as a read action, with
+// its `ExtractionState` shape. Both moved with the poll itself (#1878): the read
+// is now the route handler app/api/jobs/extractions and the shape is a WIRE type
+// in lib/toaster-poll.ts, owned by the module that parses it. A Server Action's
+// response carries a freshly rendered page tree that Next applies, so polling one
+// repainted the page under a half-typed record form outside the dirty-form
+// registry.
 
 export async function deleteMedicalDocument(formData: FormData) {
   const { login, profile } = await requireWriteAccess();

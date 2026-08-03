@@ -39,16 +39,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: lists the profile's import jobs for the review UI",
   },
   {
-    file: "app/(app)/data/actions.ts",
-    fn: "getImportJobStates",
-    why: "read-only: status snapshot the client poller reads on an interval",
-  },
-  {
-    file: "app/(app)/medical/document-actions.ts",
-    fn: "getExtractionStates",
-    why: "read-only: per-document extraction status snapshot",
-  },
-  {
     file: "app/(app)/data/review-actions.ts",
     fn: "loadSyncRows",
     why: "read-only (#1333): resolves one sync event's per-row provenance (getSyncRowProvenance) for the Connected-sources drill-in — profile-scoped read, writes nothing, so login-scoped requireSession() is the right gate",

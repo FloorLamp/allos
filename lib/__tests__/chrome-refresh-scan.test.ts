@@ -22,6 +22,16 @@ import path from "node:path";
 // A new call site fails this test until someone decides which it is. That
 // decision is the whole point; the list below is the record of it.
 //
+// AND `router.refresh()` IS NOT THE ONLY WAY A CHROME TICK REPAINTS. A Server
+// Action's response carries a freshly rendered page tree that Next's router
+// applies — no refresh call anywhere in it — so a background actor that OBSERVES
+// through a Server Action repaints the page whatever the registry decides. That
+// is the residual #1925 left open and #1878's ruling closed: a chrome actor
+// observes over `fetch` of a route handler, which cannot carry a tree, and asks
+// for its repaint through `useChromeRefresh` like everyone else. The scan below
+// enforces both halves — every chrome actor is listed, and no listed actor
+// imports a `"use server"` module.
+//
 // (`docs/internals/server-action-refresh.md` governs the different question of
 // whether a refresh should exist at all. This one governs when it may land.)
 
@@ -77,18 +87,50 @@ const files = SCANNED_DIRS.flatMap((d) => walk(path.join(ROOT, d))).map(
   })
 );
 
+/** Source with comments removed — the doctrine prose must never register as code. */
+function codeOnly(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+}
+
 /**
  * Call sites only. The string appears in plenty of prose — the doctrine comments
  * on the surviving sites, the JSX note in the app shell — and prose must not
  * register as a call, or the scan would just be a grep for a word.
  */
 function callsRefresh(source: string): boolean {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("//"))
-    .join("\n");
-  return /\brouter\.refresh\(\)/.test(code);
+  return /\brouter\.refresh\(\)/.test(codeOnly(source));
+}
+
+/** Modules a file imports, resolved through the `@/*` alias to real paths. */
+function importedModules(source: string): string[] {
+  const out: string[] = [];
+  const re = /\bfrom\s+["'](@\/[^"']+)["']/g;
+  for (const m of codeOnly(source).matchAll(re)) {
+    const base = path.join(ROOT, m[1].slice(2));
+    const candidate = [
+      `${base}.ts`,
+      `${base}.tsx`,
+      path.join(base, "index.ts"),
+      path.join(base, "index.tsx"),
+    ].find((c) => fs.existsSync(c));
+    if (candidate) out.push(candidate);
+  }
+  return out;
+}
+
+/** Whether a module's first statement is the `"use server"` directive. */
+function isServerActionModule(file: string): boolean {
+  const lines = fs.readFileSync(file, "utf8").split("\n");
+  for (const line of lines) {
+    const t = line.trim();
+    if (t === "" || t.startsWith("//")) continue;
+    return /^["']use server["'];?$/.test(t);
+  }
+  return false;
 }
 
 describe("router.refresh() call sites are classified chrome or user (#1878)", () => {
@@ -130,6 +172,41 @@ describe("router.refresh() call sites are classified chrome or user (#1878)", ()
   it("does not let a file be both", () => {
     for (const rel of CHROME_CALL_SITES) {
       expect(Object.keys(USER_CALL_SITES)).not.toContain(rel);
+    }
+  });
+
+  it("names every background actor that uses the registry", () => {
+    // The list has to be exhaustive in BOTH directions, or a new chrome actor
+    // could route through `useChromeRefresh` (so the refresh scan stays quiet)
+    // while observing through a Server Action — which repaints anyway, and is the
+    // exact residual the rule below exists for.
+    const found = files
+      .filter(
+        (f) =>
+          f.rel !== "components/DirtyFormRegistry.tsx" &&
+          /\buseChromeRefresh\(\)/.test(codeOnly(f.source))
+      )
+      .map((f) => f.rel)
+      .sort();
+    expect(found).toEqual([...CHROME_CALL_SITES].sort());
+  });
+
+  it("keeps every chrome actor's OBSERVATION off Server Actions (#1878)", () => {
+    // A Server Action's response carries a freshly rendered page tree that the
+    // client applies with no `router.refresh()` in sight, so calling one from a
+    // background actor repaints the page whatever the registry decided. A route
+    // handler read over `fetch` cannot — which is what lets the poll keep
+    // observing at full cadence while only the repaint waits.
+    for (const rel of CHROME_CALL_SITES) {
+      const file = files.find((f) => f.rel === rel);
+      if (!file) throw new Error(`${rel} not found`);
+      const actions = importedModules(file.source)
+        .filter(isServerActionModule)
+        .map((f) => path.relative(ROOT, f).split(path.sep).join("/"));
+      expect(
+        actions,
+        `${rel} is a background actor and must observe over a route handler (fetch), not a Server Action — an action response repaints the page outside the dirty-form registry`
+      ).toEqual([]);
     }
   });
 });

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { hydratedClick, settledFill } from "./helpers";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // The dirty-form registry, end to end (issue #1878).
 //
@@ -22,6 +22,14 @@ import { workerDbPath } from "./worker-env";
 // Those counters are the registry's observable contract, the same reason
 // PullToRefresh carries `data-refreshes`.
 //
+// THE POLL ITSELF (the #1878 ruling that closed #1925's residual). `router.refresh()`
+// is not the only way a chrome tick repaints: a Server Action's response carries a
+// freshly rendered tree the client applies, and the toasters used to poll one. The
+// third test below drives that directly — it writes a row BEHIND the page, lets the
+// poll observe a finished extraction, and asserts the row is absent from the tree
+// while `data-owed` is 1. That assertion failed before the poll moved onto a route
+// handler, and it is what separates "deferred" from "merely slow".
+//
 // The complementary half — a USER-initiated refresh must never defer — is
 // e2e/dirty-form-refresh.mobile.spec.ts, which needs the standalone PWA context
 // that pull-to-refresh only exists in.
@@ -31,13 +39,38 @@ import { workerDbPath } from "./worker-env";
 
 const DB_PATH = workerDbPath();
 const MARKER = "E2E dirty-form dermatology follow-up";
+// A row written BEHIND the page, so "did the tree repaint?" is answerable from
+// the outside: it can only be on screen if the server re-rendered the list.
+const BEHIND = "E2E dirty-form poll-behind cardiology review";
 const DOC = "e2e-dirty-form-extraction.pdf";
 
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
-    handle.prepare("DELETE FROM appointments WHERE title = ?").run(MARKER);
+    handle
+      .prepare("DELETE FROM appointments WHERE title IN (?, ?)")
+      .run(MARKER, BEHIND);
     handle.prepare("DELETE FROM medical_documents WHERE filename = ?").run(DOC);
+  } finally {
+    handle.close();
+  }
+}
+
+/**
+ * Write an appointment straight into the worker DB — the "new server data" a
+ * repaint would deliver. Dated from the FROZEN clock so it lands in the upcoming
+ * list the page renders.
+ */
+function seedAppointmentBehindThePage() {
+  const when = new Date(frozenNow().getTime() + 3 * 24 * 3600 * 1000);
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        `INSERT INTO appointments (profile_id, scheduled_at, title, status)
+         VALUES (1, ?, ?, 'scheduled')`
+      )
+      .run(when.toISOString().slice(0, 19).replace("T", " "), BEHIND);
   } finally {
     handle.close();
   }
@@ -154,6 +187,62 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     } finally {
       handle.close();
     }
+  });
+
+  test("a poll that observes a finished job does not repaint the tree under a dirty form", async ({
+    page,
+  }) => {
+    test.slow();
+    seedProcessingDocument();
+
+    await page.goto("/records/history/visits");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await expect(upcoming).toBeVisible();
+    const registry = page.getByTestId("dirty-form-registry");
+    const behind = upcoming
+      .getByTestId("appointment-row")
+      .filter({ hasText: BEHIND });
+    await expect(behind).toHaveCount(0);
+
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    const title = dialog.getByLabel("Reason / title");
+    await settledFill(page, title, MARKER);
+    await expect(registry).toHaveAttribute("data-dirty", "1");
+
+    // Two background events at once, which is the realistic shape: the extraction
+    // the user kicked off earlier finishes, and the data behind the page has moved
+    // on meanwhile.
+    seedAppointmentBehindThePage();
+    finishDocument();
+
+    // OBSERVATION IS NOT DEFERRED. The toast is proof the poll ran, saw the
+    // transition and reported it — while the form was dirty. That is the half of
+    // the ruling that says a deferred poll must not stall the poll loop: the user
+    // still learns their extraction finished at the moment it does.
+    await expect(page.getByText(`${DOC}: imported 3 records.`)).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // THE REPAINT IS DEFERRED. Owed, not run — so the appointment written behind
+    // the page is NOT in the rendered tree. This assertion is the whole point:
+    // before the poll observed over a route handler it FAILED, because the poll's
+    // own Server Action response carried a freshly rendered tree that the client
+    // applied with `data-refreshes` still 0.
+    await expect(registry).toHaveAttribute("data-owed", "1");
+    await expect(registry).toHaveAttribute("data-refreshes", "0");
+    await expect(behind).toHaveCount(0);
+
+    // The user finishes with the field (undone, not submitted — this test never
+    // writes through the UI). The owed repaint lands, once, CARRYING the new row:
+    // deferred was never dropped, and what finally arrives is current data rather
+    // than a replay of the moment that asked for it.
+    await title.fill("");
+    await title.blur();
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+    await expect(registry).toHaveAttribute("data-refreshes", "1");
+    await expect(registry).toHaveAttribute("data-owed", "0");
+    await expect(behind).toHaveCount(1, { timeout: 15_000 });
   });
 
   test("a form the user empties again stops holding refreshes back", async ({
