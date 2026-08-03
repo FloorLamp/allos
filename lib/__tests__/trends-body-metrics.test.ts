@@ -394,6 +394,7 @@ describe("collapseCoincidentPeriods", () => {
     min: null,
     max: null,
     delta: null,
+    dayOne: false,
   });
 
   it("is a no-op when every window differs", () => {

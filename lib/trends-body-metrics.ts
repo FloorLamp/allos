@@ -589,6 +589,15 @@ export function orderBodyMetricTiles<T extends OrderableTile>(
 // nothing about them moves during the day. `latest` is the exception on purpose:
 // recency is today's job, so it stays the newest reading at or before today.
 //
+// DAY ONE (#1909's follow-up ruling). Complete-days-only left the card reading "No
+// readings" all day on the day of a FIRST weigh-in — true, and unkind exactly when
+// someone is checking whether their entry landed. The shared helper now falls back
+// to today's reading when there is NO complete-day history at all (a gap in the
+// window is not that case and stays empty), and marks the window it hands back.
+// Every window sees the same fallback, so they hold identical readings and collapse
+// into one stat; `dayOne` rides on it so the card can label the figure "Today's
+// reading" instead of presenting today as an average of finished days.
+//
 // COINCIDENT WINDOWS COLLAPSE (#1541). With fewer than 7 days of history — every
 // new install, every freshly connected integration — all three windows contain the
 // SAME readings, so every derived figure is identical BY CONSTRUCTION and the card
@@ -616,6 +625,10 @@ export interface PeriodStat {
   min: number | null;
   max: number | null;
   delta: number | null;
+  // TRUE when this stat is the shared helper's DAY-ONE fallback: the profile has no
+  // complete-day history for the metric at all, so `avg` is TODAY's reading rather
+  // than an average of finished days. The card must say so — see the header comment.
+  dayOne: boolean;
 }
 
 // The trailing windows, ascending. Nested by construction (7d ⊂ 30d ⊂ 90d) — the
@@ -668,6 +681,7 @@ function emptyPeriodStat(days: number): PeriodStat {
     min: null,
     max: null,
     delta: null,
+    dayOne: false,
   };
 }
 
@@ -705,6 +719,7 @@ export function bodyMetricPeriodStats(
       min: round(Math.min(...vals)),
       max: round(Math.max(...vals)),
       delta: round(vals[vals.length - 1] - vals[0]),
+      dayOne: win.dayOneFallback,
     };
   });
   return collapseCoincidentPeriods(raw);

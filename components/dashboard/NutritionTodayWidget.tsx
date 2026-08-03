@@ -7,11 +7,23 @@ import {
 } from "@/lib/protein";
 
 // Dashboard "Nutrition today" tile (issue #1221): today's protein against the goal
-// band, plus this week's daily average — a thin FORMATTER over the SAME ProteinToday
+// band, plus the trailing 7-day average — a thin FORMATTER over the SAME ProteinToday
 // model the Nutrition → Food gauge and the Telegram food-nudge read (getProteinToday,
 // #974/#221), so the card and those surfaces can never disagree. Today is IN PROGRESS,
 // so it's never colored as a shortfall; a non-tracked basis is a FLOOR ("at least"),
 // per the #767 floor-copy discipline.
+//
+// The average line reads `trailing`, NOT `weeklyAverageGrams` (#1917). This card said
+// "7-day average" over the week-to-date figure: on a Tuesday it covered two days, it
+// reset every week boundary, and it carried a partial today. `trailing` is a real
+// trailing-7 complete-day average through the shared helper, so the label and the
+// number finally answer the same question — and the week-to-date figure keeps its own
+// job on the Food tab, where the card beside it states a WEEKLY verdict.
+//
+// Day one is DECLINED here, like the Steps card declines it: with no complete-day
+// history the helper offers today's intake, which this card already shows two lines
+// up as its headline. Repeating it under an average's line would add a number and no
+// information.
 export default function NutritionTodayWidget({
   today,
 }: {
@@ -49,9 +61,12 @@ export default function NutritionTodayWidget({
           <div className="text-sm text-slate-600 dark:text-slate-300">
             Goal {proteinTargetSummary(today.target)}
           </div>
-          {today.weeklyAverageGrams != null && (
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              7-day average · {Math.round(today.weeklyAverageGrams)} g/day
+          {today.trailing.grams != null && !today.trailing.dayOne && (
+            <div
+              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="nutrition-trailing-average"
+            >
+              7-day average · {Math.round(today.trailing.grams)} g/day
             </div>
           )}
           <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">

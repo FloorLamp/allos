@@ -18,7 +18,9 @@ export interface StepsTodaySummary {
   // then reads "No steps logged yet today" alongside the trailing average).
   today: number | null;
   // The mean of up to the 7 most recent days STRICTLY BEFORE today that carry a
-  // reading, rounded to a whole step. Null when no prior day has data.
+  // reading, rounded to a whole step. Null when no prior day has data — including
+  // the day-one case, where the shared helper offers today's reading and this card
+  // declines it (see summarizeStepsToday).
   average7: number | null;
   // today − average7 as a signed percentage of the average, rounded; null unless both
   // figures are present.
@@ -47,8 +49,17 @@ export function summarizeStepsToday(
     days: STEPS_TRAILING_DAYS,
     basis: "data-bearing",
   });
+  // The day-one fallback is DECLINED here, by name (#1909 follow-up). The helper
+  // offers today's reading when there is no complete-day history at all, so a card
+  // whose only number would be today's still has something to show. This card's
+  // question is "today versus my PRIOR days" — today's own count cannot be the
+  // baseline today is measured against, and taking it would render "Prior 7 days ·
+  // 8,432" and "0% vs prior 7 days" on the day of a first sync. Today's count is
+  // already this card's headline, so nothing is hidden by leaving the baseline out.
   const average7 =
-    trailing.average == null ? null : Math.round(trailing.average);
+    trailing.average == null || trailing.dayOneFallback
+      ? null
+      : Math.round(trailing.average);
 
   let deltaPct: number | null = null;
   let direction: StepsDirection | null = null;

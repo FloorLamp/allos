@@ -26,9 +26,23 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The module that owns trailing-window selection and the mean over it.
 const HELPER = "lib/trailing-average.ts";
-// The two surfaces #1909 unified. Both are pure aggregations their components
-// format; both must reach the window through the helper.
-const CALLERS = ["lib/steps-today.ts", "lib/trends-body-metrics.ts"];
+// The surfaces #1909 unified, plus the one #1917 brought in. All are pure
+// aggregations their components format; all must reach the window through the
+// helper.
+//
+// `lib/protein.ts` is the #1917 entry, and it is the reason this list is worth
+// keeping rather than trusting the sweep below. The dashboard's Nutrition card
+// printed "7-day average" over a WEEK-TO-DATE figure — the same label defect, but
+// with no backwards date shift and no mean of its own to match, so the sweep could
+// not see it and the guard was green while the label lied. Protein's window now
+// lives here, where a hand-rolled replacement fails this assertion. Its gather
+// (`lib/queries/nutrition.ts`) deliberately holds NO window arithmetic at all: it
+// assembles per-day parts and hands them here, so there is nothing there to drift.
+const CALLERS = [
+  "lib/steps-today.ts",
+  "lib/trends-body-metrics.ts",
+  "lib/protein.ts",
+];
 
 const SCAN_DIRS = ["lib", "app", "components", "scripts"];
 
@@ -127,6 +141,10 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
     expect(helper.includes('"calendar"')).toBe(true);
     // Today-excluded is the DEFAULT, not something every caller must remember.
     expect(/includeToday\s*=\s*false/.test(helper)).toBe(true);
+    // The DAY-ONE rule is the helper's too (#1909's follow-up ruling): one place
+    // decides that a profile with no complete-day history at all falls back to
+    // today's reading, so four surfaces cannot grow four versions of "day one".
+    expect(/dayOneFallback/.test(helper)).toBe(true);
 
     for (const rel of CALLERS) {
       const code = stripCommentsAndStrings(read(rel));
@@ -137,6 +155,13 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
       expect(read(rel), `${rel} should import it`).toMatch(
         /import \{ trailingAverage \} from "\.\/trailing-average"/
       );
+      // …and must HANDLE the day-one window rather than passing it through as an
+      // average. Qualify it ("today's reading") or decline it — silence is the one
+      // option that mislabels a number.
+      expect(
+        code,
+        `${rel} should read dayOneFallback and either qualify or decline it`
+      ).toContain("dayOneFallback");
     }
   });
 
