@@ -105,9 +105,13 @@ the model — it's already consistent across ~all pages and is codified here
 as-is.
 
 `"🎉"` and celebration stay **out of medical surfaces** (#716's no-gamification
-rule is the anchor). Training is the one domain where a celebratory recap line
-is allowed — a workout streak is the kind of thing worth a small cheer, and a
-lab result is not.
+rule is the anchor). Training is the one domain where a small cheer is allowed
+at all — a 100th logged workout is worth a quiet word and a lab result is not —
+but the licence is narrow and does not extend to a RUN. #1935/#1936/#1937/#1939
+retired every streak the app showed a user: a figure with a cliff turns the
+cheer into a loss to avoid, on the same screens that recommend rest days,
+deload weeks and deliberate skips. Celebrate a total or a declared goal met;
+never a run maintained.
 
 ### 7. Notifications are user-facing copy
 

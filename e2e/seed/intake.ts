@@ -123,8 +123,10 @@ export function seedMedicationCards(): void {
    VALUES (?, ?, NULL, NULL, 'Ongoing — e2e parity fixture')`
   ).run(parityMedId, shiftDateStr(today(PROFILE_ID), -60));
   // Deterministic taken-logs for the last 14 days (every day taken) → 100%
-  // adherence and a multi-day streak, so the AdherenceSummaryLine renders with
-  // stable text regardless of the run.
+  // adherence, so the AdherenceSummaryLine renders with stable text regardless of
+  // the run. (Medication cards use the default visibility mode, which shows the
+  // percentage at any value — the resting-supplement "noteworthy only" gate is a
+  // different path.)
   const insParityLog = db.prepare(
     `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, status)
    VALUES (?, ?, ?, 'taken')`

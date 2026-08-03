@@ -575,7 +575,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     id: "weekly-recap",
     label: "Weekly recap",
     description:
-      "Your last seven days — workouts, volume, PRs, adherence, weight, and streak.",
+      "Your last seven days — workouts, PRs, adherence, weight, and sleep regularity.",
     // Off by default so it stays quiet (issue #32); opt in from Customize.
     defaultOn: false,
     fitness: true,

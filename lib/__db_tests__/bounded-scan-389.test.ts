@@ -7,7 +7,7 @@
 //
 //  • getActivitiesSince(profileId, since) returns exactly getActivities(profileId)
 //    filtered to date >= since — the weekly-recap swap loads the recap's window
-//    instead of all history, and getActivityDates still serves the streak over full
+//    instead of all history, and getActivityDates still serves its own callers over full
 //    history (unchanged rows).
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
@@ -115,7 +115,7 @@ describe("getActivitiesSince equals full-then-filter (#389)", () => {
     const fullFiltered = getActivities(p).filter((a) => a.date >= since);
     expect(bounded).toEqual(fullFiltered);
 
-    // getActivityDates still reflects the FULL history (streak input), not the window.
+    // getActivityDates still reflects the FULL history, not the window.
     expect(new Set(getActivityDates(p))).toEqual(new Set(dates));
     expect(getActivityDates(p).length).toBeGreaterThan(bounded.length);
   });

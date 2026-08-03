@@ -89,9 +89,8 @@ function dose(
   };
 }
 
-// No streak / no percentage by default so tests opt into the adherence tail.
+// No percentage by default so tests opt into the adherence tail.
 const NONE: AdherenceSummary = {
-  streak: 0,
   pct: null,
   takenDays: 0,
   partialDays: 0,
@@ -282,7 +281,10 @@ describe("renderWindowMessage", () => {
     expect(lines[1]).not.toContain("⚠️");
   });
 
-  it("appends streak (only once ≥2) and adherence percentage", () => {
+  // #1936: the "🔥 12d" note is gone. A reminder is the last place to carry a run —
+  // the message that arrives when you have NOT yet taken today's dose should not
+  // also tell you what you stand to lose. The percentage says it without the cliff.
+  it("appends the adherence percentage and no flame", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
@@ -291,22 +293,22 @@ describe("renderWindowMessage", () => {
         amount: "2000 IU",
         obligation: "must",
         food: "with_fat",
-        adherence: { streak: 12, pct: 93 },
+        adherence: { pct: 93 },
       }),
-      // streak of 1 is below the threshold → not shown, but pct still is
       entry({
         doseId: 11,
         suppId: 2,
         name: "Magnesium",
-        adherence: { streak: 1, pct: 50 },
+        adherence: { pct: 50 },
       }),
     ]);
     expect(msg.body).toBe(
-      "🔴 Vitamin D — 2000 IU · with fat · 🔥 12d · 93%\n• Magnesium · 50%"
+      "🔴 Vitamin D — 2000 IU · with fat · 93%\n• Magnesium · 50%"
     );
+    expect(msg.body).not.toContain("🔥");
   });
 
-  it("shows streak + percentage (but not food) on the completion summary", () => {
+  it("shows the percentage (but not food) on the completion summary", () => {
     const msg = renderWindowMessage(1, "Bedtime", DATE, [
       entry({
         doseId: 10,
@@ -315,11 +317,11 @@ describe("renderWindowMessage", () => {
         amount: "400 mg",
         food: "with_food",
         taken: true,
-        adherence: { streak: 7, pct: 100 },
+        adherence: { pct: 100 },
       }),
     ]);
     expect(msg.title).toBe("💊 Bedtime supplements — all 1 taken ✅");
-    expect(msg.body).toBe("✅ Magnesium — 400 mg · 🔥 7d · 100%");
+    expect(msg.body).toBe("✅ Magnesium — 400 mg · 100%");
   });
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {

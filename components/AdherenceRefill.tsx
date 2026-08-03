@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconChevronRight, IconFlame } from "@tabler/icons-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import {
   adherenceSummary,
   adherenceSummaryVisibility,
@@ -137,11 +137,16 @@ export function SharedSupplyChip({
   );
 }
 
-// Recent-adherence summary line — a streak + percentage + skipped count over the
-// last 14 days (#313), shared by the supplement ROW and the medication CARD
-// (#747 parity). adherenceSummary is the shared computation; this is a pure
-// formatter. Renders nothing when there's nothing to report (no due day counted
-// and no deliberate skip).
+// Recent-adherence summary line — a percentage + followed/due day counts + skipped
+// count over the last 14 days (#313), shared by the supplement ROW and the
+// medication CARD (#747 parity). adherenceSummary is the shared computation; this
+// is a pure formatter. Renders nothing when there's nothing to report (no due day
+// counted and no deliberate skip).
+//
+// The "🔥 N-day streak" chip that used to lead this line is gone (#1936): a run
+// with a cliff, on a surface whose whole job is to make a paused item, an illness
+// pause, and a deliberate skip (#232) unremarkable. The percentage says the same
+// thing without punishing them.
 export function AdherenceSummaryLine({
   strip,
   noteworthyOnly = false,
@@ -158,25 +163,6 @@ export function AdherenceSummaryLine({
       className="mt-1.5 flex items-center gap-1.5 text-xs"
       title="Adherence over the last 14 days"
     >
-      {visibility.showStreak && (
-        <>
-          <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
-            <IconFlame
-              className="h-3.5 w-3.5 text-brand-500 dark:text-brand-400"
-              aria-hidden="true"
-            />
-            {adherence.streak}-day streak
-          </span>
-          {(visibility.showDetail || visibility.showSkipped) && (
-            <span
-              aria-hidden="true"
-              className="text-slate-300 dark:text-slate-600"
-            >
-              ·
-            </span>
-          )}
-        </>
-      )}
       {visibility.showDetail && adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
           {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)

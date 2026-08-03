@@ -26,6 +26,17 @@ test.describe("Weekly recap + milestones (#32)", () => {
       /[A-Z][a-z]{2,} \d{1,2}(, \d{4})? – [A-Z][a-z]{2,} \d{1,2}(, \d{4})?/
     );
     await expect(range).not.toHaveText(/\d{4}-\d{2}-\d{2}/);
+
+    // #1935: three rows were cut for failing the week-scale test. Volume was a
+    // session fact aggregated whose percentage restated the workout count directly
+    // above it; Calories compared one low-confidence estimate against another; and
+    // Streak measured app engagement with a cliff, on a card the rest of the app
+    // fills with rest-day and deload advice. The seeded profile has the strength
+    // sessions and the recent activity that would have produced all three.
+    await expect(recap.getByText("Volume", { exact: true })).toHaveCount(0);
+    await expect(recap.getByText("Calories", { exact: true })).toHaveCount(0);
+    await expect(recap.getByText("Streak", { exact: true })).toHaveCount(0);
+    await expect(recap.getByText(/active days?$/)).toHaveCount(0);
   });
 
   test("timeline surfaces the milestone entry under the Milestone filter", async ({

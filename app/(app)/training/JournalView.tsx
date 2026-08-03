@@ -69,7 +69,6 @@ export interface TargetChip {
 export interface WeekSummary {
   sessions: number;
   activeDays: number;
-  streak: number;
   targets: TargetChip[];
 }
 
@@ -747,15 +746,6 @@ export default function JournalView({
                   {weekSummary.activeDays}/7
                 </span>{" "}
                 days active
-              </span>
-              <span aria-hidden className="text-slate-300 dark:text-slate-600">
-                ·
-              </span>
-              <span>
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  {weekSummary.streak}
-                </span>
-                -day streak
               </span>
             </span>
           }

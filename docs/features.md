@@ -562,10 +562,11 @@ record's value (the keeper's pre-selected) so you pick which to keep per field.
 Manually logged activities also get an
 **estimated calorie burn** — computed from a baked MET (metabolic-equivalent)
 table, the activity's type/intensity/duration, and your nearest bodyweight —
-which auto-fills on the activity form (editable, so you can override it) and
-rolls into the weekly recap; it's always shown as an estimate (`≈`) and kept
-separate from device-measured calories (imported activities keep their device
-value). For logging at the gym rather than after the fact, **Start workout**
+which auto-fills on the activity form (editable, so you can override it); it's
+always shown as an estimate (`≈`) and kept separate from device-measured
+calories (imported activities keep their device value). It does **not** ride the
+weekly recap — comparing one week's estimate against another's compounds the
+error, so the recap reports what only week scale makes visible instead. For logging at the gym rather than after the fact, **Start workout**
 (the command palette, the Journal header, or the mobile top bar) opens the same
 editor in a **live** layout: today's date and start time are pre-stamped, each
 lift's coached next set is pre-seeded so you just confirm it, and a client-side

@@ -419,6 +419,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 123 one-shot GLOBAL dedupe read: enumerates every profile's practice targets to collapse normalized-identity duplicates before adding the UNIQUE index — profile_id is carried into the per-owner keeper map, and every mutation it drives is profile-scoped.",
   },
   {
+    file: "lib/migrations/versions/148-retire-run-milestones.ts",
+    includes: "DELETE FROM milestones",
+    why: "migration 148 (#1939) one-shot GLOBAL retirement: the `streak:` and `adherence:` milestone families were retired for EVERY profile at once, so the delete is deliberately unscoped — a per-profile version would leave the ruling half-applied on whichever profiles the loop missed. It can only remove rows the engine no longer mints, and it names the retired discriminators explicitly, so no other profile's milestone (workouts:, goal:, endurance-plan:) is reachable by it.",
+  },
+  {
     file: "lib/migrations/versions/123-practice-target-unique.ts",
     includes: "SELECT id, profile_id, practice FROM practice_logs ORDER BY id",
     why: "migration 123 one-shot GLOBAL log reconciliation: enumerates practice logs with their profile_id, resolves each against that profile's keeper map, and re-keys each mutation by id AND profile_id; histories never cross profiles.",

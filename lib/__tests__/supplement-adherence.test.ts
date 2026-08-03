@@ -26,51 +26,57 @@ const strip = (s: string) =>
   [...s].map((c, i) => ({ date: `d${i}`, state: S[c] }));
 
 describe("adherenceSummary", () => {
-  it("counts a full window as a complete streak at 100%", () => {
+  it("counts a full window at 100%", () => {
     const r = adherenceSummary(strip("tttttttttttttt"));
-    expect(r).toMatchObject({ streak: 14, pct: 100, applicableDays: 14 });
+    expect(r).toMatchObject({ pct: 100, takenDays: 14, applicableDays: 14 });
   });
 
-  it("treats an untaken today (trailing missed) as pending, not a break", () => {
-    // 5 taken, today not logged yet.
+  it("treats an untaken today (trailing missed) as pending, not a lapse", () => {
+    // 5 taken, today not logged yet — the pending day is dropped entirely.
     const r = adherenceSummary(strip("tttttm"));
-    expect(r.streak).toBe(5);
+    expect(r.applicableDays).toBe(5);
+    expect(r.pct).toBe(100);
   });
 
-  it("excludes a still-pending today from the percentage, not just the streak", () => {
+  it("excludes a still-pending today from the percentage", () => {
     // 4 taken, today not logged yet → a perfect record reads 100%, not 80%.
     const r = adherenceSummary(strip("ttttm"));
     expect(r.pct).toBe(100);
-    expect(r.streak).toBe(4);
     expect(r.applicableDays).toBe(4);
   });
 
   it("counts today when it is already taken", () => {
     const r = adherenceSummary(strip("tttttt"));
-    expect(r.streak).toBe(6);
+    expect(r.applicableDays).toBe(6);
+    expect(r.pct).toBe(100);
   });
 
-  it("ends the streak on a real missed day mid-window", () => {
-    // ...taken, missed, taken, taken (today taken) → streak of 2.
+  it("counts a real missed day mid-window against the percentage", () => {
+    // ...taken, missed, taken, taken (today taken) → 4/5 = 80%. The #1936 point in
+    // one assertion: a miss NUDGES the rate rather than zeroing a run.
     const r = adherenceSummary(strip("ttmtt"));
-    expect(r.streak).toBe(2);
+    expect(r.applicableDays).toBe(5);
+    expect(r.takenDays).toBe(4);
+    expect(r.pct).toBe(80);
   });
 
-  it("treats na days as transparent to the streak", () => {
-    // taken, na, taken, na, taken(today) → streak spans the na gaps = 3.
+  it("treats na days as transparent (outside the denominator)", () => {
+    // taken, na, taken, na, taken(today) → only the three due days are scored.
     const r = adherenceSummary(strip("tntnt"));
-    expect(r.streak).toBe(3);
+    expect(r.applicableDays).toBe(3);
+    expect(r.pct).toBe(100);
   });
 
-  it("keeps the streak alive through a partial day", () => {
-    // taken, taken, partial, taken, taken(today) → partial doesn't break it = 5.
+  it("counts a partial day as half, not as a lapse", () => {
+    // taken, taken, partial, taken, taken(today) → (4 + 0.5) / 5 = 90%.
     const r = adherenceSummary(strip("ttptt"));
-    expect(r.streak).toBe(5);
+    expect(r.applicableDays).toBe(5);
+    expect(r.partialDays).toBe(1);
+    expect(r.pct).toBe(90);
   });
 
-  it("counts a partial today toward the streak and half toward the percentage", () => {
+  it("counts a partial today as half toward the percentage", () => {
     const r = adherenceSummary(strip("ttttp"));
-    expect(r.streak).toBe(5);
     expect(r.takenDays).toBe(4);
     expect(r.partialDays).toBe(1);
     expect(r.applicableDays).toBe(5);
@@ -94,16 +100,15 @@ describe("adherenceSummary", () => {
     expect(r.pct).toBe(75);
   });
 
-  it("returns null percentage and zero streak when nothing was due", () => {
+  it("returns a null percentage when nothing was due", () => {
     const r = adherenceSummary(strip("nnnnnn"));
     expect(r.pct).toBeNull();
-    expect(r.streak).toBe(0);
     expect(r.applicableDays).toBe(0);
   });
 
   // Three-way adherence (#232): a deliberate skip is excluded from the
-  // denominator (it wasn't an intended dose) and is transparent to the streak,
-  // yet counted on its own — distinct from a "missed" lapse.
+  // denominator (it wasn't an intended dose) yet counted on its own — distinct
+  // from a "missed" lapse.
   describe("skipped days (#232)", () => {
     it("excludes skips from the denominator but counts them separately", () => {
       // 3 taken, 1 skipped, 1 missed over the settled window (today = taken).
@@ -115,16 +120,20 @@ describe("adherenceSummary", () => {
       expect(r.pct).toBe(75);
     });
 
-    it("keeps a skip transparent to the streak (neither counts nor breaks it)", () => {
-      // …taken, skipped, taken → the skip doesn't end the run.
+    it("leaves a perfect record perfect when a day was deliberately skipped", () => {
+      // …taken, skipped, taken → the skip is neither follow-through nor a lapse.
+      // This is the case #1936 turned on: the retired streak reset to 0 here while
+      // the percentage — the figure that survives — still reads 100%.
       const r = adherenceSummary(strip("ttstt"));
-      expect(r.streak).toBe(5 - 1); // 4 taken days, skip is invisible
       expect(r.skippedDays).toBe(1);
+      expect(r.applicableDays).toBe(4);
+      expect(r.takenDays).toBe(4);
+      expect(r.pct).toBe(100);
     });
 
-    it("a missed day still breaks the streak even with skips present", () => {
+    it("a missed day still counts against the rate even with skips present", () => {
       const r = adherenceSummary(strip("tsmtt"));
-      expect(r.streak).toBe(2); // the two trailing taken days
+      expect(r.pct).toBe(75); // 3 taken of 4 intended — the skip is not a lapse
     });
 
     it("reports null percentage when every settled day was skipped or na", () => {
@@ -138,7 +147,6 @@ describe("adherenceSummary", () => {
   it("handles an empty window", () => {
     const r = adherenceSummary([]);
     expect(r).toEqual({
-      streak: 0,
       pct: null,
       takenDays: 0,
       partialDays: 0,
@@ -154,7 +162,6 @@ describe("adherenceSummaryVisibility", () => {
     expect(adherenceSummaryVisibility(summary, true)).toEqual({
       show: false,
       showDetail: false,
-      showStreak: false,
       showSkipped: false,
     });
   });
@@ -174,13 +181,23 @@ describe("adherenceSummaryVisibility", () => {
     });
   });
 
-  it("shows only the streak for a meaningful perfect run", () => {
+  // #1936: `show` used to OR in "the streak is long enough to feel earned", so a
+  // resting row with a perfect three-day run was visible for that reason ALONE.
+  // With the streak gone that row falls back to its ordinary rendering — hidden
+  // here, exactly like the two-day perfect run above — rather than surfacing an
+  // empty line. Nothing else about the row changed.
+  it("a row visible only for its streak falls back to its ordinary rendering", () => {
     const summary = adherenceSummary(strip("ttt"));
     expect(adherenceSummaryVisibility(summary, true)).toEqual({
-      show: true,
+      show: false,
       showDetail: false,
-      showStreak: true,
       showSkipped: false,
+    });
+    // …and the same row still shows in the default (medication) mode, which was
+    // never gated on the streak.
+    expect(adherenceSummaryVisibility(summary)).toMatchObject({
+      show: true,
+      showDetail: true,
     });
   });
 
@@ -189,7 +206,6 @@ describe("adherenceSummaryVisibility", () => {
     expect(adherenceSummaryVisibility(summary)).toEqual({
       show: true,
       showDetail: true,
-      showStreak: true,
       showSkipped: false,
     });
   });
@@ -234,10 +250,10 @@ describe("doseStrip", () => {
   });
 
   it("feeds adherenceSummary end-to-end: a due-every-day dose taken all but today", () => {
-    // d3 is today and not yet logged → pending, so 3/3 = 100% and streak 3.
+    // d3 is today and not yet logged → pending, so 3/3 = 100%.
     const strip = doseStrip(dates, () => true, new Set(["d0", "d1", "d2"]));
     const r = adherenceSummary(strip);
-    expect(r.streak).toBe(3);
+    expect(r.applicableDays).toBe(3);
     expect(r.pct).toBe(100);
   });
 
@@ -423,7 +439,7 @@ describe("supplementAdherenceStrip", () => {
       TZ
     );
     const r = adherenceSummary(strip);
-    expect(r.streak).toBe(2);
+    expect(r.applicableDays).toBe(2);
     expect(r.pct).toBe(100);
   });
 });
@@ -507,7 +523,6 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
     const r = adherenceSummary(s);
     expect(r.applicableDays).toBe(0);
     expect(r.pct).toBeNull(); // the card hides the line rather than printing 0%
-    expect(r.streak).toBe(0);
   });
 
   it("one elapsed slot, unconfirmed: a real 0% survives the clamp", () => {

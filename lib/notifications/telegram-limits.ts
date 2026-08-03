@@ -2,7 +2,7 @@
 // lib/__tests__). Telegram rejects a sendMessage whose text exceeds 4096 chars or
 // whose inline keyboard carries too many buttons; without a guard an oversized
 // message — most plausibly a SAFETY-TIER dose reminder for a big supplement window
-// (many lines, each with amount + food-timing + food-drug guidance + streak) —
+// (many lines, each with amount + food-timing + food-drug guidance + adherence) —
 // fails outright, so `delivered` never flips true, the slot marker is never set,
 // and the reminder retries and refails every hour delivering NOTHING (#379).
 //
