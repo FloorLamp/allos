@@ -8,7 +8,10 @@ import {
   renderRecapMessage,
   pickRecapNarrative,
   medianWeeklyWorkouts,
+  recapLineAnnotation,
+  RECAP_COMPARISON_KINDS,
   type RecapInput,
+  type RecapLineKey,
 } from "@/lib/weekly-recap";
 import { recentPRs, type ExerciseSummary } from "@/lib/coaching";
 import { weekWindow } from "@/lib/week-window";
@@ -25,13 +28,9 @@ function baseInput(over: Partial<RecapInput> = {}): RecapInput {
     weightUnit: "kg",
     workouts: [],
     prevWorkouts: [],
-    volumeKg: 0,
-    prevVolumeKg: 0,
     prLabels: [],
     adherence: null,
     weights: [],
-    streak: 0,
-    strictStreak: 0,
     goalsCompleted: [],
     ...over,
   };
@@ -289,7 +288,7 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "workouts")!;
     expect(line.value).toBe("3 (strength 2, cardio 1)");
-    expect(line.delta).toBe("1 last week");
+    expect(line.comparison).toEqual({ kind: "prior", text: "1 last week" });
     expect(recap.headline).toContain("3 workouts");
     expect(recap.isEmpty).toBe(false);
   });
@@ -298,7 +297,9 @@ describe("buildWeeklyRecap", () => {
     const recap = buildWeeklyRecap(baseInput({ sri: 82, socialJetlagMin: 78 }));
     const line = recap.lines.find((l) => l.key === "sleepRegularity")!;
     expect(line.value).toBe("SRI 82");
-    expect(line.delta).toBe("1.3h weekend shift");
+    expect(line.note).toBe("1.3h weekend shift");
+    // A weekend shift is context, not a comparison — the line compares nothing.
+    expect(line.comparison.kind).toBe("none");
   });
 
   it("uses the shared honest presentation for a negative SRI (#1217)", () => {
@@ -312,21 +313,6 @@ describe("buildWeeklyRecap", () => {
     expect(
       recap.lines.find((l) => l.key === "sleepRegularity")
     ).toBeUndefined();
-  });
-
-  it("reports a volume delta versus the previous window", () => {
-    const recap = buildWeeklyRecap(
-      baseInput({ volumeKg: 11000, prevVolumeKg: 10000 })
-    );
-    const line = recap.lines.find((l) => l.key === "volume")!;
-    expect(line.value).toBe("11,000 kg");
-    expect(line.delta).toBe("+10%");
-  });
-
-  it("omits the volume delta when there was no prior volume", () => {
-    const recap = buildWeeklyRecap(baseInput({ volumeKg: 5000 }));
-    const line = recap.lines.find((l) => l.key === "volume")!;
-    expect(line.delta).toBeUndefined();
   });
 
   // Issue #837: a sick week reads as a sick week, not a failed one.
@@ -371,7 +357,8 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "prs")!;
     expect(line.value).toBe("4");
-    expect(line.delta).toBe("Bench press, Squat, Deadlift +1 more");
+    expect(line.note).toBe("Bench press, Squat, Deadlift +1 more");
+    expect(line.comparison.kind).toBe("none");
     expect(recap.headline).toContain("4 PRs");
   });
 
@@ -381,7 +368,8 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "adherence")!;
     expect(line.value).toBe("86%");
-    expect(line.delta).toBe("12/14 doses");
+    expect(line.note).toBe("12/14 doses");
+    expect(line.comparison.kind).toBe("none");
   });
 
   it("shows the latest weight and a robust net change with a direction arrow", () => {
@@ -396,15 +384,8 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "weight")!;
     expect(line.value).toBe("73 kg");
-    expect(line.delta).toContain("−"); // net loss over the window
-    expect(line.delta).toContain("kg");
-  });
-
-  it("reports streak status with the strict consecutive count as context", () => {
-    const recap = buildWeeklyRecap(baseInput({ streak: 12, strictStreak: 4 }));
-    const line = recap.lines.find((l) => l.key === "streak")!;
-    expect(line.value).toBe("12 active days");
-    expect(line.delta).toBe("4-day consecutive");
+    expect(line.note).toContain("−"); // net loss over the window
+    expect(line.note).toContain("kg");
   });
 
   it("marks a week with no workouts, adherence, or weight as empty", () => {
@@ -584,13 +565,18 @@ describe("Zone 2 recap line (issue #159)", () => {
     const line = recap.lines.find((l) => l.key === "zone2");
     expect(line).toBeTruthy();
     expect(line!.value).toBe("90 min");
-    expect(line!.delta).toBe("60% of 150 min target");
+    // Measured against the declared target — never against last week.
+    expect(line!.comparison).toEqual({
+      kind: "target",
+      text: "60% of 150 min target",
+    });
   });
 
-  it("omits the target delta when there is no target", () => {
+  it("declares no comparison when there is no target", () => {
     const recap = buildWeeklyRecap(baseInput({ zone2Min: 90, zone2Target: 0 }));
     const line = recap.lines.find((l) => l.key === "zone2");
-    expect(line!.delta).toBeUndefined();
+    expect(line!.comparison.kind).toBe("none");
+    expect(recapLineAnnotation(line!)).toBeUndefined();
   });
 
   it("omits the line entirely when there are no Zone 2 minutes", () => {
@@ -600,5 +586,204 @@ describe("Zone 2 recap line (issue #159)", () => {
     expect(recap.lines.some((l) => l.key === "zone2")).toBe(false);
     const nullRecap = buildWeeklyRecap(baseInput({ zone2Min: null }));
     expect(nullRecap.lines.some((l) => l.key === "zone2")).toBe(false);
+  });
+});
+
+// #1935 — the coverage rule, owner-decided. The recap's advantage over the daily
+// digest is showing what you cannot see day to day, so a line has to earn week
+// scale. Three did not: volume (a session fact aggregated, whose "-41%" restated
+// "fewer sessions" one line under the workout count that already said so),
+// estimated calories (a low-confidence derived number compared against another
+// estimate), and the streak (app engagement with a cliff, on the same screen as
+// the machinery that recommends rest days).
+describe("recap coverage rule (#1935)", () => {
+  // The fixture that would have produced ALL THREE: a heavy week of lifting with a
+  // prior week to compare against and a live streak. It must produce none of them.
+  const everything = () =>
+    buildWeeklyRecap(
+      baseInput({
+        workouts: [
+          { date: "2026-07-04", type: "strength" },
+          { date: "2026-07-06", type: "strength" },
+        ],
+        prevWorkouts: [
+          { date: "2026-06-30", type: "strength" },
+          { date: "2026-07-01", type: "strength" },
+          { date: "2026-07-02", type: "strength" },
+        ],
+      })
+    );
+
+  it("builds no volume, calories, or streak line", () => {
+    const keys = everything().lines.map((l) => l.key as string);
+    expect(keys).not.toContain("volume");
+    expect(keys).not.toContain("calories");
+    expect(keys).not.toContain("streak");
+  });
+
+  it("says none of it in the rendered message either", () => {
+    const msg = renderRecapMessage(everything(), "Ada")!;
+    expect(msg.body).not.toMatch(/Volume|kcal|streak|active day/i);
+    // The line the volume percentage was restating is still there, and is the
+    // honest version of the same claim.
+    expect(msg.body).toContain("• Workouts: 2 (strength 2)");
+    expect(msg.body).toContain("3 last week");
+  });
+
+  it("keeps every line that does earn week scale", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        prLabels: ["Bench press"],
+        adherence: { taken: 12, skipped: 1, due: 14 },
+        weights: [
+          { date: "2026-07-04", weightKg: 74 },
+          { date: "2026-07-08", weightKg: 73 },
+        ],
+        sri: 82,
+        zone2Min: 90,
+        zone2Target: 150,
+        intakeDeltaLine: "Missed: Glycine (2 days)",
+      })
+    );
+    expect(recap.lines.map((l) => l.key as string)).toEqual([
+      "workouts",
+      "prs",
+      "intake-deltas",
+      "adherence",
+      "weight",
+      "zone2",
+      "sleepRegularity",
+    ]);
+  });
+});
+
+// #1935 — `delta` had no defined meaning: one slot doing five unrelated jobs
+// across eleven lines, plus three silent omissions. The typed comparison makes
+// every line declare ONE idiom or declare that it compares nothing, and this pin
+// is what forces a NEW line's author to answer the question rather than reaching
+// for whichever parenthetical looked closest.
+describe("typed comparison slot (#1935)", () => {
+  // A fixture that emits every line the recap can build.
+  const allLines = () =>
+    buildWeeklyRecap(
+      baseInput({
+        illnessDays: 2,
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        prevWorkouts: [{ date: "2026-07-01", type: "strength" }],
+        prLabels: ["Bench press"],
+        intakeDeltaLine: "Missed: Glycine (2 days)",
+        adherence: { taken: 12, skipped: 1, due: 14 },
+        weights: [
+          { date: "2026-07-04", weightKg: 74 },
+          { date: "2026-07-08", weightKg: 73 },
+        ],
+        prevWeights: [{ date: "2026-07-01", weightKg: 75 }],
+        zone2Min: 90,
+        zone2Target: 150,
+        sri: 82,
+        socialJetlagMin: 78,
+        mood: { avgValence: 3.5, daysLogged: 4 },
+        goalsCompleted: ["Run a 10k"],
+        fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 },
+      })
+    );
+
+  it("every emitted line declares the comparison kind the registry assigns it", () => {
+    for (const line of allLines().lines) {
+      const declared = RECAP_COMPARISON_KINDS[line.key];
+      expect(
+        declared,
+        `${line.key} is missing from the registry`
+      ).toBeDefined();
+      // A line may fall back to "none" when its idiom's data is absent, but it may
+      // never speak a SECOND idiom — that is the drift the untyped slot allowed.
+      expect([declared, "none"]).toContain(line.comparison.kind);
+    }
+  });
+
+  it("the registry covers exactly the key union — a new line cannot omit it", () => {
+    // Adding a key to RecapLineKey without a registry entry is a type error at the
+    // Record; this pins the other direction (no stale entries) and, with the loop
+    // above, closes the loop for every line the builder can emit.
+    const keys = Object.keys(RECAP_COMPARISON_KINDS) as RecapLineKey[];
+    expect(keys.length).toBe(11);
+    for (const k of keys) expect(RECAP_COMPARISON_KINDS[k]).toBeTruthy();
+  });
+
+  it("weight carries the week-over-week comparison it was missing", () => {
+    const line = allLines().lines.find((l) => l.key === "weight")!;
+    expect(line.value).toBe("73 kg");
+    expect(line.comparison).toEqual({ kind: "prior", text: "75 kg last week" });
+  });
+
+  it("weight compares nothing — rather than something else — with no prior weigh-in", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ weights: [{ date: "2026-07-08", weightKg: 73 }] })
+    );
+    const line = recap.lines.find((l) => l.key === "weight")!;
+    expect(line.comparison.kind).toBe("none");
+  });
+
+  it("renders the note before the comparison, one parenthetical", () => {
+    const line = allLines().lines.find((l) => l.key === "weight")!;
+    expect(recapLineAnnotation(line)).toBe(
+      "−1.0 kg this week · 75 kg last week"
+    );
+  });
+});
+
+// #1935 correctness defects.
+describe("intake delta line renders once, unprefixed (#1935/#1505)", () => {
+  it("is bare — the shared line already carries its own Missed:/Resumed: prefix", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ intakeDeltaLine: "Missed: Glycine (2 days)" })
+    );
+    const line = recap.lines.find((l) => l.key === "intake-deltas")!;
+    expect(line.bare).toBe(true);
+    expect(line.value).toBe("Missed: Glycine (2 days)");
+    // Not "Changed" — nothing changed; something did not happen.
+    expect(line.label).not.toBe("Changed");
+  });
+
+  it("the message says Missed: exactly once, under no second label", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        intakeDeltaLine: "Missed: Glycine (2 days)",
+      })
+    );
+    const msg = renderRecapMessage(recap, "Ada")!;
+    expect(msg.body).toContain("• Missed: Glycine (2 days)");
+    expect(msg.body).not.toContain("Changed:");
+    expect(msg.body.match(/Missed:/g)).toHaveLength(1);
+  });
+});
+
+describe("mood line phrasing (#1935/#992)", () => {
+  it("does not call a single check-in an average", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ mood: { avgValence: 2, daysLogged: 1 } })
+    );
+    const line = recap.lines.find((l) => l.key === "mood")!;
+    expect(line.value).toBe("one check-in: 2/5");
+    expect(line.value).not.toContain("averaged");
+  });
+
+  it("uses the averaging language once there is something to average", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ mood: { avgValence: 3.46, daysLogged: 5 } })
+    );
+    const line = recap.lines.find((l) => l.key === "mood")!;
+    expect(line.value).toBe("averaged 3.5/5 over 5 check-ins");
+  });
+
+  it("never compares — a summary, never a score to beat", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ mood: { avgValence: 3.5, daysLogged: 4 } })
+    );
+    expect(recap.lines.find((l) => l.key === "mood")!.comparison.kind).toBe(
+      "none"
+    );
   });
 });
