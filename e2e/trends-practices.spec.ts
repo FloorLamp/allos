@@ -13,7 +13,8 @@ import { followLink } from "./helpers";
 //     a fifth tab;
 //   • the weeks-in-range strip renders the practice domain's OWN three verdicts —
 //     at ceiling, floor met, under floor — over a ledger this spec owns end to end;
-//   • the consistency headline states exactly what those cells show;
+//   • the consistency headline states exactly what those cells show — a RATE over
+//     completed weeks, with no run appended to it (#1966);
 //   • a duration-logging practice gets its session-length chart and a one-tap
 //     practice does not;
 //   • an UNTRACKED practice (sessions, no weekly cadence) stays out — it has no range
@@ -153,6 +154,11 @@ test("the wellness lens renders each practice's completed weeks in range (#1632)
     await expect(card).toContainText(
       `Floor met in ${weeks - under} of ${weeks} completed weeks`
     );
+    // …and NOTHING about a run (#1966). This ledger is the case that used to
+    // print one: DENSE reaches the newest completed weeks, so the retired
+    // "· N-week streak" clause would be on this very card. The rate above is the
+    // whole sentence now, and a missed week nudges it instead of zeroing it.
+    await expect(card).not.toContainText(/streak/i);
 
     // A RANGED practice names all three states, including the calm at-ceiling one.
     const legend = card.getByTestId("practice-weeks-legend");
