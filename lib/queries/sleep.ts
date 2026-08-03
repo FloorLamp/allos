@@ -26,7 +26,7 @@ import {
   getSupplementDosesForHistory,
   getSupplements,
 } from "./intake/schedule";
-import { getSupplementLogsInRange } from "./intake/adherence";
+import { getIntakeLogsInRange } from "./intake/adherence";
 import { today } from "../db";
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "../date";
 import {
@@ -311,7 +311,7 @@ function bedtimeSupplementsByWakeDay(
   if (supplementDoses.length === 0) return new Map();
 
   const statusByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, windowDays + 1)
+    getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
   const situationsOn = situationHistoryResolver(

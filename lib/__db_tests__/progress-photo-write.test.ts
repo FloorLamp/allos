@@ -28,6 +28,7 @@ import {
   addProgressPhotoCore,
   deleteProgressPhotoCore,
   getProgressPhotos,
+  updateProgressPhotoCore,
   weightSnapshotForDate,
 } from "@/lib/progress-photo-write";
 
@@ -298,5 +299,181 @@ describe("addProgressPhotoCore / getProgressPhotos / delete", () => {
       false
     );
     expect(deleteProgressPhotoCore(profileId, outcome.id)).toBe(false);
+  });
+});
+
+// The METADATA correction path (#1934). Progress photos were delete-only: a side photo
+// tagged `front`, a wrong date or a typo'd caption could only be repaired by deleting
+// and re-uploading, which discards the original file, its content_hash, and its place
+// in the series. The pin here is the split — the row is mutable, the ARTIFACTS are not.
+describe("updateProgressPhotoCore — metadata correction (#1934)", () => {
+  // The immutable half of the row: nothing about the stored bytes may move.
+  function artifacts(id: number) {
+    return db
+      .prepare(
+        `SELECT stored_path, thumb_path, content_hash, mime_type, size_bytes
+           FROM progress_photos WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as {
+      stored_path: string;
+      thumb_path: string;
+      content_hash: string;
+      mime_type: string | null;
+      size_bytes: number | null;
+    };
+  }
+
+  it("edits date/pose/caption while leaving the stored artifacts byte-identical", async () => {
+    const photo = await processed(500, 500, { r: 12, g: 210, b: 90 });
+    const added = addProgressPhotoCore(
+      profileId,
+      { date: today(profileId), pose: "front", caption: "typo'd" },
+      photo
+    );
+    expect(added.kind).toBe("added");
+    if (added.kind !== "added") return;
+    const before = artifacts(added.id);
+    const onDisk = path.resolve(process.cwd(), before.stored_path);
+    const bytesBefore = fs.readFileSync(onDisk);
+
+    const moved = shiftDateStr(today(profileId), -3);
+    expect(
+      updateProgressPhotoCore(profileId, added.id, {
+        date: moved,
+        pose: "side",
+        caption: "  left side  ",
+      })
+    ).toEqual({ kind: "updated", id: added.id });
+
+    const row = db
+      .prepare(
+        `SELECT date, pose, caption FROM progress_photos WHERE id = ? AND profile_id = ?`
+      )
+      .get(added.id, profileId) as {
+      date: string;
+      pose: string;
+      caption: string | null;
+    };
+    expect(row).toEqual({ date: moved, pose: "side", caption: "left side" });
+
+    // The artifacts columns are ABSENT from the UPDATE's SET list, so a correction
+    // can never re-point a row at different pixels — and the file itself is untouched
+    // (no re-processing, no re-store, no unlink).
+    expect(artifacts(added.id)).toEqual(before);
+    expect(fs.readFileSync(onDisk).equals(bytesBefore)).toBe(true);
+    expect(fs.existsSync(path.resolve(process.cwd(), before.thumb_path))).toBe(
+      true
+    );
+  });
+
+  it("re-sorts the series when the date moves, and re-derives the weight snapshot", async () => {
+    const anchor = today(profileId);
+    const older = shiftDateStr(anchor, -10);
+    const local = Number(
+      db.prepare(`INSERT INTO profiles (name) VALUES ('Photo Reorder')`).run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
+    ).run(local, older, 71.5);
+
+    const first = addProgressPhotoCore(
+      local,
+      { date: older, pose: "back", caption: "oldest" },
+      await processed(320, 240, { r: 1, g: 2, b: 3 })
+    );
+    const second = addProgressPhotoCore(
+      local,
+      { date: anchor, pose: "back", caption: "newest" },
+      await processed(320, 240, { r: 250, g: 240, b: 230 })
+    );
+    if (first.kind !== "added" || second.kind !== "added")
+      throw new Error("seed");
+
+    // getProgressPhotos is ORDER BY date DESC — the order the gallery groups by and
+    // the compare timeline reverses.
+    expect(getProgressPhotos(local).map((r) => r.id)).toEqual([
+      second.id,
+      first.id,
+    ]);
+
+    // Correct the NEWEST photo's date to before the older one: the series re-sorts.
+    const evenOlder = shiftDateStr(older, -1);
+    expect(
+      updateProgressPhotoCore(local, second.id, {
+        date: evenOlder,
+        pose: "back",
+        caption: "newest",
+      })
+    ).toEqual({ kind: "updated", id: second.id });
+    expect(getProgressPhotos(local).map((r) => r.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+
+    // The snapshot is a FACTUAL weight near the photo's date, so a moved date
+    // re-derives it rather than leaving a fact pinned to the wrong day. There is no
+    // weigh-in within the window of evenOlder, so it correctly becomes null.
+    const moved = getProgressPhotos(local).find((r) => r.id === second.id)!;
+    expect(moved.weight_kg_snapshot).toBe(
+      weightSnapshotForDate(local, evenOlder)
+    );
+    expect(moved.weight_kg_snapshot).toBeNull();
+
+    fs.rmSync(path.join(photoDomainRoot("progress"), String(local)), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("refuses an off-vocabulary pose, an unreal date, and another profile's row", async () => {
+    const photo = await processed(300, 300, { r: 40, g: 40, b: 200 });
+    const added = addProgressPhotoCore(
+      profileId,
+      { date: today(profileId), pose: "front", caption: null },
+      photo
+    );
+    if (added.kind !== "added") throw new Error("seed");
+    const before = artifacts(added.id);
+
+    // The CHECK enum can only ever see a PROGRESS_POSES member — normalizePose is the
+    // one gate, and it refuses rather than coercing.
+    expect(
+      updateProgressPhotoCore(profileId, added.id, {
+        date: today(profileId),
+        pose: "flex",
+        caption: null,
+      })
+    ).toMatchObject({ kind: "invalid" });
+    expect(
+      updateProgressPhotoCore(profileId, added.id, {
+        date: "2026-02-31",
+        pose: "front",
+        caption: null,
+      })
+    ).toMatchObject({ kind: "invalid" });
+    // Profile-scoped by id: another profile's edit finds nothing and writes nothing.
+    expect(
+      updateProgressPhotoCore(profileId + 9999, added.id, {
+        date: today(profileId),
+        pose: "back",
+        caption: "stolen",
+      })
+    ).toEqual({ kind: "not-found" });
+    expect(
+      updateProgressPhotoCore(profileId, 9_999_999, {
+        date: today(profileId),
+        pose: "back",
+        caption: null,
+      })
+    ).toEqual({ kind: "not-found" });
+
+    const row = db
+      .prepare(
+        `SELECT pose, caption FROM progress_photos WHERE id = ? AND profile_id = ?`
+      )
+      .get(added.id, profileId) as { pose: string; caption: string | null };
+    expect(row).toEqual({ pose: "front", caption: null });
+    expect(artifacts(added.id)).toEqual(before);
   });
 });

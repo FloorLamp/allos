@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, settledFill, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 import {
   allergyWarnings,
   allergyWarningRows,
@@ -103,7 +108,7 @@ function plannedDate(): string {
 }
 
 async function openAllergyDialog(page: Page) {
-  await settledClick(page, page.getByTestId("add-allergy-panel-toggle"));
+  await hydratedClick(page, page.getByTestId("add-allergy-panel-toggle"));
   const dialog = page.getByRole("dialog", { name: "Add allergy" });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -114,13 +119,14 @@ async function revealCarePlan(page: Page) {
   const open = await section.evaluate(
     (element) => (element as HTMLDetailsElement).open
   );
-  if (!open) await settledClick(page, section.locator("summary"));
+  // Native <details> — no JS, no POST; the caller asserts what it reveals.
+  if (!open) await section.locator("summary").click();
   return section;
 }
 
 async function openCarePlanDialog(page: Page) {
   await revealCarePlan(page);
-  await settledClick(page, page.getByTestId("add-care-plan-panel-toggle"));
+  await hydratedClick(page, page.getByTestId("add-care-plan-panel-toggle"));
   const dialog = page.getByRole("dialog", { name: "Add care-plan item" });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -308,8 +314,10 @@ test.describe("Entry vocabularies (#1676)", () => {
     await page.goto("/records/care/overview");
     await revealCarePlan(page);
     const row = page.locator("tr").filter({ hasText: CARE_ITEM });
-    await settledClick(page, row.getByLabel("Record actions"));
-    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
+    // The overflow trigger and its Edit item are onClick-only client state
+    // (OverflowMenu + EditableRecordRow) — the edit form is the signal.
+    await hydratedClick(page, row.getByLabel("Record actions"));
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );
@@ -337,8 +345,8 @@ test.describe("Entry vocabularies (#1676)", () => {
     await page.goto("/records/care/overview");
     await revealCarePlan(page);
     const closingRow = page.locator("tr").filter({ hasText: CARE_ITEM });
-    await settledClick(page, closingRow.getByLabel("Record actions"));
-    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
+    await hydratedClick(page, closingRow.getByLabel("Record actions"));
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editAgain = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );

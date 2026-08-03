@@ -109,8 +109,9 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     // Delete one administration → the derived window recomputes (count 2, no longer
     // over the max of 2) and supply is re-credited 7 → 8.
     const logId = adminIds(itemId)[1]; // the middle one
-    const undoId = deleteAdministrationLog(profileId, logId);
-    expect(typeof undoId).toBe("number");
+    const removed = deleteAdministrationLog(profileId, logId);
+    expect(typeof removed?.undoId).toBe("number");
+    const undoId = removed!.undoId;
     expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(2);
     expect(onHand(itemId)).toBe(8);
     expect(getPrnOverMaxItems(profileId, date).map((o) => o.id)).not.toContain(

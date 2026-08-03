@@ -11,9 +11,11 @@
 
 import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
+import { isRealIsoDate } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
 import { foodSlotForProfileEvent } from "./profile-food-slot";
+import { isProteinNudgeKey } from "./protein-nudge";
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
@@ -213,6 +215,158 @@ export function undoFoodServingCore(
       ...(mealSlot
         ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
         : {}),
+    };
+  });
+}
+
+// ---- Correction (issue #1934) ----
+
+// Where one ledger event SITS after a write, with the two authoritative counts that
+// placement owns: the day counter for its (date, group) and the ledger tally for its
+// (date, group, window). An edit answers with the placement BEFORE and the placement
+// AFTER, both re-read post-write, so the surface reconciles its optimistic counts from
+// the server rather than re-deriving a move client-side (the #748 item 2 discipline).
+export interface FoodEventPlacement {
+  date: string;
+  groupKey: string;
+  mealSlot: FoodSlot;
+  // food_log servings for (profile, date, groupKey) AFTER the write. 0 once the row
+  // is dropped.
+  servings: number;
+  // food_log_events count for (profile, date, groupKey) whose derived window is
+  // `mealSlot`, AFTER the write.
+  mealServings: number;
+}
+
+// The typed result of a correction:
+//   updated        — the event moved; `from`/`to` carry both placements' post-write counts.
+//   not-found      — no such event for this profile (a forged/stale id, or another
+//                    profile's row — the statement is id + profile_id scoped).
+//   unknown-group  — the requested group isn't in the catalog; nothing written.
+//   invalid-date   — the requested date isn't a real calendar date; nothing written.
+//   not-correctable — the row is the reserved `__protein__` ranking event, which is not
+//                    a food-group serving: its truth is the protein_log grams total, and
+//                    re-keying it onto a catalog group would mint a serving from a shake.
+export type FoodEventEditOutcome =
+  | {
+      kind: "updated";
+      id: number;
+      from: FoodEventPlacement;
+      to: FoodEventPlacement;
+    }
+  | { kind: "not-found" }
+  | { kind: "unknown-group" }
+  | { kind: "invalid-date" }
+  | { kind: "not-correctable" };
+
+// The post-write placement of one (date, group, window) coordinate. Read INSIDE the
+// caller's transaction so `from` and `to` describe one consistent state.
+function placementOf(
+  profileId: number,
+  date: string,
+  groupKey: string,
+  mealSlot: FoodSlot
+): FoodEventPlacement {
+  const row = db
+    .prepare(
+      `SELECT servings FROM food_log
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    )
+    .get(profileId, date, groupKey) as { servings: number } | undefined;
+  return {
+    date,
+    groupKey,
+    mealSlot,
+    servings: row?.servings ?? 0,
+    mealServings: mealServingCount(profileId, groupKey, date, mealSlot),
+  };
+}
+
+// Correct one already-logged serving: its food group, its day, and/or its meal window
+// (issue #1934). The one-tap surfaces got create + delete and never got correction, and
+// delete-and-re-log is NOT equivalent — a re-log stamps the CURRENT instant and window,
+// so "logged last night's dinner this morning" cannot be repaired faithfully.
+//
+// The event ledger and the food_log day counter are ONE fact in two shapes, so the
+// counter MOVES with the event in the same IMMEDIATE transaction: a (date, group) change
+// decrements the old counter (dropping the row at zero, the undoFoodServingCore
+// discipline) and increments the new one. Exactly one serving exists throughout — the
+// derived reads (slot tallies, the day's counts, the weekly frequency-target progress)
+// all recompute live off these two tables, so a move can never double-count.
+//
+// `logged_at` is deliberately NOT edited: it is the audit/tap instant, and the MEANINGFUL
+// grain is the window, which `meal_slot` asserts explicitly. An event left without an
+// explicit window keeps its NULL and therefore keeps deriving from `logged_at` — a
+// correction never silently freezes a legacy row's window.
+export function updateFoodLogEventCore(
+  profileId: number,
+  eventId: number,
+  patch: { groupKey?: string; date?: string; mealSlot?: FoodSlot }
+): FoodEventEditOutcome {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+          WHERE id = ? AND profile_id = ?`
+      )
+      .get(eventId, profileId) as
+      | {
+          group_key: string;
+          date: string;
+          logged_at: string;
+          meal_slot: FoodSlot | null;
+        }
+      | undefined;
+    if (!row) return { kind: "not-found" as const };
+    if (isProteinNudgeKey(row.group_key))
+      return { kind: "not-correctable" as const };
+
+    // Canonicalize only a REQUESTED group (#883). The stored key is used verbatim for
+    // the old-counter decrement — a retired slug must still be able to give its serving
+    // back, which is exactly the repair someone reaches for.
+    const nextGroup =
+      patch.groupKey === undefined
+        ? row.group_key
+        : canonicalFoodGroup(patch.groupKey);
+    if (nextGroup === null) return { kind: "unknown-group" as const };
+    const nextDate = patch.date ?? row.date;
+    if (!isRealIsoDate(nextDate)) return { kind: "invalid-date" as const };
+    const nextSlot = patch.mealSlot ?? row.meal_slot;
+
+    const fromSlot = foodSlotForProfileEvent(
+      profileId,
+      row.logged_at,
+      row.meal_slot
+    );
+    const toSlot = foodSlotForProfileEvent(profileId, row.logged_at, nextSlot);
+
+    if (nextDate !== row.date || nextGroup !== row.group_key) {
+      db.prepare(
+        `UPDATE food_log SET servings = servings - 1
+          WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
+      ).run(profileId, row.date, row.group_key);
+      db.prepare(
+        `DELETE FROM food_log
+          WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+      ).run(profileId, row.date, row.group_key);
+      db.prepare(
+        `INSERT INTO food_log (profile_id, date, group_key, servings)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT (profile_id, date, group_key)
+         DO UPDATE SET servings = servings + 1`
+      ).run(profileId, nextDate, nextGroup);
+    }
+    db.prepare(
+      `UPDATE food_log_events
+          SET group_key = ?, date = ?, meal_slot = ?
+        WHERE id = ? AND profile_id = ?`
+    ).run(nextGroup, nextDate, nextSlot, eventId, profileId);
+
+    return {
+      kind: "updated" as const,
+      id: eventId,
+      from: placementOf(profileId, row.date, row.group_key, fromSlot),
+      to: placementOf(profileId, nextDate, nextGroup, toSlot),
     };
   });
 }

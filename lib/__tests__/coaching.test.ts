@@ -1086,9 +1086,10 @@ describe("restRecommendation", () => {
 
   // Anti-drift pin (#222/#1398): the overtraining nudge's "trained N days in a row"
   // is the STRICT consecutive-day count, and coaching calls currentStreak directly
-  // rather than re-deriving it — so prove they agree on the same fixture. (The
-  // user-facing "streak" is a different question with a different engine: #1398's
-  // rest-tolerant activityStreak. Different label, different number, on purpose.)
+  // rather than re-deriving it — so prove they agree on the same fixture. (There is
+  // no longer a user-facing "streak" to confuse it with — #1935/#1936/#1937/#1939
+  // retired that family — which is why this nudge is now the ONLY consecutive-day
+  // count left, and why it needs its own pin more than it did before.)
   it("counts consecutive days the same way currentStreak does", () => {
     const dates = consecutiveDates(TODAY, 5);
     const widgetStreak = currentStreak(TODAY, dates); // the strict consecutive run

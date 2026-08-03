@@ -10,13 +10,13 @@ per-day/slot dedup. Enable any or all; a profile with several configured gets
 each reminder on each.
 
 Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly
-recap** — a quiet once-a-week summary of your week (workouts + volume, PRs,
-supplement adherence, a body-weight trend, and streak status), covering the same
+recap** — a quiet once-a-week summary of your week (workouts, PRs, supplement
+adherence, a body-weight trend, aerobic base, and sleep regularity), covering the same
 "this week" your routine counters use per your **week mode** (a calendar week or
 a rolling seven days — **Settings → Health profile**), set the send day/hour
 under **Settings → Notifications**; and **milestone alerts** — a brief note when you cross a
-milestone (your 10th/50th/100th/… workout, a 7/30/100/365-day streak, a
-completed goal, or a 7/30-day adherence run). Both are rule-based and work with
+milestone (your 10th/50th/100th/… workout, or a completed goal). Both are
+rule-based and work with
 **no AI configured**. Milestones are always recorded to your **Timeline** (under
 the **Milestone** filter) regardless of the alert toggle. The recap is also
 available as an off-by-default **Weekly recap** dashboard card (enable it from

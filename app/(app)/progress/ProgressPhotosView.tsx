@@ -5,6 +5,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import DateField from "@/components/DateField";
+import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
   filterBySeries,
@@ -16,7 +17,11 @@ import {
   POSE_LABELS,
   type ProgressPose,
 } from "@/lib/progress-photos";
-import { uploadProgressPhoto, deleteProgressPhoto } from "./actions";
+import {
+  uploadProgressPhoto,
+  deleteProgressPhoto,
+  updateProgressPhoto,
+} from "./actions";
 
 // Client shell of /progress (#1119 phase 2): one pose state shared by the
 // capture ghost, the gallery's series filter, and the compare timeline — so
@@ -42,6 +47,29 @@ export default function ProgressPhotosView({
   const [notice, setNotice] = useState<string | null>(null);
   const [date, setDate] = useState("");
   const [caption, setCaption] = useState("");
+  // Metadata correction (#1934). The image BYTES are immutable content; date, pose and
+  // caption are the three things a human gets wrong, so they are editable in place —
+  // delete-and-re-upload would throw away the original file, its content hash, and its
+  // place in the series.
+  const [editing, setEditing] = useState<ProgressGalleryPhoto | null>(null);
+  const [editPose, setEditPose] = useState<ProgressPose>("front");
+  const [editDate, setEditDate] = useState("");
+  const [editCaption, setEditCaption] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openEdit(photo: ProgressGalleryPhoto) {
+    setEditing(photo);
+    setEditPose((photo.pose as ProgressPose) ?? "front");
+    setEditDate(photo.date);
+    setEditCaption(photo.caption ?? "");
+    setEditError(null);
+  }
+
+  function closeEdit() {
+    setEditing(null);
+    setEditError(null);
+  }
 
   // The onion-skin ghost: the LATEST photo of the pose being captured.
   const ghostUrl = useMemo(() => {
@@ -171,7 +199,7 @@ export default function ProgressPhotosView({
             setSeriesFilter(key);
             if (key) setPose(key as ProgressPose);
           }}
-          renderActions={(photo) => (
+          renderActions={(photo, { close }) => (
             <div className="flex items-center gap-2">
               {/* Compare is a READ affordance — available to every grant. */}
               <button
@@ -182,6 +210,24 @@ export default function ProgressPhotosView({
               >
                 Compare series
               </button>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+                  data-testid="photo-lightbox-edit"
+                  onClick={() => {
+                    // Leave the lightbox first: a pose or date change re-sorts the
+                    // filtered set, so the open index would no longer mean this photo.
+                    close();
+                    openEdit(
+                      photos.find((p) => p.id === photo.id) ??
+                        (photo as ProgressGalleryPhoto)
+                    );
+                  }}
+                >
+                  Edit details
+                </button>
+              ) : null}
               {!readOnly ? (
                 <button
                   type="button"
@@ -236,6 +282,108 @@ export default function ProgressPhotosView({
           />
         </section>
       )}
+
+      {editing ? (
+        <ModalShell
+          title="Edit photo details"
+          onClose={closeEdit}
+          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+        >
+          <div data-testid="progress-edit-modal" className="mt-4 space-y-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              The image itself never changes — only how it&rsquo;s filed.
+            </p>
+            <div>
+              <label className="label" htmlFor="progress-edit-pose">
+                Pose
+              </label>
+              <select
+                id="progress-edit-pose"
+                className="input py-1.5 text-sm"
+                value={editPose}
+                onChange={(e) => setEditPose(e.target.value as ProgressPose)}
+                data-testid="progress-edit-pose"
+              >
+                {PROGRESS_POSES.map((p) => (
+                  <option key={p} value={p}>
+                    {POSE_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="progress-edit-date">
+                Date
+              </label>
+              <DateField
+                id="progress-edit-date"
+                value={editDate}
+                onChange={setEditDate}
+                data-testid="progress-edit-date"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="progress-edit-caption">
+                Caption
+              </label>
+              <input
+                id="progress-edit-caption"
+                className="input py-1.5 text-sm"
+                placeholder="optional"
+                value={editCaption}
+                onChange={(e) => setEditCaption(e.target.value)}
+                data-testid="progress-edit-caption"
+              />
+            </div>
+            {editError ? (
+              <p
+                data-testid="progress-edit-error"
+                className="text-sm text-rose-600 dark:text-rose-400"
+              >
+                {editError}
+              </p>
+            ) : null}
+          </div>
+          <div className="mt-4 flex justify-end gap-2 border-t border-black/10 pt-3 dark:border-white/10">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={closeEdit}
+              data-testid="progress-edit-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={savingEdit}
+              data-testid="progress-edit-save"
+              onClick={async () => {
+                setSavingEdit(true);
+                const fd = new FormData();
+                fd.set("photo_id", String(editing.id));
+                fd.set("pose", editPose);
+                fd.set("date", editDate);
+                fd.set("caption", editCaption);
+                const res = await updateProgressPhoto(fd);
+                setSavingEdit(false);
+                if (!res.ok) {
+                  setEditError(res.error);
+                  return;
+                }
+                // Follow the correction: the series the user is looking at is the
+                // one this photo now belongs to.
+                setSeriesFilter(editPose);
+                setPose(editPose);
+                setNotice("Photo details updated.");
+                closeEdit();
+              }}
+            >
+              {savingEdit ? "Saving…" : "Save details"}
+            </button>
+          </div>
+        </ModalShell>
+      ) : null}
     </div>
   );
 }

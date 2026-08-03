@@ -45,7 +45,7 @@ import type { PoolChipData } from "@/lib/queries/intake";
 import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
-import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import MedicationForm from "@/components/MedicationForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
@@ -64,6 +64,7 @@ import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
   deleteSupplement,
+  deleteAdministration,
 } from "@/app/(app)/nutrition/supplement-actions";
 import {
   stopMedication,
@@ -72,7 +73,6 @@ import {
   toggleSideEffectResolved,
   deleteSideEffect,
   promoteSideEffectToIntolerance,
-  deleteAdministration,
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -207,9 +207,6 @@ export default function MedicationCard({
     canWrite && initialAction === "stop"
   );
   const [addingEffect, setAddingEffect] = useState(false);
-  const [addingDose, setAddingDose] = useState(false);
-  const [editingHistoryId, setEditingHistoryId] = useState<number | null>(null);
-  const [historyMenuId, setHistoryMenuId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sideEffectMenuId, setSideEffectMenuId] = useState<number | null>(null);
   // The two side-effect fields are controlled comboboxes (#1676); their forms don't
@@ -802,162 +799,30 @@ export default function MedicationCard({
         </div>
 
         <div className="mt-5 space-y-5">
-          <div data-testid="dose-history">
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <span className="section-label">Dose history</span>
-              {canWrite ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingHistoryId(null);
-                    setAddingDose((value) => !value);
-                  }}
-                  className="btn-ghost btn-sm"
-                  disabled={
-                    doses.length === 0 ||
-                    courses.length === 0 ||
+          <DoseHistoryPanel
+            itemId={s.id}
+            itemName={s.name}
+            product={s.product}
+            doses={doses.map((dose) => ({
+              id: dose.id,
+              amount: dose.amount,
+              time_of_day: dose.time_of_day,
+            }))}
+            asNeeded={isPrn(s)}
+            history={doseHistory}
+            minDate={historyMinDate}
+            maxDate={historyMaxDate}
+            defaultTime={defaultHistoryTime}
+            canWrite={canWrite}
+            backfillDisabledReason={
+              doses.length === 0
+                ? "This medication has no dose to log against"
+                : courses.length === 0 ||
                     (!!historyMinDate && historyMinDate > historyMaxDate)
-                  }
-                  title={
-                    courses.length === 0 ||
-                    (!!historyMinDate && historyMinDate > historyMaxDate)
-                      ? "No recorded medication course is available"
-                      : undefined
-                  }
-                  aria-expanded={addingDose}
-                >
-                  {addingDose ? "Cancel" : "Log past dose"}
-                </button>
-              ) : null}
-            </div>
-            {canWrite && addingDose ? (
-              <HistoricalDoseForm
-                itemId={s.id}
-                medicationName={s.name}
-                doses={doses.map((dose) => ({
-                  id: dose.id,
-                  label:
-                    formatMedicationDoseLine({
-                      amount: dose.amount,
-                      product: s.product,
-                      timeOfDay: dose.time_of_day,
-                      asNeeded: isPrn(s),
-                      timeFormat: formatPrefs.timeFormat,
-                    }) || "Dose",
-                  amount: dose.amount,
-                }))}
-                minDate={historyMinDate}
-                maxDate={historyMaxDate}
-                defaultTime={defaultHistoryTime}
-                asNeeded={isPrn(s)}
-                onDone={() => setAddingDose(false)}
-              />
-            ) : null}
-            {doseHistory.length > 0 ? (
-              <ul className="mt-2 divide-y divide-black/5 dark:divide-white/5">
-                {doseHistory.map((entry) => (
-                  <li
-                    key={entry.id}
-                    data-testid="dose-history-row"
-                    className="py-2 first:pt-0 last:pb-0"
-                  >
-                    <div className="grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)_auto] items-center gap-x-3 text-sm text-slate-600 dark:text-slate-300">
-                      <span className="font-medium">{fmt(entry.date)}</span>
-                      <span className="min-w-0 text-right text-xs text-slate-500 dark:text-slate-400">
-                        {[
-                          formatMedicationDoseProduct(
-                            entry.amount,
-                            entry.product
-                          ),
-                          entry.time,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                      {canWrite ? (
-                        <OverflowMenu
-                          label="Dose actions"
-                          open={historyMenuId === entry.id}
-                          onOpenChange={(open) =>
-                            setHistoryMenuId(open ? entry.id : null)
-                          }
-                        >
-                          {({ close }) => (
-                            <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className={MENU_ITEM}
-                                onClick={() => {
-                                  setAddingDose(false);
-                                  setEditingHistoryId(entry.id);
-                                  close();
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className={MENU_ITEM_DANGER}
-                                onClick={async () => {
-                                  close();
-                                  const fd = new FormData();
-                                  fd.set("log_id", String(entry.id));
-                                  if (editingHistoryId === entry.id) {
-                                    setEditingHistoryId(null);
-                                  }
-                                  await undoable(deleteAdministration, fd, {
-                                    deletedMessage: "Dose deleted.",
-                                  });
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </OverflowMenu>
-                      ) : null}
-                    </div>
-                    {canWrite && editingHistoryId === entry.id ? (
-                      <HistoricalDoseForm
-                        itemId={s.id}
-                        medicationName={s.name}
-                        doses={doses.map((dose) => ({
-                          id: dose.id,
-                          label:
-                            formatMedicationDoseLine({
-                              amount: dose.amount,
-                              product: s.product,
-                              timeOfDay: dose.time_of_day,
-                              asNeeded: isPrn(s),
-                              timeFormat: formatPrefs.timeFormat,
-                            }) || "Dose",
-                          amount: dose.amount,
-                        }))}
-                        minDate={historyMinDate}
-                        maxDate={historyMaxDate}
-                        defaultTime={defaultHistoryTime}
-                        asNeeded={isPrn(s)}
-                        editing={{
-                          logId: entry.id,
-                          doseId: entry.doseId,
-                          date: entry.date,
-                          time: entry.timeValue,
-                          amount: entry.amount,
-                        }}
-                        onDone={() => setEditingHistoryId(null)}
-                      />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                No doses recorded yet.
-              </p>
-            )}
-          </div>
+                  ? "No recorded medication course is available"
+                  : undefined
+            }
+          />
 
           {/* Course mini-timeline. */}
           <div>

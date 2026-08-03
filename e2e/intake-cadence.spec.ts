@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
   expandUpcomingAggregates,
+  hydratedClick,
   settledClick,
   settledSelect,
 } from "./helpers";
@@ -225,11 +226,13 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     await page.goto("/nutrition?tab=supplements");
     const row = doseCard(page, FORM_NAME);
     await expect(row).toHaveCount(1);
-    await settledClick(
+    // OverflowMenu's trigger and its Edit item are onClick-only client state
+    // (EditableSupplementRow) — the edit dialog is the signal.
+    await hydratedClick(
       page,
       row.getByRole("button", { name: "Supplement actions" })
     );
-    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });
 
     const editor = editForm.getByTestId("cadence-editor");
@@ -246,7 +249,9 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     await settledSelect(page, editor.getByLabel("How often"), "weekly");
     const chip = editor.getByTestId(`cadence-weekday-${dow}`);
     await expect(chip).toBeVisible();
-    await settledClick(page, chip);
+    // A CadenceEditor weekday chip: client state, and it TOGGLES — so one click
+    // after hydration, and aria-pressed is the signal.
+    await hydratedClick(page, chip);
     await expect(chip).toHaveAttribute("aria-pressed", "true");
 
     // Save. The submit rides a Server Action's full-page re-render, which on a loaded
@@ -275,11 +280,11 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     await page.goto("/nutrition?tab=supplements");
     const again = doseCard(page, FORM_NAME);
     await expect(again).toHaveCount(1);
-    await settledClick(
+    await hydratedClick(
       page,
       again.getByRole("button", { name: "Supplement actions" })
     );
-    await settledClick(page, page.getByRole("menuitem", { name: "Edit" }));
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const reopened = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });
     await expect(
       reopened.getByTestId("cadence-editor").getByLabel("How often")

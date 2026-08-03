@@ -17,7 +17,7 @@ import { lastNDates, shiftDateStr } from "./date";
 import {
   getSupplements,
   getSupplementDoses,
-  getSupplementLogsInRange,
+  getIntakeLogsInRange,
   getActivityDates,
 } from "./queries";
 import { getActiveSituations, getSituationEvents } from "./settings";
@@ -80,9 +80,7 @@ export function getIntakeHistory(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(
-    getSupplementLogsInRange(profileId, days)
-  );
+  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
 
   const out: IntakeHistoryEntry[] = [];
   for (const item of items) {

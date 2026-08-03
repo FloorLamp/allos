@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   getActivitiesByDate,
   getGoals,
-  getSupplementLogsForDate,
+  getIntakeLogsForDate,
   getSupplements,
   getStrengthByExercise,
   getCardioByActivity,
@@ -92,7 +92,7 @@ function gatherInsightContext(
 
   // Supplement/med adherence for the day.
   const activeIntake = getSupplements(profileId).filter((s) => s.active);
-  const takenToday = getSupplementLogsForDate(profileId, date);
+  const takenToday = getIntakeLogsForDate(profileId, date);
   const adherence =
     activeIntake.length > 0
       ? { taken: takenToday.size, total: activeIntake.length }

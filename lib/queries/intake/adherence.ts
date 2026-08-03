@@ -19,7 +19,8 @@ import {
   utcSqlString,
   parseUtcSql,
 } from "../../date";
-import { getTimezone } from "../../settings";
+import { getTimezone, setProfileSetting } from "../../settings";
+import { escalationMarkerKey } from "../../notifications/escalation-keys";
 import {
   isDoseDateAccepted as isDoseDateInWindow,
   isGivenAtAccepted,
@@ -53,10 +54,40 @@ function isDoseDateAccepted(profileId: number, date: string): boolean {
   return isDoseDateInWindow(today(profileId), date);
 }
 
-// Supplement ids with at least one dose actually TAKEN on `date` (supplement-
-// level view for the dashboard / AI summary). A skipped dose (issue #232) is not
-// "taken", so it's excluded.
-export function getSupplementLogsForDate(
+// ---- The no-rearm rule (#1933 × #328 × the attention doctrine) --------------
+//
+// A historical write may UN-MARK a dose for a day: deleting its taken ledger row, or
+// moving that row onto a different date. The dose then reads unconfirmed for the day
+// it left behind — and the hourly missed-dose escalation would be free to chase it.
+//
+// That is the one thing a history correction must never do. The attention doctrine's
+// contact-consent rule is asymmetric: the system may reduce contact unilaterally, but
+// it may never INCREASE it off its own reading of state. Un-marking yesterday's (or
+// this morning's) dose is a bookkeeping correction, not a request to be chased.
+//
+// So every un-marking write stamps the dose's date-keyed escalation marker (#328) for
+// the day it vacated, exactly as a real escalation or a caregiver's "👍 I'm on it" ack
+// would. The tick's `escalatedDoseIds` check then treats that day as already handled
+// and fires nothing. The marker only ever suppresses, and only for the ONE date it
+// names, so a genuine miss on any other day still escalates normally.
+//
+// The inverse write (restoreAdministrationLog) deliberately does NOT clear the marker:
+// the restored row re-confirms the dose anyway, and clearing would be the system
+// re-arming contact — the direction the rule forbids.
+function suppressEscalationRearm(
+  profileId: number,
+  doseId: number,
+  date: string
+): void {
+  setProfileSetting(profileId, escalationMarkerKey(doseId), date);
+}
+
+// Intake item ids with at least one dose actually TAKEN on `date` (item-level view for
+// the dashboard / AI summary). Kind-neutral: supplements and medications share one
+// ledger, so this serves both (it was named getIntakeLogsForDate until #1933 —
+// a shared read named for one of its two subjects invites a caller to go looking for
+// "the other one"). A skipped dose (issue #232) is not "taken", so it's excluded.
+export function getIntakeLogsForDate(
   profileId: number,
   date: string
 ): Set<number> {
@@ -414,17 +445,54 @@ export function logAdministration(
   });
 }
 
-// Backfill one taken medication dose at an explicit profile-local date/time. This
-// is intentionally separate from reminder/quick-log ingestion: a deliberate history
-// edit may reach any past date inside a medication course, including a stopped
-// course, while stale buttons keep their tighter two-day bound.
-// A PRN dose is also evidence that its course had already begun: when it predates the
-// next applicable course, that course's start moves back to the administration date
-// in the SAME transaction as the log. Scheduled courses retain strict boundaries.
+// Whether this item keeps a medication-course timeline at all (#1933). A medication
+// is given one at add time, so its historical writes stay bounded by its courses; a
+// supplement has none, so there is no course for its history to fall outside of. The
+// question is asked of the DATA, never of `kind`: the bound is "this item's recorded
+// courses", and an item with no courses is unbounded rather than un-editable — which
+// is also why a course-less legacy medication stops answering `outside-course` to
+// every backfill. Profile-scoped through the parent item.
+function itemHasCourses(profileId: number, itemId: number): boolean {
+  return !!db
+    .prepare(
+      `SELECT 1 FROM medication_courses c
+         JOIN intake_items s ON s.id = c.item_id
+        WHERE c.item_id = ? AND s.profile_id = ? LIMIT 1`
+    )
+    .get(itemId, profileId);
+}
+
+// Backfill one taken dose at an explicit profile-local date/time. This is
+// intentionally separate from reminder/quick-log ingestion: a deliberate history edit
+// may reach any past date inside a medication course, including a stopped course,
+// while stale buttons keep their tighter two-day bound.
+//
+// KIND-NEUTRAL since #1933 (it was logHistoricalMedicationDose, with `s.kind =
+// 'medication'` in its ownership SELECT). Historical dose correction IS adherence
+// machinery, which supplements and medications share by rule, and `kind` decides
+// clinical identity — which safety engine, which surface, passport inclusion — not
+// what a user may do (#1664). The kind predicate also made the refusal LIE: a
+// supplement dose came back `stale-dose` ("that dose doesn't exist") when the truth
+// was "this core refuses your kind".
+//
+// What replaces it is a data question, not a kind question: the medication-course
+// window applies to an item that HAS courses. Every medication gets one at add time;
+// a supplement has none and therefore has no course to fall outside of. A PRN dose is
+// also evidence that its course had already begun: when it predates the next
+// applicable course, that course's start moves back to the administration date in the
+// SAME transaction as the log. Scheduled courses retain strict boundaries.
+//
+// `d.retired = 0` stays, and is correct HERE and only here: a backfill CREATES a log
+// against a dose row, so that row must still be part of the schedule. Editing a log
+// whose dose was since retired is a different question, answered in updateHistoricalDose.
+//
 // The selected live dose anchors scheduled-day identity; amountOverride is snapshotted
-// without changing the current schedule. Supply movement is explicit because an older
-// dose may predate a later refill or inventory reconciliation.
-export function logHistoricalMedicationDose(
+// onto the row exactly as a live confirm snapshots it, so history keeps showing what
+// was actually taken after a later dosage edit — and without touching the schedule.
+// Supply movement is explicit because an older dose may predate a later refill or
+// inventory reconciliation; when requested it runs through the shared decrementSupply,
+// so a pooled item (#1374) draws the household bottle down, identically for both kinds.
+export function logHistoricalDose(
   profileId: number,
   itemId: number,
   doseId: number,
@@ -447,24 +515,26 @@ export function logHistoricalMedicationDose(
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND d.item_id = ? AND d.retired = 0
-            AND s.profile_id = ? AND s.kind = 'medication'`
+            AND s.profile_id = ?`
       )
       .get(doseId, itemId, profileId) as
       | { item_id: number; amount: string | null; obligation: IntakeObligation }
       | undefined;
     if (!dose) return { kind: "stale-dose" };
 
-    const inCourse = db
-      .prepare(
-        `SELECT 1
-           FROM medication_courses c
-           JOIN intake_items s ON s.id = c.item_id
-          WHERE c.item_id = ? AND s.profile_id = ?
-            AND (c.started_on IS NULL OR c.started_on <= ?)
-            AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
-          LIMIT 1`
-      )
-      .get(itemId, profileId, date, date);
+    const inCourse =
+      !itemHasCourses(profileId, itemId) ||
+      !!db
+        .prepare(
+          `SELECT 1
+             FROM medication_courses c
+             JOIN intake_items s ON s.id = c.item_id
+            WHERE c.item_id = ? AND s.profile_id = ?
+              AND (c.started_on IS NULL OR c.started_on <= ?)
+              AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+            LIMIT 1`
+        )
+        .get(itemId, profileId, date, date);
 
     // PRN use can legitimately predate the date first entered in the app. Find the
     // next course that this administration can extend backward; stopped courses are
@@ -542,12 +612,34 @@ export function logHistoricalMedicationDose(
   });
 }
 
-// Edit one existing taken medication ledger row. The row keeps its dose identity and
-// supply effect: changing when/how much was recorded does not consume or restore
-// inventory. Date/course rules mirror logHistoricalMedicationDose, including moving a
-// PRN course start backward only after uniqueness checks pass. Scheduled edits retain
-// one status row per dose/date; PRN edits retain the per-administration time dedup.
-export function updateHistoricalMedicationDose(
+// Edit one existing taken ledger row (kind-neutral since #1933, for the same reasons
+// as logHistoricalDose above). Date/course rules mirror it, including moving a PRN
+// course start backward only after uniqueness checks pass. Scheduled edits retain one
+// status row per dose/date; PRN edits retain the per-administration time dedup.
+//
+// RETIRED DOSES AND PAUSED ITEMS STAY EDITABLE — deliberately, and unlike the create
+// path. `d.retired = 0` answers "may this dose still be scheduled onto a new day",
+// which is the wrong question for a row that already exists: the schedule was retired,
+// but the dose was really taken and the ledger entry is still a fact. Same for a paused
+// item — pausing stops future dueness, it does not make past history unamendable. So
+// this SELECT joins intake_item_doses for its amount WITHOUT a retired predicate and
+// never looks at `s.active`.
+//
+// THE SCHEDULE IS NEVER TOUCHED. The only rows this writes are the ledger row itself
+// and (for a `may` medication reaching back before its course) medication_courses.
+// started_on — the course's own timeline, not the dose schedule. intake_item_doses is
+// read-only here, so correcting when or how much was taken can never rewrite what is
+// scheduled, in either direction.
+//
+// SUPPLY IS UNCHANGED, which is the correct re-diff and not an omission: the counter
+// moves in UNITS (the item's qty_per_dose), while `amount` is the free-text label
+// snapshotted onto the row ("500 mg"). One administration stays one administration
+// however its label or wall time is corrected, so the diff between old and new state
+// is zero units and applying anything would be a second, invented movement. The
+// non-zero supply diffs live where the ROW's existence changes — deleteAdministrationLog
+// credits its decrement back, restoreAdministrationLog re-applies it — and those two
+// are exact inverses.
+export function updateHistoricalDose(
   profileId: number,
   itemId: number,
   logId: number,
@@ -565,16 +657,18 @@ export function updateHistoricalMedicationDose(
   return writeTx((): HistoricalDoseOutcome => {
     const row = db
       .prepare(
-        `SELECT l.dose_id, l.amount, d.amount AS dose_amount, s.obligation
+        `SELECT l.dose_id, l.date AS old_date, l.amount,
+                d.amount AS dose_amount, s.obligation
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = l.item_id
           WHERE l.id = ? AND l.item_id = ? AND l.status = 'taken'
-            AND s.profile_id = ? AND s.kind = 'medication'`
+            AND s.profile_id = ?`
       )
       .get(logId, itemId, profileId) as
       | {
           dose_id: number;
+          old_date: string;
           amount: string | null;
           dose_amount: string | null;
           obligation: IntakeObligation;
@@ -582,17 +676,19 @@ export function updateHistoricalMedicationDose(
       | undefined;
     if (!row) return { kind: "stale-dose" };
 
-    const inCourse = db
-      .prepare(
-        `SELECT 1
-           FROM medication_courses c
-           JOIN intake_items s ON s.id = c.item_id
-          WHERE c.item_id = ? AND s.profile_id = ?
-            AND (c.started_on IS NULL OR c.started_on <= ?)
-            AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
-          LIMIT 1`
-      )
-      .get(itemId, profileId, date, date);
+    const inCourse =
+      !itemHasCourses(profileId, itemId) ||
+      !!db
+        .prepare(
+          `SELECT 1
+             FROM medication_courses c
+             JOIN intake_items s ON s.id = c.item_id
+            WHERE c.item_id = ? AND s.profile_id = ?
+              AND (c.started_on IS NULL OR c.started_on <= ?)
+              AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+            LIMIT 1`
+        )
+        .get(itemId, profileId, date, date);
     const courseToExtend =
       !inCourse && row.obligation === "may"
         ? (db
@@ -665,6 +761,11 @@ export function updateHistoricalMedicationDose(
              WHERE s.id = intake_item_logs.item_id AND s.profile_id = ?
           )`
     ).run(date, givenAtStr, amount, logId, itemId, profileId);
+    // Moving the row off its old date un-marks the dose for that day, so the day it
+    // vacated is stamped handled and can never be chased (see suppressEscalationRearm).
+    if (row.old_date !== date) {
+      suppressEscalationRearm(profileId, row.dose_id, row.old_date);
+    }
     return { kind: "logged", date };
   });
 }
@@ -765,15 +866,8 @@ export function getAdministrationsForItemsOnDate(
   return out;
 }
 
-// Taken-dose history for a medication's detail page: scheduled and PRN ledger rows
-// on/after `sinceDate`, most recent first. The detail page passes its earliest course
-// date for bounded scheduled courses and the ISO floor for open-ended/PRN history.
-// Returns exact intake time + snapshotted amount for formatting at the call site.
-export function getMedicationDoseHistory(
-  profileId: number,
-  itemId: number,
-  sinceDate: string
-): {
+// One taken ledger row as the dose-history surfaces render it.
+export interface IntakeDoseHistoryRow {
   id: number;
   dose_id: number;
   date: string;
@@ -781,7 +875,19 @@ export function getMedicationDoseHistory(
   taken_at: string;
   amount: string | null;
   product: string | null;
-}[] {
+}
+
+// Taken-dose history for one item's history surface: scheduled and PRN ledger rows
+// on/after `sinceDate`, most recent first. The medication detail page passes its
+// earliest course date for bounded scheduled courses and the ISO floor for
+// open-ended/PRN history. Returns exact intake time + snapshotted amount for
+// formatting at the call site. Kind-neutral (it was getIntakeDoseHistory until
+// #1933, when the supplements surface gained the same history panel).
+export function getIntakeDoseHistory(
+  profileId: number,
+  itemId: number,
+  sinceDate: string
+): IntakeDoseHistoryRow[] {
   return db
     .prepare(
       `SELECT l.id, l.dose_id, l.date, l.given_at, l.taken_at, l.amount, l.product
@@ -791,15 +897,49 @@ export function getMedicationDoseHistory(
           AND l.date >= ?
         ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
     )
-    .all(profileId, itemId, sinceDate) as {
-    id: number;
-    dose_id: number;
-    date: string;
-    given_at: string | null;
-    taken_at: string;
-    amount: string | null;
-    product: string | null;
-  }[];
+    .all(profileId, itemId, sinceDate) as IntakeDoseHistoryRow[];
+}
+
+// Batched form of getIntakeDoseHistory for the supplements tab (#1933): every listed
+// item's recent taken rows in ONE query, grouped into a Map<itemId, rows[]>, so a page
+// rendering dozens of supplement rows doesn't issue one history query per item (the
+// #885 treatment of the same N+1 over this append-only ledger). Same ordering and same
+// profile-scoping through the parent item as the single-item read. Empty ids → empty map.
+export function getIntakeDoseHistoryForItems(
+  profileId: number,
+  itemIds: number[],
+  sinceDate: string
+): Map<number, IntakeDoseHistoryRow[]> {
+  const out = new Map<number, IntakeDoseHistoryRow[]>();
+  if (itemIds.length === 0) return out;
+  const placeholders = itemIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.given_at, l.taken_at,
+              l.amount, l.product
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
+          AND l.status = 'taken' AND l.date >= ?
+        ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+    )
+    .all(profileId, ...itemIds, sinceDate) as (IntakeDoseHistoryRow & {
+    item_id: number;
+  })[];
+  for (const r of rows) {
+    const arr = out.get(r.item_id) ?? [];
+    arr.push({
+      id: r.id,
+      dose_id: r.dose_id,
+      date: r.date,
+      given_at: r.given_at,
+      taken_at: r.taken_at,
+      amount: r.amount,
+      product: r.product,
+    });
+    out.set(r.item_id, arr);
+  }
+  return out;
 }
 
 // ---- Undoable medication administration delete (issue #851 item 11) ----
@@ -831,24 +971,40 @@ interface CapturedAdministration {
   supply_adjusted: number;
 }
 
-// Delete one taken medication administration (an intake_item_logs row) with
-// capture-for-undo, and invert its supply decrement only when that row originally
-// changed supply. Auth-blind, profileId-first. Ownership is verified via the parent
-// item's profile_id (the ledger has no profile_id column). Returns the undo token
-// (deleted_rows id) or null when the row isn't the profile's / is gone. One IMMEDIATE
-// transaction so the capture + delete + any supply re-credit commit together.
+// Delete one taken administration (an intake_item_logs row) with capture-for-undo, and
+// invert its supply decrement only when that row originally changed supply. Auth-blind,
+// profileId-first. Ownership is verified via the parent item's profile_id (the ledger
+// has no profile_id column). Returns the undo token (deleted_rows id) or null when the
+// row isn't the profile's / is gone. One IMMEDIATE transaction so the capture + delete
+// + any supply re-credit commit together.
+//
+// Kind-neutral since #1933 (`s.kind = 'medication'` is gone from the ownership SELECT);
+// a retired dose or a paused item is no bar, because the row being removed is history,
+// not schedule. The supply re-credit is the counter-like half: it runs through the
+// shared incrementSupply, so a pooled item (#1374) hands the units back to the
+// household bottle rather than to a private counter it doesn't keep — and it is the
+// exact inverse of the decrement restoreAdministrationLog re-applies.
+// What a successful delete removed: the undo token plus the identifiers the action
+// boundary audits the correction by (#1933). Never the amount, product, or name — an
+// audit row records that history changed and for which item/date, not the content.
+export interface AdministrationDeleteOutcome {
+  undoId: number;
+  itemId: number;
+  date: string;
+}
+
 export function deleteAdministrationLog(
   profileId: number,
   logId: number
-): number | null {
-  return writeTx((): number | null => {
+): AdministrationDeleteOutcome | null {
+  return writeTx((): AdministrationDeleteOutcome | null => {
     const row = db
       .prepare(
         `SELECT l.id, l.dose_id, l.item_id, l.date, l.taken_at, l.given_at,
                 l.amount, l.product, l.status, l.supply_adjusted
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
-          WHERE l.id = ? AND s.profile_id = ? AND s.kind = 'medication'
+          WHERE l.id = ? AND s.profile_id = ?
             AND l.status = 'taken'`
       )
       .get(logId, profileId) as
@@ -879,12 +1035,27 @@ export function deleteAdministrationLog(
     if (row.status === "taken" && row.supply_adjusted === 1) {
       incrementSupply(profileId, row.item_id);
     }
-    return Number(info.lastInsertRowid);
+    // The dose is now unconfirmed for the day this row covered — stamp that day handled
+    // so removing a mis-tap can never resurrect its missed-dose escalation.
+    suppressEscalationRearm(profileId, row.dose_id, row.date);
+    return {
+      undoId: Number(info.lastInsertRowid),
+      itemId: row.item_id,
+      date: row.date,
+    };
   });
 }
 
-// Correct the wall time or snapshotted amount of a historical PRN administration.
-// This remains one consumed administration, so supply is deliberately unchanged.
+// Correct the wall time or snapshotted amount of one recorded administration.
+// This remains one consumed administration, so supply is deliberately unchanged (the
+// same zero re-diff updateHistoricalDose explains at length).
+//
+// Ungated since #1933: it carried `s.obligation = 'may'`, which meant a SCHEDULED
+// dose log could not be corrected at all — obligation decides dueness and pushability,
+// never whether a recorded fact may be amended. A retired dose and a paused item are
+// likewise no bar; the row is history. Callers keep their own surface predicates (the
+// illness-episode timeline gathers `may` dose events and still scopes its own read to
+// them), but the shared core no longer refuses on the item's shape.
 export function updateAdministrationLog(
   profileId: number,
   logId: number,
@@ -895,12 +1066,14 @@ export function updateAdministrationLog(
   return writeTx(() => {
     const owned = db
       .prepare(
-        `SELECT l.id FROM intake_item_logs l
+        `SELECT l.dose_id AS dose_id, l.date AS old_date
+           FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
-          WHERE l.id = ? AND s.profile_id = ? AND s.obligation = 'may'
+          WHERE l.id = ? AND s.profile_id = ?
             AND l.status = 'taken'`
       )
-      .get(logId, profileId);
+      .get(logId, profileId) as
+      { dose_id: number; old_date: string } | undefined;
     if (!owned) return false;
     const info = db
       .prepare(
@@ -910,7 +1083,11 @@ export function updateAdministrationLog(
             (SELECT id FROM intake_items WHERE profile_id = ?)`
       )
       .run(date, utcSqlString(givenAt), amount, logId, profileId);
-    return info.changes === 1;
+    if (info.changes !== 1) return false;
+    if (owned.old_date !== date) {
+      suppressEscalationRearm(profileId, owned.dose_id, owned.old_date);
+    }
+    return true;
   });
 }
 
@@ -1368,8 +1545,10 @@ export function escalationAckState(
 // skip (issue #232) distinctly from a taken dose or a real miss. `since` is
 // computed in the configured app timezone so it matches the strip's displayed
 // columns (app/medicine lastDates() uses the same today()-based window); a UTC
-// window could drop a dose on the oldest column.
-export function getSupplementLogsInRange(
+// window could drop a dose on the oldest column. Kind-neutral (it was
+// getIntakeLogsInRange until #1933): supplements and medications share one ledger
+// and one strip.
+export function getIntakeLogsInRange(
   profileId: number,
   days = 14
 ): { dose_id: number; date: string; status: DoseStatus }[] {

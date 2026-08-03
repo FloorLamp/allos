@@ -12,7 +12,7 @@
 //     crisis UpcomingItem that RESISTS a blanket dismiss and is NEVER counted in the
 //     Telegram digest (no crisis content on any channel);
 //   • a recorded score SATISFIES its preventive screening;
-//   • recording a score creates NO activities row, so the milestone/streak machinery
+//   • recording a score creates NO activities row, so the milestone machinery
 //     never sees it (the "never gamify a depression score" law, enforced structurally).
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; dates anchored on today.
@@ -218,7 +218,7 @@ describe("screening satisfaction (#716)", () => {
 });
 
 describe("milestone exemption (#716) — never gamify a mental-health score", () => {
-  it("recording an instrument score creates no activities row and no streak", () => {
+  it("recording an instrument score creates no activities row and no milestone input", () => {
     const p = newProfile("MH exempt");
     const td = today(p);
     recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 12 });
@@ -231,6 +231,6 @@ describe("milestone exemption (#716) — never gamify a mental-health score", ()
 
     const input = gatherMilestoneInput(p);
     expect(input.totalWorkouts).toBe(0);
-    expect(input.streak).toBe(0);
+    expect(input.completedGoals).toEqual([]);
   });
 });

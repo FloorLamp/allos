@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_SUBSTANCE,
   E2E_LOGIN_CHILD,
@@ -35,7 +35,7 @@ async function weekCount(page: Page, substance: string): Promise<number> {
 async function openScreening(page: Page) {
   const form = page.getByTestId("substance-instruments-form");
   if (!(await form.isVisible().catch(() => false))) {
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("add-substance-screening-panel-toggle")
     );
@@ -116,7 +116,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("substance-instrument-select-DAST-10")
     );
@@ -154,7 +154,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByTestId("substance-instrument-select-AUDIT")
     );

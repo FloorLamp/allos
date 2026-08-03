@@ -11,10 +11,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { getAdministrationsForItemOnDate } from "@/lib/queries";
-import {
-  logMedicationAdministration,
-  deleteAdministration,
-} from "@/app/(app)/medications/actions";
+import { logMedicationAdministration } from "@/app/(app)/medications/actions";
+import { deleteAdministration } from "@/app/(app)/nutrition/supplement-actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { seedActor, fd, type TestProfile } from "./harness";
 

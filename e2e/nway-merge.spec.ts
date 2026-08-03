@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick, settledCheck } from "./helpers";
+import { hydratedClick, settledClick, settledCheck } from "./helpers";
 import {
   E2E_LOGIN_NWAY,
   NWAY_PROFILE,
@@ -121,7 +121,11 @@ test.describe("N-way activity merge (#1081)", () => {
       // Merging a materially-conflicting cluster opens the SHARED picker instead
       // of a silent keeper-wins fold. Distances disagree (5/8/12 km), durations
       // agree — so distance is the one surfaced conflict.
-      await settledClick(page, cluster.getByTestId("dup-cluster-merge"));
+      // NOT settledClick, and this is the one control in the failing set whose
+      // behaviour depends on its DATA: onMergeClick posts the merge outright for a
+      // clean cluster (the sibling test above), but a cluster with conflicts only
+      // opens the picker client-side. The write is the confirm below.
+      await hydratedClick(page, cluster.getByTestId("dup-cluster-merge"));
       const dialog = page.getByTestId("merge-conflict-dialog");
       await expect(dialog).toBeVisible();
       await expect(dialog.getByTestId("conflict-distance_km")).toBeVisible();
@@ -139,10 +143,13 @@ test.describe("N-way activity merge (#1081)", () => {
       ).toBeVisible();
 
       // Pick the NON-keeper Manual distance (5 km) and merge.
-      await settledClick(
-        page,
-        dialog.getByRole("radio", { name: "Use Distance from Manual entry" })
-      );
+      // The radio only writes MergeConflictDialog's local `choices`; the merge
+      // POST comes from the confirm below. aria-checked is this click's signal.
+      const manual = dialog.getByRole("radio", {
+        name: "Use Distance from Manual entry",
+      });
+      await hydratedClick(page, manual);
+      await expect(manual).toHaveAttribute("aria-checked", "true");
       await settledClick(page, dialog.getByTestId("merge-conflict-confirm"));
       await expect(cluster).toHaveCount(0);
 

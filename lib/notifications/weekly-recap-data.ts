@@ -12,8 +12,6 @@ import { today } from "../db";
 import { daysBetweenDateStr, shiftDateStr } from "../date";
 import {
   getActivitiesSince,
-  getActivityDates,
-  getVolumeByDate,
   getStrengthByExercise,
   getCardioByActivity,
   getWeights,
@@ -29,10 +27,8 @@ import {
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
-import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
 import { doseDueOn } from "../supplement-schedule";
 import { getIntakeDeltaLine } from "../intake-history";
-import { activityStreak, currentStreak } from "../streak";
 import {
   buildWeeklyRecap,
   resolveRecapWindow,
@@ -70,16 +66,6 @@ function asWorkout(a: { date: string; type: string }): RecapWorkout {
   const type: WorkoutType =
     a.type === "cardio" ? "cardio" : a.type === "sport" ? "sport" : "strength";
   return { date: a.date, type };
-}
-
-function sumVolume(
-  rows: { date: string; volume: number }[],
-  start: string,
-  end: string
-): number {
-  return rows
-    .filter((r) => inWindow(r.date, start, end))
-    .reduce((acc, r) => acc + (r.volume || 0), 0);
 }
 
 // Supplement adherence (taken / skipped / due) across the window, using the same
@@ -153,7 +139,8 @@ export function gatherRecapInput(
   // Only the recap's two windows (current + previous) reduce these, and win.prevStart
   // is the earliest bound of either, so bound the load there (issue #389) instead of
   // pulling all history (SELECT *, incl. the components TEXT) to discard all but ~14
-  // days. The streak below needs full history, so it reads getActivityDates directly.
+  // days. Nothing in the recap walks back past that bound any more — the streak
+  // lines that needed full activity history were retired (#1935/#1937).
   const allActivities = getActivitiesSince(profileId, win.prevStart);
   const activities = allActivities.map(asWorkout);
   const workouts = activities.filter((w) =>
@@ -161,25 +148,6 @@ export function gatherRecapInput(
   );
   const prevWorkouts = activities.filter((w) =>
     inWindow(w.date, win.prevStart, win.prevEnd)
-  );
-
-  const volumeRows = getVolumeByDate(profileId);
-  const volumeKg = sumVolume(volumeRows, win.start, win.end);
-  const prevVolumeKg = sumVolume(volumeRows, win.prevStart, win.prevEnd);
-
-  // Estimated calorie burn (issue #151) from MANUAL activities: each scored against
-  // the bodyweight nearest its date, so a full (unfiltered) weight series is needed
-  // for the nearest-in-time lookup — not just the in-window weigh-ins below.
-  const weightSeries: DatedWeight[] = getWeights(profileId)
-    .filter((w) => w.weight_kg != null)
-    .map((w) => ({ date: w.date, weightKg: w.weight_kg as number }));
-  const estimatedKcal = totalEstimatedKcal(
-    allActivities.filter((a) => inWindow(a.date, win.start, win.end)),
-    weightSeries
-  );
-  const prevEstimatedKcal = totalEstimatedKcal(
-    allActivities.filter((a) => inWindow(a.date, win.prevStart, win.prevEnd)),
-    weightSeries
   );
 
   // PRs (strength + cardio) set within the recap window; labels are canonical
@@ -223,17 +191,19 @@ export function gatherRecapInput(
     }
   }
 
-  // Pull enough recent rows to cover the window even at a few weigh-ins per day
-  // (a monthly window spans more days than the historical 60-row cap assumed).
-  const weights = getWeights(profileId, Math.max(60, days * 4))
-    .filter((w) => w.weight_kg != null && inWindow(w.date, win.start, win.end))
+  // Pull enough recent rows to cover BOTH windows even at a few weigh-ins per day
+  // (a monthly window spans more days than the historical 60-row cap assumed) — the
+  // previous window feeds the weight line's week-over-week comparison (#1935), so
+  // the cap has to cover twice the period.
+  const weighIns = getWeights(profileId, Math.max(60, days * 8))
+    .filter((w) => w.weight_kg != null)
     .map((w) => ({ date: w.date, weightKg: w.weight_kg as number }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const weights = weighIns.filter((w) => inWindow(w.date, win.start, win.end));
+  const prevWeights = weighIns.filter((w) =>
+    inWindow(w.date, win.prevStart, win.prevEnd)
+  );
 
-  // Streaks walk back arbitrarily far, so they need the FULL date history — not the
-  // windowed `activities` above. getActivityDates is the cheap DISTINCT-dates read
-  // (activityStreak/currentStreak read it as a set, so dedup is irrelevant).
-  const activityDates = getActivityDates(profileId);
   const goalsCompleted = getGoals(profileId)
     .filter(
       (g) =>
@@ -253,10 +223,6 @@ export function gatherRecapInput(
     completedWeek,
     workouts,
     prevWorkouts,
-    volumeKg,
-    prevVolumeKg,
-    estimatedKcal,
-    prevEstimatedKcal,
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
     // The pushed tier's state changes (#1505 part 3), from the ONE shared classifier
@@ -264,8 +230,7 @@ export function gatherRecapInput(
     // report a different "what changed" than they do.
     intakeDeltaLine: getIntakeDeltaLine(profileId, td),
     weights,
-    streak: activityStreak(td, activityDates),
-    strictStreak: currentStreak(td, activityDates),
+    prevWeights,
     goalsCompleted,
     // Sick days within the window (issue #837) — the recovery-context honesty line,
     // from the SAME illness_episodes rows the illness surfaces use (one derivation).

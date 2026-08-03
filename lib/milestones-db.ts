@@ -5,36 +5,20 @@
 // timeline source), and optionally sends a quiet notification. Called once per
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
-import { db, today, writeTx } from "./db";
+import { db, writeTx } from "./db";
 import { getPublicUrl } from "./settings";
-import { shiftDateStr } from "./date";
-import {
-  getActivityDates,
-  getGoals,
-  getSupplements,
-  getSupplementDoses,
-  getTakenDoseIds,
-  getActivitiesByDate,
-} from "./queries";
-import { doseDueOn } from "./supplement-schedule";
-import { activityStreak } from "./streak";
+import { getGoals } from "./queries";
 import {
   detectMilestones,
-  adherenceRunLength,
   type Milestone,
   type MilestoneInput,
-  type AdherenceDay,
 } from "./milestones";
-import { getActiveSituations, getProfileSetting } from "./settings";
+import { getProfileSetting } from "./settings";
 import { dispatch } from "./notifications";
 import type { NotificationMessage } from "./notifications/types";
 import { createLogger } from "./log";
 
 const log = createLogger("notify");
-
-// How far back to look for the perfect-adherence run. Comfortably past the largest
-// adherence threshold (30) so a full month's run is measurable.
-const ADHERENCE_LOOKBACK_DAYS = 40;
 
 // The set of milestone keys already recorded for a profile (a present key means
 // "already fired, never re-fire"). Profile-scoped read.
@@ -53,54 +37,10 @@ function totalWorkouts(profileId: number): number {
   return row.n;
 }
 
-// Per-day supplement due/taken over the trailing ADHERENCE_LOOKBACK_DAYS, oldest
-// first — the input to the pure adherenceRunLength. Mirrors the digest gather's
-// due-dose derivation (isDueOn honoring workout-day + active situations). Today is
-// excluded so a day still in progress can't read as a miss.
-function adherenceDays(profileId: number, td: string): AdherenceDay[] {
-  const active = getSupplements(profileId).filter((s) => s.active);
-  if (active.length === 0) return [];
-  const suppById = new Map(active.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId).filter((d) =>
-    suppById.has(d.item_id)
-  );
-  if (doses.length === 0) return [];
-  const situations = new Set(getActiveSituations(profileId));
-
-  const days: AdherenceDay[] = [];
-  // Oldest → yesterday (exclude today, which is still settling).
-  for (let back = ADHERENCE_LOOKBACK_DAYS; back >= 1; back--) {
-    const date = shiftDateStr(td, -back);
-    const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
-    const dueIds = doses
-      .filter((d) =>
-        doseDueOn(suppById.get(d.item_id)!, d, {
-          date,
-          isWorkoutDay,
-          activeSituations: situations,
-        })
-      )
-      .map((d) => d.id);
-    if (dueIds.length === 0) {
-      days.push({ due: 0, taken: 0 });
-      continue;
-    }
-    const taken = getTakenDoseIds(profileId, date);
-    days.push({
-      due: dueIds.length,
-      taken: dueIds.filter((id) => taken.has(id)).length,
-    });
-  }
-  return days;
-}
-
 // Gather the cumulative stats the pure engine needs for one profile.
 export function gatherMilestoneInput(profileId: number): MilestoneInput {
-  const td = today(profileId);
   return {
     totalWorkouts: totalWorkouts(profileId),
-    streak: activityStreak(td, getActivityDates(profileId)),
-    adherenceRun: adherenceRunLength(adherenceDays(profileId, td)),
     completedGoals: getGoals(profileId)
       .filter((g) => g.status === "achieved" && !g.archived)
       .map((g) => ({ id: g.id, title: g.title })),

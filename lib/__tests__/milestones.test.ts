@@ -1,20 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   detectMilestones,
-  adherenceRunLength,
   reachedThreshold,
   WORKOUT_THRESHOLDS,
-  STREAK_THRESHOLDS,
-  ADHERENCE_RUN_THRESHOLDS,
   type MilestoneInput,
-  type AdherenceDay,
 } from "@/lib/milestones";
 
 function input(over: Partial<MilestoneInput> = {}): MilestoneInput {
   return {
     totalWorkouts: 0,
-    streak: 0,
-    adherenceRun: 0,
     completedGoals: [],
     fired: new Set<string>(),
     ...over,
@@ -63,24 +57,33 @@ describe("detectMilestones — workout counts", () => {
   });
 });
 
-describe("detectMilestones — streaks", () => {
-  it("fires at each streak length threshold", () => {
-    for (const t of STREAK_THRESHOLDS) {
-      const fired = detectMilestones(input({ streak: t }));
-      expect(fired.some((m) => m.key === `streak:${t}`)).toBe(true);
-    }
+// #1939 — the RUN-shaped families are retired. `streak:` rewarded a rest-tolerant
+// activity run against [7, 30, 100, 365]; `adherence:` rewarded [7, 30] consecutive
+// days on which every due dose was taken. Both were the cliff class — congratulatory
+// copy over something a deload week, an illness pause or a deliberate skip (#232)
+// resets to zero. `workouts:` and `goal:` survive because neither CAN be broken:
+// gaps do not undo 100 logged workouts, and a completed goal is a user-declared
+// intent being met rather than a run being maintained.
+describe("detectMilestones — the retired run families", () => {
+  it("emits nothing for a profile that would have crossed both", () => {
+    // The fixture that used to fire `streak:365` and `adherence:30` at once. The
+    // fields are gone from MilestoneInput, so the only thing left to assert is that
+    // a maximally-qualifying profile yields nothing — which is the ruling.
+    expect(detectMilestones(input())).toEqual([]);
   });
 
-  it("does not fire a streak below the first threshold", () => {
-    expect(detectMilestones(input({ streak: 6 }))).toEqual([]);
-  });
-});
-
-describe("detectMilestones — adherence runs", () => {
-  it("fires at each adherence run threshold", () => {
-    for (const t of ADHERENCE_RUN_THRESHOLDS) {
-      const fired = detectMilestones(input({ adherenceRun: t }));
-      expect(fired.some((m) => m.key === `adherence:${t}`)).toBe(true);
+  it("never mints a streak: or adherence: key alongside the survivors", () => {
+    const fired = detectMilestones(
+      input({
+        totalWorkouts: 500,
+        completedGoals: [{ id: 3, title: "Run a 10k" }],
+      })
+    );
+    expect(fired.length).toBeGreaterThan(0);
+    for (const m of fired) {
+      expect(m.key.startsWith("streak:")).toBe(false);
+      expect(m.key.startsWith("adherence:")).toBe(false);
+      expect(["workouts", "goal"]).toContain(m.kind);
     }
   });
 });
@@ -111,49 +114,13 @@ describe("detectMilestones — goals", () => {
 });
 
 describe("detectMilestones — ordering across families", () => {
-  it("emits workouts, then streak, then adherence, then goals", () => {
+  it("emits workouts, then goals", () => {
     const fired = detectMilestones(
       input({
         totalWorkouts: 10,
-        streak: 7,
-        adherenceRun: 7,
         completedGoals: [{ id: 1, title: "Goal" }],
       })
     );
-    expect(fired.map((m) => m.kind)).toEqual([
-      "workouts",
-      "streak",
-      "adherence",
-      "goal",
-    ]);
-  });
-});
-
-describe("adherenceRunLength", () => {
-  const day = (due: number, taken: number): AdherenceDay => ({ due, taken });
-
-  it("is zero when no day had anything due", () => {
-    expect(adherenceRunLength([day(0, 0), day(0, 0)])).toBe(0);
-  });
-
-  it("counts consecutive perfect days ending at the most recent", () => {
-    // oldest → newest: all fully taken
-    expect(adherenceRunLength([day(2, 2), day(1, 1), day(3, 3)])).toBe(3);
-  });
-
-  it("treats not-due days as transparent (neither extend nor break)", () => {
-    // A gap day with nothing due sits between two perfect days.
-    expect(adherenceRunLength([day(1, 1), day(0, 0), day(2, 2)])).toBe(2);
-  });
-
-  it("breaks the run on a missed due dose", () => {
-    // oldest perfect, then a partial miss, then perfect — only the trailing run counts.
-    expect(
-      adherenceRunLength([day(2, 2), day(2, 1), day(1, 1), day(1, 1)])
-    ).toBe(2);
-  });
-
-  it("a partial (taken < due) most-recent day yields a zero run", () => {
-    expect(adherenceRunLength([day(2, 2), day(2, 1)])).toBe(0);
+    expect(fired.map((m) => m.kind)).toEqual(["workouts", "goal"]);
   });
 });

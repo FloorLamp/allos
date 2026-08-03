@@ -562,10 +562,11 @@ record's value (the keeper's pre-selected) so you pick which to keep per field.
 Manually logged activities also get an
 **estimated calorie burn** — computed from a baked MET (metabolic-equivalent)
 table, the activity's type/intensity/duration, and your nearest bodyweight —
-which auto-fills on the activity form (editable, so you can override it) and
-rolls into the weekly recap; it's always shown as an estimate (`≈`) and kept
-separate from device-measured calories (imported activities keep their device
-value). For logging at the gym rather than after the fact, **Start workout**
+which auto-fills on the activity form (editable, so you can override it); it's
+always shown as an estimate (`≈`) and kept separate from device-measured
+calories (imported activities keep their device value). It does **not** ride the
+weekly recap — comparing one week's estimate against another's compounds the
+error, so the recap reports what only week scale makes visible instead. For logging at the gym rather than after the fact, **Start workout**
 (the command palette, the Journal header, or the mobile top bar) opens the same
 editor in a **live** layout: today's date and start time are pre-stamped, each
 lift's coached next set is pre-seeded so you just confirm it, and a client-side
@@ -858,9 +859,13 @@ body-weight (≤7 days back) is snapshotted onto the row so a compare reads "82.
 kg → 78.4 kg" beside the visual.
 
 **Browse** is a date-grouped thumbnail gallery with a pose sub-filter and a
-lightbox (original loads only on open, prev/next paging, caption + weight,
-delete); **Compare** is a two-date timeline — side-by-side or an **onion-skin
-overlay** with a blend slider — over the same series. Factual only,
+lightbox (original loads only on open, prev/next paging, caption + weight, edit
+details, delete); **Compare** is a two-date timeline — side-by-side or an
+**onion-skin overlay** with a blend slider — over the same series. A photo filed
+wrong is **corrected in place**, not re-uploaded: **Edit details** changes the
+date, pose, and caption while the stored image, its thumbnail, and its content
+hash stay exactly as they were, so a retag moves the photo between comparison
+series without losing the original capture. Factual only,
 product-decided: no pose detection, no body-fat estimate, no scoring. The nav
 entry is data-gated (appears with the first photo; the command palette's **Add
 progress photo** action is the ungated entry that also auto-opens capture), the
@@ -1018,7 +1023,12 @@ a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
-is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure
+is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
+meal cards, each with a ⋯ row action to **correct** it — the food group, the day,
+or the meal it belongs to. A correction MOVES the serving: the day's totals and
+the per-meal tallies (the same counts the food nudge reads) follow it, so a
+serving tapped into the wrong meal is repaired rather than deleted and re-logged
+under the current time. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from

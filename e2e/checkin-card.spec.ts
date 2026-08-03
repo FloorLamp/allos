@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
-import { followLink, settledCheck, settledClick } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledCheck,
+  settledClick,
+} from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import {
@@ -88,7 +93,10 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Expand Rate → the detail edits, and the collapsed summary is a formatter over it.
     await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
-    await settledClick(page, card.getByTestId("mood-energy-3"));
+    // A ScaleRow chip: onPick only calls setEnergy, and it TOGGLES (a second tap
+    // clears it), so this is hydratedClick — one click, after the handler exists.
+    // mood-status re-renders from that same state, which the next line asserts.
+    await hydratedClick(page, card.getByTestId("mood-energy-3"));
     await expect(card.getByTestId("mood-status")).toContainText("energy 3");
   });
 

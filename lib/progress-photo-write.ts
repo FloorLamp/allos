@@ -113,6 +113,76 @@ export function addProgressPhotoCore(
   });
 }
 
+// The typed result of a metadata correction (issue #1934):
+//   updated    — the row's date/pose/caption changed; the stored artifacts did not.
+//   not-found  — no such photo for this profile (a forged/stale id, or another
+//                profile's row — the statement is id + profile_id scoped).
+//   invalid    — off-vocabulary pose or an unreal date; nothing written.
+export type UpdateProgressPhotoOutcome =
+  | { kind: "updated"; id: number }
+  | { kind: "not-found" }
+  | { kind: "invalid"; error: string };
+
+// Correct one progress photo's METADATA in place (issue #1934). The image BYTES are
+// immutable content and stay that way: `stored_path`, `thumb_path`, `content_hash`,
+// `mime_type` and `size_bytes` are absent from the SET list, so a correction can never
+// re-point a row at different pixels, and the per-profile content-hash dedup keeps
+// meaning exactly what it meant before. Only the three fields a human can get wrong —
+// date, pose, caption — are editable, which is why delete-and-re-upload (the only
+// repair before this) is the wrong shape: it discards the original file and its place
+// in the series.
+//
+// `pose` goes through the same strict normalizePose the insert uses, so the CHECK enum
+// can only ever see a member of PROGRESS_POSES. A `date` change re-sorts the series
+// (browse groups by date, compare reads date order) — nothing else is keyed on the old
+// date: the gallery/timeline derive their order from the rows themselves, the serve
+// route is keyed on id + profile_id, and the files live at content-addressed paths, so
+// no comparison or side-state is orphaned.
+//
+// The weight snapshot is re-derived ONLY when the date actually moves. It is the
+// factual body_metrics weight near the photo's date (write-time, one computation), so
+// leaving it pinned to the wrong day would be a stale fact; a caption typo fix, by
+// contrast, must not churn it.
+export function updateProgressPhotoCore(
+  profileId: number,
+  id: number,
+  input: { date: string; pose: string; caption: string | null }
+): UpdateProgressPhotoOutcome {
+  const pose = normalizePose(input.pose);
+  if (!pose) return { kind: "invalid", error: "Pick a pose for the photo." };
+  if (!isRealIsoDate(input.date))
+    return { kind: "invalid", error: "Enter a valid date." };
+  const caption = input.caption?.trim()
+    ? input.caption.trim().slice(0, 500)
+    : null;
+
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT date FROM progress_photos WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as { date: string } | undefined;
+    if (!row) return { kind: "not-found" as const };
+    const snapshot =
+      row.date === input.date
+        ? undefined
+        : weightSnapshotForDate(profileId, input.date);
+    if (snapshot === undefined) {
+      db.prepare(
+        `UPDATE progress_photos SET date = ?, pose = ?, caption = ?
+          WHERE id = ? AND profile_id = ?`
+      ).run(input.date, pose, caption, id, profileId);
+    } else {
+      db.prepare(
+        `UPDATE progress_photos
+            SET date = ?, pose = ?, caption = ?, weight_kg_snapshot = ?
+          WHERE id = ? AND profile_id = ?`
+      ).run(input.date, pose, caption, snapshot, id, profileId);
+    }
+    return { kind: "updated" as const, id };
+  });
+}
+
 // Every progress photo for a profile, newest first. The page derives per-pose
 // series / gallery grouping in JS (lib/photo/gallery-model.ts).
 export function getProgressPhotos(profileId: number): ProgressPhotoRow[] {
