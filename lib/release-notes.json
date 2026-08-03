@@ -4,6 +4,13 @@
       "date": "2026-08-03",
       "entries": [
         {
+          "pr": 1977,
+          "kind": "feature",
+          "issues": [1966],
+          "title": "The last streak is gone from Practices",
+          "body": "The \"N-week streak\" under each practice on Trends has been retired, finishing the removal that took the training and supplement streaks earlier. It counted unbroken weeks, so one week away \u2014 ill, travelling, or simply busy \u2014 reset a real habit to zero.\n\nWhat stays is the figure that was already beside it and describes you more fairly: how many of your completed weeks met the floor you set, as in \"Floor met in 3 of 4 completed weeks\". Everything else on the card is untouched \u2014 the week-by-week strip, the cadence chart, your frequency targets and the session-length history are all unchanged."
+        },
+        {
           "pr": 1974,
           "kind": "feature",
           "issues": [1963],
