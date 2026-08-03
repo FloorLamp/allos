@@ -370,3 +370,92 @@ export function updateFoodLogEventCore(
     };
   });
 }
+
+// ---- Row-scoped removal (issue #1963) ----
+
+// The typed result of removing ONE named serving:
+//   deleted       — the event is gone; `vacated` carries the post-write counts for the
+//                   coordinate it occupied, so a surface SETS from the server rather
+//                   than decrementing locally (the same discipline as the correction's
+//                   `from`/`to`).
+//   not-found     — no such event for this profile (a forged/stale id, or another
+//                   profile's row — the statements are id + profile_id scoped).
+//   not-deletable — the row is the reserved `__protein__` ranking event. Same refusal
+//                   the correction path answers (#1951), for the same reason: its truth
+//                   is the protein_log grams total, and popping the ledger row would
+//                   remove the ranking participant while the grams it stands for
+//                   silently survived. Protein is removed from the protein total.
+export type FoodEventDeleteOutcome =
+  | { kind: "deleted"; id: number; vacated: FoodEventPlacement }
+  | { kind: "not-found" }
+  | { kind: "not-deletable" };
+
+// Remove one ALREADY-NAMED logged serving (issue #1963).
+//
+// The group-scoped undo (undoFoodServingCore) picks its victim by `logged_at DESC` — the
+// newest tap in the meal. That was coherent while servings within a (day, group, window)
+// were fungible, and #1934 ended it: a correction gives a row a user-asserted `meal_slot`
+// while deliberately PRESERVING its tap instant, so a serving moved INTO a window is not
+// necessarily the newest thing in it. The ⋯ row menu already asserts a per-row identity;
+// this is the removal that honours it. `bump(-1)` is unchanged and stays the quick
+// group-level control.
+//
+// The ledger row and the food_log day counter are ONE fact in two shapes, so the counter
+// moves with the row in the SAME IMMEDIATE transaction and the counter row is dropped at
+// zero — the updateFoodLogEventCore/undoFoodServingCore discipline, not a second pattern.
+// `food_log_events` is registered in neither `deleted_rows` (lib/undo-delete.ts holds no
+// food root) nor `STATEFUL_WRITE_TABLES` (lib/stateful-writes.ts, whose own criterion
+// names a food serving as the additive case), so there is no capture payload or gated
+// core to keep consistent here.
+export function deleteFoodLogEventCore(
+  profileId: number,
+  eventId: number
+): FoodEventDeleteOutcome {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+          WHERE id = ? AND profile_id = ?`
+      )
+      .get(eventId, profileId) as
+      | {
+          group_key: string;
+          date: string;
+          logged_at: string;
+          meal_slot: FoodSlot | null;
+        }
+      | undefined;
+    if (!row) return { kind: "not-found" as const };
+    if (isProteinNudgeKey(row.group_key))
+      return { kind: "not-deletable" as const };
+
+    // The window the serving was COUNTED in, derived before the row is popped — the
+    // vacated placement has to name the coordinate the tallies actually lose.
+    const slot = foodSlotForProfileEvent(
+      profileId,
+      row.logged_at,
+      row.meal_slot
+    );
+
+    // The stored key is used verbatim (never canonicalized) for the decrement: a retired
+    // slug must still be able to give its serving back, which is exactly the repair
+    // someone reaches for.
+    db.prepare(
+      `UPDATE food_log SET servings = servings - 1
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
+    ).run(profileId, row.date, row.group_key);
+    db.prepare(
+      `DELETE FROM food_log
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+    ).run(profileId, row.date, row.group_key);
+    db.prepare(
+      `DELETE FROM food_log_events WHERE id = ? AND profile_id = ?`
+    ).run(eventId, profileId);
+
+    return {
+      kind: "deleted" as const,
+      id: eventId,
+      vacated: placementOf(profileId, row.date, row.group_key, slot),
+    };
+  });
+}

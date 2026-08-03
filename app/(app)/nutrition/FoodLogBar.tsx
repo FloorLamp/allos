@@ -20,11 +20,16 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
-import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import {
+  deleteFoodLogEvent,
   logFoodServing,
   undoFoodServing,
   updateFoodLogEvent,
+  type FoodEventDeleteResult,
   type FoodEventEditResult,
   type FoodLogResult,
 } from "./actions";
@@ -149,6 +154,9 @@ export default function FoodLogBar({
     mealSlot: FoodSlot;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  // The serving whose row-scoped removal is in flight (#1963), or null. An id, so the
+  // one row the user named is the only one that dims.
+  const [removingId, setRemovingId] = useState<number | null>(null);
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
@@ -367,6 +375,55 @@ export default function FoodLogBar({
     setEditing(null);
     setDraft(null);
     toast("Serving corrected.");
+  }
+
+  // Remove the ONE serving the ⋯ menu named (#1963). The row's "−" peer is group-scoped
+  // and pops the newest tap in the window, which since #1934 need not be the row the user
+  // is looking at; this addresses the ledger id.
+  //
+  // Deliberately NOT optimistic and deliberately WITHOUT an undo affordance, both for the
+  // same reason: parity with the group-level control this sits beside, which also removes
+  // on one tap with no undo and no confirm. Adding an undo here would make the PRECISE
+  // control the hedged one, and it would need a restore path for a table that has no
+  // capture (`food_log_events` is in neither `deleted_rows` nor STATEFUL_WRITE_TABLES).
+  // The cost of a mistap is one tap to log the serving again — and unlike "−", this can
+  // only ever take the row that was named.
+  async function removeServing(event: FoodLogEvent) {
+    if (removingId !== null) return;
+    // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
+    // online-only and says so rather than pretending, exactly as the group "−" does.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      toast("You're offline — removing a serving needs a connection.", {
+        tone: "error",
+      });
+      return;
+    }
+    setRemovingId(event.id);
+    const fd = new FormData();
+    fd.set("event_id", String(event.id));
+    let outcome: FoodEventDeleteResult;
+    try {
+      outcome = await deleteFoodLogEvent(fd);
+    } catch (err) {
+      setRemovingId(null);
+      toast(
+        shouldQueueOffline(navigator.onLine !== false, err)
+          ? "You're offline — removing a serving needs a connection."
+          : "Couldn't remove that serving — try again.",
+        { tone: "error" }
+      );
+      return;
+    }
+    setRemovingId(null);
+    if (!outcome.ok) {
+      toast(outcome.error, { tone: "error" });
+      return;
+    }
+    // The authoritative post-write counts for the coordinate the serving vacated. A SET,
+    // not a delta — the same reconciliation a correction does, so a dropped or refused
+    // write can never leave a phantom count behind.
+    applyPlacement(outcome.vacated);
+    toast("Serving removed.");
   }
 
   async function bump(slug: string, delta: 1 | -1) {
@@ -779,7 +836,10 @@ export default function FoodLogBar({
                   data-testid={`food-logged-${event.id}`}
                   data-slot={event.mealSlot}
                   data-group={event.groupKey}
-                  className="flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-ink-900"
+                  aria-busy={removingId === event.id || undefined}
+                  className={`flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-ink-900 ${
+                    removingId === event.id ? "opacity-50" : ""
+                  }`}
                 >
                   <FoodGroupIcon
                     slug={event.groupKey}
@@ -799,17 +859,30 @@ export default function FoodLogBar({
                     }
                   >
                     {({ close }) => (
-                      <button
-                        type="button"
-                        className={MENU_ITEM}
-                        data-testid={`food-logged-correct-${event.id}`}
-                        onClick={() => {
-                          close();
-                          openCorrection(event);
-                        }}
-                      >
-                        Correct this serving
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={MENU_ITEM}
+                          data-testid={`food-logged-correct-${event.id}`}
+                          onClick={() => {
+                            close();
+                            openCorrection(event);
+                          }}
+                        >
+                          Correct this serving
+                        </button>
+                        <button
+                          type="button"
+                          className={MENU_ITEM_DANGER}
+                          data-testid={`food-logged-remove-${event.id}`}
+                          onClick={() => {
+                            close();
+                            void removeServing(event);
+                          }}
+                        >
+                          Remove this serving
+                        </button>
+                      </>
                     )}
                   </OverflowMenu>
                 </li>
