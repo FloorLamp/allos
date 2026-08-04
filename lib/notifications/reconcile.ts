@@ -13,6 +13,15 @@
 // Closing a dose reminder because the dose was actually logged is state-driven, not
 // dismissal-driven — the dueness is genuinely gone.
 //
+// ── NO SECOND DATE RULE EITHER (#2018) ───────────────────────────────────────
+//
+// The same discipline governs WHEN a button stops being actionable. The sweep does not
+// decide how late a tap may land; it asks the guard the tap handler asks — `tapDateGuard`
+// for the families whose token date is a guess at a user-owned fact, `isDoseDateAccepted`
+// for the ones whose token date is a schedule fact the system itself established. The
+// per-family answer is DECLARED in ./reconcile-registry (RECONCILE_DATE_GUARD) and
+// resolved by `messageExpiry`; nothing here compares dates.
+//
 // ── NO SECOND MODEL, NO SECOND RENDERER ──────────────────────────────────────
 //
 // Each predicate reads the SAME computation that composed the send: `collectWindowDoses`
@@ -80,6 +89,7 @@ import {
 } from "./reconcile-core";
 import {
   inertTokens,
+  messageExpiry,
   owningFamily,
   type ReconcileFamily,
 } from "./reconcile-registry";
@@ -497,17 +507,22 @@ export async function reconcileProfileMessages(
     const family = owningFamily(tokens, tokenPrefix);
     const reconciler = family ? FAMILIES[family] : null;
 
-    // An UNKNOWN or claim-less keyboard is left exactly as it is (outside rollover):
-    // failing safe means never closing a message nobody has reasoned about.
+    // An UNKNOWN or claim-less keyboard is left exactly as it is: failing safe means
+    // never closing a message nobody has reasoned about.
     const dead = reconciler
       ? reconciler.dead(profileId, tokens, pointer)
       : new Set<string>();
 
+    // HOW LATE this message may still be acted on is the FAMILY's answer, read off the
+    // guard its own tap handler consults (#2018) — never a comparison re-derived here.
+    // `pointer.date` is the send-time subject-local day, which is the date every dated
+    // token on the keyboard carries, so it is the same (tokenDate, today) pair the
+    // handler would evaluate on a tap.
     const decision = decideReconcile({
       keyboard: pointer.keyboard,
       dead,
       inert,
-      rolledOver: pointer.date < td,
+      expired: messageExpiry(family, pointer.date, td),
     });
 
     // WHAT this pass intends to do, decided BEFORE anything touches the network — so

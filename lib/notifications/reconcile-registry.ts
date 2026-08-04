@@ -16,8 +16,12 @@
 // produced the defect.
 //
 // Since #1898 the module carries a SECOND declaration, keyed by message KIND rather
-// than button prefix — see KIND_REISSUE below.
+// than button prefix — see KIND_REISSUE below, and since #2018 a THIRD, keyed by
+// family — see RECONCILE_DATE_GUARD.
 
+import { isDoseDateAccepted } from "../dose-log-window";
+import { tapDateGuard } from "./callback-data";
+import type { CloseReason } from "./reconcile-core";
 import type { NotificationKind } from "./types";
 
 // The reconciler families. Each is one small read-only predicate over the SAME ledger
@@ -148,6 +152,119 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
       "flips one digest category's demotion (#1714); a preference is whatever it currently is and cannot go stale",
   },
 ];
+
+// ── THE DATE-GUARD DECLARATION (issue #2018) ─────────────────────────────────
+//
+// The table above asks, per BUTTON, "what happens when this message is still sitting in
+// the chat tomorrow?". This one asks the follow-up, per FAMILY: "HOW LATE may it still
+// be acted on?" — and the only legal way to answer is to NAME THE GUARD THE TAP HANDLER
+// ALREADY CONSULTS.
+//
+// #1784 answered it once, globally, in the sweep: `pointer.date < today` ⇒ close. That
+// is `tapDateGuard`'s equality rule lifted out of the food handler and applied to every
+// family, and it is wrong wherever the handler is MORE generous. A bedtime dose reminder
+// lost its buttons at the first tick after local midnight while `markDoseTaken` would
+// have honored the tap for two more days (#614) — the sweep deleting a button on the
+// grounds that the handler would refuse the tap, and the handler having been built to
+// accept it.
+//
+// So the answer here is a REFERENCE, never a number. There is deliberately no per-family
+// "rollover policy" constant: any button-specific number would be a second answer to
+// "how late may this be logged", which is the drift being fixed. If ±2 days is too
+// generous for a dose, `DOSE_LOG_DATE_WINDOW_DAYS` moves the button, the Telegram tap,
+// the web path and the offline replay together.
+export type ReconcileDateGuard =
+  // `tapDateGuard` (#221/#947): the token's date must still be the subject's today.
+  | "exact-day"
+  // `isDoseDateAccepted` (#614/#1427): within DOSE_LOG_DATE_WINDOW_DAYS of it.
+  | "dose-window"
+  // No date axis at all — the family's `dead` predicate answers completely.
+  | "none";
+
+export interface ReconcileDateGuardEntry {
+  guard: ReconcileDateGuard;
+  // Why THAT guard. Required for all three answers, including `none`: "this family has
+  // no date question" and "nobody asked" have to stay distinguishable, exactly as they
+  // do for an inert prefix and a non-re-issuable kind.
+  why: string;
+}
+
+// Exhaustive by TYPE: a new family cannot ship without saying how late its message may
+// be acted on.
+export const RECONCILE_DATE_GUARD: Record<
+  ReconcileFamily,
+  ReconcileDateGuardEntry
+> = {
+  "intake-dose": {
+    guard: "dose-window",
+    why: "handleDoseTap applies no date check of its own — it passes the token's date straight into markDoseTaken/markDoseSkipped, which gate on isDoseDateAccepted. A dose's token date is a fact the SYSTEM established (the schedule's day, assigned before the message was sent), so the tap does not report when something happened, it confirms that a scheduled thing did. There is no second candidate answer to reconcile, which is why a late tap is not a stale guess and why deleting the button at midnight was pure loss.",
+  },
+  escalation: {
+    guard: "dose-window",
+    why: "The safety tier's version of the same tap: esctake/escskip run the very same markDoseTaken/markDoseSkipped cores, so they accept the same window. An overnight missed-dose escalation must keep its buttons while the dose is still unconfirmed — closing it at midnight removes a caregiver's only affordance over a dose nobody answered.",
+  },
+  "household-round": {
+    guard: "exact-day",
+    why: "handleHouseholdDoseTap consults tapDateGuard directly (#1719) before touching the member's ledger, so closing at the day boundary is exactly the refusal a tap would be answered with.",
+  },
+  food: {
+    guard: "exact-day",
+    why: "handleFoodTap consults foodTapDateGuard (#947). The token's date is the system's GUESS at a user-owned fact — a tap means 'I am eating now', and the button carries nothing that settles which day that was — so the handler writes only where its two candidate answers agree and refuses where they diverge. That guess expires at the day boundary, so rollover-close is correct here.",
+  },
+  "food-optin": {
+    guard: "none",
+    why: "foodoptin:<profileId>:<yes|no> carries no date, and the choice is about a SETTING rather than a day: while food logging is still off the prompt is exactly as true tomorrow as today. The dead predicate closes it the moment the setting flips.",
+  },
+  preventive: {
+    guard: "none",
+    why: "pvdone/pvna/pvlater carry a rule key, not a date; the tap acts on the rule's CURRENT dueness and 'remind later' snoozes from today. Whether the rule is still in assessProfilePreventive's actionable slice answers completely.",
+  },
+  refill: {
+    guard: "none",
+    why: "rfsnooze carries an item id. A shortage is a standing state rather than a day, and the snooze runs from today; the dead predicate ends the message when the supply is no longer low.",
+  },
+  symptom: {
+    guard: "none",
+    why: "symp/symsev carry a slug and a severity and no date at all — handleSymptomSeverity logs to today(profileId), never to a token date. There is no stale day for the sweep to refuse on the handler's behalf.",
+  },
+  mood: {
+    guard: "exact-day",
+    why: "mood:<profileId>:<valence>:<date> names ONE day's check-in, and the token's date is a guess at a user-owned fact in exactly food's sense: a next-morning tap on last night's face picker would answer yesterday's question. handleMoodTap writes the token's date without consulting the guard, so the sweep is deliberately the STRICTER of the two here — the safe direction, since reconciliation may only ever REDUCE what a chat claims. Should that handler ever gain a date check it must be this one, not a third.",
+  },
+  "workout-draft": {
+    guard: "none",
+    why: "wofinish/wodiscard carry an activity id and no date, because a draft is not a DAY's claim — it is the live session, and getWorkoutPresence answers whether it still is. A draft running across midnight must keep its finish and discard buttons; date is not an axis this object has.",
+  },
+  practice: {
+    guard: "none",
+    why: "pdone carries a target id and a render nonce; logPracticeByTargetId logs the session NOW against the weekly floor. No day is being confirmed, so there is nothing for a date guard to protect.",
+  },
+};
+
+// The close reason for a message the day has moved past — or null while its family's
+// handler would still honor a tap on it. THE sweep's date answer, and a pure consumer of
+// the two existing guards rather than a third opinion about how late a tap may land.
+//
+// `family` is null for a keyboard whose tokens nobody has reasoned about (the
+// completeness guard makes that a build failure) or one that makes no state claim at
+// all; both fail safe by never expiring, the same posture `dead` takes.
+export function messageExpiry(
+  family: ReconcileFamily | null,
+  messageDate: string,
+  todayDate: string
+): Extract<CloseReason, "rollover" | "expired"> | null {
+  if (!family) return null;
+  switch (RECONCILE_DATE_GUARD[family].guard) {
+    case "exact-day":
+      return tapDateGuard(messageDate, todayDate).kind === "stale-date"
+        ? "rollover"
+        : null;
+    case "dose-window":
+      return isDoseDateAccepted(todayDate, messageDate) ? null : "expired";
+    case "none":
+      return null;
+  }
+}
 
 // ── THE RE-ISSUE DECLARATION (issue #1898) ───────────────────────────────────
 //
