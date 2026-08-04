@@ -347,6 +347,7 @@ describe("data arrival — the digest's overnight line (#1819)", () => {
         shortwaveRadiation: null,
         directRadiation: null,
         diffuseRadiation: null,
+        precipitationMm: null,
       })),
       "fixture"
     );
@@ -474,6 +475,7 @@ describe("light-exposure line (#1723 part 1)", () => {
         shortwaveRadiation: null,
         directRadiation: null,
         diffuseRadiation: null,
+        precipitationMm: null,
       })),
       "fixture"
     );

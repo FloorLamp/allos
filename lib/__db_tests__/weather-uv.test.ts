@@ -71,6 +71,7 @@ function uvRow(hourTs: string, uvIndex: number): HourlyUvRow {
     shortwaveRadiation: 500,
     directRadiation: 400,
     diffuseRadiation: 100,
+    precipitationMm: null,
   };
 }
 
@@ -92,6 +93,45 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
 
     // Exactly two rows cached for the location+day — never duplicated.
     expect(getUvHoursForDay(40.7, -74, DATE)).toHaveLength(2);
+  });
+
+  it("round-trips HOURLY PRECIPITATION through the same idempotent upsert (#1967)", async () => {
+    // The column the wet-park description's timing clause reads. It rides the existing
+    // (location, hour) upsert, so the accounting rules are unchanged: a re-fetch of the
+    // same window rewrites nothing, and a changed millimetre value alone is an update.
+    const p = newProfile("weather-precip");
+    // Its OWN coordinate: the cache is global and location-keyed, so sharing this
+    // file's default one would make another test's hours this test's.
+    const home = { lat: 44.4, lng: -63.6 };
+    setHomeLocation(p, home);
+    const wet = { ...uvRow(`${DATE}T09:00`, 3), precipitationMm: 2.4 };
+    const dry = { ...uvRow(`${DATE}T10:00`, 4), precipitationMm: 0 };
+
+    const first = (await runWeatherSync(
+      p,
+      fixtureSource([wet, dry])
+    )) as WeatherSyncResult;
+    expect(first.inserted).toBe(2);
+    expect(
+      getUvHoursForDay(home.lat, home.lng, DATE).map((h) => h.precipitationMm)
+    ).toEqual([2.4, 0]);
+
+    const again = (await runWeatherSync(
+      p,
+      fixtureSource([wet, dry])
+    )) as WeatherSyncResult;
+    expect(again.unchanged).toBe(2);
+    expect(again.updated).toBe(0);
+
+    const changed = (await runWeatherSync(
+      p,
+      fixtureSource([{ ...wet, precipitationMm: 5.1 }, dry])
+    )) as WeatherSyncResult;
+    expect(changed.updated).toBe(1);
+    expect(changed.unchanged).toBe(1);
+    expect(getUvHoursForDay(home.lat, home.lng, DATE)[0].precipitationMm).toBe(
+      5.1
+    );
   });
 
   it("updates a changed hour and appends a sync event with the split", async () => {

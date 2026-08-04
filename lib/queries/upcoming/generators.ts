@@ -24,7 +24,7 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   intakeHref,
   nutritionTabHref,
   timelineDayHref,
@@ -496,7 +496,7 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
         riskReasonsFrom(mod.sourced),
         isFlaggedForRetest(r.flag) ? [flaggedReason(r.flag)] : []
       ),
-      href: biomarkerViewHref(r.canonical_name, r.name),
+      href: readingDetailHref(r.canonical_name, r.name),
       dueDate,
       priority,
     };

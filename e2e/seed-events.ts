@@ -109,6 +109,7 @@ import {
   seedBiomarkerPickerRank,
   seedDayOneAverages,
   seedPinnedCardOrder,
+  seedMetricJudgment,
 } from "./seed/trends";
 
 seedPrelude();
@@ -161,6 +162,7 @@ seedVisitLinking();
 seedToasterIsolation();
 seedProviderCloseout();
 seedBodyMobile();
+seedMetricJudgment();
 seedRestCard();
 seedSuppressedCenter();
 seedMultiProfile();

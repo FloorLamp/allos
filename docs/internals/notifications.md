@@ -463,6 +463,43 @@ and the long tail was not worth a keyboard row on every send. Other messages' de
 links (refill's "Open form", the household round's "Open Household →") are
 untouched — this is a food-nudge ruling, not a policy against deep links.
 
+**Strip and record are ONE decision (#1945).** A pointer rotation performs two
+writes that must agree about the world: close the keyboard of the message the
+pointer names, and record the just-sent message in its place. The food rotation
+performed them under DIFFERENT conditions — strip whenever a previous pointer
+existed, record only when the new message yielded a pointer — so a nudge whose
+keyboard carried no `food:` quick-log token (the #1807 "Show less"-only shape, a
+protein-button-only keyboard) stripped its predecessor and then failed to name
+itself. The pointer went on naming the message just stripped, the next nudge
+re-stripped that dead id (a swallowed "message is not modified"), and the
+in-between message kept a live keyboard **nothing would ever close** — whose
+tokens carry its send-time date, which is the whole reason #947 strips at all.
+The reported shape was one slot stripped with its neighbours still live.
+
+The ordering is now one pure decision, `planPointerRotation`
+(`lib/notifications/pointer-rotation.ts`), shared by the food nudge (#947) and
+the household round (#1719) so the two copies of the mechanism cannot drift
+again. Its `skip` arm carries **no strip target at all** — "strip, record
+nothing" is not a representable plan — and a send that yields no pointer leaves
+the previous keyboard alone, which is correct: nothing superseded it. A network
+edit and a settings write cannot share a transaction, so the execution order
+carries the rest: the plan captures the strip target before anything is written,
+then the chokepoint **records first and strips second**, so a settings-write
+throw takes the strip down with it and a failed strip lands on a pointer that is
+already right. Residual, unchanged: a rotation is still best-effort against
+Telegram, so a strip that fails leaves one extra live keyboard until the #1779
+sweep's day-rollover close reaches it.
+
+**Pointers read the DELIVERED keyboard.** Both extractors
+(`foodNudgePointerFromMessage`, `isHouseholdRoundMessage`) scanned the uncapped
+`msg.actions` while #1779's `recordPointer` re-derived the post-cap
+`capTelegramKeyboard(messageKeyboard(msg))` that actually rides the wire, so a
+nudge whose quick-log rows were dropped by the 100-button cap could record a
+pointer describing buttons the chat never received. All three now read one named
+derivation, `deliveredKeyboard` / `deliveredCallbackTokens`
+(`lib/notifications/delivered-keyboard.ts`) — the same "re-derive, don't guess"
+rule, in one place.
+
 **The workout nudge's copy rules (#1672/#1673/#1709, amended by #1822).** Three
 rules govern the message that fires on a day someone already trained:
 
@@ -820,6 +857,58 @@ joins peers on one line (`,` joins peers within one group). Applied wherever the
 above lines touch; a line that predates the rule and was not otherwise edited
 still follows it or is a candidate for the next pass.
 
+## The Telegram command vocabulary (#1895)
+
+**The defect was silence.** The bot understood `/dose`, `/symptom` and `/temp`, and
+every handler no-opped on non-matching text with nothing answering afterwards. So
+`/start` — the first thing Telegram shows a new user, before they have typed a word
+— vanished. `/help` vanished. A typo'd `/doze` vanished. From the chat's side the
+bot was indistinguishable from broken, and the only way to learn a verb was to be
+told one out of band.
+
+**The rule.** A slash command in a chat the bot is in gets an answer. Always —
+either the command's own reply or a short pointer at `/help`. Ordinary text is the
+only thing that may go unanswered, because chat in a group the bot sits in is not
+addressed to it (the free-text symptom intake, #877, claims it or nothing does).
+
+**One registry, one gate** (`lib/notifications/telegram-commands.ts`, pure). It
+holds the verbs, their aliases (`/symptoms`, `/temperature`), their one-line
+descriptions, and their per-chat relevance predicate. `commandsForChat` is read by
+BOTH `/help` and the dispatcher's gate, so the help text can never advertise a verb
+that then refuses — the failure mode that makes a help text worse than none.
+`lib/notifications/telegram-help.ts` resolves the chat's facts and sends the meta
+replies; `handleIncomingMessage` is still the single router, now a switch over the
+parsed verb, and a DB-tier completeness pin fails the build if a verb in the
+registry has no route.
+
+**Three different answers, deliberately.** An unknown verb echoes what was typed
+(so a typo reads as a typo) and points at `/help`. A REAL verb gated off for this
+chat says so instead — "not set up here" and "not a thing" send you looking in two
+different places. An UNLINKED chat is told that nothing is wired up yet, which is
+what is actually wrong.
+
+**Registration is instance-level, relevance is per-chat.** `setMyCommands`
+populates Telegram's own `/` autocomplete menu, and Telegram scopes it per bot —
+there is no per-chat variant a self-hosted instance can keep current for every chat
+it joins. So the registered list stays GENERIC (every verb the build ships) and the
+handlers keep owning per-chat gating; `/help` is the per-chat-honest answer. It is
+registered by the same Settings → Server action that registers the webhook, since
+that is the one moment the operator is provably holding a working token — and
+deliberately NOT fatal: a failed menu registration must not report a working
+webhook as broken, so it degrades to a named caveat in the action's message.
+
+**`/mood` on demand.** The scheduled check-in rides the evening slot; if it
+scrolled away or the day got away from someone there was no path back to it. The
+command is a RE-RENDER of `buildMoodCheckin` — the same builder the tick calls, so
+the faces, the token shape and the auto-pause affordance are whatever the send
+renderer says they are (#221, no second engine). ONE message with per-profile
+prefixed buttons in a shared chat (the `/dose` precedent — never a guess about
+whose day is being logged, and one message rather than N keeps the (chat, kind)
+supersede invariant from closing a sibling the same command just sent). A build
+that yields nothing is answered honestly — "already checked in today" — never with
+an empty keyboard, because a command that silently produced nothing is the defect
+this feature exists to remove.
+
 ## Live-message reconciliation (#1779)
 
 **The defect.** Every inline keyboard the app sent was a frozen snapshot that
@@ -957,6 +1046,52 @@ state claim, so it cannot lie and must not keep a resolved message alive). It
 also fails on a stale entry. An UNKNOWN prefix is deliberately not treated as
 inert: an unreasoned button leaves its message untouched rather than being closed
 on a guess.
+
+**One live keyboard per (chat, kind) — the re-issue invariant (#1898).** The sweep
+made stale keyboards HONEST; nothing made them SINGULAR. Repeated `/dose` or
+`/symptom` calls accumulated live keyboards in a chat: each safe to tap (typed
+outcomes) and each kept fresh by the sweep — which is the cost, an hourly Telegram
+edit per stale duplicate, forever, to keep clutter honest. **A send of a
+re-issuable kind re-issues THE keyboard; it never adds another.** On sending kind K
+to chat C, the chokepoint closes this profile's other live K-pointers in C with the
+attributed supersede line ("[Norton] 💊 Log a PRN dose — superseded, use the message
+below."), through the same `reconcileClosingText` vocabulary the sweep uses.
+
+Two properties carry it. The strip targets come from the **pointer table**, never
+from the outgoing message, so a target is always a delivery that was actually
+recorded — #1945's stranding class is unrepresentable here rather than guarded
+against. And the trigger is symmetrical: a send that recorded no pointer of its own
+(no delivered keyboard) has superseded nothing and closes nothing. Ordering is
+#1945's — **record first, close second** — so a failure anywhere leaves the chat
+with MORE live keyboards than the invariant wants, never zero. The close is
+claimed with the same #1788 compare-and-swap the sweep uses (a supersede racing a
+reconcile does not double-edit) and released on a transient failure (#1885), which
+is what makes it self-healing: a close that fails is retried by the next send of
+that kind AND by the next sweep, instead of leaving one extra live keyboard until
+day-rollover the way #947's bespoke strip did.
+
+**Re-issuability is DECLARED, per kind** (`KIND_REISSUE` in
+`lib/notifications/reconcile-registry.ts`), and the completeness guard fails the
+build for a kind that never answered. "No" is the right answer for every
+state-claim kind and is not a gap: a morning dose reminder and an evening one are
+two outstanding claims, both true at once, so closing either would remove a safety
+prompt nobody answered. The `false` entries therefore carry reasons too, so
+"decided against" stays distinguishable from "nobody looked". Two entries are worth
+naming:
+
+- **`temp` is not re-issuable** because a `/temp` call in a multi-profile chat
+  sends one prompt PER profile in a single invocation — superseding on (chat, kind)
+  would close the sibling prompt the same command just sent.
+- **`food` is not re-issuable** because the nudge already holds the invariant
+  through its own #947/#1945 rotation, whose strip is conditioned on the NEW message
+  carrying a `food:` quick-log token. The generic rule cannot express that
+  condition, and without it a view-control-only nudge (#1807's "➖ Show less" shape)
+  would close the only keyboard in the chat that can still log a serving.
+
+The on-demand command replies carry real kinds (`prn-list`, `symptom`, `temp`) for
+exactly this reason: an un-kinded send collapses into the `other` catch-all, which
+is the one bucket where superseding must never apply, since any two unrelated
+messages would then close each other.
 
 **Deliberately out of scope.** No write-path coupling: the Server Action layer
 stays free of Telegram calls. A fire-and-forget edit from the action layer could

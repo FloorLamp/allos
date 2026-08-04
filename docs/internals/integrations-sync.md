@@ -183,7 +183,9 @@ collected per sync and linked to the event id after `recordSyncEvent` returns it
 ingest). `getSyncRowProvenance(profileId, eventId)` reads it back —
 profile-scoped at both ends (the event join + a `profile_id` filter on every
 target lookup) — resolving each row to a human label + a typed `AppRoute` deep
-link (`timelineDayHref` for a day, `biomarkerViewHref` for a lab), marking a
+link (`timelineDayHref` for a day, `readingDetailHref` for a medical record —
+which resolves a continuous vital to its metric detail page and every episodic
+reading to `/biomarkers/view`, #1932), marking a
 since-deleted target as removed. `components/SyncRowsDrilldown.tsx` renders it lazily (on `<details>` open, the
 raw-payload-viewer pattern) via the `loadSyncRows` read action.
 
@@ -435,10 +437,16 @@ the post-visit join simply does not reach it. A person's own **"Request sync"** 
 unaffected — the system may reduce contact unilaterally, never overrule a user's action.
 The state **clears itself** on the next successful collection for that patient (an
 `outcome: "collected"` entry, or plainly a `downloaded` report naming them), so a portal
-that starts offering the download again needs nobody to notice. Per-identity outcomes are
-writes to profile-owned bindings, so they are scoped to the reporting token's write set —
-a caregiver token that may write one member of a shared login cannot change another's
-standing state, however harmless the direction of that change looks.
+that starts offering the download again needs nobody to notice. Every write to `declined`
+— the stated outcome and the plain `downloaded` self-clear alike — is a write to a
+profile-owned binding, so **both** intersect the reporting token's write set _inside the
+`lib/portals.ts` core_ (`applyIdentityOutcomes`, `clearIdentityDeclined`): a caregiver
+token that may write one member of a shared login cannot change another's standing state,
+however harmless the direction of that change looks. The intersection lives in the core
+rather than at the call site because the self-clear used to be safe only by CALL ORDER,
+and was in fact running before the route's own write gate — a token refused with `403`
+had already cleared the flag on the profile it was refused at (#1960). Ordering is not a
+property a function can enforce for its callers.
 
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a

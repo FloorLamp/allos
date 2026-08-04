@@ -64,7 +64,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await page.goto(CARD_ROWS);
     const table = page.getByTestId("biomarkers-table");
     await expect(table).toBeVisible();
-    // The canonical-name link is the SAME `biomarkerViewHref` anchor the desktop
+    // The canonical-name link is the SAME `readingDetailHref` anchor the desktop
     // table renders — the card is a re-layout of that cell, not a second one.
     const link = table
       .locator('td[data-card="title"] a[href*="/biomarkers/view"]')

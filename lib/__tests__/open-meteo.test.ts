@@ -20,11 +20,12 @@ const FIXTURE = {
     shortwave_radiation: [420.0, 610.0, 720.0],
     direct_radiation: [300.0, 480.0, 560.0],
     diffuse_radiation: [120.0, 130.0, 160.0],
+    precipitation: [0.0, 2.4, 0.1],
   },
 };
 
 describe("parseOpenMeteoHourly", () => {
-  it("parses time + all UV/irradiance columns into rows", () => {
+  it("parses time + all UV/irradiance/precipitation columns into rows", () => {
     const rows = parseOpenMeteoHourly(FIXTURE);
     expect(rows).toHaveLength(3);
     expect(rows[1]).toEqual({
@@ -34,6 +35,7 @@ describe("parseOpenMeteoHourly", () => {
       shortwaveRadiation: 610.0,
       directRadiation: 480.0,
       diffuseRadiation: 130.0,
+      precipitationMm: 2.4,
     });
   });
 
@@ -51,6 +53,9 @@ describe("parseOpenMeteoHourly", () => {
     expect(rows[0].uvIndex).toBe(4);
     expect(rows[0].uvIndexClearSky).toBeNull();
     expect(rows[0].shortwaveRadiation).toBeNull();
+    // Precipitation (#1967) degrades the same way: a hour the provider didn't return it
+    // for is null, and the wet-park description then renders no timing at all.
+    expect(rows[0].precipitationMm).toBeNull();
   });
 
   it("returns [] for a body with no hourly.time", () => {

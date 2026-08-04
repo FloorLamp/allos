@@ -53,7 +53,7 @@ export interface BiomarkerReading {
 }
 
 // A reading carrying its display + canonical names, for the expanded Longevity
-// breakdown (#1042 phase 4) — the canonical name feeds biomarkerViewHref.
+// breakdown (#1042 phase 4) — the canonical name feeds readingDetailHref.
 export interface NamedBiomarkerReading extends BiomarkerReading {
   name: string;
   canonicalName: string | null;

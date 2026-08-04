@@ -45,6 +45,16 @@ export interface MetricReadingRow {
   flag: string | null;
   edited: boolean;
   notes: string | null;
+  /**
+   * A folded same-identity OBSERVATION (#1996): the same measurement, recorded as
+   * a clinical record rather than in this metric's own store. It is listed here
+   * because it IS a reading of this quantity — leaving it out is the
+   * incompleteness #1996 reports — and it is READ-ONLY here because the write path
+   * still resolves its store from the metric slug (#1997 phase 2's job), so an
+   * Edit offered here could only fail. The row says where it lives instead of
+   * offering an action that refuses.
+   */
+  observed?: boolean;
 }
 
 export default function MetricReadingsTable({
@@ -107,8 +117,10 @@ export default function MetricReadingsTable({
                 </thead>
                 <tbody>
                   {rows.map((row) => (
+                    // Ids are per-STORE, so a folded observation can share one
+                    // with this metric's own row — the key names both.
                     <ReadingRow
-                      key={row.id}
+                      key={`${row.observed ? "obs" : "own"}-${row.id}`}
                       kind={kind}
                       row={row}
                       unit={unit}
@@ -218,10 +230,21 @@ function ReadingRow({
       <Td
         slot="meta"
         label="Source"
-        empty={!row.source}
+        empty={!row.source && !row.observed}
         className="metric-reading-source"
       >
         {row.source ?? "—"}
+        {/* Where this reading actually lives, said out loud: a clinic-measured
+            value is not a wearable one, and its row actions belong on the record
+            that owns it. */}
+        {row.observed && (
+          <span
+            className="ml-1 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="metric-reading-observed"
+          >
+            · clinical record
+          </span>
+        )}
         {/* The #133 lock, made visible: this row was hand-corrected, so the next
             re-push of its source's rolling window will leave it alone. */}
         {row.edited && (
@@ -232,7 +255,7 @@ function ReadingRow({
         {row.notes ? <NotesText notes={row.notes} /> : "—"}
       </Td>
       <Td slot="actions">
-        {editing ? (
+        {row.observed ? null : editing ? (
           <span className="flex items-center justify-end gap-1">
             <button
               type="button"

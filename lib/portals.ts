@@ -809,13 +809,26 @@ export function applyIdentityOutcomes(
 // A successful collection for ONE patient clears their declined state, whether or not the
 // run bothered to spell the outcome out. `status: "downloaded"` for a patient IS the
 // evidence that the portal offered the download — the same fact `outcome: "collected"`
-// carries, arriving by the older spelling. The caller has already authorized `profileId`
-// (it is the profile the run was filed under), so this is scoped by it directly.
+// carries, arriving by the older spelling.
+//
+// AUTH-BLIND, TAKING THE AUTHORIZED SET, exactly like applyIdentityOutcomes above (#1960).
+// It used to say "the caller has already authorized `profileId`" and scope by that alone —
+// which made it safe only by CALL ORDER, and its one caller was calling it BEFORE its own
+// write gate: a token with no access to the resolved profile got its 403 and had already
+// cleared that profile's flag. Order is not a property a function can enforce, so the
+// intersection lives here now and the write is safe wherever it is called from.
+//
+// The two id arguments answer different questions and neither replaces the other:
+// `profileId` is the profile the run was FILED UNDER (the compare-and-swap value, so a
+// binding re-pointed underneath us matches nothing), `allowedProfileIds` is what this
+// caller MAY WRITE.
 export function clearIdentityDeclined(
   accountId: number,
   patientLabel: string,
-  profileId: number
+  profileId: number,
+  allowedProfileIds: readonly number[]
 ): boolean {
+  if (!allowedProfileIds.includes(profileId)) return false;
   const row = IDENTITY_OWNER_STMT.get(
     accountId,
     normalizePatientLabel(patientLabel)

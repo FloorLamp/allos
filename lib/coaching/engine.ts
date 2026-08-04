@@ -23,10 +23,9 @@ import {
 import type { ConditionConsideration } from "../condition-training-considerations";
 import type { EnduranceArm } from "../endurance-plan";
 import { parkedDisclosureLine } from "../weather-training";
-import { fmtAmbientTemp } from "../weather-situations";
 import type { WeatherTrainingContext } from "../workout-recommendation";
 import type { EquipmentAvailability } from "../equipment-availability";
-import type { WeightUnit } from "../settings";
+import type { TemperatureUnit, WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
 import { regionForExercise, type MuscleRegion } from "../lifts";
 import {
@@ -314,6 +313,10 @@ export interface CoachingInput {
   // rec (both are rest reasons). Absent/null ⇒ no burden tilt (the prior behavior).
   reportedBurden?: ReportedBurden | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
+  // The LOGIN's temperature scale (#1967), for the weather-parking disclosure's figure.
+  // Units belong to the login, so a surface that HAS one passes it and a °F reader sees
+  // °F. Absent ⇒ canonical "C", which is what the notification path deliberately emits.
+  temperatureUnit?: TemperatureUnit;
   thresholds?: Partial<CoachingThresholds>;
 }
 
@@ -1021,7 +1024,12 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   // or a habit-based/setup fallback) from ONE run of the unified core, which also
   // reports how the recovery windows shaped today's focus (#1673).
   const nw = recommendNextWorkout(input);
-  const training = trainingRecommendations(nw, input.today, wu);
+  const training = trainingRecommendations(
+    nw,
+    input.today,
+    wu,
+    input.temperatureUnit ?? "C"
+  );
 
   // A hard-heavy intensity distribution is context, not a top-line alert: it rides
   // along as a trailing secondary note (classifyPolarization is the gate).
@@ -1059,13 +1067,14 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
 function trainingRecommendations(
   nw: NextWorkout,
   today: string,
-  wu: WeightUnit
+  wu: WeightUnit,
+  tu: TemperatureUnit
 ): Recommendation[] {
   const recs = nw.items.map((item) => formatWorkoutItem(item, nw, today, wu));
   // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard widget
   // and Telegram render the same disclosure/consideration text the Training overview does
   // (one computation, #221). Attached only to the lead card to avoid duplication.
-  const notes = contextNotes(nw);
+  const notes = contextNotes(nw, tu);
   if (notes.length && recs[0]) recs[0] = { ...recs[0], notes };
   return recs;
 }
@@ -1073,7 +1082,12 @@ function trainingRecommendations(
 // The calm context lines for a next-workout result: the active-injury exclusion
 // disclosures (#838, "Avoiding Chest (right shoulder injury)") followed by the curated
 // condition consideration notes (#666). Pure formatter over the model's data.
-export function contextNotes(nw: NextWorkout): string[] {
+export function contextNotes(
+  nw: NextWorkout,
+  // The login's temperature scale for the weather-parking figure (#1967). Defaults to
+  // canonical °C — the notification path has no login to read a preference from.
+  temperatureUnit: TemperatureUnit = "C"
+): string[] {
   const notes: string[] = [];
   // The tight-week recovery override (#1673): when pace beats a region's recovery
   // window, the suggestion must NAME the recent session and the pace fact rather than
@@ -1086,16 +1100,19 @@ export function contextNotes(nw: NextWorkout): string[] {
   for (const c of nw.considerations) notes.push(c.note);
   // Weather parking (#1724) — ALWAYS disclosed, never a silent disappearance (#838).
   // The note explains why the outdoor activity isn't in today's pick and names the
-  // indoor stand-in that took its slot. Canonical °C here; the surfaces that carry a
-  // login format it, and a null value renders the line without a figure rather than
-  // with a wrong one.
+  // indoor stand-in that took its slot. The FACTS go over; the figure is formatted in
+  // lib/weather-training, in the reason's own unit and the caller's temperature scale
+  // (#1967 — this call used to format every reason as °C, so a wet park read "45°C").
   for (const p of nw.parked) {
     notes.push(
       parkedDisclosureLine({
         activity: p.activity,
         reason: p.reason,
         alternative: p.alternative,
-        figure: fmtAmbientTemp(p.value, "C"),
+        value: p.value,
+        weatherCode: p.weatherCode,
+        hours: p.precipitationHours,
+        temperatureUnit,
       })
     );
   }

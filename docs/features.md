@@ -519,7 +519,13 @@ Document, …) labelled the same way the cards' provenance chips are.
 **Weather-aware suggestions.** When the Weather & UV source is on, outdoor
 activities are quietly **parked** in conditions you don't train in — the ride
 drops out of today's suggestion, the message says why, and the indoor stand-in
-takes its slot ("Too cold for cycling (−2°C) — Stationary Bike instead"). The
+takes its slot ("Too cold for cycling (-2°C) — Stationary Bike instead"). Each
+reason names its figure in **its own unit**: cold and hot in your temperature
+scale, rain as a plain-language description rather than a number — "Too wet for
+cycling (heavy rain in the morning)", because nobody plans a ride off
+millimetres. The timing half is said only when the wet hours genuinely cluster
+into a part of the day; rain that falls all day, or scattered showers, get the
+description alone rather than an invented forecast. The
 threshold is _yours_: it's derived from the conditions you've actually logged
 sessions in, so someone who rides at 3°C keeps being offered the ride and
 someone whose rides all sit above 15°C doesn't. Until there's enough history to
@@ -1090,7 +1096,28 @@ to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
 `/results/biomarkers` / `/results/imaging` / `/results/genomics` — bare
 `/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
 `/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/biomarkers/view` survives at its own route). The record-style
+detail page `/biomarkers/view` survives at its own route).
+
+**One renderer per cadence (#1932).** A dated reading opens on the surface its
+arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
+(`lib/hrefs.ts`) is the ONE helper every list, search hit, finding, panel chip
+and import drilldown asks — so no call site decides for itself. A **continuous**
+vital (blood pressure, SpO2, respiratory rate, body temperature) opens on its
+metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
+7/30/90-day summary, and the readings table with row actions. Every **episodic**
+reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
+markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
+measures) — opens on `/biomarkers/view`, which reads it against its reference and
+optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
+test audits it against every canonical `vitals` entry, so a newly added vital
+cannot ship unclassified, and the DB-tier test pins that each continuous
+reading's metric kind really stores that canonical name. A vitals URL under
+`/biomarkers/view` redirects to the metric page (current-IA plumbing for a stale
+bookmark, not a compatibility shim — both routes are live), and blood pressure's
+pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
+travelled with the reading to that surface.
+
+The record-style
 index pages (conditions, allergies, procedures, immunizations, family history,
 visits, providers, background, care plan, and health goals) likewise share one
 merged **Health record** page (#1042 phase 6, retabbed in #1079: `/records`,

@@ -17,6 +17,7 @@
 // harmlessly.
 
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import { deliveredCallbackTokens } from "./delivered-keyboard";
 import type { NotificationMessage } from "./types";
 
 export interface FoodNudgePointer {
@@ -83,14 +84,17 @@ export function parseFoodNudgePointer(
 // same window/date, so the first is representative. Returns null when the message has
 // no food quick-log button (not a food nudge, or a button-less variant), so a
 // non-nudge food-kind message never writes a bogus pointer.
+//
+// Read off the DELIVERED (post-cap) keyboard, not `msg.actions` (#1945): a pointer must
+// describe what the chat is actually showing, so a quick-log row dropped by the
+// button cap can never mint a pointer for a button nobody received.
 export function foodNudgePointerFromMessage(
   msg: NotificationMessage,
   chatId: string | number,
   messageId: number
 ): FoodNudgePointer | null {
-  for (const a of msg.actions ?? []) {
-    if (typeof a.data !== "string") continue;
-    const m = /^food:\d+:([A-Za-z]+):(\d{4}-\d{2}-\d{2}):.+$/.exec(a.data);
+  for (const token of deliveredCallbackTokens(msg)) {
+    const m = /^food:\d+:([A-Za-z]+):(\d{4}-\d{2}-\d{2}):.+$/.exec(token);
     if (!m) continue;
     const window = m[1];
     if (!FOOD_NUDGE_WINDOWS.includes(window as FoodNudgeWindow)) continue;

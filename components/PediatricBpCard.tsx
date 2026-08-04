@@ -5,7 +5,8 @@ import {
   type PediatricBpContext,
 } from "@/lib/bp-percentiles";
 
-// Pediatric blood-pressure context for the biomarker detail page (issue #150).
+// Pediatric blood-pressure context for whichever surface renders a BP reading
+// (issue #150 — the metric detail page since #1932 moved blood pressure there).
 // Pure presentational: given the AAP 2017 context for one BP component (systolic
 // or diastolic) of a CHILD's latest reading, it renders the percentile-for-age and
 // the AAP category (Normal / Elevated / Stage 1 / Stage 2) INSTEAD OF the adult

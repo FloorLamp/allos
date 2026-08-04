@@ -27,7 +27,7 @@ import {
   ALLERGY_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   encounterHref,
   episodeHref,
   equipmentHref,
@@ -136,7 +136,7 @@ function biomarkerHits(profileId: number, like: string): SearchHit[] {
     title: r.title,
     subtitle:
       [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
-    href: biomarkerViewHref(r.title),
+    href: readingDetailHref(r.title),
     date: isoDate(r.date),
     // "Add result" — navigate to the add form prefilled with this analyte (#662).
     actions: biomarkerHitActions(r.title),

@@ -160,3 +160,21 @@ export const BIOMARKER_PICKER_PROFILE = "Biomarker Picker (e2e)";
 export const BIOMARKER_PICKER_OVERDUE = "Hemoglobin A1c";
 export const BIOMARKER_PICKER_FLAGGED = "LDL Cholesterol";
 export const BIOMARKER_PICKER_MEASURED = "Albumin";
+
+// ── One judgement per identity (issues #1996 / #1997) ────────────────────────
+// A dedicated CHILD profile (~2 years old) whose resting heart rate arrives ONLY
+// as a wearable stream, plus ONE clinic-measured "Resting Heart Rate" observation
+// in the other store. That pair is the whole of #1996 in one fixture:
+//   • the streamed trend sits at ~120 bpm — perfectly normal for a toddler against
+//     the curated 1–3 band (80–150), and "Above range" against the adult 50–100 —
+//     so the age band being APPLIED is observable rather than asserted on a guess;
+//   • the observation shares the readings' identity but not their table, so the
+//     metric surface must fold it in and MARK it (it is read-only there).
+// Dedicated ON PURPOSE (#868): no shared fixture can hold "a child whose only
+// readings stream", and the compare-fold profile's exact series is read by its own
+// spec. Read-only here — the spec navigates only, so --repeat-each stays clean.
+export const E2E_LOGIN_METRIC_JUDGMENT = "e2e_metric_judgment";
+export const METRIC_JUDGMENT_PROFILE = "Metric Judgment (e2e)";
+// The clinic-measured reading, in bpm — on a day the stream does not cover, so it
+// is visibly an ADDITION to the trend rather than a duplicate of it.
+export const METRIC_JUDGMENT_CLINIC_BPM = 128;

@@ -1,6 +1,6 @@
 import { db } from "../db";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   encounterHref,
   immunizationHref,
   intakeHref,
@@ -380,7 +380,7 @@ export function getProviderLabs(
     date: r.date,
     label: r.name,
     sublabel: r.category,
-    href: biomarkerViewHref(r.canonical_name, r.name),
+    href: readingDetailHref(r.canonical_name, r.name),
   }));
 }
 
