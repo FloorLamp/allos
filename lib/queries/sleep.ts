@@ -39,6 +39,7 @@ import { doseExistsSince, indexTakenByDose } from "../supplement-adherence";
 import { doseBucketOn, doseDueOn } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
+  bedtimeDoseDisposition,
   summarizeBedtimeSupplements,
   type BedtimeSupplementSummary,
 } from "../sleep-bedtime-supplements";
@@ -326,30 +327,41 @@ function bedtimeSupplementsByWakeDay(
       const taken = status?.taken.has(sleepDate) ?? false;
       const skipped = status?.skipped.has(sleepDate) ?? false;
       const resolved = taken || skipped;
-      // The slot the dose actually held ON THAT NIGHT (#1973): `doseBucketOn` resolves
-      // the schedule version in force then, so a dose re-timed INTO or OUT OF the
-      // bedtime slot is attributed to the slot it really occupied, rather than having
-      // today's row applied backwards over every earlier night.
-      const isBedtimeDose = doseBucketOn(dose, sleepDate) === "Before sleep";
-      const isCurrentBedtimeDose =
-        item.active === 1 && dose.retired === 0 && isBedtimeDose;
-      // Resolved logs preserve factual taken/skipped state for a paused or
-      // retired bedtime dose. A later dose edit does not preserve the previous
-      // slot, however, so either direction of a possible re-time is excluded
-      // rather than attributing an old log to bedtime without evidence.
-      const changedAfterNight =
-        dose.updated_at != null && dose.updated_at.slice(0, 10) > sleepDate;
-      const historicalResolved =
-        resolved && isBedtimeDose && !changedAfterNight;
-      if (resolved ? !historicalResolved : !isCurrentBedtimeDose) return [];
-
-      // EXISTENCE only (#1973): a night before the dose existed carries no expectation,
-      // but a night before its last EDIT is now judged honestly by the version in force
-      // then (doseBucketOn above, doseDueOn below) instead of being dropped wholesale.
-      const since = doseExistsSince(item.created_at, dose.created_at, timezone);
-      if (!resolved && since != null && sleepDate < since) return [];
+      // The fact/judgment split lives in the pure bedtimeDoseDisposition: a night
+      // with a taken/skipped log renders on the strength of that log alone (so a
+      // paused, retired, or later-edited dose keeps its history — #1972), while an
+      // unlogged night is still judged by the dose's lifetime and schedule below.
+      //
+      // Both inputs to that judgment are now effective-dated (#1973):
+      //
+      //   • `isBedtimeDose` asks which slot the dose held ON THAT NIGHT, not which one
+      //     it holds today. This closes the residual #1972 named and could not fix on
+      //     its own: nothing recorded a past slot, so a dose re-timed INTO the bedtime
+      //     slot retroactively claimed every earlier log as a bedtime log. Versions are
+      //     that record, so both directions now resolve — a dose moved OUT of bedtime
+      //     keeps the nights it really was a bedtime dose (the #1972 fix, intact), and
+      //     one moved IN stops claiming nights it was an evening dose.
+      //
+      //   • `adherenceSince` is the dose's EXISTENCE bound and nothing else. It used to
+      //     be doseAdherenceSince(), which folded `updated_at` in and so voided every
+      //     night before any schedule edit — the erase-the-history reading of the
+      //     invariant that #1973 replaced. A night before the dose existed still carries
+      //     no expectation; a night before it was merely EDITED is judged by the version
+      //     in force then, via doseDueOn below.
+      const disposition = bedtimeDoseDisposition({
+        sleepDate,
+        logged: resolved,
+        isBedtimeDose: doseBucketOn(dose, sleepDate) === "Before sleep",
+        isCurrentDose: item.active === 1 && dose.retired === 0,
+        adherenceSince: doseExistsSince(
+          item.created_at,
+          dose.created_at,
+          timezone
+        ),
+      });
+      if (disposition === "excluded") return [];
       if (
-        !resolved &&
+        disposition === "scheduled" &&
         !doseDueOn(item, dose, {
           date: sleepDate,
           isWorkoutDay: workoutDays.has(sleepDate),

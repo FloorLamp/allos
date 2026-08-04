@@ -193,6 +193,39 @@ export function doseScheduleAsOf(
   return best ?? earliest ?? dose;
 }
 
+// The day a dose's schedule is KNOWN to have changed without the change having been
+// recorded — a legacy `updated_at` stamp newer than the newest version we hold.
+//
+// This is the honest treatment of data that predates #1973. `updated_at` is bumped only
+// when a dose's slot changes, so it says "the schedule changed on this day" — but it
+// does not say what the schedule WAS, and nothing can reconstruct that. Migration 150
+// seeds one version per dose from its CURRENT row, so an already-re-timed dose comes out
+// of the migration with a single version whose fields describe the post-edit slot only.
+//
+// Judging the pre-edit days by that version would be exactly the retroactive
+// re-judgment the invariant forbids — the engine would re-accuse someone of missing a
+// morning dose on weeks it was an evening dose (#430, the harm the old clamp existed to
+// prevent). So for those days, and only those, the conservative clamp stays: we decline
+// to infer rather than infer wrongly.
+//
+// It self-heals. The write path records a dose's pre-edit schedule before appending the
+// new version, so the FIRST schedule edit after this ships gives the dose a real history
+// and this function goes quiet for it forever after. Returns null for every dose whose
+// history is recorded — which is every dose created or edited from now on.
+export function unrecordedScheduleChangeOn(
+  dose: DoseCadence & { updated_at?: string | null }
+): string | null {
+  const changedOn = dose.updated_at ? dose.updated_at.slice(0, 10) : null;
+  if (!changedOn) return null;
+  const versions = dose.versions;
+  if (!versions || versions.length === 0) return changedOn;
+  const newest = versions.reduce((a, v) =>
+    v.effective_from >= a.effective_from ? v : a
+  );
+  // A version at or after the stamp IS the record of that change.
+  return newest.effective_from >= changedOn ? null : changedOn;
+}
+
 // Whether two schedules differ in a DUENESS-RELEVANT way — the write path's test for
 // "does this edit deserve a new version?". Cosmetic fields (amount, food timing, sort,
 // notes) are absent from DoseSchedule by construction, so a typo fix in an amount can

@@ -223,6 +223,7 @@ import {
   doseSlotChangedSince,
   timeBucket,
 } from "./supplement-schedule";
+import { unrecordedScheduleChangeOn } from "./intake-cadence";
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
@@ -1367,7 +1368,17 @@ export function buildAdherencePatternFindings(
     // WIDENED by logged history, because a log is proof the dose existed on its date
     // (#1442). It is the same bound the adherence strip clamps to, so a pattern and the
     // strip it summarizes still cannot disagree about a day (#221).
-    const since = doseWindowSince(supp.created_at, d.created_at, status, tz);
+    const exists = doseWindowSince(supp.created_at, d.created_at, status, tz);
+    // …plus the ONE case effective-dating cannot reach: a dose re-timed BEFORE #1973
+    // shipped, whose old slot no version records. `updated_at` says a change happened
+    // but not what it replaced, so those days cannot be judged — and judging them by
+    // today's rule would be the retroactive re-accusation #430 clamped to avoid. The
+    // conservative bound stays for exactly those doses, and only until their next
+    // schedule edit records a real version (see unrecordedScheduleChangeOn).
+    const unrecorded = unrecordedScheduleChangeOn(d);
+    const since = [exists, unrecorded]
+      .filter((v): v is string => v != null)
+      .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
     const windowDates = since ? dates.filter((date) => date >= since) : dates;
     const strip = stripWithoutTrailingPending(
       doseStrip(

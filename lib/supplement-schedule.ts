@@ -13,6 +13,7 @@ import {
   cadenceOn,
   doseOnDay,
   doseScheduleAsOf,
+  unrecordedScheduleChangeOn,
   type DoseCadence,
   type ItemCadence,
 } from "./intake-cadence";
@@ -252,9 +253,14 @@ export function doseBucketOn(dose: DoseCadence, dateISO: string): TimeBucket {
 // notice, or the finding says "try moving it earlier" about a dose moved last Tuesday.
 // Bucket-level, so an 08:00 → 07:30 nudge inside Morning is not a slot change.
 export function doseSlotChangedSince(
-  dose: DoseCadence,
+  dose: DoseCadence & { updated_at?: string | null },
   sinceDate: string
 ): boolean {
+  // A legacy re-time we hold no version for still MOVED the slot — `updated_at` is
+  // bumped only when it does — so it withholds the suggestion exactly as a recorded
+  // change would, even though its old bucket is unknowable.
+  const unrecorded = unrecordedScheduleChangeOn(dose);
+  if (unrecorded != null && unrecorded >= sinceDate) return true;
   const versions = dose.versions;
   if (!versions || versions.length < 2) return false;
   const buckets = new Set<TimeBucket>([doseBucketOn(dose, sinceDate)]);

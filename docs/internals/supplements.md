@@ -260,10 +260,81 @@ Invariants:
   its own `dose_id`.
 - **A taper is windowed rows, and an expiring window is NOT a retire.** The row
   stops being due; its logs read untouched. That is what keeps "editing a dose
-  never rewrites adherence history" true by construction for a mid-course change
-  — and why narrowing a dose's calendar deliberately does not bump its
-  `updated_at` (a re-time restarts the adherence-pattern window; changing which
-  days a dose lands on is not a new slot).
+  never rewrites adherence history" true by construction for a mid-course change.
+
+## Effective-dated dose schedules (#1973)
+
+**Each day is judged against the schedule in force on that day.** Before this, the
+invariant "editing a dose must not rewrite adherence history" was implemented by a
+CLAMP: `doseAdherenceSince` took the adherence lower bound from
+`intake_item_doses.updated_at`, so any re-time voided every day before the edit. The
+rule was honoured by throwing the history away. Erasing the past and re-judging it are
+the same mistake pointed in opposite directions — a present edit deciding what was true
+before it — so the clamp is gone and the history is recorded instead.
+
+**Storage: `intake_dose_schedule_versions`** (migration 150), a child of
+`intake_item_doses` carrying only the DUENESS-RELEVANT fields — `time_of_day`,
+`weekdays`, `start_date`, `end_date` — plus the profile-local `effective_from` day they
+took effect. Versions are HALF-OPEN (no `effective_to`; the next version closes the
+previous), so a change is one append and "no gaps, no overlaps" is structural.
+`UNIQUE (dose_id, effective_from)` collapses several edits on one day to that day's
+final state, which is the right grain because dueness is evaluated per day.
+
+It is a CHILD TABLE rather than effective-from/to columns on a versioned dose row
+because a dose id is a stable external identity: `intake_item_logs.dose_id`,
+`intake_administrations.dose_id`, live Telegram reminder keyboards and the
+dose-id-keyed adherence dedupe keys all point at it. Re-minting that id on every
+schedule edit would scatter a dose's logs across version rows and re-fire dismissed
+findings under new keys.
+
+Amount, food timing and sort are deliberately NOT versioned — they cannot make a day
+due or not due, so **a cosmetic edit moves no adherence boundary at all**. What was
+actually swallowed is already snapshotted onto the log at confirm time, which is where
+that history belongs.
+
+**Reads.** `doseScheduleAsOf` (`lib/intake-cadence.ts`) resolves the version in force on
+a day, and `doseOnDay` calls it — so every surface that iterates dose rows inherits
+effective-dating for free, exactly as it inherited the calendar. Two total fallbacks:
+a dose with NO recorded history reads as "this row, always" (the pre-#1973 behaviour,
+which is what every fixture, seed and importer row keeps), and a day before the first
+version reads the EARLIEST version. That second one is deliberate — "did the dose
+exist?" is a different question with a better answer already, `doseWindowSince`, which
+is timezone-aware and widened by logged history because a log is proof the dose existed
+on its date (#1442). The schedule resolver must never override it.
+
+**The bound that remains.** `buildAdherencePatternFindings` clamps by EXISTENCE only,
+the same bound the strip it summarizes uses (#221). It no longer filters at
+`updated_at`, so a re-timed dose keeps its pre-edit window and its pattern survives the
+edit.
+
+**What #430 actually protected, kept.** The old clamp existed to stop the engine
+re-accusing someone who had followed its own "move it earlier" advice. Erasing the
+history was disproportionate; withholding the ADVICE is not. `doseSlotChangedSince`
+suppresses the move suggestion when the dose's time BUCKET moved inside the window
+(an 08:00 → 07:30 nudge inside Morning is not a slot change), and the days stay.
+
+**Legacy re-times.** A dose re-timed BEFORE this shipped has no pre-edit version and its
+old slot is unrecoverable — migration 150 seeds from the current row. Judging those days
+by today's rule would be the exact retroactive re-accusation #430 guarded against, so
+`unrecordedScheduleChangeOn` keeps the conservative clamp for precisely those doses: an
+`updated_at` newer than the newest recorded version. It self-heals — the write path
+records a dose's PRE-EDIT schedule before appending the new one, so the first schedule
+edit after this ships gives the dose a real history and the fallback goes quiet forever.
+
+**Writes.** `saveSupplement` appends a version only when `doseScheduleDiffers` sees a
+dueness-relevant change, and new doses are seeded with a version at birth so their first
+edit has something to close. The version table is APPEND-ONLY beyond the same-day
+upsert: an earlier version is never rewritten, which is what makes a past day judgeable.
+It is registered in `deleteProfile`'s sweep (which runs with foreign keys OFF, so the
+CASCADE would not fire) and captured by undo-delete as a grandchild entity.
+
+**Sleep attribution.** `bedtimeDoseDisposition` (#1972) keeps its fact/judgment split
+untouched — a logged night renders on the log alone — but its judgment inputs are now
+effective-dated: `isBedtimeDose` asks `doseBucketOn(dose, sleepDate)`. That closes the
+residual #1972 named and could not fix alone, since nothing recorded a past slot: a dose
+re-timed INTO the bedtime slot no longer claims earlier logs retroactively, and one
+re-timed OUT of it keeps the nights it really was a bedtime dose.
+
 - **Denominators count on-days only.** A weekly med at 1/1 is 100%, not 1/7; an
   off-day scores `"na"`. The demotion detector and the digest delta classifier
   inherit this for free, since both already treat a not-due day as transparent —

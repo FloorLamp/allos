@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bedtimeDoseDisposition,
   bedtimeSupplementStatusLabel,
   summarizeBedtimeSupplements,
 } from "../sleep-bedtime-supplements";
@@ -61,5 +62,59 @@ describe("bedtime supplement sleep context", () => {
     expect(bedtimeSupplementStatusLabel(skipped)).toBe("Skipped");
     expect(missed?.state).toBe("missed");
     expect(bedtimeSupplementStatusLabel(missed)).toBe("Not logged");
+  });
+});
+
+describe("which doses belong to a night", () => {
+  const night = {
+    sleepDate: "2026-07-20",
+    logged: false,
+    isBedtimeDose: true,
+    isCurrentDose: true,
+    adherenceSince: "2026-07-01",
+  };
+
+  // Issue #1972 regression pin. A dose logged for night N and edited on night
+  // N+5 must still report that night. The edit moved the dose's adherence lower
+  // bound (pre-#1973 that bound keyed off updated_at), and it used to be applied
+  // before the log was consulted, erasing the logged night entirely. The bound is
+  // now existence-only, but the ORDER is what this pins: a log is a fact, and no
+  // bound may be consulted ahead of it.
+  it("keeps a logged night when the dose was edited afterwards", () => {
+    expect(
+      bedtimeDoseDisposition({
+        ...night,
+        logged: true,
+        adherenceSince: "2026-07-25",
+      })
+    ).toBe("logged");
+  });
+
+  it("keeps a logged night for a paused or retired bedtime dose", () => {
+    expect(
+      bedtimeDoseDisposition({ ...night, logged: true, isCurrentDose: false })
+    ).toBe("logged");
+  });
+
+  it("ignores a dose whose current slot is not bedtime, logged or not", () => {
+    expect(
+      bedtimeDoseDisposition({ ...night, isBedtimeDose: false, logged: true })
+    ).toBe("excluded");
+    expect(bedtimeDoseDisposition({ ...night, isBedtimeDose: false })).toBe(
+      "excluded"
+    );
+  });
+
+  it("still judges an unlogged night by the dose lifetime and regimen", () => {
+    expect(bedtimeDoseDisposition(night)).toBe("scheduled");
+    expect(
+      bedtimeDoseDisposition({ ...night, adherenceSince: "2026-07-21" })
+    ).toBe("excluded");
+    expect(bedtimeDoseDisposition({ ...night, adherenceSince: null })).toBe(
+      "scheduled"
+    );
+    expect(bedtimeDoseDisposition({ ...night, isCurrentDose: false })).toBe(
+      "excluded"
+    );
   });
 });

@@ -147,6 +147,7 @@ import { migration as m145 } from "./145-family-history-death-lineage";
 import { migration as m146 } from "./146-sync-report-provenance";
 import { migration as m147 } from "./147-goal-biomarker-target";
 import { migration as m148 } from "./148-retire-run-milestones";
+import { migration as m149 } from "./149-weather-hourly-precipitation";
 import { migration as m150 } from "./150-dose-schedule-versions";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -304,5 +305,6 @@ export const MIGRATIONS: Migration[] = [
   m146,
   m147,
   m148,
+  m149,
   m150,
 ];
