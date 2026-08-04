@@ -35,9 +35,8 @@ import {
   getSituationEvents,
   getFreeDays,
 } from "../settings";
-import { doseAdherenceSince } from "../adherence-patterns";
-import { indexTakenByDose } from "../supplement-adherence";
-import { doseDueOn, timeBucket } from "../supplement-schedule";
+import { doseExistsSince, indexTakenByDose } from "../supplement-adherence";
+import { doseBucketOn, doseDueOn } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
   summarizeBedtimeSupplements,
@@ -327,7 +326,11 @@ function bedtimeSupplementsByWakeDay(
       const taken = status?.taken.has(sleepDate) ?? false;
       const skipped = status?.skipped.has(sleepDate) ?? false;
       const resolved = taken || skipped;
-      const isBedtimeDose = timeBucket(dose.time_of_day) === "Before sleep";
+      // The slot the dose actually held ON THAT NIGHT (#1973): `doseBucketOn` resolves
+      // the schedule version in force then, so a dose re-timed INTO or OUT OF the
+      // bedtime slot is attributed to the slot it really occupied, rather than having
+      // today's row applied backwards over every earlier night.
+      const isBedtimeDose = doseBucketOn(dose, sleepDate) === "Before sleep";
       const isCurrentBedtimeDose =
         item.active === 1 && dose.retired === 0 && isBedtimeDose;
       // Resolved logs preserve factual taken/skipped state for a paused or
@@ -340,11 +343,10 @@ function bedtimeSupplementsByWakeDay(
         resolved && isBedtimeDose && !changedAfterNight;
       if (resolved ? !historicalResolved : !isCurrentBedtimeDose) return [];
 
-      const since = doseAdherenceSince(
-        item.created_at,
-        dose.created_at,
-        dose.updated_at
-      );
+      // EXISTENCE only (#1973): a night before the dose existed carries no expectation,
+      // but a night before its last EDIT is now judged honestly by the version in force
+      // then (doseBucketOn above, doseDueOn below) instead of being dropped wholesale.
+      const since = doseExistsSince(item.created_at, dose.created_at, timezone);
       if (!resolved && since != null && sleepDate < since) return [];
       if (
         !resolved &&

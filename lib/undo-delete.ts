@@ -414,6 +414,19 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         childBinds: 1,
       },
       {
+        entity: "doseVersions",
+        table: "intake_dose_schedule_versions",
+        // A GRANDCHILD, re-inserted after `doses` so its dose_id remaps to the restored
+        // row's new id. Without it a restored item would come back with no schedule
+        // history — behaviourally the pre-#1973 "this row, always" reading, so nothing
+        // breaks, but every pre-delete schedule change would be silently forgotten and
+        // the item's past days re-judged by its current rule.
+        fks: [{ column: "dose_id", ref: "doses" }],
+        childWhere:
+          "dose_id IN (SELECT id FROM intake_item_doses WHERE item_id = ?)",
+        childBinds: 1,
+      },
+      {
         entity: "pairs",
         table: "intake_item_pairs",
         // Both endpoints reference intake_items; only the deleted item is in the

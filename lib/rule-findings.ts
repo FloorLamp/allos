@@ -50,6 +50,7 @@ import {
   getUserReproductiveStatus,
   getSmokingHistory,
   getRiskAttributesReviewed,
+  getTimezone,
 } from "./settings";
 import { isMinor } from "./life-stage";
 import {
@@ -207,17 +208,21 @@ import {
 } from "./goal-pacing";
 import {
   detectAdherencePatterns,
-  doseAdherenceSince,
   ADHERENCE_PATTERN_DAYS,
   type AdherencePattern,
   type DoseAdherenceInput,
 } from "./adherence-patterns";
 import {
   doseStrip,
+  doseWindowSince,
   indexTakenByDose,
   stripWithoutTrailingPending,
 } from "./supplement-adherence";
-import { doseDueOn, timeBucket } from "./supplement-schedule";
+import {
+  doseDueOn,
+  doseSlotChangedSince,
+  timeBucket,
+} from "./supplement-schedule";
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
@@ -1328,6 +1333,9 @@ export function buildAdherencePatternFindings(
   const supplements = getSupplements(profileId);
   const suppById = new Map(supplements.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profileId);
+  // The profile's timezone resolves the UTC creation stamps onto the same profile-local
+  // calendar the `dates` window is built from (#1442).
+  const tz = getTimezone(profileId);
   const takenByDose = indexTakenByDose(
     getIntakeLogsInRange(profileId, ADHERENCE_PATTERN_DAYS)
   );
@@ -1347,15 +1355,19 @@ export function buildAdherencePatternFindings(
     // Only active, scheduled (non-PRN) items produce due days to miss.
     if (!supp || !supp.active || isPrn(supp)) continue;
     const status = takenByDose.get(d.id);
-    // Clamp the window to the dose's lifetime (#430): a day before the dose
-    // existed with its current schedule is not a "miss" it defeated the
-    // min-history gate with, nor a slot it can be re-accused of. `since` is the
-    // later of the item's creation and this dose's last re-time.
-    const since = doseAdherenceSince(
-      supp.created_at,
-      d.created_at,
-      d.updated_at
-    );
+    // Clamp the window to the dose's EXISTENCE, and to nothing else (#1973).
+    //
+    // It used to be clamped at the dose's `updated_at` as well (#430), which meant any
+    // re-time voided every day before it: the "editing a dose must not rewrite adherence
+    // history" invariant was being honoured by throwing the history away. Effective-dated
+    // schedules (migration 150) removed the need — `doseDueOn` below resolves the version
+    // in force on each day, so a pre-edit day is judged by the pre-edit rule instead of
+    // being dropped. What remains is the genuinely different question of when the dose
+    // existed at all, and `doseWindowSince` is its better answer: timezone-aware, and
+    // WIDENED by logged history, because a log is proof the dose existed on its date
+    // (#1442). It is the same bound the adherence strip clamps to, so a pattern and the
+    // strip it summarizes still cannot disagree about a day (#221).
+    const since = doseWindowSince(supp.created_at, d.created_at, status, tz);
     const windowDates = since ? dates.filter((date) => date >= since) : dates;
     const strip = stripWithoutTrailingPending(
       doseStrip(
@@ -1380,10 +1392,16 @@ export function buildAdherencePatternFindings(
       // one dismissal silencing it forever.
       periodAnchor: today.slice(0, 4),
       // "Move it earlier" is wrong advice for a bedtime slot or a prescribed
-      // medication (#430.4) — fall back to the neutral reminder copy.
+      // medication (#430.4) — fall back to the neutral reminder copy. It is equally
+      // wrong for a dose the person ALREADY MOVED inside this window (#1973): the days
+      // now stay in the window and are judged honestly by the slot they sat in, but
+      // telling someone to move a dose they re-timed last Tuesday is the re-accusation
+      // #430 clamped the whole window to avoid. Suppressing the suggestion is the
+      // proportionate answer; erasing the history was not.
       suppressMoveSuggestion:
         timeBucket(d.time_of_day) === "Before sleep" ||
-        supp.kind === "medication",
+        supp.kind === "medication" ||
+        (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0])),
     });
   }
 

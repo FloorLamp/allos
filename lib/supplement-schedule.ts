@@ -12,6 +12,7 @@ import type {
 import {
   cadenceOn,
   doseOnDay,
+  doseScheduleAsOf,
   type DoseCadence,
   type ItemCadence,
 } from "./intake-cadence";
@@ -229,6 +230,39 @@ export function doseDueOn(
 ): boolean {
   if (!isDueOn(supp, ctx)) return false;
   return doseOnDay(dose, ctx.date);
+}
+
+// The TIME BUCKET a dose occupied on a given day (#1973) — `timeBucket` over the
+// schedule version in force then, rather than over the current row. A dose moved
+// evening → morning last week was an evening dose the week before, and any surface
+// that attributes a PAST day to a slot (the bedtime-supplement summary) has to ask
+// about the slot it actually sat in that day.
+export function doseBucketOn(dose: DoseCadence, dateISO: string): TimeBucket {
+  return timeBucket(doseScheduleAsOf(dose, dateISO).time_of_day ?? null);
+}
+
+// Whether a dose's SLOT (its coarse time bucket, not its exact stored string) changed
+// at any point from `sinceDate` onward (#1973/#430).
+//
+// It exists for one narrow job: withholding the "move it earlier in the day" schedule
+// suggestion from someone who has already moved it. #430 clamped the whole pattern
+// window at a re-time to stop the engine re-accusing a user who followed its own
+// advice; effective-dating means the days are now judged correctly and stay in the
+// window, so the history no longer needs throwing away — but the ADVICE still has to
+// notice, or the finding says "try moving it earlier" about a dose moved last Tuesday.
+// Bucket-level, so an 08:00 → 07:30 nudge inside Morning is not a slot change.
+export function doseSlotChangedSince(
+  dose: DoseCadence,
+  sinceDate: string
+): boolean {
+  const versions = dose.versions;
+  if (!versions || versions.length < 2) return false;
+  const buckets = new Set<TimeBucket>([doseBucketOn(dose, sinceDate)]);
+  for (const v of versions) {
+    if (v.effective_from >= sinceDate)
+      buckets.add(timeBucket(v.time_of_day ?? null));
+  }
+  return buckets.size > 1;
 }
 
 // ---- Slot hints (issue #1505) ---------------------------------------------

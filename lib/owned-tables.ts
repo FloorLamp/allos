@@ -35,6 +35,8 @@
 //
 // NOT here (by design):
 //   • CHILD tables (exercise_sets, intake_item_doses/_logs/_pairs,
+//     intake_dose_schedule_versions — a GRANDCHILD, scoped through
+//     dose_id → intake_item_doses → intake_items (#1973),
 //     medication_courses, intake_item_side_effects, and the routine children
 //     routine_days/routine_slots — #738) — they carry no profile_id and are
 //     scoped/deleted THROUGH their parent's profile_id via a JOIN/subquery

@@ -48,13 +48,40 @@ export interface ItemCadence {
   cadence_anchor_date?: string | null;
 }
 
-// The per-dose calendar fields: an optional weekday subset and an optional inclusive
-// validity window. NULL at any position means "no opinion" — the dose lands on every
-// one of the item's on-days, forever.
-export interface DoseCadence {
+// The dueness-relevant shape of ONE dose schedule, independent of when it applied:
+// the slot it occupies plus its own calendar. This is what a version RECORDS and what
+// `doseOnDay` evaluates — deliberately narrower than the dose row, which also carries
+// amount, food timing, sort and provenance. Those are cosmetic to dueness: changing an
+// amount cannot make a day due or not due, so it must never move an adherence boundary
+// (#1973).
+export interface DoseSchedule {
+  time_of_day?: string | null;
   weekdays?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+}
+
+// ONE version of a dose's schedule (issue #1973, migration 150): the schedule fields
+// above plus the calendar day they took effect. Versions are HALF-OPEN and closed by
+// the next one — there is no `effective_to` — so a change is a single append and
+// "no gaps, no overlaps" is structural rather than an invariant two rows have to keep
+// agreeing about.
+export interface DoseScheduleVersion extends DoseSchedule {
+  // Profile-LOCAL calendar day (YYYY-MM-DD), inclusive.
+  effective_from: string;
+}
+
+// The per-dose calendar fields: an optional weekday subset and an optional inclusive
+// validity window. NULL at any position means "no opinion" — the dose lands on every
+// one of the item's on-days, forever.
+//
+// `versions` is the dose's effective-dated schedule HISTORY (#1973), attached by the
+// query layer. It is optional, and its absence is not a gap: a dose with no recorded
+// history reads as "this row, always", which is byte-for-byte the pre-#1973 behaviour
+// and is exactly what the seeded version says. Every literal, fixture and seed row that
+// never grew a history therefore keeps its exact current dueness.
+export interface DoseCadence extends DoseSchedule {
+  versions?: readonly DoseScheduleVersion[] | null;
 }
 
 // Parse a stored weekday CSV ("0,3,5") into a set of 0..6 indices. Deliberately
@@ -121,22 +148,92 @@ export function cadenceOn(item: ItemCadence, dateISO: string): boolean {
   return true;
 }
 
+// ---- Effective-dated schedules (issue #1973) -------------------------------
+
+// The schedule in force on `dateISO` — the version with the LATEST `effective_from`
+// that is not after the day being judged.
+//
+// Two fallbacks, both deliberate:
+//
+//   • NO HISTORY AT ALL → the live row. A dose whose versions were never recorded
+//     (a fixture, a seed, an importer insert) reads exactly as it did before #1973.
+//
+//   • A DAY BEFORE THE FIRST VERSION → the EARLIEST version, not "no schedule". This
+//     is the one place the resolver could be tempted to answer "the dose did not exist
+//     yet", and it must not: EXISTENCE is a different question with a different, better
+//     answer already (doseWindowSince — timezone-aware and widened by logged history,
+//     because a log is proof the dose existed on its date, #1442). Answering it here
+//     from a UTC-sliced creation stamp would silently override that bound and blank
+//     days a person really did take, which is the #1972 failure in the other direction.
+//     The oldest recorded rule is simply the best statement we have about a day before
+//     recording began — and for a dose with the single seeded version, that IS the
+//     pre-#1973 behaviour.
+//
+// Pure string-date math (YYYY-MM-DD sorts chronologically), so it is client-safe and the
+// page, the reminder and the adherence denominator all resolve a day identically (#221).
+export function doseScheduleAsOf(
+  dose: DoseCadence,
+  dateISO: string
+): DoseSchedule {
+  const versions = dose.versions;
+  if (!versions || versions.length === 0) return dose;
+  let best: DoseScheduleVersion | null = null;
+  let earliest: DoseScheduleVersion | null = null;
+  for (const v of versions) {
+    if (earliest == null || v.effective_from < earliest.effective_from) {
+      earliest = v;
+    }
+    if (v.effective_from > dateISO) continue;
+    // `>=` so that when two versions share a day (two edits, one calendar day) the LAST
+    // one in the array wins — the query orders by (effective_from, id), so that is the
+    // day's final state. The write path additionally upserts on (dose_id,
+    // effective_from), so this is belt-and-braces rather than the primary defence.
+    if (best == null || v.effective_from >= best.effective_from) best = v;
+  }
+  return best ?? earliest ?? dose;
+}
+
+// Whether two schedules differ in a DUENESS-RELEVANT way — the write path's test for
+// "does this edit deserve a new version?". Cosmetic fields (amount, food timing, sort,
+// notes) are absent from DoseSchedule by construction, so a typo fix in an amount can
+// never reach this and can never move an adherence boundary (#1973).
+export function doseScheduleDiffers(a: DoseSchedule, b: DoseSchedule): boolean {
+  return (
+    (a.time_of_day ?? null) !== (b.time_of_day ?? null) ||
+    (a.weekdays ?? null) !== (b.weekdays ?? null) ||
+    (a.start_date ?? null) !== (b.start_date ?? null) ||
+    (a.end_date ?? null) !== (b.end_date ?? null)
+  );
+}
+
 // Whether THIS DOSE ROW lands on `dateISO`, given its own weekday subset and validity
 // window. Independent of the item's cadence — both are ANDed by the caller — so a
 // weekly item can still split its dose rows, and a taper window can expire under any
 // cadence.
 //
+// The rules come from the version IN FORCE ON `dateISO` (#1973), not from the current
+// row: a dose narrowed to Mondays today was not a Mondays-only dose last month, and
+// judging last month by today's rule would retroactively invent (or forgive) misses.
+// That resolution belongs HERE rather than in each caller precisely because this
+// function already receives the day being judged — every surface that iterates dose
+// rows inherits effective-dating for free, exactly as it inherited the calendar.
+//
 // A window that has ENDED is not a retire (#1602): the row stops being due and its
 // adherence history reads exactly as it did, which is what lets a taper be expressed as
 // four windowed rows instead of four destructive amount edits.
 export function doseOnDay(dose: DoseCadence, dateISO: string): boolean {
-  const days = parseWeekdays(dose.weekdays);
+  const schedule = doseScheduleAsOf(dose, dateISO);
+  const days = parseWeekdays(schedule.weekdays);
   if (days.size > 0 && !days.has(weekdayOfDateStr(dateISO))) return false;
   // String comparison is correct and cheapest for YYYY-MM-DD (lexicographic ==
   // chronological), and it is how every other stored-date window in this codebase is
   // compared. Both bounds are INCLUSIVE.
-  if (isRealIsoDate(dose.start_date) && dateISO < dose.start_date) return false;
-  if (isRealIsoDate(dose.end_date) && dateISO > dose.end_date) return false;
+  if (isRealIsoDate(schedule.start_date) && dateISO < schedule.start_date) {
+    return false;
+  }
+  if (isRealIsoDate(schedule.end_date) && dateISO > schedule.end_date) {
+    return false;
+  }
   return true;
 }
 

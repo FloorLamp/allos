@@ -3,9 +3,9 @@
 // lib/types.ts (#319); the `@/lib/types` barrel re-exports everything here, so
 // import paths are unchanged.
 
-import type { CadenceKind } from "../intake-cadence";
+import type { CadenceKind, DoseScheduleVersion } from "../intake-cadence";
 
-export type { CadenceKind };
+export type { CadenceKind, DoseScheduleVersion };
 
 // How a supplement's day-context is decided: every day; only on
 // workout/rest days (from the journal); or only while a named situation
@@ -233,6 +233,13 @@ export interface SupplementDose {
   weekdays: string | null;
   start_date: string | null;
   end_date: string | null;
+  // EFFECTIVE-DATED schedule history (issue #1973, migration 150), attached by the
+  // schedule reads (getSupplementDoses / getSupplementDosesForHistory) — not a column on
+  // this row. `doseDueOn` resolves the version in force on the day it is asked about, so
+  // a past day is judged by the rule that applied THEN rather than by today's row.
+  // Optional: a dose with no recorded history reads as "this row, always", which is the
+  // pre-#1973 behaviour and what the seeded version says anyway.
+  versions?: readonly DoseScheduleVersion[];
 }
 
 // A dose's resolution on a given day. A skip is a first-class LOG ROW (issue
