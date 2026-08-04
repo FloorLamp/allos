@@ -30,6 +30,15 @@ const MANUAL_TITLE = `${MARKER} cooldown paddle`;
 const OLDER_DATE = "2020-08-02";
 const OLDER_TITLE = `${MARKER} portage day`;
 
+// A run of MORE THAN ONE PAGE of matching days (a filtered page is 14 days), for the
+// filtered "Load more" test below. Two-digit leg numbers so "leg 01" can never
+// substring-match "leg 10"…"leg 19". Deep past for the same reason as DEEP_DATE.
+const PAGED_MARKER = "Orienteering Meridian Loop";
+const PAGED_DAYS = 20;
+const pagedDate = (i: number) => `2018-06-${String(i + 1).padStart(2, "0")}`;
+const pagedTitle = (i: number) =>
+  `${PAGED_MARKER} leg ${String(i + 1).padStart(2, "0")}`;
+
 function withDb<T>(fn: (db: Database.Database) => T): T {
   const db = new Database(DB_PATH);
   try {
@@ -43,6 +52,9 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 function cleanup() {
   withDb((db) => {
     db.prepare("DELETE FROM activities WHERE title LIKE ?").run(`${MARKER}%`);
+    db.prepare("DELETE FROM activities WHERE title LIKE ?").run(
+      `${PAGED_MARKER}%`
+    );
   });
 }
 
@@ -59,6 +71,11 @@ test.beforeAll(() => {
     ins.run(DEEP_DATE, IMPORTED_TITLE, 75, 6.2, "strava");
     ins.run(DEEP_DATE, MANUAL_TITLE, 30, 2.1, null);
     ins.run(OLDER_DATE, OLDER_TITLE, 50, 3.4, null);
+    // One match per day across PAGED_DAYS consecutive days, so the filtered feed
+    // has a full first page (the newest 14) plus an older window to page into.
+    for (let i = 0; i < PAGED_DAYS; i++) {
+      ins.run(pagedDate(i), pagedTitle(i), 40, 5.0, null);
+    }
   });
 });
 
@@ -100,6 +117,61 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
 
   // Non-matching seed rows are filtered out, so the feed really is the match set.
   await expect(page.getByTestId("journal-search-pending")).toHaveCount(0);
+});
+
+test("'Load more' pages DEEPER under an active filter, and the loaded window sticks", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const search = page.getByPlaceholder("Search activities or exercises…");
+  await search.fill(PAGED_MARKER);
+
+  // Page one of the filtered feed: the newest 14 matching days, so the newest leg
+  // renders and the oldest does not.
+  await expect(
+    page.locator(".card", { hasText: pagedTitle(PAGED_DAYS - 1) })
+  ).toBeVisible({ timeout: 20_000 }); // Server-Action round-trip ceiling (see above).
+  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toHaveCount(
+    0
+  );
+
+  const loadMore = page.getByTestId("journal-load-more");
+  await expect(loadMore).toBeVisible();
+  await loadMore.click();
+
+  // The next-older MATCHING window lands: the oldest planted day is on the page…
+  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toBeVisible({
+    timeout: 20_000, // Server-Action round-trip ceiling (see above).
+  });
+  // …and with the matching set exhausted the pager goes away.
+  await expect(loadMore).toHaveCount(0, { timeout: 20_000 });
+
+  // THE REGRESSION SHAPE, second half: the loaded window must now STICK. The
+  // middleware used to re-set the session cookie on Server Action POSTs, which
+  // marked every loadJournalPage response "revalidated" and re-rendered the page;
+  // JournalView's filtered-feed effect then re-fetched page ONE on each such
+  // refresh — an endless self-sustaining POST loop (~3/s) that clobbered the
+  // loaded older window moments after it rendered. The assertions above race that
+  // first collapse (they pass on first match), so pin the invariant directly: the
+  // settled feed makes NO further requests on its own. In the fixed app nothing
+  // can issue a POST here (no interaction happens), so the quiet window cannot
+  // flake; under the bug the loop's next tick lands well inside it.
+  const strayPost = await page
+    .waitForRequest(
+      (r) => r.method() === "POST" && new URL(r.url()).pathname === "/training",
+      { timeout: 3000 }
+    )
+    .catch(() => null);
+  expect(strayPost, "the filtered feed kept fetching by itself").toBeNull();
+
+  // And the deep window survived the quiet period intact — oldest and newest
+  // matching days both still rendered, pager still exhausted.
+  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toBeVisible();
+  await expect(
+    page.locator(".card", { hasText: pagedTitle(PAGED_DAYS - 1) })
+  ).toBeVisible();
+  await expect(loadMore).toHaveCount(0);
 });
 
 test("the source filter narrows a matching day by provider (#1634)", async ({
