@@ -147,5 +147,6 @@
   "146-sync-report-provenance.ts": "f903c8663a7abdad69268ae5134bd7f0eb5d27dd941f2d99f6974748841b66ef",
   "147-goal-biomarker-target.ts": "d42a82b56bcd2517f31a517d17fb079be22718d2c5461106bc185e84d04c2f18",
   "148-retire-run-milestones.ts": "599a09899a5b439bcc752ded0c69d3a77d9c6a4ff543a9f029ed9f58980b1638",
-  "149-weather-hourly-precipitation.ts": "5a03bc980d4263e62ce044b22855da2c3287ae617fc2efb49f7c8912942b0103"
+  "149-weather-hourly-precipitation.ts": "5a03bc980d4263e62ce044b22855da2c3287ae617fc2efb49f7c8912942b0103",
+  "150-substance-log-notes.ts": "4e24aef04c1c803539a0c66bc79d1161f860d0c511fddb058aff9d6f69d8ebdd"
 }

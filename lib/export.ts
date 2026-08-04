@@ -1047,8 +1047,8 @@ export const DATASETS: ExportDataset[] = [
     key: "substance_log",
     label: "Substance log",
     table: "substance_log",
-    columns: ["date", "substance", "units", "logged_at"],
-    select: `SELECT id, date, substance, units, logged_at
+    columns: ["date", "substance", "units", "logged_at", "notes"],
+    select: `SELECT id, date, substance, units, logged_at, notes
        FROM substance_log WHERE profile_id = ? ORDER BY date DESC, substance`,
     countSql: `SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`,
   }),

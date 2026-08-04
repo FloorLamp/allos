@@ -109,6 +109,7 @@ export function EmptyState({
   action,
   actions,
   testId,
+  compact = false,
 }: {
   message: string;
   action?: { href: AppRoute; label: string };
@@ -117,12 +118,17 @@ export function EmptyState({
   // test (the Timeline's, #1410) — the panel is otherwise addressable only by its
   // copy, which is exactly the thing such a test is asserting.
   testId?: string;
+  // Nested card histories need the shared empty grammar without the page-level
+  // vertical footprint of the default landing-state panel.
+  compact?: boolean;
 }) {
   const links = [...(actions ?? []), ...(action ? [action] : [])];
   return (
     <div
       data-testid={testId}
-      className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
+      className={`rounded-xl border border-dashed border-black/10 bg-white text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 ${
+        compact ? "p-4" : "p-10"
+      }`}
     >
       {message}
       {links.length > 0 && (

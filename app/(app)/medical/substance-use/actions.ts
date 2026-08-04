@@ -11,6 +11,8 @@ import {
   substanceDef,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
+  MAX_SUBSTANCE_ENTRY_AMOUNT,
+  type Substance,
   type SubstanceInstrument,
 } from "@/lib/substance-use";
 import {
@@ -31,6 +33,12 @@ import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
 import { getUserAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  addSubstanceHistoryEntryCore,
+  updateSubstanceHistoryEntryCore,
+  deleteSubstanceHistoryEntryCore,
+  type SubstanceHistoryMutationOutcome,
+} from "@/lib/substance-history-write";
 
 // #1174 gated the substance-use SURFACE (hidden nav + page redirect) to adults;
 // #1279 closes the gap under it — Server Actions are independently POST-callable, so
@@ -55,6 +63,10 @@ export type SubstanceInstrumentActionResult =
 // reconciles optimistically against the server (the #748 item 2 pattern).
 export type SubstanceLogResult =
   { ok: true; weekCount: number } | { ok: false; error: string };
+
+export type SubstanceHistoryDeleteResult =
+  | { kind: "deleted"; undoId: number }
+  | { kind: "not-found"; undoId: null; error: string };
 
 function revalidateSubstanceUse() {
   revalidatePath("/records/specialty/substance-use");
@@ -194,6 +206,111 @@ export async function undoSubstanceUnitAction(
     ok: true,
     weekCount: getSubstanceWeekState(profile.id, substance).count,
   };
+}
+
+function historyInput(
+  formData: FormData,
+  maxDate: string
+):
+  | {
+      ok: true;
+      substance: Substance;
+      date: string;
+      amount: number;
+      notes: string | null;
+    }
+  | { ok: false; outcome: SubstanceHistoryMutationOutcome } {
+  const substanceRaw = String(formData.get("substance") ?? "");
+  if (!isSubstance(substanceRaw))
+    return { ok: false, outcome: { kind: "unknown-substance" } };
+  const date = String(formData.get("date") ?? "").trim();
+  if (!isRealIsoDate(date) || date > maxDate)
+    return { ok: false, outcome: { kind: "invalid-date" } };
+  const amount = Number(formData.get("amount"));
+  if (
+    !Number.isInteger(amount) ||
+    amount <= 0 ||
+    amount > MAX_SUBSTANCE_ENTRY_AMOUNT
+  ) {
+    return { ok: false, outcome: { kind: "invalid-amount" } };
+  }
+  const notesRaw = String(formData.get("notes") ?? "").trim();
+  return {
+    ok: true,
+    substance: substanceRaw,
+    date,
+    amount,
+    notes: notesRaw.slice(0, 2000) || null,
+  };
+}
+
+// Historical add/correction (#2009). The action contract never names the backing
+// store; the auth-blind core dispatches from the validated substance catalog.
+export async function addSubstanceHistoryEntryAction(
+  formData: FormData
+): Promise<SubstanceHistoryMutationOutcome> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  const parsed = historyInput(formData, today(profile.id));
+  if (!parsed.ok) return parsed.outcome;
+  const outcome = addSubstanceHistoryEntryCore(
+    profile.id,
+    parsed.substance,
+    parsed
+  );
+  if (outcome.kind === "added") revalidateSubstanceUse();
+  return outcome;
+}
+
+export async function updateSubstanceHistoryEntryAction(
+  formData: FormData
+): Promise<SubstanceHistoryMutationOutcome> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  const parsed = historyInput(formData, today(profile.id));
+  if (!parsed.ok) return parsed.outcome;
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
+  const outcome = updateSubstanceHistoryEntryCore(
+    profile.id,
+    parsed.substance,
+    id,
+    parsed
+  );
+  if (outcome.kind === "updated") revalidateSubstanceUse();
+  return outcome;
+}
+
+export async function deleteSubstanceHistoryEntryAction(
+  formData: FormData
+): Promise<SubstanceHistoryDeleteResult> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) {
+    return {
+      kind: "not-found",
+      undoId: null,
+      error: "Couldn't find that entry.",
+    };
+  }
+  const substance = String(formData.get("substance") ?? "");
+  const id = Number(formData.get("id"));
+  if (!isSubstance(substance) || !Number.isInteger(id) || id <= 0) {
+    return {
+      kind: "not-found",
+      undoId: null,
+      error: "Couldn't find that entry.",
+    };
+  }
+  const outcome = deleteSubstanceHistoryEntryCore(profile.id, substance, id);
+  if (outcome.kind !== "deleted") {
+    return {
+      kind: "not-found",
+      undoId: null,
+      error: "Couldn't find that entry.",
+    };
+  }
+  revalidateSubstanceUse();
+  return { kind: "deleted", undoId: outcome.undoId };
 }
 
 // Set (or update) a weekly reduction target: a CAP of units per week (standard

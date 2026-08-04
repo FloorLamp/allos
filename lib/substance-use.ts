@@ -426,6 +426,10 @@ export const ALCOHOL_FOOD_GROUP = "alcohol";
 // MAX_PER_WEEK clamp scale).
 export const MAX_WEEKLY_CAP = 70;
 
+// Historical consumption rows use the same upper bound as the weekly cap. Kept
+// in this pure/client-safe catalog module so forms never import a DB write core.
+export const MAX_SUBSTANCE_ENTRY_AMOUNT = 70;
+
 // A reduction target's weekly state: this week's logged units vs the user-set
 // cap. `cap` 0 is a valid target (a substance-free week — "Dry January", a quit
 // target).
@@ -436,6 +440,7 @@ export interface SubstanceCapStatus {
   count: number; // units logged this week (standard drinks / uses)
   cap: number; // the user-set weekly cap
   over: boolean; // count > cap
+  atCap: boolean; // positive cap reached exactly (attention, not an over-cap finding)
   remaining: number; // units left under the cap (0 when at/over)
 }
 
@@ -449,6 +454,9 @@ export function substanceCapStatus(
     count: c,
     cap: k,
     over: c > k,
+    // A zero cap with zero logged is the quiet substance-free state, not an
+    // attention boundary. Once something is logged, the existing over path owns it.
+    atCap: k > 0 && c === k,
     remaining: Math.max(0, k - c),
   };
 }
@@ -477,7 +485,10 @@ export function capProgressLine(
   if (s.over) {
     return `${s.count} ${substanceUnitWord(substance, s.count)} logged this week — ${s.count - s.cap} over your ${s.cap}-${def.unitSingular} weekly cap.`;
   }
-  return `${s.count} of your ${s.cap}-${def.unitSingular} weekly cap used.`;
+  if (s.atCap) {
+    return `${s.count} of ${s.cap} this week — at your ${s.cap}-${def.unitSingular} weekly cap.`;
+  }
+  return `${s.count} of ${s.cap} this week.`;
 }
 
 // ---- Coaching-finding identity (#448/#449) ---------------------------------

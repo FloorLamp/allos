@@ -40,6 +40,8 @@ const KIND_LABELS: Record<string, string> = {
   "intake-item": "intake item",
   "wellness-practice": "wellness practice",
   "wellness-practice-history": "wellness practice history",
+  "substance-alcohol-history": "substance use history",
+  "substance-history": "substance use history",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
   // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
@@ -47,6 +49,78 @@ const KIND_LABELS: Record<string, string> = {
   // capture/restore (which assumes a profile_id root) doesn't apply.
   administration: "administration",
 };
+
+// Substance history is keyed by day. If a user deletes today's aggregate, logs
+// another unit, and then taps Undo, that new row occupies the captured row's
+// natural key. Restoring must fold the captured amount into the live aggregate
+// instead of failing its UNIQUE constraint. Newer live metadata wins; a captured
+// note only fills an otherwise blank live note. Alcohol's captured event rows are
+// restored separately by the generic entity loop below.
+function mergeRecreatedSubstanceHistoryRoot(
+  profileId: number,
+  kind: string,
+  row: Row
+): number | null {
+  if (kind === "substance-alcohol-history") {
+    if (
+      row.group_key !== "alcohol" ||
+      typeof row.date !== "string" ||
+      typeof row.servings !== "number"
+    )
+      return null;
+    const live = db
+      .prepare(
+        `SELECT id FROM food_log
+         WHERE profile_id = ? AND date = ? AND group_key = ?`
+      )
+      .get(profileId, row.date, row.group_key) as { id: number } | undefined;
+    if (!live) return null;
+    db.prepare(
+      `UPDATE food_log
+       SET servings = servings + ?,
+           notes = CASE WHEN notes IS NULL OR trim(notes) = '' THEN ? ELSE notes END
+       WHERE id = ? AND profile_id = ?`
+    ).run(
+      row.servings,
+      typeof row.notes === "string" ? row.notes : null,
+      live.id,
+      profileId
+    );
+    return live.id;
+  }
+
+  if (kind === "substance-history") {
+    if (
+      typeof row.substance !== "string" ||
+      typeof row.date !== "string" ||
+      typeof row.units !== "number"
+    )
+      return null;
+    const live = db
+      .prepare(
+        `SELECT id FROM substance_log
+         WHERE profile_id = ? AND date = ? AND substance = ?`
+      )
+      .get(profileId, row.date, row.substance) as { id: number } | undefined;
+    if (!live) return null;
+    db.prepare(
+      `UPDATE substance_log
+       SET units = units + ?,
+           notes = CASE WHEN notes IS NULL OR trim(notes) = '' THEN ? ELSE notes END,
+           edited = MAX(edited, ?)
+       WHERE id = ? AND profile_id = ?`
+    ).run(
+      row.units,
+      typeof row.notes === "string" ? row.notes : null,
+      row.edited === 1 ? 1 : 0,
+      live.id,
+      profileId
+    );
+    return live.id;
+  }
+
+  return null;
+}
 
 // Does the referenced row still exist? Used at restore to reconcile captured external
 // FK links (equipment_id, pair endpoints, medical_records' document_id/provider_id)
@@ -234,6 +308,17 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       const captured = payload.rows[entity.entity] ?? [];
       for (const row of captured) {
         const oldId = row.id;
+        if (isRoot && typeof oldId === "number") {
+          const liveId = mergeRecreatedSubstanceHistoryRoot(
+            profileId,
+            payload.kind,
+            row
+          );
+          if (liveId !== null) {
+            map.set(oldId, liveId);
+            continue;
+          }
+        }
         // Natural-key collision on the source-owned root (#509): between the delete
         // and this undo a resync may have re-created a row under the same
         // external_id / (date, source) — verbatim re-insert would throw on the UNIQUE

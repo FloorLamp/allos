@@ -177,10 +177,16 @@ describe("shouldSuggestClinicianDiscussion — calm note, never crisis", () => {
 });
 
 describe("substanceCapStatus + capProgressLine — the one shared computation", () => {
-  it("under the cap: the '5 of your 7-drink weekly cap used' line", () => {
+  it("under the cap: quiet ceiling progress", () => {
     const s = substanceCapStatus(5, 7);
-    expect(s).toEqual({ count: 5, cap: 7, over: false, remaining: 2 });
-    expect(capProgressLine(s)).toBe("5 of your 7-drink weekly cap used.");
+    expect(s).toEqual({
+      count: 5,
+      cap: 7,
+      over: false,
+      atCap: false,
+      remaining: 2,
+    });
+    expect(capProgressLine(s)).toBe("5 of 7 this week.");
   });
 
   it("over the cap: a calm factual line, never judgmental", () => {
@@ -204,7 +210,7 @@ describe("substanceCapStatus + capProgressLine — the one shared computation", 
   it("speaks each substance's own unit words (#1078) — same computation, per-substance formatting", () => {
     // Nicotine: per-use counts, "use"-worded cap, nicotine-free week at cap 0.
     expect(capProgressLine(substanceCapStatus(5, 7), "nicotine")).toBe(
-      "5 of your 7-use weekly cap used."
+      "5 of 7 this week."
     );
     expect(capProgressLine(substanceCapStatus(9, 7), "nicotine")).toBe(
       "9 uses logged this week — 2 over your 7-use weekly cap."
@@ -233,7 +239,12 @@ describe("substanceCapStatus + capProgressLine — the one shared computation", 
   it("at the cap exactly is NOT over", () => {
     const s = substanceCapStatus(7, 7);
     expect(s.over).toBe(false);
+    expect(s.atCap).toBe(true);
     expect(s.remaining).toBe(0);
+    expect(capProgressLine(s)).toBe(
+      "7 of 7 this week — at your 7-drink weekly cap."
+    );
+    expect(capProgressLine(s).toLowerCase()).not.toMatch(/met|on pace/);
   });
 
   it("no-gamification contract: the shared line never celebrates or streak-counts, for ANY substance", () => {
@@ -272,12 +283,14 @@ describe("substanceCapStatus + capProgressLine — the one shared computation", 
       count: 0,
       cap: 0,
       over: false,
+      atCap: false,
       remaining: 0,
     });
     expect(substanceCapStatus(2.4, 7.6)).toEqual({
       count: 2,
       cap: 8,
       over: false,
+      atCap: false,
       remaining: 6,
     });
   });
