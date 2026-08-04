@@ -151,11 +151,21 @@ export function readingIdentity(name: string | null | undefined): string {
  * The stream stores whose rows are readings of `identity`. Empty for an identity
  * that only ever lands in `medical_records` (every episodic marker, and the vitals
  * that store as observations).
+ *
+ * The argument is RESOLVED through `readingIdentity` rather than compared raw, so a
+ * canonical NAME and the identity it belongs to answer the same. `biomarkerFamily`
+ * is idempotent, so resolving an identity is free — and the asymmetry it removes was
+ * a silent half-answer waiting to happen: the observation half already normalizes
+ * (`getBiomarkerSeries` families its argument), so the moment one of these canonical
+ * names joins a #482 family, a caller passing the NAME would have been handed every
+ * observation and NOT ONE stream row, with nothing to notice. A series that quietly
+ * omits a store is precisely the failure this model exists to make impossible.
  */
 export function streamSourcesForIdentity(
   identity: string
 ): StreamReadingSource[] {
-  const key = identity.trim().toLowerCase();
+  const key = readingIdentity(identity).toLowerCase();
+  if (!key) return [];
   return STREAM_READING_SOURCES.filter(
     (s) => readingIdentity(s.canonical).toLowerCase() === key
   );
@@ -333,13 +343,28 @@ export function readingFromObservation(
 /**
  * Collapse readings that are the SAME physical measurement presented twice.
  *
- * The key is (date, raw source, value). Date and source are what #1997 names; the
- * VALUE is in the key because it must be: a same-day fever curve is several
+ * The key is (identity, date, SOURCE, value), where `source` is the NORMALIZED
+ * `ReadingSource` this model classifies with — not the row's raw `source` column
+ * (#2005).
+ *
+ * Keying on the raw column was a double-count waiting for its first caller. The
+ * stores spell the same provenance differently: a hand-entered `body_metrics` row
+ * carries `source = NULL` while a hand-entered `medical_records` row carries the
+ * literal `'manual'`, and `readingSourceFor` — like the rest of the codebase —
+ * already treats those as ONE provenance. Two spellings of one fact must not make
+ * two readings out of one, so the collapse asks the same question the shape does.
+ *
+ * The VALUE is in the key because it must be: a same-day fever curve is several
  * genuinely different Body Temperature readings from one source on one date
  * (#800/#843), and a (date, source) key alone would silently drop all but one of
- * them. What it does collapse is the real duplicate — one reading represented in
- * two stores, or a re-push landing beside its own earlier row — which is the
- * double-count a cross-store series would otherwise introduce.
+ * them.
+ *
+ * The consequence to state out loud: two DEVICES that report the same value on the
+ * same day now collapse, because both classify as `wearable`. That is the right
+ * answer for a SERIES — charting one day's 52 bpm twice skews every average drawn
+ * over it — and "which device said what" is a different question with its own
+ * reader (`getStreamReadings`, and the source-comparison surfaces), not something
+ * a folded series was ever going to answer.
  *
  * The representative is the reading that carries the MOST: an observation with
  * provenance wins over a bare stream row, so folding stores together never costs a
@@ -348,9 +373,7 @@ export function readingFromObservation(
 export function dedupeReadings(readings: readonly Reading[]): Reading[] {
   const byKey = new Map<string, Reading>();
   for (const r of readings) {
-    const key = `${r.identity.toLowerCase()}|${r.date}|${(
-      r.sourceKey ?? ""
-    ).toLowerCase()}|${r.value}`;
+    const key = `${r.identity.toLowerCase()}|${r.date}|${r.source}|${r.value}`;
     const kept = byKey.get(key);
     if (!kept) {
       byKey.set(key, r);

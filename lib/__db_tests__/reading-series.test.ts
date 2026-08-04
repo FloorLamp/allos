@@ -27,6 +27,7 @@ import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
 let other: SeededProfile;
+let spellings: SeededProfile;
 let d: (n: number) => string;
 const IDENTITY = readingIdentity("Resting Heart Rate");
 const RHR = STREAM_READING_SOURCES.find(
@@ -83,6 +84,17 @@ beforeAll(() => {
   // Another profile's readings, to prove the scoping.
   addStreamRhr(other.profileId, d(-1), 99, "oura");
   addObservedRhr(other.profileId, d(-2), 98, { documentId: other.documentId });
+
+  // #2005, on its OWN profile so the counts above stay the counts above. One
+  // manually-entered reading, recorded in both stores exactly as the two write paths
+  // actually spell it: `body_metrics` leaves `source` NULL, `medical_records` writes
+  // the literal 'manual'. Two spellings, one provenance, one reading.
+  spellings = seedProfile("READING-SERIES-SPELLINGS");
+  addStreamRhr(spellings.profileId, d(-3), 64, null);
+  addObservedRhr(spellings.profileId, d(-3), 64, { source: "manual" });
+  // …and two DEVICES agreeing on a day: also one reading of that day for a series.
+  addStreamRhr(spellings.profileId, d(-5), 52, "oura");
+  addStreamRhr(spellings.profileId, d(-5), 52, "withings");
 });
 
 describe("a series for one identity spans both stores", () => {
@@ -178,6 +190,54 @@ describe("a series for one identity spans both stores", () => {
     expect(stream.length + observations.length).toBe(
       getReadingSeries(p.profileId, IDENTITY).length + 1
     );
+  });
+});
+
+// #2005 — the collapse asks the model's OWN provenance question, not the raw column.
+describe("one provenance, however the store spells it", () => {
+  it("collapses a NULL-source stream row into a 'manual' observation", () => {
+    const onDay = getReadingSeries(spellings.profileId, IDENTITY).filter(
+      (r) => r.date === d(-3)
+    );
+    // Two physical rows, one in each store, both classified `manual` — one reading.
+    expect(
+      getStreamReadings(spellings.profileId, RHR).filter(
+        (r) => r.date === d(-3)
+      )
+    ).toHaveLength(1);
+    expect(
+      getObservationReadings(spellings.profileId, IDENTITY).filter(
+        (r) => r.date === d(-3)
+      )
+    ).toHaveLength(1);
+    expect(onDay).toHaveLength(1);
+    expect(onDay[0].source).toBe("manual");
+    // The survivor is still the one carrying the most.
+    expect(onDay[0].store).toBe("medical_records");
+  });
+
+  it("collapses two devices reporting the same value on one day", () => {
+    const onDay = getReadingSeries(spellings.profileId, IDENTITY).filter(
+      (r) => r.date === d(-5)
+    );
+    expect(onDay).toHaveLength(1);
+    expect(onDay[0].source).toBe("wearable");
+    // Both rows are still readable as themselves — the collapse is a SERIES
+    // decision, not a claim that one of the devices did not report.
+    expect(
+      getStreamReadings(spellings.profileId, RHR)
+        .filter((r) => r.date === d(-5))
+        .map((r) => r.sourceKey)
+        .sort()
+    ).toEqual(["oura", "withings"]);
+  });
+
+  it("answers the canonical NAME exactly as it answers the identity", () => {
+    const byName = getReadingSeries(spellings.profileId, "Resting Heart Rate");
+    expect(byName).toEqual(getReadingSeries(spellings.profileId, IDENTITY));
+    // Load-bearing: the STREAM half must be in there. Resolving the argument is
+    // what keeps a name from returning observations only.
+    expect(byName.some((r) => r.store === "body_metrics")).toBe(true);
   });
 });
 

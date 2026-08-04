@@ -88,11 +88,33 @@ surfaces read rather than a parallel realization of it. The two halves run insid
 
 `dedupeReadings()` collapses one physical measurement presented twice — the same
 reading recorded in two stores, or a re-push beside its own earlier row. Its key
-is **(date, raw source, value)**. The value is in the key deliberately: a same-day
-fever curve is several genuinely different readings from one source on one date
-(#800/#843), and a (date, source) key alone would silently drop all but one. The
-representative is the reading carrying the most, so a fold never costs a document
-link.
+is **(identity, date, normalized `ReadingSource`, value)**.
+
+- **The source in the key is the NORMALIZED one** (#2005), never the row's raw
+  `source` column. The stores spell one provenance two ways — a hand-entered
+  `body_metrics` row carries `source = NULL`, a hand-entered `medical_records` row
+  carries the literal `'manual'` — and `readingSourceFor()` already calls those
+  the same thing. Keying on the raw column made two readings out of one, a
+  double-count that would have shipped with the first phase-2 caller.
+- **The value is in the key deliberately.** A same-day fever curve is several
+  genuinely different readings from one source on one date (#800/#843), and a
+  (date, source) key alone would silently drop all but one.
+- **Two devices agreeing on a day therefore collapse**, because both classify as
+  `wearable`. That is the right answer for a series — charting one day's 52 bpm
+  twice skews every average drawn over it — and "which device said what" is a
+  different question with its own reader (`getStreamReadings`, the
+  source-comparison surfaces).
+
+The representative is the reading carrying the most, so a fold never costs a
+document link.
+
+`streamSourcesForIdentity()` **resolves its argument** through `readingIdentity`
+rather than comparing it raw, so a canonical name and its identity answer the
+same. `biomarkerFamily` is idempotent, so this is free — and the asymmetry it
+removes matters: the observation half already normalizes (`getBiomarkerSeries`
+families its argument), so the day one of these canonical names joins a #482
+family, a caller passing the NAME would have been handed every observation and not
+one stream row, with nothing to notice.
 
 ## One judgement per identity (#1996) — the model's first consumer
 

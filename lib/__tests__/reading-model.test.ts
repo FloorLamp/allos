@@ -75,6 +75,22 @@ describe("identity resolution across stores", () => {
       expect(s.unit).not.toBe("");
     }
   });
+
+  // The regression pin for the asymmetry that would otherwise appear the day one of
+  // these canonical names joins a #482 family: the observation half already resolves
+  // its argument through `biomarkerFamily`, so a caller passing the NAME would have
+  // got every observation and no stream row at all. Asserted for EVERY registered
+  // source, in both spellings, so the invariant survives the registry growing.
+  it("answers a canonical NAME and its identity identically", () => {
+    for (const s of STREAM_READING_SOURCES) {
+      const byIdentity = streamSourcesForIdentity(readingIdentity(s.canonical));
+      expect(streamSourcesForIdentity(s.canonical)).toEqual(byIdentity);
+      expect(byIdentity).toContainEqual(s);
+    }
+    // Surrounding whitespace and casing are spelling, not identity.
+    expect(streamSourcesForIdentity("  resting HEART rate ")).toEqual([RHR]);
+    expect(streamSourcesForIdentity("   ")).toEqual([]);
+  });
 });
 
 describe("the Reading mapping from each store's row shape", () => {
@@ -226,6 +242,58 @@ describe("series assembly", () => {
     expect(out).toHaveLength(1);
     expect(out[0].store).toBe("medical_records");
     expect(out[0].provenance).toEqual({ documentId: 9 });
+  });
+
+  // #2005. The stores spell "the user typed it" differently — `body_metrics` leaves
+  // `source` NULL, `medical_records` writes the literal 'manual' — and every other
+  // reader in the codebase already treats those as ONE provenance. Keying the
+  // collapse on the RAW column made two readings out of one, which is the
+  // double-count that would have shipped with the first phase-2 caller.
+  it("collapses a NULL-source stream row into a 'manual' observation", () => {
+    const stream: Reading = {
+      ...base,
+      value: 61,
+      date: "2026-07-01",
+      source: readingSourceFor({ sourceKey: null }),
+      store: "body_metrics",
+      rowId: 1,
+      sourceKey: null,
+    };
+    const observed: Reading = {
+      ...base,
+      value: 61,
+      date: "2026-07-01",
+      source: readingSourceFor({ sourceKey: "manual" }),
+      store: "medical_records",
+      rowId: 2,
+      sourceKey: "manual",
+    };
+    // Same provenance by the model's own classifier — so the same reading.
+    expect(stream.source).toBe(observed.source);
+    expect(dedupeReadings([stream, observed])).toHaveLength(1);
+    // …and in the other order, because a collapse is not order-dependent.
+    expect(dedupeReadings([observed, stream])).toHaveLength(1);
+  });
+
+  // The stated consequence of keying on the normalized source: two DEVICES agreeing
+  // on a day are one reading of that day for a SERIES. "Which device said what" is a
+  // different question, with its own reader.
+  it("collapses two devices reporting the same value on the same day", () => {
+    const twice: Reading[] = ["oura", "withings"].map((sourceKey, i) => ({
+      ...base,
+      value: 52,
+      date: "2026-07-01",
+      source: readingSourceFor({ sourceKey }),
+      store: "body_metrics" as const,
+      rowId: i + 1,
+      sourceKey,
+    }));
+    expect(twice.every((r) => r.source === "wearable")).toBe(true);
+    expect(dedupeReadings(twice)).toHaveLength(1);
+    // Different values are different readings, whoever reported them.
+    expect(dedupeReadings([twice[0], { ...twice[1], value: 55 }])).toHaveLength(
+      2
+    );
   });
 
   it("keeps a clinic reading beside a wearable one on the same day", () => {
