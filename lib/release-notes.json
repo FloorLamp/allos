@@ -4,6 +4,34 @@
       "date": "2026-08-03",
       "entries": [
         {
+          "pr": 1999,
+          "title": "Your resting heart rate is finally judged against something",
+          "body": "A resting heart rate from a watch or scale used to be charted with nothing to compare it to — the healthy ranges lived on a different page, reachable only if you had imported a clinic document. Now the range finds the reading wherever it came from, so a trend says whether it is where it should be. This matters most for children, whose normal range is far higher than an adult’s: a three-year-old at 120 is ordinary, and the app now knows that. Readings from a clinic visit also join the same chart as the ones your device records, marked as coming from a visit.",
+          "kind": "fix",
+          "issues": [1996]
+        },
+        {
+          "pr": 1998,
+          "title": "A record you earn again gets celebrated again",
+          "body": "Dismissing a personal-record note used to silence more than you meant. Because the reminder was filed under the exercise’s written name, a lift you log under two spellings counted as two separate things, and renaming or deleting old sessions could quietly move the label — so a genuinely new record sometimes arrived already hushed. Records are now tracked by the movement itself, dismissals you have already made still apply, and notes left behind by deleted history are cleared away. A few dismissed items in “Snoozed & dismissed” that used to read “no longer applies” now say what they actually were.",
+          "kind": "fix",
+          "issues": [1931]
+        },
+        {
+          "pr": 1990,
+          "title": "Blood pressure reads as a trend, not as a lab result",
+          "body": "Blood pressure, oxygen saturation, breathing rate and body temperature now open on the surface built for things measured continuously — charted over time — instead of the page meant for lab results that arrive a few times a year. Children’s blood-pressure percentiles and the link to the rest of a panel came with the move. Lab values and readings like vision and hearing stay where they were, because a reference range is the right way to read them.",
+          "kind": "fix",
+          "issues": [1932]
+        },
+        {
+          "pr": 1989,
+          "title": "Old chat buttons stop lingering",
+          "body": "A food reminder in Telegram sometimes left an earlier message’s buttons still live. Tapping one logged against the day it was sent rather than today, which is rarely what anyone means. Each reminder now reliably retires the one before it.",
+          "kind": "fix",
+          "issues": [1945]
+        },
+        {
           "pr": 1984,
           "title": "Rain no longer reports itself in degrees",
           "body": "When the weather parks an activity, the reason now reads in the unit it actually measures. A ride held back by rain used to announce “Too wet for cycling (45°C)” — millimetres of rainfall printed as a temperature. Wet days now describe themselves in plain language instead, like “heavy rain in the morning,” and temperature reasons follow the scale you have chosen rather than always showing Celsius. Days already cached before this update describe how wet it was but not when, until the next weather sync fills that in.",
