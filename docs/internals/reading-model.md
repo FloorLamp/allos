@@ -94,6 +94,47 @@ fever curve is several genuinely different readings from one source on one date
 representative is the reading carrying the most, so a fold never costs a document
 link.
 
+## One judgement per identity (#1996) — the model's first consumer
+
+Clinical knowledge (reference range, optimal band, direction, age bands) is filed
+in the canonical vocabulary by biomarker NAME. The metric detail surface is keyed
+by `BodyMetricSlug`. Nothing mapped one to the other, so a streamed reading was
+charted **unjudged** — a toddler's steady 120 bpm resting heart rate measured
+against nothing, while the band that says it is normal (1–3 → 80–150) already
+existed. That is an identity problem, not a storage one: a merged table would
+still be keyed by metric and still need this lookup.
+
+`lib/metric-judgment.ts` answers it:
+
+- `METRIC_KNOWLEDGE` — **every** `BodyMetricSlug` declares which knowledge system
+  answers for it: a `canonical` entry, a `growth-percentile` (a percentile-for-age
+  is not a band; the growth card owns it), or `none` **with a reason**. The
+  completeness test over that registry is what turns "audit whether another metric
+  has this shape" into a build failure — the sweep that would have caught body fat
+  before #1996 was written.
+- `metricJudgment(identity, subject, entries?)` — the bands for a subject, plus the
+  verdict for a reading. It resolves them through the same
+  `referenceRange`/`optimalBand`/`rangeBadge` the flag reconcile uses, so a page's
+  band can never disagree with the flag stored on a row of the same reading.
+- `lib/queries/metric-judgment.ts` — the runtime half: the seeded
+  `canonical_biomarkers` row as the vocabulary, and the subject's age **on the
+  reading's date** (the #150 precedent), never today's.
+
+Two consequences on `/trends/metric/[kind]`:
+
+- the band renders (`MetricJudgmentCard`), suppressed when the pediatric BP card is
+  showing — that IS the judgement for a child's blood pressure, and a second answer
+  beside it would be a wrong one — and when there is no reading to judge;
+- the series folds in same-identity observations
+  (`getMetricObservations` + `foldObservationPoints`), so a clinic-measured reading
+  joins the trend it belongs to. Folded readings are **marked** and **read-only**
+  there (see phase 2 below), and the fold is empty for a metric whose readings
+  already ARE observations, which would otherwise list each one twice.
+
+`lib/reading-cadence.ts` still keeps Resting Heart Rate off the metric-surface
+routing table, but for a **different reason than before**: the destination is no
+longer empty, it is not yet editable. See the comment there.
+
 ## Phase 2 / phase 3 — deliberately not started
 
 - **Phase 2, write consolidation.** New writes going through one core that

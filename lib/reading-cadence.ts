@@ -88,10 +88,23 @@ export const CATEGORY_CADENCE = {
 // names resolves with it.
 //
 // Resting Heart Rate is deliberately ABSENT despite being a vital-signs-panel entry
-// that streams: `/trends/metric/resting-hr` reads `body_metrics.resting_hr`, not the
-// `medical_records` row an imported "Resting Heart Rate" observation lands in, so
-// sending it there would show an empty page. It keeps the reading detail page, which
-// does chart it, until the two stores are reconciled.
+// that streams. The REASON CHANGED with #1996/#1997 and is worth stating precisely,
+// because the old one no longer holds:
+//
+//   • It used to be "the destination would be empty": `/trends/metric/resting-hr`
+//     read `body_metrics.resting_hr` and never the `medical_records` row an imported
+//     "Resting Heart Rate" observation lands in. That is fixed — the metric surface
+//     now folds in same-identity observations (lib/queries/readings.ts), so the page
+//     charts and lists a clinic-measured reading beside the wearable ones, and the
+//     curated age bands finally judge the trend (lib/metric-judgment.ts).
+//   • What still holds is EDITABILITY. A folded observation is read-only on that
+//     surface: the reading write path resolves its store from the metric SLUG, so an
+//     edit or delete posted there would be refused. Routing an observation to a page
+//     that can chart it but not correct it would trade one gap for another, and the
+//     reading detail page can do both today. Routing follows #1997 phase 2 (write
+//     consolidation), which is what makes the fold editable — with it, this entry and
+//     the two structural pins below generalize from "one store per destination" to
+//     "one identity per destination".
 export const CONTINUOUS_READING_METRIC: Record<string, BodyMetricSlug> = {
   "Blood Pressure Systolic": "systolic",
   "Blood Pressure Diastolic": "diastolic",

@@ -377,3 +377,44 @@ export function readingPoints(
 ): { date: string; value: number }[] {
   return sortReadings(readings).map((r) => ({ date: r.date, value: r.value }));
 }
+
+// A charted point that knows whether it came from the STREAM or from a folded
+// same-identity OBSERVATION. `observed` is what lets a surface say "a clinic
+// reading is not a wearable reading" instead of quietly averaging the two ideas.
+export interface FoldedPoint {
+  date: string;
+  value: number;
+  observed?: boolean;
+}
+
+/**
+ * Fold same-identity observations into a stream series (#1996 part 2).
+ *
+ * An observation whose (date, value) already appears in the stream is the SAME
+ * reading presented twice — the stream series is a daily fold of rows that may
+ * include a manual entry an import also produced — so it is dropped rather than
+ * charted beside itself. Everything else is kept and MARKED: a clinic-measured
+ * reading is a real reading of this quantity, and leaving it out is exactly the
+ * incompleteness #1996 reports.
+ *
+ * The stream stays authoritative for its own days: nothing here rewrites a
+ * streamed value.
+ */
+export function foldObservationPoints(
+  stream: readonly { date: string; value: number }[],
+  observations: readonly Reading[]
+): FoldedPoint[] {
+  const streamed = new Set(stream.map((p) => `${p.date}|${p.value}`));
+  const folded: FoldedPoint[] = [
+    ...stream.map((p) => ({ date: p.date, value: p.value })),
+    ...sortReadings(observations)
+      .filter((r) => !streamed.has(`${r.date}|${r.value}`))
+      .map((r) => ({ date: r.date, value: r.value, observed: true })),
+  ];
+  // Stable by day, stream point first on a day that carries both.
+  return folded.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      Number(a.observed ?? false) - Number(b.observed ?? false)
+  );
+}

@@ -13,6 +13,7 @@ import { biomarkerFamily } from "@/lib/canonical-name";
 import {
   STREAM_READING_SOURCES,
   dedupeReadings,
+  foldObservationPoints,
   identityForStreamKey,
   readingFromBodyMetric,
   readingFromMetricSample,
@@ -265,6 +266,48 @@ describe("series assembly", () => {
       sourceKey: "manual",
     }));
     expect(dedupeReadings(curve)).toHaveLength(3);
+  });
+
+  it("folds observations into a stream series, marking them", () => {
+    const stream = [
+      { date: "2026-07-01", value: 58 },
+      { date: "2026-07-02", value: 59 },
+    ];
+    const observations: Reading[] = [
+      {
+        ...base,
+        value: 71,
+        date: "2026-07-02",
+        source: "lab",
+        store: "medical_records",
+        rowId: 5,
+        sourceKey: "document:4",
+        provenance: { documentId: 4 },
+      },
+    ];
+    expect(foldObservationPoints(stream, observations)).toEqual([
+      { date: "2026-07-01", value: 58 },
+      { date: "2026-07-02", value: 59 },
+      { date: "2026-07-02", value: 71, observed: true },
+    ]);
+  });
+
+  it("does not chart an observation that IS the stream point", () => {
+    // The same manual reading recorded in both stores — the stream's daily fold
+    // already carries it, so charting it again would double the day.
+    const stream = [{ date: "2026-07-01", value: 62 }];
+    const observations: Reading[] = [
+      {
+        ...base,
+        value: 62,
+        date: "2026-07-01",
+        source: "manual",
+        store: "medical_records",
+        rowId: 5,
+        sourceKey: "manual",
+      },
+    ];
+    expect(foldObservationPoints(stream, observations)).toEqual(stream);
   });
 
   it("orders oldest first, by day then instant then row", () => {

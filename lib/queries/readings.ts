@@ -18,6 +18,8 @@
 
 import { db, readTx } from "../db";
 import { getBiomarkerSeries } from "./medical";
+import { metricObservationFoldIdentity } from "../metric-judgment";
+import type { BodyMetricSlug } from "../trends-body-metrics";
 import {
   dedupeReadings,
   readingFromBodyMetric,
@@ -110,6 +112,21 @@ export function getObservationReadings(
   return getBiomarkerSeries(profileId, identity)
     .map((row) => readingFromObservation(row))
     .filter((r): r is Reading => r != null);
+}
+
+/**
+ * The same-identity OBSERVATIONS a metric detail surface must fold in (#1996), or
+ * `[]` when it must not — see `metricObservationFoldIdentity` for which is which.
+ *
+ * The metric keeps its own store's rows as its series; this is the completeness
+ * half: a clinic-measured reading of the same quantity, which the stream never saw.
+ */
+export function getMetricObservations(
+  profileId: number,
+  slug: BodyMetricSlug
+): Reading[] {
+  const identity = metricObservationFoldIdentity(slug);
+  return identity ? getObservationReadings(profileId, identity) : [];
 }
 
 /**

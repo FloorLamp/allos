@@ -60,6 +60,8 @@ export * from "./queries/trends-context";
 // The unified reading series (#1997 phase 1) — one identity-keyed shape over
 // body_metrics / metric_samples / medical_records.
 export * from "./queries/readings";
+// The one judgement lookup, resolved for a profile (#1996).
+export * from "./queries/metric-judgment";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";
