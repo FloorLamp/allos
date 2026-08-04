@@ -6,7 +6,7 @@ import {
   ACTIVE_PROTOCOLS_CAP,
   capActionableDashboardList,
 } from "@/lib/dashboard-widgets";
-import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
+import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
 import ProtocolLogButton from "@/app/(app)/protocols/ProtocolLogButton";
 
 // Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
@@ -14,6 +14,13 @@ import ProtocolLogButton from "@/app/(app)/protocols/ProtocolLogButton";
 // primary outcome's during-window verdict — every value a FORMATTER over the same
 // detail-page computations (getActiveProtocolSummaries), never a second engine. The
 // widget self-hides when no protocol is ongoing (the page gates `available`).
+//
+// The weekly-adherence line RENDERS <PracticeWeeklyProgress> (#2008). It used to
+// hand-roll a met/not-met chip off `met` alone, which is the two-state answer #748
+// replaced: with 2 of 3–5 on a Tuesday `met` is false, so the dashboard shouted amber
+// "Behind" while the wellness card and the protocol detail page — both rendering the
+// three-state `pace` through this same component — read "On pace". One question, one
+// computation, and one component owning the words.
 const TONE: Record<string, string> = {
   better: "text-emerald-600 dark:text-emerald-400",
   worse: "text-rose-600 dark:text-rose-400",
@@ -64,31 +71,17 @@ export default function ActiveProtocolWidget({
             </div>
 
             {p.adherence && (
-              <div
-                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
-                data-testid="active-protocol-adherence"
-              >
-                <span className="font-semibold tabular-nums">
-                  {p.adherence.count} /{" "}
-                  {practiceCadenceText(
-                    p.adherence.perWeek,
-                    p.adherence.perWeekMax
-                  )}
-                </span>{" "}
-                {p.adherence.label}
-                {p.adherence.atCeiling ? (
-                  <span className="badge ml-1.5 bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                    {PRACTICE_PLENTY_TEXT}
-                  </span>
-                ) : p.adherence.met ? (
-                  <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                    On track
-                  </span>
-                ) : (
-                  <span className="badge ml-1.5 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                    Behind
-                  </span>
-                )}
+              <div className="mt-1">
+                <PracticeWeeklyProgress
+                  count={p.adherence.count}
+                  perWeek={p.adherence.perWeek}
+                  perWeekMax={p.adherence.perWeekMax}
+                  label={p.adherence.label}
+                  noun={p.adherence.noun}
+                  pace={p.adherence.pace}
+                  atCeiling={p.adherence.atCeiling}
+                  testId="active-protocol-adherence"
+                />
               </div>
             )}
 

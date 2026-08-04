@@ -40,7 +40,11 @@ import {
 import type { ProtocolWindowInput } from "../trend-annotations";
 import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
-import { protocolPracticeLabel } from "../protocol-practice";
+import type { FrequencyPace } from "../goals";
+import {
+  protocolPracticeLabel,
+  protocolPracticeNoun,
+} from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeDayCount,
@@ -900,10 +904,17 @@ export interface ActiveProtocolSummary {
     perWeek: number;
     // The optional weekly ceiling (#1259) — a range; null for a bare floor.
     perWeekMax: number | null;
-    met: boolean;
+    // The THREE-state weekly verdict (#748): behind / on-pace / met, prorated by how
+    // much of the week has elapsed. `met` alone is a two-state answer, and rendering
+    // it as "Behind" is the pre-#748 bug — carry the pace through so the dashboard
+    // widget renders the SAME verdict as the wellness card and the detail page
+    // (#2008).
+    pace: FrequencyPace;
     // At/above the ceiling — the calm "that's plenty" state (#1259).
     atCeiling: boolean;
     label: string;
+    // The counting noun for this scope ("day"/"serving"/"session").
+    noun: string;
   } | null;
   // All three practice scopes are actionable (#1584). The dashboard passes this
   // same model to ProtocolLogButton as the detail page.
@@ -953,12 +964,13 @@ export function getActiveProtocolSummaries(
                 count: adherenceProgress.count,
                 perWeek: practice.perWeek,
                 perWeekMax: adherenceProgress.per_week_max,
-                met: adherenceProgress.met,
+                pace: adherenceProgress.pace,
                 atCeiling: adherenceProgress.atCeiling,
                 label: protocolPracticeLabel(
                   practice.scopeKind,
                   practice.value
                 ),
+                noun: protocolPracticeNoun(practice.scopeKind),
               }
             : null,
         practice,

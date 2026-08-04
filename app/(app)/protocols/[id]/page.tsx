@@ -24,7 +24,10 @@ import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { getUnitPrefs } from "@/lib/settings";
 import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
-import { protocolPracticeLabel } from "@/lib/protocol-practice";
+import {
+  protocolPracticeLabel,
+  protocolPracticeNoun,
+} from "@/lib/protocol-practice";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
 import { previousPracticeDuration } from "@/lib/practice";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
@@ -194,13 +197,20 @@ export default async function ProtocolDetailPage(props: {
                     : "Practice"
                 }
                 progress={
-                  practice?.scopeKind === "practice" && ongoing
+                  // NO ADHERENCE, NO VERDICT (#2008). getProtocolAdherence returns
+                  // null when the protocol has no frequency target or the target has
+                  // no progress row; `?? "on-pace"` turned that absence into a
+                  // positive claim ("0 sessions · on pace") computed from nothing.
+                  // `??` supplies a neutral default, never a verdict — so the block
+                  // renders only when there IS progress, exactly as the dashboard
+                  // widget already gated it.
+                  practice?.scopeKind === "practice" && ongoing && adherence
                     ? {
-                        count: adherence?.count ?? 0,
+                        count: adherence.count,
                         perWeek: practice.perWeek,
                         perWeekMax: practice.perWeekMax,
-                        pace: adherence?.pace ?? "on-pace",
-                        atCeiling: adherence?.atCeiling ?? false,
+                        pace: adherence.pace,
+                        atCeiling: adherence.atCeiling,
                         testId: "protocol-adherence",
                       }
                     : undefined
@@ -260,28 +270,27 @@ export default async function ProtocolDetailPage(props: {
                 </div>
               )}
 
-              {practice && ongoing && practice.scopeKind !== "practice" && (
-                <div>
-                  <div className="section-label">Weekly progress</div>
-                  <PracticeWeeklyProgress
-                    count={adherence?.count ?? 0}
-                    perWeek={practice.perWeek}
-                    perWeekMax={practice.perWeekMax}
-                    label={protocolPracticeLabel(
-                      practice.scopeKind,
-                      practice.value
-                    )}
-                    noun={
-                      practice.scopeKind === "food_group"
-                        ? "serving"
-                        : "session"
-                    }
-                    pace={adherence?.pace ?? "on-pace"}
-                    atCeiling={adherence?.atCeiling ?? false}
-                    testId="protocol-adherence"
-                  />
-                </div>
-              )}
+              {practice &&
+                ongoing &&
+                adherence &&
+                practice.scopeKind !== "practice" && (
+                  <div>
+                    <div className="section-label">Weekly progress</div>
+                    <PracticeWeeklyProgress
+                      count={adherence.count}
+                      perWeek={practice.perWeek}
+                      perWeekMax={practice.perWeekMax}
+                      label={protocolPracticeLabel(
+                        practice.scopeKind,
+                        practice.value
+                      )}
+                      noun={protocolPracticeNoun(practice.scopeKind)}
+                      pace={adherence.pace}
+                      atCeiling={adherence.atCeiling}
+                      testId="protocol-adherence"
+                    />
+                  </div>
+                )}
 
               {practice && ongoing && (
                 <ProtocolLogButton

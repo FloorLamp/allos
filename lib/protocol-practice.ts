@@ -31,6 +31,19 @@ export function protocolPracticeLabel(
   return `${PRACTICE_TYPE_LABELS[value] ?? value} sessions`;
 }
 
+// The COUNTING NOUN for a practice's weekly progress — "3 days this week" for a
+// wellness practice (it is a per-DAY habit), "3 servings" for a food group, "3
+// sessions" for an activity type. The protocol detail card and the Active-protocols
+// dashboard widget both feed it to PracticeWeeklyProgress, so the same protocol
+// cannot be counted in two different units on two surfaces (#221, #2008).
+export function protocolPracticeNoun(
+  scopeKind: "type" | "food_group" | "practice"
+): string {
+  if (scopeKind === "practice") return "day";
+  if (scopeKind === "food_group") return "serving";
+  return "session";
+}
+
 // The activity types a practice can target — the same coarse type set
 // frequency_targets already supports for scope_kind='type' (strength/cardio/sport).
 // A recovery session (sauna, plunge) is logged as a custom-named cardio/sport
