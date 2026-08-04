@@ -35,7 +35,13 @@ import {
   bandForDays,
 } from "./upcoming";
 import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
-import { equipmentLoadLane, loadContextLabel } from "./lifts";
+import { loadContextLabel } from "./lifts";
+import {
+  legacyPrCardioDismissalKey,
+  legacyPrStrengthDismissalKey,
+  prCardioDismissalKey,
+  prStrengthDismissalKey,
+} from "./dismissal-keys";
 import type { AppRoute } from "./hrefs";
 import type { Reason } from "./reasons";
 import type { TrendItem } from "./trends-digest";
@@ -216,13 +222,12 @@ export function trendItemToFinding(item: TrendItem): Finding {
 // detail is a self-contained clause ("Back Squat at 120 kg × 5") so a narrator can
 // splice it straight into a sentence. The load is rendered in the reader's weight
 // unit here (the envelope stays display-formatted, like TrendItem.text). dedupeKey
-// is domain-prefixed by exercise + record kind, and dueDate carries the PR's date.
+// is domain-prefixed by movement identity + lane + record kind, and dueDate carries
+// the PR's date.
 export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
   // The record NAMES the implement it was set on (#1610) — a hotel machine's PR is
   // not the home machine's — and its dedupe key carries the same lane, so two
-  // simultaneous load contexts can't overwrite each other's celebration. The lane
-  // suffix is the shared `equipmentLoadLane`, so a profile whose sets carry no
-  // implement link keeps one key per (movement, kind) exactly as before.
+  // simultaneous load contexts can't overwrite each other's celebration.
   const subject = loadContextLabel(pr.exercise, pr.equipment);
   const clause =
     pr.kind === "weight"
@@ -230,11 +235,27 @@ export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
       : pr.bodyweight
         ? `${subject} at bodyweight × ${pr.reps}`
         : `${subject} at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
+  // IDENTITY, not display name (#1931). `recentPRs` reads stats grouped on
+  // `movementLoadKey`, and the group's `exercise` is merely its first-seen logged
+  // spelling — so keying the raw name split ONE record across two keys ("Curl" vs
+  // "Barbell Curl") and re-spelled a key when the oldest session was deleted. The
+  // key now follows exactly the identity the stats group on, as #1399/#1610 already
+  // did for the plateau/stale findings. `supersedes` carries the pre-#1931 shape so
+  // a dismissal stored under the raw name keeps suppressing (#436 dual-read).
+  const dedupeKey = prStrengthDismissalKey(
+    pr.exercise,
+    pr.equipmentId,
+    pr.kind
+  );
+  const legacy = legacyPrStrengthDismissalKey(
+    pr.exercise,
+    pr.equipmentId,
+    pr.kind
+  );
   return {
     domain: "pr",
-    dedupeKey: `pr:strength:${pr.exercise}@${equipmentLoadLane(
-      pr.equipmentId
-    )}:${pr.kind}`,
+    dedupeKey,
+    ...(legacy === dedupeKey ? {} : { supersedes: legacy }),
     title: subject,
     detail: clause,
     tone: "positive",
@@ -255,9 +276,14 @@ export function cardioPrToFinding(
       : pr.kind === "speed"
         ? `fastest ${pr.activity} at ${fmtKmh(pr.speedKmh, distanceUnit)}`
         : `longest ${pr.activity} at ${formatMinutes(pr.durationMin)}`;
+  // The case/space-folded activity identity `getCardioByActivity` groups on (#1931),
+  // with the raw-name shape carried as the legacy dual-read key.
+  const dedupeKey = prCardioDismissalKey(pr.activity, pr.kind);
+  const legacy = legacyPrCardioDismissalKey(pr.activity, pr.kind);
   return {
     domain: "pr",
-    dedupeKey: `pr:cardio:${pr.activity}:${pr.kind}`,
+    dedupeKey,
+    ...(legacy === dedupeKey ? {} : { supersedes: legacy }),
     title: pr.activity,
     detail: clause,
     tone: "positive",

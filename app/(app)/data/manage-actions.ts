@@ -10,6 +10,7 @@ import {
 } from "@/lib/export";
 import {
   cleanupOrphanBiomarkerKeyedState,
+  cleanupOrphanPrDismissals,
   sweepImmunizationDismissals,
 } from "@/lib/queries";
 import { undoKindForDataset } from "@/lib/dataset-undo";
@@ -89,6 +90,13 @@ function afterDelete(
     // removedVaccines is captured BEFORE the delete (the rows are gone by now); the
     // sweep reads the post-delete remaining doses to decide which codes lost backing.
     sweepImmunizationDismissals(profileId, removedVaccines);
+  }
+  if (policy.cleanupPersonalRecords) {
+    // Bulk-deleting activities (or equipment) un-backs a personal-record celebration
+    // key exactly as the per-row delete does — sweep any orphaned `pr:` dismissal so
+    // a later re-log under the same movement/activity name isn't pre-silenced
+    // (#1931, the #203/#327 name-recycling class).
+    cleanupOrphanPrDismissals(profileId);
   }
   // Always refresh the Data page (the management table lives there).
   revalidatePath("/data");
