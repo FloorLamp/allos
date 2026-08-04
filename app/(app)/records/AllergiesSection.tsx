@@ -16,7 +16,7 @@ import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
-import { biomarkerViewHref } from "@/lib/hrefs";
+import { readingDetailHref } from "@/lib/hrefs";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
@@ -115,7 +115,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                 {labSensitizations.map((a) => (
                   <li key={a.key}>
                     <Link
-                      href={biomarkerViewHref(
+                      href={readingDetailHref(
                         a.evidence?.canonicalName,
                         a.evidence?.marker
                       )}

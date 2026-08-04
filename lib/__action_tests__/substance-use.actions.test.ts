@@ -10,16 +10,26 @@
 // frequency_targets row (cap semantics, one row per substance).
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   recordSubstanceInstrumentAction,
   logSubstanceUnitAction,
   undoSubstanceUnitAction,
   setSubstanceTargetAction,
   clearSubstanceTargetAction,
+  addSubstanceHistoryEntryAction,
+  updateSubstanceHistoryEntryAction,
+  deleteSubstanceHistoryEntryAction,
 } from "@/app/(app)/medical/substance-use/actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
+import { shiftDateStr } from "@/lib/date";
+import {
+  getAllSubstanceHistory,
+  getSubstanceHistory,
+  getSubstanceWeekState,
+} from "@/lib/queries";
 
 function scoreRow(profileId: number, canon: string) {
   return db
@@ -327,6 +337,185 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
   });
 });
 
+describe("substance consumption history actions (#2009)", () => {
+  it("adds a past alcohol day, edits date/amount/notes, deletes with undo, and weekly state follows", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-alcohol", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+    const past = shiftDateStr(td, -30);
+
+    const added = await addSubstanceHistoryEntryAction(
+      fd({
+        substance: "alcohol",
+        date: past,
+        amount: "2",
+        notes: "Dinner with friends",
+      })
+    );
+    expect(added.kind).toBe("added");
+    if (added.kind !== "added") throw new Error("entry was not added");
+    expect(getSubstanceHistory(profile.id, "alcohol")).toEqual([
+      {
+        id: added.id,
+        substance: "alcohol",
+        date: past,
+        amount: 2,
+        notes: "Dinner with friends",
+      },
+    ]);
+
+    const updated = await updateSubstanceHistoryEntryAction(
+      fd({
+        id: String(added.id),
+        substance: "alcohol",
+        date: td,
+        amount: "3",
+        notes: "Corrected amount",
+      })
+    );
+    expect(updated).toEqual({ kind: "updated", id: added.id });
+    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
+    const eventCount = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM food_log_events
+         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+      )
+      .get(profile.id, td) as { n: number };
+    expect(eventCount.n).toBe(3);
+
+    const deleted = await deleteSubstanceHistoryEntryAction(
+      fd({ id: String(added.id), substance: "alcohol" })
+    );
+    expect(deleted.kind).toBe("deleted");
+    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(0);
+    if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
+    expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
+    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
+    expect(getSubstanceHistory(profile.id, "alcohol")[0]).toMatchObject({
+      date: td,
+      amount: 3,
+      notes: "Corrected amount",
+    });
+  });
+
+  it("presents alcohol and non-food rows through one ordered shape with no store field", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-unified", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+    const yesterday = shiftDateStr(td, -1);
+
+    await addSubstanceHistoryEntryAction(
+      fd({ substance: "alcohol", date: yesterday, amount: "2" })
+    );
+    await addSubstanceHistoryEntryAction(
+      fd({
+        substance: "nicotine",
+        date: td,
+        amount: "4",
+        notes: "Pouches",
+      })
+    );
+
+    const history = getAllSubstanceHistory(profile.id);
+    expect(history.map((entry) => entry.substance)).toEqual([
+      "nicotine",
+      "alcohol",
+    ]);
+    expect(history[0]).toMatchObject({
+      date: td,
+      amount: 4,
+      notes: "Pouches",
+    });
+    for (const entry of history) {
+      expect(entry).not.toHaveProperty("store");
+      expect(entry).not.toHaveProperty("ledger");
+    }
+  });
+
+  it("returns typed conflict/not-found outcomes instead of overwriting another day", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-outcomes", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+
+    const first = await addSubstanceHistoryEntryAction(
+      fd({ substance: "cannabis", date: td, amount: "1" })
+    );
+    expect(first.kind).toBe("added");
+    expect(
+      await addSubstanceHistoryEntryAction(
+        fd({ substance: "cannabis", date: td, amount: "2" })
+      )
+    ).toEqual({ kind: "date-conflict" });
+    expect(
+      await updateSubstanceHistoryEntryAction(
+        fd({ id: "999999", substance: "cannabis", date: td, amount: "2" })
+      )
+    ).toEqual({ kind: "not-found" });
+  });
+
+  it("rejects future-dated history instead of counting it in the current week", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-future", login.id);
+    actAs(login, profile);
+    const future = shiftDateStr(today(profile.id), 1);
+
+    expect(
+      await addSubstanceHistoryEntryAction(
+        fd({ substance: "nicotine", date: future, amount: "2" })
+      )
+    ).toEqual({ kind: "invalid-date" });
+    expect(getSubstanceHistory(profile.id, "nicotine")).toEqual([]);
+    expect(getSubstanceWeekState(profile.id, "nicotine").count).toBe(0);
+  });
+
+  it("undo merges a deleted aggregate with a same-day row recreated meanwhile", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-undo-collision", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+
+    for (const substance of ["alcohol", "nicotine"] as const) {
+      const added = await addSubstanceHistoryEntryAction(
+        fd({
+          substance,
+          date: td,
+          amount: "2",
+          notes: `${substance} restored note`,
+        })
+      );
+      if (added.kind !== "added") throw new Error("entry was not added");
+      const deleted = await deleteSubstanceHistoryEntryAction(
+        fd({ id: String(added.id), substance })
+      );
+      if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
+
+      expect(await logSubstanceUnitAction(fd({ substance }))).toMatchObject({
+        ok: true,
+      });
+      expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
+      expect(getSubstanceHistory(profile.id, substance)).toEqual([
+        expect.objectContaining({
+          substance,
+          date: td,
+          amount: 3,
+          notes: `${substance} restored note`,
+        }),
+      ]);
+    }
+
+    const alcoholEvents = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM food_log_events
+         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+      )
+      .get(profile.id, td) as { n: number };
+    expect(alcoholEvents.n).toBe(3);
+  });
+});
+
 // #1279 — the life-stage (minor) gate lives on the SURFACE (hidden nav + page
 // redirect, #1174), but Server Actions are independently POST-callable, so each
 // write path must re-check age at the auth boundary. These drive every action
@@ -391,6 +580,34 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       .prepare(
         "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
       )
+      .get(profile.id) as { n: number };
+    expect(rows.n).toBe(0);
+  });
+
+  it("historical add/edit/delete actions refuse", async () => {
+    const profile = minorActor("su-minor-history");
+    expect(
+      await addSubstanceHistoryEntryAction(
+        fd({ substance: "alcohol", date: "2026-07-01", amount: "2" })
+      )
+    ).toEqual({ kind: "not-found" });
+    expect(
+      await updateSubstanceHistoryEntryAction(
+        fd({
+          id: "1",
+          substance: "alcohol",
+          date: "2026-07-01",
+          amount: "2",
+        })
+      )
+    ).toEqual({ kind: "not-found" });
+    expect(
+      await deleteSubstanceHistoryEntryAction(
+        fd({ id: "1", substance: "alcohol" })
+      )
+    ).toMatchObject({ kind: "not-found", undoId: null });
+    const rows = db
+      .prepare("SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?")
       .get(profile.id) as { n: number };
     expect(rows.n).toBe(0);
   });

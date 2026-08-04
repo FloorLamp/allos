@@ -152,7 +152,7 @@ export interface DoseAdherenceInput {
 //
 // The correct implementation is to record WHEN each schedule applied and judge each day
 // against the version in force on it — lib/intake-cadence `doseScheduleAsOf`, resolved
-// inside `doseOnDay`, stored by migration 150. A pre-edit day is now judged by the
+// inside `doseOnDay`, stored by migration 151. A pre-edit day is now judged by the
 // pre-edit rule instead of being dropped, in EITHER direction: once-daily → three-times-
 // daily invents no retroactive misses, and daily → every-other-day quietly improves
 // nothing.

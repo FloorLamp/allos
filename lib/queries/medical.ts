@@ -727,6 +727,66 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
     .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
 });
 
+// getBiomarkerSeries for SEVERAL analytes in ONE pass (#1961), keyed by the exact
+// requested name. Same predicate, same de-dup CTE, same order — the single-analyte
+// `= ?` widened to `IN (…)` over the requested families, so a caller with K analytes
+// issues one query instead of K.
+//
+// It is NOT getAllBiomarkerSeries + group: that read is narrower (it drops rows with
+// no canonical_name, which the family key still resolves through `name`), so grouping
+// it would silently lose a freeform-named reading this returns.
+//
+// Grouping uses the family key SQL itself computed (selected as an extra column and
+// stripped), not a JS re-derivation of the COALESCE/TRIM name key — the row lands in
+// the bucket the WHERE matched it into, by construction. Two requested names in one
+// family share one array, exactly as two separate getBiomarkerSeries calls would
+// return equal series.
+//
+// One family short-circuits to the cache()d single read: it is the same one query,
+// and going through the cache keeps it shared with every OTHER caller in the request.
+export function getBiomarkerSeriesFor(
+  profileId: number,
+  canonicals: readonly string[]
+): Map<string, MedicalRecord[]> {
+  const out = new Map<string, MedicalRecord[]>();
+  const names = [...new Set(canonicals)];
+  if (names.length === 0) return out;
+
+  const familyOf = new Map(names.map((n) => [n, biomarkerFamily(n)]));
+  const families = [...new Set(familyOf.values())];
+  if (families.length === 1) {
+    const rows = getBiomarkerSeries(profileId, names[0]);
+    for (const n of names) out.set(n, rows);
+    return out;
+  }
+
+  const rows = db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE}
+       SELECT *, ${BIOMARKER_FAMILY_KEY} AS series_family FROM medical_records
+       WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE IN (${families
+         .map(() => "?")
+         .join(",")}) AND ${IN_DEDUPED}
+       ORDER BY date ASC, id ASC`
+    )
+    .all(profileId, profileId, ...families) as (MedicalRecord & {
+    series_family: string | null;
+  })[];
+
+  const byFamily = new Map<string, MedicalRecord[]>();
+  for (const f of families) byFamily.set(f.toLowerCase(), []);
+  for (const row of rows) {
+    const { series_family, ...record } = row;
+    // NOCASE matched it to a requested family, so the two differ at most in ASCII
+    // letter case and lowercasing both lands them on the same key.
+    byFamily.get((series_family ?? "").toLowerCase())?.push(record);
+  }
+  for (const n of names) {
+    out.set(n, byFamily.get(familyOf.get(n)!.toLowerCase()) ?? []);
+  }
+  return out;
+}
+
 // The latest two numeric readings of a biomarker family, oldest→newest — the exact
 // tail getBiomarkerSeries's caller reads to compute a trend delta (#1367). The
 // dashboard vitals card only needs the last two points latestTrend consumes, not the

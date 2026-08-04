@@ -24,7 +24,12 @@ import {
 import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
-import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
+import {
+  setWebhook,
+  deleteWebhook,
+  setMyCommands,
+} from "@/lib/notifications/telegram";
+import { registrableCommands } from "@/lib/notifications/telegram-commands";
 import {
   setSmtpConfig,
   isEmailConfigured,
@@ -321,8 +326,25 @@ export async function registerTelegramWebhook(): Promise<{
     };
   try {
     await setWebhook(`${url}/api/telegram/webhook`, cfg.telegramWebhookSecret);
-    return { ok: true, message: "Webhook registered ✅" };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+  // Register the `/` autocomplete menu in the same action (#1895) — this is the one
+  // moment the operator is provably holding a working bot token, so making it a second
+  // button would just be a second thing to forget.
+  //
+  // DELIBERATELY NOT FATAL: the webhook is what makes the bot work, and the command
+  // menu is discoverability on top of it. A registration that fails must not report the
+  // working webhook as broken, so it degrades to a named caveat.
+  try {
+    await setMyCommands(registrableCommands());
+  } catch (e) {
+    return {
+      ok: true,
+      message: `Webhook registered ✅ — but couldn't register the /command menu: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    };
+  }
+  return { ok: true, message: "Webhook registered ✅" };
 }

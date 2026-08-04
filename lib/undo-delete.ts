@@ -555,6 +555,33 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
       },
     ],
   },
+
+  // One alcohol history row is the food_log day counter plus every alcohol tap
+  // event on that day. The event ledger has no FK, so capture/delete it explicitly
+  // and restore it alongside the counter on Undo.
+  "substance-alcohol-history": {
+    kind: "substance-alcohol-history",
+    ownedTable: "food_log",
+    entities: [
+      { entity: "entry", table: "food_log", fks: [] },
+      {
+        entity: "events",
+        table: "food_log_events",
+        fks: [],
+        childWhere:
+          "profile_id = (SELECT profile_id FROM food_log WHERE id = ?) AND group_key = 'alcohol' AND date = (SELECT date FROM food_log WHERE id = ?)",
+        childBinds: 2,
+        deleteExplicitly: true,
+      },
+    ],
+  },
+
+  // Nicotine/cannabis history is already one profile-owned day row.
+  "substance-history": {
+    kind: "substance-history",
+    ownedTable: "substance_log",
+    entities: [{ entity: "entry", table: "substance_log", fks: [] }],
+  },
 };
 
 export function getKindSpec(kind: string): KindSpec {

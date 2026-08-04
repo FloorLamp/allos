@@ -143,14 +143,25 @@ outside everything the registry gates. Measured before the fix: a row inserted
 behind `/records/history/visits` appeared while the registry read
 `data-owed=1, data-refreshes=0`.
 
-**Why a pure _read_ action did it too.** Next skips the page re-render for an
-action that did not revalidate (`action-handler.js` → `skipPageRendering`), so
-"it's only a read" looked like protection. It is not, in this app:
-`middleware.ts` slides the session cookie on **every** request, action POSTs
-included, and Next records a cookie mutation as a revalidation
-(`adapters/request-cookies.js` sets `pathWasRevalidated`). Every action response
-here therefore carries a full page render — a property of the app, not of the
-action, which is why the fix could not be "make the action not revalidate".
+**Why a pure _read_ action did it too — then.** Next skips the page re-render
+for an action that did not revalidate (`action-handler.js` →
+`skipPageRendering`), so "it's only a read" looked like protection. At the time
+of #1878 it was not, in this app: `middleware.ts` slid the session cookie on
+**every** request, action POSTs included, and Next records a cookie mutation as
+a revalidation (`adapters/request-cookies.js` sets `pathWasRevalidated`). Every
+action response therefore carried a full page render — a property of the app,
+not of the action, which is why the fix could not be "make the action not
+revalidate".
+
+That property is now gone: the middleware slides the cookie on **GET/HEAD
+navigations only**, precisely because the accidental every-action revalidation
+also fed a client fetch loop (the Journal's filtered feed re-fetched page one on
+every self-triggered refresh, clobbering its "Load more" pages — pinned by
+`lib/__tests__/middleware-sliding-cookie.test.ts` and the filtered-paging test
+in `e2e/journal-search-depth.spec.ts`). A read action that doesn't revalidate
+now behaves as documented: no page render in its response. The #1878 rule below
+stands regardless — a route-handler `fetch` is the _structural_ guarantee that
+observation can't repaint, not an accident of middleware behavior.
 
 So, since #1878: **a background actor observes over `fetch` of a route handler,
 and repaints only through `useChromeRefresh()`.** A JSON response cannot carry an

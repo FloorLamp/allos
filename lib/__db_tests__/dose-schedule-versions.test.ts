@@ -5,7 +5,7 @@
 // non-retroactivity directions over literals. These pin the halves only a real
 // database can show:
 //
-//   1. MIGRATION 150's seed reproduces today's behaviour for an un-edited dose —
+//   1. MIGRATION 151's seed reproduces today's behaviour for an un-edited dose —
 //      byte-for-byte the same dueness answers, over the same window, before and after
 //      the version rows exist. That is the whole safety argument for shipping it.
 //   2. The missed-dose / adherence-pattern builder no longer loses an edited dose's
@@ -20,7 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, lastNDates } from "@/lib/date";
-import { up as migrate150 } from "@/lib/migrations/versions/150-dose-schedule-versions";
+import { up as migrate151 } from "@/lib/migrations/versions/151-dose-schedule-versions";
 import { buildAdherencePatternFindings } from "@/lib/rule-findings";
 import {
   weekdayMissSignalKey,
@@ -114,7 +114,7 @@ function duenessOverWindow(profileId: number, anchor: string): string {
 
 // ---- 1. The migration seed preserves behaviour ------------------------------
 
-describe("migration 150 — seeding an existing dose changes nothing (#1973)", () => {
+describe("migration 151 — seeding an existing dose changes nothing (#1973)", () => {
   it("reproduces the un-edited dose's dueness exactly, before and after seeding", () => {
     const { profileId, anchor } = makeProfile("dose-versions-seed");
     const born = `${shiftDateStr(anchor, -90)} 09:00:00`;
@@ -132,7 +132,7 @@ describe("migration 150 — seeding an existing dose changes nothing (#1973)", (
     });
 
     // These rows were inserted AFTER boot ran the migration, so they carry no history
-    // yet — exactly the state a production database is in the instant before 150 runs.
+    // yet — exactly the state a production database is in the instant before 151 runs.
     expect(
       db
         .prepare("SELECT COUNT(*) AS c FROM intake_dose_schedule_versions")
@@ -141,7 +141,7 @@ describe("migration 150 — seeding an existing dose changes nothing (#1973)", (
     const before = duenessOverWindow(profileId, anchor);
 
     // Replaying the migration is a pure no-op on already-seeded rows and seeds these.
-    migrate150(db);
+    migrate151(db);
 
     const versions = db
       .prepare(
@@ -171,7 +171,7 @@ describe("migration 150 — seeding an existing dose changes nothing (#1973)", (
 
     // And a replay adds nothing (the NOT EXISTS guard), so the non-version-gated
     // migrate() wrapper can run it twice.
-    migrate150(db);
+    migrate151(db);
     expect(
       db
         .prepare("SELECT COUNT(*) AS c FROM intake_dose_schedule_versions")

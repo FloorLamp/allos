@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 150 (issue #1973): give a dose's SCHEDULE an effective-dated history, so a
+// Migration 151 (issue #1973): give a dose's SCHEDULE an effective-dated history, so a
 // past day can be judged by the rule that was in force on it.
 //
 // ── THE CONTRADICTION THIS ENDS ──────────────────────────────────────────────
@@ -126,7 +126,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 150,
-  name: "150-dose-schedule-versions",
+  id: 151,
+  name: "151-dose-schedule-versions",
   up,
 };

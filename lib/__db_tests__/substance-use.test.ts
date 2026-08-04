@@ -261,9 +261,7 @@ describe("cap semantics never leak into floor-semantics surfaces (#998)", () => 
     const state = getSubstanceWeekState(p, "alcohol");
     expect(state.count).toBe(5);
     expect(state.target?.cap).toBe(7);
-    expect(capProgressLine(state.status!)).toBe(
-      "5 of your 7-drink weekly cap used."
-    );
+    expect(capProgressLine(state.status!)).toBe("5 of 7 this week.");
     expect(getSubstanceTarget(p, "alcohol")?.cap).toBe(7);
     // The trend's current week equals the week state (same window, same SUM).
     const trend = getAlcoholWeeklyTrend(p);

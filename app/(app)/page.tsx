@@ -571,7 +571,14 @@ export default async function Dashboard() {
   const coachingRecs = has("coaching")
     ? activeByKey(
         recommendCoaching(
-          gatherCoachingInput(profile.id, units.weightUnit, units.distanceUnit)
+          gatherCoachingInput(
+            profile.id,
+            units.weightUnit,
+            units.distanceUnit,
+            // The login's temperature scale (#1967): a °F reader sees the weather-parking
+            // figure in °F here. The notification path keeps canonical °C.
+            units.temperatureUnit
+          )
         ),
         (r) => coachingDedupeKey(r.id),
         getFindingSuppressions(profile.id),

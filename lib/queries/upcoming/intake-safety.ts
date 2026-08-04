@@ -23,7 +23,7 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   intakeHref,
   nutritionTabHref,
   timelineDayHref,

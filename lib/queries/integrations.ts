@@ -21,7 +21,7 @@ import {
   type ProviderStanding,
   type SyncVocabulary,
 } from "@/lib/integrations/provider-state";
-import { timelineDayHref, biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
+import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import { INTEGRATIONS, getIntegration } from "@/lib/integrations/registry";
 import {
   getConnection,
@@ -830,7 +830,9 @@ export function getSyncRowProvenance(
       label = rec?.metric ?? "Metric";
       href = date ? timelineDayHref(date) : timelineDayHref("");
     } else if (r.target_table === "medical_records") {
-      // medical_records → Results (biomarker view when canonical, else the list).
+      // medical_records → the reading's OWN detail surface (#1932): the metric
+      // detail page for a continuous vital, the reference-range page for a lab,
+      // the list without a canonical name. The helper owns that choice.
       const rec = findRecord.get(r.target_id, profileId) as
         | { date: string; name: string | null; canonical_name: string | null }
         | undefined;
@@ -840,7 +842,7 @@ export function getSyncRowProvenance(
       // identity — the link already commits to the canonical analyte, so a raw-first
       // label reads "URIC ACID" on a row that opens "Uric Acid".
       label = rec?.canonical_name?.trim() || rec?.name || "Lab result";
-      href = biomarkerViewHref(rec?.canonical_name ?? null, rec?.name ?? null);
+      href = readingDetailHref(rec?.canonical_name ?? null, rec?.name ?? null);
     } else {
       const rec = findPractice.get(r.target_id, profileId) as
         { date: string; practice: string } | undefined;

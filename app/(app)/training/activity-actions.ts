@@ -14,7 +14,7 @@ import {
   snapshotKeeperFold,
   dropSetIds,
 } from "@/lib/merge-activity";
-import { recordPairDecision } from "@/lib/queries";
+import { recordPairDecision, cleanupOrphanPrDismissals } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,
   activityToken,
@@ -346,6 +346,11 @@ export async function deleteActivity(
   // #200 — which is a different operation from this bare delete.) Pinned by
   // lib/__action_tests__/delete-pair-decision.actions.test.ts.
   const undoId = captureDelete("activity", profile.id, id);
+  // Deleting the last session of a movement/activity un-backs its `pr:` celebration
+  // dismissal (#1931) — sweep it so a later re-log under the same name isn't silenced
+  // by a row minted for history that is gone. Runs AFTER the delete so "what's still
+  // backed" reflects the new state, exactly as sweepImmunizationDismissals does.
+  cleanupOrphanPrDismissals(profile.id);
   revalidateActivitySurfaces();
   return { undoId };
 }

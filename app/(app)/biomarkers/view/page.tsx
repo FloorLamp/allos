@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
-import {
-  biomarkerViewHref,
-  panelFilterHref,
-  BIOMARKERS_LIST_HREF,
-} from "@/lib/hrefs";
+import { metricDetailHref, BIOMARKERS_LIST_HREF } from "@/lib/hrefs";
+import { continuousReadingSlug } from "@/lib/reading-cadence";
 import {
   documentLabel,
   getBiomarkerSeriesWithDerived,
@@ -13,7 +10,6 @@ import {
   getLabFollowUps,
   getIopFollowUps,
   getMedicalDocumentsByIds,
-  getMedicalRecords,
   getFoodSuggestions,
   getRevisionsByRecord,
   isBiomarkerSaved,
@@ -24,17 +20,12 @@ import {
   revisionSummary,
 } from "@/lib/lab-result-lifecycle";
 import { biomarkerFamily } from "@/lib/canonical-name";
-import {
-  OTHER_PANEL,
-  panelForCanonicalName,
-  panelLabel,
-} from "@/lib/biomarker-panels";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { tableNameKey } from "@/lib/derived-table";
+import { getPanelSiblings } from "@/lib/queries/panel-siblings";
+import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
-import type { CanonicalBiomarker, MedicalRecord, Sex } from "@/lib/types";
+import type { CanonicalBiomarker, MedicalRecord } from "@/lib/types";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -56,30 +47,17 @@ import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getUnitPrefs,
   getUserAgeOn,
-  getUserBirthdate,
   getUserReproductiveStatus,
   getUserSex,
 } from "@/lib/settings";
 import { degFTo, tempUnitLabel } from "@/lib/units";
-import {
-  getBiomarkerGoals,
-  getGoalProgressMap,
-  getLatestMetricSample,
-} from "@/lib/queries";
+import { getBiomarkerGoals, getGoalProgressMap } from "@/lib/queries";
 import {
   biomarkerGoalCheckInText,
   biomarkerGoalCurrentText,
   biomarkerGoalTargetText,
 } from "@/lib/biomarker-goal";
 import { goalPaceTone, goalPct } from "@/lib/goals";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
-import { measurementPercentile } from "@/lib/growth";
-import {
-  bpComponentFor,
-  pediatricBpContext,
-  type PediatricBpContext,
-} from "@/lib/bp-percentiles";
-import { PediatricBpCard } from "@/components/PediatricBpCard";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
@@ -99,10 +77,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// How many sibling analytes the panel strip lists. A wayfinding affordance, not a
-// second table — the "see the whole panel" link carries the rest.
-const PANEL_SIBLING_CAP = 12;
-
 function formatRange(
   low: number | null,
   high: number | null,
@@ -116,24 +90,6 @@ function formatRange(
   if (high != null) return `≤ ${high}${u}`;
   if (low != null) return `≥ ${low}${u}`;
   return null;
-}
-
-// The profile's latest height as a growth-chart percentile (WHO/CDC LMS), for the
-// pediatric BP interpretation (#150). Null when sex/height/birthdate is missing —
-// pediatricBpContext then assumes the 50th height percentile.
-function latestHeightPercentile(
-  profileId: number,
-  sex: Sex | null
-): number | null {
-  if (sex !== "male" && sex !== "female") return null;
-  const h = getLatestMetricSample(profileId, "height_cm");
-  if (!h) return null;
-  const birthdate = getUserBirthdate(profileId);
-  const months = birthdate ? ageInMonthsFromBirthdate(birthdate, h.date) : null;
-  if (months == null) return null;
-  return (
-    measurementPercentile(sex, months, "height", h.value)?.percentile ?? null
-  );
 }
 
 // The collection attributes a reading actually states (#1404), as display chips:
@@ -157,10 +113,20 @@ export default async function BiomarkerDetailPage(props: {
   const canonical = searchParams.name?.trim();
   // A paramless /biomarkers/view is a degenerate page (#1447): a bare "Biomarker"
   // h1 over "No biomarker selected." and nothing else. It isn't a state anything
-  // links to — `biomarkerViewHref` already returns the LIST route when it has no
-  // canonical name — so a hand-typed URL or a stale bookmark lands where that
-  // helper would have sent it, rather than on an empty canvas.
+  // links to — `readingDetailHref` (lib/hrefs) already returns the LIST route
+  // when it has no canonical name — so a hand-typed URL or a stale bookmark lands
+  // where that helper would have sent it, rather than on an empty canvas.
   if (!canonical) redirect(BIOMARKERS_LIST_HREF);
+  // This page renders EPISODIC readings only (#1932). A continuous vital — SpO2,
+  // blood pressure, respiratory rate, body temperature — is read as a trend, not
+  // against a lab's reference band, and has its own cadence-appropriate surface;
+  // every link to it already resolves there through `readingDetailHref`, so what
+  // reaches here is a stale bookmark or a hand-typed URL. It goes where the helper
+  // would have sent it, exactly as the paramless case above does. This is
+  // current-IA plumbing (both routes are live and serve their own readings), not a
+  // compatibility redirect for a retired URL.
+  const continuousSlug = continuousReadingSlug(canonical);
+  if (continuousSlug) redirect(metricDetailHref(continuousSlug));
   const series = getBiomarkerSeriesWithDerived(profile.id, canonical);
 
   if (series.length === 0) {
@@ -246,32 +212,9 @@ export default async function BiomarkerDetailPage(props: {
   const biomarkerGoals = getBiomarkerGoals(profile.id, canonical);
   const goalProgress = getGoalProgressMap(profile.id, biomarkerGoals);
 
-  // "The rest of this panel" (#1502). The analyte's normalized panel, plus the
-  // profile's other CURRENT readings in it — one row per analyte via the shared
-  // `current` facet (deduped, latest-per-#482-family), so this can't list the same
-  // marker twice or resurrect a name only an old draw carried. The analyte itself
-  // is excluded by FAMILY identity, not by raw name, so a "Vitamin D" page doesn't
-  // list "Vitamin D, 25-Hydroxy" as its own sibling. Capped: this is a wayfinding
-  // strip, not a second table.
-  const panelId = panelForCanonicalName(canonical);
-  const ownFamily = biomarkerFamily(canonical).toLowerCase();
-  const panelSiblings =
-    panelId === OTHER_PANEL
-      ? []
-      : [
-          ...new Map(
-            getMedicalRecords(profile.id, {
-              panel: panelId,
-              current: true,
-              excludeCategories: NON_BIOMARKER_CATEGORIES,
-            })
-              .map((r) => tableNameKey(r))
-              .filter((n) => biomarkerFamily(n).toLowerCase() !== ownFamily)
-              .map((n) => [n.toLowerCase(), { name: n }] as const)
-          ).values(),
-        ]
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .slice(0, PANEL_SIBLING_CAP);
+  // "The rest of this panel" (#1502) — the shared gather, so this page and the
+  // metric detail surface list the same siblings for the same panel (#1932).
+  const panelSiblings = getPanelSiblings(profile.id, canonical);
 
   const cbHasRange =
     !!cb && [ref.low, ref.high, opt.low, opt.high].some((v) => v != null);
@@ -315,26 +258,6 @@ export default async function BiomarkerDetailPage(props: {
     neutral: "bg-slate-400",
   };
 
-  // Pediatric BP interpretation (#150): for a CHILD, a blood-pressure reading is
-  // judged by the AAP 2017 age/sex/height percentile, not the adult thresholds
-  // (which mis-classify children). When it applies we render the percentile +
-  // category card and SUPPRESS the adult reference range, optimal band, status
-  // badge, and chart bands. Null (→ adult behavior) for any non-BP marker or adult.
-  const bpComponent = bpComponentFor(canonical);
-  let bpCtx: PediatricBpContext | null = null;
-  if (bpComponent && latestPlottable) {
-    bpCtx = pediatricBpContext(
-      bpComponent,
-      convertToCanonical(latestPlottable.value, latestPlottable.r.unit, cb),
-      {
-        sex,
-        ageYears: age,
-        heightPercentile: latestHeightPercentile(profile.id, sex),
-      }
-    );
-  }
-  const pediatricBp = bpCtx != null;
-
   // Charting unit + points + bands. When the biomarker has a canonical unit, we
   // chart in THAT unit, converting every reading we can (so mg/dL and mmol/L
   // results sit on one axis) and drawing the dataset's bands. Readings whose unit
@@ -359,7 +282,7 @@ export default async function BiomarkerDetailPage(props: {
         converted.filter((x) => x.v == null).map((x) => x.r.unit ?? "—")
       ),
     ];
-    if (cbHasRange && !pediatricBp) {
+    if (cbHasRange) {
       bands = {
         refLow: ref.low,
         refHigh: ref.high,
@@ -672,24 +595,22 @@ export default async function BiomarkerDetailPage(props: {
             as of {latest.date}
           </div>
         </div>
-        {!pediatricBp &&
-          referenceEntries.map((e) => (
-            <div key={e.label}>
-              <div className="label">{e.label}</div>
-              <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                {e.range}
-              </div>
+        {referenceEntries.map((e) => (
+          <div key={e.label}>
+            <div className="label">{e.label}</div>
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {e.range}
             </div>
-          ))}
-        {!pediatricBp &&
-          optimalEntries.map((e) => (
-            <div key={e.label}>
-              <div className="label">{e.label}</div>
-              <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                {e.range}
-              </div>
+          </div>
+        ))}
+        {optimalEntries.map((e) => (
+          <div key={e.label}>
+            <div className="label">{e.label}</div>
+            <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+              {e.range}
             </div>
-          ))}
+          </div>
+        ))}
         {biomarkerGoals.map((goal) => {
           const progress = goalProgress.get(goal.id);
           const pct = goalPct(goal, progress);
@@ -724,7 +645,7 @@ export default async function BiomarkerDetailPage(props: {
             </div>
           );
         })}
-        {!pediatricBp && badge !== "unknown" && latest.flag !== "immune" && (
+        {badge !== "unknown" && latest.flag !== "immune" && (
           <div>
             <div className="label">Status</div>
             <span className={`badge ${badgeMeta.chip}`}>{badgeMeta.label}</span>
@@ -756,45 +677,14 @@ export default async function BiomarkerDetailPage(props: {
 
       {/* "The rest of this panel" (#1502). A single-analyte page used to be a dead
           end: you could see your LDL, but nothing told you it arrived with an HDL
-          and a triglycerides, or offered a way across. The normalized taxonomy
-          makes that answerable — panelForCanonicalName places this analyte, and the
-          siblings are the profile's OWN current readings in the same panel (the
-          shared getMedicalRecords facet, deduped and latest-per-family like every
-          other biomarker surface), so it never advertises a marker never measured.
-          Hidden for an analyte the taxonomy can't place, and when nothing else in
-          the panel has been measured. */}
-      {panelSiblings.length > 0 && panelId !== OTHER_PANEL && (
-        <div
-          data-testid="panel-siblings"
-          className="card mb-6 border-l-4 border-l-violet-300 text-sm dark:border-l-violet-700"
-        >
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-slate-700 dark:text-slate-200">
-              <span className="font-semibold">
-                Part of your {panelLabel(panelId)} panel.
-              </span>{" "}
-              Also measured:
-            </span>
-            <Link
-              href={panelFilterHref(panelId)}
-              className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
-            >
-              See the whole panel →
-            </Link>
-          </div>
-          <ul className="flex flex-wrap gap-2">
-            {panelSiblings.map((sib) => (
-              <li key={sib.name}>
-                <Link
-                  href={biomarkerViewHref(sib.name)}
-                  className="badge bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-ink-700"
-                >
-                  {sib.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+          and a triglycerides, or offered a way across. Hidden for an analyte the
+          taxonomy can't place, and when nothing else in the panel has been
+          measured. */}
+      {panelSiblings && (
+        <PanelSiblingsCard
+          panelId={panelSiblings.panelId}
+          names={panelSiblings.names}
+        />
       )}
 
       {/* Cross-link to the immunization/immunity surface (#544 part 2): the value
@@ -843,10 +733,6 @@ export default async function BiomarkerDetailPage(props: {
             </div>
           );
         })()}
-
-      {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
-          shown INSTEAD OF the adult thresholds; hidden for adults/non-BP markers. */}
-      <PediatricBpCard ctx={bpCtx} />
 
       {/* Age/sex percentile + fitness age (#158) — fitness markers only, hidden
           when sex/age unset. */}

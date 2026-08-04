@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { hydratedClick, settledClick } from "./helpers";
+import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
   E2E_LOGIN_CHILD,
@@ -205,33 +206,137 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(page.getByTestId("substance-log-cannabis")).toBeVisible();
   });
 
+  test("history adds an earlier day in order, exposes row actions, and repeated substance taps never confirm (#2009)", async () => {
+    await page.goto("/records/specialty/substance-use");
+    const card = page.getByTestId("substance-card-cannabis");
+    const before = await weekCount(page, "cannabis");
+    const earlier = new Date(frozenNow().getTime() - 10 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const marker = "E2E earlier cannabis entry";
+
+    await hydratedClick(
+      page,
+      page.getByTestId("substance-history-add-cannabis")
+    );
+    const addForm = page.getByTestId("substance-history-add-form-cannabis");
+    await addForm.locator('input[type="text"]').fill(earlier);
+    await addForm.locator('input[name="amount"]').fill("2");
+    await addForm.locator('textarea[name="notes"]').fill(marker);
+    await settledClick(
+      page,
+      page.getByTestId("substance-history-add-save-cannabis")
+    );
+    await expect(card.getByText(marker)).toBeVisible();
+
+    // Today remains the one-tap fast path. Reloading clears only the two-second
+    // accidental-double-tap cooldown; a deliberate second same-day tap is still
+    // accepted without ever opening a re-log confirmation.
+    await settledClick(page, page.getByTestId("substance-log-cannabis"));
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+    await page.reload();
+    await settledClick(page, page.getByTestId("substance-log-cannabis"));
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("substance-week-count-cannabis")).toHaveText(
+      `${before + 2} uses logged this week.`
+    );
+
+    const rows = card.locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("2 uses");
+    await expect(rows.nth(1)).toContainText(marker);
+
+    // The historical row has the standard ⋯ actions. Correct its amount and note,
+    // then delete it through the product affordance and confirm dialog.
+    const pastRow = rows.nth(1);
+    await pastRow
+      .getByRole("button", { name: "Cannabis entry actions" })
+      .click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    await pastRow.locator('input[name="amount"]').fill("3");
+    await pastRow.locator('textarea[name="notes"]').fill(`${marker} corrected`);
+    await settledClick(
+      page,
+      page.getByTestId("substance-history-save-cannabis")
+    );
+    await expect(pastRow).toContainText("3 uses");
+    await expect(pastRow).toContainText(`${marker} corrected`);
+
+    await pastRow
+      .getByRole("button", { name: "Cannabis entry actions" })
+      .click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Delete entry" })
+    );
+    await expect(card.getByText(`${marker} corrected`)).toHaveCount(0);
+
+    await settledClick(page, page.getByTestId("substance-undo-cannabis"));
+    await page.reload();
+    await settledClick(page, page.getByTestId("substance-undo-cannabis"));
+    await expect(page.getByTestId("substance-week-count-cannabis")).toHaveText(
+      `${before} ${before === 1 ? "use" : "uses"} logged this week.`
+    );
+  });
+
   test("an alcohol weekly cap shows the calm progress line; removing it clears the line", async () => {
     await page.goto("/records/specialty/substance-use");
 
+    const alcoholCard = page.getByTestId("substance-card-alcohol");
+    await alcoholCard.getByRole("button", { name: "Alcohol options" }).click();
+    await page.getByTestId("substance-cap-open-alcohol").click();
     await page.getByTestId("substance-cap-input-alcohol").fill("7");
     await settledClick(page, page.getByTestId("substance-cap-save-alcohol"));
     const progress = page.getByTestId("substance-cap-progress-alcohol");
     await expect(progress).toBeVisible();
-    // "N of your 7-drink weekly cap used." (or the over-cap phrasing if repeats
-    // accumulated) — either way the cap is named, and never a streak/badge.
-    await expect(progress).toContainText("7-drink weekly cap");
+    await expect(progress).toContainText(/of 7 this week|7-drink weekly cap/);
     await expect(progress).not.toContainText("streak");
 
-    await settledClick(page, page.getByTestId("substance-cap-clear-alcohol"));
+    await alcoholCard.getByRole("button", { name: "Alcohol options" }).click();
+    await page.getByTestId("substance-cap-clear-alcohol").click();
+    await settledClick(page, page.getByRole("button", { name: "Remove cap" }));
     await expect(progress).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  test("a count at its ceiling is explicitly at-cap, never met or on pace (#2009)", async () => {
+    await page.goto("/records/specialty/substance-use");
+    const count = await weekCount(page, "alcohol");
+    const card = page.getByTestId("substance-card-alcohol");
+    await card.getByRole("button", { name: "Alcohol options" }).click();
+    await page.getByTestId("substance-cap-open-alcohol").click();
+    await page.getByTestId("substance-cap-input-alcohol").fill(String(count));
+    await settledClick(page, page.getByTestId("substance-cap-save-alcohol"));
+    const progress = page.getByTestId("substance-cap-progress-alcohol");
+    await expect(progress).toContainText("at your");
+    await expect(progress).not.toContainText(/met|on pace/i);
+
+    await card.getByRole("button", { name: "Alcohol options" }).click();
+    await page.getByTestId("substance-cap-clear-alcohol").click();
+    await settledClick(page, page.getByRole("button", { name: "Remove cap" }));
   });
 
   test("a nicotine weekly cap (#1078) speaks use-wording and clears cleanly", async () => {
     await page.goto("/records/specialty/substance-use");
 
+    const nicotineCard = page.getByTestId("substance-card-nicotine");
+    await nicotineCard
+      .getByRole("button", { name: "Nicotine options" })
+      .click();
+    await page.getByTestId("substance-cap-open-nicotine").click();
     await page.getByTestId("substance-cap-input-nicotine").fill("7");
     await settledClick(page, page.getByTestId("substance-cap-save-nicotine"));
     const progress = page.getByTestId("substance-cap-progress-nicotine");
     await expect(progress).toBeVisible();
-    await expect(progress).toContainText("7-use weekly cap");
+    await expect(progress).toContainText(/of 7 this week|7-use weekly cap/);
     await expect(progress).not.toContainText("streak");
 
-    await settledClick(page, page.getByTestId("substance-cap-clear-nicotine"));
+    await nicotineCard
+      .getByRole("button", { name: "Nicotine options" })
+      .click();
+    await page.getByTestId("substance-cap-clear-nicotine").click();
+    await settledClick(page, page.getByRole("button", { name: "Remove cap" }));
     await expect(progress).toHaveCount(0, { timeout: 15_000 });
   });
 });

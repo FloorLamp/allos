@@ -306,12 +306,30 @@ export function getUserAgeOn(
   profileId: number,
   on: string | null | undefined
 ): number | null {
+  return userAgeResolver(profileId)(on);
+}
+
+// getUserAgeOn's reads, hoisted OUT of the per-date call so a caller that needs
+// the age on many dates (every reading of a series, every analyte of a batch)
+// pays for the two profile_settings reads once instead of once per date (#1961).
+//
+// The returned closure is the SAME decision getUserAgeOn makes — that function is
+// now literally a single-date call of this one, so the two can't drift. The stored
+// age is read LAZILY, exactly as the eager path only reached it when the birthdate
+// couldn't answer, so a profile with a birthdate still issues one read, not two.
+export function userAgeResolver(
+  profileId: number
+): (on: string | null | undefined) => number | null {
   const bd = getUserBirthdate(profileId);
-  if (bd && on) {
-    const a = ageFromBirthdate(bd, on);
-    if (a != null) return a;
-  }
-  return getStoredAge(profileId);
+  let stored: number | null | undefined;
+  return (on) => {
+    if (bd && on) {
+      const a = ageFromBirthdate(bd, on);
+      if (a != null) return a;
+    }
+    if (stored === undefined) stored = getStoredAge(profileId);
+    return stored;
+  };
 }
 
 // ---- Health risk factors (issue #517) — profile scope, no migration ----

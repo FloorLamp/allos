@@ -31,6 +31,8 @@ import { WEATHER_MED_PREFIX } from "./weather-med-safety";
 import { OUTDOOR_PLAN_PREFIX } from "./queries/weather-training";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
+import { STEPS_PACE_PREFIX } from "./steps-target";
+import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 
 // The domain GROUP a suppressed row renders under — the section's sub-headings.
 export type SuppressionDomain =
@@ -265,6 +267,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     label: () => "Endurance event",
   },
   {
+    // The afternoon steps-pace observation (#1221), keyed per DAY. It rides the bus
+    // like any Upcoming item but had no resolver entry, so a dismissed one rendered
+    // as the generic orphan row in the central view — restorable but unnameable.
+    prefix: STEPS_PACE_PREFIX,
+    domain: "Due & scheduled",
+    label: () => "Steps pace note",
+  },
+  {
     prefix: "med-monitor:",
     domain: "Due & scheduled",
     label: () => "Medication monitoring",
@@ -367,6 +377,25 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "digest:",
     domain: "Coaching",
     label: () => "Trending digest chip",
+  },
+  {
+    // Personal-record celebrations (#1931). Keyed `pr:strength:<movement>@<lane>:<kind>`
+    // and `pr:cardio:<activity>:<kind>` — the tail is a canonical IDENTITY, already
+    // lowercased, so titleize is the honest rendering of a name whose casing is gone.
+    prefix: PR_STRENGTH_PREFIX,
+    domain: "Coaching",
+    label: (t) => {
+      const n = titleize(part(t, 0).split("@")[0]);
+      return n ? `Personal record — ${n}` : "Personal record";
+    },
+  },
+  {
+    prefix: PR_CARDIO_PREFIX,
+    domain: "Coaching",
+    label: (t) => {
+      const n = titleize(part(t, 0));
+      return n ? `Personal record — ${n}` : "Personal record";
+    },
   },
   // ---- Suggestions (suggest-only per-surface rows) -------------------------
   {

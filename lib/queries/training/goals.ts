@@ -14,7 +14,7 @@ import { retestDaysForBiomarker } from "../../biomarker-retest";
 import { biomarkerFamily } from "../../canonical-name";
 import { goalMatchesExercise, isGoalLive } from "../../goals";
 import type { BodyMetricKind, Goal } from "../../types";
-import { biomarkerPlot } from "../biomarker-plot";
+import { biomarkerPlots } from "../biomarker-plot";
 import { getLatestBodyMetric } from "../metrics";
 
 // Training-SPECIFIC goal reads. The scope-kind-generic `frequency_targets`
@@ -67,23 +67,37 @@ export function getGoalProgressMap(
   // can never disagree about the value or the unit (#221). The check-in rhythm is the
   // analyte's curated retest cadence, resolved through the shared
   // retestDaysForBiomarker lookup rather than a goals-only interval table.
-  for (const g of goals.filter(isBiomarkerGoal)) {
+  //
+  // The plots are gathered for EVERY targeted analyte in one pass (#1961), the same
+  // shape as the exercise-goal loop below: a per-goal `biomarkerPlot` re-queried the
+  // series and re-read the profile's demographics once per goal, which is an N+1 in
+  // the goal count.
+  const bmTargets = goals.filter(isBiomarkerGoal).flatMap((g) => {
     const target = biomarkerTargetOf(g);
-    if (!target) continue;
-    const plot = biomarkerPlot(profileId, target.name);
-    const progress = computeBiomarkerGoalProgress(
-      target,
-      plot?.points ?? [],
-      plot?.unit ?? target.unit
+    return target ? [{ g, target }] : [];
+  });
+  if (bmTargets.length) {
+    const plots = biomarkerPlots(
+      profileId,
+      bmTargets.map((x) => x.target.name)
     );
-    out.set(g.id, {
-      ...progress,
-      checkIn: biomarkerGoalCheckIn(
-        progress.asOf,
-        retestDaysForBiomarker(target.name),
-        today(profileId)
-      ),
-    });
+    const bmToday = today(profileId);
+    for (const { g, target } of bmTargets) {
+      const plot = plots.get(target.name) ?? null;
+      const progress = computeBiomarkerGoalProgress(
+        target,
+        plot?.points ?? [],
+        plot?.unit ?? target.unit
+      );
+      out.set(g.id, {
+        ...progress,
+        checkIn: biomarkerGoalCheckIn(
+          progress.asOf,
+          retestDaysForBiomarker(target.name),
+          bmToday
+        ),
+      });
+    }
   }
 
   const exGoals = goals.filter((g) => g.exercise && g.metric);

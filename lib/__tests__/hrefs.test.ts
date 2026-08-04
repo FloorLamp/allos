@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   biomarkerAddHref,
   timelineDayHref,
   dataSectionHref,
@@ -51,11 +51,41 @@ describe("medicationsFilterHref", () => {
   });
 });
 
-describe("biomarkerViewHref", () => {
+describe("readingDetailHref", () => {
+  // #1932: one helper, two destinations, chosen by CADENCE. A call site asks for
+  // "the detail page for this reading" and can't decide the renderer for itself.
+  it("sends a CONTINUOUS vital to the metric detail surface", () => {
+    expect(readingDetailHref("Oxygen Saturation")).toBe("/trends/metric/spo2");
+    expect(readingDetailHref("Blood Pressure Systolic")).toBe(
+      "/trends/metric/systolic"
+    );
+    expect(readingDetailHref("Body Temperature")).toBe(
+      "/trends/metric/temperature"
+    );
+  });
+
+  it("sends a continuous vital there even when the raw name differs", () => {
+    // The produced-rows drilldown (#1333) passes both; the canonical decides.
+    expect(readingDetailHref("Oxygen Saturation", "SpO2 (arterial)")).toBe(
+      "/trends/metric/spo2"
+    );
+  });
+
+  it("keeps EPISODIC readings on the reference-range page, vitals or not", () => {
+    // A domain vital is `category = 'vitals'` too, and belongs on the lab renderer:
+    // it arrives a few times a year and is read against a band / a percentile.
+    expect(readingDetailHref("Grip Strength")).toBe(
+      "/biomarkers/view?name=Grip%20Strength"
+    );
+    expect(readingDetailHref("Intraocular Pressure")).toBe(
+      "/biomarkers/view?name=Intraocular%20Pressure"
+    );
+  });
+
   it("links to the view page with the CANONICAL name when one is present", () => {
     // The #283 bug 5 fix: the view page resolves ?name= as the canonical name, so
     // a canonicalized reading links to its series under the canonical spelling.
-    expect(biomarkerViewHref("LDL Cholesterol", "LDL-C")).toBe(
+    expect(readingDetailHref("LDL Cholesterol", "LDL-C")).toBe(
       "/biomarkers/view?name=LDL%20Cholesterol"
     );
   });
@@ -66,22 +96,22 @@ describe("biomarkerViewHref", () => {
     // The helper always encodes the canonical when gated on it.
     const canonical = "Hemoglobin A1c";
     const raw = "HbA1c";
-    expect(biomarkerViewHref(canonical, raw)).toBe(
+    expect(readingDetailHref(canonical, raw)).toBe(
       "/biomarkers/view?name=Hemoglobin%20A1c"
     );
   });
 
   it("falls back to the biomarkers list when there is no canonical name", () => {
     // An uncanonicalized reading has no ?name= the view can resolve.
-    expect(biomarkerViewHref(null, "Some Raw Analyte")).toBe(
+    expect(readingDetailHref(null, "Some Raw Analyte")).toBe(
       "/results/biomarkers"
     );
-    expect(biomarkerViewHref(undefined)).toBe("/results/biomarkers");
-    expect(biomarkerViewHref("   ")).toBe("/results/biomarkers");
+    expect(readingDetailHref(undefined)).toBe("/results/biomarkers");
+    expect(readingDetailHref("   ")).toBe("/results/biomarkers");
   });
 
   it("encodes query-unsafe characters in the canonical name", () => {
-    expect(biomarkerViewHref("Vitamin D (25-OH)")).toBe(
+    expect(readingDetailHref("Vitamin D (25-OH)")).toBe(
       "/biomarkers/view?name=Vitamin%20D%20(25-OH)"
     );
   });

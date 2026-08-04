@@ -32,6 +32,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
 import { creditRoutineSession } from "@/lib/routines";
+import { cleanupOrphanPrDismissals } from "@/lib/queries/upcoming/suppressions";
 import { canonicalRpe } from "@/lib/rpe";
 
 interface SetInput {
@@ -363,6 +364,15 @@ export function saveActivityCore(
   // ownership check bailed, so nothing was written. Report it instead of a silent
   // no-op the form would confirm as "Saved ✓".
   if (activityId == null) return { ok: false, reason: "not-owned" };
+
+  // An EDIT can un-back a personal-record celebration's dismissal (#1931): re-spelling
+  // a set's exercise, moving it to another implement, or dropping the profile's last
+  // set of a movement leaves a `pr:strength:` / `pr:cardio:` suppression row pointing
+  // at history that no longer exists — and a name the user later reuses would inherit
+  // that stale silence. Sweep here rather than only at the delete seams, because an
+  // edit removes backing just as effectively as a delete does. Short-circuits without
+  // reading history when the profile holds no PR dismissals (the common case).
+  cleanupOrphanPrDismissals(profile.id);
 
   // Advance the active routine's position when this session credits today's
   // routine day (#740). Derived ENTIRELY from the logged data — the strength

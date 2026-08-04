@@ -100,6 +100,34 @@ describe("collectSuppressedAttention aggregates the whole bus (#1151)", () => {
     expect(orphan!.domain).toBe("Other");
   });
 
+  it("names the personal-record and steps-pace namespaces instead of orphaning them (#1931)", () => {
+    // Both rode the bus with no resolver entry, so a stored dismissal rendered as the
+    // generic "no longer applies" row — restorable, but unnameable. The #1931 prefix
+    // audit found them; the classification registry is what stops the next one.
+    const p = createProfile("Suppressed PR Labels (test)");
+    const td = today(p);
+    dismissFinding(p, "pr:strength:bench press@none:1rm");
+    dismissFinding(p, "pr:cardio:cycling:speed");
+    dismissFinding(p, `steps-pace:${td}`);
+
+    const byKey = new Map(
+      collectSuppressedAttention(p, td).map((r) => [r.signalKey, r])
+    );
+    const strength = byKey.get("pr:strength:bench press@none:1rm");
+    expect(strength).toBeDefined();
+    expect(strength!.orphan).toBe(false);
+    expect(strength!.label).toBe("Personal record — Bench Press");
+    expect(strength!.domain).toBe("Coaching");
+
+    const cardio = byKey.get("pr:cardio:cycling:speed");
+    expect(cardio!.label).toBe("Personal record — Cycling");
+
+    const steps = byKey.get(`steps-pace:${td}`);
+    expect(steps).toBeDefined();
+    expect(steps!.orphan).toBe(false);
+    expect(steps!.label).toBe("Steps pace note");
+  });
+
   it("a Restore clears the row AND the suggestion reappears on its origin surface", () => {
     const p = createProfile("Suppressed Restore (test)");
     const td = today(p);

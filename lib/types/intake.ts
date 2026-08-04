@@ -233,7 +233,7 @@ export interface SupplementDose {
   weekdays: string | null;
   start_date: string | null;
   end_date: string | null;
-  // EFFECTIVE-DATED schedule history (issue #1973, migration 150), attached by the
+  // EFFECTIVE-DATED schedule history (issue #1973, migration 151), attached by the
   // schedule reads (getSupplementDoses / getSupplementDosesForHistory) — not a column on
   // this row. `doseDueOn` resolves the version in force on the day it is asked about, so
   // a past day is judged by the rule that applied THEN rather than by today's row.

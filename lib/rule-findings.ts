@@ -144,7 +144,7 @@ import {
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   nutritionTabHref,
   MEDICATIONS_HREF,
   PRACTICES_HREF,
@@ -196,7 +196,7 @@ import {
   labGoalHasCheckedIn,
 } from "./biomarker-goal";
 import { retestDaysForBiomarker } from "./biomarker-retest";
-import { biomarkerPlot } from "./queries/biomarker-plot";
+import { biomarkerPlots } from "./queries/biomarker-plot";
 import { sameUnit } from "./unit-conversions";
 import {
   assessGoalPace,
@@ -888,7 +888,7 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
     // direction is coaching-tier too (#449), never a push/hero.
     tone: "info",
     evidence: `${s.evidence} Source: ${s.source}.`,
-    actionHref: biomarkerViewHref(s.triggeredBy[0] ?? null),
+    actionHref: readingDetailHref(s.triggeredBy[0] ?? null),
     actionLabel: "View biomarker",
   };
 }
@@ -1157,6 +1157,10 @@ export function buildGoalPacingFindings(
 ): Finding[] {
   const findings: Finding[] = [];
 
+  // The profile's goals, read ONCE for both loops below (they used to re-query the
+  // same list) — nothing here writes, so the two passes always saw one snapshot.
+  const goals = getGoals(profileId);
+
   // Weight readings in canonical kg, ascending, as projection input. The SAME
   // primary-source-collapsed daily series (one row/day, #14) the Trends → Body
   // chart caption charts — not the raw all-source getWeights rows — windowed to the
@@ -1171,7 +1175,7 @@ export function buildGoalPacingFindings(
   // Off-pace body-metric goals. Only weight goals have a metric series here
   // (getWeights); body-fat / resting-HR goals would need their own series and are a
   // documented follow-up, so we pace weight goals — the common case.
-  for (const g of getGoals(profileId)) {
+  for (const g of goals) {
     if (
       !isGoalLive(g) ||
       g.body_metric !== "weight" ||
@@ -1224,11 +1228,23 @@ export function buildGoalPacingFindings(
   // hand someone a "you're behind" they could do nothing about on a day when nothing
   // was measured. That is also why there is no daily re-fire: the finding changes when
   // a tube is drawn.
-  for (const g of getGoals(profileId)) {
-    if (!isGoalLive(g) || g.target_date == null) continue;
+  //
+  // Every targeted analyte's plot is gathered in ONE pass (#1961) — the dashboard runs
+  // this builder on every render, and a per-goal `biomarkerPlot` re-queried the series
+  // and re-read the profile's demographics once per goal. The candidate list is
+  // filtered by the CHEAP gates first, so an archived or undated goal still costs
+  // nothing, and the emission loop below keeps the original goal order.
+  const bmCandidates = goals.flatMap((g) => {
+    if (!isGoalLive(g) || g.target_date == null) return [];
     const target = biomarkerTargetOf(g);
-    if (!target) continue;
-    const plot = biomarkerPlot(profileId, target.name);
+    return target ? [{ g, target, targetDate: g.target_date }] : [];
+  });
+  const bmPlots = biomarkerPlots(
+    profileId,
+    bmCandidates.map((x) => x.target.name)
+  );
+  for (const { g, target, targetDate } of bmCandidates) {
+    const plot = bmPlots.get(target.name) ?? null;
     if (!plot || !sameUnit(target.unit, plot.unit)) continue;
     const latest = plot.points.at(-1) ?? null;
     if (!labGoalHasCheckedIn(g.created_at, latest?.date ?? null)) continue;
@@ -1240,7 +1256,7 @@ export function buildGoalPacingFindings(
         id: g.id,
         title: g.title,
         targetValue: target.value,
-        targetDate: g.target_date,
+        targetDate,
         baselineValue: target.baselineValue,
       },
       plot.points
@@ -1361,7 +1377,7 @@ export function buildAdherencePatternFindings(
     // It used to be clamped at the dose's `updated_at` as well (#430), which meant any
     // re-time voided every day before it: the "editing a dose must not rewrite adherence
     // history" invariant was being honoured by throwing the history away. Effective-dated
-    // schedules (migration 150) removed the need — `doseDueOn` below resolves the version
+    // schedules (migration 151) removed the need — `doseDueOn` below resolves the version
     // in force on each day, so a pre-edit day is judged by the pre-edit rule instead of
     // being dropped. What remains is the genuinely different question of when the dose
     // existed at all, and `doseWindowSince` is its better answer: timezone-aware, and

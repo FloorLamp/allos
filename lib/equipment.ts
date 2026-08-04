@@ -4,6 +4,7 @@ import {
   summarizeEquipmentAvailability,
   type EquipmentAvailability,
 } from "./equipment-availability";
+import { cleanupOrphanPrDismissals } from "./queries/upcoming/suppressions";
 
 // Shape accepted from the manager UI. Weight is in kg (callers convert from the
 // user's display unit first).
@@ -160,4 +161,11 @@ export function deleteEquipment(profileId: number, id: number): void {
       profileId
     );
   });
+  // Moving every set off this implement retires its LOAD LANE, and a personal-record
+  // celebration's dismissal is keyed on (movement, lane) — so the deleted id's `pr:`
+  // suppression rows now point at a lane no set is in (#1931). This is the row-ops
+  // rule's "saved/dismissed side-state" clause: a delete must carry its dismissals
+  // too, or a lane id SQLite later reissues inherits the old machine's silence.
+  // Outside the transaction (like the other sweeps) so it reads the committed state.
+  cleanupOrphanPrDismissals(profileId);
 }

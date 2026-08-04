@@ -20,12 +20,16 @@
 import { db } from "../db";
 import { getHomeLocation } from "../settings";
 import { shiftDateStr } from "../date";
-import { getWeatherDays } from "../integrations/weather-cache";
-import { isOutdoorActivity } from "../activities-catalog";
+import {
+  getUvHoursForDay,
+  getWeatherDays,
+} from "../integrations/weather-cache";
+import { activityHistoryKey, isOutdoorActivity } from "../activities-catalog";
 import {
   deriveEnvelopes,
   planningLine,
   scanViableDays,
+  type PrecipitationHour,
   type SessionWeather,
   type ToleranceEnvelope,
 } from "../weather-training";
@@ -117,6 +121,26 @@ export function getToleranceEnvelopes(
   return deriveEnvelopes(outdoor, sessions);
 }
 
+// The hourly precipitation of one LOCAL day at the profile's home location (#1967) — the
+// input the wet-park description's timing clause reads ("heavy rain in the morning").
+// Empty for a profile with no home location or a day with nothing cached, and the phrase
+// then renders intensity alone rather than inventing a clause. `hour_ts` is the
+// LOCATION's local wall clock (the same key the UV dose model crosses with local-time
+// windows), so the hour is read straight off it.
+export function getPrecipitationHours(
+  profileId: number,
+  date: string
+): PrecipitationHour[] {
+  const home = getHomeLocation(profileId);
+  if (!home) return [];
+  return getUvHoursForDay(home.lat, home.lng, date)
+    .map((h) => ({
+      hour: Number(h.hourTs.slice(11, 13)),
+      precipitationMm: h.precipitationMm,
+    }))
+    .filter((h) => Number.isFinite(h.hour));
+}
+
 // Whether the profile can actually DO an indoor candidate — logged history OR owned
 // equipment. The engine never invents a machine someone doesn't have, so an alternative
 // that fails this check is skipped and the caller falls through with the disclosure
@@ -175,7 +199,9 @@ export function outdoorPlanSignalKey(
   activity: string,
   weekStartDate: string
 ): string {
-  return `${OUTDOOR_PLAN_PREFIX}${activity.trim().toLowerCase()}:${weekStartDate}`;
+  // The shared cardio identity (#1931), not an inline fold — same function the stats
+  // grouping and the PR dismissal key resolve through.
+  return `${OUTDOOR_PLAN_PREFIX}${activityHistoryKey(activity)}:${weekStartDate}`;
 }
 
 export interface OutdoorPlan {

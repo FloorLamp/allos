@@ -248,7 +248,7 @@ describe("a cadence change is judged forward, never backward", () => {
 
 describe("a legacy re-time, whose old slot nothing recorded", () => {
   // The one case effective-dating cannot reach: a dose re-timed BEFORE #1973 shipped.
-  // Migration 150 seeds one version from the CURRENT row, so the pre-edit slot is
+  // Migration 151 seeds one version from the CURRENT row, so the pre-edit slot is
   // simply not knowable. Judging those days by today's rule would be the retroactive
   // re-accusation #430 clamped to avoid, so the conservative bound stays for them.
   it("reports the edit day when no version records the change", () => {

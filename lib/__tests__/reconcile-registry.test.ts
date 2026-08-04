@@ -21,12 +21,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  KIND_REISSUE,
   RECONCILE_PREFIXES,
   inertTokens,
+  isReissuableKind,
   owningFamily,
   reconcileEntryFor,
 } from "@/lib/notifications/reconcile-registry";
 import { tokenPrefix } from "@/lib/notifications/reconcile-core";
+import { ALL_NOTIFICATION_KINDS } from "@/lib/notifications/kinds";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const NOTIFY_DIR = path.join(REPO, "lib/notifications");
@@ -176,6 +179,74 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
       );
       seen.add(e.prefix);
     }
+  });
+});
+
+// THE SECOND COMPLETENESS GUARD (issue #1898). The prefix table above asks "what
+// happens when this BUTTON is still in the chat tomorrow?". This one asks, per KIND,
+// "does sending this again replace the last one, or add to it?" — the question nobody
+// had been asked, which is why `/dose` and `/symptom` accumulated live keyboards.
+describe("the re-issue completeness guard (#1898)", () => {
+  it("every notification kind declares whether it is re-issuable", () => {
+    const declared = new Set(KIND_REISSUE.map((e) => e.kind as string));
+    const undeclared = ALL_NOTIFICATION_KINDS.filter((k) => !declared.has(k));
+    expect(
+      undeclared,
+      `kinds with no re-issue declaration: ${undeclared.join(", ")} — add a ` +
+        `KIND_REISSUE entry saying whether a new send of this kind supersedes the ` +
+        `chat's previous one, and why`
+    ).toEqual([]);
+  });
+
+  it("no STALE declaration — every declared kind is still a real kind", () => {
+    const known = new Set<string>(ALL_NOTIFICATION_KINDS);
+    const stale = KIND_REISSUE.filter((e) => !known.has(e.kind)).map(
+      (e) => e.kind
+    );
+    expect(stale, `retired kinds still declared: ${stale.join(", ")}`).toEqual(
+      []
+    );
+  });
+
+  it("both answers carry a real reason — including the 'yes'", () => {
+    for (const e of KIND_REISSUE) {
+      expect(e.why.length, `${e.kind} needs a real reason`).toBeGreaterThan(40);
+    }
+  });
+
+  it("no duplicate kinds", () => {
+    const seen = new Set<string>();
+    for (const e of KIND_REISSUE) {
+      expect(seen.has(e.kind), `duplicate declaration for "${e.kind}"`).toBe(
+        false
+      );
+      seen.add(e.kind);
+    }
+  });
+
+  it("the catch-all kind is never re-issuable", () => {
+    // Every un-kinded send lands in "other". If it superseded, any two unrelated
+    // messages in one chat would close each other.
+    expect(isReissuableKind("other")).toBe(false);
+    expect(isReissuableKind(undefined)).toBe(false);
+    expect(isReissuableKind(null)).toBe(false);
+  });
+
+  it("an UNKNOWN kind fails safe — it closes nothing", () => {
+    expect(isReissuableKind("kind-nobody-declared")).toBe(false);
+  });
+
+  it("no SAFETY kind is re-issuable", () => {
+    // A dose reminder and a missed-dose escalation each assert an outstanding claim.
+    // Superseding one because another sent would remove a prompt nobody answered.
+    for (const kind of ["dose", "escalation", "redose"]) {
+      expect(isReissuableKind(kind), `${kind} must not supersede`).toBe(false);
+    }
+  });
+
+  it("the on-demand command kinds ARE re-issuable", () => {
+    expect(isReissuableKind("prn-list")).toBe(true);
+    expect(isReissuableKind("symptom")).toBe(true);
   });
 });
 

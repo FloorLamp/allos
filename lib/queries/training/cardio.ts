@@ -1,4 +1,5 @@
 import { speedKmh } from "../../coaching";
+import { activityHistoryKey } from "../../activities-catalog";
 import { journalActivityHref } from "../../timeline-format";
 import type { AppRoute } from "../../hrefs";
 import { startOfWeekStr } from "../../date";
@@ -67,7 +68,10 @@ export const getCardioByActivity = cache(function getCardioByActivity(
   }
   const map = new Map<string, Acc>();
   for (const e of effortEntries(profileId, "cardio")) {
-    const key = e.name.toLowerCase();
+    // The shared cardio IDENTITY (#1931), not an inline fold: the PR celebration's
+    // dismissal key and the orphan sweep resolve identity through the same function,
+    // so a key can never disagree with the grouping the records are computed from.
+    const key = activityHistoryKey(e.name);
     let cur = map.get(key);
     if (!cur) {
       cur = {

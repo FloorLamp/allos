@@ -209,7 +209,7 @@ describe("PR → Finding adapters", () => {
     };
     const f = prToFinding(pr, "kg");
     expect(f.domain).toBe("pr");
-    expect(f.dedupeKey).toBe("pr:strength:Back Squat@none:1rm");
+    expect(f.dedupeKey).toBe("pr:strength:back squat@none:1rm");
     expect(f.tone).toBe("positive");
     expect(f.detail).toBe("Back Squat at 120 kg × 5");
     expect(f.dueDate).toBe("2026-07-09");
@@ -258,7 +258,7 @@ describe("PR → Finding adapters", () => {
       bodyweight: false,
     };
     const f = prToFinding(pr, "kg");
-    expect(f.dedupeKey).toBe("pr:strength:Deadlift@none:weight");
+    expect(f.dedupeKey).toBe("pr:strength:deadlift@none:weight");
     expect(f.detail).toBe("Deadlift top set at 160 kg");
   });
 
@@ -291,7 +291,7 @@ describe("PR → Finding adapters", () => {
       "longest Run at 10 km"
     );
     expect(cardioPrToFinding(speed, "km").dedupeKey).toBe(
-      "pr:cardio:Cycle:speed"
+      "pr:cardio:cycle:speed"
     );
     expect(cardioPrToFinding(speed, "km").detail).toContain("km/h");
     expect(cardioPrToFinding(duration, "km").detail).toContain("Row");

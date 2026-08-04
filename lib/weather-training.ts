@@ -26,7 +26,8 @@
 
 import { indoorAlternatives, isOutdoorActivity } from "./activities-catalog";
 import { shiftDateStr } from "./date";
-import type { WeatherDay } from "./weather-situations";
+import { fmtAmbientTemp, type WeatherDay } from "./weather-situations";
+import type { TemperatureUnit } from "./settings";
 
 // ---- Named constants (adjust-in-review) -------------------------------------------
 
@@ -189,10 +190,30 @@ export function deriveEnvelopes(
 // formatter owns the copy so every surface phrases it identically.
 export type ParkReason = "cold" | "hot" | "wet";
 
+// WHAT THE REASON'S VALUE MEASURES (issue #1967). `value` is unit-PER-REASON — °C for a
+// temperature reason, mm for a precipitation one — and for as long as that was only a
+// comment, the single caller formatted every reason as an ambient temperature and 45 mm
+// of rain rendered as "45°C". So the quantity is now DATA: a reason cannot exist without
+// declaring what its number is, `parkedFigure` dispatches on this record rather than on
+// the reason itself, and the next reason added (wind, UV, air quality) is a type error
+// until it says which quantity it carries. The wrong thing is unavailable, not merely
+// discouraged.
+export type ParkQuantity = "temperature" | "precipitation";
+
+export const PARK_REASON_QUANTITY: Record<ParkReason, ParkQuantity> = {
+  cold: "temperature",
+  hot: "temperature",
+  wet: "precipitation",
+};
+
 export interface ParkedVerdict {
   activity: string;
   parked: boolean;
   reason: ParkReason | null;
+  // What `value` measures, derived from `reason` through PARK_REASON_QUANTITY — carried
+  // on the verdict so a consumer holding one never has to re-derive (or guess) the unit.
+  // Null exactly when `reason` is.
+  quantity: ParkQuantity | null;
   // The condition value that decided it (°C for cold/hot, mm for wet), or null when not
   // parked. Canonical units; the formatter converts.
   value: number | null;
@@ -204,7 +225,25 @@ const NOT_PARKED = (activity: string, revealed: boolean): ParkedVerdict => ({
   activity,
   parked: false,
   reason: null,
+  quantity: null,
   value: null,
+  revealed,
+});
+
+// A parked verdict, with the quantity resolved from the reason — the ONE place a reason
+// and its unit are paired, so no branch below can hand back a value whose unit is a
+// guess.
+const PARKED = (
+  activity: string,
+  reason: ParkReason,
+  value: number,
+  revealed: boolean
+): ParkedVerdict => ({
+  activity,
+  parked: true,
+  reason,
+  quantity: PARK_REASON_QUANTITY[reason],
+  value,
   revealed,
 });
 
@@ -223,22 +262,10 @@ export function parkedVerdict(
   const temp = day.tempMaxC;
   if (temp != null) {
     if (temp < env.minTempC - PARK_TEMP_MARGIN_C) {
-      return {
-        activity,
-        parked: true,
-        reason: "cold",
-        value: temp,
-        revealed: env.revealed,
-      };
+      return PARKED(activity, "cold", temp, env.revealed);
     }
     if (temp > env.maxTempC + PARK_TEMP_MARGIN_C) {
-      return {
-        activity,
-        parked: true,
-        reason: "hot",
-        value: temp,
-        revealed: env.revealed,
-      };
+      return PARKED(activity, "hot", temp, env.revealed);
     }
   }
 
@@ -247,13 +274,7 @@ export function parkedVerdict(
     precip != null &&
     precip > env.maxPrecipitationMm + PARK_PRECIP_MARGIN_MM
   ) {
-    return {
-      activity,
-      parked: true,
-      reason: "wet",
-      value: precip,
-      revealed: env.revealed,
-    };
+    return PARKED(activity, "wet", precip, env.revealed);
   }
 
   return NOT_PARKED(activity, env.revealed);
@@ -277,14 +298,160 @@ export function pickIndoorAlternative(
   return null;
 }
 
+// ---- The figure a park discloses (issue #1967) ---------------------------------------
+//
+// One formatter, dispatching on the reason's QUANTITY rather than assuming everything is
+// a temperature. The caller no longer formats anything: it hands over the canonical value
+// and the login's scale, which is what makes "45 mm rendered as 45°C" unrepresentable
+// rather than merely fixed.
+//
+// PRECIPITATION IS DESCRIBED, NOT COUNTED (the owner ruling on #1967). "45 mm" is
+// accurate and useless — nobody plans a ride off millimetres. The wet figure is
+// plain language ("heavy rain in the morning"): the TYPE comes from the WMO code, the
+// millimetres only choose the adjective and are never printed, and the timing is said
+// only when the wet hours genuinely cluster. Cold and hot keep their numbers, where the
+// figure does inform.
+
+// A precipitation intensity adjective is chosen from the day's total. The bands are wide
+// on purpose: parking already implies a wet day (>13 mm under any envelope), so these
+// separate "wet enough to park" from "genuinely heavy", they are not the meteorological
+// light/moderate/heavy breakpoints.
+export const LIGHT_PRECIP_MM = 10;
+export const HEAVY_PRECIP_MM = 25;
+
+// An hour counts as WET above this — a trace reading is not rain, and treating it as such
+// would smear the timing across the whole day.
+export const WET_HOUR_MM = 0.2;
+
+// Timing needs a whole day to reason about: with hours missing, the rain could equally
+// have fallen in one of them, so a cluster in what we DO have proves nothing. Below this
+// many cached hours the phrase renders intensity alone.
+export const MIN_TIMING_HOURS = 20;
+
+// The weatherCodeLabel OUTPUTS that mean precipitation. Keyed on the label rather than on
+// code ranges of its own, so this and the conditions stamp can never disagree about what
+// counts as rain, and widening a band there reaches here for free. (weatherCodeLabel is
+// declared further down with the stamps it was written for; the hoist is deliberate —
+// the label belongs to that section, this is a second reader of it.)
+const PRECIPITATION_LABELS = new Set([
+  "drizzle",
+  "rain",
+  "snow",
+  "showers",
+  "snow showers",
+  "thunderstorm",
+]);
+
+// One hour of the profile's LOCAL day, from the hourly weather cache.
+export interface PrecipitationHour {
+  // Hour of the local day, 0–23.
+  hour: number;
+  precipitationMm: number | null;
+}
+
+export type DayPart = "morning" | "afternoon" | "evening";
+
+// The named day-parts, and the hours that belong to them. Deliberately NOT a partition of
+// the 24 hours: the small hours belong to no part, so overnight rain yields no timing
+// phrase rather than being rounded into "the morning".
+const DAY_PARTS: readonly { part: DayPart; from: number; to: number }[] = [
+  { part: "morning", from: 5, to: 11 },
+  { part: "afternoon", from: 12, to: 17 },
+  { part: "evening", from: 18, to: 22 },
+];
+
+export function dayPartOfHour(hour: number): DayPart | null {
+  return DAY_PARTS.find((p) => hour >= p.from && hour <= p.to)?.part ?? null;
+}
+
+// When the rain falls, or null when the honest answer is "no useful pattern". SAY NOTHING
+// RATHER THAN INVENT PRECISION: all-day rain, showers scattered across parts, overnight
+// rain and a partially-cached day all return null and the phrase renders intensity alone.
+export function precipitationTiming(
+  hours: readonly PrecipitationHour[]
+): DayPart | null {
+  if (hours.length < MIN_TIMING_HOURS) return null;
+  const wet = hours.filter(
+    (h) => h.precipitationMm != null && h.precipitationMm > WET_HOUR_MM
+  );
+  if (wet.length === 0) return null;
+  const parts = new Set<DayPart | null>(wet.map((h) => dayPartOfHour(h.hour)));
+  // A wet hour outside every named part (or wet hours in more than one part) means the
+  // rain does not belong to a single day-part — no timing.
+  if (parts.size !== 1) return null;
+  return [...parts][0];
+}
+
+// The plain-language precipitation figure — "heavy rain in the morning", "light drizzle",
+// "thunderstorm". Null when the day's weather code is missing or names no precipitation
+// at all: the disclosure then renders without a figure, which is the same silence-over-
+// guessing rule the null value already followed. Never millimetres, never a temperature.
+export function precipitationPhrase(input: {
+  weatherCode: number | null;
+  // The day's total, in mm. Chooses the adjective; never printed.
+  precipitationMm: number | null;
+  // The local day's hourly series, for the timing clause. Empty ⇒ intensity alone.
+  hours?: readonly PrecipitationHour[];
+}): string | null {
+  const label = weatherCodeLabel(input.weatherCode);
+  if (!label || !PRECIPITATION_LABELS.has(label)) return null;
+  const mm = input.precipitationMm;
+  // A thunderstorm carries its own intensity; "heavy thunderstorm" adds nothing.
+  const modifier =
+    label === "thunderstorm" || mm == null || !Number.isFinite(mm)
+      ? null
+      : mm < LIGHT_PRECIP_MM
+        ? "light"
+        : mm >= HEAVY_PRECIP_MM
+          ? "heavy"
+          : null;
+  const kind = modifier ? `${modifier} ${label}` : label;
+  const timing = precipitationTiming(input.hours ?? []);
+  return timing ? `${kind} in the ${timing}` : kind;
+}
+
+export interface ParkedFigureInput {
+  reason: ParkReason;
+  // The condition value in CANONICAL units — °C for a temperature reason, mm for a
+  // precipitation one. Null renders no figure.
+  value: number | null;
+  // The day's WMO weather code, for the precipitation description.
+  weatherCode: number | null;
+  // The local day's hourly precipitation, for its timing clause.
+  hours?: readonly PrecipitationHour[];
+  // The LOGIN's temperature scale. A surface with no login (a notification) passes the
+  // canonical "C".
+  temperatureUnit: TemperatureUnit;
+}
+
+// The figure a parked disclosure names, in the reason's OWN unit. Exhaustive over
+// ParkQuantity: a new quantity fails to compile here until it says how it reads.
+export function parkedFigure(input: ParkedFigureInput): string | null {
+  switch (PARK_REASON_QUANTITY[input.reason]) {
+    case "temperature":
+      return fmtAmbientTemp(input.value, input.temperatureUnit);
+    case "precipitation":
+      return precipitationPhrase({
+        weatherCode: input.weatherCode,
+        precipitationMm: input.value,
+        hours: input.hours,
+      });
+  }
+}
+
 // ---- Disclosure copy ---------------------------------------------------------------
 
 export interface ParkedDisclosure {
   activity: string;
   reason: ParkReason;
   alternative: string | null;
-  // The already-unit-formatted condition figure ("−2°C", "12 mm"), or null.
-  figure: string | null;
+  // The condition facts, RAW — never a pre-formatted figure (#1967). The line formats
+  // them through parkedFigure, so the three surfaces cannot render the same park with
+  // different units, and no caller is in a position to attach the wrong one.
+  value: number | null;
+  weatherCode: number | null;
+  hours?: readonly PrecipitationHour[];
+  temperatureUnit: TemperatureUnit;
 }
 
 // The one-line disclosure — the ONE formatter the Telegram nudge, the dashboard card
@@ -298,7 +465,8 @@ export function parkedDisclosureLine(d: ParkedDisclosure): string {
       : d.reason === "hot"
         ? "Too hot"
         : "Too wet";
-  const figure = d.figure ? ` (${d.figure})` : "";
+  const figure = parkedFigure(d);
+  const detail = figure ? ` (${figure})` : "";
   const swap = d.alternative
     ? ` — ${d.alternative} instead.`
     : " — picking something indoors instead.";
@@ -308,7 +476,7 @@ export function parkedDisclosureLine(d: ParkedDisclosure): string {
       : d.reason === "hot"
         ? ` Outdoor ${d.activity.toLowerCase()} resumes when it cools down.`
         : ` Outdoor ${d.activity.toLowerCase()} resumes when it dries out.`;
-  return `${because} for ${d.activity.toLowerCase()}${figure}${swap}${resumes}`;
+  return `${because} for ${d.activity.toLowerCase()}${detail}${swap}${resumes}`;
 }
 
 // ---- Forecast-ahead planning (#1724 part 5) ----------------------------------------
@@ -498,7 +666,8 @@ export function planningLine(input: {
 // WMO weather-interpretation codes → a short human label. Grouped rather than
 // enumerated: "light drizzle" vs "moderate drizzle" is more precision than a one-line
 // stamp can carry, and the bands are what people actually say. An unrecognized code
-// yields null and the stamp falls back to the temperature alone.
+// yields null and the stamp falls back to the temperature alone. Also the TYPE half of a
+// wet park's description (#1967) — one vocabulary, two readers.
 export function weatherCodeLabel(code: number | null): string | null {
   if (code == null || !Number.isFinite(code)) return null;
   if (code === 0) return "clear";

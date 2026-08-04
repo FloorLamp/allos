@@ -61,7 +61,7 @@ export interface DoseSchedule {
   end_date?: string | null;
 }
 
-// ONE version of a dose's schedule (issue #1973, migration 150): the schedule fields
+// ONE version of a dose's schedule (issue #1973, migration 151): the schedule fields
 // above plus the calendar day they took effect. Versions are HALF-OPEN and closed by
 // the next one — there is no `effective_to` — so a change is a single append and
 // "no gaps, no overlaps" is structural rather than an invariant two rows have to keep
@@ -198,7 +198,7 @@ export function doseScheduleAsOf(
 //
 // This is the honest treatment of data that predates #1973. `updated_at` is bumped only
 // when a dose's slot changes, so it says "the schedule changed on this day" — but it
-// does not say what the schedule WAS, and nothing can reconstruct that. Migration 150
+// does not say what the schedule WAS, and nothing can reconstruct that. Migration 151
 // seeds one version per dose from its CURRENT row, so an already-re-timed dose comes out
 // of the migration with a single version whose fields describe the post-edit slot only.
 //

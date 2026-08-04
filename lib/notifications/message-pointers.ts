@@ -178,6 +178,47 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
   return out;
 }
 
+// The live pointers for ONE (chat, kind) pair, oldest first — the supersede candidates
+// a re-issuing send closes (#1898). Profile-scoped like every other statement here; the
+// CHAT filter is applied by the pure plan rather than trusted from this row set, so a
+// widened query can never silently start closing another chat's copy.
+//
+// Deliberately a narrow query rather than a filter over `liveMessagePointers`: a send is
+// on the delivery path, and the common case (a kind with no prior live keyboard) must
+// cost one indexed lookup, not a full read of the profile's pointer table.
+export function liveMessagePointersForKind(
+  profileId: number,
+  chatId: string | number,
+  kind: string
+): MessagePointer[] {
+  const rows = db
+    .prepare(
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at
+         FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND kind = ?
+        ORDER BY sent_at, id`
+    )
+    .all(profileId, String(chatId), kind) as PointerRow[];
+  const out: MessagePointer[] = [];
+  for (const r of rows) {
+    const keyboard = parseStoredKeyboard(r.keyboard);
+    if (!keyboard) continue;
+    out.push({
+      id: r.id,
+      profileId: r.profile_id,
+      chatId: r.chat_id,
+      messageId: r.message_id,
+      kind: r.kind,
+      date: r.date,
+      keyboard,
+      title: r.title,
+      sentAt: r.sent_at,
+      version: r.keyboard,
+    });
+  }
+  return out;
+}
+
 // ---- Claiming an edit (issue #1788) ---------------------------------------
 //
 // THE RACE. The sweep reads a pointer, `await`s a Telegram edit, and only then writes

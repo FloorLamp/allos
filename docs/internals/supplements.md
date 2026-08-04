@@ -272,7 +272,7 @@ rule was honoured by throwing the history away. Erasing the past and re-judging 
 the same mistake pointed in opposite directions — a present edit deciding what was true
 before it — so the clamp is gone and the history is recorded instead.
 
-**Storage: `intake_dose_schedule_versions`** (migration 150), a child of
+**Storage: `intake_dose_schedule_versions`** (migration 151), a child of
 `intake_item_doses` carrying only the DUENESS-RELEVANT fields — `time_of_day`,
 `weekdays`, `start_date`, `end_date` — plus the profile-local `effective_from` day they
 took effect. Versions are HALF-OPEN (no `effective_to`; the next version closes the
@@ -314,7 +314,7 @@ suppresses the move suggestion when the dose's time BUCKET moved inside the wind
 (an 08:00 → 07:30 nudge inside Morning is not a slot change), and the days stay.
 
 **Legacy re-times.** A dose re-timed BEFORE this shipped has no pre-edit version and its
-old slot is unrecoverable — migration 150 seeds from the current row. Judging those days
+old slot is unrecoverable — migration 151 seeds from the current row. Judging those days
 by today's rule would be the exact retroactive re-accusation #430 guarded against, so
 `unrecordedScheduleChangeOn` keeps the conservative clamp for precisely those doses: an
 `updated_at` newer than the newest recorded version. It self-heals — the write path

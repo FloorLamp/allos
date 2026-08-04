@@ -132,7 +132,7 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
   );
 }
 
-// Every dose's effective-dated schedule history (#1973, migration 150), oldest first,
+// Every dose's effective-dated schedule history (#1973, migration 151), oldest first,
 // keyed by dose id. Scoped through the parent item's profile_id like every other read in
 // this module (the version table is a grandchild and carries no profile_id of its own).
 //

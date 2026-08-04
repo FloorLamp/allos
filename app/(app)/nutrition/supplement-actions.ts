@@ -931,7 +931,7 @@ export async function updateSupplement(
           const priorVersions = historyByDose.get(d.id);
           if (!priorVersions || priorVersions.length === 0) {
             // Lazy backfill: the pre-edit rule, effective from the dose's birth. The
-            // anchor is the same one migration 150 seeds from — the dose's created_at,
+            // anchor is the same one migration 151 seeds from — the dose's created_at,
             // else the parent item's, else the epoch — so a backfilled history and a
             // migrated one are indistinguishable.
             const born = (

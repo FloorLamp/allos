@@ -255,7 +255,11 @@ at once:
   `detail-none: <why>` comment. The destination for a registered body metric is
   `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite
   chart (training volume, macros, zone minutes) points at the existing
-  full-depth surface its bars are summed from, named at the call site.
+  full-depth surface its bars are summed from, named at the call site. A chart of
+  a stored clinical READING (a biomarker or a vital) uses
+  `readingDetailHref(canonicalName)` instead, which picks the surface by cadence
+  (#1932) — never `metricDetailHref` directly, or the two link lanes could
+  disagree about where one reading opens.
 - **The plot height.** The card owns it — square below `sm`, `plotHeightClass`
   (default `sm:h-64`) above — through the `.chart-card-plot > *` rule in
   `app/globals.css`. A call site does not pass `heightClass`; that is what keeps

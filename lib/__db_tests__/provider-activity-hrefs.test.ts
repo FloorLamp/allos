@@ -14,7 +14,7 @@ import {
   getProviderVisits,
 } from "@/lib/queries";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   encounterHref,
   immunizationHref,
   medicationHref,
@@ -117,7 +117,7 @@ describe("provider activity domain destinations", () => {
 
     expect(destinations).toEqual({
       visits: encounterHref(visitId),
-      labs: biomarkerViewHref("Glucose", "GLUCOSE"),
+      labs: readingDetailHref("Glucose", "GLUCOSE"),
       medications: medicationHref(medicationId),
       immunizations: immunizationHref("Tdap"),
       procedures: "/records/history/procedures",

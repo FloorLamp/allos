@@ -28,6 +28,10 @@ import SleepTrendsSection from "./SleepTrendsSection";
 import SourceComparison from "../trends/SourceComparison";
 import PageContainer from "@/components/PageContainer";
 
+// Load-bearing beyond freshness of the sleep reads themselves: this page also
+// renders bedtime-supplement context, and no dose-write path revalidates
+// "/sleep". Anything that makes this page cacheable must add that revalidation
+// to the dose writes first (#1972).
 export const dynamic = "force-dynamic";
 
 // The dedicated Sleep page (issue #1066): the expanded, composed formatter over

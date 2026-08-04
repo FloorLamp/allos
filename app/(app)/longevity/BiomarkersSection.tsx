@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getOptimalShareRows } from "@/lib/queries";
-import { biomarkerViewHref } from "@/lib/hrefs";
+import { readingDetailHref } from "@/lib/hrefs";
 import type { OptimalShareRow } from "@/lib/longevity-pillars";
 import type { LongevitySection } from "@/lib/longevity";
 import { MedicalValue } from "@/components/ui";
@@ -12,7 +12,7 @@ import PillarStat from "./PillarStat";
 // gather + rangeBadge judgment as the pillar count (getOptimalShareRows /
 // optimalShareRows — reconciliation pinned by a pure test), non-optimal first.
 // Links point at the biomarker surfaces that exist TODAY (/biomarkers +
-// biomarkerViewHref); phase 5 (Results) repoints them later.
+// readingDetailHref); phase 5 (Results) repoints them later.
 //
 // A row shows the CANONICAL name and leads with the VALUE (#1501):
 //   • `canonicalName?.trim() || name` — the vocabulary's canonical_name already IS clean,
@@ -34,7 +34,7 @@ function BiomarkerRow({ row: r }: { row: OptimalShareRow }) {
       data-testid="longevity-biomarker-row"
     >
       <Link
-        href={biomarkerViewHref(r.canonicalName, r.name)}
+        href={readingDetailHref(r.canonicalName, r.name)}
         className={`truncate hover:underline ${
           r.badge === "optimal"
             ? "text-slate-700 dark:text-slate-200"

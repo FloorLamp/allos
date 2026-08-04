@@ -16,7 +16,7 @@ import { providerDisambigLabel } from "./provider-merge";
 import { encounterTypeDisplay } from "./encounter-kind";
 import { fmtWeight } from "./units";
 import {
-  biomarkerViewHref,
+  readingDetailHref,
   encounterHref,
   providerHref,
   MEDICATIONS_HREF,
@@ -259,7 +259,7 @@ export function recordNameLink(
       const name = canonicalName?.trim();
       if (!name) return null;
       return {
-        href: biomarkerViewHref(name),
+        href: readingDetailHref(name),
         title: `View ${name} over time`,
       };
     }

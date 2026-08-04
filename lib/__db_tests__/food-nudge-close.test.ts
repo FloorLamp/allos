@@ -9,7 +9,11 @@
 // Proves: (1) a food send stores the pointer; (2) the next send strips the previous
 // message's keyboard via editMessageReplyMarkupRaw and rotates the pointer; (3) a
 // strip failure (simulated 400) is swallowed and never sets notify_last_error — the
-// send already succeeded; (4) a non-food kind touches neither the pointer nor a strip.
+// send already succeeded; (4) a non-food kind touches neither the pointer nor a strip;
+// (5) a send that yields NO pointer strips nothing (#1945 — strip and record are one
+// decision, so a send that cannot record must not close anybody's keyboard); (6) across
+// three nudges with an unextractable middle one, the strip lands on the message the
+// pointer names and the middle one is never orphaned with a live keyboard.
 
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 
@@ -131,6 +135,64 @@ describe("food nudge close-previous keyboard (#947)", () => {
     expect(getNotifyError()).toBeNull();
     // ...and the pointer still rotated to the newest message despite the strip throw.
     expect(getFoodNudgePointer(p.profileId)!.window).toBe("Evening");
+  });
+
+  // A food-kind send whose delivered keyboard carries no quick-log token — the #1807
+  // "Show less"-only shape, or a keyboard reduced to view controls. It yields no
+  // pointer, and a send that cannot record must not strip: it has superseded nothing.
+  function viewControlOnlyNudge(): NotificationMessage {
+    return {
+      title: "🍽️ Midday food log",
+      body: "…",
+      kind: "food",
+      actions: [
+        {
+          label: "➖ Show less",
+          data: `foodless:${p.profileId}:Midday:${t}`,
+          row: "food-showmore",
+        },
+      ],
+    };
+  }
+
+  it("a send that yields no pointer leaves the previous keyboard intact", async () => {
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);
+    const firstPtr = getFoodNudgePointer(p.profileId)!;
+    stripMock.mockClear();
+
+    await dispatch(p.profileId, viewControlOnlyNudge());
+
+    // No strip without a successor to record — the pointer still names the message
+    // that is still showing its keyboard.
+    expect(stripMock).not.toHaveBeenCalled();
+    expect(getFoodNudgePointer(p.profileId)).toEqual(firstPtr);
+  });
+
+  it("strips the message the pointer names, never the one that stranded it (#1945)", async () => {
+    // Three consecutive nudges, the middle one carrying no quick-log token.
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);
+    const firstPtr = getFoodNudgePointer(p.profileId)!;
+
+    await dispatch(p.profileId, viewControlOnlyNudge());
+    const middleId = sendMock.mock.results.at(-1)!.value as Promise<number>;
+    const middleMessageId = await middleId;
+
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Evening", t)!);
+    const thirdPtr = getFoodNudgePointer(p.profileId)!;
+
+    // Exactly one strip across the run, aimed at the FIRST message — the one the third
+    // nudge actually supersedes. Before #1945 the middle send stripped it instead and
+    // recorded nothing, so the third stripped the same dead id again and the middle
+    // message kept a live keyboard forever.
+    expect(stripMock).toHaveBeenCalledTimes(1);
+    expect(stripMock.mock.calls[0][1]).toBe(firstPtr.messageId);
+    expect(stripMock.mock.calls.map((c) => c[1])).not.toContain(
+      middleMessageId
+    );
+
+    // ...and the pointer names the newest EXTRACTABLE message at every step.
+    expect(thirdPtr.window).toBe("Evening");
+    expect(thirdPtr.messageId).toBeGreaterThan(middleMessageId);
   });
 
   it("a non-food kind neither strips nor writes the pointer", async () => {

@@ -45,6 +45,20 @@ function withShareHeaders(res: NextResponse): NextResponse {
 // Re-set the session cookie with a fresh 30-day max-age (sliding refresh).
 // Server Components can't set cookies, so this is where the browser
 // lifetime is extended on each navigation.
+//
+// NAVIGATIONS ONLY (GET/HEAD) — never on a Server Action POST. Next merges a
+// middleware Set-Cookie into the action's mutable cookie jar, and a cookie
+// modified during an action marks the whole response "revalidated": the action
+// reply then carries a full page re-render and invalidates the client router
+// cache. That turned EVERY action — including pure reads like the Journal's
+// loadJournalPage — into an implicit refresh, which both contradicted the
+// documented contract (an action that skips revalidation must not refresh the
+// page, docs/internals/server-action-refresh.md) and fed a client fetch loop:
+// JournalView re-fetches the filtered feed when the server refreshes its first
+// page, so each fetch's cookie-stamped reply triggered the next fetch and
+// clobbered "Load more" pages. GET navigations happen constantly, so the
+// browser-lifetime slide loses nothing; the DB-side expiry slide
+// (SESSION_TOUCH in lib/auth.ts) still runs on every request.
 function withSlidingCookie(res: NextResponse, token: string): NextResponse {
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -59,6 +73,9 @@ function withSlidingCookie(res: NextResponse, token: string): NextResponse {
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
+  // See withSlidingCookie: sliding the cookie on a POST makes every Server
+  // Action response a page-refreshing one.
+  const isNavigation = req.method === "GET" || req.method === "HEAD";
 
   // Build the per-request nonce + CSP once, then stamp it onto EVERY response we
   // return below (share, redirect, 401, normal) so no route escapes the policy.
@@ -90,7 +107,7 @@ export function middleware(req: NextRequest) {
     }
     // Keep sliding an authenticated user's cookie even on public paths.
     return withCsp(
-      token
+      token && isNavigation
         ? withSlidingCookie(NextResponse.next(passNonce), token)
         : NextResponse.next(passNonce)
     );
@@ -109,7 +126,8 @@ export function middleware(req: NextRequest) {
     return withCsp(NextResponse.redirect(url));
   }
 
-  return withCsp(withSlidingCookie(NextResponse.next(passNonce), token));
+  const res = NextResponse.next(passNonce);
+  return withCsp(isNavigation ? withSlidingCookie(res, token) : res);
 }
 
 export const config = {

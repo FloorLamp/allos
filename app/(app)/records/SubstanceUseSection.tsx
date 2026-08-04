@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
 import { Notice } from "@/components/Notice";
-import { biomarkerViewHref } from "@/lib/hrefs";
+import { readingDetailHref } from "@/lib/hrefs";
 import {
   getSubstanceInstrumentReadings,
   type SubstanceInstrumentReading,
@@ -10,16 +10,16 @@ import {
   SUBSTANCE_INSTRUMENTS,
   shouldSuggestClinicianDiscussion,
   capProgressLine,
-  substanceDef,
   substanceInstrumentDef,
 } from "@/lib/substance-use";
 import type { SubstanceInstrument } from "@/lib/substance-use";
 import {
   getAllSubstanceWeekStates,
+  getSubstanceHistory,
   getSubstanceWeeklyTrend,
 } from "@/lib/queries";
 import { getSmokingHistory } from "@/lib/settings";
-import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
@@ -114,62 +114,24 @@ export default function SubstanceUseSection({
           calm progress line, and trailing trend, all through the ONE dispatched
           computation the coaching finding also reads. */}
       {weeks.map((week) => {
-        const def = substanceDef(week.substance);
-        const trend = trends.get(week.substance) ?? [];
-        const maxTrend = Math.max(1, ...trend.map((w) => w.count));
         return (
-          <section className="space-y-3" key={week.substance}>
-            <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-              {def.label} intake
-            </h2>
-            <p
-              className="text-sm"
-              data-testid={`substance-week-count-${week.substance}`}
-            >
-              <span className="font-semibold">{week.count}</span>{" "}
-              {week.count === 1 ? def.countSingular : def.countPlural} logged
-              this week.
-            </p>
-            {week.status ? (
-              <p
-                className="text-sm"
-                data-testid={`substance-cap-progress-${week.substance}`}
-              >
-                {capProgressLine(week.status, week.substance)}
-              </p>
-            ) : null}
-            <ConsumptionSection
-              substance={week.substance}
-              weekCount={week.count}
-              capSet={week.target != null}
-              cap={week.target?.cap ?? null}
-            />
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {def.unitNote}
-            </p>
-
-            {/* Trailing weekly trend — a calm bar list, oldest first. */}
-            <div
-              className="space-y-1"
-              data-testid={`substance-trend-${week.substance}`}
-            >
-              {trend.map((w) => (
-                <div key={w.start} className="flex items-center gap-2 text-xs">
-                  <span className="w-20 shrink-0 text-slate-500 dark:text-slate-400">
-                    {formatMonthDay(w.start, formatPrefs)}
-                    {w.isCurrent ? " (now)" : ""}
-                  </span>
-                  <div className="h-2 flex-1 rounded bg-black/5 dark:bg-white/5">
-                    <div
-                      className="h-2 rounded bg-brand-400/70"
-                      style={{ width: `${(w.count / maxTrend) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-6 text-right tabular-nums">{w.count}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          <ConsumptionSection
+            key={week.substance}
+            substance={week.substance}
+            weekCount={week.count}
+            capSet={week.target != null}
+            cap={week.target?.cap ?? null}
+            capProgress={
+              week.status ? capProgressLine(week.status, week.substance) : null
+            }
+            capAttention={
+              week.status ? week.status.atCap || week.status.over : false
+            }
+            history={getSubstanceHistory(profileId, week.substance)}
+            trend={trends.get(week.substance) ?? []}
+            defaultDate={td}
+            formatPrefs={formatPrefs}
+          />
         );
       })}
 
@@ -191,7 +153,7 @@ export default function SubstanceUseSection({
               total: r.total,
               bandLabel: r.band.label,
               maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
-              href: biomarkerViewHref(r.instrument),
+              href: readingDetailHref(r.instrument),
               documentId: r.documentId,
             }))}
           />
