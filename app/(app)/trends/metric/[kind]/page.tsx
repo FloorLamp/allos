@@ -65,8 +65,12 @@ import {
 } from "@/lib/metric-readings";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { pediatricBpContextFor } from "@/lib/queries/bp-context";
+import { getMetricJudgment } from "@/lib/queries/metric-judgment";
+import { getMetricObservations } from "@/lib/queries/readings";
+import type { Reading } from "@/lib/reading-model";
 import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { PediatricBpCard } from "@/components/PediatricBpCard";
+import { MetricJudgmentCard } from "@/components/MetricJudgmentCard";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import StarButton from "@/components/StarButton";
@@ -147,9 +151,12 @@ function readingRowsFor(
   slug: BodyMetricSlug,
   profileId: number,
   decimals: number,
-  weightUnit: WeightUnit
+  weightUnit: WeightUnit,
+  // Same-identity observations folded in (#1996) — read-only here, see
+  // MetricReadingRow.observed.
+  observations: readonly Reading[] = []
 ): MetricReadingRow[] {
-  return getMetricReadings(profileId, slug).map((r) => {
+  const own = getMetricReadings(profileId, slug).map((r) => {
     const shown =
       slug === "weight"
         ? dispWeight(r.value, weightUnit)
@@ -171,6 +178,24 @@ function readingRowsFor(
       notes: r.notes,
     };
   });
+  // The folded observations carry the identity's canonical unit, which for every
+  // metric that folds is the unit this page charts in (see getMetricJudgment).
+  const folded: MetricReadingRow[] = observations.map((r) => ({
+    id: r.rowId,
+    date: r.date,
+    display: String(round(r.value, decimals)),
+    editValue: round(r.value, decimals),
+    source: r.sourceKey,
+    flag: r.provenance?.flag ?? null,
+    edited: r.edited,
+    notes: r.notes,
+    observed: true,
+  }));
+  // Newest first, the order the table reads in; a clinic reading sits on its own
+  // day rather than at the end of the list.
+  return [...own, ...folded].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.id - a.id
+  );
 }
 
 // The goal overlay (target line + projection caption) for a metric that can carry a
@@ -286,6 +311,15 @@ export default async function BodyMetricDetailPage(props: {
       : searchParams.range
   );
 
+  // COMPLETENESS (#1996 part 2). A metric's readings are the ones of its
+  // IDENTITY, not the ones in its table: a clinic-measured resting HR sits in
+  // `medical_records` and never reached the daily chart, because the chart read
+  // `body_metrics`. The SERIES folds them in upstream (lib/body-metric-series.ts,
+  // so the tile and this page cannot disagree); this read is the same rows for the
+  // readings TABLE, and it costs nothing — the observation query is request-cached.
+  // Empty for a metric whose readings already ARE observations, which would
+  // otherwise list each one twice.
+  const observations = getMetricObservations(profile.id, kind);
   const fullSeries = fullBodyMetricSeries(
     kind,
     profile.id,
@@ -294,7 +328,13 @@ export default async function BodyMetricDetailPage(props: {
   );
   const windowed = filterSeriesByRange(fullSeries, range);
   const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
-  const readings = readingRowsFor(kind, profile.id, meta.decimals, weightUnit);
+  const readings = readingRowsFor(
+    kind,
+    profile.id,
+    meta.decimals,
+    weightUnit,
+    observations
+  );
   const sourceComparisonKey = SOURCE_COMPARISON_KEY[kind];
   const birthdate = getUserBirthdate(profile.id);
   const ageMonths = birthdate
@@ -377,6 +417,18 @@ export default async function BodyMetricDetailPage(props: {
         latest?.date ?? null
       )
     : null;
+  // THE JUDGEMENT (#1996 part 1). One lookup, keyed by the reading's #482
+  // identity, so the curated bands reach this surface whichever store its
+  // readings stream into — the fix for a child's daily resting-heart-rate trend
+  // being charted against nothing. Suppressed when the pediatric BP card is
+  // showing: that IS the judgement for a child's blood pressure (#150), and an
+  // adult reference band beside it would be a second, wrong answer.
+  // Only when there is a reading to judge: a band above an empty chart is clinical
+  // noise about a measurement this profile does not take.
+  const judgment =
+    bpCtx || latest == null
+      ? null
+      : getMetricJudgment(profile.id, kind, latest.value, latest.date);
   const latestDisplay =
     latest == null
       ? null
@@ -459,6 +511,11 @@ export default async function BodyMetricDetailPage(props: {
             shown INSTEAD OF the adult thresholds; hidden for adults and for every
             metric that is not blood pressure. */}
         <PediatricBpCard ctx={bpCtx} />
+
+        {/* The band this trend is read against (#1996) — resolved through the
+            reading's identity, so it reaches a metric whose readings stream into
+            body_metrics as readily as one stored as observations. */}
+        <MetricJudgmentCard judgment={judgment} unit={unit} />
 
         {/* The SAME shared range + event-control composition as the Trends hub.
             BodyTrendCharts registers the annotation kinds it actually draws; the

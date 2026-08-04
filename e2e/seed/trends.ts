@@ -37,6 +37,9 @@ import {
   TRENDS_PIN_PROFILE,
   E2E_LOGIN_DAY_ONE,
   DAY_ONE_PROFILE,
+  E2E_LOGIN_METRIC_JUDGMENT,
+  METRIC_JUDGMENT_PROFILE,
+  METRIC_JUDGMENT_CLINIC_BPM,
   E2E_LOGIN_BIOMARKER_PICKER,
   BIOMARKER_PICKER_PROFILE,
   BIOMARKER_PICKER_OVERDUE,
@@ -693,4 +696,63 @@ export function seedBiomarkerPickerRank(): void {
   db.prepare(
     `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
   ).run(pid);
+}
+
+// ── One judgement per identity (#1996 / #1997) ──
+export function seedMetricJudgment(): void {
+  // A CHILD whose resting heart rate arrives ONLY from a wearable — the reported
+  // #1996 case: the curated age bands live in the canonical vocabulary, keyed by
+  // biomarker name, while the readings stream into `body_metrics`, so before the
+  // identity lookup the trend was charted against nothing.
+  //
+  // Values are chosen so the age band is OBSERVABLE: ~120 bpm is normal for a
+  // toddler (1–3 band: 80–150) and "Above range" against the adult 50–100, so a
+  // page judging it correctly and a page judging it as an adult cannot look alike.
+  //
+  // Relative dates → never stale. Read-only in its spec, and idempotent: it clears
+  // its own fixture rows first.
+  const pid = fixtureProfileId(METRIC_JUDGMENT_PROFILE);
+  const pToday = today(pid);
+  // ~2 years old → the 1–3 band applies on every reading date below.
+  setUserBirthdate(pid, shiftDateStr(pToday, -800));
+  setUserSex(pid, "female");
+
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Resting Heart Rate'`
+  ).run(pid);
+
+  const insStream = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, source, notes)
+     VALUES (?, ?, ?, 'health-connect', 'e2e:metric-judgment')`
+  );
+  for (const [ago, bpm] of [
+    [12, 121],
+    [9, 119],
+    [6, 122],
+    [3, 118],
+    [1, 120],
+  ] as const) {
+    insStream.run(pid, shiftDateStr(pToday, -ago), bpm);
+  }
+
+  // ONE clinic-measured reading of the SAME quantity, in the observation store, on
+  // a day the stream does not cover — so the metric surface folding it in is a
+  // visible ADDITION to the trend, and the row is marked as living elsewhere.
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, canonical_name, value_num, notes)
+     VALUES (?, ?, 'vitals', 'Pulse', ?, 'bpm', 'Resting Heart Rate', ?, 'e2e:metric-judgment')`
+  ).run(
+    pid,
+    shiftDateStr(pToday, -20),
+    String(METRIC_JUDGMENT_CLINIC_BPM),
+    METRIC_JUDGMENT_CLINIC_BPM
+  );
+  reconcileFlags(pid);
+
+  seedMemberLogin(E2E_LOGIN_METRIC_JUDGMENT, pid, "read");
+  console.log(
+    `e2e: seeded metric-judgment fixture — profile ${pid} (${METRIC_JUDGMENT_PROFILE}) (#1996)`
+  );
 }

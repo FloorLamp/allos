@@ -4,6 +4,7 @@
 
 import {
   getBiomarkerSeries,
+  getMetricObservations,
   getBodyMetricDailySeries,
   getDaylightOutdoorMinutesSeries,
   getMetricDailyTotals,
@@ -17,6 +18,7 @@ import { dispWeight, round } from "./units";
 import { lastNDates } from "./date";
 import { ALL_ROWS } from "./trends";
 import { BODY_METRIC_META, type BodyMetricSlug } from "./trends-body-metrics";
+import { foldObservationPoints } from "./reading-model";
 import type { WeightUnit } from "./settings";
 
 // Daylight is derived from activity dates rather than read from a row store. A
@@ -34,6 +36,31 @@ function biomarkerPoints(
       date: row.date,
       value: round(row.value_num as number, decimals),
     }));
+}
+
+// Fold in the same-identity OBSERVATIONS a stream metric's own store never sees
+// (#1996), rounded exactly as its stream points are so a cross-store duplicate
+// still collapses. Empty — and free — for every metric with no fold identity,
+// which is most of them; the observation read is the request-cached
+// getBiomarkerSeries, so the detail page asking again for its readings table costs
+// nothing.
+//
+// It lives HERE, in the shared series, rather than on the detail page: the tile
+// grid, the Body tab chart and the detail page all read this function, and a fold
+// applied to only one of them would be the same reading answering one question two
+// ways (#221).
+function withObservations(
+  slug: BodyMetricSlug,
+  profileId: number,
+  points: { date: string; value: number }[]
+): { date: string; value: number }[] {
+  const observations = getMetricObservations(profileId, slug);
+  if (observations.length === 0) return points;
+  const decimals = BODY_METRIC_META[slug].decimals;
+  return foldObservationPoints(
+    points,
+    observations.map((r) => ({ ...r, value: round(r.value, decimals) }))
+  ).map((p) => ({ date: p.date, value: p.value }));
 }
 
 export function fullBodyMetricSeries(
@@ -74,12 +101,20 @@ export function fullBodyMetricSeries(
         })
       );
     case "body-fat":
-      return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
-        (point) => ({ date: point.date, value: round(point.value, 1) })
+      return withObservations(
+        slug,
+        profileId,
+        getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
+          (point) => ({ date: point.date, value: round(point.value, 1) })
+        )
       );
     case "resting-hr":
-      return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
-        (point) => ({ date: point.date, value: Math.round(point.value) })
+      return withObservations(
+        slug,
+        profileId,
+        getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
+          (point) => ({ date: point.date, value: Math.round(point.value) })
+        )
       );
     case "height":
       return getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map(

@@ -169,6 +169,15 @@ Every observation ingest and read path must use the shared substrate:
 
 `lib/__tests__/observation-substrate.test.ts` guards this boundary.
 
+Reading a dated reading is a question about a QUANTITY, not about a table. One
+`Reading` shape keyed by #482 identity spans `body_metrics`, `metric_samples`, and
+`medical_records` (`lib/reading-model.ts`, presented by `lib/queries/readings.ts`),
+and one lookup — `metricJudgment(identity, subject)` — resolves the clinical
+knowledge for it whatever store it came from. Every registered metric declares its
+knowledge source, or an explicit `none` with a reason, in `METRIC_KNOWLEDGE`. This
+is a read model: it changes no schema and no write path. See
+`docs/internals/reading-model.md`.
+
 ### Settings and units
 
 Settings have three storage tiers:
