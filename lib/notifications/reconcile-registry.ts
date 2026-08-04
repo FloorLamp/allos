@@ -389,7 +389,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "digest",
     reissuable: false,
-    why: "One per day, and the day-rollover arm of the sweep already closes yesterday's. Its keyboard is the offer tail, whose pointer the tick re-labels in place rather than re-sending.",
+    why: "One per day, and the sweep's date arm closes yesterday's as soon as the guard of whichever family owns its keyboard refuses a tap. That keyboard is the offer tail, whose pointer the tick re-labels in place rather than re-sending.",
   },
   {
     kind: "upcoming",

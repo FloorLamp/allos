@@ -328,8 +328,7 @@ describe("the date-guard completeness guard (#2018)", () => {
       if (RECONCILE_DATE_GUARD[family].guard !== "exact-day") continue;
       for (const offset of OFFSETS) {
         const todayStr = shiftDateStr(D, offset);
-        const handlerRefuses =
-          tapDateGuard(D, todayStr).kind === "stale-date";
+        const handlerRefuses = tapDateGuard(D, todayStr).kind === "stale-date";
         expect(
           messageExpiry(family, D, todayStr) != null,
           `${family} at D${offset >= 0 ? "+" : ""}${offset}`
@@ -366,7 +365,11 @@ describe("the date-guard completeness guard (#2018)", () => {
     // to be told the confirm can no longer land here. Same branch, different sentence.
     expect(messageExpiry("food", D, shiftDateStr(D, 1))).toBe("rollover");
     expect(
-      messageExpiry("intake-dose", D, shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1))
+      messageExpiry(
+        "intake-dose",
+        D,
+        shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1)
+      )
     ).toBe("expired");
   });
 
