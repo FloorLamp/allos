@@ -37,6 +37,60 @@ export interface SubstanceTarget {
   created_at: string;
 }
 
+// The unified consumption-history row (#2009). There is deliberately no ledger
+// field: each card and every mutation addresses a substance plus this row id,
+// while the query layer owns dispatch to food_log or substance_log.
+export interface SubstanceHistoryEntry {
+  id: number;
+  substance: Substance;
+  date: string;
+  amount: number;
+  notes: string | null;
+}
+
+export function getSubstanceHistory(
+  profileId: number,
+  substance: Substance
+): SubstanceHistoryEntry[] {
+  const rows =
+    substanceDef(substance).ledger === "food-log"
+      ? (db
+          .prepare(
+            `SELECT id, date, servings AS amount, notes
+             FROM food_log
+             WHERE profile_id = ? AND group_key = ?
+             ORDER BY date DESC, id DESC`
+          )
+          .all(profileId, ALCOHOL_FOOD_GROUP) as {
+          id: number;
+          date: string;
+          amount: number;
+          notes: string | null;
+        }[])
+      : (db
+          .prepare(
+            `SELECT id, date, units AS amount, notes
+             FROM substance_log
+             WHERE profile_id = ? AND substance = ?
+             ORDER BY date DESC, id DESC`
+          )
+          .all(profileId, substance) as {
+          id: number;
+          date: string;
+          amount: number;
+          notes: string | null;
+        }[]);
+  return rows.map((row) => ({ ...row, substance }));
+}
+
+export function getAllSubstanceHistory(
+  profileId: number
+): SubstanceHistoryEntry[] {
+  return SUBSTANCES.flatMap((substance) =>
+    getSubstanceHistory(profileId, substance)
+  ).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+}
+
 export function getSubstanceTarget(
   profileId: number,
   substance: Substance
