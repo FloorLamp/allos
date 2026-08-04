@@ -53,6 +53,17 @@ export interface PhotoCaptureProps {
   autoOpen?: boolean;
   disabled?: boolean;
   className?: string;
+  // Trigger test id, so a consumer's own spec can name ITS capture button rather
+  // than the generic one (several capture surfaces can share a page).
+  triggerTestId?: string;
+  // Re-encode geometry/quality. Defaults are the physique-photo presets; a
+  // consumer whose subject is TEXT (a photographed lab report, #1993) passes the
+  // document presets instead, because a preset tuned for skin tone is not tuned
+  // for something a downstream extraction has to read.
+  maxEdge?: number;
+  quality?: number;
+  // Name given to the file handed back through onConfirm.
+  fileName?: string;
 }
 
 type Stage =
@@ -69,6 +80,10 @@ export default function PhotoCapture({
   autoOpen = false,
   disabled = false,
   className,
+  triggerTestId = "photo-capture-open",
+  maxEdge = PHOTO_MAX_EDGE,
+  quality = PHOTO_CLIENT_QUALITY,
+  fileName = "photo.jpg",
 }: PhotoCaptureProps) {
   const [stage, setStage] = useState<Stage>({ kind: "closed" });
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +162,7 @@ export default function PhotoCapture({
     const { width, height } = fitWithin(
       video.videoWidth,
       video.videoHeight,
-      PHOTO_MAX_EDGE
+      maxEdge
     );
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -162,18 +177,18 @@ export default function PhotoCapture({
     }
     ctx.drawImage(video, 0, 0, width, height);
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", PHOTO_CLIENT_QUALITY)
+      canvas.toBlob(resolve, "image/jpeg", quality)
     );
     if (blob) toConfirm(blob);
-  }, [facing, toConfirm]);
+  }, [facing, toConfirm, maxEdge, quality]);
 
   const onFilePicked = useCallback(
     async (file: File | null) => {
       if (!file || file.size === 0) return;
-      const compressed = await compressImageBlob(file);
+      const compressed = await compressImageBlob(file, maxEdge, quality);
       toConfirm(compressed);
     },
-    [toConfirm]
+    [toConfirm, maxEdge, quality]
   );
 
   const switchCamera = useCallback(async () => {
@@ -197,7 +212,7 @@ export default function PhotoCapture({
 
   const confirm = useCallback(() => {
     if (stage.kind !== "confirm") return;
-    const file = new File([stage.blob], "photo.jpg", { type: "image/jpeg" });
+    const file = new File([stage.blob], fileName, { type: "image/jpeg" });
     startTransition(async () => {
       try {
         const err = await onConfirm(file);
@@ -210,7 +225,7 @@ export default function PhotoCapture({
         setError("Couldn't save the photo. Try again.");
       }
     });
-  }, [stage, onConfirm, close]);
+  }, [stage, onConfirm, close, fileName]);
 
   return (
     <>
@@ -219,7 +234,7 @@ export default function PhotoCapture({
         className={className ?? "btn"}
         onClick={open}
         disabled={disabled}
-        data-testid="photo-capture-open"
+        data-testid={triggerTestId}
       >
         <IconCamera size={18} aria-hidden />
         {triggerLabel}

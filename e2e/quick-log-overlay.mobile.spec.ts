@@ -396,12 +396,11 @@ test("the Add document row files an upload in place, camera input included", asy
     const overlay = await openQuickEntry(page, "add-document");
     const body = page.getByTestId("quick-entry-body");
     await expect(body).toHaveAttribute("data-form", "document");
-    // The camera capture comes free with the shared form (#1423) — "photograph the
-    // after-visit summary" works from the sheet with no camera UI of its own.
-    await expect(overlay.getByTestId("medical-upload-camera")).toHaveAttribute(
-      "capture",
-      "environment"
-    );
+    // The camera capture comes free with the shared form (#1423/#1993) —
+    // "photograph the after-visit summary" works from the sheet with no camera UI
+    // of its own, as one of the phone's two equal actions. The capture flow itself
+    // is document-capture.mobile.spec.ts'.
+    await expect(overlay.getByTestId("medical-upload-camera")).toBeVisible();
 
     await overlay.getByTestId("medical-upload-input").setInputFiles({
       name: filename,

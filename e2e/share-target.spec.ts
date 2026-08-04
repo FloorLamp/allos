@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // PWA share target (issue #1423). The phone's share sheet POSTs a multipart body
@@ -9,8 +8,8 @@ import { workerDbPath } from "./worker-env";
 // context's cookies), and asserts the shared file round-trips into a stored
 // medical document — landing on its detail page, where the "Wrong person?"
 // reassign control is the correction affordance for the profile a share sheet
-// can't pick. It also pins the manifest registration and the camera-capture input
-// that is the other one-tap phone path for a paper document.
+// can't pick. It also pins the manifest registration and the desktop shape of the
+// upload form the share sheet is the phone-side alternative to.
 //
 // Fixtures are synthetic and AI-free: an EMPTY, fictional FHIR bundle imports
 // DETERMINISTICALLY (no ANTHROPIC_API_KEY needed, no background extraction race,
@@ -21,12 +20,6 @@ import { workerDbPath } from "./worker-env";
 // stays clean for the neighbors (review-inbox / import-dedup assert feed counts).
 const PREFIX = "e2e-share-";
 const DB_PATH = workerDbPath();
-
-// A 1x1 PNG — what a camera capture actually hands the form.
-const PNG_1X1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-  "base64"
-);
 
 function bundle(salt: string) {
   return {
@@ -122,39 +115,25 @@ test.describe("PWA share target (issue #1423)", () => {
     }
   });
 
-  test("the upload form offers a camera capture that uploads through the same submit", async ({
+  test("the DESKTOP upload form keeps its drop zone and offers no camera path", async ({
     page,
   }) => {
     await page.goto("/data?section=import");
 
-    const camera = page.getByTestId("medical-upload-camera");
-    await expect(camera).toHaveAttribute("capture", "environment");
-    // Image-only, deliberately separate from the main picker: `capture` on an
-    // input that also accepts PDFs/zips would replace the file picker with the
-    // camera on mobile.
-    await expect(camera).toHaveAttribute("accept", "image/*");
+    // Drag-and-drop is a real gesture here, so the dashed zone stays (#1993).
+    await expect(page.getByTestId("medical-upload-dropzone")).toBeVisible();
+    await expect(page.getByTestId("medical-upload-choose")).toBeVisible();
+    // `capture` does nothing useful on a desktop, so the camera action is not
+    // rendered beside a working drop zone — it used to sit under it as a bare
+    // "Choose File" row. The phone's two-button treatment is covered by
+    // document-capture.mobile.spec.ts.
+    await expect(page.getByTestId("medical-upload-camera")).toBeHidden();
+    // And `capture` never migrated onto the MAIN picker: on an input that also
+    // accepts PDFs/zips/spreadsheets, mobile Chrome opens the camera INSTEAD of
+    // the file picker, which would take health-record exports off the phone.
     await expect(page.getByTestId("medical-upload-input")).not.toHaveAttribute(
       "capture",
       /.*/
     );
-
-    // A photographed page rides the one submit, alongside anything the main
-    // picker holds.
-    await camera.setInputFiles({
-      name: `${PREFIX}camera.png`,
-      mimeType: "image/png",
-      buffer: PNG_1X1,
-    });
-    await expect(
-      page
-        .getByTestId("medical-upload-selected")
-        .getByText(`${PREFIX}camera.png`)
-    ).toBeVisible();
-    await settledClick(page, page.getByTestId("medical-upload-submit"));
-
-    await page.goto("/data?section=review");
-    await expect(
-      page.getByTestId("import-feed").getByText(`${PREFIX}camera.png`)
-    ).toBeVisible();
   });
 });
