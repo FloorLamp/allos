@@ -16,6 +16,30 @@ import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 export interface WorkoutRecommendation {
   focus: MuscleRegion[];
   exercises: string[];
+  // The SECOND session this recommendation names (#2016). When the routine is behind on
+  // both a strength target and a cardio one, the core returns two routine-gap items and
+  // the message used to render only the strength half — dropping a fully-formed cardio
+  // recommendation (its activity already picked, weather-parked options already excluded)
+  // while still marking its target. Owner ruling: name both. The engine has decided both
+  // sessions are owed; the reader chooses, the message reports.
+  //
+  // Strength leads — it carries the exercise list and the how-to deep link — and this is
+  // one line. Null when no cardio target is behind, which leaves the message byte-for-byte
+  // what it was.
+  cardio?: {
+    // The activity `pickOldestCardio` chose. Null when nothing qualifies (no recent
+    // cardio history, or every candidate is weather-parked), which renders the generic
+    // "log a cardio session" rather than inventing one.
+    activity: string | null;
+    count: number;
+    perWeek: number;
+  } | null;
+  // Weather-parking disclosures for today (#1724/#2002) — the SAME lines the dashboard
+  // card and the Training overview render through `contextNotes`, formatted once in
+  // lib/weather-training. The nudge used to render none of them, so an outdoor ride
+  // quietly became a stationary bike with no explanation on the one surface whose own
+  // comments promised the disclosure. Empty/absent on any ordinary day.
+  parkedNotes?: string[];
   // The behind weekly targets, ALREADY ordered and marked by the pure core (#1709):
   // the target that drove today's suggestion leads, the rest follow by deficit. Kept
   // structured to here so the formatter can relate the list to the recommendation —
@@ -96,7 +120,11 @@ export function formatWorkoutReminder(
     : null;
 
   // Recovery override: a rest day reframes the nudge; the workout suggestion, if
-  // any, becomes a "when you're ready" footnote rather than the headline.
+  // any, becomes a "when you're ready" footnote rather than the headline. The cardio
+  // half (#2016) and the weather disclosure (#2002) stay out of this branch on purpose:
+  // the rest reframe already demotes the whole suggestion to a footnote, and naming a
+  // second owed session — or explaining which activity today's conditions displaced —
+  // would push on the one day the message has decided not to.
   if (rec.rest) {
     const lines: string[] = [rec.rest.detail];
     // Concurrent under-recovery signals (#1148): name the rest so a snooze can't bury
@@ -128,6 +156,14 @@ export function formatWorkoutReminder(
   if (rec.exercises.length)
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
   else if (rec.focus.length) lines.push(`Focus: ${rec.focus.join(", ")}`);
+  // The cardio half the message used to drop (#2016) — one line, after the strength
+  // slate that leads. When only cardio is behind, this line IS the message.
+  const cardioLine = cardioSessionLine(rec.cardio ?? null);
+  if (cardioLine) lines.push(cardioLine);
+  // Weather parking, disclosed here exactly as the dashboard discloses it (#2002).
+  // Placed with the suggestion because that is what it explains: the ride is missing
+  // from today's pick, and this says why and what took its slot.
+  for (const note of rec.parkedNotes ?? []) lines.push(note);
   if (rec.onTrack) lines.push(rec.onTrack.detail);
   // The acknowledgment headline, when it fired, has already stated one behind target
   // AND its pace in words. Repeating it in the list two lines down is the same fact
@@ -148,6 +184,19 @@ export function formatWorkoutReminder(
     kind: "workout",
     ...(guideActions.length ? { actions: guideActions } : {}),
   };
+}
+
+// The cardio half of a two-session day (#2016): "Plus a cardio session — Run, 1/2 this
+// week." One line by design — strength leads because it carries the exercise list and
+// the deep-linked how-to button, while this states the session and the pace that owes it.
+// Names the chosen activity only when the picker actually chose one; with none, the line
+// still reports the owed session rather than inventing an activity. Null ⇒ nothing to add.
+export function cardioSessionLine(
+  cardio: WorkoutRecommendation["cardio"]
+): string | null {
+  if (!cardio) return null;
+  const named = cardio.activity ? `${cardio.activity}, ` : "";
+  return `Plus a cardio session — ${named}${cardio.count}/${cardio.perWeek} this week.`;
 }
 
 // The marker on the target that drove today's suggestion (#1709). BOTH forms, by
@@ -228,9 +277,16 @@ export function digestWorkoutLine(
   const head =
     rec.sessionLabel ?? (rec.focus.length ? suggestTitle(rec.focus) : null);
   const exercises = rec.exercises.slice(0, 3).join(", ");
-  if (!head && !exercises) return null;
+  // The preview names the SAME sessions the nudge names (#2016) — letting the 7am
+  // heads-up and the actionable prompt disagree about how many sessions are owed is
+  // exactly the #221 failure this file's header warns about. Compactly, since the
+  // digest's line is one line: a suffix, and only when a cardio session is genuinely
+  // named — never as decoration.
+  const plusCardio = rec.cardio ? " + cardio" : "";
+  if (!head && !exercises)
+    return rec.cardio ? `🏋️ ${lead}Cardio session` : null;
   const deload = rec.deloadWeek ? " (deload week)" : "";
   return exercises
-    ? `🏋️ ${lead}${head ? `${head} — ` : ""}${exercises}${deload}`
-    : `🏋️ ${lead}${head}${deload}`;
+    ? `🏋️ ${lead}${head ? `${head} — ` : ""}${exercises}${plusCardio}${deload}`
+    : `🏋️ ${lead}${head}${plusCardio}${deload}`;
 }

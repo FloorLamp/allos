@@ -299,6 +299,27 @@ export function frequencyPaceLabel(pace: FrequencyPace): string {
       : "Behind";
 }
 
+// Every scope kind a frequency target can carry — the `frequency_targets.scope_kind`
+// CHECK enum, mirrored here so PURE code can enumerate it (the DB-tier test pins the two
+// together, so a migration that grows the enum without a decision fails).
+//
+// It exists because scope kinds are decided one at a time by DIFFERENT features —
+// nutrition added food groups, mobility added regions, substance use added caps,
+// practices added their own — and every consumer that filters by SUBTRACTION silently
+// inherits each new one. #2017 is that failure: a wellness practice reached the workout
+// nudge because the filter said "not cardio" rather than naming what belongs.
+export const FREQUENCY_SCOPE_KINDS = [
+  "region",
+  "group",
+  "type",
+  "food_group",
+  "mobility_region",
+  "substance",
+  "practice",
+] as const;
+
+export type FrequencyScopeKind = (typeof FREQUENCY_SCOPE_KINDS)[number];
+
 // Display label for a frequency target's scope ("Lower body", "Cardio", "Chest").
 export function frequencyScopeLabel(kind: string, value: string): string {
   if (!value) return value;

@@ -479,6 +479,39 @@ export function parkedDisclosureLine(d: ParkedDisclosure): string {
   return `${because} for ${d.activity.toLowerCase()}${detail}${swap}${resumes}`;
 }
 
+// The parked-activity facts a surface holds — structurally the core's `ParkedActivity`,
+// restated here so the formatter needs no import from the recommendation core.
+export interface ParkedFacts {
+  activity: string;
+  reason: ParkReason;
+  alternative: string | null;
+  value: number | null;
+  weatherCode: number | null;
+  precipitationHours: readonly PrecipitationHour[];
+}
+
+// Every parked activity's disclosure, in order — the ONE place a next-workout result is
+// turned into weather-parking copy (#221). The dashboard/Training-overview path reaches
+// it through `contextNotes`, and the Telegram nudge renders the same array directly
+// (#2002: it used to render nothing, silently swapping in the indoor stand-in on a
+// surface whose own comments promised the disclosure).
+export function parkedDisclosureLines(
+  parked: readonly ParkedFacts[],
+  temperatureUnit: TemperatureUnit = "C"
+): string[] {
+  return parked.map((p) =>
+    parkedDisclosureLine({
+      activity: p.activity,
+      reason: p.reason,
+      alternative: p.alternative,
+      value: p.value,
+      weatherCode: p.weatherCode,
+      hours: p.precipitationHours,
+      temperatureUnit,
+    })
+  );
+}
+
 // ---- Forecast-ahead planning (#1724 part 5) ----------------------------------------
 
 export interface ViableDay {

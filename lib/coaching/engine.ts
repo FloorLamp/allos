@@ -22,7 +22,7 @@ import {
 } from "../injury-model";
 import type { ConditionConsideration } from "../condition-training-considerations";
 import type { EnduranceArm } from "../endurance-plan";
-import { parkedDisclosureLine } from "../weather-training";
+import { parkedDisclosureLines } from "../weather-training";
 import type { WeatherTrainingContext } from "../workout-recommendation";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { TemperatureUnit, WeightUnit } from "../settings";
@@ -1103,19 +1103,10 @@ export function contextNotes(
   // indoor stand-in that took its slot. The FACTS go over; the figure is formatted in
   // lib/weather-training, in the reason's own unit and the caller's temperature scale
   // (#1967 — this call used to format every reason as °C, so a wet park read "45°C").
-  for (const p of nw.parked) {
-    notes.push(
-      parkedDisclosureLine({
-        activity: p.activity,
-        reason: p.reason,
-        alternative: p.alternative,
-        value: p.value,
-        weatherCode: p.weatherCode,
-        hours: p.precipitationHours,
-        temperatureUnit,
-      })
-    );
-  }
+  // ONE formatter, shared with the Telegram nudge (#2002) so the two surfaces cannot
+  // render — or omit — the same park differently.
+  for (const line of parkedDisclosureLines(nw.parked, temperatureUnit))
+    notes.push(line);
   // The plan-aware cardio arm (#839) rides last — a calm forward-looking note, not a
   // constraint. Suppressed at the gather during an open illness episode (#837).
   if (nw.endurancePlanArm) notes.push(nw.endurancePlanArm.note);
