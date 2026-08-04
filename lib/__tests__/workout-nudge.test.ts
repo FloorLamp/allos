@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   orderBehindTargets,
+  recommendNextWorkout,
+  isWorkoutTargetScope,
+  WORKOUT_TARGET_SCOPES,
   type BehindTarget,
 } from "@/lib/workout-recommendation";
 import {
   behindThisWeekLine,
+  cardioSessionLine,
   digestWorkoutLine,
   formatWorkoutReminder,
   type WorkoutRecommendation,
@@ -15,6 +19,12 @@ import {
   trainingSignalKey,
   isWorkoutNudgeSuppressed,
 } from "@/lib/workout-nudge";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import type {
+  CardioRecent,
+  RoutineTargetProgress,
+  StrengthRecent,
+} from "@/lib/coaching";
 import type { SuppressionRecord } from "@/lib/upcoming-suppress";
 
 const TODAY = "2026-07-08";
@@ -420,5 +430,430 @@ describe("digestWorkoutLine (#1712)", () => {
     it("still says nothing when there is nothing to preview", () => {
       expect(digestWorkoutLine(rec(), bare)).toBeNull();
     });
+  });
+});
+
+// ---- The core names its own drivers (#2015) ----
+//
+// The `← today` marker is documented as "the target that DROVE today's suggestion", but
+// the formatter's caller inferred it from `items[0]` — and the core pushes routine-gap
+// items in a FIXED order (cardio, then strength) while the title, focus and every
+// suggested exercise come from the strength half. So a day behind on both suggested a
+// back workout and marked Cardio, pushing the larger deficit to second place.
+//
+// The assertion that did not exist: the DRIVER is computed, not hand-passed. The #1709
+// tests above pin `orderBehindTargets` with a literal id and were never wrong; the bug
+// lived one function upstream, in the seam between the core and the formatter.
+
+// The reported screenshot's routine, in its own declaration order. Back is the deficit
+// the message actually addresses; Red light therapy is the practice #2017 removes.
+const REPORTED_ROUTINE: RoutineTargetProgress[] = [
+  {
+    target: { id: 1, scope_kind: "region", scope_value: "Chest" },
+    count: 1,
+    per_week: 2,
+    met: false,
+  },
+  {
+    target: { id: 2, scope_kind: "region", scope_value: "Back" },
+    count: 0,
+    per_week: 2,
+    met: false,
+  },
+  {
+    target: { id: 3, scope_kind: "type", scope_value: "cardio" },
+    count: 1,
+    per_week: 2,
+    met: false,
+  },
+  {
+    target: { id: 4, scope_kind: "group", scope_value: "Lower" },
+    count: 1,
+    per_week: 2,
+    met: false,
+  },
+  {
+    target: { id: 5, scope_kind: "practice", scope_value: "Red light therapy" },
+    count: 2,
+    per_week: 3,
+    met: false,
+  },
+];
+
+function lift(exercise: string, lastDate: string): StrengthRecent {
+  return {
+    exercise,
+    bodyweight: false,
+    lastSessionBest: {
+      weightKg: 60,
+      reps: 5,
+      targetReps: null,
+      toFailure: false,
+    },
+    lastDate,
+  };
+}
+
+const REPORTED_STRENGTH: StrengthRecent[] = [
+  lift("Lat Pulldown", "2026-06-20"),
+  lift("Cable Row", "2026-06-21"),
+  lift("Deadlift", "2026-06-22"),
+  lift("Pull Up", "2026-06-23"),
+  lift("Barbell Bench Press", "2026-07-06"),
+];
+
+const REPORTED_CARDIO: CardioRecent[] = [
+  { activity: "Running", lastDate: "2026-07-02" },
+];
+
+describe("recommendNextWorkout names its own drivers (#2015/#2016)", () => {
+  const nw = recommendNextWorkout({
+    today: TODAY,
+    routine: REPORTED_ROUTINE,
+    strength: REPORTED_STRENGTH,
+    cardio: REPORTED_CARDIO,
+  });
+
+  it("suggests the STRENGTH target's session", () => {
+    expect(nw.focus).toEqual(["Back"]);
+    expect(nw.exercises).toEqual([
+      "Lat Pulldown",
+      "Cable Row",
+      "Deadlift",
+      "Pull Up",
+    ]);
+  });
+
+  it("names the strength target as a driver — the one the suggestion came from", () => {
+    // Cardio is `items[0]` by construction, so the old positional read marked target 3.
+    expect(nw.driverIds).toContain(2);
+    expect(nw.items[0].kind).toBe("cardio");
+  });
+
+  it("names the cardio target too, because the message names that session (#2016)", () => {
+    expect([...nw.driverIds].sort()).toEqual([2, 3]);
+  });
+
+  it("marks nothing when the suggestion came from habit rather than a target", () => {
+    const habit = recommendNextWorkout({
+      today: TODAY,
+      routine: [],
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    expect(habit.driverIds).toEqual([]);
+  });
+
+  it("orders two drivers ahead of the rest, by deficit between them", () => {
+    const ordered = orderBehindTargets(nw.behind, nw.driverIds);
+    expect(ordered.map((t) => t.scopeValue)).toEqual([
+      "Back", // driver, deficit 2
+      "cardio", // driver, deficit 1
+      "Chest", // then the rest by deficit, ties by routine order
+      "Lower",
+    ]);
+    expect(ordered.slice(0, 2).every((t) => t.driving)).toBe(true);
+    expect(ordered.slice(2).every((t) => !t.driving)).toBe(true);
+  });
+});
+
+// ---- Only targets this message can help you close (#2017) ----
+describe("the workout behind list is an allowlist of scope kinds (#2017)", () => {
+  it("has an explicit, reasoned decision for every frequency scope kind", () => {
+    // A new scope kind cannot join the workout message by omission: it has to be
+    // written down here, with why, or the test fails.
+    for (const kind of FREQUENCY_SCOPE_KINDS) {
+      expect(WORKOUT_TARGET_SCOPES[kind]).toBeDefined();
+      expect(WORKOUT_TARGET_SCOPES[kind].reason.length).toBeGreaterThan(0);
+    }
+    expect(Object.keys(WORKOUT_TARGET_SCOPES).sort()).toEqual(
+      [...FREQUENCY_SCOPE_KINDS].sort()
+    );
+  });
+
+  it("admits only the scopes a lift or a cardio session can close", () => {
+    expect(
+      FREQUENCY_SCOPE_KINDS.filter((k) => isWorkoutTargetScope(k))
+    ).toEqual(["region", "group", "type"]);
+  });
+
+  it("excludes an unregistered scope kind by default", () => {
+    expect(isWorkoutTargetScope("breathing_pattern")).toBe(false);
+  });
+
+  it("keeps a practice out of the rendered behind list", () => {
+    const nw = recommendNextWorkout({
+      today: TODAY,
+      routine: REPORTED_ROUTINE,
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    expect(nw.behind.map((t) => t.scopeValue)).not.toContain(
+      "Red light therapy"
+    );
+    expect(nw.behind.map((t) => t.scopeKind)).not.toContain("practice");
+  });
+
+  it("scopes the workout to the muscle region, not to a practice with a worse fraction", () => {
+    // The bug the allowlist fixes: the scope pool was "everything that is not literally
+    // type:cardio", and nothing downstream rejected a non-training target — a practice
+    // names no region, so the recovery-window gate passed it unconditionally. At 0/3 it
+    // beats Back's 0/2 on freshness and scopes a strength workout to a light-therapy gap.
+    const nw = recommendNextWorkout({
+      today: TODAY,
+      routine: [
+        {
+          target: {
+            id: 5,
+            scope_kind: "practice",
+            scope_value: "Red light therapy",
+          },
+          count: 0,
+          per_week: 3,
+          met: false,
+        },
+        {
+          target: { id: 2, scope_kind: "region", scope_value: "Back" },
+          count: 0,
+          per_week: 2,
+          met: false,
+        },
+      ],
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    expect(nw.focus).toEqual(["Back"]);
+    expect(nw.driverIds).toEqual([2]);
+  });
+
+  it("yields NO strength scope when the only non-cardio target is a practice", () => {
+    const nw = recommendNextWorkout({
+      today: TODAY,
+      routine: [
+        {
+          target: {
+            id: 5,
+            scope_kind: "practice",
+            scope_value: "Red light therapy",
+          },
+          count: 0,
+          per_week: 3,
+          met: false,
+        },
+        {
+          target: { id: 3, scope_kind: "type", scope_value: "cardio" },
+          count: 1,
+          per_week: 2,
+          met: false,
+        },
+      ],
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    // The cardio gap is the only routine-gap item; nothing is scoped to the practice.
+    expect(nw.items.map((i) => i.kind)).toEqual(["cardio"]);
+    expect(nw.driverIds).toEqual([3]);
+    expect(nw.behind.map((t) => t.scopeValue)).toEqual(["cardio"]);
+  });
+
+  it("keeps substance, food-group and mobility targets out too", () => {
+    const nw = recommendNextWorkout({
+      today: TODAY,
+      routine: [
+        {
+          target: { id: 6, scope_kind: "substance", scope_value: "alcohol" },
+          count: 1,
+          per_week: 4,
+          met: false,
+        },
+        {
+          target: { id: 7, scope_kind: "food_group", scope_value: "veg" },
+          count: 2,
+          per_week: 14,
+          met: false,
+        },
+        {
+          target: {
+            id: 8,
+            scope_kind: "mobility_region",
+            scope_value: "Back",
+          },
+          count: 0,
+          per_week: 2,
+          met: false,
+        },
+        {
+          target: { id: 2, scope_kind: "region", scope_value: "Back" },
+          count: 0,
+          per_week: 2,
+          met: false,
+        },
+      ],
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    expect(nw.behind.map((t) => t.id)).toEqual([2]);
+  });
+});
+
+// ---- The message names both sessions (#2016) and discloses the weather (#2002) ----
+describe("formatWorkoutReminder — the composed workout message", () => {
+  const nw = recommendNextWorkout({
+    today: TODAY,
+    routine: REPORTED_ROUTINE,
+    strength: REPORTED_STRENGTH,
+    cardio: REPORTED_CARDIO,
+  });
+
+  const composed = (over: Partial<WorkoutRecommendation> = {}) =>
+    formatWorkoutReminder({
+      focus: nw.focus,
+      exercises: nw.exercises,
+      cardio: { activity: "Running", count: 1, perWeek: 2 },
+      behind: orderBehindTargets(nw.behind, nw.driverIds),
+      rest: null,
+      onTrack: null,
+      ...over,
+    })!;
+
+  it("renders the reported message with the marker on the target it suggested", () => {
+    const msg = composed();
+    expect(msg.title).toBe("🏋️ Today's workout — Back workout");
+    expect(plainBody(msg.body)).toBe(
+      [
+        "Suggested: Lat Pulldown, Cable Row, Deadlift, Pull Up",
+        "Plus a cardio session — Running, 1/2 this week.",
+        "Behind this week: Back 0/2 ← today, Cardio 1/2 ← today, Chest 1/2, Lower body 1/2",
+      ].join("\n")
+    );
+    // Both drivers are bolded where markup survives; nothing else is.
+    const html = renderBodyHtml(msg.body);
+    expect(html).toContain("<b>Back 0/2 ← today</b>");
+    expect(html).toContain("<b>Cardio 1/2 ← today</b>");
+    expect(html).not.toContain("<b>Chest");
+  });
+
+  it("never lists the practice target the message cannot help close", () => {
+    expect(plainBody(composed().body)).not.toContain("Red light therapy");
+  });
+
+  it("is byte-identical to the strength-only message when no cardio is owed", () => {
+    // This change adds nothing when there is nothing to add.
+    const strengthOnly = plainBody(composed({ cardio: null }).body);
+    expect(strengthOnly).not.toContain("cardio session");
+    expect(strengthOnly.split("\n")).toEqual([
+      "Suggested: Lat Pulldown, Cable Row, Deadlift, Pull Up",
+      "Behind this week: Back 0/2 ← today, Cardio 1/2 ← today, Chest 1/2, Lower body 1/2",
+    ]);
+  });
+
+  it("makes the cardio line the message when only cardio is owed", () => {
+    const msg = formatWorkoutReminder({
+      focus: [],
+      exercises: [],
+      cardio: { activity: "Running", count: 1, perWeek: 2 },
+      behind: orderBehindTargets(
+        [
+          {
+            id: 3,
+            scopeKind: "type",
+            scopeValue: "cardio",
+            count: 1,
+            perWeek: 2,
+          },
+        ],
+        [3]
+      ),
+      rest: null,
+      onTrack: null,
+    })!;
+    expect(msg.title).toBe("🏋️ Today's workout");
+    expect(plainBody(msg.body)).toBe(
+      [
+        "Plus a cardio session — Running, 1/2 this week.",
+        "Behind this week: Cardio 1/2 ← today",
+      ].join("\n")
+    );
+  });
+
+  it("reports the owed cardio session without inventing an activity", () => {
+    expect(cardioSessionLine({ activity: null, count: 0, perWeek: 2 })).toBe(
+      "Plus a cardio session — 0/2 this week."
+    );
+    expect(cardioSessionLine(null)).toBeNull();
+  });
+
+  it("discloses the parked activity that today's conditions displaced (#2002)", () => {
+    const body = plainBody(
+      composed({
+        parkedNotes: [
+          "Too wet for cycling (heavy rain in the morning) — Stationary Bike instead. Outdoor cycling resumes when it dries out.",
+        ],
+      }).body
+    );
+    expect(body).toContain("Too wet for cycling (heavy rain in the morning)");
+    expect(body).toContain("Stationary Bike instead");
+  });
+
+  it("keeps the rest reframe free of both — a rest day pushes nothing", () => {
+    const msg = composed({
+      rest: { title: "Rest day", detail: "Recovery signals are low." },
+      parkedNotes: ["Too wet for cycling — picking something indoors instead."],
+    });
+    const body = plainBody(msg.body);
+    expect(body).toContain("Recovery signals are low.");
+    expect(body).not.toContain("cardio session");
+    expect(body).not.toContain("Too wet");
+  });
+});
+
+// ---- The digest preview names the same sessions (#2016) ----
+describe("digestWorkoutLine agrees with the nudge about how many sessions are owed", () => {
+  const rec = (over: Partial<WorkoutRecommendation> = {}) => ({
+    focus: [],
+    exercises: ["Lat Pulldown", "Cable Row", "Deadlift", "Pull Up"],
+    sessionLabel: "Back workout",
+    behind: [],
+    rest: null,
+    onTrack: null,
+    ...over,
+  });
+
+  it("adds the compact suffix when — and only when — a cardio session is named", () => {
+    expect(
+      digestWorkoutLine(
+        rec({ cardio: { activity: "Running", count: 1, perWeek: 2 } })
+      )
+    ).toBe(
+      "🏋️ Today: Back workout — Lat Pulldown, Cable Row, Deadlift + cardio"
+    );
+    expect(digestWorkoutLine(rec())).toBe(
+      "🏋️ Today: Back workout — Lat Pulldown, Cable Row, Deadlift"
+    );
+  });
+
+  it("previews a cardio-only day rather than falling silent", () => {
+    expect(
+      digestWorkoutLine(
+        rec({
+          exercises: [],
+          sessionLabel: null,
+          cardio: { activity: "Running", count: 1, perWeek: 2 },
+        })
+      )
+    ).toBe("🏋️ Today: Cardio session");
+  });
+
+  it("names the same sessions the nudge names, for one recommendation", () => {
+    for (const cardio of [
+      null,
+      { activity: "Running", count: 1, perWeek: 2 },
+    ]) {
+      const r = rec({ cardio });
+      const nudgeNamesCardio = plainBody(
+        formatWorkoutReminder(r)!.body
+      ).includes("cardio session");
+      expect(digestWorkoutLine(r)!.endsWith("+ cardio")).toBe(nudgeNamesCardio);
+    }
   });
 });

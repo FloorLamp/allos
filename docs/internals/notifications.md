@@ -521,6 +521,41 @@ rules govern the message that fires on a day someone already trained:
   whose headline does not name the driver renders exactly as before, suffix
   included.
 
+**What the workout message may carry, and what marks it (#2015/#2016/#2017/#2002).**
+Four rules, all enforced in the pure core so no formatter can re-derive them:
+
+- **The core names its own drivers.** `NextWorkout.driverIds` lists the behind
+  targets whose sessions the message actually names, derived from the rendered
+  routine-gap items. `recommend.ts` passes it straight to `orderBehindTargets`,
+  which now accepts a number or an array. It used to read the driver off
+  `items[0]` — a FIXED order (cardio, then strength) while the title, focus and
+  exercises all come from the strength half — so any day behind on both suggested a
+  back workout and put `← today` on Cardio (#2015).
+- **Both owed sessions are named.** When a cardio target and a strength target are
+  both behind, the core returns two recommendations and the message reports both:
+  strength leads (it carries the exercise list and the how-to deep link), the
+  cardio half is one line (`cardioSessionLine`, from `WorkoutRecommendation.cardio`),
+  and BOTH targets carry the marker. `digestWorkoutLine` appends a compact
+  `+ cardio` for the same recommendation, so the 7am preview and the actionable
+  prompt cannot disagree about how many sessions are owed (#2016).
+- **Only targets this message can help you close.** `WORKOUT_TARGET_SCOPES`
+  (`lib/workout-recommendation.ts`) is an explicit, reasoned allowlist of frequency
+  scope kinds — `region`, `group`, `type` in; `practice`, `mobility_region`,
+  `substance`, `food_group` out, each with its reason — applied at the source, to
+  the `behind` set that feeds BOTH the scope pick and the rendered list. A wellness
+  practice is out because it already has its own pace-aware `practice` nudge, and a
+  second contact for one fact is what the attention doctrine forbids; it was also
+  eligible to SCOPE a strength workout, since a practice names no region and so
+  passed the recovery gate unconditionally (#2017). An unregistered scope kind is
+  out by default, and the enum-parity test pins the registry against the
+  `frequency_targets.scope_kind` CHECK so a new kind cannot join by omission.
+- **Weather parking is disclosed here too.** `recommendWorkout` carries
+  `parkedNotes` from the shared `parkedDisclosureLines` (`lib/weather-training.ts`),
+  the same formatter `contextNotes` renders for the dashboard card and the Training
+  overview. The nudge previously rendered none of it, silently swapping the indoor
+  stand-in in for a parked ride (#2002). The rest reframe keeps both the cardio line
+  and the disclosure out on purpose — a rest day pushes nothing.
+
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
 per-**login**, notifications per-**profile**, so there is no pref to consult
