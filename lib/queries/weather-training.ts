@@ -24,7 +24,7 @@ import {
   getUvHoursForDay,
   getWeatherDays,
 } from "../integrations/weather-cache";
-import { isOutdoorActivity } from "../activities-catalog";
+import { activityHistoryKey, isOutdoorActivity } from "../activities-catalog";
 import {
   deriveEnvelopes,
   planningLine,
@@ -199,7 +199,9 @@ export function outdoorPlanSignalKey(
   activity: string,
   weekStartDate: string
 ): string {
-  return `${OUTDOOR_PLAN_PREFIX}${activity.trim().toLowerCase()}:${weekStartDate}`;
+  // The shared cardio identity (#1931), not an inline fold — same function the stats
+  // grouping and the PR dismissal key resolve through.
+  return `${OUTDOOR_PLAN_PREFIX}${activityHistoryKey(activity)}:${weekStartDate}`;
 }
 
 export interface OutdoorPlan {

@@ -1165,10 +1165,19 @@ export interface DatasetDeletePolicy {
   // the same losing-backing sweep the per-dose delete/edit paths do (issue #376).
   // Same name-recycling class as cleanupStars, one table over.
   cleanupImmunizations?: boolean;
+  // Whether removing rows can orphan a `pr:strength:` / `pr:cardio:` personal-record
+  // celebration dismissal (#1931). Set for the datasets whose deletion un-backs a PR
+  // key: `activities` (the sets/sessions the records are computed from) and
+  // `equipment` (whose delete retires the LOAD LANE half of a strength record's
+  // identity). Same name-recycling class as cleanupStars, one domain over.
+  cleanupPersonalRecords?: boolean;
 }
 
 export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
-  activities: { revalidate: ["/training", "/"] },
+  activities: {
+    revalidate: ["/training", "/"],
+    cleanupPersonalRecords: true,
+  },
   body_metrics: { revalidate: ["/trends", "/"] },
   medical_records: {
     // Also refresh the import document subpages, which list these readings.
@@ -1201,7 +1210,10 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   preventive_overrides: { revalidate: ["/upcoming", "/"] },
   protocols: { revalidate: ["/longevity", "/"] },
   milestones: { revalidate: ["/"] },
-  equipment: { revalidate: ["/equipment", "/training"] },
+  equipment: {
+    revalidate: ["/equipment", "/training"],
+    cleanupPersonalRecords: true,
+  },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },

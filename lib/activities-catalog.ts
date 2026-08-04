@@ -104,6 +104,26 @@ export function isCuratedActivity(name: string): boolean {
   return CURATED.has(name.trim().toLowerCase());
 }
 
+/**
+ * The canonical IDENTITY of a logged cardio/sport activity name (#1931) — the cardio
+ * twin of `exerciseHistoryKey` (lib/lifts.ts).
+ *
+ * Activity names are free text: the same effort is logged as "Cycling", "cycling" and
+ * " Cycling " across a manual entry, an import and a routine. `getCardioByActivity`
+ * has always GROUPED on the case-folded name, so this is that grouping made a named,
+ * shared function rather than an inline `.toLowerCase()` repeated per call site —
+ * which is what let a PR celebration's dedupe key drift onto the group's raw
+ * first-seen spelling while its stats were grouped case-insensitively.
+ *
+ * AGENTS.md's identity rule: one canonical pure function everywhere. Every surface
+ * that keys, groups or dedupes a cardio activity (the stats grouping, the outdoor plan
+ * key, the PR dismissal key) must resolve identity through THIS, so none of them can
+ * disagree about whether two logged names are the same activity.
+ */
+export function activityHistoryKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 // ---- Indoor / outdoor, and the indoor alternative (issue #1724) --------------------
 //
 // Weather-aware recommendations need two facts the catalog never carried: whether an

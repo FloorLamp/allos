@@ -15,6 +15,8 @@ import { expandToComponents } from "./immunization-catalog";
 import { biomarkerFamily, biomarkerRetestIdentity } from "./canonical-name";
 import { preventiveRuleByKey } from "./preventive-catalog";
 import { preventiveSignalKey } from "./preventive-upcoming";
+import { equipmentLoadLane, movementLoadKey } from "./lifts";
+import { activityHistoryKey } from "./activities-catalog";
 
 // The Upcoming retest nudge keys a biomarker on `biomarker:<retest identity>`
 // (lib/queries/upcoming). The identity is the reading's RETEST-clock grouping
@@ -91,5 +93,139 @@ export function immunizationCodesLosingBacking(
   const lost: string[] = [];
   for (const c of expandToComponents(deletedVaccine))
     if (!stillCovered.has(c)) lost.push(c);
+  return lost;
+}
+
+// ---- Personal-record celebrations (issue #1931) ----------------------------
+//
+// A PR finding (lib/findings.ts::prToFinding / cardioPrToFinding) rides the same
+// suppression bus as everything else, so its dedupeKey is a persisted, recyclable
+// string like every other row in `upcoming_dismissals`. Two things were wrong with the
+// original shape, and they are the same #203/#482 disease one domain apart:
+//
+//   1. It keyed the RAW DISPLAY NAME (`pr:strength:${pr.exercise}@…`), not the identity
+//      its own stats are grouped on. `getStrengthByExercise(profileId, true)` groups on
+//      `movementLoadKey` — variant-collapsed movement + equipment lane — and ships the
+//      group's FIRST-SEEN logged spelling as `exercise`. So "Barbell Curl" and "Curl"
+//      are ONE record but produced two different keys, and deleting the oldest session
+//      silently re-spelled the key of a record that had not changed. Same for cardio,
+//      whose stats group case-insensitively while the key carried the raw casing. This
+//      is exactly what #1399/#1610 fixed for the plateau/stale findings, which now key
+//      on `movementLoadKey`/`exerciseHistoryKey`; the PR celebration was left behind.
+//   2. Nothing swept it. A dismissal minted for a movement/activity whose sets are
+//      later renamed, re-laned or deleted stays in the table forever, and a genuinely
+//      NEW record earned under a recycled name arrives pre-silenced — the celebration
+//      the user never sees. `cleanupOrphanPrDismissals` (lib/queries/upcoming) is the
+//      sweep, run from every seam that can un-back a key.
+//
+// Both key builders below therefore resolve identity through the SAME canonical pure
+// functions the aggregates group on. The `legacy*` twins reproduce the pre-#1931 shape
+// and are carried as `Finding.supersedes` (the #436 dual-read) so a dismissal stored
+// under the old string keeps suppressing rather than orphaning on deploy.
+
+export const PR_STRENGTH_PREFIX = "pr:strength:";
+export const PR_CARDIO_PREFIX = "pr:cardio:";
+
+// A strength record's suppression key: `pr:strength:<movementLoadKey>:<kind>`. The
+// identity is the movement (variant-collapsed) plus the equipment lane, so two
+// machines' records never silence each other and a variant spelling never mints a
+// second key for one record.
+export function prStrengthDismissalKey(
+  exercise: string,
+  equipmentId: number | null | undefined,
+  kind: string
+): string {
+  return `${PR_STRENGTH_PREFIX}${movementLoadKey(exercise, equipmentId)}:${kind}`;
+}
+
+// The pre-#1931 raw-display-name shape, for dual-read only. Never written fresh.
+export function legacyPrStrengthDismissalKey(
+  exercise: string,
+  equipmentId: number | null | undefined,
+  kind: string
+): string {
+  return `${PR_STRENGTH_PREFIX}${exercise}@${equipmentLoadLane(equipmentId)}:${kind}`;
+}
+
+// A cardio record's suppression key: `pr:cardio:<activityHistoryKey>:<kind>` — the
+// case/space-folded activity identity `getCardioByActivity` groups on.
+export function prCardioDismissalKey(activity: string, kind: string): string {
+  return `${PR_CARDIO_PREFIX}${activityHistoryKey(activity)}:${kind}`;
+}
+
+// The pre-#1931 raw-display-name shape, for dual-read only. Never written fresh.
+export function legacyPrCardioDismissalKey(
+  activity: string,
+  kind: string
+): string {
+  return `${PR_CARDIO_PREFIX}${activity}:${kind}`;
+}
+
+// The identity segment of a stored `pr:` key — everything between the namespace and
+// the trailing `:<kind>` — normalized to the canonical identity so a LEGACY row
+// (raw display name, raw casing) is compared against live history on the same terms
+// the current builders use. Returns null for a key outside the two PR namespaces or
+// one with no kind segment (a malformed row is left alone, never swept).
+export function prDismissalIdentity(
+  key: string
+): { domain: "strength" | "cardio"; identity: string } | null {
+  const domain = key.startsWith(PR_STRENGTH_PREFIX)
+    ? ("strength" as const)
+    : key.startsWith(PR_CARDIO_PREFIX)
+      ? ("cardio" as const)
+      : null;
+  if (!domain) return null;
+  const prefix = domain === "strength" ? PR_STRENGTH_PREFIX : PR_CARDIO_PREFIX;
+  const tail = key.slice(prefix.length);
+  const cut = tail.lastIndexOf(":");
+  if (cut <= 0) return null;
+  const subject = tail.slice(0, cut);
+  if (domain === "cardio")
+    return { domain, identity: activityHistoryKey(subject) };
+  // `<name>@<lane>`; the lane is the last '@'-segment (a movement name may not
+  // contain '@', but taking the LAST one is the safe read either way).
+  const at = subject.lastIndexOf("@");
+  if (at < 0) return null;
+  return {
+    domain,
+    identity: movementLoadKey(
+      subject.slice(0, at),
+      lanePart(subject.slice(at + 1))
+    ),
+  };
+}
+
+// The equipment id a stored lane segment denotes: a numeric lane is that equipment
+// row, anything else (the "none" sentinel, a corrupt segment) is the unassigned lane.
+function lanePart(lane: string): number | null {
+  const n = Number(lane);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// Which of the profile's stored `pr:` dismissal keys have lost their backing history
+// — the ones whose movement/lane (or activity) no longer appears in the profile's
+// sets/activities at all. A dismissal with no backing can never suppress anything it
+// was made for, and if the name is later recycled it suppresses something it was NOT
+// made for, so removing it is a pure de-orphan (the cleanupOrphanBiomarkerDismissals
+// shape, one domain over).
+//
+// CONSERVATIVE BY CONSTRUCTION: a key is swept only when neither its verbatim
+// identity NOR its canonical normalization is live, and a key this module can't parse
+// is never swept. Over-sweeping would resurface a celebration the user silenced on
+// purpose; under-sweeping leaves a dead row that the next seam re-examines.
+export function prDismissalKeysLosingBacking(
+  storedKeys: readonly string[],
+  liveStrengthIdentities: readonly string[],
+  liveCardioIdentities: readonly string[]
+): string[] {
+  const strength = new Set(liveStrengthIdentities);
+  const cardio = new Set(liveCardioIdentities);
+  const lost: string[] = [];
+  for (const key of storedKeys) {
+    const parsed = prDismissalIdentity(key);
+    if (!parsed) continue;
+    const live = parsed.domain === "strength" ? strength : cardio;
+    if (!live.has(parsed.identity)) lost.push(key);
+  }
   return lost;
 }

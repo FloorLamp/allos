@@ -13,7 +13,12 @@ import {
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
   preventiveDismissalKey,
+  prDismissalKeysLosingBacking,
+  PR_CARDIO_PREFIX,
+  PR_STRENGTH_PREFIX,
 } from "../../dismissal-keys";
+import { movementLoadKey } from "../../lifts";
+import { activityHistoryKey } from "../../activities-catalog";
 import { cleanupOrphanSavedBiomarkers, biomarkerFamilyKey } from "../medical";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
@@ -137,6 +142,120 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
 export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
   cleanupOrphanSavedBiomarkers(profileId);
   cleanupOrphanBiomarkerDismissals(profileId);
+}
+
+// ---- Personal-record dismissals (issue #1931) ------------------------------
+
+// Drop the profile's `pr:strength:` / `pr:cardio:` celebration dismissals whose
+// backing history is gone — the movement/lane (or cardio activity) no longer appears
+// in ANY of the profile's sets/activities.
+//
+// Why this is needed at all: a PR key contains a user-recyclable string (the movement
+// a set was logged under, the activity a session was titled). Rename a lift, move its
+// sets to a different implement, or delete and later re-log an activity, and the
+// dismissal outlives its subject — then a genuinely NEW record earned under the
+// recycled name arrives PRE-SILENCED, and the celebration is suppressed by a row
+// minted for data that no longer exists (AGENTS.md row-ops: "names and codes DO
+// recycle" — the #203/#283/#327 class, of which this is the training instance).
+//
+// A dismissal with no backing history can never fire again, so removing it is a pure
+// de-orphan — the same contract cleanupOrphanBiomarkerDismissals has one domain over.
+// The comparison runs in JS rather than SQL because the identity is
+// `movementLoadKey`/`activityHistoryKey`, canonical pure functions SQLite cannot call;
+// pushing the arithmetic into lib/dismissal-keys keeps the sweep byte-identical to the
+// keys the builders mint (the #227 "derive the same key" alignment).
+//
+// Cheap by construction: the very first statement short-circuits when the profile has
+// no `pr:` suppression rows at all — the overwhelmingly common case — so the seams
+// that call this on every activity save don't pay for a history scan.
+// Profile-scoped; safe to call repeatedly (idempotent).
+export function cleanupOrphanPrDismissals(profileId: number): void {
+  const stored = (
+    db
+      .prepare(
+        `SELECT signal_key FROM upcoming_dismissals
+          WHERE profile_id = ? AND (signal_key LIKE ? OR signal_key LIKE ?)`
+      )
+      .all(profileId, `${PR_STRENGTH_PREFIX}%`, `${PR_CARDIO_PREFIX}%`) as {
+      signal_key: string;
+    }[]
+  ).map((r) => r.signal_key);
+  if (stored.length === 0) return;
+
+  // Every rep-bearing, non-warmup set — exactly the rows strengthSetRows feeds the PR
+  // engine, so a set the records are computed from is a set that keeps its key alive.
+  const setRows = db
+    .prepare(
+      `SELECT DISTINCT s.exercise AS exercise, s.equipment_id AS equipmentId
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ?
+          AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+          AND s.warmup = 0`
+    )
+    .all(profileId) as { exercise: string; equipmentId: number | null }[];
+  // getStrengthByExercise(profileId, true) collapses to the movement-wide grouping for
+  // a profile whose sets carry NO implement link at all, so the live key set has to
+  // collapse the same way or every dismissal on such a profile would look orphaned.
+  const laned = setRows.some((r) => r.equipmentId != null);
+  const liveStrength = setRows.map((r) =>
+    movementLoadKey(r.exercise, laned ? r.equipmentId : null)
+  );
+
+  // Cardio identity is the activity NAME, which lives either in a `cardio` row's title
+  // or in a component of a mixed session — both of which effortEntries reads, so both
+  // must count as backing here.
+  const liveCardio = cardioActivityIdentities(profileId);
+
+  const lost = prDismissalKeysLosingBacking(stored, liveStrength, liveCardio);
+  if (lost.length === 0) return;
+  const placeholders = lost.map(() => "?").join(",");
+  db.prepare(
+    `DELETE FROM upcoming_dismissals
+      WHERE profile_id = ? AND signal_key IN (${placeholders})`
+  ).run(profileId, ...lost);
+}
+
+// Every cardio activity identity the profile has logged: top-level `cardio` rows by
+// title, plus the `cardio` legs of composite sessions (the two shapes effortEntries
+// folds into one list, which is what getCardioByActivity — and therefore the cardio PR
+// engine — actually groups). Kept local to the sweep so it reads the SAME two shapes
+// without pulling the training query layer into the suppression module.
+function cardioActivityIdentities(profileId: number): string[] {
+  const rows = db
+    .prepare(
+      `SELECT type, title, components FROM activities
+        WHERE profile_id = ? AND (type = 'cardio' OR components IS NOT NULL)`
+    )
+    .all(profileId) as {
+    type: string;
+    title: string;
+    components: string | null;
+  }[];
+  const out = new Set<string>();
+  for (const r of rows) {
+    let comps: unknown = null;
+    if (r.components) {
+      try {
+        comps = JSON.parse(r.components);
+      } catch {
+        comps = null;
+      }
+    }
+    const legs = Array.isArray(comps)
+      ? comps.filter(
+          (c): c is { type: string; name: string } =>
+            !!c &&
+            typeof c === "object" &&
+            (c as { type?: unknown }).type === "cardio" &&
+            typeof (c as { name?: unknown }).name === "string" &&
+            !!(c as { name: string }).name.trim()
+        )
+      : [];
+    if (legs.length) for (const c of legs) out.add(activityHistoryKey(c.name));
+    else if (r.type === "cardio" && r.title.trim())
+      out.add(activityHistoryKey(r.title));
+  }
+  return [...out];
 }
 
 // Re-key a biomarker's SAVE + retest/flag dismissals when its canonical name is

@@ -25,6 +25,8 @@ deleted symbol named here fails CI).
 | Exercise / lift (a lift and its equipment variants — Barbell/Dumbbell Curl → Curl)                  | `exerciseHistoryKey()` (over `baseLiftName()`), with `exerciseHistoryNames()` as the `IN (...)` finite-preimage                                                                                                                                      | `lib/lifts.ts`                                                                                     |
 | Strength LOAD CONTEXT (two registry machines logged under ONE exercise name — non-comparable loads) | `equipmentLoadLane()` and its two composers `strengthLoadKey()` (exact variant + lane, for seeds) and `movementLoadKey()` (`exerciseHistoryKey` + lane, for progression series and plateau dedupe keys); `loadContextLabel()` names a lane on screen | `lib/lifts.ts`                                                                                     |
 | Muscle → region rollup (`MuscleId` → coarse `MuscleRegion`)                                         | `muscleRegion()`                                                                                                                                                                                                                                     | `lib/lifts.ts`                                                                                     |
+| Cardio / sport ACTIVITY name (case + whitespace variants of one logged effort)                      | `activityHistoryKey()` — the cardio twin of `exerciseHistoryKey`; the stats grouping, the outdoor-plan key and the PR dismissal key (`prCardioDismissalKey()`) all resolve through it (#1931)                                                        | `lib/activities-catalog.ts`, `lib/dismissal-keys.ts`                                               |
+| Personal-record celebration (which record a dismissal silences)                                     | `prStrengthDismissalKey()` (over `movementLoadKey`) / `prCardioDismissalKey()` (over `activityHistoryKey`), with `prDismissalKeysLosingBacking()` as the no-orphan sweep arithmetic (#1931)                                                          | `lib/dismissal-keys.ts`                                                                            |
 | Symptom (curated + custom, spelling/case variants)                                                  | `normalizeSymptomName()`, `symptomSlugs()`, `isCuratedSymptom()`, `isCustomSymptomKey()`                                                                                                                                                             | `lib/symptoms.ts`                                                                                  |
 | Drug ingredient identity (combination drug ↔ its ingredient CUIs)                                   | `parseRxcuiIngredients()`, `itemRxcuis()`                                                                                                                                                                                                            | `lib/rxnorm.ts`, `lib/drug-interactions.ts`                                                        |
 | Condition (a coded problem ↔ its display-name variants — "Type 2 diabetes"/"T2DM"/E11.9)            | `conditionCollapseKey()` (code beats name), mirrored by the SQL `CONDITION_REPRESENTATIVE_IDS` grouping                                                                                                                                              | `lib/icd10.ts`, `lib/queries/clinical.ts`                                                          |
@@ -105,6 +107,28 @@ domain functions.
   declared reason codes. `dedupeKeyHasKnownPrefix()`,
   `findingRegistryEntryFor()`, and `tierForDedupeKey()` read it. Full policy:
   `docs/internals/findings.md`.
+- **Dismissal-key CLASSES (#1931).** `DISMISSAL_KEY_REGISTRY` in
+  `lib/dismissal-classes.ts` answers the orthogonal question the prefix registry
+  above does not: for every `upcoming_dismissals.signal_key` namespace, WHAT
+  stops the key from re-attaching to a subject the user never silenced. Each
+  namespace declares one `DismissalKeyClass` — `id-keyed` (ids never recycle),
+  `catalog` (fixed vocabulary; the topic IS the subject), `anchored` (a
+  date/period/episode anchor bounds re-attachment), `name-keyed-swept` (a
+  recyclable name PLUS a named de-orphan sweep), `name-keyed-open` (recyclable,
+  unswept, residual risk stated), or `legacy` (no longer minted). Read with
+  `dismissalKeyEntryFor()`.
+
+  This is the **name-keyed re-key discipline made enforceable** rather than
+  re-audited by hand every time the class resurfaces (#203/#283/#327 biomarkers,
+  #376 immunizations, #1399/#1610 training observations, #1931 personal records).
+  `lib/__tests__/dismissal-classes.test.ts` asserts the registry and
+  `SUPPRESSION_DISPLAY_PREFIXES` are the same set, requires a named sweep for
+  every `name-keyed-swept` entry and a stated risk for every open/legacy one, and
+  scans lib/ so that every `export const *_PREFIX = "…"` literal is either
+  classified or listed in `NON_DISMISSAL_PREFIXES` with what it actually keys.
+  A namespace that is BOTH spelled inline and absent from the display resolver
+  still escapes both teeth — noted in the module header, because that combination
+  already renders as an unnameable orphan row in Snoozed & dismissed.
 
 ## The reflection-guard convention
 
