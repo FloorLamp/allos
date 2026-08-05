@@ -505,14 +505,16 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       has: page.getByTestId("metric-reading-observed"),
     });
     await expect(observed).toHaveCount(1);
-    await expect(observed.locator('[data-card="value"]')).toHaveText(
+    // Its own value, plus whatever range tag the clinical record carries — the
+    // reading is asserted, not the badge beside it.
+    await expect(observed.locator('[data-card="value"]')).toContainText(
       `${METRIC_FOLD_CLINIC_ONLY_BPM} bpm`
     );
     // …and the duplicated value appears once across the whole table, from the
     // wearable row that already answered for that day.
     await expect(
       rows.locator('[data-card="value"]', {
-        hasText: new RegExp(`^${METRIC_FOLD_DUPLICATED_BPM} bpm$`),
+        hasText: new RegExp(`^${METRIC_FOLD_DUPLICATED_BPM} bpm`),
       })
     ).toHaveCount(1);
 
