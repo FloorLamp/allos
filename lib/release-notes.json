@@ -14,7 +14,7 @@
           "pr": 2141,
           "title": "The morning digest waits for your sleep",
           "body": "An automatic digest hour now schedules itself for after your tracker actually delivers the night — measured from your own history — and if last night still hasn't arrived at send time, the digest holds for one more hour before sending either way. No more sleep section missing at random.",
-          "kind": "improvement",
+          "kind": "fix",
           "issues": [2102]
         },
         {
