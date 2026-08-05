@@ -1,5 +1,6 @@
 import { db, today } from "../db";
 import { getMainSleepNightlyMinutes } from "./sleep";
+import { isLastNight } from "../sleep-summary";
 import { getLatestBodyMetricDailyPoints } from "./metrics";
 import {
   getActivityDates,
@@ -79,10 +80,21 @@ function spread(values: number[]): number | undefined {
 // same-day nap into the night on Health Connect and would mask an overnight
 // deficit. Baseline is the mean of the prior nights in the window (falls back to
 // all nights when only one).
+//
+// FRESHNESS IS PART OF THE ANSWER. The field is `lastNightMin` and every consumer
+// states it as a fact about last night — the rest-sleep nudge ("You slept 5h last
+// night"), the derived poor-sleep situation, the morning digest. The newest
+// recorded night is NOT automatically last night: on any morning before the
+// tracker pushes, the newest night is the one before it, and returning it named
+// the wrong night's sleep as this morning's. So this refuses rather than
+// substitutes — no sleep signal is a state every consumer already handles (they
+// simply don't fire), while a confidently wrong one is not.
 export function getSleepSignal(profileId: number): SleepSignal | null {
   const nights = getMainSleepNightlyMinutes(profileId, RECOVERY_BASELINE_DAYS); // oldest → newest, main overnight session per night
   if (nights.length === 0) return null;
-  const lastNightMin = nights[nights.length - 1].value;
+  const last = nights[nights.length - 1];
+  if (!isLastNight(last.date, today(profileId))) return null;
+  const lastNightMin = last.value;
   const prior = nights.slice(0, -1);
   const baseNights = prior.length ? prior : nights;
   const baselineMin = mean(baseNights.map((n) => n.value));

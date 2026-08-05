@@ -36,6 +36,7 @@ import {
   mainSleepNights,
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
+import { isLastNight } from "../sleep-summary";
 import {
   countSituationalDue,
   doseDueOn,
@@ -158,9 +159,11 @@ export function getNewlyFlaggedBiomarkers(
 // SAME computations other surfaces use — getSleepSignal (the rest trigger's main-
 // overnight last-night + baseline, #1118/#221) and getSleepRegularity (the #160 SRI
 // Trends renders) — so the digest can't disagree with them. Freshness gate: the
-// most recent main-sleep night must be today or yesterday (you actually woke
-// recently); a stale night isn't "how'd I sleep". The nap total is the wake-day's
-// non-main sleep, kept apart from the overnight figure.
+// most recent main-sleep night must BE last night (isLastNight — the shared
+// relative-night rule); a stale night isn't "how'd I sleep". It once accepted
+// yesterday's wake-day too, which is the night BEFORE last night and exactly the
+// night a morning digest reads before the tracker has pushed. The nap total is the
+// wake-day's non-main sleep, kept apart from the overnight figure.
 export function gatherDigestSleep(
   profileId: number,
   // Categories this profile's readers have all demoted (#1714). A demoted Sleep
@@ -178,9 +181,7 @@ export function gatherDigestSleep(
   if (nights.length === 0) return null;
   const last = nights[nights.length - 1];
 
-  const td = today(profileId);
-  const yd = shiftDateStr(td, -1);
-  if (last.wakeDay !== td && last.wakeDay !== yd) return null; // stale — skip
+  if (!isLastNight(last.wakeDay, today(profileId))) return null; // stale — skip
 
   if (
     !sleepSurvivesDemotion(

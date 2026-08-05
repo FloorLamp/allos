@@ -196,10 +196,29 @@ describe("gatherDigestSleep — default-on + freshness (#1117/#1378)", () => {
     setProfileSleepDigest(wakeProfile, false);
   });
 
-  it("returns null when the newest night is stale (not today/yesterday)", () => {
+  it("returns null when the newest night is stale (not last night)", () => {
     setProfileSleepDigest(staleProfile, true);
     expect(gatherDigestSleep(staleProfile)).toBeNull();
     setProfileSleepDigest(staleProfile, false);
+  });
+
+  // The gate once accepted yesterday's wake-day too — which is the night BEFORE
+  // last night, and precisely what a morning digest sees before the tracker has
+  // pushed. Printing it under "how'd I sleep" reports the wrong night.
+  it("returns null when the newest night is the night before last", () => {
+    const lagged = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('LaggedSleepDigest')")
+        .run().lastInsertRowid
+    );
+    setTimezone(lagged, "UTC");
+    upsertMetricSamples(
+      lagged,
+      nights(shiftDateStr(today(lagged), -1), 16, "07:00"),
+      "health-connect"
+    );
+    setProfileSleepDigest(lagged, true);
+    expect(gatherDigestSleep(lagged)).toBeNull();
   });
 
   it("returns null with no sleep data even when opted in", () => {

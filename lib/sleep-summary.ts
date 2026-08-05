@@ -10,11 +10,7 @@
 // stored absolute instant to profile-local wall clock via zonedDateParts.
 
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
-import {
-  formatLongDate,
-  formatRelativeDate,
-  type DisplayFormatPrefs,
-} from "./format-date";
+import { formatLongDate, type DisplayFormatPrefs } from "./format-date";
 import {
   mainSleepPeriod,
   sleepSessionDurationMinutes,
@@ -187,28 +183,46 @@ export interface SleepRecordPresentation {
   label: string;
 }
 
+// Is this wake-day the night just woken from? THE relative-night rule, in one
+// place: a `wakeDay` is the local date a session ENDED, so last night carries
+// TODAY's date, not yesterday's. Every surface that states something as a fact
+// about last night — the record label below, the coaching sleep signal, the
+// morning digest's Sleep section — asks THIS, so they cannot disagree about
+// which night the phrase names (#221).
+//
+// Before waking, "last night" has no answer yet: between midnight and this
+// morning's session the newest wake-day is yesterday's and this returns false,
+// which is correct — the night in progress is not a recorded night.
+export function isLastNight(wakeDay: string, todayStr: string): boolean {
+  return daysBetweenDateStr(wakeDay, todayStr) === 0;
+}
+
 // Issue #1186: "Last night" is a strict relative-day claim, not a synonym for
 // "latest row". This ONE pure formatter is shared by the page hero + dashboard
 // tile. Recent lag stays visible with an honest dated label; older lag is hidden
 // behind a sync-oriented empty state. Four nights is the pinned relabel window.
+//
+// COUNT NIGHTS, NOT DAYS. `wakeDay` is the local date the session ENDED, so the
+// night you just woke from carries TODAY's wake-day, and the night it names sits
+// one back from that date: nights-ago = (today − wakeDay) + 1. Anchoring on the
+// day difference alone is off by one — it labels the night-before-last "Last
+// night" and can never say "Last night" about last night, which is exactly what
+// a morning render shows while the tracker has not pushed the night yet.
 export function sleepRecordPresentation(
   wakeDay: string,
   todayStr: string,
   prefs: DisplayFormatPrefs,
   recentWindowNights = 4
 ): SleepRecordPresentation {
-  const nightsAgo = daysBetweenDateStr(wakeDay, todayStr);
-  if (nightsAgo === 1) {
+  if (isLastNight(wakeDay, todayStr)) {
     return { freshness: "last-night", label: "Last night" };
   }
-  if (nightsAgo != null && nightsAgo >= 0 && nightsAgo <= recentWindowNights) {
-    const relative = formatRelativeDate(wakeDay, todayStr).replace(
-      /\bday(s?) ago\b/,
-      "night$1 ago"
-    );
+  const daysAgo = daysBetweenDateStr(wakeDay, todayStr);
+  const nightsAgo = daysAgo == null || daysAgo < 0 ? null : daysAgo + 1;
+  if (nightsAgo != null && nightsAgo <= recentWindowNights) {
     return {
       freshness: "recent",
-      label: `${formatLongDate(wakeDay, prefs)} · ${relative}`,
+      label: `${formatLongDate(wakeDay, prefs)} · ${nightsAgo} nights ago`,
     };
   }
   return { freshness: "stale", label: "Sleep not synced" };
