@@ -110,6 +110,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
         "/data",
       ],
     },
+    backfills: [
+      {
+        id: "ride-details",
+        label: "Ride detail backfill",
+        itemNoun: "ride",
+      },
+    ],
   },
   {
     id: "oura",

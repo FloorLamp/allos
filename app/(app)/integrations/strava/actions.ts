@@ -12,7 +12,10 @@ import {
   getStravaConfig,
 } from "@/lib/integrations/connections";
 import { stravaCallbackUrl, isLoopbackUrl } from "./url";
-import { runStravaDetailsBackfill } from "@/lib/integrations/strava-sync";
+import {
+  queueIntegrationBackfill,
+  runIntegrationBackfillJob,
+} from "@/lib/integrations/backfill-jobs";
 import { createLogger } from "@/lib/log";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
@@ -78,48 +81,32 @@ export async function disconnectStravaAction() {
 
 export async function backfillStravaRideDetails(): Promise<StravaBackfillActionResult> {
   const { profile } = await requireWriteAccess();
-  try {
-    const result = await runStravaDetailsBackfill(profile.id);
-    if ("error" in result) {
-      return {
-        status: "error",
-        message:
-          result.error === "not connected"
-            ? "Connect Strava first, then backfill ride details."
-            : "Couldn’t backfill ride details. Try again.",
-      };
-    }
-    revalidatePath("/integrations/strava");
-    revalidatePath("/training");
-    revalidatePath("/training/rides/[id]", "page");
-    if (result.backfilled === 0 && result.remaining === 0) {
-      return {
-        status: "done",
-        message: "All Strava ride details are complete.",
-      };
-    }
-    const filled = `${result.backfilled} ${result.backfilled === 1 ? "ride" : "rides"}`;
-    const failed =
-      result.failed > 0 ? ` ${result.failed} couldn’t be fetched.` : "";
-    const remaining =
-      result.remaining > 0
-        ? ` ${result.remaining} ${result.remaining === 1 ? "ride remains" : "rides remain"}.`
-        : " Backfill complete.";
-    const quota = result.paused
-      ? " Paused before Strava’s read limit; run it again after the quota resets."
-      : "";
+  const queued = queueIntegrationBackfill(profile.id, "strava", "ride-details");
+  if ("error" in queued) {
+    return { status: "error", message: queued.error };
+  }
+  if (!queued.shouldRun) {
     return {
       status: "done",
-      message: `Added details to ${filled}.${failed}${remaining}${quota}`,
-    };
-  } catch (err) {
-    log.error("Strava ride-detail backfill failed", {
-      profileId: profile.id,
-      err: String(err),
-    });
-    return {
-      status: "error",
-      message: "Couldn’t backfill ride details. Try again.",
+      message:
+        queued.job.status === "completed"
+          ? "All Strava ride details are complete."
+          : "The ride detail backfill is already running.",
     };
   }
+
+  void runIntegrationBackfillJob(profile.id, "strava", "ride-details").catch(
+    (err) => {
+      log.error("Strava ride-detail backfill runner rejected", {
+        profileId: profile.id,
+        err: String(err),
+      });
+    }
+  );
+  revalidatePath("/integrations/strava");
+  revalidatePath("/data");
+  return {
+    status: "done",
+    message: "Ride detail backfill started. Progress and ETA are shown below.",
+  };
 }

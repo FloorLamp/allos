@@ -103,6 +103,7 @@ export default async function StravaPage(props: {
               state={state}
               detail="period"
               isAdmin={login.role === "admin"}
+              watchBackfills
               controls={
                 <>
                   <SyncNowButton provider="strava" />

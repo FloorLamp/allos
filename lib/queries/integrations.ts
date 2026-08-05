@@ -24,6 +24,10 @@ import {
 } from "@/lib/integrations/provider-state";
 import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import {
+  getIntegrationBackfillJobs,
+  type IntegrationBackfillJob,
+} from "@/lib/integrations/backfill-state";
+import {
   INTEGRATIONS,
   getIntegration,
   isPullIntegration,
@@ -634,6 +638,8 @@ export interface IntegrationState {
   // the wrong side of midnight for anyone east or west of Greenwich.
   timeZone: string;
   today: string;
+  // Durable enrichment work (progress survives navigation/restarts).
+  backfills: IntegrationBackfillJob[];
 }
 
 // Retained for the surfaces that speak of "connected sources" (Data → Review). Same
@@ -724,6 +730,7 @@ export function getIntegrationState(
     },
     timeZone: getTimezone(profileId),
     today: today(profileId),
+    backfills: getIntegrationBackfillJobs(profileId, def.id),
   };
 }
 

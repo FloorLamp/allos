@@ -185,13 +185,22 @@ later athlete-setting change cannot rewrite historical training load. Activity
 merges re-parent these children before deleting a duplicate, and undoable merges
 move them back with the restored activity.
 
-The connected Strava page also exposes a repeatable **Backfill ride details**
-action for cycling activities imported before telemetry existed (or whose prior
-stream request failed). It processes newest rides first through the same shared
-request budget, writes each completed ride atomically, and derives its remaining
-work from missing/empty telemetry rather than a second cursor. Completed rows
-therefore disappear from the next run automatically; a transient error or quota
-pause leaves the remainder safe to resume after the provider window resets.
+The connected Strava page exposes **Backfill ride details** for cycling
+activities imported before telemetry existed (or whose prior stream request
+failed). This runs through the provider-neutral durable backfill substrate:
+`IntegrationDef.backfills` declares stable metadata; executable bindings live in
+`backfill-runners.ts`; and `integration_backfill_jobs` checkpoints total,
+completed, failed, provider requests, active processing time, retry time, and error.
+The same progress component renders live on the provider page and from the shared
+integration state in Data → Review. ETA is observed throughput over active work,
+plus any known provider-quota wait — pause time never pollutes the throughput rate.
+
+Each completed ride is written atomically and disappears from the missing-row query,
+so the job is idempotent without a second provider cursor. A quota pause records the
+natural Strava reset boundary; the hourly integration pass resumes due jobs, while
+boot recovery turns an abandoned queued/running lease into a resumable pause. The
+browser may navigate away: progress is DB-backed and read through the scoped
+`/api/jobs/integration-backfills` observer, not held in a Server Action response.
 Power curves, FTP-relative load, and same-route identity are derived at read
 time rather than stored as competing facts. The aligned `time` and `latlng`
 streams remain optional but, when present, drive the ride detail's chart-linked

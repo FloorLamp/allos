@@ -29,6 +29,25 @@ export function seedIntegrationSyncEvents(): void {
     config: { clientId: "e2e-client", accessToken: "e2e-token" },
   });
 
+  // Durable provider-neutral backfill progress: the connected Strava page and
+  // Data → Review render this same paused checkpoint, including provider wait + ETA.
+  const backfillNow = new Date();
+  const retryAfter = new Date(backfillNow.getTime() + 30 * 60 * 1000);
+  db.prepare(
+    `INSERT INTO integration_backfill_jobs
+       (profile_id, provider, kind, label, item_noun, status, total_items,
+        completed_items, failed_items, request_count, active_seconds,
+        started_at, retry_after_at, created_at, updated_at)
+     VALUES (?, 'strava', 'ride-details', 'Ride detail backfill', 'ride',
+       'paused', 10, 4, 0, 10, 20, ?, ?, ?, ?)`
+  ).run(
+    PROFILE_ID,
+    new Date(backfillNow.getTime() - 20_000).toISOString(),
+    retryAfter.toISOString(),
+    backfillNow.toISOString(),
+    backfillNow.toISOString()
+  );
+
   // Capture a raw payload file for the healthy Health Connect sync so the admin-only
   // "View raw" affordance (#9) has something to fetch. Synthetic fixture content —
   // no real PHI. writeRawPayload writes under data/integration-payloads/<profile>/

@@ -73,8 +73,10 @@ function pair(value: string | null): [number, number] | null {
 export interface StravaRequestBudget {
   readonly requests: number;
   readonly exhausted: boolean;
+  readonly retryAfterAt: string | null;
   reserve(): boolean;
   observe(headers: Headers): void;
+  markRateLimited(): void;
 }
 
 // maxRequests is an Allos safety ceiling for one operation. The provider quota may
@@ -86,6 +88,7 @@ export function createStravaRequestBudget(
 ): StravaRequestBudget {
   let requests = 0;
   let exhausted = false;
+  let retryAfterAt: string | null = null;
   return {
     get requests() {
       return requests;
@@ -93,14 +96,29 @@ export function createStravaRequestBudget(
     get exhausted() {
       return exhausted;
     },
+    get retryAfterAt() {
+      return retryAfterAt;
+    },
     reserve() {
-      const state = stateFor(clientId, clock());
-      if (
-        requests >= maxRequests ||
-        state.shortUsed >= Math.max(0, state.shortLimit - SHORT_RESERVE) ||
-        state.dailyUsed >= Math.max(0, state.dailyLimit - DAILY_RESERVE)
-      ) {
+      const at = clock();
+      const state = stateFor(clientId, at);
+      const dailyBlocked =
+        state.dailyUsed >= Math.max(0, state.dailyLimit - DAILY_RESERVE);
+      const shortBlocked =
+        state.shortUsed >= Math.max(0, state.shortLimit - SHORT_RESERVE);
+      if (requests >= maxRequests || shortBlocked || dailyBlocked) {
         exhausted = true;
+        if (dailyBlocked) {
+          const nextDay = new Date(at);
+          nextDay.setUTCHours(24, 0, 0, 0);
+          retryAfterAt = nextDay.toISOString();
+        } else if (shortBlocked) {
+          retryAfterAt = new Date(
+            (Math.floor(at / FIFTEEN_MINUTES_MS) + 1) * FIFTEEN_MINUTES_MS
+          ).toISOString();
+        } else {
+          retryAfterAt = new Date(at + 1_000).toISOString();
+        }
         return false;
       }
       // Reserve before fetch: a timeout or dropped response still may have reached
@@ -123,6 +141,14 @@ export function createStravaRequestBudget(
         state.shortUsed = Math.max(state.shortUsed, usage[0]);
         state.dailyUsed = Math.max(state.dailyUsed, usage[1]);
       }
+    },
+    markRateLimited() {
+      exhausted = true;
+      const at = clock();
+      const nextWindow = new Date(
+        (Math.floor(at / FIFTEEN_MINUTES_MS) + 1) * FIFTEEN_MINUTES_MS
+      ).toISOString();
+      if (!retryAfterAt || retryAfterAt < nextWindow) retryAfterAt = nextWindow;
     },
   };
 }

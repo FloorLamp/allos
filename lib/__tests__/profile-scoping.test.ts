@@ -524,6 +524,12 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
       "UPDATE import_jobs SET status = 'failed', error = 'Saving this import was interrupted (server restarted).",
     why: "boot reset of import jobs stranded mid-commit in 'committing' (#323) — GLOBAL maintenance keyed by the stale updated_at lease, deliberately profile-agnostic.",
   },
+  {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "UPDATE integration_backfill_jobs SET status = 'paused', retry_after_at = datetime('now')",
+    why: "boot recovery for integration backfills: a GLOBAL lease reaper pauses queued/running jobs abandoned by a dead process; each job remains profile-owned and the next profile-scoped hourly pass resumes only its own due rows.",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

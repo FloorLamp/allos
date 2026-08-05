@@ -20,6 +20,22 @@ test.describe("Strava integration (#391)", () => {
     const backfill = page.getByTestId("strava-backfill-details");
     await expect(backfill).toBeVisible();
     await expect(backfill).toContainText("Backfill ride details");
+
+    const progress = page.getByTestId("backfill-job-ride-details");
+    await expect(progress).toBeVisible();
+    await expect(progress.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "40"
+    );
+    await expect(progress).toContainText("4 rides of 10");
+    await expect(progress).toContainText("Waiting for quota");
+    await expect(progress).toContainText(/Next retry in .*ETA/);
+
+    await page.goto("/data?section=review");
+    const reviewSource = page.getByTestId("source-strava");
+    await expect(
+      reviewSource.getByTestId("backfill-job-ride-details")
+    ).toContainText("4 rides of 10");
   });
 
   test("a profile with no Strava connection renders the credentials setup form", async ({

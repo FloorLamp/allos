@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { IconDatabaseImport } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { backfillStravaRideDetails } from "./actions";
+import { INTEGRATION_BACKFILL_STARTED_EVENT } from "@/components/integrations/IntegrationBackfillProgress";
 
 export default function StravaBackfillButton({ missing }: { missing: number }) {
   const [pending, start] = useTransition();
@@ -12,6 +13,9 @@ export default function StravaBackfillButton({ missing }: { missing: number }) {
   function run() {
     start(async () => {
       const result = await backfillStravaRideDetails();
+      if (result.status === "done") {
+        window.dispatchEvent(new Event(INTEGRATION_BACKFILL_STARTED_EVENT));
+      }
       toast(result.message, {
         tone: result.status === "error" ? "error" : "success",
       });

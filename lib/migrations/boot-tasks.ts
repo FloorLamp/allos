@@ -198,6 +198,17 @@ export function resetInterruptedWork(
          AND updated_at < datetime('now', '${modifier}')`
     );
 
+    // Provider backfills checkpoint after every completed item. A running row that
+    // has stopped advancing past the shared lease was abandoned; pause it so the
+    // next hourly integration pass resumes from the durable missing-row query.
+    db.exec(
+      `UPDATE integration_backfill_jobs
+         SET status = 'paused', retry_after_at = datetime('now'),
+             updated_at = datetime('now')
+       WHERE status IN ('queued','running')
+         AND updated_at < datetime('now', '${modifier}')`
+    );
+
     // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by
     // flipping 'ready' -> 'committing' (bumping updated_at) before writing rows; a crash
     // between that claim and the row-delete would strand it in 'committing' forever — it

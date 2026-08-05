@@ -111,6 +111,7 @@ export const OWNED_TABLES = [
   "saved_items",
   "integration_connections",
   "integration_sync_events",
+  "integration_backfill_jobs",
   "profile_share_links",
   "upcoming_dismissals",
   "import_pair_decisions",

@@ -86,6 +86,7 @@ async function stravaGet(
       signal: AbortSignal.timeout(timeoutMs),
     });
     budget.observe(res.headers);
+    if (res.status === 429) budget.markRateLimited();
     if (!res.ok) return { ok: false, status: res.status };
     return { ok: true, json: await res.json() };
   } catch (err) {
@@ -374,13 +375,21 @@ export interface StravaBackfillResult {
   remaining: number;
   requests: number;
   paused: boolean;
+  retryAfterAt: string | null;
+}
+
+export interface StravaBackfillProgress {
+  remaining: number;
+  failed: number;
+  requests: number;
 }
 
 // Fill rich artifacts for Strava rides imported before cycling telemetry existed.
 // Successful rows disappear from the candidate query, so every invocation resumes
 // naturally and is safe to repeat after a quota pause or transient provider error.
 export async function runStravaDetailsBackfill(
-  profileId: number
+  profileId: number,
+  onProgress?: (progress: StravaBackfillProgress) => void
 ): Promise<StravaBackfillResult | { error: string }> {
   const token = await getStravaAccessToken(profileId);
   if (!token) return { error: "not connected" };
@@ -392,6 +401,7 @@ export async function runStravaDetailsBackfill(
       remaining: 0,
       requests: 0,
       paused: false,
+      retryAfterAt: null,
     };
   }
 
@@ -401,6 +411,13 @@ export async function runStravaDetailsBackfill(
   let backfilled = 0;
   let failed = 0;
   let paused = false;
+
+  const reportProgress = () =>
+    onProgress?.({
+      remaining: Math.max(candidates.length - backfilled, 0),
+      failed,
+      requests: budget.requests,
+    });
 
   const athleteRes = await stravaGet("/athlete", token, budget);
   if (!athleteRes.ok && isPullRateLimited(athleteRes.status)) paused = true;
@@ -418,6 +435,7 @@ export async function runStravaDetailsBackfill(
     const match = /^strava:(\d+)$/.exec(candidate.external_id);
     if (!match) {
       failed++;
+      reportProgress();
       continue;
     }
     const providerId = match[1];
@@ -432,6 +450,7 @@ export async function runStravaDetailsBackfill(
         break;
       }
       failed++;
+      reportProgress();
       continue;
     }
     const keys = STRAVA_STREAM_KEYS.join(",");
@@ -446,6 +465,7 @@ export async function runStravaDetailsBackfill(
         break;
       }
       failed++;
+      reportProgress();
       continue;
     }
     const artifacts = mapStravaCyclingArtifacts(
@@ -468,6 +488,7 @@ export async function runStravaDetailsBackfill(
     });
     if (hasStreams) backfilled++;
     else failed++;
+    reportProgress();
   }
 
   return {
@@ -476,5 +497,6 @@ export async function runStravaDetailsBackfill(
     remaining: countMissingStravaRideDetails(profileId),
     requests: budget.requests,
     paused,
+    retryAfterAt: paused ? budget.retryAfterAt : null,
   };
 }

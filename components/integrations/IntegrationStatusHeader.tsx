@@ -16,6 +16,7 @@ import { groupSyncDays } from "@/lib/integrations/sync-history-days";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 import StatusBadge from "./StatusBadge";
+import IntegrationBackfillProgress from "./IntegrationBackfillProgress";
 import SyncTimestamp from "./SyncTimestamp";
 import { SyncDetailsNotes, SyncOutcomeLine } from "./SyncOutcome";
 
@@ -60,6 +61,7 @@ export default function IntegrationStatusHeader({
   isAdmin = false,
   detail = "run",
   testid,
+  watchBackfills = false,
 }: {
   state: IntegrationState;
   // Review lists several providers, so it names each; the setup page's PageHeader
@@ -69,6 +71,7 @@ export default function IntegrationStatusHeader({
   isAdmin?: boolean;
   detail?: StatusDetail;
   testid?: string;
+  watchBackfills?: boolean;
 }) {
   const { latest, standing, vocabulary } = state;
   const badge = standingBadge(standing);
@@ -77,6 +80,9 @@ export default function IntegrationStatusHeader({
   const coverage = perRun && latest ? formatCoverage(latest, vocabulary) : null;
   const provenance = state.provenanceCounts;
   const written = latest ? writtenCount(latest) : 0;
+  const visibleBackfills = watchBackfills
+    ? state.backfills
+    : state.backfills.filter((job) => job.status !== "completed");
   // Today's activity, aggregated — the period card's one fact. The newest day group
   // IS today's when the newest run landed today; periodActivityLabel refuses to
   // dress an older day's tally as "today".
@@ -212,6 +218,14 @@ export default function IntegrationStatusHeader({
           eventId={latest.id}
           count={provenance[latest.id]}
           remainder={Math.max(written - provenance[latest.id], 0)}
+        />
+      )}
+
+      {(visibleBackfills.length > 0 || watchBackfills) && (
+        <IntegrationBackfillProgress
+          provider={state.id}
+          initialJobs={visibleBackfills}
+          watch={watchBackfills}
         />
       )}
 
