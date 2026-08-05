@@ -155,7 +155,9 @@ describe("getFoodBarOrder slot-aware blend (#950)", () => {
 
   it("leads with the MIDDAY group at midday, even under a heavier morning staple", () => {
     const profileId = seedSlotSkewed("food-order-midday");
-    const midday = getFoodBarOrder(profileId, "Midday").groups.map((g) => g.slug);
+    const midday = getFoodBarOrder(profileId, "Midday").groups.map(
+      (g) => g.slug
+    );
     expect(midday[0]).toBe("fatty_fish"); // slot leader
   });
 
