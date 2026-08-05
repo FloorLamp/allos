@@ -101,7 +101,10 @@ export function aggregateLongRange(
   const grain = longRangeGrain(span + 1);
   if (grain == null) return null;
 
-  const byBucket = new Map<string, { sum: number; lo: number; hi: number; count: number }>();
+  const byBucket = new Map<
+    string,
+    { sum: number; lo: number; hi: number; count: number }
+  >();
   for (const p of real) {
     const key = bucketStart(p.date, grain, weekStart);
     const b = byBucket.get(key);

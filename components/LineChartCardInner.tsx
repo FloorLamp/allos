@@ -165,14 +165,17 @@ export default function LineChartCard({
           }))
         )
       : null;
-  const plotData: { date: string; value: number | null; band?: [number, number] }[] =
-    longRange
-      ? longRange.points.map((p) => ({
-          date: p.date,
-          value: p.value,
-          band: [p.lo, p.hi] as [number, number],
-        }))
-      : (data as { date: string; value: number | null }[]);
+  const plotData: {
+    date: string;
+    value: number | null;
+    band?: [number, number];
+  }[] = longRange
+    ? longRange.points.map((p) => ({
+        date: p.date,
+        value: p.value,
+        band: [p.lo, p.hi] as [number, number],
+      }))
+    : (data as { date: string; value: number | null }[]);
   const tickFmt =
     tickFormatter ??
     (isoDates

@@ -98,7 +98,10 @@ describe("aggregateLongRange", () => {
     // One reading a week for a year: 52 points in ~52 occupied buckets.
     const weekly: { date: string; value: number }[] = [];
     for (let i = 0; i < 52; i++) {
-      weekly.push({ date: shiftDateStr("2026-07-08", -7 * i), value: 80 - i * 0.1 });
+      weekly.push({
+        date: shiftDateStr("2026-07-08", -7 * i),
+        value: 80 - i * 0.1,
+      });
     }
     weekly.reverse();
     expect(aggregateLongRange(weekly)).toBeNull();
@@ -107,10 +110,7 @@ describe("aggregateLongRange", () => {
   it("judges density on OCCUPIED buckets, so a gapped dense series still aggregates", () => {
     // Six months of daily readings, a five-month gap, six more months: the span
     // is ~17 months but only ~52 weeks hold data — at ~7 readings each.
-    const series = [
-      ...daily("2025-07-01", 180),
-      ...daily("2026-07-08", 180),
-    ];
+    const series = [...daily("2025-07-01", 180), ...daily("2026-07-08", 180)];
     const agg = aggregateLongRange(series);
     expect(agg).not.toBeNull();
     expect(agg!.grain).toBe("week");

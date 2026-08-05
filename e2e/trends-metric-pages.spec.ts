@@ -554,10 +554,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
 
     // The full daily series is in the window (`data-points` counts the fold's raw
     // readings)…
-    await expect(chart).toHaveAttribute(
-      "data-points",
-      String(LONG_RANGE_DAYS)
-    );
+    await expect(chart).toHaveAttribute("data-points", String(LONG_RANGE_DAYS));
     // …but the plot is the aggregate: a spread band behind the mean line, and the
     // caption naming the grain — a summary chart, not a 240-point scribble.
     await expect(chart.locator(".recharts-area")).toHaveCount(1);
