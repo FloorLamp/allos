@@ -47,7 +47,13 @@ import {
   type FoodLedgerEvent,
 } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
-import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import {
+  correctionBursts,
+  CORRECTION_FRESH_MIN,
+  type CorrectionBurst,
+} from "../correction-time";
+import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
@@ -522,6 +528,59 @@ export function getFoodSlotServingsOnDate(
     )
     .all(profileId, date) as FoodLedgerEvent[];
   return slotServingCounts(events, tz, boundaries, window, date);
+}
+
+// ---- Eating-time correction rows (issue #2019) ----
+
+// The profile's recent food taps as the correction offer reads them: row id, the
+// IMMUTABLE tap stamp (burst identity and every chip offset key on this), and a display
+// name for a lone-tap row. Bounded by the freshness window the offer itself uses, so the
+// read is a handful of rows however busy the day was.
+//
+// THE ROW SET IS A QUERY, not a memory. Nothing records that some earlier keyboard
+// rendered a correction row, which is exactly why the rows survive a rebuild, a pointer
+// rotation and a restart: whichever food keyboard is currently live renders the offers
+// the LEDGER still justifies. Profile-scoped via the food_log_events filter.
+export function getRecentFoodTaps(
+  profileId: number,
+  now: Date = new Date()
+): FoodTapRow[] {
+  const since = new Date(
+    now.getTime() - CORRECTION_FRESH_MIN * 60_000
+  ).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT id, group_key, logged_at FROM food_log_events
+        WHERE profile_id = ? AND logged_at >= ?
+        ORDER BY logged_at, id
+        LIMIT 100`
+    )
+    .all(profileId, since) as {
+    id: number;
+    group_key: string;
+    logged_at: string;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    groupKey: r.group_key,
+    tapAt: r.logged_at,
+    // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
+    // what it is rather than rendered as a mystery slug.
+    label: isProteinNudgeKey(r.group_key)
+      ? "Protein"
+      : (foodGroupBySlug(r.group_key)?.name ?? r.group_key),
+  }));
+}
+
+// The correction rows one food keyboard should carry right now — the fresh taps,
+// collapsed into bursts, newest first, capped. One computation for the send, every
+// rebuild, and the hourly sweep (#221), so a chat can never show a chip the handler
+// would refuse.
+export function getFoodCorrectionBursts(
+  profileId: number,
+  now: Date = new Date()
+): CorrectionBurst[] {
+  return correctionBursts(getRecentFoodTaps(profileId, now), now);
 }
 
 // ---- Food-habit N-week consistency trend (issue #954) ----

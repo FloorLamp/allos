@@ -125,3 +125,25 @@ export function correctionPickerTitle(
 ): string {
   return `🕐 ${burstSubject(burst, tz)} — ${verb}?`;
 }
+
+// Is a picker currently OPEN on this keyboard, and on which burst?
+//
+// The `↩︎ Back` button is the tell: it exists only while the drill-down is showing, so
+// its token's anchor names the burst being asked about. Read back off the live keyboard
+// exactly as `countVisibleFoodButtons` reads back the expansion — for the same reason
+// (#1807): the hourly sweep re-renders from the builder, and without this it would edit
+// an open picker away under the user mid-choice. What the user asked to see is theirs;
+// reconciliation may only ever REDUCE what a chat claims, never change what it shows.
+export function openPickerAnchor(
+  tokens: readonly string[],
+  prefixes: CorrectionPrefixes
+): number | null {
+  for (const t of tokens) {
+    const f = t.split(":");
+    if (f[0] === prefixes.at && f[3] === "back") {
+      const id = Number(f[2]);
+      if (Number.isInteger(id) && id > 0) return id;
+    }
+  }
+  return null;
+}

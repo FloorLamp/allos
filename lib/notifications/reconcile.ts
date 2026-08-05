@@ -67,12 +67,26 @@ import {
 } from "../refill";
 import { getProfileFoodTelegram, getUserAge } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
-import { collectWindowDoses, slotSessionForKeyboard } from "./supplements";
+import {
+  collectWindowDoses,
+  slotSessionForKeyboard,
+  withDoseCorrections,
+} from "./supplements";
 import {
   renderMergedIntakeMessage,
   type IntakeSendSlot,
 } from "./supplement-format";
 import { buildFoodNudge } from "./food";
+import { now as clockNow } from "../clock";
+import { correctionTokenAnchor } from "../correction-time";
+import {
+  DOSE_TIME_PREFIXES,
+  FOOD_TIME_PREFIXES,
+  openPickerAnchor,
+  type CorrectionPrefixes,
+} from "./correction-rows";
+import { getFoodCorrectionBursts } from "../queries";
+import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
   FOOD_NUDGE_WINDOWS,
@@ -144,6 +158,28 @@ function fields(token: string): string[] {
   return token.split(":");
 }
 
+// ── The time-correction ride-along, for BOTH families (#2019/#2020) ──────────
+//
+// A correction chip claims "these entries are still correctable here", and that stops
+// being true an hour after the burst was tapped. Both families ask the SAME question of
+// their own ledger, through the same freshness predicate the renderer used — so a chat
+// can never show a chip the handler would refuse, and never refuse one it is showing.
+//
+// A dead correction token is what produces the ONE trailing edit per logging burst: the
+// tick after the hour, the rows come off, and the next tick is back to zero calls.
+function deadCorrectionTokens(
+  tokens: readonly string[],
+  prefixes: CorrectionPrefixes,
+  freshAnchors: Set<number>
+): Set<string> {
+  const dead = new Set<string>();
+  for (const t of tokens) {
+    const anchor = correctionTokenAnchor(t, [prefixes.chip, prefixes.at]);
+    if (anchor != null && !freshAnchors.has(anchor)) dead.add(t);
+  }
+  return dead;
+}
+
 // Doses resolved (taken OR deliberately skipped — #232: a skip resolves like a take)
 // for one profile-date, memoized per sweep call so a message with twelve buttons reads
 // the ledger once.
@@ -159,7 +195,13 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
 // demote:    `demote:<profileId>:<itemId>:<date>`
 const intakeDose: FamilyReconciler = {
   dead(profileId, tokens) {
-    const dead = new Set<string>();
+    const dead = deadCorrectionTokens(
+      tokens,
+      DOSE_TIME_PREFIXES,
+      new Set(
+        getDoseCorrectionBursts(profileId, clockNow()).map((b) => b.fromId)
+      )
+    );
     const byDate = new Map<string, Set<number>>();
     const resolvedFor = (date: string) => {
       let s = byDate.get(date);
@@ -214,11 +256,17 @@ const intakeDose: FamilyReconciler = {
     if (!date) return null;
     const parts = slotSessionForKeyboard(profileId, doseIds, slots, date);
     if (parts.length === 0) return null;
-    return renderMergedIntakeMessage(
+    // The correction ride-along rides the SWEEP's rebuild too (#2020), from the same
+    // helper the send and both tap rebuilds use — otherwise the tick would edit the
+    // chips off a keyboard the very next tap would put straight back, and the
+    // zero-call steady state this sweep exists to hold would be gone.
+    return withDoseCorrections(
       profileId,
-      parts,
-      date,
-      getUserAge(profileId)
+      renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId)),
+      {
+        now: clockNow(),
+        pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),
+      }
     );
   },
 };
@@ -292,8 +340,16 @@ const householdRound: FamilyReconciler = {
 // see, with no tap behind it. Zero is the "no ranked buttons at all" reading; `|| undefined`
 // hands that case back to the builder's own default rather than rendering an empty keyboard.
 const food: FamilyReconciler = {
-  dead() {
-    return new Set<string>();
+  // The quick-log buttons never die — another serving is always loggable — but the
+  // correction chips riding beside them do, on their own hour-long clock (#2019).
+  dead(profileId, tokens) {
+    return deadCorrectionTokens(
+      tokens,
+      FOOD_TIME_PREFIXES,
+      new Set(
+        getFoodCorrectionBursts(profileId, clockNow()).map((b) => b.fromId)
+      )
+    );
   },
   rebuild(profileId, tokens, p) {
     for (const t of tokens) {
@@ -303,7 +359,23 @@ const food: FamilyReconciler = {
       const date = f[3];
       if (!FOOD_NUDGE_WINDOWS.includes(window) || !date) continue;
       const visibleCount = countVisibleFoodButtons(p.keyboard) || undefined;
-      return buildFoodNudge(profileId, window, date, visibleCount);
+      const now = clockNow();
+      // An OPEN eating-time picker is the user's current view, exactly as the expansion
+      // is (#1807), so the rebuild preserves it rather than editing the question away
+      // while it is being answered. It survives only while its burst is still fresh —
+      // once it is not, the anchor is gone from the offer set and the plain nudge comes
+      // back, which is how an ABANDONED picker gets closed by the ordinary sweep.
+      const anchor = openPickerAnchor(tokens, FOOD_TIME_PREFIXES);
+      const picker =
+        anchor != null
+          ? getFoodCorrectionBursts(profileId, now).find(
+              (b) => b.fromId === anchor
+            )
+          : undefined;
+      return buildFoodNudge(profileId, window, date, visibleCount, {
+        now,
+        ...(picker ? { picker } : {}),
+      });
     }
     return null;
   },

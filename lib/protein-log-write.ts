@@ -19,6 +19,7 @@ import { now as clockNow } from "./clock";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
 import { type FoodSlot } from "./food-slot";
+import type { FoodEatingTime } from "./food-log-write";
 
 // The per-profile settings key holding the most recent add amount, so the quick-add
 // pre-fills the last scoop size. A settings-tier value (not profile-owned data), so
@@ -69,7 +70,10 @@ export function addProteinGramsCore(
   // whichever slot the tap instant happens to fall in. The web quick-add omits it:
   // it logs "now" with no asserted window, where the tap-derived slot IS the honest
   // answer. Never overrides `loggedAt`, which stays the audit/tap time.
-  mealSlot?: FoodSlot
+  mealSlot?: FoodSlot,
+  // WHEN IT WAS CONSUMED (#2019) — the same separate fact `logFoodServingCore` records,
+  // on the same columns, so protein distribution reads one ledger with one time model.
+  time?: FoodEatingTime
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
@@ -87,9 +91,17 @@ export function addProteinGramsCore(
     // day counter and every food-GROUP path, so it never becomes a serving.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(profileId, PROTEIN_NUDGE_KEY, date, loggedAt, mealSlot ?? null);
+         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      PROTEIN_NUDGE_KEY,
+      date,
+      loggedAt,
+      mealSlot ?? null,
+      time?.eatenAt ?? null,
+      time?.source ?? null
+    );
     const row = db
       .prepare(
         `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
