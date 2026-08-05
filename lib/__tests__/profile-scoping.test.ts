@@ -568,6 +568,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     expr: `sql.${expr}`,
     why: "the day-counter ledger (#2037): all five statements are compiled by the pure `dayCounterSql` from CONSTANT table/column names, and every one of them is born or filtered profile-scoped — the upsert names profile_id in its column list, the other four open their WHERE with `profile_id = ?`. lib/__tests__/day-counter-ledger.test.ts asserts exactly that, per declared counter, which is a stronger guarantee than this scan's per-literal read.",
   })),
+  {
+    file: "lib/profile-delete.ts",
+    expr: "step.sql",
+    why: "the schema-derived profile-delete sweep (#2126): each statement is a DELETE on a CHILD table (no profile_id of its own) whose WHERE reaches profile_id through nested subqueries along its FK path to an OWNED_TABLES parent (table/column names come from sqlite_master, never user input). lib/__db_tests__/profile-delete-fk-scan.test.ts pins the plan's coverage and ordering.",
+  },
 ];
 
 // POSITIONAL profile_id check (issue #1208 fix 1). The old guard passed any
@@ -911,9 +916,17 @@ describe("owned-table set: single source of truth (no drift)", () => {
   const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
   const LIST_SENTINELS = ['"metric_samples"', '"upcoming_dismissals"'];
 
-  it("deleteProfile consumes OWNED_TABLES (no private list)", () => {
-    const src = read("app/(app)/settings/family/actions.ts");
-    expect(src).toContain("OWNED_TABLES");
-    for (const s of LIST_SENTINELS) expect(src.includes(s)).toBe(false);
+  it("deleteProfile consumes the derived sweep, which consumes OWNED_TABLES (no private list)", () => {
+    // The sweep itself moved to lib/profile-delete.ts (#2126): the child-table set
+    // is DERIVED from PRAGMA foreign_key_list over OWNED_TABLES, so neither file
+    // may re-introduce a hand-maintained table list.
+    const action = read("app/(app)/settings/family/actions.ts");
+    expect(action).toContain("deleteProfileData");
+    const sweep = read("lib/profile-delete.ts");
+    expect(sweep).toContain("OWNED_TABLES");
+    for (const s of LIST_SENTINELS) {
+      expect(action.includes(s)).toBe(false);
+      expect(sweep.includes(s)).toBe(false);
+    }
   });
 });
