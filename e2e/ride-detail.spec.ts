@@ -166,9 +166,9 @@ test("a Journal ride opens a read-first detail with the stored ride measurements
       )
     )
   ).toBe(true);
-  await expect(comparisonRideLinks.first()).toContainText(
-    /^\w+, \w+ \d{1,2}, 2026/
-  );
+  await expect(
+    comparisonRideLinks.first() // first-ok: the seeded comparison cohort is deterministically ranked
+  ).toContainText(/^\w+, \w+ \d{1,2}, 2026/);
   await comparisonChart
     .getByRole("button", { name: "Power", exact: true })
     .click();
@@ -364,7 +364,9 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
       .getByTestId("activity-icon")
   ).toHaveAttribute("data-icon", "bike");
   expect(
-    await activityTitle.evaluate((element) => element.closest("h2") != null)
+    await activityTitle.evaluate(
+      (element) => element.closest('[role="heading"][aria-level="2"]') != null
+    )
   ).toBe(true);
   await activityTitle.click();
   expect(
@@ -465,7 +467,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     analyze
       .getByTestId("analyze-sessions")
       .locator('tbody td[data-card="value"]')
-      .first()
+      .first() // first-ok: every seeded session value must lead with the selected metric
   ).toContainText("Power");
 
   const latestRide = analyze.getByRole("link", {
@@ -479,7 +481,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   const powerProfileRide = page
     .getByTestId("cycling-power-profile")
     .getByRole("link")
-    .first();
+    .first(); // first-ok: seeded power records are a deterministic duration-ordered set
   await expect(powerProfileRide).toHaveAttribute(
     "href",
     /^\/training\/rides\/\d+\?metric=power&range=6m$/
@@ -515,7 +517,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
       .getByRole("button", { name: "Power", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("ride-comparison-link").first()
+    page.getByTestId("ride-comparison-link").first() // first-ok: every comparison link must retain the lens
   ).toHaveAttribute("href", /\?metric=power&range=6m$/);
   const adjacentRideLinks = page
     .getByTestId("ride-header-navigation")

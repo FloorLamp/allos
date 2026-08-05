@@ -146,7 +146,7 @@ export default function RideComparisonChart({
                         })}
                   </p>
                   <p
-                    className="truncate text-[11px] text-slate-500 dark:text-slate-400"
+                    className="truncate text-xs text-slate-500 dark:text-slate-400"
                     title={point.title}
                   >
                     {point.title}

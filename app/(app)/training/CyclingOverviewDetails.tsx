@@ -14,8 +14,8 @@ import { formatMinutes } from "@/lib/duration";
 
 function elevation(valueM: number, unit: DistanceUnit): string {
   return unit === "mi"
-    ? `${Math.round(valueM * 3.28084).toLocaleString()} ft`
-    : `${Math.round(valueM).toLocaleString()} m`;
+    ? `${Math.round(valueM * 3.28084).toLocaleString("en-US")} ft`
+    : `${Math.round(valueM).toLocaleString("en-US")} m`;
 }
 
 function elapsed(seconds: number): string {
@@ -132,7 +132,7 @@ export default function CyclingOverviewDetails({
                 label="Mechanical work"
                 value={
                   rollup.totals.kilojoules > 0
-                    ? `${Math.round(rollup.totals.kilojoules).toLocaleString()} kJ`
+                    ? `${Math.round(rollup.totals.kilojoules).toLocaleString("en-US")} kJ`
                     : "—"
                 }
               />
@@ -287,7 +287,7 @@ export default function CyclingOverviewDetails({
                     title={description}
                     aria-label={description}
                   >
-                    <span className="text-[10px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+                    <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
                       {month.observedMonths > 0 ? month.rides : ""}
                     </span>
                     <span className="flex h-24 w-full items-end justify-center rounded-sm bg-slate-100 dark:bg-ink-800">
@@ -308,7 +308,7 @@ export default function CyclingOverviewDetails({
                         />
                       )}
                     </span>
-                    <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 sm:text-xs">
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
                       {month.shortLabel}
                     </span>
                   </div>
@@ -404,7 +404,7 @@ export default function CyclingOverviewDetails({
                     (band) => band.rideDays > 0
                   ) ? (
                     <div className="mt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      <h4 className="section-label">
                         Daily high on covered ride days
                       </h4>
                       <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
@@ -446,7 +446,7 @@ export default function CyclingOverviewDetails({
       {section === "heart-rate" && zoneTotal > 0 ? (
         <CardGroup
           title="Heart-rate distribution"
-          description={`${zoneTotal.toLocaleString()} recorded minutes inside ${noun} windows.`}
+          description={`${zoneTotal.toLocaleString("en-US")} recorded minutes inside ${noun} windows.`}
           className="lg:col-span-2"
           data-testid="cycling-heart-rate-zones"
         >
@@ -524,7 +524,7 @@ export default function CyclingOverviewDetails({
                   Training load
                 </h3>
                 <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                  {Math.round(totalLoad).toLocaleString()} total
+                  {Math.round(totalLoad).toLocaleString("en-US")} total
                 </span>
               </div>
               <div className="mt-3">

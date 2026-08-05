@@ -172,6 +172,12 @@ profile-owned row per activity/source; `activity_laps` and
 are idempotent and activity-cascaded, are included in profile deletion, undo,
 and portable export, and remain optional for older tokens: a profile-scope 403
 does not block activity/stream import, while reconnecting grants FTP/zones.
+Trailing rescans preserve the last good stream, lap, segment, FTP, and zone data
+when an independent supplemental request fails. FTP and zones are immutable once
+captured for a ride (a reconnect may fill a previously missing snapshot), so a
+later athlete-setting change cannot rewrite historical training load. Activity
+merges re-parent these children before deleting a duplicate, and undoable merges
+move them back with the restored activity.
 Power curves, FTP-relative load, and same-route identity are derived at read
 time rather than stored as competing facts. The aligned `time` and `latlng`
 streams remain optional but, when present, drive the ride detail's chart-linked

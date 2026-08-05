@@ -116,7 +116,7 @@ export function upsertCyclingTelemetry(
   for (const row of rows) {
     const activityId = resolveActivity(profileId, row.external_id);
     if (activityId == null) continue;
-    const post = {
+    const incoming = {
       streams_json: JSON.stringify(row.streams),
       ftp_w: row.ftp_w,
       heart_rate_zones_json: json(row.heart_rate_zones),
@@ -124,7 +124,26 @@ export function upsertCyclingTelemetry(
       snapshot_at: row.snapshot_at,
     };
     const prior = find.get(profileId, activityId, source) as
-      typeof post | undefined;
+      typeof incoming | undefined;
+    // The stream, athlete, and zones calls fail independently. Empty/null values
+    // therefore mean "not available in this pull", not "erase the last good
+    // artifact". FTP and zone values are also historical snapshots: once present
+    // for a ride, a later change to the athlete's current settings must not rewrite
+    // that ride's load context. A reconnect may still fill a previously-null
+    // snapshot, and a successful non-empty stream refresh may replace stream data.
+    const post = prior
+      ? {
+          streams_json:
+            Object.keys(row.streams).length > 0
+              ? incoming.streams_json
+              : prior.streams_json,
+          ftp_w: prior.ftp_w ?? incoming.ftp_w,
+          heart_rate_zones_json:
+            prior.heart_rate_zones_json ?? incoming.heart_rate_zones_json,
+          power_zones_json: prior.power_zones_json ?? incoming.power_zones_json,
+          snapshot_at: incoming.snapshot_at,
+        }
+      : incoming;
     const equal =
       !!prior &&
       prior.streams_json === post.streams_json &&

@@ -215,6 +215,15 @@ export async function mergeActivities(
     const movedRouteByDrop = new Map(
       moves.map((m) => [m.dropId, m.movedRouteId])
     );
+    const movedTelemetryByDrop = new Map(
+      moves.map((m) => [m.dropId, m.movedTelemetryIds])
+    );
+    const movedLapsByDrop = new Map(
+      moves.map((m) => [m.dropId, m.movedLapIds])
+    );
+    const movedSegmentsByDrop = new Map(
+      moves.map((m) => [m.dropId, m.movedSegmentEffortIds])
+    );
 
     // One identity for THIS merge, stamped on every drop's undo context (#1884), so an
     // undo can find the merge's other drops that are still folded into the keeper and
@@ -240,6 +249,9 @@ export async function mergeActivities(
         overrides,
         movedSetIds: setIdsByDrop.get(drop.id as number) ?? [],
         movedRouteId: movedRouteByDrop.get(drop.id as number) ?? null,
+        movedTelemetryIds: movedTelemetryByDrop.get(drop.id as number) ?? [],
+        movedLapIds: movedLapsByDrop.get(drop.id as number) ?? [],
+        movedSegmentEffortIds: movedSegmentsByDrop.get(drop.id as number) ?? [],
       });
       if (undoId != null) tokens.push(undoId);
     }

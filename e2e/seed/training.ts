@@ -455,8 +455,9 @@ export function seedActivityFormPaths(): void {
   );
   db.prepare(
     `INSERT INTO activities
-     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited, equipment_id)
-   VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?)`
+     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited, equipment_id, components)
+   VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?,
+           '[{"name":"Cycling","type":"cardio","distance_km":20,"duration_min":45}]')`
   ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -2), regBikeId);
 
   // A dedicated recovery device on profile 1 for the protocol-practice spec (issue

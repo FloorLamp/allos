@@ -301,13 +301,13 @@ export default async function AnalyzeSection({
                 sportNames={[currentItem]}
                 className="h-7 w-7 shrink-0 text-brand-600 dark:text-brand-400"
               />
-              <h2 className="min-w-0">
+              <div className="min-w-0" role="heading" aria-level={2}>
                 <AnalyzePicker
                   options={analyzeOptions}
                   value={currentPickerLabel}
                   appearance="title"
                 />
-              </h2>
+              </div>
             </div>
             <Link
               href={

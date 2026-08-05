@@ -426,6 +426,11 @@ const startSec = (a: { start_date: string }) =>
 interface StravaOpts {
   // Return 429 on the detail fetch for these activity ids (simulate a mid-run limit).
   detail429?: number[];
+  detail500?: number[];
+  stream500?: number[];
+  athlete500?: boolean;
+  zones500?: boolean;
+  ftp?: number;
   // Capture the `after` query param seen on each list request.
   afters?: number[];
 }
@@ -446,6 +451,7 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       return jsonResponse(page === 1 ? [STRAVA_ACT_1, STRAVA_ACT_2] : []);
     }
     if (u.endsWith("/athlete/zones")) {
+      if (opts.zones500) return new Response(null, { status: 500 });
       return jsonResponse({
         power: {
           zones: [
@@ -455,8 +461,14 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
         },
       });
     }
-    if (u.endsWith("/athlete")) return jsonResponse({ ftp: 250 });
+    if (u.endsWith("/athlete")) {
+      if (opts.athlete500) return new Response(null, { status: 500 });
+      return jsonResponse({ ftp: opts.ftp ?? 250 });
+    }
     if (u.includes("/activities/111/streams")) {
+      if (opts.stream500?.includes(111)) {
+        return new Response(null, { status: 500 });
+      }
       return jsonResponse({
         time: { data: [0, 1, 2], original_size: 3 },
         watts: { data: [180, 200, 220], original_size: 3 },
@@ -466,6 +478,8 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       const id = Number(u.split("/activities/")[1].split("?")[0]);
       if (opts.detail429?.includes(id))
         return new Response(null, { status: 429 });
+      if (opts.detail500?.includes(id))
+        return new Response(null, { status: 500 });
       return jsonResponse(STRAVA_DETAIL[id]);
     }
     throw new Error(`unexpected Strava URL: ${u}`);
@@ -588,6 +602,72 @@ describe("runStravaSync orchestrator", () => {
     expect(getStravaCursor(p)).toBe(startSec(STRAVA_ACT_1));
     expect(getStravaCursor(p)).toBeLessThan(startSec(STRAVA_ACT_2));
     expectTruncatedEvent(p, "strava");
+  });
+
+  it("preserves stored cycling artifacts and snapshots across transient supplemental failures", async () => {
+    stubStrava();
+    await runStravaSync(p);
+
+    const activity = db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND external_id = 'strava:111'"
+      )
+      .get(p) as { id: number };
+    const before = db
+      .prepare(
+        `SELECT streams_json, ftp_w, power_zones_json, snapshot_at
+           FROM activity_telemetry
+          WHERE profile_id = ? AND activity_id = ?`
+      )
+      .get(p, activity.id) as {
+      streams_json: string;
+      ftp_w: number;
+      power_zones_json: string;
+      snapshot_at: string;
+    };
+
+    stubStrava({
+      detail500: [111],
+      stream500: [111],
+      athlete500: true,
+      zones500: true,
+    });
+    await runStravaSync(p);
+
+    expect(
+      db
+        .prepare(
+          `SELECT streams_json, ftp_w, power_zones_json, snapshot_at
+             FROM activity_telemetry
+            WHERE profile_id = ? AND activity_id = ?`
+        )
+        .get(p, activity.id)
+    ).toEqual(before);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM activity_laps WHERE profile_id = ? AND activity_id = ?"
+        )
+        .get(p, activity.id)
+    ).toEqual({ n: 1 });
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM activity_segment_efforts WHERE profile_id = ? AND activity_id = ?"
+        )
+        .get(p, activity.id)
+    ).toEqual({ n: 1 });
+
+    // A later athlete FTP change must not rewrite the historical ride snapshot.
+    stubStrava({ ftp: 300 });
+    await runStravaSync(p);
+    expect(
+      db
+        .prepare(
+          "SELECT ftp_w FROM activity_telemetry WHERE profile_id = ? AND activity_id = ?"
+        )
+        .get(p, activity.id)
+    ).toEqual({ ftp_w: 250 });
   });
 });
 

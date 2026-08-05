@@ -130,7 +130,10 @@ const stravaSpec: PullSpec<
     const cyclingTelemetry: NormCyclingTelemetry[] = [];
     const activityLaps: NormActivityLap[] = [];
     const segmentEfforts: NormSegmentEffort[] = [];
-    const cyclingArtifactParents: string[] = [];
+    // Laps and segment efforts are full replacements only when DetailedActivity
+    // succeeded. A transient detail failure must not make an empty mapper result
+    // delete artifacts stored by an earlier trailing-window scan.
+    const detailArtifactParents: string[] = [];
     // Raw fetched activity JSON (detailed when available, else the list summary),
     // accumulated for the admin-only raw viewer (issue #9).
     const raw: unknown[] = [];
@@ -234,7 +237,9 @@ const stravaSpec: PullSpec<
           cyclingTelemetry.push(artifacts.telemetry);
           activityLaps.push(...artifacts.laps);
           segmentEfforts.push(...artifacts.segmentEfforts);
-          cyclingArtifactParents.push(mapped.activity.external_id);
+          if (detailRes.ok) {
+            detailArtifactParents.push(mapped.activity.external_id);
+          }
         }
         activities.push(mapped.activity);
         samples.push(...mapped.samples);
@@ -257,7 +262,7 @@ const stravaSpec: PullSpec<
         cyclingTelemetry,
         activityLaps,
         segmentEfforts,
-        cyclingArtifactParents,
+        cyclingArtifactParents: detailArtifactParents,
       },
       raw,
       skipped,

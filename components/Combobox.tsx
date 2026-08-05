@@ -300,7 +300,7 @@ export default function Combobox({
         </button>
       )}
       {titleAppearance && (
-        <span className="pointer-events-none absolute inset-y-0 right-0 z-30 flex items-center text-slate-400 dark:text-slate-500">
+        <span className="pointer-events-none absolute inset-y-0 right-0 z-30 flex items-center text-slate-500 dark:text-slate-400">
           <IconChevronDown className="h-5 w-5" stroke={2} aria-hidden="true" />
         </span>
       )}

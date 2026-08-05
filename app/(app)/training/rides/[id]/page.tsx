@@ -217,7 +217,7 @@ function RideHighlights({
         label: "Most time in HR zone",
         value: highlight.zone.name,
         detail: `${highlight.zone.minutes} min · ${highlight.zone.percent}% of recorded HR`,
-        tone: "border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-ink-800",
+        tone: "border-slate-300 bg-slate-50/60 dark:border-slate-600 dark:bg-ink-800",
         color: ZONE_COLORS[highlight.zone.id - 1],
       };
     }
@@ -255,7 +255,7 @@ function RideHighlights({
           ? "Improved in the second half"
           : "Fell in the second half",
       tone: stable
-        ? "border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-ink-800"
+        ? "border-slate-300 bg-slate-50/60 dark:border-slate-600 dark:bg-ink-800"
         : improved
           ? "border-emerald-500 bg-emerald-50/60 dark:border-emerald-400 dark:bg-emerald-950/20"
           : "border-amber-500 bg-amber-50/60 dark:border-amber-400 dark:bg-amber-950/20",
@@ -287,9 +287,9 @@ function RideHighlights({
                 ) : null}
                 {item.label}
               </span>
-              <strong className="mt-0.5 block text-sm text-slate-800 dark:text-slate-100">
+              <span className="mt-0.5 block text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {item.value}
-              </strong>
+              </span>
               <span className="mt-0.5 block text-xs leading-4 text-slate-500 dark:text-slate-400">
                 {item.detail}
               </span>

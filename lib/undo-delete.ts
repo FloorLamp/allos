@@ -181,6 +181,12 @@ export interface MergeUndoContext {
   // drop's route stayed on the drop and was captured as a child instead). Undo moves
   // exactly this route back onto the restored row. Mirrors movedSetIds.
   movedRouteId: number | null;
+  // Profile-owned cycling children moved onto the keeper before the drop's
+  // cascade delete. Optional so an undo payload captured by an older build remains
+  // restorable during the 24-hour undo window after deployment.
+  movedTelemetryIds?: number[];
+  movedLapIds?: number[];
+  movedSegmentEffortIds?: number[];
 }
 
 // ── The kind registry ─────────────────────────────────────────────────────────
