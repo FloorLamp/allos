@@ -127,9 +127,9 @@ export default function PracticeSessionHistory({
       <ResponsiveTable className="practice-session-list w-full text-left text-sm">
         <thead>
           <tr className="border-b border-black/10 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-            <th className="px-2 py-1.5 font-medium">Session</th>
-            <th className="px-2 py-1.5 font-medium">Notes</th>
-            <th className="w-28 px-2 py-1.5 text-right font-medium">Actions</th>
+            <th className="th">Session</th>
+            <th className="th">Notes</th>
+            <th className="th w-28 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>

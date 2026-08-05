@@ -588,6 +588,16 @@ export default function ProfilePassport({
                 {summary.immunizations.length > 0 && (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
+                      {/* Real headers (#1491 item 8): without a <thead> this is
+                          a11y-invisible as a data table on the public share
+                          surface — a screen reader gets three unlabeled cells. */}
+                      <thead>
+                        <tr className="border-b border-black/5 dark:border-white/5">
+                          <th className="th">Vaccine</th>
+                          <th className="th">Status</th>
+                          <th className="th text-right">Doses</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {summary.immunizations.map((v) => {
                           const badge = statusBadgeParts(v.status, v.isImmune);
@@ -596,15 +606,15 @@ export default function ProfilePassport({
                               key={v.code}
                               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
                             >
-                              <td className="py-1.5 pr-3 text-slate-800 dark:text-slate-200">
+                              <td className="td text-slate-800 dark:text-slate-200">
                                 {v.name}
                               </td>
-                              <td className="py-1.5 pr-3">
+                              <td className="td">
                                 <span className={`badge ${badge.cls}`}>
                                   {badge.text}
                                 </span>
                               </td>
-                              <td className="py-1.5 text-right text-xs text-slate-500 dark:text-slate-400">
+                              <td className="td text-right text-xs text-slate-500 dark:text-slate-400">
                                 {v.doses.length > 0 ? (
                                   <div className="flex flex-col gap-0.5">
                                     {v.doses.map((d, di) => (
@@ -661,23 +671,30 @@ export default function ProfilePassport({
             {summary.history.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-black/5 dark:border-white/5">
+                      <th className="th">Record</th>
+                      <th className="th text-right">Result</th>
+                      <th className="th text-right">Date</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {summary.history.map((h, i) => (
                       <tr
                         key={`${h.name}-${i}`}
                         className="border-b border-black/5 last:border-0 dark:border-white/5"
                       >
-                        <td className="py-1.5 pr-3 text-slate-800 dark:text-slate-200">
+                        <td className="td text-slate-800 dark:text-slate-200">
                           {h.name}
                         </td>
-                        <td className="py-1.5 pr-3 text-right">
+                        <td className="td text-right">
                           <MedicalValue
                             value={h.value}
                             unit={h.unit}
                             flag={h.flag}
                           />
                         </td>
-                        <td className="py-1.5 text-right text-xs text-slate-500 dark:text-slate-400">
+                        <td className="td text-right text-xs text-slate-500 dark:text-slate-400">
                           {fmtDate(h.date, formatPrefs)}
                         </td>
                       </tr>

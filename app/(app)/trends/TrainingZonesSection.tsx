@@ -123,7 +123,7 @@ export default async function TrainingZonesSection({
                     <tbody>
                       {ZONES.map((z) => (
                         <tr key={z.id}>
-                          <td className="py-1 pr-2">
+                          <td className="td">
                             <span
                               className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle"
                               style={{ backgroundColor: ZONE_COLORS[z.id - 1] }}
@@ -135,7 +135,7 @@ export default async function TrainingZonesSection({
                               {z.label}
                             </span>
                           </td>
-                          <td className="py-1 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                          <td className="td text-right tabular-nums">
                             {zoneRange(model, z.id)}
                           </td>
                         </tr>

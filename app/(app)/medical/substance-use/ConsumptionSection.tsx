@@ -337,12 +337,10 @@ export default function ConsumptionSection({
             <ResponsiveTable className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-black/10 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="px-2 py-1.5 font-medium">Date</th>
-                  <th className="px-2 py-1.5 font-medium">Amount</th>
-                  <th className="px-2 py-1.5 font-medium">Notes</th>
-                  <th className="w-16 px-2 py-1.5 text-right font-medium">
-                    Actions
-                  </th>
+                  <th className="th">Date</th>
+                  <th className="th">Amount</th>
+                  <th className="th">Notes</th>
+                  <th className="th w-16 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>

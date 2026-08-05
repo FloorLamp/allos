@@ -365,11 +365,11 @@ function WorkoutPreview({
         <table className="w-full text-left text-sm">
           <thead className="section-label">
             <tr>
-              <th className="py-1 pr-3">Date</th>
-              <th className="py-1 pr-3">Exercise</th>
-              <th className="py-1 pr-3">Set</th>
-              <th className="py-1 pr-3">Equipment</th>
-              <th className="py-1 pr-3">Notes</th>
+              <th className="th">Date</th>
+              <th className="th">Exercise</th>
+              <th className="th">Set</th>
+              <th className="th">Equipment</th>
+              <th className="th">Notes</th>
             </tr>
           </thead>
           <tbody className="text-slate-600 dark:text-slate-300">
@@ -385,17 +385,15 @@ function WorkoutPreview({
                       : ""
                   }
                 >
-                  <td className="whitespace-nowrap py-1 pr-3 align-top text-slate-500 dark:text-slate-400">
+                  <td className="td whitespace-nowrap align-top text-slate-500 dark:text-slate-400">
                     {j === 0 ? w.date || "(no date)" : ""}
                   </td>
-                  <td className="py-1 pr-3 align-top">{s.exercise}</td>
-                  <td className="py-1 pr-3 align-top tabular-nums">
-                    {setText(s)}
-                  </td>
-                  <td className="py-1 pr-3 align-top text-slate-500 dark:text-slate-400">
+                  <td className="td align-top">{s.exercise}</td>
+                  <td className="td align-top tabular-nums">{setText(s)}</td>
+                  <td className="td align-top text-slate-500 dark:text-slate-400">
                     {s.equipment ?? ""}
                   </td>
-                  <td className="py-1 pr-3 align-top text-slate-500 dark:text-slate-400">
+                  <td className="td align-top text-slate-500 dark:text-slate-400">
                     {j === 0 ? (w.notes ?? "") : ""}
                   </td>
                 </tr>
@@ -429,11 +427,11 @@ function BiomarkerPreview({
         <table className="w-full text-left text-sm">
           <thead className="section-label">
             <tr>
-              <th className="py-1 pr-3">Name</th>
-              <th className="py-1 pr-3">Value</th>
-              <th className="py-1 pr-3">Unit</th>
-              <th className="py-1 pr-3">Reference</th>
-              <th className="py-1 pr-3">Flag</th>
+              <th className="th">Name</th>
+              <th className="th">Value</th>
+              <th className="th">Unit</th>
+              <th className="th">Reference</th>
+              <th className="th">Flag</th>
             </tr>
           </thead>
           <tbody className="text-slate-600 dark:text-slate-300">
@@ -442,11 +440,11 @@ function BiomarkerPreview({
                 key={i}
                 className="border-t border-black/5 dark:border-white/10"
               >
-                <td className="py-1 pr-3">{r.name}</td>
-                <td className="py-1 pr-3 tabular-nums">{r.value ?? "–"}</td>
-                <td className="py-1 pr-3">{r.unit ?? ""}</td>
-                <td className="py-1 pr-3">{r.reference_range ?? ""}</td>
-                <td className="py-1 pr-3">{r.flag ?? ""}</td>
+                <td className="td">{r.name}</td>
+                <td className="td tabular-nums">{r.value ?? "–"}</td>
+                <td className="td">{r.unit ?? ""}</td>
+                <td className="td">{r.reference_range ?? ""}</td>
+                <td className="td">{r.flag ?? ""}</td>
               </tr>
             ))}
           </tbody>

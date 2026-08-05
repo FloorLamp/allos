@@ -259,7 +259,7 @@ export default function DataTableManager({
               <thead className="section-label">
                 <tr>
                   {editing && (
-                    <th className="w-8 py-1 pr-3">
+                    <th className="th w-8">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-brand-600"
@@ -270,7 +270,7 @@ export default function DataTableManager({
                     </th>
                   )}
                   {dataset.columns.map((c) => (
-                    <th key={c} className="whitespace-nowrap py-1 pr-3">
+                    <th key={c} className="th whitespace-nowrap">
                       {c}
                     </th>
                   ))}
@@ -288,7 +288,7 @@ export default function DataTableManager({
                       }`}
                     >
                       {editing && (
-                        <td className="w-8 py-1 pr-3">
+                        <td className="td w-8">
                           <input
                             type="checkbox"
                             className="h-4 w-4 accent-brand-600"
@@ -301,7 +301,7 @@ export default function DataTableManager({
                       {dataset.columns.map((c) => (
                         <td
                           key={c}
-                          className="whitespace-nowrap py-1 pr-3 tabular-nums"
+                          className="td whitespace-nowrap tabular-nums"
                         >
                           {r[c] == null ? "" : String(r[c])}
                         </td>

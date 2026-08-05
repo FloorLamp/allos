@@ -219,9 +219,9 @@ function RecommendedSettings() {
         <table className="w-full border-collapse text-left text-xs">
           <thead>
             <tr className="border-b border-black/10 dark:border-white/10">
-              <th className="py-1.5 pr-3 font-medium">Data type</th>
-              <th className="py-1.5 pr-3 font-medium">Select</th>
-              <th className="py-1.5 font-medium">Why</th>
+              <th className="th">Data type</th>
+              <th className="th">Select</th>
+              <th className="th">Why</th>
             </tr>
           </thead>
           <tbody>
@@ -230,15 +230,13 @@ function RecommendedSettings() {
                 key={row.label}
                 className="border-b border-black/5 align-top dark:border-white/5"
               >
-                <td className="py-1.5 pr-3 text-slate-700 dark:text-slate-200">
-                  {row.label}
-                </td>
-                <td className="py-1.5 pr-3">
+                <td className="td">{row.label}</td>
+                <td className="td">
                   <code className="rounded bg-slate-100 px-1 py-0.5 font-mono dark:bg-ink-800">
                     {SETTING_LABEL[row.setting]}
                   </code>
                 </td>
-                <td className="py-1.5 text-slate-500 dark:text-slate-400">
+                <td className="td text-slate-500 dark:text-slate-400">
                   {row.why}
                 </td>
               </tr>

@@ -144,7 +144,7 @@ export default function EditableRecordRow({
   // swaps in place of the row; updateRecord is profile-scoped and reconciles flags.
   return (
     <tr className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60">
-      <td colSpan={8} className="px-3 py-3">
+      <td colSpan={8} className="td py-3">
         <RecordForm
           mode="edit"
           record={r}
