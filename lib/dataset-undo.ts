@@ -1,23 +1,86 @@
-// Which Data → Manage datasets route their bulk delete through the undo machinery
-// (issue #29 + #30). Pure map from a dataset key (lib/export DATASETS) to an
-// undoable kind (lib/undo-delete UNDO_KINDS), so a bulk delete of those rows can
-// capture each one and be restored from a single "Deleted N · Undo" toast.
+// Which Data → Manage bulk deletes route through the undo machinery (issues
+// #29/#30, completed at this surface by #2125). Pure map from a dataset's
+// physical TABLE (lib/export DATASETS / DELETE_POLICY) to the undoable kind
+// (lib/undo-delete UNDO_KINDS) whose root is that table, so a bulk delete of
+// those rows captures each one and is restorable from a single
+// "Deleted N · Undo" toast.
 //
-// Only the four datasets whose table is an undoable ROOT are listed here; every
-// other deletable dataset (immunizations, goals, allergies, conditions,
-// encounters, metric_samples) has no undo kind and keeps the plain bulk delete.
-// A pure test (lib/__tests__/dataset-undo.test.ts) asserts each mapped kind
-// exists and that the two sides agree on the underlying table.
+// The completeness guard is the TYPE, not a test (#2125, owner ruling): the keys
+// below are `satisfies`-checked against the set of undo-kind root tables that are
+// deletable datasets, both directions —
+//   • an UNDO_KINDS entry whose root table is a deletable dataset compiles only
+//     once it is mapped here or argued into EXCLUDED_UNDO_ROOTS, and
+//   • a mapping for a non-deletable or non-undoable table is an excess-key error —
+// so the next #2038-style kind cannot silently reopen the two-contracts hole
+// (bulk delete permanent, row delete restorable, same rows). Each VALUE is
+// checked to be a kind actually rooted at its key table.
+//
+// What the types cannot see — that a deletable dataset KEY is the same string as
+// its physical table (except `supplements` → intake_items), and that a mapped
+// kind captures ONLY its root row plus FK-cascade children (a 1:1 delete, safe to
+// run per selected row) — is pinned by lib/__tests__/dataset-undo.test.ts and
+// lib/__db_tests__/dataset-undo.test.ts.
 
-export const DATASET_UNDO_KIND: Record<string, string> = {
+import type { UndoKind, UndoKindRegistry } from "./undo-delete";
+import type { DeletableDatasetKey } from "./export"; // type-only: no db import
+
+type UndoRootTable = UndoKindRegistry[UndoKind]["ownedTable"];
+
+// Deletable dataset keys read as physical tables (the one key/table divergence is
+// `supplements`, whose table is intake_items — pinned at runtime by the db-tier
+// test beside this module).
+type DeletableDatasetTable =
+  | Exclude<DeletableDatasetKey, "supplements">
+  | "intake_items";
+
+// Undo-kind root tables whose rows are bulk-deletable on Data → Manage — the set
+// the mapping below must decide about.
+type DeletableUndoRoot = Extract<UndoRootTable, DeletableDatasetTable>;
+
+// Argued exclusions: undoable roots whose kinds are NOT 1:1 with one selected row,
+// so routing the dataset's bulk delete through them would change what the delete
+// MEANS, not just make it reversible. Extract<> keeps this honest — a name that
+// stops being a deletable undo root drops out (and its Record key becomes
+// required again), so a stale exclusion cannot linger.
+//   • frequency_targets — its kind ("wellness-practice") deletes the practice's
+//     WHOLE name-family: every session and its suppression row. Bulk-deleting
+//     target rows must not wipe session history.
+//   • food_log — its kind ("substance-alcohol-history") captures and deletes the
+//     day's alcohol tap events beside the selected day row, and only speaks
+//     alcohol; the dataset holds every food group.
+//   • food_log_events — its kind ("food-serving") is one serving = ledger row +
+//     a DECREMENT of the food_log day counter. The dataset's documented contract
+//     (lib/export.ts) is "clear the timing layer, counters untouched"; mapping it
+//     would silently turn that into a servings decrement across a second dataset.
+type ExcludedUndoRoot = Extract<
+  DeletableUndoRoot,
+  "frequency_targets" | "food_log" | "food_log_events"
+>;
+
+// For a root table, the undo kinds actually rooted there — so a mapping cannot
+// name a kind whose ownedTable is a different table.
+type KindsRootedAt<T extends UndoRootTable> = {
+  [K in UndoKind]: UndoKindRegistry[K]["ownedTable"] extends T ? K : never;
+}[UndoKind];
+
+export const DATASET_UNDO_KIND = {
   activities: "activity",
   body_metrics: "body-metric",
   medical_records: "biomarker-record",
-  supplements: "intake-item",
+  intake_items: "intake-item",
+  // #2038's 1:1 kinds, mapped by #2125 so the bulk surface matches the row menu.
+  // practice_logs deliberately takes "practice-session" (one row), never
+  // "wellness-practice-history" (which drags every same-practice sibling along).
+  practice_logs: "practice-session",
+  substance_log: "substance-history",
+} as const satisfies {
+  [T in Exclude<DeletableUndoRoot, ExcludedUndoRoot>]: KindsRootedAt<T>;
 };
 
-// The undoable kind for a dataset key, or null when its bulk delete is not
-// reversible.
-export function undoKindForDataset(datasetKey: string): string | null {
-  return DATASET_UNDO_KIND[datasetKey] ?? null;
+// The undoable kind for a dataset's physical table, or null when its bulk delete
+// is not reversible.
+export function undoKindForTable(table: string): UndoKind | null {
+  return (
+    (DATASET_UNDO_KIND as Record<string, UndoKind | undefined>)[table] ?? null
+  );
 }

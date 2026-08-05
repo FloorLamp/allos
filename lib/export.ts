@@ -1258,7 +1258,12 @@ export interface DatasetDeletePolicy {
   cleanupPersonalRecords?: boolean;
 }
 
-export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
+// `satisfies` (not a Record annotation) so the keys stay literal: they are the
+// closed union of DELETABLE dataset keys (the export.test.ts invariant pins keys
+// here ⟺ deletable datasets), which lib/dataset-undo.ts consumes at the TYPE level
+// to force a mapping decision for every undoable root that is bulk-deletable
+// (#2125).
+export const DELETE_POLICY = {
   activities: {
     revalidate: ["/training", "/"],
     cleanupPersonalRecords: true,
@@ -1308,7 +1313,12 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
   practice_logs: { revalidate: ["/timeline", "/longevity", "/"] },
-};
+} satisfies Record<string, DatasetDeletePolicy>;
+
+// The closed union of deletable dataset keys — every key equals its dataset's
+// physical table except `supplements` (table intake_items); the db-tier
+// dataset-undo test pins that correspondence at runtime.
+export type DeletableDatasetKey = keyof typeof DELETE_POLICY;
 
 export function getDataset(key: string): ExportDataset | undefined {
   return DATASETS.find((d) => d.key === key);
