@@ -2,7 +2,14 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_TRENDS_BODY,
+  E2E_LOGIN_METRIC_FOLD,
+  METRIC_FOLD_DUPLICATED_BPM,
+  METRIC_FOLD_CLINIC_ONLY_BPM,
+  METRIC_FOLD_EXPECTED_READINGS,
+} from "./fixture-logins";
 
 // Trends → Body sparkline-tile overview + per-metric detail pages, Phase 2 of #1067.
 // The Body tab's default mobile view is now a sparkline TILE grid (value + trend +
@@ -461,6 +468,53 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     // past the 360px viewport edge. A page-level width comparison can't see this —
     // the app shell clips the overflow away.
     await expectNoClippedContent(page);
+
+    await page.context().close();
+  });
+
+  // #2029. The chart's fold and the readings table under it are two views of ONE
+  // day, and they used to disagree: on a day whose clinic-measured value equalled
+  // the wearable's, the fold dropped the observation (one plotted point) while the
+  // table concatenated it back in (two listed rows). This is that page, on its own
+  // fixture, held to one answer.
+  test("the chart and the readings table agree about a duplicated day", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_METRIC_FOLD,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto("/trends/metric/resting-hr");
+
+    const chart = page.getByTestId("metric-detail-chart");
+    await expect(chart).toBeVisible();
+    const rows = page.getByTestId("metric-readings-table").locator("tbody tr");
+
+    // One number, reached two ways. The equal-valued clinic copy is in NEITHER.
+    await expect(chart).toHaveAttribute(
+      "data-points",
+      String(METRIC_FOLD_EXPECTED_READINGS)
+    );
+    await expect(rows).toHaveCount(METRIC_FOLD_EXPECTED_READINGS);
+
+    // Exactly ONE row is a clinical record: the reading the stream never saw. The
+    // duplicated day's clinic copy is gone from the table, as it always was from
+    // the plot — that asymmetry was the bug.
+    const observed = rows.filter({
+      has: page.getByTestId("metric-reading-observed"),
+    });
+    await expect(observed).toHaveCount(1);
+    await expect(observed.locator('[data-card="value"]')).toHaveText(
+      `${METRIC_FOLD_CLINIC_ONLY_BPM} bpm`
+    );
+    // …and the duplicated value appears once across the whole table, from the
+    // wearable row that already answered for that day.
+    await expect(
+      rows.locator('[data-card="value"]', {
+        hasText: new RegExp(`^${METRIC_FOLD_DUPLICATED_BPM} bpm$`),
+      })
+    ).toHaveCount(1);
 
     await page.context().close();
   });

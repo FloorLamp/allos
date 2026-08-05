@@ -42,6 +42,10 @@ import {
   E2E_LOGIN_METRIC_JUDGMENT,
   METRIC_JUDGMENT_PROFILE,
   METRIC_JUDGMENT_CLINIC_BPM,
+  E2E_LOGIN_METRIC_FOLD,
+  METRIC_FOLD_PROFILE,
+  METRIC_FOLD_DUPLICATED_BPM,
+  METRIC_FOLD_CLINIC_ONLY_BPM,
   E2E_LOGIN_BIOMARKER_PICKER,
   BIOMARKER_PICKER_PROFILE,
   BIOMARKER_PICKER_OVERDUE,
@@ -780,5 +784,71 @@ export function seedMetricJudgment(): void {
   seedMemberLogin(E2E_LOGIN_METRIC_JUDGMENT, pid, "read");
   console.log(
     `e2e: seeded metric-judgment fixture — profile ${pid} (${METRIC_JUDGMENT_PROFILE}) (#1996)`
+  );
+}
+
+// ── One fold for the chart and the table (issue #2029) ──
+export function seedMetricFold(): void {
+  // The metric page's chart and the readings table under it are two views of one
+  // day. This profile makes their agreement measurable in the browser: an ADULT
+  // (no age band in the way) whose resting heart rate streams from a wearable,
+  // with two clinic-measured readings of the same identity in the other store —
+  // one that DUPLICATES a streamed day exactly, one on a day the stream never
+  // covered.
+  //
+  // Before the single fold, that first observation was dropped by the chart and
+  // kept by the table, so the page said "4 points" above "5 rows". Both must now
+  // say METRIC_FOLD_EXPECTED_READINGS.
+  //
+  // Relative dates → never stale. Read-only in its spec, and idempotent: it clears
+  // its own fixture rows first.
+  const pid = fixtureProfileId(METRIC_FOLD_PROFILE);
+  const pToday = today(pid);
+  setUserBirthdate(pid, shiftDateStr(pToday, -365 * 40));
+
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Resting Heart Rate'`
+  ).run(pid);
+
+  // Three streamed days, ONE row each, so a plotted point and a table row are the
+  // same thing on the stream side and the counts the spec reads are a real signal.
+  // Every day sits inside the page's default 90-day window.
+  const streamDays = [
+    [5, 55],
+    [3, METRIC_FOLD_DUPLICATED_BPM],
+    [1, 56],
+  ] as const;
+  const insStream = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, source, notes)
+     VALUES (?, ?, ?, 'health-connect', 'e2e:metric-fold')`
+  );
+  for (const [ago, bpm] of streamDays)
+    insStream.run(pid, shiftDateStr(pToday, -ago), bpm);
+
+  const insObservation = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, canonical_name, value_num, notes)
+     VALUES (?, ?, 'vitals', 'Pulse', ?, 'bpm', 'Resting Heart Rate', ?, 'e2e:metric-fold')`
+  );
+  // The clinic's copy of the −3d reading: same identity, same day, same number.
+  insObservation.run(
+    pid,
+    shiftDateStr(pToday, -3),
+    String(METRIC_FOLD_DUPLICATED_BPM),
+    METRIC_FOLD_DUPLICATED_BPM
+  );
+  // …and one the wearable never reported, which must survive.
+  insObservation.run(
+    pid,
+    shiftDateStr(pToday, -7),
+    String(METRIC_FOLD_CLINIC_ONLY_BPM),
+    METRIC_FOLD_CLINIC_ONLY_BPM
+  );
+  reconcileFlags(pid);
+
+  seedMemberLogin(E2E_LOGIN_METRIC_FOLD, pid, "read");
+  console.log(
+    `e2e: seeded metric-fold fixture — profile ${pid} (${METRIC_FOLD_PROFILE}) (#2029)`
   );
 }
