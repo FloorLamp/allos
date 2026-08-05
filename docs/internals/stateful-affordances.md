@@ -58,6 +58,7 @@ Today's entries:
 | -------------------------------------- | ------------------------------------------------------------------- | -------------------- | ------------------- |
 | `cycles`                               | `lib/cycle-store.ts`                                                | `lib/cycle-write.ts` | `cycleControlState` |
 | `illness_episodes`                     | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`      | —                    | —                   |
+| `intake_item_logs`                     | `lib/queries/intake/adherence.ts`                                   | —                    | —                   |
 | `shared_supplies` (`quantity_on_hand`) | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts` | —                    | `refillRecencyLine` |
 | `intake_items` (`quantity_on_hand`)    | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts` | —                    | `refillRecencyLine` |
 
@@ -152,6 +153,15 @@ guard that cannot fail is not a guard.
    tell a real column from a typo, and a typo leaves the guard silently open.
 
 ## The audit's standing results (#1893)
+
+#2039 added `intake_item_logs`, the dose ledger the supply counter one entry
+below it is driven by. It had a second core: a tri-state twin inside
+`app/(app)/nutrition/supplement-actions.ts` with its own DELETE/INSERT/UPDATE and
+its own supply crossings, which had already drifted — it never refused a paused
+item. One core in `lib/queries/intake/adherence.ts` now owns every transition of
+the table and the Server Action renders its typed outcome. No `offerState`: the
+control renders from the dose's taken/skipped/clear state and each surface gates
+it on its own `active && due` read, but that derivation is not extracted.
 
 Already stateful, no action: dose confirms (typed outcomes, #1779), PRN quick
 log (the #798 redose-window line), mood (`upsertMoodLog` updates same-day),

@@ -840,7 +840,7 @@ async function handleHouseholdDoseTap(
 
   // The write runs under the MEMBER's profile id — the same scope the in-app
   // cross-profile confirm uses (requireProfileWriteAccess(targetProfile) →
-  // applyDoseStatus) — and markDoseTaken independently re-verifies the
+  // setDoseStatusCore) — and markDoseTaken independently re-verifies the
   // dose → item → profile chain, so a forged id cannot cross profiles here.
   // `tap.date` is the MEMBER's own profile-local day, stamped at send time.
   const outcome = markDoseTaken(
