@@ -4,7 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { setOuraToken, disconnectOura } from "@/lib/integrations/connections";
-import { runOuraSync, validateOuraToken } from "@/lib/integrations/oura-sync";
+import { validateOuraToken } from "@/lib/integrations/oura-sync";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("oura");
@@ -34,47 +34,6 @@ export async function connectOura(formData: FormData) {
   setOuraToken(profile.id, token, res.info);
   revalidatePath("/integrations/oura");
   revalidatePath("/data");
-}
-
-export interface SyncNowResult {
-  status: "done" | "error";
-  message: string;
-}
-
-// "Sync now" from the Data → Review "Connected sources" section (issue #208). Returns
-// an inline result the button surfaces; runs the SAME idempotent runOuraSync.
-export async function syncOuraNow(): Promise<SyncNowResult> {
-  const { profile } = await requireWriteAccess();
-  try {
-    const res = await runOuraSync(profile.id);
-    if (res && "error" in res) {
-      const message =
-        res.error === "not connected"
-          ? "Connect Oura first, then sync."
-          : `Sync failed: ${res.error}`;
-      log.error("oura sync-now failed", { error: res.error });
-      return { status: "error", message };
-    }
-    for (const p of [
-      "/",
-      "/training",
-      "/trends",
-      "/integrations/oura",
-      "/data",
-    ]) {
-      revalidatePath(p);
-    }
-    const parts = [
-      `${res.workouts} ${res.workouts === 1 ? "workout" : "workouts"}`,
-    ];
-    const nights = res.bodyMetrics + res.samples;
-    if (nights > 0) parts.push(`${nights} sleep/HR records`);
-    const suffix = res.truncated ? " (more to come next sync)" : "";
-    return { status: "done", message: `Synced ${parts.join(", ")}.${suffix}` };
-  } catch (err) {
-    log.error("oura sync-now threw", { err: String(err) });
-    return { status: "error", message: "Couldn't sync. Try again." };
-  }
 }
 
 export async function disconnectOuraAction() {

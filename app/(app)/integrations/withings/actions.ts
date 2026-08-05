@@ -11,15 +11,12 @@ import {
   disconnectWithings,
   getWithingsConfig,
 } from "@/lib/integrations/connections";
-import { runWithingsSync } from "@/lib/integrations/withings-sync";
-import { createLogger } from "@/lib/log";
 import { withingsCallbackUrl, isLoopbackUrl } from "./url";
 
 // Withings' user-facing OAuth authorize page. Scope covers measures (metrics) +
 // sleep/activity summaries.
 const AUTHORIZE_URL = "https://account.withings.com/oauth2_user/authorize2";
 const SCOPE = "user.metrics,user.activity";
-const log = createLogger("withings");
 
 // Save the app-registration credentials (client id/secret) entered in the UI.
 export async function saveWithingsCredentials(formData: FormData) {
@@ -60,53 +57,6 @@ export async function connectWithings() {
     state,
   });
   redirect(`${AUTHORIZE_URL}?${params.toString()}`);
-}
-
-export interface SyncNowResult {
-  status: "done" | "error";
-  message: string;
-}
-
-// "Sync now" from the Data → Review "Connected sources" section (issue #208). Returns
-// an inline result the button surfaces; runs the SAME idempotent runWithingsSync.
-export async function syncWithingsNow(): Promise<SyncNowResult> {
-  const { profile } = await requireWriteAccess();
-  try {
-    const res = await runWithingsSync(profile.id);
-    if (res && "error" in res) {
-      const message =
-        res.error === "not connected"
-          ? "Connect Withings first, then sync."
-          : `Sync failed: ${res.error}`;
-      log.error("withings sync-now failed", { error: res.error });
-      return { status: "error", message };
-    }
-    for (const p of [
-      "/",
-      "/trends",
-      "/timeline",
-      "/integrations/withings",
-      "/data",
-    ]) {
-      revalidatePath(p);
-    }
-    const parts: string[] = [];
-    const body = res.bodyMetrics;
-    if (body > 0)
-      parts.push(`${body} body ${body === 1 ? "record" : "records"}`);
-    if (res.vitals > 0)
-      parts.push(`${res.vitals} ${res.vitals === 1 ? "vital" : "vitals"}`);
-    if (res.samples > 0)
-      parts.push(
-        `${res.samples} sleep ${res.samples === 1 ? "record" : "records"}`
-      );
-    const body_ = parts.length ? parts.join(", ") : "no new readings";
-    const suffix = res.truncated ? " (more to come next sync)" : "";
-    return { status: "done", message: `Synced ${body_}.${suffix}` };
-  } catch (err) {
-    log.error("withings sync-now threw", { err: String(err) });
-    return { status: "error", message: "Couldn't sync. Try again." };
-  }
 }
 
 export async function disconnectWithingsAction() {

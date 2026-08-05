@@ -22,7 +22,11 @@ import {
   type SyncVocabulary,
 } from "@/lib/integrations/provider-state";
 import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
-import { INTEGRATIONS, getIntegration } from "@/lib/integrations/registry";
+import {
+  INTEGRATIONS,
+  getIntegration,
+  isPullIntegration,
+} from "@/lib/integrations/registry";
 import {
   getConnection,
   isHealthConnectTokenExpired,
@@ -570,7 +574,7 @@ export function getLatestSyncEvent(
 // `canSyncNow` marks a provider the app can pull on demand; a push-only provider
 // (Health Connect) explains that instead of offering the button.
 export interface IntegrationState {
-  id: string;
+  id: IntegrationId;
   name: string;
   kind: string; // IntegrationKind: 'push' | 'oauth' | 'token' | 'public'
   connected: boolean;
@@ -605,11 +609,6 @@ export interface IntegrationState {
 // Retained for the surfaces that speak of "connected sources" (Data → Review). Same
 // record — the name is the surface's, the shape is the model's.
 export type ConnectedSource = IntegrationState;
-
-// Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth),
-// Oura (personal-access-token), and Withings (OAuth) all have a REST pull path;
-// Health Connect is push-only, so it shows an explainer instead of the button.
-const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings", "weather"]);
 
 // The integration kinds that produce a RECURRING sync stream, and therefore belong in
 // "Connected sources": push (Health Connect), oauth (Strava, Withings), token (Oura),
@@ -676,7 +675,10 @@ export function getIntegrationState(
     kind: def.kind,
     connected: facts.connected,
     needsReauth: facts.needsReauth,
-    canSyncNow: SYNC_NOW_PROVIDERS.has(def.id),
+    // Which providers can be synced on demand is a REGISTRY fact now (#2040): a
+    // provider with a pull facet has a runner behind the button. Health Connect is
+    // push-only and shows an explainer instead.
+    canSyncNow: isPullIntegration(def),
     latest: facts.latest,
     history,
     provenanceEventIds: ids.length

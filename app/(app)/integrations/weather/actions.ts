@@ -32,43 +32,6 @@ export async function enableWeatherAction() {
   }
 }
 
-export interface SyncNowResult {
-  status: "done" | "error";
-  message: string;
-}
-
-// "Sync now" for the shared <SyncNowButton> (#1772). The setup page and Review used
-// to offer DIFFERENT sync affordances — a redirecting form action here, an inline
-// toasting button there — for the same idempotent run. There is one now, and it
-// returns a result the button surfaces inline instead of navigating with ?error=.
-export async function syncWeatherNow(): Promise<SyncNowResult> {
-  const { profile } = await requireWriteAccess();
-  if (!getHomeLocation(profile.id)) {
-    return {
-      status: "error",
-      message: "Set your home location first (Settings → Profile).",
-    };
-  }
-  try {
-    const res = await runWeatherSync(profile.id);
-    if (res && "error" in res) {
-      log.error("weather sync-now failed", { error: res.error });
-      return { status: "error", message: `Sync failed: ${res.error}` };
-    }
-    for (const p of ["/", "/timeline", "/integrations/weather", "/data"]) {
-      revalidatePath(p);
-    }
-    const suffix = res.partial ? " (air quality unavailable this run)" : "";
-    return {
-      status: "done",
-      message: `Refreshed ${res.hours} ${res.hours === 1 ? "hour" : "hours"} and ${res.days} ${res.days === 1 ? "day" : "days"} of forecast.${suffix}`,
-    };
-  } catch (err) {
-    log.error("weather sync-now threw", { err: String(err) });
-    return { status: "error", message: "Couldn't sync. Try again." };
-  }
-}
-
 export async function disconnectWeatherAction() {
   const { profile } = await requireWriteAccess();
   disconnectWeather(profile.id);

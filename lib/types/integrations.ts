@@ -2,6 +2,10 @@
 // metric samples, HR minutes). Split out of lib/types.ts (#319); the `@/lib/types`
 // barrel re-exports everything here, so import paths are unchanged.
 
+// TYPE-ONLY (erased at build): `lib/hrefs` imports IntegrationId back from here, so a
+// value import would be a real cycle. Route policy still lives there.
+import type { AppRoute } from "../hrefs";
+
 // ---- Integrations ----
 
 // How a provider delivers data: 'push' (the source POSTs to us, e.g. Health
@@ -46,6 +50,43 @@ export type IntegrationId =
   | "fitbit-takeout"
   | "patient-portals";
 
+// The PULL facet (#2040): the declarative half of "this provider is one we pull on a
+// schedule". Its presence is what makes a provider dispatchable — the generic
+// "Sync now" action and the hourly tick iterate registered pull providers instead of
+// naming four by hand, which is how the four copy-pasted action skeletons and the
+// four copy-pasted tick blocks became one each.
+//
+// DATA ONLY. The runnable half (the `run` function) is bound in
+// lib/integrations/pull-runners.ts, because binding it here would drag @/lib/db and
+// the whole normalize/upsert stack behind every import of the registry — including
+// the pure tier and the client components that render the grid.
+export interface IntegrationPagingTunables {
+  // Server-side per-request timeout, so a hung provider request never stalls the
+  // hourly tick (it processes profiles sequentially).
+  timeoutMs: number;
+  // Safety cap on pages (or, for Strava, per-activity detail calls) per endpoint per
+  // run: an unbounded pagination loop can't spin forever. Anything remaining at the
+  // cap marks the run truncated.
+  maxPages: number;
+  // Trailing days re-fetched before the cursor each run, so a reading finalized or
+  // edited a day or two late isn't skipped. Upserts are keyed, so this is free.
+  rescanDays: number;
+  // How far back the FIRST-EVER sync reaches when there is no cursor yet. 0 = no
+  // bounded backfill; the first run reaches as far as the provider will go.
+  backfillDays: number;
+}
+
+export interface IntegrationPullFacet {
+  // The bounds of a PAGED credentialed pull. Absent for a pull provider that has no
+  // credential, no cursor, and no pagination — Weather's keyless fixed rolling
+  // window — because declaring numbers that govern nothing would be a fiction.
+  paging?: IntegrationPagingTunables;
+  // The surfaces a completed run's data feeds. The one generic sync action
+  // revalidates exactly these; lib/__tests__/nav-routes.test.ts sweeps them, since
+  // `revalidatePath` takes a plain string that typedRoutes cannot check.
+  revalidates: readonly AppRoute[];
+}
+
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {
   id: IntegrationId;
@@ -77,6 +118,10 @@ export interface IntegrationDef {
   // through failureConsequence (lib/integrations/provider-state.ts), which owns
   // the generic fallback for providers that don't declare one.
   stoppedConsequence?: string;
+  // Present exactly on the providers allos PULLS on a schedule (#2040). Absent for
+  // push, archive, feed, attended-external, and `planned` entries — there is nothing
+  // to run for those, so nothing dispatches them.
+  pull?: IntegrationPullFacet;
 }
 
 // Persisted connection state for a provider (integration_connections table).

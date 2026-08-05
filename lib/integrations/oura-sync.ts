@@ -1,24 +1,9 @@
-import { db, writeTx } from "@/lib/db";
-import { createLogger } from "@/lib/log";
 import {
   OURA_ID,
   getOuraToken,
   getOuraCursor,
   setOuraCursor,
-  recordSync,
-  recordSyncEvent,
-  recordSyncRows,
-  markConnectionNeedsReauth,
 } from "./connections";
-import { isAuthRefreshFailure } from "./auth-failure";
-import {
-  summarizeSplit,
-  foldCounts,
-  emptyCounts,
-  dateWindow,
-  type UpsertCounts,
-  type ProvenanceEntry,
-} from "./sync-log";
 import {
   mapOuraSleep,
   mapOuraWorkout,
@@ -26,48 +11,33 @@ import {
   OURA_SLEEP_SCORE_METRIC,
   OURA_READINESS_SCORE_METRIC,
 } from "./oura";
-import { truncatedSyncDetails } from "./sync-details";
-import { writeRawPayload } from "./raw-log";
-import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
-import {
-  upsertActivities,
-  upsertBodyMetrics,
-  upsertMetricSamples,
-  type NormActivity,
-  type NormBodyMetric,
-  type NormMetricSample,
+import { pullPaging } from "./registry";
+import { pageOutcome, pullDayWindow } from "./pull-window";
+import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
+import type {
+  NormActivity,
+  NormBodyMetric,
+  NormMetricSample,
 } from "./normalize";
 
-// Pulls sleep + workouts from the Oura API v2 with a personal access token and
-// upserts them. Runs from both the "Sync now" server action and the hourly notify
-// tick, so it must NOT touch any Next.js request-scoped API (revalidatePath) —
-// callers revalidate. Mirrors strava-sync.ts: cursor-based incremental pull, bounded
-// paging, 429 → truncate-and-keep-cursor, one sync event with the insert/update/
-// unchanged split.
-
-const log = createLogger("oura-sync");
+// Oura's half of the shared pull runner (#2040): the API v2 endpoints, `next_token`
+// pagination, and row mapping. Everything either side of that — the timeout and page
+// bounds, the 429 → truncate-and-keep-cursor rule, the transaction, the cursor
+// decision, and the sync-event accounting — belongs to lib/integrations/pull-sync.ts
+// and lib/integrations/pull-window.ts, which the other pull providers share.
+//
+// This file used to carry its own copy of all of it, and said so in a comment
+// ("Mirrors strava-sync.ts"); withings-sync.ts said the same about this file.
 
 const BASE = "https://api.ouraring.com";
-// Short server-side timeout so a hung Oura request never stalls the tick.
-const TIMEOUT_MS = 15_000;
-// Safety cap on pages per endpoint per run: an unbounded next_token loop can't spin
-// forever. A remaining next_token at the cap marks the run truncated (cursor kept).
-const MAX_PAGES = 25;
-// Re-scan window (days) subtracted from the cursor each run: a sleep period or
-// workout can be finalized/edited a day or two after its date, so re-fetching a
-// trailing window catches late edits. Upserts are keyed on window/external_id, so
-// re-fetches are idempotent.
-const RESCAN_DAYS = 3;
-// First-ever sync backfills this many days (Oura requires an explicit start_date);
-// successive runs advance the cursor and stay incremental.
-const INITIAL_BACKFILL_DAYS = 30;
+const { timeoutMs, maxPages, rescanDays, backfillDays } = pullPaging(OURA_ID);
 
 export interface OuraSyncResult {
   workouts: number;
   bodyMetrics: number;
   samples: number;
   skipped: number;
-  truncated?: boolean;
+  truncated?: true;
 }
 
 export interface OuraPersonalInfo {
@@ -82,13 +52,13 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
   try {
     const res = await fetch(`${BASE}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false, status: res.status };
     return { ok: true, json: await res.json() };
   } catch (err) {
     // Network error / timeout / DNS: surface as a non-HTTP failure (status 0) so the
-    // caller records a failed sync event and returns gracefully instead of throwing.
+    // runner records a failed sync event and returns gracefully instead of throwing.
     return {
       ok: false,
       status: 0,
@@ -121,14 +91,14 @@ interface PageResult {
   truncated: boolean;
   error?: string;
   // HTTP status of the failing request (issue #326): a 401 on a data pull means the
-  // personal access token was revoked, so the caller marks the connection
-  // needs_reauth. Null/absent on success or a network error (status 0).
+  // personal access token was revoked, so the runner marks the connection
+  // needs_reauth. Absent on success or a network error (status 0).
   status?: number;
 }
 
 // Follow Oura's next_token pagination over a date range, accumulating `data` items.
-// A 429 truncates (partial items kept, caller keeps the cursor); any other non-OK
-// status returns an error. A still-present next_token at MAX_PAGES also truncates.
+// A rate limit truncates (partial items kept, cursor held); any other non-OK status
+// returns an error. A still-present next_token at the page cap also truncates.
 async function fetchPages(
   path: string,
   token: string,
@@ -137,7 +107,7 @@ async function fetchPages(
 ): Promise<PageResult> {
   const items: Record<string, unknown>[] = [];
   let nextToken: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const qs = new URLSearchParams({
       start_date: startDate,
       end_date: endDate,
@@ -145,7 +115,8 @@ async function fetchPages(
     if (nextToken) qs.set("next_token", nextToken);
     const res = await ouraGet(`${path}?${qs.toString()}`, token);
     if (!res.ok) {
-      if (res.status === 429) return { items, truncated: true };
+      if (pageOutcome(res.status) === "truncate")
+        return { items, truncated: true };
       return {
         items,
         truncated: false,
@@ -169,232 +140,132 @@ async function fetchPages(
   return { items, truncated: true };
 }
 
-function addDays(day: string, n: number): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export async function runOuraSync(
-  profileId: number
-): Promise<OuraSyncResult | { error: string }> {
-  const token = getOuraToken(profileId);
-  // Not a sync attempt (not connected) — nothing to log.
-  if (!token) return { error: "not connected" };
+// Oura's own 0–100 scores (issue #1069), ingested as DISPLAY-ONLY, engine-inert
+// vendor numbers (never a synthesis input — see oura.ts / the reverse-allowlist
+// guard). Same rolling window and same failure handling as the pulls above; each
+// `{day, score}` maps to one idempotent per-day metric_sample.
+const SCORE_ENDPOINTS: [string, string][] = [
+  ["/v2/usercollection/daily_sleep", OURA_SLEEP_SCORE_METRIC],
+  ["/v2/usercollection/daily_readiness", OURA_READINESS_SCORE_METRIC],
+];
 
-  const cursor = getOuraCursor(profileId);
-  const today = todayUtc();
-  // Page from a trailing window before the cursor so late-finalized nights/workouts
-  // aren't skipped; end a day past today to cover ring-vs-server timezone slack.
-  const startDate = cursor
-    ? addDays(cursor, -RESCAN_DAYS)
-    : addDays(today, -INITIAL_BACKFILL_DAYS);
-  const endDate = addDays(today, 1);
+const ouraSpec: PullSpec<string, string, Omit<OuraSyncResult, "truncated">> = {
+  id: OURA_ID,
+  authorize: (profileId) => getOuraToken(profileId),
+  cursor: {
+    // "" rather than null so the one shared cursor comparison works on a first run.
+    read: (profileId) => getOuraCursor(profileId) ?? "",
+    write: setOuraCursor,
+    policy: "hold-on-truncate",
+  },
+  summarize: (t) => ({
+    workouts: t.activities,
+    bodyMetrics: t.bodyMetrics,
+    samples: t.samples,
+    skipped: t.skipped,
+  }),
 
-  const acts: NormActivity[] = [];
-  const bodyMetrics: NormBodyMetric[] = [];
-  const samples: NormMetricSample[] = [];
-  const rawItems: unknown[] = [];
-  let skipped = 0;
-  let truncated = false;
-  let newestDay = cursor ?? "";
+  async gather(_profileId, token, cursor): Promise<PullOutcome<string>> {
+    // Page from a trailing window before the cursor so late-finalized nights/workouts
+    // aren't skipped; end a day past today to cover ring-vs-server timezone slack.
+    const { startDate, endDate } = pullDayWindow(
+      cursor || null,
+      todayUtc(),
+      rescanDays,
+      backfillDays
+    );
 
-  const bumpDay = (d: string | null | undefined) => {
-    if (d && d > newestDay) newestDay = d;
-  };
+    const activities: NormActivity[] = [];
+    const bodyMetrics: NormBodyMetric[] = [];
+    const samples: NormMetricSample[] = [];
+    const raw: unknown[] = [];
+    let skipped = 0;
+    let truncated = false;
+    let newestDay = cursor;
 
-  // ---- sleep ----
-  const sleep = await fetchPages(
-    "/v2/usercollection/sleep",
-    token,
-    startDate,
-    endDate
-  );
-  if (sleep.error) {
-    // A revoked personal access token surfaces as a 401 on the pull — flip to
-    // needs_reauth so the tick stops retrying it forever (issue #326).
-    if (sleep.status != null && isAuthRefreshFailure(sleep.status)) {
-      markConnectionNeedsReauth(profileId, OURA_ID);
-    }
-    recordSyncEvent(profileId, OURA_ID, { ok: false, error: sleep.error });
-    return { error: sleep.error };
-  }
-  if (sleep.truncated) truncated = true;
-  for (const s of sleep.items) {
-    rawItems.push(s);
-    const mapped = mapOuraSleep(s);
-    if (!mapped) {
-      skipped++;
-      continue;
-    }
-    samples.push(...mapped.samples);
-    if (mapped.bodyMetric) bodyMetrics.push(mapped.bodyMetric);
-    bumpDay(typeof s.day === "string" ? s.day : null);
-  }
+    const bumpDay = (d: unknown) => {
+      if (typeof d === "string" && d > newestDay) newestDay = d;
+    };
 
-  // ---- workouts ----
-  const workouts = await fetchPages(
-    "/v2/usercollection/workout",
-    token,
-    startDate,
-    endDate
-  );
-  if (workouts.error) {
-    if (workouts.status != null && isAuthRefreshFailure(workouts.status)) {
-      markConnectionNeedsReauth(profileId, OURA_ID);
-    }
-    recordSyncEvent(profileId, OURA_ID, { ok: false, error: workouts.error });
-    return { error: workouts.error };
-  }
-  if (workouts.truncated) truncated = true;
-  for (const w of workouts.items) {
-    rawItems.push(w);
-    const mapped = mapOuraWorkout(w);
-    if (!mapped) {
-      skipped++;
-      continue;
-    }
-    acts.push(mapped.activity);
-    samples.push(...mapped.samples);
-    bumpDay(typeof w.day === "string" ? w.day : null);
-  }
-
-  // ---- vendor daily scores (issue #1069): daily_sleep + daily_readiness ----
-  //
-  // Oura's own 0–100 scores, ingested as DISPLAY-ONLY, engine-inert vendor numbers
-  // (never a synthesis input — see oura.ts / the reverse-allowlist guard). Same
-  // rolling window, same 401→needs_reauth and 429→truncate handling as the pulls
-  // above; each `{day, score}` maps to one idempotent per-day metric_sample.
-  const scoreEndpoints: [string, string][] = [
-    ["/v2/usercollection/daily_sleep", OURA_SLEEP_SCORE_METRIC],
-    ["/v2/usercollection/daily_readiness", OURA_READINESS_SCORE_METRIC],
-  ];
-  for (const [path, metric] of scoreEndpoints) {
-    const daily = await fetchPages(path, token, startDate, endDate);
-    if (daily.error) {
-      if (daily.status != null && isAuthRefreshFailure(daily.status)) {
-        markConnectionNeedsReauth(profileId, OURA_ID);
-      }
-      recordSyncEvent(profileId, OURA_ID, { ok: false, error: daily.error });
-      return { error: daily.error };
-    }
-    if (daily.truncated) truncated = true;
-    for (const d of daily.items) {
-      rawItems.push(d);
-      const sample = mapOuraDailyScore(d, metric);
-      if (!sample) {
+    // ---- sleep ----
+    const sleep = await fetchPages(
+      "/v2/usercollection/sleep",
+      token,
+      startDate,
+      endDate
+    );
+    if (sleep.error) return { error: sleep.error, status: sleep.status };
+    if (sleep.truncated) truncated = true;
+    for (const s of sleep.items) {
+      raw.push(s);
+      const mapped = mapOuraSleep(s);
+      if (!mapped) {
         skipped++;
         continue;
       }
-      samples.push(sample);
-      bumpDay(typeof d.day === "string" ? d.day : null);
+      samples.push(...mapped.samples);
+      if (mapped.bodyMetric) bodyMetrics.push(mapped.bodyMetric);
+      bumpDay(s.day);
     }
-  }
 
-  let upActivities: UpsertCounts = emptyCounts();
-  let upBody: UpsertCounts = emptyCounts();
-  let upSamples: UpsertCounts = emptyCounts();
-  // Per-row provenance (#1333): inserted/updated rows this run wrote, linked below.
-  const provenance: ProvenanceEntry[] = [];
-  try {
-    writeTx(() => {
-      upActivities = upsertActivities(profileId, acts, OURA_ID, provenance);
-      upBody = upsertBodyMetrics(profileId, bodyMetrics, OURA_ID, provenance);
-      upSamples = upsertMetricSamples(profileId, samples, OURA_ID, provenance);
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const win = dateWindow([
-      ...acts.map((a) => a.date),
-      ...bodyMetrics.map((b) => b.date),
-      ...samples.map((s) => s.date),
-    ]);
-    recordSyncEvent(profileId, OURA_ID, {
-      ok: false,
-      windowStart: win.start,
-      windowEnd: win.end,
-      error: message,
-    });
-    return { error: message };
-  }
-
-  // The no-finish fallback for imports (#1154 §B2): a just-synced session dated
-  // today gets the delayed post-workout dose dispatch armed, so its doses aren't
-  // bucket-slot-dependent.
-  if (upActivities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
-
-  // Advance the cursor to the newest day fully processed — but NEVER when truncated,
-  // so a rate-limited/capped run re-fetches the whole window next time rather than
-  // stranding un-synced days past the re-scan margin.
-  if (!truncated && newestDay && newestDay > (cursor ?? "")) {
-    setOuraCursor(profileId, newestDay);
-  }
-
-  const total = (c: UpsertCounts) => c.inserted + c.updated + c.unchanged;
-  const actTotal = total(upActivities);
-  const bodyTotal = total(upBody);
-  const sampleTotal = total(upSamples);
-
-  const summary: OuraSyncResult = {
-    workouts: actTotal,
-    bodyMetrics: bodyTotal,
-    samples: sampleTotal,
-    skipped,
-    ...(truncated ? { truncated: true } : {}),
-  };
-  recordSync(profileId, OURA_ID, {
-    workouts: actTotal,
-    bodyMetrics: bodyTotal,
-    samples: sampleTotal,
-    skipped,
-    truncated: truncated ? 1 : 0,
-  });
-  {
-    const win = dateWindow([
-      ...acts.map((a) => a.date),
-      ...bodyMetrics.map((b) => b.date),
-      ...samples.map((s) => s.date),
-    ]);
-    const tally = summarizeSplit(
-      foldCounts([upActivities, upBody, upSamples]),
-      skipped
+    // ---- workouts ----
+    const workouts = await fetchPages(
+      "/v2/usercollection/workout",
+      token,
+      startDate,
+      endDate
     );
-    const rawRef = writeRawPayload(
-      profileId,
-      OURA_ID,
-      JSON.stringify(rawItems)
-    );
-    const eventId = recordSyncEvent(profileId, OURA_ID, {
-      ok: true,
-      windowStart: win.start,
-      windowEnd: win.end,
-      received: tally.received,
-      written: tally.inserted + tally.updated + tally.unchanged,
-      inserted: tally.inserted,
-      updated: tally.updated,
-      unchanged: tally.unchanged,
-      suppressed: tally.suppressed,
-      edited: tally.edited,
-      skipped: tally.skipped,
-      // A run the provider cut short (page cap / 429) is NOT a clean success: the
-      // cursor was deliberately not advanced and data is still upstream, so the event
-      // carries a durable `truncated` marker + its Review line (#1614). Ordinary
-      // complete runs write no details at all.
-      details: truncated ? truncatedSyncDetails() : null,
-      raw_ref: rawRef,
-    });
-    recordSyncRows(eventId, provenance);
-  }
-  if (truncated) {
-    log.info("oura sync truncated (page cap / rate limit)", {
-      workouts: actTotal,
-      samples: sampleTotal,
+    if (workouts.error)
+      return { error: workouts.error, status: workouts.status };
+    if (workouts.truncated) truncated = true;
+    for (const w of workouts.items) {
+      raw.push(w);
+      const mapped = mapOuraWorkout(w);
+      if (!mapped) {
+        skipped++;
+        continue;
+      }
+      activities.push(mapped.activity);
+      samples.push(...mapped.samples);
+      bumpDay(w.day);
+    }
+
+    // ---- vendor daily scores ----
+    for (const [path, metric] of SCORE_ENDPOINTS) {
+      const daily = await fetchPages(path, token, startDate, endDate);
+      if (daily.error) return { error: daily.error, status: daily.status };
+      if (daily.truncated) truncated = true;
+      for (const d of daily.items) {
+        raw.push(d);
+        const sample = mapOuraDailyScore(d, metric);
+        if (!sample) {
+          skipped++;
+          continue;
+        }
+        samples.push(sample);
+        bumpDay(d.day);
+      }
+    }
+
+    return {
+      batch: { activities, bodyMetrics, samples },
+      raw,
       skipped,
-    });
-  }
-  return summary;
+      truncated,
+      nextCursor: newestDay,
+    };
+  },
+};
+
+// Pull sleep, workouts and Oura's daily scores with a personal access token, and
+// upsert them. Runs from both the generic "Sync now" action and the hourly notify
+// tick — so, like every pull, it must never touch a Next.js request-scoped API.
+export async function runOuraSync(
+  profileId: number
+): Promise<OuraSyncResult | { error: string }> {
+  return runPullSync(profileId, ouraSpec);
 }
