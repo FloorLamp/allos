@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import PageContainer from "@/components/PageContainer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -14,6 +15,7 @@ import { useToast } from "@/components/Toast";
 // haptic cues in the live-workout tree (#1422); one media-query subscription, not two.
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { Notice } from "@/components/Notice";
+import { readingDetailHref } from "@/lib/hrefs";
 import type { WeightUnit } from "@/lib/settings";
 import {
   BIG_LIFT_OPTIONS,
@@ -537,6 +539,25 @@ function EntryModal({
             Current: {tile.value} {tile.unit} · {tile.provenance.label}
             {tile.provenance.date ? ` (${tile.provenance.date})` : ""}
             {tile.stale ? " — re-check due" : ""}
+          </p>
+        )}
+        {/* THE REACH FROM THE FITNESS AREA TO THE JUDGED QUANTITY (#2086). A test that
+            writes a canonical clinical row has a detail surface where its readings are
+            charted and judged — for VO₂ max and its #158 siblings that is the age/sex
+            percentile card. The check is where the value is MEASURED; without this the
+            surface that interprets it was reachable only by knowing to search the
+            biomarkers list. The destination comes from `readingDetailHref`, the ONE
+            cadence-routing rule (#1932), so this link follows the reading rather than
+            naming a page. */}
+        {def.store.kind === "vital" && tile.measured && (
+          <p className="mb-2 text-xs">
+            <Link
+              href={readingDetailHref(def.store.canonical)}
+              className="text-brand-600 hover:underline dark:text-brand-400"
+              data-testid={`fitness-history-${def.key}`}
+            >
+              View history &amp; percentile →
+            </Link>
           </p>
         )}
         {tile.roughGuide && tile.selfNormCitation && (

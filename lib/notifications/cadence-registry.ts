@@ -211,7 +211,7 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
   {
     kind: "test",
     cadence: "on-demand",
-    why: "The Settings send-test, which exists to prove the wiring delivers. Any cadence at all — a hold, a dedupe, a spacing rule — would make the test unable to answer the only question it is asked.",
+    why: "The Settings send-test, which exists to prove the wiring delivers. Any cadence at all — a hold, a dedupe, a spacing rule — would stop the test from answering the only question it is asked.",
   },
 
   // ── Exempt: nothing dispatches it ─────────────────────────────────────────

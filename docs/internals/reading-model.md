@@ -66,7 +66,7 @@ Four rules the shape encodes:
   for volume reasons, and a per-minute stream is not what a judgement, a period
   average or a readings table is asking about.
 
-### The stream ↔ canonical map
+### The stream ↔ canonical map — one declaration, two derived halves
 
 `STREAM_READING_SOURCES` is the missing half of the identity map: which stream
 store column/metric measures which canonical biomarker name.
@@ -76,6 +76,18 @@ only a stream key that measures the SAME quantity as a curated canonical entry i
 registered. Weight, height, HRV, steps and the rest are absent because the
 canonical vocabulary has no entry for them, and an invented mapping would grant a
 reading a band nobody curated.
+
+Since **#2086** both halves are **derived** from one declaration,
+`READING_IDENTITY_MAP` in `lib/reading-identity-map.ts`: each entry names a
+canonical quantity, the metric surface that renders it (or `null` — episodic, so
+the reading detail page owns it), and the stream store its rows land in (or
+`null` — observations only). They were two literals in two files, consistency-
+tested but separately edited, and a half-added entry is a live defect: a name
+routed to a metric surface with no stream registered folds no observations in,
+and a stream with no surface answer renders its clinical readings on the wrong
+page. `lib/__tests__/reading-identity-map.test.ts` pins the fold in both
+directions, and that an entry answering neither question cannot exist. The two
+constants keep their existing homes as re-exports, so no call site moved.
 
 ### Series assembly
 
@@ -141,6 +153,44 @@ still be keyed by metric and still need this lookup.
 - `lib/queries/metric-judgment.ts` — the runtime half: the seeded
   `canonical_biomarkers` row as the vocabulary, and the subject's age **on the
   reading's date** (the #150 precedent), never today's.
+
+### The domain is judged quantities, not one enum (#2086)
+
+`METRIC_KNOWLEDGE`'s totality is the strongest idea in the #1996 fix, and its
+weakness was its domain: `Record<BodyMetricSlug, …>` — one enum. A judged
+quantity with no metric slug escaped the discipline entirely, and the recorded
+escapee proves it: **VO₂ max** has a curated canonical entry _and_ age/sex
+fitness norms (#158), with nothing in the build able to notice whether either
+reached its readings.
+
+`QUANTITY_KNOWLEDGE` + `quantityKnowledge(identity)` widen the domain to judged
+quantities keyed by **#482 identity**, and `MetricKnowledge` gains a
+`fitness-norms` source (an age/sex percentile is no more a band than a growth
+percentile is). The **membership boundary** is written down beside the
+declaration: this is not a second copy of the canonical vocabulary — an ordinary
+lab analyte is judged by its own canonical row on the surface that reads that
+row, so nothing can go missing. A quantity needs a declaration exactly when its
+readings and its knowledge are reached through **different keys**: metric slugs
+(readings by slug, knowledge by canonical name — #1996) and the
+functional-fitness markers (readings by canonical name, knowledge in a separate
+norms dataset — #2086).
+
+**The teeth** (`lib/__tests__/judged-quantities.test.ts`): the domain is derived
+from `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
+marker added to the norms dataset without a declaration fails the build; a
+declaration naming a marker or canonical entry that does not exist fails too, so
+widening the **guard** can never widen the **vocabulary**. VO₂ max is the
+acceptance case: it declares `fitness-norms`, the surface it names is the one
+`readingDetailHref` actually routes its readings to, and the norms resolve to a
+real percentile for a real subject.
+
+Its renderer stays the reading detail page, on purpose. The #1932 cadence audit
+classifies VO₂ max as **episodic** — an annual-at-best physical test read against
+its population curve — so it earns a declaration and reach from the Fitness
+check, not a daily-trend surface. What was missing was discoverability: the value
+is measured in the Fitness check, and the surface that interprets it was
+reachable only by knowing to search the biomarkers list. The check's entry panel
+now links a measured clinical test to it through `readingDetailHref`.
 
 Two consequences on `/trends/metric/[kind]`:
 

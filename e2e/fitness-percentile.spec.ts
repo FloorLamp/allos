@@ -52,3 +52,25 @@ test("the functional fitness markers are manually enterable and percentile-conte
     "percentile"
   );
 });
+
+// #2086: a judged quantity needs a declared knowledge source AND a surface its
+// readings actually reach. VO₂ max had both — the FRIEND percentile and the reading
+// detail page above — but the surface was reachable only by knowing to search the
+// biomarkers list, while the value is MEASURED in the Fitness check. This is the
+// reach: the check links a measured clinical test to the surface that interprets it,
+// through `readingDetailHref` (the one #1932 cadence-routing rule).
+test("the Fitness check reaches the surface that judges a measured test (#2086)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=fitness");
+  await hydratedClick(page, page.getByTestId("fitness-tile-vo2max"));
+
+  const modal = page.getByTestId("fitness-entry-vo2max");
+  await expect(modal).toBeVisible();
+  await settledClick(page, modal.getByTestId("fitness-history-vo2max"));
+
+  // The destination is the declared surface, with the age/sex percentile on it.
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { name: "VO2 Max" })).toBeVisible();
+  await expect(main.getByTestId("fitness-percentile")).toBeVisible();
+});

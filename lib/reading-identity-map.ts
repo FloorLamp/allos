@@ -28,8 +28,15 @@
 // PURE, and deliberately import-light: only type-only imports, so nothing that consumes
 // the map pulls a DB module in behind it.
 
-import type { BodyMetricColumn } from "./metric-readings";
 import type { BodyMetricSlug } from "./trends-body-metrics";
+
+/**
+ * The `body_metrics` measure columns — the stream keys this map can register, and the
+ * one place they are spelled. `lib/metric-readings.ts` re-exports it for its own
+ * readers; it is declared HERE because this module is deliberately import-light and
+ * that one opens the database.
+ */
+export type BodyMetricColumn = "weight_kg" | "body_fat_pct" | "resting_hr";
 
 // A STREAM store's column/metric and the canonical biomarker name it measures — the
 // half that lets a wearable row resolve clinical knowledge filed under a canonical NAME.
