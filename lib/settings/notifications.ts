@@ -113,6 +113,48 @@ export function setLoginTelegram(
   return getLoginTelegram(loginId);
 }
 
+// ---- Login-scoped email delivery channel (issue #1855) ----
+// Email is the FOURTH delivery channel, and like Telegram/push it belongs to the
+// LOGIN (a person with an inbox), not the profile: a per-profile event fans out to
+// the managing logins (lib/notifications/email.ts). The ADDRESS is not stored here
+// — it is `logins.email` (migration 064), the same address auth mail uses, so
+// "where do this person's emails go" has exactly one answer. What lives in
+// login_settings is the channel choice:
+//   email_notify_enabled       "1" | "0" — OFF by default (a new contact channel is
+//                              opt-in; the system may never increase contact
+//                              unilaterally)
+//   email_notify_full_content  "1" | "0" — the #1855 PHI ruling: absent/other reads
+//                              CONTENT-FREE, and ONLY the login's own tap on the
+//                              Settings control ever writes "1". No code path may
+//                              default, migrate, or infer this to full.
+export interface LoginEmailNotify {
+  emailEnabled: boolean;
+  emailFullContent: boolean;
+}
+
+export function getLoginEmailNotify(loginId: number): LoginEmailNotify {
+  return {
+    emailEnabled: getLoginSetting(loginId, "email_notify_enabled") === "1",
+    emailFullContent:
+      getLoginSetting(loginId, "email_notify_full_content") === "1",
+  };
+}
+
+export function setLoginEmailNotify(
+  loginId: number,
+  cfg: LoginEmailNotify
+): LoginEmailNotify {
+  writeTx(() => {
+    setLoginSetting(loginId, "email_notify_enabled", cfg.emailEnabled ? "1" : "0");
+    setLoginSetting(
+      loginId,
+      "email_notify_full_content",
+      cfg.emailFullContent ? "1" : "0"
+    );
+  });
+  return getLoginEmailNotify(loginId);
+}
+
 // ---- Per-(login, profile) notification mute (issue #1072) ----
 // The per-profile routing flexibility the old per-profile model had, re-homed on the
 // login×profile pair: a login can silence a specific profile ("don't notify me about
@@ -603,6 +645,29 @@ export function setLoginPushDisabledKinds(
   setLoginSetting(
     loginId,
     "push_notify_disabled_kinds",
+    serializeDisabledKinds(kinds)
+  );
+}
+
+// Email column — per LOGIN (issue #1855: the inbox belongs to the login, exactly
+// like the Telegram chat and the push subscription). A message for a profile fans
+// out to every managing login's address; each login's disabled set gates its own
+// copy at the send seam.
+export function getLoginEmailDisabledKinds(
+  loginId: number
+): NotificationKind[] {
+  return parseDisabledKinds(
+    getLoginSetting(loginId, "email_notify_disabled_kinds")
+  );
+}
+
+export function setLoginEmailDisabledKinds(
+  loginId: number,
+  kinds: readonly NotificationKind[]
+): void {
+  setLoginSetting(
+    loginId,
+    "email_notify_disabled_kinds",
     serializeDisabledKinds(kinds)
   );
 }

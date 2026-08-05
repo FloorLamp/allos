@@ -4,7 +4,7 @@
 
 import type { MessageBody } from "./rich-text";
 
-export type ChannelId = "telegram" | "push" | "home-assistant";
+export type ChannelId = "telegram" | "push" | "home-assistant" | "email";
 
 // A machine-readable classification of what a notification IS, carried on the
 // message so a structured channel (Home Assistant, #248) can route/announce it and
