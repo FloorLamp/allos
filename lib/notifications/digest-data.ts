@@ -71,10 +71,13 @@ import {
   dedupeFlaggedByAnalyte,
   renderDigestMessage,
   type DigestActivity,
+  type DigestDocument,
   type DigestFlaggedBiomarker,
   type DigestInput,
   type DigestSleep,
 } from "./digest";
+import { documentFootprintByKind } from "../import-persist";
+import { portalById } from "../portals";
 import { createLogger } from "../log";
 import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
 import { recommendWorkout } from "./recommend";
@@ -397,20 +400,39 @@ export function gatherDigestInput(
   // that failed and was reprocessed days later still announces exactly once, the
   // morning after it actually became readable. Backfilled rows (migration 075)
   // carry their uploaded_at, keeping pre-existing history out of the window.
-  const newDocumentLabels = (
+  //
+  // WHICH ONE, AND WHAT IT PRODUCED (#1913 item 3). The line used to print the raw
+  // `doc_type` ("1 new document: ccda"), which answers neither question. Every fact the
+  // honest line needs already sits on this row or in accounting the import already did:
+  // the title/type, the `document_date`, the acquired-by portal (#1748), and the
+  // per-domain split of the SAME footprint tally that stamped `extracted_count` (#1827).
+  // No second accounting is minted, and no new join is invented for the digest.
+  const newDocuments: DigestDocument[] = (
     db
       .prepare(
-        `SELECT filename, doc_type, source FROM medical_documents
+        `SELECT id, filename, doc_type, source, document_date, acquired_portal_id
+           FROM medical_documents
           WHERE profile_id = ? AND extraction_completed_at > ?
             AND extraction_status = 'done'
           ORDER BY extraction_completed_at DESC LIMIT ?`
       )
       .all(profileId, since, MAX_NEW_DOCS) as {
+      id: number;
       filename: string;
       doc_type: string | null;
       source: string | null;
+      document_date: string | null;
+      acquired_portal_id: number | null;
     }[]
-  ).map((d) => d.source || d.doc_type || d.filename);
+  ).map((d) => ({
+    id: d.id,
+    title: d.source || d.doc_type || d.filename,
+    date: d.document_date,
+    acquiredVia: d.acquired_portal_id
+      ? (portalById(d.acquired_portal_id)?.name ?? null)
+      : null,
+    extracted: documentFootprintByKind(profileId, d.id),
+  }));
 
   // An open illness episode leads the digest (#859 item 5) — the SAME assembly the
   // hero/household line format over (currentEpisodeForProfile → episodeHeadline).
@@ -517,7 +539,7 @@ export function gatherDigestInput(
     // for a profile that has declared no target — the resting state.
     stepsLine: stepsLines.yesterday,
     newFlaggedBiomarkers,
-    newDocumentLabels,
+    newDocuments,
     // What else changed in the last 24 hours (#1713), from the ONE shared collector the
     // Household member card reads at 7 days. `labs` is EXCLUDED because the two fields
     // above already report newly-flagged lab results from the digest's own send cursor

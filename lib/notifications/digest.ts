@@ -24,6 +24,8 @@ import {
   type IntakeDeltas,
 } from "../intake-deltas";
 import { isTrainingSignalKey } from "../workout-nudge";
+import { importHref } from "../hrefs";
+import { monthNames } from "../date";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -163,7 +165,11 @@ export interface DigestInput {
   stepsLine?: string | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
-  newDocumentLabels: string[];
+  // The documents that finished extracting since the send cursor (#1913 item 3), each
+  // carrying which it is and what it produced. Already ordered newest-first and already
+  // bounded by the gather; buildDigest applies MAX_NAMED_DOCUMENTS and the "+N more"
+  // tail. Empty on an ordinary morning.
+  newDocuments: DigestDocument[];
   // The RECENT-CHANGES lines (#1713), already ranked, floored and capped by the ONE
   // shared collector (lib/recent-changes.ts + lib/queries/recent-changes.ts) that the
   // Household member card reads at 7 days and this reads at 24 hours. They join the
@@ -205,6 +211,86 @@ export interface DigestInput {
   // tail. The control tunes a digest; it never justifies one.
   tuneTail?: NotificationAction | null;
 }
+
+// ---- New documents: WHICH one, and WHAT it produced (#1913 item 3) ---------
+//
+// The old line was `📄 1 new document: ccda` — the raw `doc_type`, which answers neither
+// "which?" nor "what came out of it?". Every fact an honest line needs already sits on
+// the document row and the accounting the import already wrote, so nothing new is
+// computed: the title/type and `document_date`, the acquired-by portal (#1748), and the
+// per-domain split of the SAME footprint tally that stamps `extracted_count` (#1827).
+
+export interface DigestDocumentKind {
+  // The reader's word for a footprint table ("labs", "meds", "vaccines"). Plural already
+  // — the split is a list of quantities, never a sentence.
+  noun: string;
+  count: number;
+}
+
+export interface DigestDocument {
+  // Row id, for the deep link. Rendered only when a public URL is configured.
+  id: number;
+  // The document's own name: its title/source, else its type, else its filename.
+  title: string;
+  // The date the DOCUMENT is about, as YYYY-MM-DD. Null when the document carries none
+  // — a digest never stands in the upload time for a clinical date it was not given.
+  date: string | null;
+  // The portal it was acquired from (#1748), or null for a hand-uploaded file.
+  acquiredVia: string | null;
+  // What it produced, biggest first. Empty for a document that stored no rows, which is
+  // itself worth saying plainly rather than dressing up.
+  extracted: DigestDocumentKind[];
+}
+
+// "12 labs, 2 meds" — the split, or null when the import stored nothing.
+export function documentSplitPhrase(
+  kinds: readonly DigestDocumentKind[]
+): string | null {
+  const named = kinds.filter((k) => k.count > 0);
+  if (named.length === 0) return null;
+  return named.map((k) => `${k.count} ${k.noun}`).join(", ");
+}
+
+// "2026-07-28" → "Jul 28". The digest states a clinical date in words because the line
+// already carries a count and a provenance clause; a second numeric run would read as
+// part of them. A malformed or partial stored date falls through unchanged rather than
+// being reformatted into a wrong one.
+export function shortDocumentDate(date: string | null): string | null {
+  if (!date) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return date;
+  const month = monthNames("short")[Number(m[2]) - 1];
+  if (!month) return date;
+  return `${month} ${Number(m[3])}`;
+}
+
+// "📄 New: Ochsner visit summary (Jul 28, via Ochsner MyChart) — 12 labs, 2 meds".
+//
+// Each parenthetical half is omitted when the document does not carry it, so a
+// hand-uploaded file with no document date reads "📄 New: Bloodwork — 8 labs" rather
+// than carrying empty punctuation.
+export function digestDocumentLine(
+  doc: DigestDocument,
+  deepLinkBase = ""
+): string {
+  const context = [
+    shortDocumentDate(doc.date),
+    doc.acquiredVia ? `via ${doc.acquiredVia}` : null,
+  ]
+    .filter((s): s is string => !!s)
+    .join(", ");
+  const where = context ? ` (${context})` : "";
+  const split = documentSplitPhrase(doc.extracted);
+  const what = split ? ` — ${split}` : "";
+  const base = deepLinkBase.replace(/\/$/, "");
+  const link = base ? ` ${base}${importHref(doc.id)}` : "";
+  return `📄 New: ${doc.title}${where}${what}${link}`;
+}
+
+// How many documents a morning names before it collapses to a count. A multi-document
+// morning summarizes PER DOCUMENT up to this cap, then "+N more documents" — the same
+// name-then-count shape the band summaries and the recent-changes collector use.
+export const MAX_NAMED_DOCUMENTS = 3;
 
 export interface DigestSection {
   heading: string;
@@ -495,10 +581,17 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     const val = b.value ? ` ${b.value}` : "";
     newLines.push(`🚩 ${b.name}${val} (${b.flag})`);
   }
-  if (input.newDocumentLabels.length) {
-    newLines.push(
-      `📄 ${input.newDocumentLabels.length} new document${input.newDocumentLabels.length === 1 ? "" : "s"}: ${input.newDocumentLabels.join(", ")}`
-    );
+  // New documents, one line each (#1913 item 3). "1 new document: ccda" answered neither
+  // "which?" nor "what was produced?" — it printed the raw doc_type. A multi-document
+  // morning names up to MAX_NAMED_DOCUMENTS and then counts the rest, so a bulk import
+  // cannot flood the section.
+  const namedDocs = input.newDocuments.slice(0, MAX_NAMED_DOCUMENTS);
+  for (const doc of namedDocs) {
+    newLines.push(digestDocumentLine(doc, input.deepLinkBase ?? ""));
+  }
+  const moreDocs = input.newDocuments.length - namedDocs.length;
+  if (moreDocs > 0) {
+    newLines.push(`📄 +${moreDocs} more document${moreDocs === 1 ? "" : "s"}`);
   }
   // The recent-changes lines (#1713) join the SAME section, below the flagged results
   // and new documents the digest's own send-cursor window already reported. That order

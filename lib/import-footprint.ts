@@ -39,48 +39,86 @@ export interface ImportFootprintTable {
   table: string;
   key: "document_id" | "source";
   extra?: string;
+  // THE READER'S WORD for what this table holds (#1913 item 3), singular. The morning
+  // digest's new-document line states the per-domain split of the SAME tally
+  // `extracted_count` is stamped from ("12 labs, 2 meds"), so the vocabulary belongs on
+  // the registry that already owns the tally rather than in a second lookup that would
+  // silently miss the next domain added. `plural` is required only where it is not the
+  // singular plus "s".
+  noun: string;
+  plural?: string;
 }
 
 export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
-  { table: "medical_records", key: "document_id" },
-  { table: "allergies", key: "document_id" },
-  { table: "conditions", key: "document_id" },
-  { table: "encounters", key: "document_id" },
-  { table: "procedures", key: "document_id" },
-  { table: "family_history", key: "document_id" },
-  { table: "care_plan_items", key: "document_id" },
-  { table: "care_goals", key: "document_id" },
+  { table: "medical_records", key: "document_id", noun: "lab" },
+  {
+    table: "allergies",
+    key: "document_id",
+    noun: "allergy",
+    plural: "allergies",
+  },
+  { table: "conditions", key: "document_id", noun: "condition" },
+  { table: "encounters", key: "document_id", noun: "visit" },
+  { table: "procedures", key: "document_id", noun: "procedure" },
+  {
+    table: "family_history",
+    key: "document_id",
+    noun: "family-history entry",
+    plural: "family-history entries",
+  },
+  { table: "care_plan_items", key: "document_id", noun: "care-plan item" },
+  { table: "care_goals", key: "document_id", noun: "care goal" },
   // Structured genomic variants imported from a clinical genetics / PGx report
   // (#709). Keyed on document_id like the other clinical domains; a manual variant
   // carries a NULL document_id and is never touched.
-  { table: "genomic_variants", key: "document_id" },
+  { table: "genomic_variants", key: "document_id", noun: "genomic variant" },
   // Structured imaging studies imported from a radiology report (#702). Keyed on
   // document_id like the other clinical domains; a manual study carries a NULL
   // document_id and is never touched.
-  { table: "imaging_studies", key: "document_id" },
+  {
+    table: "imaging_studies",
+    key: "document_id",
+    noun: "imaging study",
+    plural: "imaging studies",
+  },
   // Structured optical prescriptions imported from an Rx slip / eye-exam report
   // (#697). Keyed on document_id like the other clinical domains; a manual Rx
   // carries a NULL document_id and is never touched.
-  { table: "optical_prescriptions", key: "document_id" },
+  {
+    table: "optical_prescriptions",
+    key: "document_id",
+    noun: "eyewear prescription",
+  },
   // Structured dental procedures imported from a dental exam/treatment record (#705).
   // Keyed on document_id like the other clinical domains; a manual record carries a
   // NULL document_id and is never touched. Like imaging, it back-references from
   // care_plan_items (the follow-up chain), so clear/move NULL those links first.
-  { table: "dental_procedures", key: "document_id" },
+  { table: "dental_procedures", key: "document_id", noun: "dental procedure" },
   // Scheduled appointments imported from a FHIR Appointment resource (#416). A
   // manual booking carries a NULL document_id and is never touched.
-  { table: "appointments", key: "document_id" },
+  { table: "appointments", key: "document_id", noun: "appointment" },
   // Medications auto-structured from this document. Keyed on source='extracted' so
   // a manual med — even one pointing at no document — is never touched; child
   // dose/log rows cascade via their FKs.
-  { table: "intake_items", key: "document_id", extra: "source = 'extracted'" },
-  { table: "body_metrics", key: "source" },
-  { table: "immunizations", key: "source" },
-  { table: "metric_samples", key: "source", extra: "metric = 'height_cm'" },
+  {
+    table: "intake_items",
+    key: "document_id",
+    extra: "source = 'extracted'",
+    noun: "med",
+  },
+  { table: "body_metrics", key: "source", noun: "body measurement" },
+  { table: "immunizations", key: "source", noun: "vaccine" },
+  {
+    table: "metric_samples",
+    key: "source",
+    extra: "metric = 'height_cm'",
+    noun: "height reading",
+  },
   {
     table: "metric_samples",
     key: "source",
     extra: "metric = 'head_circumference_cm'",
+    noun: "head-circumference reading",
   },
 ];
 
@@ -195,3 +233,12 @@ export const IMPORT_SIDE_EFFECTS: readonly ImportSideEffect[] = [
     countsTowardFootprint: false,
   },
 ];
+
+// "12 labs" / "1 lab" — one footprint table's contribution to the new-document line
+// (#1913 item 3), pluralized off the registry's own declaration.
+export function footprintKindLabel(
+  t: ImportFootprintTable,
+  count: number
+): string {
+  return count === 1 ? t.noun : (t.plural ?? `${t.noun}s`);
+}

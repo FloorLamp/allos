@@ -5,6 +5,7 @@ import {
   buildDigest,
   dedupeFlaggedByAnalyte,
   renderDigestMessage,
+  type DigestDocument,
   type DigestInput,
 } from "../notifications/digest";
 import type {
@@ -42,7 +43,7 @@ const empty: DigestInput = {
   adherence: null,
   weightKg: null,
   newFlaggedBiomarkers: [],
-  newDocumentLabels: [],
+  newDocuments: [],
 };
 
 describe("buildDigest", () => {
@@ -126,13 +127,21 @@ describe("buildDigest", () => {
         { name: "LDL", value: "160 mg/dL", flag: "high" },
         { name: "Ferritin", value: null, flag: "low" },
       ],
-      newDocumentLabels: ["Quest Labs"],
+      newDocuments: [
+        {
+          id: 7,
+          title: "Quest Labs",
+          date: "2026-07-28",
+          acquiredVia: null,
+          extracted: [{ noun: "labs", count: 12 }],
+        },
+      ],
     });
     const s = model?.sections.find((x) => x.heading === "New");
     expect(s?.lines).toEqual([
       "🚩 LDL 160 mg/dL (high)",
       "🚩 Ferritin (low)",
-      "📄 1 new document: Quest Labs",
+      "📄 New: Quest Labs (Jul 28) — 12 labs",
     ]);
   });
 
@@ -736,5 +745,77 @@ describe("buildDigest — the named data-plumbing line", () => {
       ],
     });
     expect(lines).toEqual(["🔌 Oura sync needs attention"]);
+  });
+});
+
+// ---- The new-document line says WHICH and WHAT (#1913 item 3) --------------
+//
+// "📄 1 new document: ccda" printed the raw doc_type: it named no document, reported
+// nothing that came out of it, and linked nowhere. Every fact the honest line needs was
+// already on the row (title, document_date, acquired-by portal) or in accounting the
+// import had already done (the footprint tally behind extracted_count).
+
+describe("buildDigest — the new-document line", () => {
+  const newLines = (over: Partial<DigestInput>): string[] =>
+    buildDigest({ ...empty, ...over })?.sections.find(
+      (s) => s.heading === "New"
+    )?.lines ?? [];
+
+  const doc = (over: Partial<DigestDocument> = {}): DigestDocument => ({
+    id: 42,
+    title: "Ochsner visit summary",
+    date: "2026-07-28",
+    acquiredVia: "Ochsner MyChart",
+    extracted: [
+      { noun: "labs", count: 12 },
+      { noun: "meds", count: 2 },
+    ],
+    ...over,
+  });
+
+  it("names the document, its date, where it came from and what it produced", () => {
+    expect(
+      newLines({
+        newDocuments: [doc()],
+        deepLinkBase: "https://allos.example",
+      })
+    ).toEqual([
+      "📄 New: Ochsner visit summary (Jul 28, via Ochsner MyChart) — 12 labs, 2 meds " +
+        "https://allos.example/import/42",
+    ]);
+  });
+
+  it("drops each half it was not given rather than carrying empty punctuation", () => {
+    expect(
+      newLines({
+        newDocuments: [doc({ date: null, acquiredVia: null, extracted: [] })],
+      })
+    ).toEqual(["📄 New: Ochsner visit summary"]);
+  });
+
+  it("omits the deep link when no public URL is configured", () => {
+    expect(newLines({ newDocuments: [doc()] })[0]).not.toContain("http");
+  });
+
+  it("summarizes per document up to a cap, then counts the rest", () => {
+    const lines = newLines({
+      newDocuments: [1, 2, 3, 4, 5].map((id) =>
+        doc({ id, title: `Doc ${id}`, acquiredVia: null, date: null })
+      ),
+    });
+    expect(lines).toEqual([
+      "📄 New: Doc 1 — 12 labs, 2 meds",
+      "📄 New: Doc 2 — 12 labs, 2 meds",
+      "📄 New: Doc 3 — 12 labs, 2 meds",
+      "📄 +2 more documents",
+    ]);
+  });
+
+  it("leaves a malformed stored date exactly as it is rather than inventing one", () => {
+    expect(
+      newLines({
+        newDocuments: [doc({ date: "2026-07", acquiredVia: null })],
+      })[0]
+    ).toContain("(2026-07)");
   });
 });
