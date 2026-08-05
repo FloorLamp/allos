@@ -1330,6 +1330,11 @@ and stays true regardless of why the reader is awake. It also does not need the
 wake anchor to be CORRECT, only to bound a window — which a behavioral claim
 never could.
 
+The "is anything even coming?" half is `isSleepTracking` (`lib/sleep-summary.ts`,
+#2102), shared with the morning digest's deferral rather than re-derived here —
+see `docs/internals/integrations-sync.md` for why the connection-side staleness
+signal structurally cannot answer it.
+
 Reach follows §1 and §2 unchanged: this is a RENDERED state only. No `notify_*`
 marker, no push, no digest line, and no stored state — a missing sync is not a
 safety signal, and the system may reduce contact unilaterally but never increase

@@ -60,15 +60,15 @@ import {
   type SleepRegularityOptions,
 } from "../sleep-regularity";
 import {
-  isSleepTracking,
   sleepWaitingState,
   MIN_ARRIVAL_SAMPLES,
-  TRACKING_LOOKBACK_NIGHTS,
   type SleepWaitingState,
 } from "../sleep-waiting";
 import { getIntegrationAttention, getLatestSyncEvent } from "./integrations";
 import {
   isLastNight,
+  isSleepTracking,
+  SLEEP_TRACKING_WINDOW_NIGHTS,
   lastNightSummary,
   latestDailySleepSummary,
   consistencyNights,
@@ -558,7 +558,7 @@ export function getSleepRegularityInsight(
 export function getSyncedSleepWakeDays(
   profileId: number,
   todayStr: string,
-  lookbackNights = TRACKING_LOOKBACK_NIGHTS
+  lookbackNights = SLEEP_TRACKING_WINDOW_NIGHTS
 ): string[] {
   const since = shiftDateStr(todayStr, -lookbackNights);
   return (

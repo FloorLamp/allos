@@ -1,4 +1,3 @@
-import { shiftDateStr } from "./date";
 import { DEFAULT_WAKE_MINUTES } from "./now-strip";
 
 // The morning waiting window (issue #2097) — ONE pure decision, consumed by the
@@ -78,54 +77,27 @@ export const MAX_WAITING_WINDOW_MIN = 180;
 // quoting a median built on three mornings.
 export const MIN_ARRIVAL_SAMPLES = 5;
 
-// ── the tracking predicate ───────────────────────────────────────────────────
+// ── the tracking predicate: CONSUMED, not re-derived ────────────────────────
 //
-// "Is this profile currently sleep-tracking?" — a DATA-side question, and it has to
-// be, because the connection-side one cannot answer it. `isStaleSyncEvent` watches
-// the CONNECTION's liveness and lib/integrations/staleness.ts is explicit that this
-// is deliberate ("a rest week with no activities is not staleness"), so it is
-// structurally blind to the abandoned device: watch in a drawer, phone still
-// syncing steps, provider green, only the sleep rows stopped.
+// "Is this profile currently sleep-tracking?" is `isSleepTracking`
+// (lib/sleep-summary.ts, #2102) — the data-side companion to `isLastNight`, sitting
+// beside it because they are two halves of one question: is last night in hand, and
+// is it even coming. The morning digest's one-hour deferral asks it too, so there is
+// exactly one answer to "has this person stopped" across the app. Nothing here
+// re-implements it.
 //
-// Left unguarded that failure RECURS rather than resolving — "no last night, past
-// typical wake" is true every morning once someone stops, and `typicalWakeTime`
-// keeps supplying a wake anchor for roughly two more weeks. The tile would ask
-// every morning for data that is never coming, then go quiet for the accidental
-// reason that the anchor ran out.
+// It is checked FIRST and outranks every waiting branch. Without that precedence
+// "no last night, past typical wake" is true every morning after someone stops
+// wearing their device, and `typicalWakeTime` keeps supplying a wake anchor for
+// roughly two more weeks — so the tile would ask every morning for data that is
+// never coming, then go quiet for the accidental reason that the anchor ran out.
 //
-// So the predicate is checked FIRST and outranks every waiting branch. Two
-// conditions, and they answer different failures:
-//
-//   1. The night immediately before last night is recorded. The waiting state is
-//      about ONE missing night — as soon as the gap is two nights deep, the profile
-//      has not "not synced yet", it has STOPPED, and asking again would be the
-//      recurrence above. This is what makes the abandoned device produce the
-//      waiting state on the FIRST morning and never again.
-//   2. At least 2 of the 3 nights before last night are recorded. A profile that
-//      records one night in three was never in a daily rhythm to be waiting on.
-//
-// Together they tolerate a forgotten charge (a hole at T−2 with T−1 recorded stays
-// tracking) while stopping after two consecutive misses rather than fourteen.
-//
-// The days passed in must come from a SYNCING source. A manual-only sleep logger
-// has nothing arriving, and "waiting" for something nobody is sending is exactly
-// the message that teaches people to ignore the surface.
-export const TRACKING_LOOKBACK_NIGHTS = 3;
-export const TRACKING_MIN_NIGHTS = 2;
-
-export function isSleepTracking(
-  syncedWakeDays: Iterable<string>,
-  todayStr: string
-): boolean {
-  const days = new Set(syncedWakeDays);
-  // Wake-day T is last night; the nights BEFORE it are T−1 … T−3.
-  const prior = [];
-  for (let back = 1; back <= TRACKING_LOOKBACK_NIGHTS; back++) {
-    prior.push(days.has(shiftDateStr(todayStr, -back)));
-  }
-  if (!prior[0]) return false;
-  return prior.filter(Boolean).length >= TRACKING_MIN_NIGHTS;
-}
+// What this surface DOES decide is what to feed it: only the wake-days a SYNCING
+// source recorded (see getSyncedSleepWakeDays). A manual-only sleep logger has
+// nothing arriving, and "waiting" for something nobody is sending is exactly the
+// message that teaches people to ignore the surface. The digest passes every
+// recorded night instead, because deferring a send is a different question from
+// promising an arrival.
 
 // ── the state machine ────────────────────────────────────────────────────────
 
@@ -138,7 +110,8 @@ export interface SleepWaitingSignals {
   minutesOfDay: number;
   // `typicalWakeTime(profileId)`, or null below its 14-night gate.
   wakeMinutes: number | null;
-  // `isSleepTracking(...)` over the profile's synced wake-days.
+  // `isSleepTracking(...)` (lib/sleep-summary.ts) over the profile's SYNCED
+  // wake-days — see the note above on why this surface narrows the input.
   tracking: boolean;
   // The measured median arrival lag in minutes, or null under MIN_ARRIVAL_SAMPLES.
   arrivalLagMin: number | null;

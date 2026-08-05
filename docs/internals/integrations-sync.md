@@ -902,13 +902,23 @@ _has this person stopped tracking sleep?_ Someone wears a tracker for months and
 then stops, but the phone keeps syncing steps: `ok=1` events with non-zero
 inserted counts, green badge, nothing stale. Only the sleep rows end.
 
-The morning waiting window (`lib/sleep-waiting.ts`) needs that answer, so it
-carries its own **data-side** predicate — `isSleepTracking` over the wake-days a
-SYNCING source recorded — and checks it BEFORE any clock branch. Unguarded the
-failure would not merely be a missing check, it would RECUR: "no last night, past
-typical wake" is true every morning once someone stops, and `typicalWakeTime`
-keeps supplying an anchor for roughly two more weeks. The predicate requires the
-night immediately before last night plus 2 of the 3 before it, so a forgotten
-charge is tolerated while an abandoned device asks once and never again. Its
-terminal state adds nothing new — the existing dated label, then the four-night
-stale CTA, with a genuinely dead connection still handled by Data → Review.
+The answer is a **data-side** predicate, `isSleepTracking` (`lib/sleep-summary.ts`,
+#2102) — the companion to `isLastNight`, since the two are halves of one question:
+is last night in hand, and is it even coming. At least 2 of the 3 nights BEFORE
+last night must carry a recorded night, which tolerates a forgotten charge while
+giving up after two or three consecutive misses. ONE predicate, two consumers: the
+morning digest's one-hour deferral (#2102) and the waiting window
+(`lib/sleep-waiting.ts`, #2097), so nothing can disagree about whether someone has
+stopped. The waiting window checks it BEFORE any clock branch; unguarded the
+failure would not merely be a missing check, it would RECUR — "no last night, past
+typical wake" is true every morning once someone stops, and `typicalWakeTime` keeps
+supplying an anchor for roughly two more weeks.
+
+The two consumers differ only in what they FEED it, and deliberately. The digest
+passes every recorded night: deferring a send is a question about whether to wait.
+The waiting window passes only the wake-days a SYNCING source recorded, because it
+PROMISES an arrival — a manual-only logger has nothing coming, and "waiting" for
+something nobody is sending is the message that teaches people to ignore the
+surface. Its terminal state adds nothing new: the existing dated label, then the
+four-night stale CTA, with a genuinely dead connection still handled by
+Data → Review.

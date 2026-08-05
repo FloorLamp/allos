@@ -7,7 +7,8 @@ import {
   getSleepWaitingState,
   getSyncedSleepWakeDays,
 } from "@/lib/queries/sleep";
-import { isSleepTracking, MIN_ARRIVAL_SAMPLES } from "@/lib/sleep-waiting";
+import { isSleepTracking } from "@/lib/sleep-summary";
+import { MIN_ARRIVAL_SAMPLES } from "@/lib/sleep-waiting";
 
 // DB INTEGRATION TIER — the morning waiting window's two data-side questions
 // (#2097): is this profile currently sleep-tracking, and how long after a night
@@ -125,21 +126,32 @@ describe("the abandoned device — the case the connection signal cannot see", (
     ).run(profileId, PROVIDER);
   }
 
-  it("asks on the FIRST morning after the last night, and never again", () => {
+  it("stops asking within DAYS of the last night, not the fortnight the wake anchor allows", () => {
     // Nights recorded through wake-day A; the watch goes in the drawer after it.
     const A = shiftDateStr(T, -1);
     for (let back = 1; back <= 6; back++) night(shiftDateStr(A, -(back - 1)));
     stillSyncingSteps();
 
     // Morning A+1 (today): last night is missing, the three before it are all
-    // there — this is the state the waiting copy is FOR.
+    // there — the state the waiting copy is FOR.
     expect(isSleepTracking(getSyncedSleepWakeDays(profileId, T), T)).toBe(true);
 
-    // Every morning after: the gap is two or more nights deep, so the profile has
-    // stopped rather than "not synced yet". Without this the tile would ask again
-    // every morning for roughly a fortnight — until typicalWakeTime ran out of
-    // nights, which is an accidental reason to go quiet, not a decided one.
-    for (let day = 2; day <= 14; day++) {
+    // A+2 is still tracking under the SHIPPED predicate (#2102): 2 of the 3 nights
+    // before last night are recorded. #2097's sketch asked for "at most the first
+    // morning", which its own suggested rule ("at least 2 of the 3") does not
+    // produce — #2102 settled that in favour of the stated rule, and this consumes
+    // it rather than forking a second definition of "has this person stopped".
+    const second = shiftDateStr(T, 1);
+    expect(
+      isSleepTracking(getSyncedSleepWakeDays(profileId, second), second)
+    ).toBe(true);
+
+    // From the third morning on it is off, and STAYS off. That is the regression
+    // that matters: without a data-side predicate at all, "no last night, past
+    // typical wake" stays true every morning, and typicalWakeTime keeps supplying
+    // an anchor for ~14 more days — so the tile would ask for a fortnight and then
+    // go quiet for the accidental reason that the anchor ran out.
+    for (let day = 3; day <= 14; day++) {
       const morning = shiftDateStr(T, day - 1);
       expect(
         isSleepTracking(getSyncedSleepWakeDays(profileId, morning), morning),

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isSleepTracking,
   sleepWaitingState,
   sleepWaitingDetail,
   ARRIVAL_GRACE_MIN,
@@ -18,6 +17,11 @@ import { DEFAULT_WAKE_MINUTES } from "@/lib/now-strip";
 const MIN = (h: number, m = 0) => h * 60 + m;
 const WAKE = MIN(6, 0);
 
+// `tracking` is the already-resolved answer from `isSleepTracking`
+// (lib/sleep-summary.ts, #2102) — the shared data-side predicate the digest's
+// deferral asks too. It is pinned by that module's own tests; what matters here is
+// the PRECEDENCE, i.e. that this state machine consults it before any clock branch.
+
 function signals(over: Partial<SleepWaitingSignals> = {}): SleepWaitingSignals {
   return {
     hasLastNight: false,
@@ -30,47 +34,6 @@ function signals(over: Partial<SleepWaitingSignals> = {}): SleepWaitingSignals {
     ...over,
   };
 }
-
-describe("isSleepTracking", () => {
-  // Wake-day T is last night; the nights before it are T−1 … T−3.
-  const T = "2026-08-05";
-  const nights = (...backs: number[]) =>
-    backs.map((b) => {
-      const d = new Date(Date.UTC(2026, 7, 5) - b * 86400000);
-      return d.toISOString().slice(0, 10);
-    });
-
-  it("is true when the three nights before last night are all recorded", () => {
-    expect(isSleepTracking(nights(1, 2, 3), T)).toBe(true);
-  });
-
-  it("tolerates ONE forgotten charge behind an otherwise unbroken run", () => {
-    // A hole at T−2 with T−1 recorded: a night off the wrist, not a stop.
-    expect(isSleepTracking(nights(1, 3), T)).toBe(true);
-  });
-
-  it("stops the moment the gap is TWO nights deep", () => {
-    // Last night is missing (that is why we are asking) and so is the night before
-    // it. That is not "not synced yet", that is stopped — and this is what makes
-    // the abandoned device produce the waiting state on ONE morning, not fourteen.
-    expect(isSleepTracking(nights(2, 3), T)).toBe(false);
-  });
-
-  it("refuses a profile that was never in a daily rhythm", () => {
-    // T−1 recorded but only one of three: nothing here is a nightly habit to be
-    // waiting on.
-    expect(isSleepTracking(nights(1), T)).toBe(false);
-  });
-
-  it("is false with nothing recorded at all", () => {
-    expect(isSleepTracking([], T)).toBe(false);
-  });
-
-  it("ignores nights outside the lookback, including last night itself", () => {
-    // Today's own wake-day says nothing about the three before it.
-    expect(isSleepTracking([T, ...nights(5, 6, 7)], T)).toBe(false);
-  });
-});
 
 describe("sleepWaitingState — precedence", () => {
   it("says nothing at all once last night is in hand", () => {
