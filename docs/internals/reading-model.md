@@ -153,6 +153,18 @@ Two consequences on `/trends/metric/[kind]`:
   2, editable in place — and the fold is empty for a metric whose readings already
   ARE observations, which would otherwise list each one twice.
 
+**The fold decides once (#2029).** `foldObservations` is that decision: the
+observation side is collapsed by `dedupeReadings`, then anything the stream's
+day/value coverage already answers for is dropped. `foldObservationPoints` is its
+chart projection, and `bodyMetricSeriesFold` returns both halves together — the
+points to plot and the observations that survived — so `/trends/metric/[kind]`
+takes its chart and its readings table from ONE call. It used to read the raw
+observations for the table, which meant a clinic value equal to the wearable's
+plotted once and listed twice: the same surface contradicting itself one scroll
+apart. The coverage test is deliberately source-BLIND, and that is the one place
+`dedupeReadings`' key cannot be applied verbatim — a stream series point is a daily
+fold of that day's rows, so it has no single provenance to compare.
+
 ## Phase 2 (shipped): one write core, one editability contract
 
 `lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes

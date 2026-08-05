@@ -17,6 +17,10 @@ import {
   activityToken,
   pairSignature,
   findActivityDuplicates,
+  activityWindowFrom,
+  crossMidnightCandidate,
+  EVENING_CANDIDATE_CLOCK,
+  MORNING_CANDIDATE_CLOCK,
   bodyMetricToken,
   sharedMeasures,
   conflictingMeasures,
@@ -29,6 +33,7 @@ import {
   type ActivityDupInput,
   type BodyMetricConflictInput,
 } from "@/lib/import-review/detect";
+import { MINUTES_PER_DAY } from "@/lib/clock-skew";
 
 // A fully-specified activity row for detection tests; overrides tweak one field.
 function act(over: Partial<ActivityDupInput>): ActivityDupInput {
@@ -804,6 +809,238 @@ describe("findActivityDuplicates — wrong-offset clock rescue (#2011)", () => {
     const cluster = clusterActivityDuplicates(pairs)[0];
     expect(cluster.confidence).toBe("medium");
     expect(autoMergeCluster(cluster.members)).toBeNull();
+  });
+});
+
+// #2056. The rescue above compares two clocks; everything that FED it grouped
+// candidates by calendar DATE, so a provider whose wrong offset pushes a
+// late-evening session across midnight filed the two copies under different days and
+// the classifier never saw the pair. Same defect, one date apart.
+describe("findActivityDuplicates — the offset that crosses midnight (#2056)", () => {
+  // The reported case: a 23:30 session, its copy reported at 00:30 the next day.
+  const evening = act({
+    id: 1,
+    date: "2026-07-08",
+    source: "health-connect",
+    external_id: "hc:night-1",
+    start_time: "23:30",
+    end_time: "23:55",
+    duration_min: 25,
+    distance_km: 2.1,
+  });
+  const nextMorningCopy = act({
+    id: 2,
+    date: "2026-07-09",
+    source: "strava",
+    external_id: "strava:night-1",
+    start_time: "00:30",
+    end_time: "00:55",
+    duration_min: 25,
+    distance_km: 2.11,
+  });
+
+  it("measures both windows from ONE midnight", () => {
+    // 23:30 on the base day, and 00:30 the NEXT day as minute 1470 — an hour later,
+    // not 23 hours earlier, which is the arithmetic the whole rescue turns on.
+    expect(activityWindowFrom(evening, evening.date)).toEqual({
+      start: 1410,
+      end: 1435,
+    });
+    expect(activityWindowFrom(nextMorningCopy, evening.date)).toEqual({
+      start: MINUTES_PER_DAY + 30,
+      end: MINUTES_PER_DAY + 55,
+    });
+  });
+
+  it("pairs the copies at MEDIUM and says the pair crosses midnight", () => {
+    const pairs = findActivityDuplicates([evening, nextMorningCopy]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("medium");
+    expect(pairs[0].reason).toBe(
+      "Across midnight, similar duration/distance — clocks differ by 1h"
+    );
+    // Both copies are in it, whichever way the tokens sorted.
+    expect([pairs[0].a.id, pairs[0].b.id].sort()).toEqual([1, 2]);
+  });
+
+  it("names the cluster by the day the session STARTED", () => {
+    const cluster = clusterActivityDuplicates(
+      findActivityDuplicates([evening, nextMorningCopy])
+    )[0];
+    expect(cluster.date).toBe("2026-07-08");
+    expect(cluster.members).toHaveLength(2);
+  });
+
+  it("still leaves it for a human — the windows do not genuinely overlap", () => {
+    const cluster = clusterActivityDuplicates(
+      findActivityDuplicates([evening, nextMorningCopy])
+    )[0];
+    expect(autoMergeCluster(cluster.members)).toBeNull();
+  });
+
+  it("does NOT pair two genuinely distinct next-day sessions", () => {
+    // A late run and a mid-morning one the next day: adjacent days, same type, two
+    // sources — and nowhere near the midnight between them, so never a candidate.
+    expect(
+      findActivityDuplicates([
+        evening,
+        { ...nextMorningCopy, start_time: "09:30", end_time: "09:55" },
+      ])
+    ).toHaveLength(0);
+    // …and an evening session that is not near midnight either.
+    expect(
+      findActivityDuplicates([
+        { ...evening, start_time: "19:30", end_time: "19:55" },
+        { ...nextMorningCopy, start_time: "20:30", end_time: "20:55" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair across midnight when the gap is not offset-shaped", () => {
+    // 23:30 → 00:05 is 35 minutes: near midnight, but no UTC offset differs by it.
+    expect(
+      findActivityDuplicates([
+        evening,
+        { ...nextMorningCopy, start_time: "00:05", end_time: "00:30" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT rescue a SAME-source pair across midnight", () => {
+    // One source is one clock, so an hour between its two rows is an hour of the
+    // person's actual day — the same stance the same-day path takes.
+    expect(
+      findActivityDuplicates([
+        { ...evening, source: "strava", external_id: "strava:night-a" },
+        { ...nextMorningCopy, external_id: "strava:night-b" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair across midnight when the types differ", () => {
+    expect(
+      findActivityDuplicates([
+        evening,
+        { ...nextMorningCopy, type: "strength" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT reach a day further than one", () => {
+    expect(
+      findActivityDuplicates([
+        evening,
+        { ...nextMorningCopy, date: "2026-07-10" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  // The widening is a CANDIDATE gate, and a candidate gate that grows without bound
+  // is a scan of the whole history. Pin what it admits.
+  describe("crossMidnightCandidate is bounded to the near-midnight window", () => {
+    const at = (date: string, start_time: string) => ({ date, start_time });
+
+    it("admits only adjacent days, in either order", () => {
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "23:30"),
+          at("2026-07-09", "00:30")
+        )
+      ).toBe(true);
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-09", "00:30"),
+          at("2026-07-08", "23:30")
+        )
+      ).toBe(true);
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "23:30"),
+          at("2026-07-08", "23:50")
+        )
+      ).toBe(false);
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "23:30"),
+          at("2026-07-10", "00:30")
+        )
+      ).toBe(false);
+    });
+
+    it("admits exactly the MAX_CLOCK_OFFSET_MIN band either side of midnight", () => {
+      // The thresholds are DERIVED from the offset the rescue would forgive, so the
+      // candidate set can never be wider than the classifier's own reach.
+      expect(EVENING_CANDIDATE_CLOCK).toBe("22:00");
+      expect(MORNING_CANDIDATE_CLOCK).toBe("02:00");
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "22:00"),
+          at("2026-07-09", "02:00")
+        )
+      ).toBe(true);
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "21:59"),
+          at("2026-07-09", "02:00")
+        )
+      ).toBe(false);
+      expect(
+        crossMidnightCandidate(
+          at("2026-07-08", "22:00"),
+          at("2026-07-09", "02:01")
+        )
+      ).toBe(false);
+    });
+
+    it("admits nothing without a clock on BOTH sides", () => {
+      expect(
+        crossMidnightCandidate(
+          { date: "2026-07-08", start_time: null },
+          at("2026-07-09", "00:30")
+        )
+      ).toBe(false);
+      expect(
+        crossMidnightCandidate(at("2026-07-08", "23:30"), {
+          date: "2026-07-09",
+          start_time: null,
+        })
+      ).toBe(false);
+    });
+  });
+
+  it("does not multiply the candidate pairs on an ordinary week", () => {
+    // Seven consecutive days, each carrying a manual and a Strava evening session at
+    // ordinary hours. That is 7 same-day cross-source buckets and 6 adjacent-day
+    // ones; NONE of the latter may become a pair, so the detection count is exactly
+    // the same-day answer and the widening costs nothing on real data.
+    const rows: ActivityDupInput[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = `2026-07-0${i + 1}`;
+      rows.push(
+        act({
+          id: i * 2 + 1,
+          date,
+          source: null,
+          start_time: "18:00",
+          end_time: "18:30",
+          duration_min: 30,
+          distance_km: 5,
+        }),
+        act({
+          id: i * 2 + 2,
+          date,
+          source: "strava",
+          external_id: `strava:day-${i}`,
+          start_time: "18:05",
+          end_time: "18:35",
+          duration_min: 30,
+          distance_km: 5.05,
+        })
+      );
+    }
+    const pairs = findActivityDuplicates(rows);
+    expect(pairs).toHaveLength(7);
+    expect(pairs.every((p) => p.a.date === p.b.date)).toBe(true);
   });
 });
 

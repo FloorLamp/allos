@@ -80,6 +80,62 @@ SAME-source path gets no rescue at all — one source is one clock, so its two r
 cannot disagree about the offset, and an hour between them is an hour of the
 person's actual day.
 
+**The offset question belongs to INGEST, and now has ONE owner (#2088).** Everything
+above describes a DETECTOR forgiving a provider's wrong clock — and that is how the
+family kept producing issues: #2011/#2055 taught the detector whole hours,
+#2063/#2092 taught it the fractional offsets the world actually uses, and #2056
+found that the same gap across midnight files the two copies under different
+profile-local dates, where the detector's date bucket could not reach them. Three
+symptoms of one question, answered in three places.
+
+`lib/clock-skew.ts` is that one place. It owns the plausible-offset table
+(`PLAUSIBLE_OFFSET_MINUTE_PARTS` + the 30–120 minute bounds), the continuous-clock
+arithmetic that measures two dated readings from ONE midnight, and
+`canonicalizeProviderClock`. `lib/import-review/detect.ts` consumes it — its
+historical `CLOCK_OFFSET_MINUTE_PARTS` / `MIN_`/`MAX_CLOCK_OFFSET_MIN` /
+`clockOffsetMinutes` / `formatClockOffset` names remain, now as the primitive's
+answers rather than a second copy of them.
+
+Canonicalization has **two branches, and the difference between them is evidence**:
+
+- **A true INSTANT needs none.** Strava's `start_date_local` is
+  `start_date + utc_offset`, and that offset is a property of the athlete's account
+  as Strava understood it — stale after a move, wrong across a DST boundary, wrong
+  again when a third party pushed the activity in. That is precisely how #2011's
+  duplicate arrived an hour early. `start_date` is a true instant, so given the
+  profile's own timezone the local day and clock follow with nothing inferred:
+  `lib/integrations/strava.ts` takes that answer at ingest, so the row lands where it
+  belongs the FIRST time instead of being rescued later. Idempotent (an
+  already-canonical row reports `changed: false`, and the shared upsert then counts
+  it unchanged) and edit-lock-respecting (`isEditLocked` skips a hand-corrected row
+  before any of this).
+- **A bare WALL CLOCK needs cross-source evidence, and still names no liar.** With no
+  evidence the primitive refuses (`no-evidence`) and the row is left exactly as
+  reported — never a speculative shift on a lone row. With evidence it reports a
+  `skew`: the disagreement and its size, and nothing about which provider was wrong,
+  because #2055 already ruled that nothing in a pair of wall clocks says so. That
+  verdict is what the cross-source rescue renders in Data → Review.
+
+**A wrong offset can move the DATE too (#2056).** A pair the loaders never load is a
+pair nothing can canonicalize, and the loaders group by calendar date — the SQL
+pre-filter in `loadActivityDupRows`, its `SELECT *` twin in
+`lib/import-review/auto-merge.ts`, and the pure bucketing in
+`findActivityDuplicates`. So the CANDIDATE phase reaches one day either side, by the
+primitive's own window: consecutive dates, the earlier row at or after
+`EVENING_CANDIDATE_CLOCK` (22:00) and the later at or before
+`MORNING_CANDIDATE_CLOCK` (02:00), both derived from `MAX_PLAUSIBLE_OFFSET_MIN` so
+the candidate set can never reach further than the classifier would forgive.
+`activityWindowFrom` then measures both windows from one midnight, so a 23:30/00:30
+pair reads as the one-hour gap it is rather than a 23-hour one. Nothing else changes:
+cross-source only (one source is one clock), same type, the same offset SHAPE, the
+same both-measures proximity, and the same MEDIUM verdict — `autoMergeCluster`
+measures overlap on each row's own clock, which two rows an offset apart never have,
+so a cross-midnight cluster always waits for a person. The two loaders share the
+widening rather than copying it (`lib/import-review/candidate-sql.ts`), because a
+pre-filter that drifted between Data → Review and the unattended auto-merge would let
+them see different worlds. A cross-midnight cluster is named by the day the session
+STARTED.
+
 **Which clock survives the merge is the person's call, not a guess (#2011).** The
 fold rule already settles it mechanically: the keeper's own `start_time`/`end_time`
 win outright and the discarded row only ever fills a GAP, so keeping the

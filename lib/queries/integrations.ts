@@ -48,6 +48,10 @@ import {
   type BodyMetricConflictPair,
   type PairDecision,
 } from "@/lib/import-review/detect";
+import {
+  ACTIVITY_MIDNIGHT_CANDIDATE_SQL,
+  ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
+} from "@/lib/import-review/candidate-sql";
 
 // Read side of the integration sync-event debug log. Every statement here is
 // PROFILE-SCOPED (WHERE profile_id = ? AND provider = ?): the setup-page panels and
@@ -331,10 +335,19 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
 // (COUNT(DISTINCT source) ignores NULLs). This deliberately does NOT fire for a
 // bucket whose only repeat is two MANUAL rows — those pairs are excluded by design
 // (sameSourceDuplicate / crossSource), so loading them would be pure waste.
+//
+// (c), since #2056: the ADJACENT-DAY buckets. Grouping on the calendar date assumed
+// the two copies of one session land on the same day, which a wrong UTC offset that
+// pushes a late-evening activity across midnight makes false — and a pair the loader
+// never returns is a pair the classifier never sees. The widening is bounded to the
+// near-midnight window the rescue could forgive anyway
+// (ACTIVITY_MIDNIGHT_CANDIDATE_SQL); the detector's own narrowness still does the
+// filtering.
 function loadActivityDupRows(profileId: number): ActivityDupRow[] {
   return db
     .prepare(
-      `SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
+      `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
+       SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
               a.duration_min, a.distance_km, a.start_time, a.end_time,
               a.elevation_m, a.avg_hr, a.max_hr, a.avg_speed_kmh, a.max_speed_kmh,
               a.relative_effort, a.avg_power_w, a.max_power_w,
@@ -345,11 +358,18 @@ function loadActivityDupRows(profileId: number): ActivityDupRow[] {
                 GROUP BY date, type
                HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1
                    OR SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END)
-                        > COUNT(DISTINCT source)) m
+                        > COUNT(DISTINCT source)
+               UNION SELECT evening_date, type FROM midnight
+               UNION SELECT morning_date, type FROM midnight) m
            ON m.date = a.date AND m.type = a.type
         WHERE a.profile_id = ?`
     )
-    .all(profileId, profileId) as ActivityDupRow[];
+    .all(
+      profileId,
+      ...ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
+      profileId,
+      profileId
+    ) as ActivityDupRow[];
 }
 
 // Body-metric conflicts include duplicate MANUAL rows (same date, same source),

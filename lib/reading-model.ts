@@ -410,29 +410,69 @@ export interface FoldedPoint {
   observed?: boolean;
 }
 
+// The coverage key a stream series and an observation are compared on: the day and
+// the value, and nothing else.
+//
+// It is deliberately SOURCE-BLIND, which is the one place `dedupeReadings`' key
+// cannot be applied verbatim: a stream series point is a DAILY FOLD of that day's
+// rows (source-priority resolved upstream), so it has no single provenance to
+// compare — asking it for one would invent an answer. Every comparison where both
+// sides really are `Reading`s goes through `dedupeReadings`; this is that same key
+// projected onto the one side that lost its source on the way to becoming a chart
+// point.
+function streamCoverageKey(p: { date: string; value: number }): string {
+  return `${p.date}|${p.value}`;
+}
+
 /**
- * Fold same-identity observations into a stream series (#1996 part 2).
+ * THE fold decision (#2029): which same-identity observations a stream series does
+ * not already carry, oldest first.
  *
  * An observation whose (date, value) already appears in the stream is the SAME
  * reading presented twice — the stream series is a daily fold of rows that may
  * include a manual entry an import also produced — so it is dropped rather than
- * charted beside itself. Everything else is kept and MARKED: a clinic-measured
- * reading is a real reading of this quantity, and leaving it out is exactly the
- * incompleteness #1996 reports.
+ * shown beside itself. Everything else survives: a clinic-measured reading is a
+ * real reading of this quantity, and leaving it out is exactly the incompleteness
+ * #1996 reports.
+ *
+ * ONE DECISION, TWO CONSUMERS. The metric page's chart and the readings table under
+ * it are two views of the same day, and until this function existed they answered
+ * "how many readings are there" differently — the chart folded, the table
+ * concatenated, and the surface contradicted itself one scroll apart (#2029). Both
+ * now read this, so the disagreement has nowhere to live.
+ *
+ * The observation side is collapsed by `dedupeReadings` first, so two spellings of
+ * one clinical reading (#2005) cannot survive as two either.
  *
  * The stream stays authoritative for its own days: nothing here rewrites a
  * streamed value.
+ */
+export function foldObservations(
+  stream: readonly { date: string; value: number }[],
+  observations: readonly Reading[]
+): Reading[] {
+  const streamed = new Set(stream.map(streamCoverageKey));
+  return dedupeReadings(sortReadings(observations)).filter(
+    (r) => !streamed.has(streamCoverageKey(r))
+  );
+}
+
+/**
+ * The chart projection of `foldObservations`: the stream's points plus the
+ * surviving observations, each MARKED so a surface can say "a clinic reading is not
+ * a wearable reading" instead of quietly averaging the two ideas.
  */
 export function foldObservationPoints(
   stream: readonly { date: string; value: number }[],
   observations: readonly Reading[]
 ): FoldedPoint[] {
-  const streamed = new Set(stream.map((p) => `${p.date}|${p.value}`));
   const folded: FoldedPoint[] = [
     ...stream.map((p) => ({ date: p.date, value: p.value })),
-    ...sortReadings(observations)
-      .filter((r) => !streamed.has(`${r.date}|${r.value}`))
-      .map((r) => ({ date: r.date, value: r.value, observed: true })),
+    ...foldObservations(stream, observations).map((r) => ({
+      date: r.date,
+      value: r.value,
+      observed: true,
+    })),
   ];
   // Stable by day, stream point first on a day that carries both.
   return folded.sort(

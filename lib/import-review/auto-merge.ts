@@ -25,6 +25,10 @@ import {
   ACTIVITY_DOMAIN,
   type ActivityDupInput,
 } from "@/lib/import-review/detect";
+import {
+  ACTIVITY_MIDNIGHT_CANDIDATE_SQL,
+  ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
+} from "@/lib/import-review/candidate-sql";
 import { writeActivityFold } from "@/lib/merge-activity";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import {
@@ -41,22 +45,31 @@ type FullActivityRow = ActivityDupInput &
 
 // Load the profile's duplicate-candidate activity rows in FULL (SELECT *) — the auto
 // decision needs `edited` + all fold fields, unlike the pruned display loader. Same
-// (date, type) bucket pre-filter as loadActivityDupRows so a deep history isn't
-// scanned in JS. Profile-scoped.
+// bucket pre-filter as loadActivityDupRows — the same `(date, type)` grouping and the
+// same #2056 adjacent-day widening, which is shared rather than copied so the
+// unattended path and Data → Review can't come to see different worlds. Profile-scoped.
 function loadFullCandidateRows(profileId: number): FullActivityRow[] {
   return db
     .prepare(
-      `SELECT a.* FROM activities a
+      `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
+       SELECT a.* FROM activities a
          JOIN (SELECT date, type FROM activities
                 WHERE profile_id = ?
                 GROUP BY date, type
                HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1
                    OR SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END)
-                        > COUNT(DISTINCT source)) m
+                        > COUNT(DISTINCT source)
+               UNION SELECT evening_date, type FROM midnight
+               UNION SELECT morning_date, type FROM midnight) m
            ON m.date = a.date AND m.type = a.type
         WHERE a.profile_id = ?`
     )
-    .all(profileId, profileId) as FullActivityRow[];
+    .all(
+      profileId,
+      ...ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
+      profileId,
+      profileId
+    ) as FullActivityRow[];
 }
 
 // Auto-collapse every eligible high-confidence duplicate cluster for one profile.

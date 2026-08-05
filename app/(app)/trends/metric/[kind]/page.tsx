@@ -28,7 +28,7 @@ import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
-import { fullBodyMetricSeries } from "@/lib/body-metric-series";
+import { bodyMetricSeriesFold } from "@/lib/body-metric-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { isGoalLive } from "@/lib/goals";
 import {
@@ -68,7 +68,6 @@ import { readingTarget, readingTargetToken } from "@/lib/reading-placement";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { pediatricBpContextFor } from "@/lib/queries/bp-context";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
-import { getMetricObservations } from "@/lib/queries/readings";
 import type { Reading } from "@/lib/reading-model";
 import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { PediatricBpCard } from "@/components/PediatricBpCard";
@@ -331,16 +330,17 @@ export default async function BodyMetricDetailPage(props: {
       : searchParams.range
   );
 
-  // COMPLETENESS (#1996 part 2). A metric's readings are the ones of its
-  // IDENTITY, not the ones in its table: a clinic-measured resting HR sits in
-  // `medical_records` and never reached the daily chart, because the chart read
-  // `body_metrics`. The SERIES folds them in upstream (lib/body-metric-series.ts,
-  // so the tile and this page cannot disagree); this read is the same rows for the
-  // readings TABLE, and it costs nothing — the observation query is request-cached.
+  // COMPLETENESS (#1996 part 2) THROUGH ONE FOLD (#2029). A metric's readings are
+  // the ones of its IDENTITY, not the ones in its table: a clinic-measured resting
+  // HR sits in `medical_records` and never reached the daily chart, because the
+  // chart read `body_metrics`. The SERIES folds them in upstream
+  // (lib/body-metric-series.ts, so the tile and this page cannot disagree) — and it
+  // hands back WHICH observations it plotted, so the readings table below lists
+  // exactly those. Reading the raw observations here instead is what let the chart
+  // drop a same-day equal-value clinic reading while the table still listed it.
   // Empty for a metric whose readings already ARE observations, which would
   // otherwise list each one twice.
-  const observations = getMetricObservations(profile.id, kind);
-  const fullSeries = fullBodyMetricSeries(
+  const { points: fullSeries, observations } = bodyMetricSeriesFold(
     kind,
     profile.id,
     weightUnit,
@@ -563,7 +563,9 @@ export default async function BodyMetricDetailPage(props: {
           {/* The chart owns the primary desktop column. BodyTrendCharts normally
             lays overview cards out two-up; this detail page explicitly keeps its
             one chart full-width so there is never an empty sibling column. */}
-          <div data-testid="metric-detail-chart">
+          {/* The plotted point count, exposed so the readings table below can be
+            held to the SAME fold in a browser test (#2029). */}
+          <div data-testid="metric-detail-chart" data-points={windowed.length}>
             {windowed.length === 0 ? (
               <div className="card">
                 <EmptyState message="No readings in this range." />

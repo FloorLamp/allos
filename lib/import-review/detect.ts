@@ -22,6 +22,23 @@
 // sync never recreates). A sorted join of the two tokens is the pair signature,
 // and it re-derives identically after a merge+re-sync, so the resolution sticks.
 
+import { daysBetweenDateStr } from "../date";
+import {
+  canonicalizeProviderClock,
+  clockAtMinute,
+  formatOffset,
+  minutesFromBase,
+  nearMidnightCandidate,
+  plausibleOffsetMinutes,
+  EVENING_CANDIDATE_MIN,
+  MORNING_CANDIDATE_MIN,
+  MAX_PLAUSIBLE_OFFSET_MIN,
+  MIN_PLAUSIBLE_OFFSET_MIN,
+  MINUTES_PER_DAY,
+  PLAUSIBLE_OFFSET_MINUTE_PARTS,
+  type ClockReading,
+} from "../clock-skew";
+
 export type PairConfidence = "high" | "medium";
 
 // The three terminal decisions a user can record on a detected pair. "merged" is a
@@ -162,6 +179,32 @@ export function activityWindow(
   return { start, end: end != null && end >= start ? end : start };
 }
 
+// A row's start as the primitive's dated wall-clock reading — the shape every
+// clock question is asked in (#2088). Null when the row states no usable clock.
+export function activityClockReading(
+  r: Pick<ActivityDupInput, "date" | "start_time">
+): ClockReading | null {
+  const minutes = parseMinutesOfDay(r.start_time);
+  return minutes == null ? null : { date: r.date, minutes };
+}
+
+// The same window, measured from midnight of `baseDate` instead of the row's own
+// midnight — so two rows on ADJACENT days are compared on ONE continuous clock
+// (#2056, through the primitive's `minutesFromBase`). Identical to `activityWindow`
+// whenever the row IS on the base date, which is every same-day pair. Null when the
+// row has no usable start time, or when either date is unparseable (a gap we
+// decline to guess at).
+export function activityWindowFrom(
+  r: Pick<ActivityDupInput, "date" | "start_time" | "end_time">,
+  baseDate: string
+): TimeWindow | null {
+  const w = activityWindow(r);
+  if (!w) return null;
+  const start = minutesFromBase({ date: r.date, minutes: w.start }, baseDate);
+  if (start == null) return null;
+  return { start, end: start + (w.end - w.start) };
+}
+
 // Closed-interval overlap (touching endpoints count — a point inside/at the edge of
 // a window overlaps).
 export function windowsOverlap(x: TimeWindow, y: TimeWindow): boolean {
@@ -211,64 +254,68 @@ export function proximityMatch(
   return compared != null && compared > 0;
 }
 
-// The widest clock disagreement the cross-source rescue below will forgive. One
-// hour is the common case (a non-DST utc_offset, a DST boundary); two covers a
-// doubly-wrong offset and travel. Beyond that the "same activity, wrong clock"
-// reading stops being more plausible than "two sessions".
-export const MAX_CLOCK_OFFSET_MIN = 120;
-
-// The narrowest one. Half an hour, not an hour, because the world's UTC offsets are
-// not all whole hours (#2063) — see CLOCK_OFFSET_MINUTE_PARTS.
-export const MIN_CLOCK_OFFSET_MIN = 30;
-
-// ── WHICH GAPS ARE OFFSET-SHAPED (#2063) ─────────────────────────────────────
+// ── THE OFFSET ARITHMETIC LIVES IN lib/clock-skew.ts (#2088) ─────────────────
 //
-// The rescue's premise is "the right instant against the wrong UTC offset", so the
-// gaps it forgives are the gaps REAL UTC OFFSETS differ by — and several of those
-// are not whole hours: India +5:30, Newfoundland -3:30, Nepal +5:45, Chatham +12:45,
-// Eucla +8:45. A provider that resolves one of those against a whole-hour neighbour
-// lands its copy 30 or 45 minutes off, which the original `gap % 60 !== 0` guard
-// rejected outright — the same defect this rescue exists for, silently unfixed for
-// every household in those zones.
-//
-// So the admitted gaps are a whole number of hours PLUS one of these minute parts.
-// 15 is deliberately absent: it is reachable in principle (Chatham read as +13:00,
-// Eucla as +9:00 — populations in the hundreds), but the quarter hour is also the
-// grid people actually schedule on, so admitting it would spend the safety margin
-// below on the least likely misresolution in the world. That residual is the
-// documented out-of-scope case, not an oversight.
-export const CLOCK_OFFSET_MINUTE_PARTS: readonly number[] = [0, 30, 45];
+// The rescue below is one CONSUMER of a question that belongs to ingest: "does this
+// provider's timestamp disagree with the profile's clock by a plausible UTC
+// offset?". The detector used to answer it privately — its own minute-part table,
+// its own bounds, its own same-day-only frame — which is why the family kept
+// producing issues (#2011, #2063, #2056) that each widened THIS file's reach. The
+// table, the bounds and the cross-date arithmetic now have one home and one test
+// surface; these names stay so every existing caller and doc still reads.
+export { PLAUSIBLE_OFFSET_MINUTE_PARTS as CLOCK_OFFSET_MINUTE_PARTS };
+export const MAX_CLOCK_OFFSET_MIN = MAX_PLAUSIBLE_OFFSET_MIN;
+export const MIN_CLOCK_OFFSET_MIN = MIN_PLAUSIBLE_OFFSET_MIN;
 
-// Whether two clock windows are separated by an OFFSET-SHAPED gap — the fingerprint
-// of a provider reporting the right instant against the wrong UTC offset (issue
-// #2011, widened by #2063). Returns the gap in MINUTES, or null when it is not one
-// of those. Measured on the START minute: a shifted clock moves the whole window
-// rigidly, so the start carries the signal and the end adds only the two rows'
-// duration disagreement as noise.
-//
-// The shape requirement is the entire safety margin. Two genuinely distinct
-// back-to-back sessions of similar length do not begin an exact offset apart; an
-// offset copy of ONE session does, exactly.
+// The primitive's decision applied to two clock windows. Measured on the START
+// minute: a shifted clock moves the whole window rigidly, so the start carries the
+// signal and the end adds only the two rows' duration disagreement as noise. The
+// windows are already on ONE continuous axis (activityWindowFrom), so this reads a
+// midnight crossing as the hour it is.
 export function clockOffsetMinutes(
   x: TimeWindow,
   y: TimeWindow
 ): number | null {
-  const gap = Math.abs(x.start - y.start);
-  if (!CLOCK_OFFSET_MINUTE_PARTS.includes(gap % 60)) return null;
-  return gap >= MIN_CLOCK_OFFSET_MIN && gap <= MAX_CLOCK_OFFSET_MIN
-    ? gap
-    : null;
+  return plausibleOffsetMinutes(Math.abs(x.start - y.start));
+}
+
+// ── WHEN THE WRONG OFFSET CROSSES MIDNIGHT (#2056) ───────────────────────────
+//
+// The rescue compares two rows' clocks. Everything that FEEDS it — the SQL
+// pre-filter and the pure bucketing below — grouped candidates by calendar DATE,
+// which quietly assumed the two copies of one session land on the same day. A
+// provider whose wrong UTC offset pushes a late-evening activity across midnight
+// breaks exactly that assumption: a 23:30 session reported at 00:30 the next day is
+// the SAME defect, one hour and one date apart, and the classifier never saw the
+// pair at all.
+//
+// A pair the loaders never load is a pair nothing can canonicalize, so the CANDIDATE
+// phase reaches one day either side. The window it reaches by is the primitive's
+// (`nearMidnightCandidate`, bounded by MAX_PLAUSIBLE_OFFSET_MIN), not a second
+// threshold of this file's own — which is the whole point of #2088. Nothing else
+// about the classification changes.
+export {
+  EVENING_CANDIDATE_CLOCK,
+  MORNING_CANDIDATE_CLOCK,
+} from "../clock-skew";
+
+// Are these two rows an adjacent-day pair sitting close enough to the midnight
+// between them to be one session split by a wrong offset? A candidate is admitted on
+// its CLOCK, so a row without one has nothing to admit it.
+export function crossMidnightCandidate(
+  a: Pick<ActivityDupInput, "date" | "start_time">,
+  b: Pick<ActivityDupInput, "date" | "start_time">
+): boolean {
+  return nearMidnightCandidate(
+    activityClockReading(a),
+    activityClockReading(b)
+  );
 }
 
 // The gap as a person reads it in the pair's reason — "1h", "30m", "1h30m". Whole
 // hours keep their historical spelling, so widening the rescue changed no existing
 // message.
-export function formatClockOffset(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h${m}m`;
-}
+export const formatClockOffset = formatOffset;
 
 // Build a detected pair from two rows: the stable order-independent signature plus
 // a deterministic a/b order (the row whose token sorts first is `a`). Pure.
@@ -319,27 +366,43 @@ function buildPair<T extends ActivityDupInput>(
 // Same-source pairs get NO such rescue (see classifySameSourcePair): one source is one
 // clock, so its two rows cannot disagree about the offset, and an offset-shaped gap
 // there really is two sessions.
+// Both windows are measured from ONE midnight — `a`'s — so an adjacent-day pair
+// (#2056) is compared on the same continuous clock a same-day pair always was, and
+// the skew verdict comes from the shared primitive rather than from arithmetic this
+// file keeps for itself (#2088). `b` IS the cross-source evidence the primitive
+// requires: a lone row can never reach this branch, which is the conservative
+// default #2055 established, now enforced by the primitive's own `no-evidence`
+// refusal instead of by the shape of the caller.
 function classifyCrossSourcePair<T extends ActivityDupInput>(
   a: T,
   b: T
 ): ActivityDupPair<T> | null {
-  const wa = activityWindow(a);
-  const wb = activityWindow(b);
+  const wa = activityWindowFrom(a, a.date);
+  const wb = activityWindowFrom(b, a.date);
+  // "Same day" for the reason line, which is what a person reads it as; an
+  // adjacent-day pair says so instead, because the two copies really are filed on
+  // different dates and the merge will move one of them.
+  const span = a.date === b.date ? "Same day" : "Across midnight";
   if (wa && wb) {
     if (windowsOverlap(wa, wb))
       return buildPair(a, b, "high", "Overlapping start/end times");
-    const offsetMin = clockOffsetMinutes(wa, wb);
-    if (offsetMin != null && proximityComparisons(a, b) === 2)
+    const verdict = canonicalizeProviderClock({
+      reported: activityClockReading(a),
+      evidence: [activityClockReading(b)].filter(
+        (r): r is ClockReading => r != null
+      ),
+    });
+    if (verdict.kind === "skew" && proximityComparisons(a, b) === 2)
       return buildPair(
         a,
         b,
         "medium",
-        `Same day, similar duration/distance — clocks differ by ${formatClockOffset(offsetMin)}`
+        `${span}, similar duration/distance — clocks differ by ${formatOffset(verdict.offsetMinutes)}`
       );
     return null;
   }
   if (proximityMatch(a, b))
-    return buildPair(a, b, "medium", "Same day, similar duration/distance");
+    return buildPair(a, b, "medium", `${span}, similar duration/distance`);
   return null;
 }
 
@@ -363,11 +426,12 @@ function classifySameSourcePair<T extends ActivityDupInput>(
   return buildPair(a, b, "high", "Overlapping times from one source");
 }
 
-// Find duplicate activity pairs within each DATE bucket. Two paths: CROSS-SOURCE
-// pairs (high overlap OR medium proximity) and, since issue #64, SAME-SOURCE pairs
-// (high overlap only). Generic over the row so callers keep their display fields
-// (title, …). Ordered deterministically: HIGH confidence first, then by date desc,
-// then signature.
+// Find duplicate activity pairs within each DATE bucket — plus, since #2056, the
+// bounded set of ADJACENT-DAY cross-source pairs sitting either side of one
+// midnight. Two paths: CROSS-SOURCE pairs (high overlap OR medium proximity) and,
+// since issue #64, SAME-SOURCE pairs (high overlap only). Generic over the row so
+// callers keep their display fields (title, …). Ordered deterministically: HIGH
+// confidence first, then by date desc, then signature.
 //
 // The bucket is date-only, and the ACTIVITY TYPE gate now applies to the
 // cross-source path ALONE. Grouping on (date, type) assumed the two records of one
@@ -408,6 +472,25 @@ export function findActivityDuplicates<T extends ActivityDupInput>(
           : sameSourceDuplicate(a, b)
             ? classifySameSourcePair(a, b)
             : null;
+        if (pair) out.push(pair);
+      }
+    }
+  }
+  // The ADJACENT-DAY candidates (#2056), which the date bucket above can't reach:
+  // a wrong offset that pushes a late-evening activity across midnight files the
+  // two copies under different dates. CROSS-SOURCE only, same type, and only within
+  // MAX_CLOCK_OFFSET_MIN of the midnight between them — two providers can disagree
+  // about the offset, one provider's clock cannot (see classifySameSourcePair), and
+  // a session that starts at teatime was never pushed across anything. ISO dates
+  // sort chronologically, so consecutive keys are the only pairs to consider.
+  const dates = [...groups.keys()].sort();
+  for (let k = 1; k < dates.length; k++) {
+    if (daysBetweenDateStr(dates[k - 1], dates[k]) !== 1) continue;
+    for (const a of groups.get(dates[k - 1]) as T[]) {
+      for (const b of groups.get(dates[k]) as T[]) {
+        if (!crossSource(a, b) || a.type !== b.type) continue;
+        if (!crossMidnightCandidate(a, b)) continue;
+        const pair = classifyCrossSourcePair(a, b);
         if (pair) out.push(pair);
       }
     }
@@ -694,9 +777,9 @@ export function preferActivityKeeper(
 // ── N-way clustering + generalized keeper (issue #1081) ───────────────────────
 
 // A connected group of duplicate rows — the transitive closure of the pairwise
-// detections within one (date, type) bucket. Four cross-source rows that pairwise
-// match land in ONE cluster (instead of C(4,2)=6 pair cards); two genuinely distinct
-// non-overlapping same-day sessions were never paired, so they stay TWO clusters.
+// detections. Four cross-source rows that pairwise match land in ONE cluster
+// (instead of C(4,2)=6 pair cards); two genuinely distinct non-overlapping same-day
+// sessions were never paired, so they stay TWO clusters.
 export interface ActivityDupCluster<
   T extends ActivityDupInput = ActivityDupInput,
 > {
@@ -715,7 +798,10 @@ export interface ActivityDupCluster<
   pairSignatures: string[];
   // A short human hint (from the highest-confidence constituent pair).
   reason: string;
-  // The bucket date (every member shares date + type).
+  // The cluster's EARLIEST member date. Members share a type, and normally a date
+  // too — but a cross-midnight cluster (#2056) is one session filed under two
+  // dates, so the cluster is named by the day it started rather than by whichever
+  // member happened to sort first.
   date: string;
 }
 
@@ -790,7 +876,10 @@ export function clusterActivityDuplicates<T extends ActivityDupInput>(
       members,
       pairSignatures: clusterPairs.map((p) => p.signature).sort(),
       reason,
-      date: members[0].date,
+      date: members.reduce(
+        (lo, m) => (m.date < lo ? m.date : lo),
+        members[0].date
+      ),
     });
   }
   const rank: Record<PairConfidence, number> = { high: 0, medium: 1 };
@@ -882,7 +971,10 @@ export function autoMergeCluster<T extends ActivityDupInput>(
   // Cross-source group only — two provenances must be present.
   const provs = new Set(members.map((m) => provenance(m.source)));
   if (provs.size < 2) return null;
-  // Every member has a clock window AND all windows mutually overlap.
+  // Every member has a clock window AND all windows mutually overlap. Measured on
+  // each member's OWN midnight on purpose: a cross-midnight cluster (#2056) is a
+  // MEDIUM wrong-offset detection, and this path only ever fires on genuine
+  // same-instant overlap — which two rows an offset apart never have.
   const windows = members.map((m) => activityWindow(m));
   if (windows.some((w) => w == null)) return null;
   for (let i = 0; i < windows.length; i++)

@@ -189,3 +189,25 @@ export const METRIC_JUDGMENT_PROFILE = "Metric Judgment (e2e)";
 // The clinic-measured reading, in bpm — on a day the stream does not cover, so it
 // is visibly an ADDITION to the trend rather than a duplicate of it.
 export const METRIC_JUDGMENT_CLINIC_BPM = 128;
+
+// ── One fold for the chart and the table (issue #2029) ───────────────────────
+// A profile whose resting-HR days are chosen to make the metric page's fold
+// OBSERVABLE from the browser: one day carries a wearable reading AND a clinic
+// reading of the same identity with the SAME value (the reported disagreement —
+// the chart plotted it once, the table listed it twice), one day carries a clinic
+// reading the stream never saw, and the rest are plain streamed days.
+// Dedicated ON PURPOSE (#868): the assertion is an exact point/row count, so it
+// cannot ride a fixture another spec writes to. Read-only in its spec.
+export const E2E_LOGIN_METRIC_FOLD = "e2e_metric_fold";
+export const METRIC_FOLD_PROFILE = "Metric Fold (e2e)";
+// The value the wearable and the clinic BOTH report on the duplicated day.
+export const METRIC_FOLD_DUPLICATED_BPM = 57;
+// The clinic reading on a day the stream never covered — the completeness half
+// (#1996), which must survive the fold and be counted once by both consumers.
+export const METRIC_FOLD_CLINIC_ONLY_BPM = 73;
+// Streamed days, newest last, each a distinct value so a row is addressable by it.
+// The duplicated day is the middle one.
+export const METRIC_FOLD_STREAM_DAYS = 3;
+// What the page must end up showing: 3 streamed days + the clinic-only day. The
+// duplicated clinic copy is in NEITHER the chart nor the table.
+export const METRIC_FOLD_EXPECTED_READINGS = 4;

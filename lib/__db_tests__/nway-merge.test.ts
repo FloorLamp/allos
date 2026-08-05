@@ -245,6 +245,49 @@ describe("autoMergeActivityDuplicates (#1081)", () => {
     ).toBe(1);
   });
 
+  // #2056. The widened loader hands the auto path a cross-midnight cluster it never
+  // used to see. It must NOT collapse it unattended: those two rows are a MEDIUM
+  // wrong-offset reading, and the auto decision's overlap requirement — measured on
+  // each row's own clock — is exactly what keeps a person in the loop.
+  it("LEAVES a cross-midnight offset cluster for manual Review", () => {
+    const insNight = db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, source, external_id, duration_min,
+          distance_km, start_time, end_time)
+       VALUES (?, ?, 'cardio', ?, ?, ?, 25, ?, ?, ?)`
+    );
+    insNight.run(
+      profileId,
+      "2026-04-20",
+      "Night walk",
+      "health-connect",
+      "hc:night",
+      2.1,
+      "23:30",
+      "23:55"
+    );
+    insNight.run(
+      profileId,
+      "2026-04-21",
+      "Evening Walk",
+      "strava",
+      "strava:night",
+      2.11,
+      "00:30",
+      "00:55"
+    );
+
+    expect(autoMergeActivityDuplicates(profileId)).toBe(0);
+    expect(
+      count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)
+    ).toBe(2);
+    // …and it IS in Review, which is the half #2056 fixes.
+    const clusters = getActivityDuplicateClusters(profileId);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].confidence).toBe("medium");
+    expect(clusters[0].date).toBe("2026-04-20");
+  });
+
   it("LEAVES a materially-conflicting cluster for manual Review", () => {
     insertActivity({ title: "Morning run", distance_km: 5 });
     insertActivity({

@@ -117,6 +117,7 @@ import {
   seedDayOneAverages,
   seedPinnedCardOrder,
   seedMetricJudgment,
+  seedMetricFold,
 } from "./seed/trends";
 
 seedPrelude();
@@ -172,6 +173,7 @@ seedToasterIsolation();
 seedProviderCloseout();
 seedBodyMobile();
 seedMetricJudgment();
+seedMetricFold();
 seedRestCard();
 seedSuppressedCenter();
 seedMultiProfile();
