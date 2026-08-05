@@ -322,14 +322,20 @@ export interface QuickRange {
 }
 
 // The quick-range pills offered by both the Timeline and Trends: last 7 / 30 / 90
-// days, each ending on `todayStr` (today inclusive). Kept in one place so the two
-// surfaces can never drift apart. Distances match what the Timeline shipped with
-// (6 / 29 / 89 days back = 7 / 30 / 90 inclusive days).
+// / 365 days, each ending on `todayStr` (today inclusive). Kept in one place so the
+// two surfaces can never drift apart. Distances match what the Timeline shipped
+// with (6 / 29 / 89 days back = 7 / 30 / 90 inclusive days); 1Y is 364 back = 365
+// inclusive days (#1938 — a year was previously reachable only by hand-typing
+// dates, so "All time" was the only option past 90 days). A fixed 365-day window
+// rather than "the current calendar year": it is a TRAILING window like its
+// siblings, so it never shrinks to a stub every January, and calendar arithmetic
+// (shiftDateStr is UTC-anchored) keeps it exact across DST and leap days.
 export function quickRanges(todayStr: string): QuickRange[] {
   return [
     { label: "7D", from: shiftDateStr(todayStr, -6), to: todayStr },
     { label: "30D", from: shiftDateStr(todayStr, -29), to: todayStr },
     { label: "90D", from: shiftDateStr(todayStr, -89), to: todayStr },
+    { label: "1Y", from: shiftDateStr(todayStr, -364), to: todayStr },
   ];
 }
 

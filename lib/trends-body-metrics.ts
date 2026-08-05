@@ -577,9 +577,10 @@ export function orderBodyMetricTiles<T extends OrderableTile>(
 }
 
 // Period statistics for a metric detail page: latest / average / min / max / net
-// change over each of the 7/30/90-day trailing windows, computed from the metric's
-// FULL series (independent of the page's range control, so the windows always mean
-// "the last N complete days before today"). A window with no readings reports nulls.
+// change over each of the 7/30/90/365-day trailing windows, computed from the
+// metric's FULL series (independent of the page's range control, so the windows
+// always mean "the last N complete days before today"). A window with no readings
+// reports nulls.
 //
 // COMPLETE DAYS ONLY (#1909). These windows used to INCLUDE today, which for a
 // cumulative metric meant the average carried a half-finished day all afternoon:
@@ -631,9 +632,13 @@ export interface PeriodStat {
   dayOne: boolean;
 }
 
-// The trailing windows, ascending. Nested by construction (7d ⊂ 30d ⊂ 90d) — the
-// property the collapse predicate below leans on.
-const PERIOD_WINDOWS = [7, 30, 90] as const;
+// The trailing windows, ascending. Nested by construction (7d ⊂ 30d ⊂ 90d ⊂ 365d)
+// — the property the collapse predicate below leans on. 365 is #1938's long-horizon
+// window: period stats used to stop at 90 days, so past a quarter the only summary
+// was none at all. Computed over the same in-memory full series as the others (no
+// new read path), and it collapses into its neighbours exactly like they do when a
+// year of history doesn't exist yet.
+const PERIOD_WINDOWS = [7, 30, 90, 365] as const;
 
 function periodLabel(windows: readonly number[]): string {
   return windows.length === 1
