@@ -410,24 +410,25 @@ access-filtered member checklist and a send-test.
 **The food nudge's keyboard (#682/#1016/#1073/#1075/#1807).** The nudge rides the
 morning/midday/evening supplement slots and is opt-in per profile. Its keyboard is
 the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
-per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
-(#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
+per row — the SAME `rankFoodGroups` the `/nutrition` log bar calls (#221/#1980 —
+one function, not two that claim to agree) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
 pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
 "✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
 
-**Capped groups rank below floor groups (#1822 item 5).** The ranking above is
-usage-only, which put "🍷 Alcohol" on the 08:00 keyboard for a profile who logs
-it: a positive-habits nudge showing an encouragement-shaped affordance for the
-thing being capped, ahead of the floor groups it exists to prompt. So the nudge's
-`getFoodNudgeRankedKeys` composes TWO stable partitions over the blend —
-`demoteCappedGroups` (the catalog's `limit` tier) innermost, then
-`demoteExcludedGroups` (#975) — so a capped group sorts below every floor group
-regardless of usage, and a group that is both lands at the very tail. Both
-**demote, never filter** (#559): logging alcohol is exactly the tracking a cap
-needs, so the button stays one "➕ Show more" away, in every slot. The web bar is
-untouched — it already renders groups under tier headings.
+**Ranking does not editorialize (#1980, reversing #1822 item 5).** #1822 item 5
+pushed CAPPED groups (the catalog's `limit` tier) below every floor group on this
+keyboard, so "🍷 Alcohol" could not take an above-the-fold button. That shipped on
+the Telegram path only and was **reversed by owner ruling**: a group you log often
+is a group you need to log FAST, and demoting it made the app slower at capturing
+exactly the intake a cap exists to measure. Position is a speed affordance, not a
+verdict (#992/#716). `rankFoodGroups` now composes ONE stable partition over the
+blend — `demoteExcludedGroups` (#975), the user's own choice — and
+`demoteCappedGroups` is deleted, comment and all, so the argument for it cannot
+invite a re-add. The `limit` tier keeps its meaning everywhere else (targets, the
+inverted-cap reads, the web bar's tier headings); it just never moves a button.
+The web bar ranks the protein pseudo-entry too, from the same call.
 
 **One label grammar, one protein line.** Every quick-log button leads with a glyph
 (#1710); `PROTEIN_NUDGE_EMOJI` gave the protein button the one it was missing

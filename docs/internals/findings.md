@@ -264,6 +264,56 @@ the shipped step; a push is a larger decision left to a follow-up.
 
 ---
 
+## Food log × food–drug rules (two tiers, #2021)
+
+The food catalog logged `alcohol` and `leafy_greens` as first-class groups while
+`matchFoodInteractions` took an ITEM and never touched `food_log`, so the
+medication row printed _"Avoid all alcohol during treatment and for 3 days
+after"_ and then watched the user log an alcohol serving in silence. The join is
+`lib/food-drug-ledger.ts` (pure) behind `lib/food-drug-ledger-findings.ts` (the
+gather).
+
+**Entries declare their mapping, or their exclusion.** Every entry in
+`scripts/food-drug-interactions.source.json` carries a `catalog` block —
+`groups`, a `rule` (`event` / `variance` / `none`), an optional per-entry
+`tailDays` and `coverageNote`, and a written `reason` whenever the rule is
+`none`. The generator REFUSES an entry that decides neither way, so a new
+interaction cannot ship without someone deciding whether a day-granular log can
+honestly speak to it, and the builder physically cannot fire on an unmapped one.
+Four entries participate today: the three alcohol rules as `event`s
+(metronidazole carrying the label's own `tailDays: 3`) and vitamin-K × warfarin
+as a `variance`. The rest are excluded with reasons — grapefruit collapses into
+the broad `fruit` group and would fire on every apple; tyramine is only loosely
+reachable through `fermented` + `processed_meat` + `alcohol`, where a yogurt and
+an aged cheese are the same tap; potassium and salt substitutes are not a group
+at all; the dairy rules are separation WINDOWS that need the eating time #2019
+adds. #661's static habit screen (`FOOD_GROUP_INTERACTION_KEYS`) is DERIVED from
+the same declarations rather than kept as a second map.
+
+**The event finding is CARE tier with no push channel.** A mapped group logged
+inside the item's course window (plus the entry's stated tail) becomes a
+`food-drug-event`-domain `UpcomingItem` banded `today`, so it reaches Upcoming +
+the non-hideable hero, keyed `food-drug-event:<itemId>:<ruleId>:<date>` — a day
+at a time, so a dismissal covers that day rather than the topic forever. It is
+omitted from the digest's `DOMAIN_SEQ` and has no notify orchestrator, which is
+the tier acting as a CEILING and not a floor (#1433): the contact-consent rule
+wants a user-owned declaration behind any INCREASE in contact, the food log is
+an observation domain (nobody promised anything by logging a drink), and a
+message that arrived because you did would be surveillance-shaped — the opposite
+of the posture that makes people log honestly in the first place.
+
+**The variance finding is COACHING tier.** A week-over-week swing (both an
+absolute floor and a doubling/halving must clear, with an adoption guard so a new
+logger is not a swing) against advice of the "keep it steady" shape becomes a
+calm, hideable note keyed `food-drug-variance:<itemId>:<ruleId>`. It joins
+`collectCoachingFindings` and reaches no notification and no hero.
+
+Both quote the entry's OWN advice sentence, its citation and the informational
+tail, and state what the log actually contains — never a verdict about the
+person (#992/#716).
+
+---
+
 ## The finding follow-up loop (care tier, #700 · #860 Track A / #707 Substrate 1)
 
 Status: **shipped** (imaging adapter; IOP/dental/skin/labs adapters plug in as
