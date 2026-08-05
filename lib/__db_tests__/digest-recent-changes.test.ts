@@ -364,9 +364,10 @@ describe("data arrival — the digest's overnight line (#1819)", () => {
 
     const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
     const arrival = out.changes.find((c) => c.category === "data");
-    // Deterministic order: the kind that wrote most rows leads.
+    // Deterministic order: the kind that wrote most rows leads. This provider has
+    // never synced before, so the line is its FIRST-data announcement (#1913 item 1).
     expect(arrival?.text).toBe(
-      "📥 Google Health Connect: steps, workouts, sleep"
+      "📥 First data from Google Health Connect: steps, workouts, sleep"
     );
     // The old line's shape — a bare count of rows — must not come back.
     expect(arrival?.text).not.toMatch(/\d+ new record/);
@@ -419,7 +420,7 @@ describe("data arrival — the digest's overnight line (#1819)", () => {
 
     const model = buildDigest(gatherDigestInput(pid, "Digest Dana"));
     const New = model?.sections.find((s) => s.heading === "New");
-    expect(New?.lines).toContain("📥 Oura Ring: sleep");
+    expect(New?.lines).toContain("📥 First data from Oura Ring: sleep");
     expect(New?.lines.join("\n")).not.toContain("Weather");
   });
 });
@@ -652,5 +653,110 @@ describe("daily step target (#1723 part 2)", () => {
     const td = today(pid);
     seedSteps(pid, shiftDateStr(td, -1), 100);
     expect(getStepsDigestLines(pid, td).yesterday).toBeNull();
+  });
+});
+
+// ---- Arrivals fold into the lines they describe (#1913 item 1) -------------
+//
+// "📥 Google Health Connect: hrv ms, sleep light, sleep awake, sleep rem, +10 more" was
+// kinds-not-counts done literally: raw substrate vocabulary about records the same
+// message was already listing one section down. The arrival's only value is PROVENANCE,
+// and the content lines carry that themselves now.
+
+describe("routine arrivals fold into the content lines they describe (#1913)", () => {
+  // The same seeder, but backdated so the sync sits BEFORE the digest's 24h window —
+  // which is what makes the next one "routine" rather than a first.
+  function backdateSyncs(profileId: number, modifier: string): void {
+    db.prepare(
+      `UPDATE integration_sync_events SET at = datetime('now', ?)
+        WHERE profile_id = ?`
+    ).run(modifier, profileId);
+    // The seeded samples share the natural key with the ones the NEXT seed writes for
+    // the same metric, so move them off today the way a real prior night's data is.
+    db.prepare(
+      `UPDATE metric_samples SET date = ?, start_time = start_time || '-old',
+              end_time = end_time || '-old'
+        WHERE profile_id = ?`
+    ).run(shiftDateStr(today(profileId), -3), profileId);
+  }
+
+  it("says nothing about a routine overnight arrival", () => {
+    const pid = newProfile("Routine Rae");
+    // Yesterday: the provider synced these kinds already.
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+      { table: "metric_samples", metric: "hrv" },
+    ]);
+    backdateSyncs(pid, "-3 days");
+    // This morning: the same kinds again, which is every morning forever.
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+      { table: "metric_samples", metric: "hrv" },
+    ]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    expect(out.changes.filter((c) => c.category === "data")).toEqual([]);
+  });
+
+  it("still announces a kind the profile has NEVER received before", () => {
+    const pid = newProfile("Firstkind Fin");
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
+    backdateSyncs(pid, "-3 days");
+    // Sleep again (routine) plus blood oxygen for the first time ever.
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+      { table: "metric_samples", metric: "spo2" },
+    ]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    const arrival = out.changes.find((c) => c.category === "data");
+    // The new kind, and ONLY the new kind — the routine one has a content line.
+    expect(arrival?.text).toBe("📥 New from Oura Ring: blood oxygen");
+  });
+
+  it("announces a provider's FIRST sync in full — a new source is news about the setup", () => {
+    const pid = newProfile("Newsource Nel");
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
+    backdateSyncs(pid, "-3 days");
+    // A second provider appears, writing a kind the profile already receives.
+    seedSyncArrival(pid, "withings", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    const texts = out.changes
+      .filter((c) => c.category === "data")
+      .map((c) => c.text);
+    expect(texts).toEqual(["📥 First data from Withings: sleep"]);
+  });
+
+  it("the digest's activity line carries the source instead", () => {
+    const pid = newProfile("Provenance Pat");
+    const yd = shiftDateStr(today(pid), -1);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, distance_km, source)
+       VALUES (?, ?, 'cardio', 'Morning Ride', 18.85, 'strava')`
+    ).run(pid, yd);
+
+    const model = buildDigest(gatherDigestInput(pid, "Provenance Pat"));
+    const yesterday = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(yesterday?.lines).toContain("🏋️ Morning Ride — 18.85 km · Strava");
+  });
+
+  it("says nothing about provenance for a session logged by hand", () => {
+    const pid = newProfile("Manual Mo");
+    const yd = shiftDateStr(today(pid), -1);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Squats', 45)`
+    ).run(pid, yd);
+
+    const model = buildDigest(gatherDigestInput(pid, "Manual Mo"));
+    const yesterday = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(yesterday?.lines).toEqual(["🏋️ Squats — 45 min"]);
   });
 });

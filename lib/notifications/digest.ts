@@ -26,6 +26,11 @@ import {
 import { isTrainingSignalKey } from "../workout-nudge";
 import { importHref } from "../hrefs";
 import { monthNames } from "../date";
+import {
+  activityProvenanceKey,
+  activityProvenanceLabel,
+  JOURNAL_SOURCE_MANUAL,
+} from "../journal-format";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -38,6 +43,15 @@ export interface DigestActivity {
   type: ActivityType;
   durationMin: number | null;
   distanceKm: number | null;
+  // The activity row's raw `source` (#1913 item 1) — the provenance the import already
+  // stores, not a new join invented for the digest. It rides the CONTENT line as a
+  // trailing clause, which is what lets the arrival narration ("📥 Strava: workouts")
+  // fold away: the arrival's only value was provenance, and the line it described was
+  // already in the message.
+  //
+  // Optional so a caller with nothing to say stores nothing; a manual row renders no
+  // clause at all, because "Manual" beside a session you logged yourself is noise.
+  source?: string | null;
 }
 
 export interface DigestFlaggedBiomarker {
@@ -334,6 +348,23 @@ function activityStat(a: DigestActivity): string {
   return "";
 }
 
+// The activity line's PROVENANCE clause (#1913 item 1): " · Strava".
+//
+// The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
+// and nothing else, stated about a session the message already listed one section down.
+// Folding it here says the same thing in the place the reader is already looking, and
+// the label is the SAME `activityProvenanceLabel` the Journal and the timeline render,
+// never a second name for one source.
+//
+// A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
+// provenance, it is noise — the clause exists to answer "where did this come from?",
+// which only has an answer when something else put it there.
+function activitySource(a: DigestActivity): string {
+  const source = a.source ?? null;
+  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return "";
+  return ` · ${activityProvenanceLabel(source)}`;
+}
+
 // Doses are summarized by the Today dose-count headline, so they're dropped from
 // the banded "what's due" lines to avoid double-counting (issue #1108).
 const DOSE_EXCLUDED_FROM_BANDS: readonly UpcomingDomain[] = ["dose"];
@@ -481,7 +512,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // Yesterday: what happened.
   const yLines: string[] = [];
   for (const a of input.activities) {
-    yLines.push(`🏋️ ${a.title}${activityStat(a)}`);
+    yLines.push(`🏋️ ${a.title}${activityStat(a)}${activitySource(a)}`);
   }
   // The delta headline LEADS the intake report (#1505 part 3): "which of the things
   // that push me changed state" is the news; the fraction below is the supporting

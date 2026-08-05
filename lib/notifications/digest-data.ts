@@ -347,6 +347,9 @@ export function gatherDigestInput(
         type: a.type,
         durationMin: a.duration_min,
         distanceKm: a.distance_km,
+        // The provenance the import already stored (#1913 item 1). It rides THIS line,
+        // which is what retires the separate "📥 Strava: workouts" arrival narration.
+        source: a.source,
       }))
     : [];
   const yDue = dueDoseIdsOn(yd);

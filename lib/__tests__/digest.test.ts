@@ -819,3 +819,61 @@ describe("buildDigest — the new-document line", () => {
     ).toContain("(2026-07)");
   });
 });
+
+// ---- The activity line carries its provenance (#1913 item 1) ---------------
+//
+// The 📥 arrival line was provenance and nothing else, stated about sessions the same
+// message already listed. Folding it here says the same thing where the reader is
+// already looking — and lets the routine arrival narration go away entirely.
+
+describe("buildDigest — activity provenance", () => {
+  const yesterdayLines = (activities: DigestInput["activities"]): string[] =>
+    buildDigest({ ...empty, activities })?.sections.find(
+      (s) => s.heading === "Yesterday"
+    )?.lines ?? [];
+
+  it("names the source that put an imported session there", () => {
+    expect(
+      yesterdayLines([
+        {
+          title: "Morning Ride",
+          type: "cardio",
+          durationMin: 62,
+          distanceKm: 18.85,
+          source: "strava",
+        },
+      ])
+    ).toEqual(["🏋️ Morning Ride — 18.85 km · Strava"]);
+  });
+
+  it("says nothing for a session logged by hand", () => {
+    // "Manual" beside your own entry is not provenance, it is noise.
+    for (const source of [null, "manual", undefined]) {
+      expect(
+        yesterdayLines([
+          {
+            title: "Squats",
+            type: "strength",
+            durationMin: 45,
+            distanceKm: null,
+            source,
+          },
+        ])
+      ).toEqual(["🏋️ Squats — 45 min"]);
+    }
+  });
+
+  it("uses the one shared provenance label, document rows included", () => {
+    expect(
+      yesterdayLines([
+        {
+          title: "Physio session",
+          type: "strength",
+          durationMin: 30,
+          distanceKm: null,
+          source: "document:12",
+        },
+      ])
+    ).toEqual(["🏋️ Physio session — 30 min · Document"]);
+  });
+});
