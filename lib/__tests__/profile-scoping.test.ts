@@ -241,6 +241,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/undo-delete-db.ts",
+    includes: "SELECT profile_id AS profileId FROM deleted_rows WHERE id = ?",
+    why: "deletedRowProfile (#2104): the ONE lookup that RESOLVES which profile a capture belongs to, so the undo action can gate on the CAPTURED row's profile rather than the acting one — a multi-view delete stamps the row's subject, and filtering by profile_id here would presuppose the answer. It reads the id→profile_id mapping and nothing else, feeds it straight to requireProfileWriteAccess, and the restore that follows IS profile-scoped (id AND profile_id, the anti-replay compare) — portalIdentityProfile's shape (#1747)",
+  },
+  {
+    file: "lib/undo-delete-db.ts",
     includes: "DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
     why: "sweepDeletedRows: the undo/Trash retention purge (window admin-configured since #2013, 30-day default) is GLOBAL by design — one call per hourly tick clears every profile's EXPIRED rows — so it is intentionally profile-agnostic. The user-invoked purges next door (purgeDeletedRow / emptyTrash, #2013) are a different operation and DO filter on profile_id",
   },

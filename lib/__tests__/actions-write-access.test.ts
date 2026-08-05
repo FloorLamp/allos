@@ -118,6 +118,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "requireProfileWriteAccess",
   },
   {
+    file: "app/(app)/undo-actions.ts",
+    fn: "undoDelete",
+    why: "cross-profile restore (#2104): an undo token's capture carries the ROW's profile — on a multi-view surface not the acting one (the delete stamped it through gateItemProfile) — so the restore resolves that profile FROM THE HOLDING ROW (deletedRowProfile, the portalIdentityProfile shape #1747) and gates it with requireProfileWriteAccess. requireWriteAccess() gated the ACTING profile, which both killed every legitimate cross-profile undo (capture said Mia, restore filtered by Dad, the toast failed and the capture purged) and authorized nothing about the profile actually written. restoreDeletedRow keeps its profile_id filter as the anti-replay compare",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/undo-actions.ts",
+    fn: "undoDeletes",
+    why: "cross-profile restore (#2104): the batch twin of undoDelete — each token's owning profile is resolved from its capture and every DISTINCT owner is gated with requireProfileWriteAccess BEFORE anything restores, so a forged token cannot ride in on a legitimate batch (an auth refusal aborts the whole batch; #202's per-token isolation still covers integrity failures inside the restore itself)",
+    gate: "requireProfileWriteAccess",
+  },
+  {
     file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "unbindIdentityAction",
     why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at. That profile is RESOLVED FROM THE ROW server-side, never read from the post (#1747): gating on a client-supplied profile id authorized nothing, because nothing tied it to the binding actually being deleted. An IGNORED binding has no profile by CHECK, so that branch takes the any-profile-write gate and a delete scoped to `ignored = 1`",
