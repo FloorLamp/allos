@@ -4,7 +4,12 @@ import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
 import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
-import { getUnitPrefs } from "@/lib/settings";
+import { getTimezone, getUnitPrefs } from "@/lib/settings";
+import { now as clockNow } from "@/lib/clock";
+import {
+  eatingTimeOptions,
+  type EatingTimeOption,
+} from "@/lib/food-eating-time";
 import {
   getExcludedFoodGroups,
   getUserAge,
@@ -115,6 +120,10 @@ export type QuickEntryData =
       proteinPreset: number | null;
       excludedGroups: string[];
       slot: FoodSlot;
+      // The "earlier…" hours the eating-time statement may name (#2053) — the SAME
+      // server-resolved offer the Food tab passes, so the sheet cannot present a
+      // narrower affordance than the page it opened over.
+      eatingTimeOptions: EatingTimeOption[];
     }
   | { form: "dose"; doses: QuickEntryDose[] }
   | {
@@ -215,6 +224,11 @@ export async function loadQuickEntry(
       proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
+      eatingTimeOptions: eatingTimeOptions(
+        clockNow(),
+        getTimezone(profile.id),
+        date
+      ),
     };
   }
 

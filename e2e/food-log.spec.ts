@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -616,7 +616,7 @@ test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  await settledClick(page, page.getByTestId("food-eating-now"));
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
   await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
     "aria-pressed",
     "true"
@@ -642,7 +642,7 @@ test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
 
   // Pressing it again withdraws the statement — the chips are toggles, so there is no
   // separate "clear" and no way to be stuck in a mode.
-  await settledClick(page, page.getByTestId("food-eating-now"));
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
   await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
     "aria-pressed",
     "false"
@@ -661,7 +661,7 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   // permanently on screen would bury it.
   const earlier = page.getByTestId("food-eating-earlier");
   await expect(earlier).toHaveAttribute("aria-expanded", "false");
-  await settledClick(page, earlier);
+  await hydratedClick(page, earlier);
   await expect(earlier).toHaveAttribute("aria-expanded", "true");
 
   // Every offered hour is one the write will accept — the server filtered them to hours
@@ -670,7 +670,7 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   const newestHour = hourChips.first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
   await expect(newestHour).toBeVisible();
   const hhmm = (await newestHour.textContent())!.trim();
-  await settledClick(page, newestHour);
+  await hydratedClick(page, newestHour);
   await expect(earlier).toHaveText(hhmm);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `recorded as eaten at ${hhmm}`
@@ -704,9 +704,9 @@ test("the eating-time chips are a today-only affordance (#2053)", async ({
 
   // "Now" is meaningless on a backfill, and a seven-day-old serving genuinely has no
   // stated eating time — which is exactly what the NULL default is for.
-  await settledClick(page, page.getByTestId("food-day-yesterday"));
+  await hydratedClick(page, page.getByTestId("food-day-yesterday"));
   await expect(page.getByTestId("food-eating-time")).toHaveCount(0);
 
-  await settledClick(page, page.getByTestId("food-day-today"));
+  await hydratedClick(page, page.getByTestId("food-day-today"));
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
 });
