@@ -3,7 +3,7 @@
 // meal_slot when present, otherwise its logged_at instant in the profile's timezone +
 // configured slot boundaries — and it is consumed by
 // BOTH:
-//   • the #950 slot RANKING signal (getFoodGroupLogOrder's slot occurrences), and
+//   • the #950 slot RANKING signal (rankFoodGroups's slot occurrences), and
 //   • the #1016 slot-scoped nudge button COUNTS (getFoodSlotServingsOnDate).
 // Because ranking and count share this derivation, they can never disagree about which
 // slot a tap falls in — a boundary-time tap buckets identically for both (#221 — one
@@ -52,7 +52,7 @@ export function foodEventWindow(
 }
 
 // The ledger events whose derived window matches `window` — the #950 slot frecency
-// source consumed by getFoodGroupLogOrder.
+// source consumed by rankFoodGroups.
 export function foodEventsInWindow(
   events: readonly FoodLedgerEvent[],
   tz: string,

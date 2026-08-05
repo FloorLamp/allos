@@ -123,6 +123,12 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Food habit — ${n}` : "Food habit";
   },
+  // #2021: `<intakeItemId>:<curatedRuleId>:<date>` and `<intakeItemId>:<curatedRuleId>`.
+  // Neither tail carries a name to render (the item is an id, the rule a curated slug),
+  // so the label names the topic — and deliberately does NOT restate what was eaten: a
+  // silenced food–drug note should read as calmly here as it did where it was dismissed.
+  "food-drug-event:": () => "Food–drug note",
+  "food-drug-variance:": () => "Food–drug steadiness note",
   "substance-use:": (t) => {
     const n = titleize(part(t, 1).replace(/[_-]/g, " "));
     return n ? `Substance note — ${n}` : "Substance note";

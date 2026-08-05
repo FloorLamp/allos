@@ -1,5 +1,5 @@
 // DB INTEGRATION TIER (issue #591): the frequency/recency-ranked food-group log order.
-// getFoodGroupLogOrder reuses the activity-picker machinery (#195) — a profile-scoped
+// getFoodBarOrder (over rankFoodGroups) reuses the activity-picker machinery (#195) — a profile-scoped
 // scan over the trailing food_log window, each row weighted by servings × decayedWeight
 // (60-day half-life), ranked by rankByFrequency over the curated catalog. Proves a
 // profile's staples lead WITHIN their tier while the tier sectioning (encourage →
@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getFoodGroupLogOrder } from "@/lib/queries";
+import { getFoodBarOrder } from "@/lib/queries";
 import { FOOD_GROUPS, foodGroupSlugs } from "@/lib/food-groups";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
@@ -32,10 +32,10 @@ function logServing(
   ).run(profileId, date, group, servings);
 }
 
-describe("getFoodGroupLogOrder (#591)", () => {
+describe("getFoodBarOrder (#591)", () => {
   it("returns the curated catalog order for a fresh profile", () => {
     const { profileId } = makeProfile("food-order-fresh");
-    const order = getFoodGroupLogOrder(profileId).map((g) => g.slug);
+    const order = getFoodBarOrder(profileId).groups.map((g) => g.slug);
     expect(order).toEqual(foodGroupSlugs());
     // Every catalog group appears exactly once.
     expect(order.length).toBe(FOOD_GROUPS.length);
@@ -51,7 +51,7 @@ describe("getFoodGroupLogOrder (#591)", () => {
       logServing(profileId, "leafy_greens", shiftDateStr(anchor, -i));
     }
 
-    const order = getFoodGroupLogOrder(profileId);
+    const order = getFoodBarOrder(profileId).groups;
     const encourage = order.filter((g) => g.tier === "encourage");
     expect(encourage[0].slug).toBe("leafy_greens");
 
@@ -73,7 +73,7 @@ describe("getFoodGroupLogOrder (#591)", () => {
     logServing(profileId, "whole_grains", anchor);
     logServing(profileId, "legumes", shiftDateStr(anchor, -120), 3);
 
-    const order = getFoodGroupLogOrder(profileId).map((g) => g.slug);
+    const order = getFoodBarOrder(profileId).groups.map((g) => g.slug);
     expect(order.indexOf("whole_grains")).toBeLessThan(
       order.indexOf("legumes")
     );
@@ -86,7 +86,7 @@ describe("getFoodGroupLogOrder (#591)", () => {
       logServing(a.profileId, "berries", shiftDateStr(a.anchor, -i));
     }
     // b logged nothing → still curated order (berries not first in its tier).
-    const bOrder = getFoodGroupLogOrder(b.profileId).map((g) => g.slug);
+    const bOrder = getFoodBarOrder(b.profileId).groups.map((g) => g.slug);
     expect(bOrder).toEqual(foodGroupSlugs());
   });
 });

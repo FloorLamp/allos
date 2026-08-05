@@ -38,7 +38,7 @@ import {
   currentFoodSlot,
   getFoodServingsOnDate,
   getFoodSlotServingsOnDate,
-  getFoodGroupLogOrder,
+  getFoodBarOrder,
 } from "@/lib/queries";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
@@ -234,8 +234,10 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     // Ranking no longer asks which bucket an event fell in; it weights every tap by how
     // near its EATING minute sits to the window's anchor. So the 12:30 berries lead the
     // midday nudge and the 07:00 eggs lead the morning one …
-    expect(getFoodGroupLogOrder(p.profileId, "Midday")[0].slug).toBe("berries");
-    expect(getFoodGroupLogOrder(p.profileId, "Morning")[0].slug).toBe("eggs");
+    expect(getFoodBarOrder(p.profileId, "Midday").groups[0].slug).toBe(
+      "berries"
+    );
+    expect(getFoodBarOrder(p.profileId, "Morning").groups[0].slug).toBe("eggs");
     // … whereas under the retired mechanism the berries carried the nudge's own Morning
     // window on the row and would have led there instead.
   });

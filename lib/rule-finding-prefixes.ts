@@ -31,6 +31,10 @@ import { DEMOTION_PREFIX } from "./supplement-demotion";
 import { RIGHTSIZE_PREFIX } from "./target-rightsize";
 import { FOOD_SUGGEST_PREFIX, FOOD_REDUCE_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
+import {
+  FOOD_DRUG_EVENT_PREFIX,
+  FOOD_DRUG_VARIANCE_PREFIX,
+} from "./food-drug-ledger";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
@@ -156,6 +160,19 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FOOD_HABIT_PREFIX,
     tier: "coaching",
     builder: "buildFoodHabitFindings",
+    reasons: [],
+  },
+  {
+    // Food–drug VARIANCE (#2021): a week-over-week swing in a mapped food group against
+    // an entry whose advice is "keep it steady" (vitamin K × warfarin). COACHING tier by
+    // hard product contract (#449) — never a notification, never the hero: it is a trend
+    // line over a hand-tapped log, and the advice it quotes is about consistency, not an
+    // event to act on today. Joins collectCoachingFindings and rides the shared bus keyed
+    // on item × rule, so a dismissal covers that pairing and recovery clears the finding
+    // on its own.
+    prefix: FOOD_DRUG_VARIANCE_PREFIX,
+    tier: "coaching",
+    builder: "buildFoodDrugVarianceFindings",
     reasons: [],
   },
   {
@@ -326,6 +343,25 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: TEMP_RED_FLAG_PREFIX,
     tier: "care",
     builder: "tempRedFlagItems",
+    reasons: [],
+  },
+  {
+    // Food–drug EVENT (#2021): a serving of a mapped group logged inside an active item's
+    // rule window — the metronidazole × alcohol case the app used to watch in silence.
+    // CARE tier: it belongs to the med-safety family (dietary-limit / interaction /
+    // allergy-med) and the guidance is forward-looking (the label's own "and for 3 days
+    // after"), so it reaches Upcoming + the non-hideable Needs-attention hero.
+    //
+    // A push channel is deliberately scoped OUT, the condition-review precedent: the tier
+    // is a CEILING, not a floor (#1433), and the contact-consent rule requires a
+    // user-owned declaration behind any increase in contact. The food log is an
+    // observation domain — nobody promised the app anything by logging a drink — and a
+    // message that arrived because you did would be surveillance-shaped, which is the
+    // opposite of the posture that makes people log honestly. `food-drug-event` is
+    // therefore omitted from the digest's DOMAIN_SEQ and has no notify orchestrator.
+    prefix: FOOD_DRUG_EVENT_PREFIX,
+    tier: "care",
+    builder: "buildFoodDrugEventFindings / foodDrugEventItems",
     reasons: [],
   },
   {

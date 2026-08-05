@@ -72,6 +72,38 @@ export interface FoodDrugEntry {
   source: string;
   minLifeStage?: LifeStage;
   minAge?: number;
+  catalog: FoodDrugCatalogMapping;
+}
+
+// Which LEDGER rule an entry's catalog mapping may drive (issue #2021):
+//   • "event"    — a serving of a mapped group logged inside the item's active window
+//                  (plus `tailDays`) is the signal. Day granularity is enough.
+//   • "variance" — a SWING in a mapped group's trailing daily counts is the signal, for
+//                  advice of the "keep it steady" shape.
+//   • "none"     — the food log cannot honestly speak to this rule; `reason` says why.
+export const FOOD_DRUG_CATALOG_RULES = ["event", "variance", "none"] as const;
+export type FoodDrugCatalogRule = (typeof FOOD_DRUG_CATALOG_RULES)[number];
+
+// An entry's declared relationship to the 24-group food catalog (issue #2021). EVERY
+// entry carries one: either it is MAPPED to catalog groups with a rule the ledger can
+// fire, or it is EXCLUDED with a written reason. There is no third state — an unmapped
+// entry with no reason fails generation, so a new interaction cannot be added without
+// deciding whether the food log can speak to it. Only `rule !== "none"` entries
+// participate in the ledger findings; the builder physically cannot fire on the rest.
+export interface FoodDrugCatalogMapping {
+  // Food-group slugs (lib/datasets/data/food-groups.json) this rule is about. Non-empty
+  // for a firing rule; may be non-empty for an excluded one when the group exists but the
+  // rule needs something the day-granular log doesn't carry (the dairy separation windows).
+  groups: string[];
+  rule: FoodDrugCatalogRule;
+  // Days AFTER the item's course during which the guidance still applies — encoded
+  // per-entry because the label states it ("and for 3 days after"), never hard-coded.
+  tailDays?: number;
+  // What the mapping does and does not cover, stated by any finding built from it, so a
+  // partial signal never reads as a complete one.
+  coverageNote?: string;
+  // Why this entry is excluded from the ledger findings. Required when `rule` is "none".
+  reason?: string;
 }
 
 // The bespoke source shape: the same interaction records, hand-maintained.
@@ -80,6 +112,45 @@ interface Source {
 }
 
 export type FoodDrugInteractionsDataset = DatasetEnvelope<FoodDrugEntry>;
+
+// The catalog-mapping completeness gate (issue #2021). Every entry must DECIDE: mapped to
+// catalog groups with a firing rule, or excluded with a written reason. The generator is
+// where that decision is enforced, so the decision cannot be skipped by adding a row.
+// Group slugs are NOT resolved here — the generator must stay free of the food-group
+// dataset — the anti-drift test (lib/__tests__/food-drug-catalog-map.test.ts) resolves
+// every slug against the catalog.
+function validateCatalog(
+  key: string,
+  catalog: FoodDrugCatalogMapping | undefined
+): FoodDrugCatalogMapping {
+  const fail = (msg: string): never => {
+    throw new Error(`gen-food-drug-interactions: ${key} ${msg}`);
+  };
+  if (!catalog)
+    fail("has no `catalog` mapping (map it, or exclude it with a reason)");
+  const c = catalog as FoodDrugCatalogMapping;
+  if (!Array.isArray(c.groups)) fail("catalog.groups must be an array");
+  if (!FOOD_DRUG_CATALOG_RULES.includes(c.rule))
+    fail(`catalog.rule must be one of ${FOOD_DRUG_CATALOG_RULES.join("/")}`);
+  if (c.rule === "none") {
+    if (!c.reason || !c.reason.trim())
+      fail("is excluded from the ledger findings but states no reason");
+    if (c.tailDays != null) fail("declares tailDays on an excluded rule");
+  } else {
+    if (c.groups.length === 0)
+      fail(`declares a ${c.rule} rule with no catalog groups to fire on`);
+    if (c.reason != null) fail("declares an exclusion reason on a firing rule");
+  }
+  if (c.rule !== "event" && c.tailDays != null)
+    fail("declares tailDays on a non-event rule");
+  if (c.tailDays != null && (!Number.isInteger(c.tailDays) || c.tailDays < 0))
+    fail("has a non-integer or negative tailDays");
+  const out: FoodDrugCatalogMapping = { groups: c.groups, rule: c.rule };
+  if (c.tailDays != null) out.tailDays = c.tailDays;
+  if (c.coverageNote != null) out.coverageNote = c.coverageNote;
+  if (c.reason != null) out.reason = c.reason;
+  return out;
+}
 
 // Pure builder: validate + flatten the hand-maintained source into the framework
 // envelope. Entries are emitted in source order (a stable, reviewable diff). The
@@ -127,6 +198,7 @@ export function buildFoodDrugInteractionsDataset(): FoodDrugInteractionsDataset 
       advice: e.advice,
       mechanism: e.mechanism,
       source: e.source,
+      catalog: validateCatalog(e.key, e.catalog),
     };
     // Preserve the optional age gate only when present (a stable diff — no undefined
     // keys leaking into the JSON).

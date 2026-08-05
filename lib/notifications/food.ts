@@ -7,7 +7,7 @@
 
 import {
   getFoodCorrectionBursts,
-  getFoodNudgeRankedKeys,
+  rankFoodGroups,
   getFoodServingsOnDate,
   getProteinLoggedGrams,
   getProteinTapsOnDate,
@@ -60,9 +60,10 @@ export function buildFoodNudge(
   // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
   // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
   // the reserved __protein__ pseudo-group joins the ranked keys for a protein-logging
-  // profile so it surfaces in the slots they shake. Shares blendFoodOrder with the web bar
-  // (one computation, #221).
-  const rankedKeys = getFoodNudgeRankedKeys(profileId, window);
+  // profile so it surfaces in the slots they shake. This is THE ranking function the web
+  // log bar calls too (#1980) — not a parallel one that claims to agree — and it carries
+  // the #2019 proximity weighting for every surface at once.
+  const rankedKeys = rankFoodGroups(profileId, window);
   // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);

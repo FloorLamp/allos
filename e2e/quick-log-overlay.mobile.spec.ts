@@ -294,6 +294,10 @@ test("the food and vitals overlays mount the same forms their pages carry", asyn
     const foodBody = page.getByTestId("quick-entry-body");
     await expect(foodBody).toHaveAttribute("data-form", "food");
     await expect(foodBody.getByTestId("food-log-bar")).toBeVisible();
+    // The protein entry is ranked in only for a profile that tracks protein (#1980),
+    // and this fixture profile logs none — so the compact sheet offers no gram box. The
+    // Food tab stays the complete surface where those grams are first entered.
+    await expect(foodBody.getByTestId("protein-quickadd")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(food).toHaveCount(0);
 

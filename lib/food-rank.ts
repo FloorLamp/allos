@@ -15,7 +15,6 @@
 // gates order, never what CAN be logged).
 
 import { decayedWeight } from "./decay";
-import { foodGroupBySlug } from "./food-groups";
 import { clockDistanceMin } from "./food-slot";
 
 export interface FoodOccurrence {
@@ -50,37 +49,18 @@ export function blendFoodOrder(
     .map((x) => x.name);
 }
 
-// ---- Capped groups sort below floor groups (issue #1822 item 5) ----
-
-// Whether a key names a CAPPED food group — the catalog's `limit` tier, the groups the
-// app's advice is "less of this" about (alcohol, added sugar, fried food, …). A
-// non-catalog key (the reserved `__protein__` pseudo-group) is never capped, and neither
-// is a retired/unknown slug: the refusal degrades to "not capped", so an unrecognized key
-// keeps its earned rank rather than being silently demoted.
-export function isCappedFoodGroup(key: string): boolean {
-  return foodGroupBySlug(key)?.tier === "limit";
-}
-
-// Push capped groups below EVERY uncapped one, regardless of usage. A stable partition,
-// exactly like `demoteExcludedGroups`: both sides keep their (slot-frecency, #950) order
-// among themselves, so this composes with the blend instead of replacing it.
+// ---- Ranking does not editorialize (owner ruling, #1980 reversing #1822 item 5) ----
 //
-// WHY RANKING NEEDED CONTEXT HERE. The nudge's ranking was usage-only, so a heavily
-// logged capped group ("🍷 Alcohol") could take an above-the-fold quick-log button in a
-// positive-habits nudge — an encouragement-shaped affordance for the very thing being
-// capped, sitting ahead of the floor groups the nudge exists to prompt. The button must
-// NOT vanish (logging alcohol is exactly the tracking a cap needs, and #559 says context
-// gates ORDER, never what can be logged), so it is demoted, not filtered — still one
-// "➕ Show more" away, in every slot rather than only the morning one.
-export function demoteCappedGroups(rankedKeys: readonly string[]): string[] {
-  const kept: string[] = [];
-  const capped: string[] = [];
-  for (const key of rankedKeys) {
-    if (isCappedFoodGroup(key)) capped.push(key);
-    else kept.push(key);
-  }
-  return [...kept, ...capped];
-}
+// Rank is FRECENCY plus the user's own exclusions, and nothing else. The catalog's
+// `limit` tier ("less of this") deliberately carries NO ranking weight: a group you log
+// often is a group you need to log FAST, so pushing alcohol below every uncapped group
+// made the app slower at capturing exactly the intake a cap exists to measure. Position
+// is a speed affordance, not a verdict — the non-judgmental posture of #992/#716 applied
+// to sort order. The `limit` tier keeps its meaning everywhere else (targets, the
+// inverted-cap reads, the bar's tier headings); it just never moves a button.
+//
+// Do not re-add a capped demotion here. It shipped once (#1822 item 5, Telegram only),
+// diverged the two surfaces for two releases, and was reversed on purpose.
 
 function decayWeights(
   occ: FoodOccurrence[],

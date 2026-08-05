@@ -36,11 +36,7 @@ import {
   profileFoodSlotAnchors,
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
-import {
-  blendFoodOrder,
-  demoteCappedGroups,
-  slotProximityOccurrences,
-} from "../food-rank";
+import { blendFoodOrder, slotProximityOccurrences } from "../food-rank";
 import {
   foodEventWindow,
   slotServingCounts,
@@ -298,6 +294,24 @@ export function getFoodRollupInRange(
   return rollupServings(rows);
 }
 
+// The raw PER-DAY serving rows over an inclusive [from, to] window — the food–drug
+// ledger's input (#2021), which needs each day separately (a same-day co-occurrence, a
+// week-over-week swing) rather than the group totals `getFoodRollupInRange` folds them
+// into. Same table, same filter, one row per (date, group). Profile-scoped.
+export function getFoodServingsInRange(
+  profileId: number,
+  from: string,
+  to: string
+): FoodLogEntry[] {
+  return db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
+        ORDER BY date, group_key`
+    )
+    .all(profileId, from, to) as FoodLogEntry[];
+}
+
 // This week's servings for a single group — the #580 food-habit target progress read,
 // routed through the SAME rollup entries so progress and the card can't disagree.
 export function getWeeklyServingsForGroup(
@@ -349,54 +363,92 @@ export function currentFoodSlot(profileId: number): FoodSlot {
   return foodSlotForInstant(profileId, clockNow());
 }
 
-// The full food-group catalog ordered so the profile's staples lead WITHIN each
-// tier (issue #591), reusing the activity-picker machinery (#195): each food_log
-// row over the trailing recent window is weighted by `servings × decayedWeight`
-// (60-day half-life, lib/decay.ts) so a recent habit outranks a stale one, and the
-// catalog's curated order breaks ties (and is the whole order for a fresh profile).
-// The FoodLogBar sections the result by tier, which preserves this order within each
-// tier. Profile-scoped via the food_log filter. Every group is returned exactly once
-// (a retired/unknown logged slug can't resolve to a catalog group, so it's dropped).
+// THE food-group ranking (issue #1980 — one function, both surfaces). Returns the
+// ranked KEYS the web log bar and the Telegram nudge both render: every food-group slug
+// exactly once, plus the reserved `__protein__` pseudo-group when the profile tracks
+// protein (#1073). Keys rather than FoodGroup rows because `__protein__` is not a catalog
+// group — each surface resolves a key to its own control (a serving row / a "+Xg protein"
+// button), which is the ONLY difference between them.
 //
-// SLOT-AWARE (issue #950): when a `window` is passed, the per-tap food_log_events
-// ledger is consulted and each tap whose DERIVED slot matches the window feeds a
-// second, slot-specific frecency signal that LEADS the blend, overall frecency
-// backfilling (blendFoodOrder — one computation for both the web bar and the Telegram
-// nudge, #221). Omitting `window` (or a cold slot with no matching taps) collapses to
-// the pre-#950 overall order — no cliff. Presentation-only: ranking never gates what
-// can be logged (#559).
-export function getFoodGroupLogOrder(
-  profileId: number,
-  window?: FoodSlot
-): FoodGroup[] {
+// The order: the profile's staples lead (issue #591, reusing the activity-picker
+// machinery #195) — each food_log row over the trailing recent window weighted by
+// `servings × decayedWeight` (60-day half-life, lib/decay.ts), so a recent habit outranks
+// a stale one and the curated catalog order breaks ties (and IS the whole order for a
+// fresh profile). SLOT-AWARE (issue #950, by PROXIMITY since #2019): with a `window`,
+// each food_log_events tap contributes a second, slot-specific signal weighted by how
+// near its EATING minute (`eaten_at`, or the tap minute when none was captured) fell to
+// that window's anchor — no bucket equality anywhere, so there is no boundary cliff and a
+// tap that never claimed a meal still participates. That signal LEADS the blend with
+// overall frecency backfilling; omitting `window` collapses to the pre-#950 overall order
+// — no cliff. Then ONE demotion: the profile's EXCLUDED groups
+// (#975) drop to the tail, still reachable, because you can always log what you actually
+// ate. Nothing else reorders — see lib/food-rank.ts on why the capped demotion was
+// reversed (#1980, reversing #1822 item 5).
+//
+// Presentation-only: ranking gates ORDER, never what can be logged (#559). Profile-scoped
+// via the food_log / food_log_events filters.
+export function rankFoodGroups(profileId: number, window?: FoodSlot): string[] {
   const { t, overall, slot } = gatherFoodRankingSignals(profileId, window);
-  // Dietary preferences (#975): demote excluded groups to the TAIL after the frecency
-  // blend (composes with slot ranking, #950) but keep them reachable — you can always log
-  // what you actually ate. Presentation-only; never gates what can be logged (#559).
+  const curated = curatedFoodRankKeys(profileId);
   const ranked = demoteExcludedGroups(
-    blendFoodOrder(foodGroupSlugs(), overall, slot, t),
+    blendFoodOrder(curated, overall, slot, t),
     new Set(getExcludedFoodGroups(profileId))
   );
-  const out: FoodGroup[] = [];
-  for (const slug of ranked) {
-    const g = foodGroupBySlug(slug);
-    if (g) out.push(g);
+  // Defensive: if ranking somehow dropped a key, append it in CURATED order so every
+  // surface still offers everything. Compared against the curated list itself (#1980) —
+  // FOOD_GROUPS.length would be the wrong yardstick now that the curated list can carry
+  // the protein pseudo-entry.
+  if (ranked.length !== curated.length) {
+    const seen = new Set(ranked);
+    for (const key of curated) if (!seen.has(key)) ranked.push(key);
   }
-  // Defensive: if ranking somehow dropped a catalog group, append it in catalog
-  // order so the bar always shows all groups.
-  if (out.length !== FOOD_GROUPS.length) {
-    const seen = new Set(out.map((g) => g.slug));
-    for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) out.push(g);
+  return ranked;
+}
+
+// The web log bar's view of `rankFoodGroups`: the ranked catalog groups resolved to rows,
+// plus WHERE the protein pseudo-entry sits among them. A formatter over the one ranking
+// (#221) — it re-decides nothing, it only resolves keys the bar has to render as a
+// different control.
+export interface FoodBarOrder {
+  // The ranked catalog groups, in rank order.
+  groups: FoodGroup[];
+  // How many ranked groups sit AHEAD of the protein pseudo-entry, or null when the
+  // profile doesn't track protein and the entry isn't ranked at all. The bar places its
+  // protein control at this position; null renders it after the ranked rows rather than
+  // dropping it, so a first shake is still one tap away (#559 — a cold start must not be
+  // a dead end).
+  proteinRank: number | null;
+}
+
+export function getFoodBarOrder(
+  profileId: number,
+  window?: FoodSlot
+): FoodBarOrder {
+  const ranked = rankFoodGroups(profileId, window);
+  const groups: FoodGroup[] = [];
+  let proteinRank: number | null = null;
+  for (const key of ranked) {
+    if (key === PROTEIN_NUDGE_KEY) {
+      proteinRank = groups.length;
+      continue;
+    }
+    const g = foodGroupBySlug(key);
+    if (g) groups.push(g);
   }
-  return out;
+  // Defensive, as above but on the RESOLVED side: an unresolvable slug (a retired group
+  // still in the ledger) must not shrink the bar.
+  if (groups.length !== FOOD_GROUPS.length) {
+    const seen = new Set(groups.map((g) => g.slug));
+    for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) groups.push(g);
+  }
+  return { groups, proteinRank };
 }
 
 // The overall (food_log daily counter) + slot (food_log_events ledger) frecency inputs
-// blendFoodOrder consumes for a window — gathered ONCE so getFoodGroupLogOrder (web bar +
-// nudge food-group order) and getFoodNudgeRankedKeys (nudge, with the protein pseudo-group)
-// rank identically (#221). The slot signal derives each event's window at read time from
-// its logged_at through the SHARED foodEventsInWindow (the same derivation the #1016 slot
-// counts use), so a schedule edit re-buckets all history for free.
+// blendFoodOrder consumes for a window — gathered ONCE for the one ranking every surface
+// reads (#221/#1980). The slot signal weights each event by PROXIMITY (#2019) between the
+// minute it was EATEN and the window's own anchor, both read at query time, so a schedule
+// edit re-weights all history for free and no event has to have claimed a meal.
 function gatherFoodRankingSignals(
   profileId: number,
   window?: FoodSlot
@@ -465,45 +517,17 @@ export function profileTracksProtein(profileId: number): boolean {
   return !!row;
 }
 
-// The curated key list handed to blendFoodOrder for the nudge (#1073): the food-group
-// catalog slugs with the reserved __protein__ pseudo-group inserted MID-LIST (so at cold
-// start — no __protein__ slot signal yet — it ranks mid-list rather than dominating or
-// vanishing; once it accrues slot events it climbs the slots the profile shakes). The web
-// bar never uses this — its curated stays foodGroupSlugs(), so __protein__ can't leak into
-// a food-group surface.
-function proteinNudgeCurated(): string[] {
+// The curated key list `rankFoodGroups` blends (#1073, one list since #1980): the
+// food-group catalog slugs, with the reserved __protein__ pseudo-group inserted MID-LIST
+// for a protein-tracking profile — so at cold start (no __protein__ slot signal yet) it
+// ranks mid-list rather than dominating or vanishing, and once it accrues slot events it
+// climbs the slots the profile actually shakes. A non-tracker's list is the plain catalog,
+// so __protein__ never reaches a surface that has nothing to log into it.
+function curatedFoodRankKeys(profileId: number): string[] {
   const slugs = foodGroupSlugs();
+  if (!profileTracksProtein(profileId)) return slugs;
   const mid = Math.floor(slugs.length / 2);
   return [...slugs.slice(0, mid), PROTEIN_NUDGE_KEY, ...slugs.slice(mid)];
-}
-
-// Ranked pseudo/real KEYS for the Telegram food nudge (#1073): the SAME slot-aware blend
-// the web bar uses (gatherFoodRankingSignals + blendFoodOrder), but the reserved
-// __protein__ pseudo-group joins the curated list for a protein-logging profile so it
-// competes for the ranked buttons. Returns string keys (not FoodGroup[]) because
-// __protein__ is not a catalog group — the nudge renderer resolves each key to a food-group
-// button or the protein "+Xg" button. Excluded-group demotion still applies to the real
-// slugs; __protein__ is never in the excluded set, so it's exempt (#975). Profile-scoped.
-//
-// TWO DEMOTIONS, INNERMOST FIRST (#1822 item 5). CAPPED groups (the catalog's `limit`
-// tier) drop below every floor group first, then the profile's EXCLUDED groups drop below
-// everything — so a group that is both lands at the very tail, where the user's own
-// explicit exclusion belongs. Both are stable partitions over the blend, and both DEMOTE
-// rather than filter: every key is still reachable through "➕ Show more". This is the
-// nudge's ranking only — the web bar (getFoodGroupLogOrder) renders groups under tier
-// headings already, so it needs no reordering.
-export function getFoodNudgeRankedKeys(
-  profileId: number,
-  window?: FoodSlot
-): string[] {
-  const { t, overall, slot } = gatherFoodRankingSignals(profileId, window);
-  const curated = profileTracksProtein(profileId)
-    ? proteinNudgeCurated()
-    : foodGroupSlugs();
-  return demoteExcludedGroups(
-    demoteCappedGroups(blendFoodOrder(curated, overall, slot, t)),
-    new Set(getExcludedFoodGroups(profileId))
-  );
 }
 
 // Slot-scoped serving counts for the Telegram nudge's per-button "(n)" suffix (#1016):

@@ -139,6 +139,7 @@ import {
 import { assessProfilePreventive } from "./preventive";
 import { getFindingSuppressions } from "./suppressions";
 import { illnessCareItems } from "../../illness-care-findings";
+import { foodDrugEventItems } from "../../food-drug-ledger-findings";
 import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
 import { followUpItems } from "../../followup-findings";
@@ -596,6 +597,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...refillItems(profileId, today),
     ...poolRefillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
+    ...foodDrugEventItems(profileId, today),
     ...illnessCareItems(profileId, today),
     ...conditionReviewItems(profileId),
     ...mentalHealthCrisisItems(profileId),
