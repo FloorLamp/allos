@@ -34,6 +34,15 @@ import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
 import { buildPracticeReminder } from "../lib/notifications/practices";
 import { buildFoodNudge } from "../lib/notifications/food";
 import { FOOD_NUDGE_WINDOWS } from "../lib/notifications/food-format";
+// Every per-day send marker this tick writes is minted by a DECLARED builder (#2036),
+// never composed from a free-form slot string — see lib/notifications/send-markers.ts.
+import {
+  DIGEST_MARKER_KEY,
+  TICK_SLOT_MARKER_KEYS,
+  WEEKLY_RECAP_MARKER_KEY,
+  foodNudgeMarkerKey,
+  intakeSlotMarkerKey,
+} from "../lib/notifications/send-markers";
 import { buildMoodCheckin } from "../lib/notifications/mood";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
@@ -314,7 +323,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (
       slotHour != null &&
       slotDue(slotHour, hour) &&
-      getProfileSetting(profile.id, `notify_last_supp_${w}`) !== date
+      getProfileSetting(profile.id, intakeSlotMarkerKey(w)) !== date
     )
       intakeSlotsDue.push(w);
   }
@@ -324,7 +333,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // configured) — turning every window off silences this too.
   if (
     Object.values(sched.supplementHours).some((h) => h != null) &&
-    getProfileSetting(profile.id, "notify_last_supp_PreWorkout") !== date
+    getProfileSetting(profile.id, intakeSlotMarkerKey("PreWorkout")) !== date
   ) {
     const preHour = getPreWorkoutSlotHour(profile.id);
     if (preHour != null && slotDue(preHour, hour))
@@ -348,7 +357,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       // can recover.
       if (delivered) {
         for (const s of built.slots)
-          setProfileSetting(profile.id, `notify_last_supp_${s}`, date);
+          setProfileSetting(profile.id, intakeSlotMarkerKey(s), date);
       }
     }
   }
@@ -395,7 +404,11 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   }
 
   const dueSlots: {
+    // The label used for logging only. The MARKER is `markerKey`, minted by a declared
+    // builder (#2036) — the key used to be composed as `notify_last_${slot}` from this
+    // free-form string, which made it invisible to the send-marker scan.
     slot: string;
+    markerKey: string;
     build: () => NotificationMessage | null;
     // Optional post-delivery hook (e.g. the mood check-in's ignored-days bump).
     onDelivered?: () => void;
@@ -424,6 +437,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (slotHour != null && slotDue(slotHour, hour))
         dueSlots.push({
           slot: `food_${w}`,
+          markerKey: foodNudgeMarkerKey(w),
           build: () => buildFoodNudge(profile.id, w, date),
         });
     }
@@ -441,6 +455,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (slotHour != null && slotDue(slotHour, hour))
       dueSlots.push({
         slot: "mood_checkin",
+        markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
         build: () => buildMoodCheckin(profile.id, date),
         onDelivered: () => bumpMoodCheckinIgnored(profile.id),
       });
@@ -450,14 +465,14 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (inf.weekdays.includes(weekday) && slotDue(inf.hour, hour))
       dueSlots.push({
         slot: "workout",
+        markerKey: TICK_SLOT_MARKER_KEYS.workout,
         build: () =>
           buildWorkoutTargetReminder(profile.id, coachingInput(), now),
       });
   }
 
-  for (const { slot, build, onDelivered } of dueSlots) {
-    const key = `notify_last_${slot}`;
-    if (getProfileSetting(profile.id, key) === date) {
+  for (const { slot, markerKey, build, onDelivered } of dueSlots) {
+    if (getProfileSetting(profile.id, markerKey) === date) {
       log.info("already sent today", { profile: profile.id, slot });
       continue;
     }
@@ -472,7 +487,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     // Mark once delivered to a channel so it isn't re-sent later today; if nothing
     // delivered (no channel / all failed) leave it unmarked so a retry can recover.
     if (delivered) {
-      setProfileSetting(profile.id, key, date);
+      setProfileSetting(profile.id, markerKey, date);
       onDelivered?.();
     }
   }
@@ -685,7 +700,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // user to "tap when you've done a session".
   if (
     waking &&
-    getProfileSetting(profile.id, "notify_last_practice") !== date
+    getProfileSetting(profile.id, TICK_SLOT_MARKER_KEYS.practice) !== date
   ) {
     try {
       const built = buildPracticeReminder(
@@ -698,7 +713,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
         const { delivered, failed } = await send(profile.id, msg);
         if (failed) anyFailed = true;
         if (delivered)
-          setProfileSetting(profile.id, "notify_last_practice", date);
+          setProfileSetting(profile.id, TICK_SLOT_MARKER_KEYS.practice, date);
       }
     } catch (e) {
       log.error("practice nudge failed", {
@@ -772,7 +787,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   if (
     sched.digestHour != null &&
     slotDue(sched.digestHour, hour) &&
-    getProfileSetting(profile.id, "notify_last_digest") !== date
+    getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date
   ) {
     try {
       const dg = await runDigest(
@@ -836,7 +851,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     sched.weeklyRecapDay != null &&
     weekday === sched.weeklyRecapDay &&
     slotDue(sched.weeklyRecapHour ?? 9, hour) &&
-    getProfileSetting(profile.id, "notify_last_weekly_recap") !== date
+    getProfileSetting(profile.id, WEEKLY_RECAP_MARKER_KEY) !== date
   ) {
     try {
       const wr = await runWeeklyRecap(profile.id, profile.name, date);

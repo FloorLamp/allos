@@ -23,6 +23,10 @@
 // DECIDES + phrases; it owns no surface.
 
 import { daysBetweenDateStr } from "./date";
+import {
+  ONCE_PER_EPISODE_FROZEN_KEEPS,
+  planNudgeCadence,
+} from "./nudge-cadence";
 import type { AssembledEpisode, SymptomSeries } from "./illness-episode-format";
 import {
   illnessThresholdFor,
@@ -239,25 +243,36 @@ export interface IllnessCareNudgePlan {
   toClear: string[]; // stale markers to drop (no longer actionable)
 }
 
-// The "once per finding EPISODE" decision for the Telegram nudge, mirroring
-// planPreventiveNudges (lib/preventive-nudge.ts): send a currently-actionable
-// finding only when it isn't already marked and isn't bus-suppressed; clear a marker
-// whose finding is no longer actionable. A SUPPRESSED (page-dismissed) finding
-// FREEZES its episode — held out of BOTH sets — so a dismiss silences the push
-// without burning the marker ("dismiss once, silence everywhere", #227/#245).
+// The "once per finding EPISODE" decision for the Telegram nudge — the SAME cadence
+// planPreventiveNudges makes, and since #2036 literally so: both are thin adapters over
+// planNudgeCadence (lib/nudge-cadence.ts). Send a currently-actionable finding only when
+// it isn't already marked and isn't bus-suppressed; clear a marker whose finding is no
+// longer actionable. A SUPPRESSED (page-dismissed) finding FREEZES its episode — held
+// out of BOTH sets — so a dismiss silences the push without burning the marker ("dismiss
+// once, silence everywhere", #227/#245).
+//
+// The temp-red-flag nudge (lib/notifications/temp-red-flag.ts) shares this planner
+// outright: both are dedupeKey-keyed care findings with identical episode semantics.
 export function planIllnessCareNudges(
   actionableKeys: Iterable<string>,
   markedKeys: Iterable<string>,
   suppressedKeys: Iterable<string> = []
 ): IllnessCareNudgePlan {
-  const actionable = new Set(actionableKeys);
   const marked = new Set(markedKeys);
-  const frozen = new Set(suppressedKeys);
-  const toSend = [...actionable].filter(
-    (k) => !marked.has(k) && !frozen.has(k)
-  );
-  const toClear = [...marked]
-    .filter((k) => !actionable.has(k) && !frozen.has(k))
-    .sort();
-  return { toSend: toSend.sort(), toClear };
+  const plan = planNudgeCadence<string, string>({
+    candidates: [...actionableKeys].map((k) => ({
+      key: k,
+      item: k,
+      actionable: true,
+      sends: marked.has(k) ? 1 : 0,
+      firstSentDate: null,
+    })),
+    marked: markedKeys,
+    frozen: suppressedKeys,
+    policy: ONCE_PER_EPISODE_FROZEN_KEEPS,
+  });
+  return {
+    toSend: plan.toSend.map((s) => s.item).sort(),
+    toClear: plan.toClear.sort(),
+  };
 }

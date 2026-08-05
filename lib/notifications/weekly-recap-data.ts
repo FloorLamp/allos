@@ -58,6 +58,7 @@ import { assembleFitnessCheckModel } from "../fitness-check-assemble";
 import { batteryCompletion } from "../fitness-outcome";
 import type { WeightUnit } from "../settings";
 import { dispatch } from "./index";
+import { WEEKLY_RECAP_MARKER_KEY } from "./send-markers";
 import { createLogger } from "../log";
 
 const log = createLogger("notify");
@@ -315,7 +316,7 @@ export async function runWeeklyRecap(
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
-  const dedupKey = "notify_last_weekly_recap";
+  const dedupKey = WEEKLY_RECAP_MARKER_KEY;
   const recap = buildWeeklyRecap(gatherRecapInput(profileId, "kg", 7, true));
   // Surface the stored AI recap narrative when one exists for this window (#421).
   // READ-ONLY — the tick must never call Claude (quota atomicity assumes a single

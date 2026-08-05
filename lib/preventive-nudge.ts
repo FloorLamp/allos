@@ -36,6 +36,10 @@
 // re-nudge the same episode. Covered and suppressed are the two "frozen" sources.
 
 import type { AppRoute } from "./hrefs";
+import {
+  ONCE_PER_EPISODE_FROZEN_KEEPS,
+  planNudgeCadence,
+} from "./nudge-cadence";
 
 // One due/overdue preventive item the nudge can announce. Derived from the pure
 // assessor's actionable slice (lib/preventive-status.ts): `ruleKey` is the catalog
@@ -71,6 +75,13 @@ export interface PreventiveNudgePlan {
 // its episode marker stays exactly as-is while the coverage/suppression stands.
 // `toClear` is sorted for deterministic output (delete order is irrelevant, but
 // stable output keeps tests simple).
+//
+// Since #2036 the send / freeze / sweep rules are the shared planNudgeCadence decision
+// (lib/nudge-cadence.ts). What stays here is the preventive vocabulary: the two frozen
+// SOURCES (booked coverage and page dismissal) folding into one frozen set, and
+// `frozenBlocksClear` — the one place this domain differs from refill, for the reason
+// stated above (dropping a covered rule from the clear set is what keeps a later
+// un-cover from re-nudging the SAME episode).
 export function planPreventiveNudges(
   actionable: readonly PreventiveNudgeItem[],
   markedRuleKeys: Iterable<string>,
@@ -78,14 +89,23 @@ export function planPreventiveNudges(
   suppressedRuleKeys: Iterable<string> = []
 ): PreventiveNudgePlan {
   const marked = new Set(markedRuleKeys);
-  // Covered (booked visit) and suppressed (page dismissal) both freeze the episode.
-  const frozen = new Set([...coveredRuleKeys, ...suppressedRuleKeys]);
-  const actionableKeys = new Set(actionable.map((a) => a.ruleKey));
-  const toSend = actionable.filter(
-    (a) => !marked.has(a.ruleKey) && !frozen.has(a.ruleKey)
-  );
-  const toClear = [...marked]
-    .filter((k) => !actionableKeys.has(k) && !frozen.has(k))
-    .sort();
-  return { toSend, toClear };
+  const plan = planNudgeCadence<string, PreventiveNudgeItem>({
+    candidates: actionable.map((a) => ({
+      key: a.ruleKey,
+      item: a,
+      // The caller passes the ACTIONABLE slice; anything not in it is, by construction,
+      // no longer live and reaches the sweep through `marked`.
+      actionable: true,
+      sends: marked.has(a.ruleKey) ? 1 : 0,
+      firstSentDate: null,
+    })),
+    marked: markedRuleKeys,
+    // Covered (booked visit) and suppressed (page dismissal) both freeze the episode.
+    frozen: [...coveredRuleKeys, ...suppressedRuleKeys],
+    policy: ONCE_PER_EPISODE_FROZEN_KEEPS,
+  });
+  return {
+    toSend: plan.toSend.map((s) => s.item),
+    toClear: plan.toClear.sort(),
+  };
 }

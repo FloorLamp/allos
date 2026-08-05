@@ -788,6 +788,60 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
+## Send markers and nudge cadence (#2036)
+
+**The `notify_last_*` discipline is a registry now, not a convention.**
+`lib/notifications/send-markers.ts` holds `SEND_MARKER_REGISTRY`: one entry per
+`notify_*` settings key the app writes to remember that something was already
+sent. Each entry declares its tail **shape**, its **class** (`id-keyed`,
+`catalog-keyed`, `anchored`, `slot-keyed`, `profile-fixed`,
+`name-keyed-swept`, `legacy`), its **cadence** (`per-day`, `per-episode`,
+`one-shot`, `repeat-n`, `watermark`, `retired`), the settings **tier** it lives
+in, which module **writes** it, and its **retention** — the sweep that clears
+it, or, in writing, why none is needed. Companion `NON_MARKER_NOTIFY_KEYS`
+records the `notify_`-prefixed strings that are schedules, preferences, login
+flags or table names instead.
+
+Why the registry exists: a marker keyed on something recyclable, or never swept
+after its subject is deleted, is a silent wrong-cadence bug — either a nudge
+that never fires again or one that fires for a subject nobody asked about. That
+is the class `DISMISSAL_KEY_REGISTRY` (#1931) made unshippable for suppression
+keys; this is the same shape for the send side.
+
+**The teeth** (`lib/__tests__/send-markers.test.ts`): a source scan over `lib/`
+and `scripts/` collects every `notify_…` string literal and template-literal
+prefix, ignoring comments, and requires each to resolve to a declaration. It
+also asserts agreement with `lib/dismissal-classes.ts` — every `notify_` prefix
+that registry excused as "not a dismissal" must be a real send marker here, and
+no key may be both.
+
+A key whose tail is interpolated from a free-form variable is invisible to any
+scan, which is how four namespaces stayed unregistered. Those now mint through
+declared builders in the same module — `foodNudgeMarkerKey`,
+`intakeSlotMarkerKey`, `TICK_SLOT_MARKER_KEYS`, `DIGEST_MARKER_KEY`,
+`WEEKLY_RECAP_MARKER_KEY` — over closed, typed slot vocabularies.
+
+**One cadence decision, four planners.** `planNudgeCadence`
+(`lib/nudge-cadence.ts`) is the pure "given what has already been sent, what is
+live, and what the user silenced, which nudges go out and which stale markers
+get swept" answer. Its three rules are: **send** a live, unspent, unfrozen
+candidate; **freeze** — neither send nor clear — a candidate the user dismissed
+or a booked visit covers, so un-dismissing resumes the lifecycle rather than
+restarting it (#227/#183); **sweep** a marker whose subject is no longer live,
+self-healing because the caller passes the FULL live-marker set rather than the
+candidates' keys (#325). `planRefillNudges`, `planPreventiveNudges`,
+`planIllnessCareNudges` (which the temp-red-flag nudge shares outright) and
+`planFollowUpNudges` are thin adapters over it; each keeps its own vocabulary,
+outcome shape and ordering. The one axis they differ on is declared per call
+site: `frozenBlocksClear`, true only for the preventive/illness-care family,
+because dropping a covered rule's marker would let a later un-cover re-nudge the
+SAME episode.
+
+None of this moves policy. Dose reminders and missed-dose escalations do not
+route through the cadence planner and never did — they are safety signals an
+Upcoming dismissal may never silence, and registering their bookkeeping changes
+only the census.
+
 ## Overdue safety-follow-up escalation (#1866)
 
 **The overdue finding follow-up (#700) pushes — with zero settings and a

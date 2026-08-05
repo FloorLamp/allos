@@ -256,6 +256,14 @@ use the same `dedupeKey` as their visible finding. Dose reminders and missed-dos
 escalations are safety signals and must never be silenced by an Upcoming
 dismissal. Suppression policy flows through `isHiddenUnderPolicy`.
 
+Every `notify_*` send marker is declared in `SEND_MARKER_REGISTRY`
+(`lib/notifications/send-markers.ts`) with its class, cadence, settings tier and
+the sweep that clears it; a source scan fails any undeclared `notify_` key, and a
+key whose tail is interpolated must mint through a builder there. The send /
+freeze / self-healing-sweep decision is `planNudgeCadence`
+(`lib/nudge-cadence.ts`) — the refill, preventive, illness-care and follow-up
+planners are adapters over it, not four copies.
+
 Delivery health is stored in `notify_lifecycle` and follows the shared
 set/clear/freeze decision in `lib/notifications/delivery-status.ts`. Clear an
 error only after a healthy dispatch actually attempted the affected channel.
