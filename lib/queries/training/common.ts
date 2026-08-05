@@ -6,6 +6,8 @@ import { RECENT_WINDOW_DAYS } from "../../exercise-window";
 import type { ActivityComponent } from "../../types";
 import { parseComponents } from "../../types";
 import { cache } from "../../request-cache";
+import { activityDetailHref } from "../../ride-detail";
+import type { AppRoute } from "../../hrefs";
 
 // Re-export the shared request-scoped cache() shim (lib/request-cache) so the
 // training submodules keep importing `cache` from this common module unchanged.
@@ -45,11 +47,19 @@ export const loadWeightsAsc = cache(function loadWeightsAsc(
 // row's own distance/duration.
 interface EffortEntry {
   activityId: number;
+  href: AppRoute;
   date: string;
   name: string;
   distanceKm: number;
   durationMin: number;
   intensity: string | null; // from the activity row (shared by its components)
+  avgHr: number | null;
+  elevationM: number | null;
+  avgPowerW: number | null;
+  weightedAvgPowerW: number | null;
+  avgCadence: number | null;
+  relativeEffort: number | null;
+  kilojoules: number | null;
 }
 
 // cache(): a single page can aggregate the same (profile, type) efforts 3–4 times
@@ -72,7 +82,9 @@ export const effortEntries = cache(function effortEntries(
   if (until) args.push(until);
   const rows = db
     .prepare(
-      `SELECT id, date, type, title, distance_km, duration_min, intensity, components
+      `SELECT id, date, type, title, distance_km, duration_min, intensity, components,
+              avg_hr, elevation_m, avg_power_w, weighted_avg_power_w,
+              avg_cadence, relative_effort, kilojoules
        FROM activities
        WHERE profile_id = ? AND (type = ? OR components IS NOT NULL)${
          since ? " AND date >= ?" : ""
@@ -88,6 +100,13 @@ export const effortEntries = cache(function effortEntries(
     duration_min: number | null;
     intensity: string | null;
     components: string | null;
+    avg_hr: number | null;
+    elevation_m: number | null;
+    avg_power_w: number | null;
+    weighted_avg_power_w: number | null;
+    avg_cadence: number | null;
+    relative_effort: number | null;
+    kilojoules: number | null;
   }[];
 
   const out: EffortEntry[] = [];
@@ -108,6 +127,7 @@ export const effortEntries = cache(function effortEntries(
       for (const c of matching) {
         out.push({
           activityId: r.id,
+          href: activityDetailHref(r),
           date: r.date,
           name: c.name.trim(),
           distanceKm: c.distance_km ?? 0,
@@ -119,16 +139,31 @@ export const effortEntries = cache(function effortEntries(
               sessionDurationMin: r.duration_min ?? null,
             }) ?? 0,
           intensity: r.intensity,
+          avgHr: r.avg_hr,
+          elevationM: r.elevation_m,
+          avgPowerW: r.avg_power_w,
+          weightedAvgPowerW: r.weighted_avg_power_w,
+          avgCadence: r.avg_cadence,
+          relativeEffort: r.relative_effort,
+          kilojoules: r.kilojoules,
         });
       }
     } else if (r.type === targetType && r.title.trim()) {
       out.push({
         activityId: r.id,
+        href: activityDetailHref(r),
         date: r.date,
         name: r.title.trim(),
         distanceKm: r.distance_km ?? 0,
         durationMin: r.duration_min ?? 0,
         intensity: r.intensity,
+        avgHr: r.avg_hr,
+        elevationM: r.elevation_m,
+        avgPowerW: r.avg_power_w,
+        weightedAvgPowerW: r.weighted_avg_power_w,
+        avgCadence: r.avg_cadence,
+        relativeEffort: r.relative_effort,
+        kilojoules: r.kilojoules,
       });
     }
   }

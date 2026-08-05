@@ -97,6 +97,32 @@ describe("getTimelineEvents", () => {
     expect(body?.subtitle).not.toContain("80.0 kg");
   });
 
+  it("links cycling events to ride detail while other activities keep their Journal record", () => {
+    const rideId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, components)
+           VALUES (?, ?, 'cardio', 'TLINE Ride', 45, ?)`
+        )
+        .run(
+          imperial.profileId,
+          imperial.todayStr,
+          JSON.stringify([{ name: "Cycling", type: "cardio" }])
+        ).lastInsertRowid
+    );
+
+    const events = getTimelineEvents(imperial.profileId);
+    expect(
+      events.find((event) => event.id === `activity:${rideId}`)?.href
+    ).toBe(`/training/rides/${rideId}`);
+    expect(
+      events.find(
+        (event) => event.id === `activity:${imperial.cardioActivityId}`
+      )?.href
+    ).toBe(`/training?tab=log#activity-${imperial.cardioActivityId}`);
+  });
+
   it("includes expandable strength exercise summaries on activity events", () => {
     const events = getTimelineEvents(imperial.profileId, {
       units: { distanceUnit: "km", weightUnit: "lb", temperatureUnit: "F" },

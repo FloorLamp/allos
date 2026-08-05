@@ -10,7 +10,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type MouseHandlerDataParam,
 } from "recharts";
+import type { ComponentProps } from "react";
 import { useChartColors } from "./useChartColors";
 import {
   chartActiveDot,
@@ -42,6 +44,7 @@ import {
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+type LineChartSyncMethod = ComponentProps<typeof LineChart>["syncMethod"];
 
 export default function LineChartCard({
   data,
@@ -56,14 +59,21 @@ export default function LineChartCard({
   heightClass = "h-64",
   annotations,
   windows,
+  highlightDate,
   referenceValue,
   referenceBand,
+  referenceBands,
   decimals,
   yDomain,
+  yTicks,
+  yTickFormatter,
   groupYTicks = false,
   syncId,
+  syncMethod,
+  onActiveLabelChange,
   sparkline = false,
   sparklineDots = false,
+  animateTooltip = true,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -81,6 +91,10 @@ export default function LineChartCard({
   // turned a 1.6× steps spread into a near-zero-to-peak swing — while leaving the
   // ceiling to follow the data.
   yDomain?: [number | "auto", number | "auto"];
+  // Exact numeric tick positions and formatting for charts whose Y bands carry
+  // semantic boundaries (for example personalized heart-rate zones).
+  yTicks?: number[];
+  yTickFormatter?: (value: number) => string;
   // Thousands-group the Y-axis ticks AND the tooltip value (#1541). Opt-in, because
   // grouping only earns its comma on a metric that runs to four+ digits; the two
   // travel together so the axis and the tooltip can't render one number two ways.
@@ -88,6 +102,8 @@ export default function LineChartCard({
   // Charts with the same id share hover position/tooltip alignment (used by the
   // paired sleep + mood panels so the same date is compared in both).
   syncId?: string;
+  syncMethod?: LineChartSyncMethod;
+  onActiveLabelChange?: (label: string | null) => void;
   // Display precision for the tooltip value, so it reads the same rounded number
   // as the caller's headline/table (issue #403). Omitted → cap at 2 decimals.
   decimals?: number;
@@ -116,6 +132,10 @@ export default function LineChartCard({
   // Show resting points in sparkline mode. The shared density limit still removes
   // them when they would fuse into a heavy line.
   sparklineDots?: boolean;
+  // Recharts animates tooltip transforms between points. A chart with labeled
+  // horizontal bands can force a left/right edge flip; callers may disable that
+  // transform so the tooltip snaps inside the plot instead of crossing the card.
+  animateTooltip?: boolean;
   // Event annotations, pre-filtered to the enabled kinds by
   // the parent. Drawn as vertical reference lines, snapped to the nearest charted
   // date (recharts positions a category-axis ReferenceLine only on an actual point).
@@ -125,6 +145,10 @@ export default function LineChartCard({
   // charted category dates (recharts positions a category-axis area only on real
   // points).
   windows?: TrendWindow[];
+  // Highlight one category on the X axis (for example, the current ride at the
+  // end of a personal progression series). The marker uses the shared "now"
+  // treatment rather than inventing another chart annotation style.
+  highlightDate?: { date: string; label: string };
   // A horizontal target line (e.g. a goal's target value, in this chart's unit).
   referenceValue?: { value: number; label?: string; color?: string } | null;
   // A horizontal target BAND — a low–high range in this chart's unit, drawn as a
@@ -134,7 +158,21 @@ export default function LineChartCard({
   // and a range target passes the band rather than two lines the reader has to
   // mentally join. Same tint treatment as the biomarker reference band: fill only,
   // with the label carried by the caller's chart note.
-  referenceBand?: { low: number; high: number; color?: string } | null;
+  referenceBand?: {
+    low: number;
+    high: number;
+    color?: string;
+    label?: string;
+  } | null;
+  // Several horizontal context bands drawn behind one series. Ride heart rate
+  // uses this for the five canonical training zones; the singular prop above
+  // remains the convenient shape for one target range.
+  referenceBands?: readonly {
+    low: number;
+    high: number;
+    color?: string;
+    label?: string;
+  }[];
 }) {
   const formatPrefs = useFormatPrefs();
   const key = dataKey ?? "value";
@@ -168,6 +206,10 @@ export default function LineChartCard({
     const formatted = labelFmt ? labelFmt(date) : date;
     return annotationTooltipLabel(formatted, date, snapped, snappedWindows);
   };
+  const horizontalBands = [
+    ...(referenceBand ? [referenceBand] : []),
+    ...(referenceBands ?? []),
+  ];
   if (data.length === 0) {
     return (
       <div
@@ -183,6 +225,13 @@ export default function LineChartCard({
         <LineChart
           data={data}
           syncId={syncId}
+          syncMethod={syncMethod}
+          onMouseMove={(state: MouseHandlerDataParam) =>
+            onActiveLabelChange?.(
+              state.activeLabel == null ? null : String(state.activeLabel)
+            )
+          }
+          onMouseLeave={() => onActiveLabelChange?.(null)}
           margin={sparkline ? chartSparklineMargin : chartFullMargin}
         >
           {!sparkline && <CartesianGrid {...chartGridProps(c)} />}
@@ -194,10 +243,13 @@ export default function LineChartCard({
           <YAxis
             {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
             domain={yDomain ?? ["auto", "auto"]}
+            ticks={yTicks}
             tickFormatter={
-              groupYTicks
-                ? (v) => groupChartValue(Number(v), decimals)
-                : undefined
+              yTickFormatter
+                ? (value) => yTickFormatter(Number(value))
+                : groupYTicks
+                  ? (v) => groupChartValue(Number(v), decimals)
+                  : undefined
             }
           />
           <Tooltip
@@ -211,7 +263,21 @@ export default function LineChartCard({
             ]}
             labelFormatter={(value) => tooltipLabel(String(value))}
             {...chartTooltipProps(c, motion)}
+            isAnimationActive={animateTooltip && !motion.reduced}
+            wrapperStyle={animateTooltip ? undefined : { transition: "none" }}
           />
+          {highlightDate ? (
+            <ReferenceLine
+              x={highlightDate.date}
+              stroke={chartSeries.brand}
+              strokeDasharray={chartDash.now}
+              label={chartAnnotationLabel(
+                highlightDate.label,
+                chartSeries.brand,
+                "top"
+              )}
+            />
+          ) : null}
           {snappedWindows.map((w, i) => {
             const color = ANNOTATION_KIND_META[w.kind].color;
             return (
@@ -226,15 +292,23 @@ export default function LineChartCard({
               />
             );
           })}
-          {referenceBand != null && referenceBand.high > referenceBand.low && (
-            <ReferenceArea
-              y1={referenceBand.low}
-              y2={referenceBand.high}
-              fill={referenceBand.color ?? chartBand.optimal}
-              fillOpacity={0.12}
-              stroke={referenceBand.color ?? chartBand.optimal}
-              strokeOpacity={0.25}
-            />
+          {horizontalBands.map((band, index) =>
+            band.high > band.low ? (
+              <ReferenceArea
+                key={`horizontal-band-${band.low}-${band.high}-${index}`}
+                y1={band.low}
+                y2={band.high}
+                fill={band.color ?? chartBand.optimal}
+                fillOpacity={0.12}
+                stroke={band.color ?? chartBand.optimal}
+                strokeOpacity={0.25}
+                label={
+                  band.label
+                    ? chartAnnotationLabel(band.label, c.tick, "insideLeft")
+                    : undefined
+                }
+              />
+            ) : null
           )}
           {referenceValue != null && (
             <ReferenceLine

@@ -1,6 +1,5 @@
 import { speedKmh } from "../../coaching";
 import { activityHistoryKey } from "../../activities-catalog";
-import { journalActivityHref } from "../../timeline-format";
 import type { AppRoute } from "../../hrefs";
 import { startOfWeekStr } from "../../date";
 import { formatMinutes } from "../../duration";
@@ -40,15 +39,30 @@ export interface CardioStat {
   fastestKmh: number; // 0 when no distance-and-duration session exists
   fastestKmhDate: string;
   hasDistance: boolean;
+  hasHeartRate: boolean;
+  hasElevation: boolean;
+  hasPower: boolean;
+  hasWeightedPower: boolean;
+  hasCadence: boolean;
+  hasRelativeEffort: boolean;
   lastDate: string;
   lastActivityId: number;
+  lastHref: AppRoute;
   // One point per session (date ascending) for the trend chart.
   trend: {
     activityId: number;
+    href: AppRoute;
     date: string;
     distanceKm: number;
     durationMin: number;
     speedKmh: number | null;
+    avgHr: number | null;
+    elevationM: number | null;
+    avgPowerW: number | null;
+    weightedAvgPowerW: number | null;
+    avgCadence: number | null;
+    relativeEffort: number | null;
+    kilojoules: number | null;
   }[];
   recent: CardioSessionSummary[];
 }
@@ -86,8 +100,15 @@ export const getCardioByActivity = cache(function getCardioByActivity(
         fastestKmh: 0,
         fastestKmhDate: e.date,
         hasDistance: false,
+        hasHeartRate: false,
+        hasElevation: false,
+        hasPower: false,
+        hasWeightedPower: false,
+        hasCadence: false,
+        hasRelativeEffort: false,
         lastDate: e.date,
         lastActivityId: e.activityId,
+        lastHref: e.href,
         trend: [],
         recent: [],
       };
@@ -99,6 +120,12 @@ export const getCardioByActivity = cache(function getCardioByActivity(
     cur.totalDistanceKm += dist;
     cur.totalDurationMin += dur;
     if (dist > 0) cur.hasDistance = true;
+    if (e.avgHr != null) cur.hasHeartRate = true;
+    if (e.elevationM != null) cur.hasElevation = true;
+    if (e.avgPowerW != null) cur.hasPower = true;
+    if (e.weightedAvgPowerW != null) cur.hasWeightedPower = true;
+    if (e.avgCadence != null) cur.hasCadence = true;
+    if (e.relativeEffort != null) cur.hasRelativeEffort = true;
     if (dist > cur.longestDistanceKm) {
       cur.longestDistanceKm = dist;
       cur.longestDistanceDate = e.date;
@@ -115,18 +142,27 @@ export const getCardioByActivity = cache(function getCardioByActivity(
     if (e.date >= cur.lastDate) {
       cur.lastDate = e.date;
       cur.lastActivityId = e.activityId;
+      cur.lastHref = e.href;
     }
     cur.trend.push({
       activityId: e.activityId,
+      href: e.href,
       date: e.date,
       distanceKm: dist,
       durationMin: dur,
       speedKmh: spd,
+      avgHr: e.avgHr,
+      elevationM: e.elevationM,
+      avgPowerW: e.avgPowerW,
+      weightedAvgPowerW: e.weightedAvgPowerW,
+      avgCadence: e.avgCadence,
+      relativeEffort: e.relativeEffort,
+      kilojoules: e.kilojoules,
     });
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
       date: formatLongDate(e.date, prefs),
-      href: journalActivityHref(e.activityId),
+      href: e.href,
       text:
         dist > 0
           ? `${fmtDistance(dist, unit)} · ${formatMinutes(dur || null)}`
@@ -243,9 +279,11 @@ export interface SportStat {
   longestDurationDate: string;
   lastDate: string;
   lastActivityId: number;
+  lastHref: AppRoute;
   // One point per session (date ascending) for the duration trend chart.
   trend: {
     activityId: number;
+    href: AppRoute;
     date: string;
     durationMin: number;
     intensity: string | null;
@@ -275,6 +313,7 @@ export function getSportByActivity(
         longestDurationDate: e.date,
         lastDate: e.date,
         lastActivityId: e.activityId,
+        lastHref: e.href,
         trend: [],
         recent: [],
       };
@@ -290,9 +329,11 @@ export function getSportByActivity(
     if (e.date >= cur.lastDate) {
       cur.lastDate = e.date;
       cur.lastActivityId = e.activityId;
+      cur.lastHref = e.href;
     }
     cur.trend.push({
       activityId: e.activityId,
+      href: e.href,
       date: e.date,
       durationMin: dur,
       intensity: e.intensity,
@@ -300,7 +341,7 @@ export function getSportByActivity(
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
       date: formatLongDate(e.date, prefs),
-      href: journalActivityHref(e.activityId),
+      href: e.href,
       text: formatMinutes(dur || null),
     });
   }

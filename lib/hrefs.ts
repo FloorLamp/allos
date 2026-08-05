@@ -34,6 +34,7 @@
 //     and validates those directly.
 
 import type { Route } from "next";
+import type { CardioMetric, RangeId } from "./analyze-view";
 import { continuousReadingSlug } from "./reading-cadence";
 import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
@@ -340,6 +341,52 @@ export function protocolHref(id: number): AppRoute {
   const href: Route<`/protocols/${number}`> = `/protocols/${id}`;
   return href as AppRoute;
 }
+
+// A read-first cycling activity detail page. The dynamic route remains scoped by
+// the active profile at its query boundary; this helper only owns its URL shape.
+export function rideHref(id: number): AppRoute {
+  const href: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
+  return href as AppRoute;
+}
+
+export interface CyclingLens {
+  metric: CardioMetric;
+  range: RangeId;
+  activity?: string;
+}
+
+// A ride reached from Cycling carries the aggregate lens that selected it. The
+// same query survives adjacent/comparison navigation and reconstructs the
+// overview link, so opening a Power · 6m ride never silently returns to
+// Distance · All.
+export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
+  const path: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
+  const params = new URLSearchParams({
+    metric: lens.metric,
+    range: lens.range,
+  });
+  if (lens.activity && lens.activity.trim().toLowerCase() !== "cycling") {
+    params.set("item", lens.activity);
+  }
+  return `${path}?${params.toString()}` as AppRoute;
+}
+
+export function cyclingOverviewHref(lens: CyclingLens): AppRoute {
+  const params = new URLSearchParams({
+    tab: "analyze",
+    kind: "cardio",
+    item: lens.activity?.trim() || "Cycling",
+    metric: lens.metric,
+    range: lens.range,
+  });
+  return `/training?${params.toString()}` as AppRoute;
+}
+
+// The all-ride Cycling home within Training → Analyze. Ride detail pages use
+// this canonical state instead of sending the reader back to a single Journal
+// row; `range=all` makes the first landing an actual overall history.
+export const CYCLING_OVERVIEW_HREF: AppRoute =
+  "/training?tab=analyze&kind=cardio&item=Cycling&range=all";
 
 // The per-vaccine immunization history page (slug is the vaccine code/name).
 export function immunizationHref(vaccine: string): AppRoute {

@@ -30,9 +30,11 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     )
   ).toBe(true);
 
-  // Opening the editor (via the card title) preloads the activity-level picker with
-  // the linked gear — a real equipment id is selected, labelled "Road Bike".
-  await card.getByRole("button", { name: "Zone 2 bike" }).click();
+  // Cycling titles now lead to the dedicated ride detail. The card's separate Edit
+  // action still opens the legacy editor with the linked gear preloaded — a real
+  // equipment id is selected, labelled "Road Bike".
+  await card.getByRole("button", { name: "Activity actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(/\d+/);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
@@ -15,6 +16,7 @@ import {
   type ClusterFieldConflict,
   type OverrideChoices,
 } from "@/lib/import-review/conflicts";
+import type { AppRoute } from "@/lib/hrefs";
 import { mergeActivities } from "./activity-actions";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
@@ -45,6 +47,9 @@ interface PendingConflictMerge {
 
 // The kebab (⋯) action menu on a Journal activity card. Its affordances:
 //
+//  • "View ride details" — read-first navigation for cycling activities.
+//  • "Edit" — opens the existing activity editor without making the ride title
+//    itself an edit affordance.
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
 //    session is one tap + a save. Always available.
@@ -64,6 +69,7 @@ export default function ActivityCardMenu({
   foldValues,
   editLocked,
   units,
+  detailHref,
   canWrite = true,
 }: {
   // The full card activity — the source for "Log again".
@@ -78,6 +84,8 @@ export default function ActivityCardMenu({
   // the deliberate re-enable action lives here rather than lengthening the card.
   editLocked: boolean;
   units: UnitPrefs;
+  // Read-first destination for activities with a dedicated detail surface.
+  detailHref?: AppRoute | null;
   // Whether the acting login may write to THIS card's subject profile (issue #1330).
   // Merge (edits the keeper + deletes the sibling) and resume-sync (clears the edit
   // lock) are subject-writes, so they're hidden on a read-only-granted member's card.
@@ -102,7 +110,7 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
-  const { openRepeat } = useActivityEditor();
+  const { openEdit, openRepeat } = useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
     activity.id
@@ -324,6 +332,29 @@ export default function ActivityCardMenu({
             </div>
           ) : (
             <>
+              {detailHref ? (
+                <Link
+                  href={detailHref}
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  onClick={() => setOpen(false)}
+                >
+                  View ride details
+                </Link>
+              ) : null}
+              {canWrite && detailHref ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setOpen(false);
+                    openEdit(activity);
+                  }}
+                >
+                  Edit
+                </button>
+              ) : null}
               <button
                 type="button"
                 role="menuitem"

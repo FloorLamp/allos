@@ -75,6 +75,12 @@ export const DYNAMIC_ROUTES = [
     match: /^\/equipment\/\d+$/,
   },
   {
+    pattern: "/training/rides/[id]",
+    strategy: "follow",
+    from: ["/training?tab=log", "/training"],
+    match: /^\/training\/rides\/\d+(?:\?.*)?$/,
+  },
+  {
     // The providers registry index lives under Records → Care, not /providers.
     pattern: "/providers/[id]",
     strategy: "follow",

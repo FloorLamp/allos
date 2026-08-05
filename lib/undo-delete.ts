@@ -181,6 +181,12 @@ export interface MergeUndoContext {
   // drop's route stayed on the drop and was captured as a child instead). Undo moves
   // exactly this route back onto the restored row. Mirrors movedSetIds.
   movedRouteId: number | null;
+  // Profile-owned cycling children moved onto the keeper before the drop's
+  // cascade delete. Optional so an undo payload captured by an older build remains
+  // restorable during the 24-hour undo window after deployment.
+  movedTelemetryIds?: number[];
+  movedLapIds?: number[];
+  movedSegmentEffortIds?: number[];
 }
 
 // ── The kind registry ─────────────────────────────────────────────────────────
@@ -224,6 +230,27 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         // outside this capture, so no externalRefs.
         entity: "route",
         table: "activity_routes",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        entity: "telemetry",
+        table: "activity_telemetry",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        entity: "laps",
+        table: "activity_laps",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        entity: "segmentEfforts",
+        table: "activity_segment_efforts",
         fks: [{ column: "activity_id", ref: "activity" }],
         childWhere: "activity_id = ?",
         childBinds: 1,
