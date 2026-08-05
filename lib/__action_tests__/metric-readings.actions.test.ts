@@ -138,10 +138,14 @@ describe("updateMetricReading", () => {
     const [row] = getMetricReadings(profile.id, "mood");
 
     expect(
-      await updateMetricReading(fd({ kind: "mood", target: target("mood", row.id), value: 9 }))
+      await updateMetricReading(
+        fd({ kind: "mood", target: target("mood", row.id), value: 9 })
+      )
     ).toMatchObject({ ok: false });
     expect(
-      await updateMetricReading(fd({ kind: "mood", target: target("mood", row.id), value: "abc" }))
+      await updateMetricReading(
+        fd({ kind: "mood", target: target("mood", row.id), value: "abc" })
+      )
     ).toMatchObject({ ok: false });
     expect(getMetricReadings(profile.id, "mood")[0].value).toBe(3);
   });
@@ -166,7 +170,9 @@ describe("updateMetricReading", () => {
     const [row] = getMetricReadings(profile.id, "energy");
 
     expect(
-      await updateMetricReading(fd({ kind: "energy", target: target("energy", row.id), value: 5 }))
+      await updateMetricReading(
+        fd({ kind: "energy", target: target("energy", row.id), value: 5 })
+      )
     ).toEqual({ ok: true });
     expect(getMetricReadings(profile.id, "energy")[0].value).toBe(5);
     expect(getMetricReadings(profile.id, "mood")[0].value).toBe(4);
@@ -182,13 +188,17 @@ describe("updateMetricReading", () => {
 
     // "4" means fairly calm on the axis the user sees → stored anxiety 2.
     expect(
-      await updateMetricReading(fd({ kind: "calm", target: target("calm", row.id), value: 4 }))
+      await updateMetricReading(
+        fd({ kind: "calm", target: target("calm", row.id), value: 4 })
+      )
     ).toEqual({ ok: true });
     expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
     // An off-scale display slot converts to an off-scale stored value and is refused
     // rather than wrapping around into a plausible-looking rating.
     expect(
-      await updateMetricReading(fd({ kind: "calm", target: target("calm", row.id), value: 9 }))
+      await updateMetricReading(
+        fd({ kind: "calm", target: target("calm", row.id), value: 9 })
+      )
     ).toMatchObject({ ok: false });
     expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
   });
@@ -196,7 +206,13 @@ describe("updateMetricReading", () => {
   it("rejects an unknown metric kind rather than guessing a store", async () => {
     seedActor();
     expect(
-      await updateMetricReading(fd({ kind: "not-a-metric", target: target("not-a-metric", 1), value: 5 }))
+      await updateMetricReading(
+        fd({
+          kind: "not-a-metric",
+          target: target("not-a-metric", 1),
+          value: 5,
+        })
+      )
     ).toMatchObject({ ok: false });
   });
 
@@ -243,7 +259,9 @@ describe("deleteMetricReading", () => {
     upsertMetricSamples(profile.id, sample(42), SRC);
     const [row] = hrvRows(profile.id);
 
-    await deleteMetricReading(fd({ kind: "hrv", target: target("hrv", row.id)}));
+    await deleteMetricReading(
+      fd({ kind: "hrv", target: target("hrv", row.id) })
+    );
     expect(hrvRows(profile.id)).toEqual([]);
 
     // Without the tombstone the rolling window would simply re-insert it.
@@ -263,7 +281,9 @@ describe("deleteMetricReading", () => {
         .run(profile.id, DATE, 80, 21).lastInsertRowid
     );
 
-    await deleteMetricReading(fd({ kind: "body-fat", target: target("body-fat", id) }));
+    await deleteMetricReading(
+      fd({ kind: "body-fat", target: target("body-fat", id) })
+    );
     const row = db
       .prepare(`SELECT weight_kg, body_fat_pct FROM body_metrics WHERE id = ?`)
       .get(id) as { weight_kg: number | null; body_fat_pct: number | null };
@@ -303,7 +323,9 @@ describe("deleteMetricReading", () => {
     upsertMoodLog(profile.id, DATE, { valence: 1 });
     const [row] = getMetricReadings(profile.id, "mood");
 
-    await deleteMetricReading(fd({ kind: "mood", target: target("mood", row.id)}));
+    await deleteMetricReading(
+      fd({ kind: "mood", target: target("mood", row.id) })
+    );
     expect(getMetricReadings(profile.id, "mood")).toEqual([]);
   });
 
@@ -319,7 +341,9 @@ describe("deleteMetricReading", () => {
 
     // The body_metrics rule one store down: removing a mis-tapped energy must not
     // take that day's mood, note and Calm with it.
-    await deleteMetricReading(fd({ kind: "energy", target: target("energy", row.id)}));
+    await deleteMetricReading(
+      fd({ kind: "energy", target: target("energy", row.id) })
+    );
     expect(getMetricReadings(profile.id, "energy")).toEqual([]);
     expect(getMoodOnDate(profile.id, DATE)).toMatchObject({
       valence: 4,
@@ -335,7 +359,9 @@ describe("deleteMetricReading", () => {
     upsertMetricSamples(other.id, sample(42), SRC);
     const [foreign] = hrvRows(other.id);
 
-    const res = await deleteMetricReading(fd({ kind: "hrv", target: target("hrv", foreign.id)}));
+    const res = await deleteMetricReading(
+      fd({ kind: "hrv", target: target("hrv", foreign.id) })
+    );
     expect(res).toEqual({ undoId: null });
     expect(hrvRows(other.id)).toHaveLength(1);
   });

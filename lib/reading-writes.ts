@@ -240,7 +240,9 @@ export function recordReading(
           profileId,
           input.date,
           sourceKey
-        ) as { id: number; edited: number | null; value: number | null } | undefined;
+        ) as
+          | { id: number; edited: number | null; value: number | null }
+          | undefined;
         if (found && sourceOwned && isEditLocked(found.edited)) {
           return { ok: false, error: "edit-locked" } as const;
         }
@@ -291,12 +293,14 @@ export function recordReading(
               ORDER BY id LIMIT 1`
           )
           .get(profileId, placement.metric, sampleSource, ts) as
-          | { id: number; edited: number | null; value: number }
-          | undefined;
+          { id: number; edited: number | null; value: number } | undefined;
         if (found && sourceOwned && isEditLocked(found.edited)) {
           return { ok: false, error: "edit-locked" } as const;
         }
-        const disposition = classifyUpsert(!!found, found?.value === input.value);
+        const disposition = classifyUpsert(
+          !!found,
+          found?.value === input.value
+        );
         if (found) {
           db.prepare(
             `UPDATE metric_samples SET value = ?, date = ?
@@ -407,8 +411,7 @@ export function recordReadings(
 // ---- The editability contract ---------------------------------------------
 
 export type ReadingWriteOutcome =
-  | { ok: true }
-  | { ok: false; error: "not-found" | "derived" | "invalid" };
+  { ok: true } | { ok: false; error: "not-found" | "derived" | "invalid" };
 
 export interface ReadingDeleteOutcome {
   ok: boolean;
@@ -537,8 +540,7 @@ export function deleteReadingAt(
               WHERE id = ? AND profile_id = ? AND metric = ?`
           )
           .get(target.id, profileId, target.metric) as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (!row) return { ok: false, undoId: null };
         const info = db
           .prepare(`DELETE FROM metric_samples WHERE id = ? AND profile_id = ?`)

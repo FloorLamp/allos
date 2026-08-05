@@ -71,7 +71,9 @@ export const TRENDS_FITNESS_OLD_LIFT = "Pendlay Row";
 // (#868): the spec EDITS and DELETES readings, and doing that on a shared-seed
 // profile would move numbers every other Trends spec asserts on. It owns exactly two
 // HRV samples (a manual one it edits, an imported one it leaves alone) and two
-// weigh-ins, so the row it acts on is addressed by value, never by position.
+// weigh-ins, plus a streamed resting heart rate and one clinic-measured reading of that
+// same identity, so the row it acts on is addressed by value or by its clinical marker,
+// never by position.
 // Write grant — every write is its own profile's, and the spec restores what it
 // changes, so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_READINGS = "e2e_trends_readings";
@@ -80,6 +82,15 @@ export const TRENDS_READINGS_PROFILE = "Trends Readings (e2e)";
 // the seeder and the spec can't drift.
 export const TRENDS_READINGS_HRV_MANUAL = 41;
 export const TRENDS_READINGS_HRV_SYNCED = 67;
+// The same profile also owns one streamed resting heart rate and ONE clinic-measured
+// reading of the same identity, in the other store (#2032). That pair is what makes
+// /trends/metric/resting-hr a page showing rows from two tables — the folded observation
+// used to be read-only there, and correcting it in place is the phase-2 claim.
+export const TRENDS_READINGS_RHR_STREAM = 58;
+export const TRENDS_READINGS_RHR_CLINIC = 73;
+// What the spec corrects the clinic reading TO. A fixed target, so the write is
+// idempotent and --repeat-each stays clean.
+export const TRENDS_READINGS_RHR_CORRECTED = 71;
 
 // ── Ranked default chart-card order (issue #1490) ────────────────────────────
 // THREE dedicated profiles, one per scenario the ranker must answer, because the

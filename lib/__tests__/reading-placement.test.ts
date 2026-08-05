@@ -68,7 +68,10 @@ const PLACEMENT_TABLE: {
   {
     identity: "Oxygen Saturation",
     plain: { table: "medical_records", canonical: "Oxygen Saturation" },
-    withProvenance: { table: "medical_records", canonical: "Oxygen Saturation" },
+    withProvenance: {
+      table: "medical_records",
+      canonical: "Oxygen Saturation",
+    },
   },
   {
     identity: "Respiratory Rate",
@@ -86,7 +89,10 @@ const PLACEMENT_TABLE: {
   {
     identity: "Resting Heart Rate",
     plain: { table: "body_metrics", column: "resting_hr" },
-    withProvenance: { table: "medical_records", canonical: "Resting Heart Rate" },
+    withProvenance: {
+      table: "medical_records",
+      canonical: "Resting Heart Rate",
+    },
   },
   {
     identity: "Body Fat Percentage",

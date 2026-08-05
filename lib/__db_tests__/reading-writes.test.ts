@@ -155,18 +155,22 @@ describe("a reading submitted by identity lands where the policy says", () => {
   });
 
   it("refuses a quantity with no reading identity rather than guessing", () => {
-    expect(recordReading(p.profileId, {
-      name: "",
-      value: 1,
-      unit: "",
-      date: "2026-01-07",
-    })).toEqual({ ok: false, error: "unplaceable" });
-    expect(recordReading(p.profileId, {
-      name: "Resting Heart Rate",
-      value: Number.NaN,
-      unit: "bpm",
-      date: "2026-01-07",
-    })).toEqual({ ok: false, error: "invalid" });
+    expect(
+      recordReading(p.profileId, {
+        name: "",
+        value: 1,
+        unit: "",
+        date: "2026-01-07",
+      })
+    ).toEqual({ ok: false, error: "unplaceable" });
+    expect(
+      recordReading(p.profileId, {
+        name: "Resting Heart Rate",
+        value: Number.NaN,
+        unit: "bpm",
+        date: "2026-01-07",
+      })
+    ).toEqual({ ok: false, error: "invalid" });
   });
 
   it("folds a second measure of the same day onto one row", () => {
@@ -281,7 +285,11 @@ describe("the shared upsert accounting", () => {
 describe("the migrated writers produce the rows they produced before", () => {
   it("insertVitals writes the same medical_records row through the core", () => {
     expect(
-      insertVitals(p.profileId, "2026-03-01", { spo2: "97", systolic: "", diastolic: "" })
+      insertVitals(p.profileId, "2026-03-01", {
+        spo2: "97",
+        systolic: "",
+        diastolic: "",
+      })
     ).toBe(true);
     const row = db
       .prepare(
@@ -442,7 +450,9 @@ describe("one editability contract across the stores", () => {
       )
     ).toEqual({ ok: true });
     expect(
-      db.prepare(`SELECT value, edited FROM metric_samples WHERE id = ?`).get(sampleId)
+      db
+        .prepare(`SELECT value, edited FROM metric_samples WHERE id = ?`)
+        .get(sampleId)
     ).toEqual({ value: 44, edited: 1 });
   });
 
@@ -537,7 +547,9 @@ describe("delete routes by the row too", () => {
       })
     ).toEqual({ ok: true, undoId: null });
     expect(
-      db.prepare(`SELECT weight_kg, resting_hr FROM body_metrics WHERE id = ?`).get(id)
+      db
+        .prepare(`SELECT weight_kg, resting_hr FROM body_metrics WHERE id = ?`)
+        .get(id)
     ).toEqual({ weight_kg: 80, resting_hr: null });
   });
 

@@ -64,10 +64,7 @@ import {
   getMetricReadings,
   metricReadingTarget,
 } from "@/lib/metric-readings";
-import {
-  readingTarget,
-  readingTargetToken,
-} from "@/lib/reading-placement";
+import { readingTarget, readingTargetToken } from "@/lib/reading-placement";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { pediatricBpContextFor } from "@/lib/queries/bp-context";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
