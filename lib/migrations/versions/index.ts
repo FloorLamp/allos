@@ -150,6 +150,7 @@ import { migration as m148 } from "./148-retire-run-milestones";
 import { migration as m149 } from "./149-weather-hourly-precipitation";
 import { migration as m150 } from "./150-substance-log-notes";
 import { migration as m151 } from "./151-dose-schedule-versions";
+import { migration as m152 } from "./152-notify-message-kind-index";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -309,4 +310,5 @@ export const MIGRATIONS: Migration[] = [
   m149,
   m150,
   m151,
+  m152,
 ];

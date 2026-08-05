@@ -191,6 +191,15 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
 // Deliberately a narrow query rather than a filter over `liveMessagePointers`: a send is
 // on the delivery path, and the common case (a kind with no prior live keyboard) must
 // cost one indexed lookup, not a full read of the profile's pointer table.
+//
+// THE INDEX THAT MAKES THAT TRUE is `idx_notify_messages_profile_chat_kind`
+// (profile_id, chat_id, kind, sent_at), added by migration 152. Until then the claim
+// above was false: 135 indexed only (profile_id, sent_at), so SQLite matched the
+// profile prefix and then tested chat and kind in memory over every pointer row the
+// profile held — the full read this function exists to avoid (#2003). The plan is
+// pinned in lib/__db_tests__/migration-152-message-pointer-index.test.ts, so a widened
+// filter that falls back off the index fails there rather than quietly on the delivery
+// path of every `/dose`.
 export function liveMessagePointersForKind(
   profileId: number,
   chatId: string | number,
