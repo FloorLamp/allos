@@ -275,6 +275,21 @@ export type DoseTakenOutcome =
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
   | "inactive"; // parent item is paused/stopped: nothing logged
 
+// The three states one dose can be in for a day (issue #232): taken, deliberately
+// skipped, or clear (no log row at all). The web check-off is a tri-state over these;
+// the Telegram / offline buttons are one-way resolves into the first two.
+export type DoseStatusTarget = "taken" | "skipped" | "clear";
+
+// Outcome of setting one dose to an explicit target status — the web tri-state's answer
+// (issue #2039). It is DoseTakenOutcome plus the two states only an explicit set can
+// reach, so every caller of the ONE intake_item_logs core narrows from one union:
+//   cleared   — an existing log row was removed and any supply it consumed given back
+//   unchanged — the dose already stood at the requested state; nothing written
+// The one-way resolvers (markDoseTaken / markDoseSkipped) never produce these two: they
+// short-circuit on ANY existing row and report its ACTUAL status instead (#280), which
+// is exactly what keeps a stale reminder button from rewriting a deliberate decision.
+export type DoseStatusOutcome = DoseTakenOutcome | "cleared" | "unchanged";
+
 // Outcome of logging one PRN (as-needed) ADMINISTRATION (logAdministration, issue
 // #797). Unlike markDoseTaken — which enforces one-per-day for a SCHEDULED dose —
 // a PRN med can be given several times a day, so each successful log is a NEW row.
