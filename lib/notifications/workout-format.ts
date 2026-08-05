@@ -271,11 +271,26 @@ export function digestWorkoutLine(
   const lead = opts.standalone === false ? "" : "Today: ";
   if (rec.rest) return `🛌 ${lead}${rec.rest.title}`;
   if (rec.onTrack) return `✅ ${lead}${rec.onTrack.title}`;
-  // suggestTitle falls back to a generic "Strength session" for an empty focus, which
-  // is fine for the nudge's TITLE but would put a contentless line in the digest — so
-  // the preview asks for a real focus or a resolved routine day before naming one.
+  // THE HEAD IS NAMED FROM THE EXERCISES, exactly as the nudge names it 190 lines up
+  // (#2012). It used to pass `rec.focus` — a `MuscleRegion[]`, not exercise names —
+  // into `suggestTitle`, which resolves each string through `liftInfo` and ends in a
+  // loose substring match: "Back" is contained in "back squat", so a back day was
+  // titled "Legs workout", and every other region resolved to nothing and fell into
+  // the generic "Strength session" the guard here was written to avoid. `MuscleRegion`
+  // is a string union, so `MuscleRegion[]` is assignable to `string[]` and the compiler
+  // could not see it.
+  //
+  // The two surfaces are SUPPOSED to agree (this function's header, #221): for one
+  // recommendation the nudge titled "Pull day" from the exercises while the preview
+  // titled "Legs workout" from the focus. They now read the same argument.
+  //
+  // The `.length` guard stays and is now load-bearing: `suggestTitle([])` returns the
+  // generic "Strength session", which is right for the nudge's TITLE but would put a
+  // contentless line in the digest — so the preview asks for a resolved routine day or
+  // a real exercise slate before naming one.
   const head =
-    rec.sessionLabel ?? (rec.focus.length ? suggestTitle(rec.focus) : null);
+    rec.sessionLabel ??
+    (rec.exercises.length ? suggestTitle(rec.exercises) : null);
   const exercises = rec.exercises.slice(0, 3).join(", ");
   // The preview names the SAME sessions the nudge names (#2016) — letting the 7am
   // heads-up and the actionable prompt disagree about how many sessions are owed is

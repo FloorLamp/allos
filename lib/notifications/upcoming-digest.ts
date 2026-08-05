@@ -76,13 +76,17 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're
   // never counted even if one ever appeared.
   "biomarker-flag": "flagged result",
-  // A broken sync (#1685). The ONLY signal-group domain that IS in DOMAIN_SEQ, so it is
-  // the only one this digest counts. See the sequence below for why it earns that.
+  // A broken sync (#1685) and an open portal sync request (#1757). Both are NAMED-LINE
+  // domains (see NAMED_LINE_DOMAINS below), and since #1913 item 5 a named line IS the
+  // band item rather than a sibling of a count — so neither noun is ever rendered. They
+  // stay because the Record is exhaustive, exactly like the never-counted domains above.
+  //
+  // `portal check` in particular was a bug waiting in the noun (#1913 item 8): every
+  // other noun here names something OWED ("1 refill", "1 appointment"), while "check" is
+  // equally a completed event, so "This week: 1 portal check, 4 of 4 training targets on
+  // pace" parsed as something the household had already done. The merge retires the
+  // phrase rather than rewording it.
   integration: "sync issue",
-  // An open portal sync request (#1757). In DOMAIN_SEQ, and named below, for the same
-  // reason a broken sync is: a portal run needs a person at a machine, so a nudge that
-  // reaches only the surfaces you have to open to see is a nudge to someone who is
-  // already looking. It rides the digest that already sends and adds no send of its own.
   "portal-sync": "portal check",
   review: "review item",
 };
@@ -141,7 +145,30 @@ export interface DigestHighlight {
 // the same relationship the #656 "why" highlights have with the counts they sit under.
 export interface DigestSyncIssue {
   title: string;
-  detail: string | null;
+  // The bullet character, resolved from the DOMAIN (#1913 item 8) rather than branched
+  // on in the renderer — see NAMED_LINE_DOMAINS.
+  glyph: string;
+  // A SHORT CAUSE FRAGMENT, written deliberately by the producer for this surface
+  // (#1913 item 6 — owner ruling).
+  //
+  // The old field was the item's `detail`, and `${title} — ${detail}` silently assumed
+  // that detail was a cause fragment. That held for the integration producer ("Weather &
+  // UV sync needs attention — weather fetch failed (503)") and was never stated, so the
+  // portal producer wrote to a different contract: `syncRequestCopy`'s detail is a
+  // COMPLETE SENTENCE that re-contains the title ("tbh has never been checked — run the
+  // portal tool on your computer."), and joined it read imperative → em dash → subject
+  // restated → em dash → the same imperative.
+  //
+  // Putting the contract in the TYPE is the point: the next producer of a named line is
+  // asked for a cause fragment by the signature instead of inheriting a convention it
+  // could only learn by reading this renderer. It is a field, not a second set of words —
+  // `syncRequestCopy` remains the one formatter for the ask itself.
+  because: string | null;
+  // The DEADLINE the ask carries, when it has one (#1913 item 7): a sync request expires,
+  // and that expiry is the only deadline it has. Null for a broken integration, which has
+  // none — its `dueText` is a CTA label ("Reconnect"), never a date. Which domains carry
+  // one is declared in NAMED_LINE_DOMAINS, not decided here.
+  dueText: string | null;
   // The item's own href, relative (e.g. "/integrations/withings"). The renderer makes it
   // absolute when a public app URL is configured and drops it otherwise.
   href: AppRoute;
@@ -195,26 +222,62 @@ export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
   return out;
 }
 
-// The domains that get a NAMED line rather than only a count. Both are data-plumbing
-// facts whose whole point is that they happen without you opening the app, so a count
-// alone would send the reader back to the surface the signal exists to save them from.
-const NAMED_LINE_DOMAINS: readonly UpcomingDomain[] = [
-  "integration",
-  "portal-sync",
-];
+// What a NAMED-LINE domain has to declare. Both members are data-plumbing facts whose
+// whole point is that they happen without you opening the app, so a count alone would
+// send the reader back to the surface the signal exists to save them from.
+interface NamedLineDomain {
+  // The bullet character (#1913 item 8, owner ruling). Two different asks used to share
+  // 🔌: "a connection broke and allos will keep retrying" versus "get up, go to a
+  // particular computer, and do it yourself" — the one line in the whole digest that
+  // cannot be acted on from the phone it is being read on, rendered identically to a
+  // dead API token. The glyph now says WHO ACTS, and it lives here rather than as a
+  // branch in the renderer, so a new named-line domain has to choose one instead of
+  // defaulting into 🔌 silently.
+  glyph: string;
+  // Whether this domain's item carries a real DEADLINE in `dueText` (#1913 item 7).
+  // A broken integration does not — waiting never fixes it and nothing expires — and its
+  // `dueText` is a CTA label, so printing it as a deadline would invent one.
+  carriesDeadline: boolean;
+  // Why those two answers. Required, in the house's registry style: "we decided" and
+  // "nobody looked" have to stay distinguishable.
+  why: string;
+}
+
+const NAMED_LINE_DOMAINS: Partial<Record<UpcomingDomain, NamedLineDomain>> = {
+  integration: {
+    glyph: "🔌",
+    carriesDeadline: false,
+    why: "A connection is broken and allos will keep retrying (#1685). Nobody has to go anywhere, and there is no date by which it stops mattering — the item's `dueText` is the CTA ('Reconnect' / 'No recent data'), which is not a deadline.",
+  },
+  "portal-sync": {
+    glyph: "🙋",
+    carriesDeadline: true,
+    why: "An errand only a PERSON can run, away from the device reading the message (#1757). 🙋 is deliberately domain-neutral rather than 🖥️: the distinction is who acts, not what hardware is involved, so a future errand line in another domain inherits it. The request EXPIRES, and that expiry is the only deadline the ask has.",
+  },
+};
+
+function namedLine(domain: UpcomingDomain): NamedLineDomain | undefined {
+  return NAMED_LINE_DOMAINS[domain];
+}
 
 // The banded set's named data-plumbing items, in band order (#1685/#1757). Reads the
-// items straight off the model — title, detail and href as the shared builder already
+// items straight off the model — title, cause and href as the shared builder already
 // decided them — so the digest can never word a broken sync, or a portal request,
 // differently from the page.
 export function digestSyncIssues(groups: BandGroup[]): DigestSyncIssue[] {
   const out: DigestSyncIssue[] = [];
   for (const g of groups) {
     for (const item of g.items) {
-      if (!NAMED_LINE_DOMAINS.includes(item.domain)) continue;
+      const named = namedLine(item.domain);
+      if (!named) continue;
       out.push({
         title: item.title,
-        detail: item.detail ?? null,
+        glyph: named.glyph,
+        // The producer's own fragment, never the page's `detail` (#1913 item 6). A
+        // producer that writes none renders a bare title rather than borrowing a
+        // sentence that was written for a card.
+        because: item.because ?? null,
+        dueText: named.carriesDeadline ? (item.dueText ?? null) : null,
         href: item.href,
       });
     }
@@ -294,9 +357,21 @@ export function buildUpcomingDigest(
     excludeDomains?: readonly UpcomingDomain[];
   } & BandSummaryOptions = {}
 ): UpcomingDigestModel | null {
-  const exclude = opts.excludeDomains?.length
-    ? new Set<UpcomingDomain>(opts.excludeDomains)
-    : undefined;
+  // ONE ENTRY PER NAMED-LINE ITEM (#1913 items 2 and 5). A named-line domain used to be
+  // counted in its band AND named below it, so a single 503 arrived twice in one message
+  // — "📝 Today: Weather & UV sync needs attention" over "🔌 Weather & UV sync needs
+  // attention — weather fetch failed (503)" — which is the #1880 one-surface disease
+  // inside the digest.
+  //
+  // The merge is keyed on NAMED_LINE_DOMAINS rather than on the weather standing,
+  // deliberately: it is a property of the digest's SHAPE, not of one domain. A merge
+  // keyed to the weather case would have left the portal double-mentioning after that
+  // issue closed. The named line is the band item; nothing else changes, and `total`
+  // still counts every banded item.
+  const exclude = new Set<UpcomingDomain>([
+    ...(opts.excludeDomains ?? []),
+    ...(Object.keys(NAMED_LINE_DOMAINS) as UpcomingDomain[]),
+  ]);
   const nonEmpty = groups.filter((g) => g.items.length > 0);
   const lines = nonEmpty
     .map((g) => ({

@@ -92,7 +92,10 @@ surface FORMATS its answers:
   (`standingEscalates`): the Data badge (`getImportIssues` /
   `getImportReviewCount`), Review's Needs-attention card, the dashboard hero
   item, and the digest's 🔌 lines all gate on that one predicate, so an
-  intermittent source can never increase contact anywhere. The source page
+  intermittent source can never increase contact anywhere. Since #1913 the digest
+  gives a broken source exactly ONE entry — the named 🔌 line IS its band item, not
+  a sibling of a count — and the line's cause fragment comes from the item's
+  declared `because`, never from the card sentence its `detail` was written for. The source page
   states the rule visibly (`escalationPolicyLabel`, rendered by
   `SyncHistoryTable` with the provider's own `staleAfterDays`).
 - **One accounting, two dialects.** `formatSplitLabel` stays the record-language
@@ -399,7 +402,18 @@ are sticky in the same row (a later delivery push must not erase why the machine
 and cleared by any report that answers. The request's Upcoming/digest line then gains ONE
 optional clause on `syncRequestCopy` — #1757's one-formatter rule, not a second formatter:
 _"The scheduled run couldn't finish (passkey prompt) — someone needs to go to the
-machine."_
+machine."_ In the digest that clause becomes the line's `because` fragment, since it
+is why it is the person's turn.
+
+**The digest's portal line (#1913 items 5–8).** `🙋 Run the portal tool for tbh — never
+checked · expires in 6 days`. The glyph says **who acts** — 🔌 is "a connection broke and
+allos will keep retrying", 🙋 is an errand only a person can run, away from the device
+reading the message, which is the whole premise of #1757. The cause is
+`syncRequestCopy`'s `because` fragment (the card's `detail` restates the title and would
+have said the imperative twice), and the **expiry rides the line** because it is the only
+deadline the ask has — carried on `DigestSyncIssue.dueText`, and null for an integration,
+which has no expiry at all. `DOMAIN_NOUN["portal-sync"]` ("portal check") is never
+rendered now that the merge landed.
 
 **The open-request read endpoint (`GET /api/documents/requests`, #1889).** The original
 design deliberately withheld requests from the tool; that line was drawn when a portal run

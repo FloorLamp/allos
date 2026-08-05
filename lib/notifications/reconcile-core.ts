@@ -56,7 +56,27 @@
 // NO DB, NO CLOCK, NO NETWORK here — every scenario below is fixture-testable, and the
 // DB half (./reconcile.ts) only supplies the predicates and performs the edits.
 
+import { createHash } from "node:crypto";
 import type { InlineKeyboard } from "./telegram-render";
+import { plainBody } from "./rich-text";
+import type { NotificationMessage } from "./types";
+
+// The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
+//
+// A prose-claim reconciler re-runs the builder that composed the send and edits only when
+// the render actually differs — the same idempotence rule the additive food class obeys,
+// and what keeps the sweep at zero Telegram calls in the steady state. Comparing needs a
+// record of the delivered text, and a hash is the whole of what comparison needs: the
+// pointer table has no business holding a second copy of a message full of health facts.
+//
+// Title AND body, because a digest can change in either — and the PLAIN body, so a
+// markup-only difference between two renderings of identical words is not mistaken for
+// news to edit.
+export function messageBodyHash(msg: NotificationMessage): string {
+  return createHash("sha256")
+    .update(`${msg.title}\n${plainBody(msg.body)}`)
+    .digest("hex");
+}
 
 // The callback-token prefix of a button, or null for a url/deep-link button (which
 // carries no token and is therefore never a state claim).

@@ -150,5 +150,6 @@
   "149-weather-hourly-precipitation.ts": "5a03bc980d4263e62ce044b22855da2c3287ae617fc2efb49f7c8912942b0103",
   "150-substance-log-notes.ts": "4e24aef04c1c803539a0c66bc79d1161f860d0c511fddb058aff9d6f69d8ebdd",
   "151-dose-schedule-versions.ts": "44438ba5f4ab29dd2310391887f8983adbcfb9997135b6c9c3d3b66def26d4f4",
-  "152-notify-message-kind-index.ts": "5e95032741ad867efef1c0be711e0282def6fc6779e06997f8ecddb2f22e7be7"
+  "152-notify-message-kind-index.ts": "5e95032741ad867efef1c0be711e0282def6fc6779e06997f8ecddb2f22e7be7",
+  "153-notify-message-prose.ts": "bb3d1209542c98cff1b1b4419d27a9e5fbca4ff05a6c85e8b8e82e4e9e1ed335"
 }

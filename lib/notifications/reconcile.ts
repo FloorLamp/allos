@@ -47,7 +47,7 @@
 // appears in the chat, the phone stays silent. Reconciliation only ever REDUCES what a
 // chat claims, which is the direction the contact-consent rule allows unilaterally.
 
-import { today } from "../db";
+import { db, today } from "../db";
 import { createLogger } from "../log";
 import {
   getSupplements,
@@ -79,9 +79,12 @@ import {
   type FoodNudgeWindow,
 } from "./food-format";
 import { getIntakeItemObligation } from "../queries/intake/adherence";
+import { buildDigest, renderDigestMessage } from "./digest";
+import { gatherDigestInput } from "./digest-data";
 import {
   decideReconcile,
   keyboardTokens,
+  messageBodyHash,
   type ReconcileDecision,
   reconcileClosingText,
   stripTokens,
@@ -91,11 +94,15 @@ import {
   inertTokens,
   messageExpiry,
   owningFamily,
+  proseReconcilerFor,
+  type ProseReconciler,
   type ReconcileFamily,
 } from "./reconcile-registry";
 import {
+  claimMessagePointerBody,
   claimMessagePointerClose,
   claimMessagePointerKeyboard,
+  releaseMessagePointerBody,
   dropMessagePointer,
   liveMessagePointers,
   pruneMessagePointers,
@@ -443,6 +450,48 @@ const practice: FamilyReconciler = {
   },
 };
 
+// ---- Prose-claim reconcilers (issue #1913 item 4) --------------------------
+//
+// The families above are keyboard-shaped: each answers "is this token still actionable?".
+// A REPORT-shaped message makes its claims in sentences, and the morning digest is the
+// app's most-read one — "Supplements: 8/9 taken — missed Glycine (2 days)" stood until
+// the next morning after the user resolved it, which is #1779's harm pattern in prose.
+//
+// The rule is the one every other class obeys: NO SECOND RENDERER. Re-run the SAME
+// builder the send ran, for the pointer's own date, and let the mechanical half decide
+// whether anything changed.
+type ProseRebuilder = (
+  profileId: number,
+  p: MessagePointer
+) => NotificationMessage | null;
+
+const PROSE: Record<ProseReconciler, ProseRebuilder> = {
+  // gatherDigestInput → buildDigest → renderDigestMessage: byte-for-byte the pipeline
+  // runDigest performs, so a reconciled digest is exactly the message that would have
+  // been sent had it been composed now. A day whose content has fallen away entirely
+  // (buildDigest returns null) leaves the delivered report alone rather than blanking
+  // it — reconciliation corrects claims, it does not delete a message the user read.
+  digest: (profileId, p) =>
+    withDigestProfileName(profileId, (name) => {
+      const model = buildDigest(gatherDigestInput(profileId, name));
+      return model ? renderDigestMessage(model) : null;
+    }),
+};
+
+// The profile's display name, which the digest title carries. Read here rather than
+// stored on the pointer: a renamed profile should reconcile under its current name, and
+// the title is re-derived by the same builder either way.
+function withDigestProfileName(
+  profileId: number,
+  build: (name: string) => NotificationMessage | null
+): NotificationMessage | null {
+  const row = db
+    .prepare("SELECT name FROM profiles WHERE id = ?")
+    .get(profileId) as { name: string } | undefined;
+  if (!row) return null;
+  return build(row.name);
+}
+
 // Exhaustive by TYPE: adding a family to the registry without a reconciler here is a
 // compile error, which is the other half of the completeness guard.
 const FAMILIES: Record<ReconcileFamily, FamilyReconciler> = {
@@ -502,6 +551,26 @@ export async function reconcileProfileMessages(
 
   for (const pointer of liveMessagePointers(profileId)) {
     result.examined++;
+
+    // ── The prose-claim class (#1913 item 4) ──────────────────────────────
+    //
+    // Handled first and completely: a report's claims are its sentences, and the token
+    // machinery below has nothing to say about them (every digest button is inert).
+    const prose = proseReconcilerFor(pointer.kind);
+    if (prose) {
+      // DAY ROLLOVER CLOSES THE POINTER, NOT THE MESSAGE. Yesterday's digest described
+      // yesterday and is honest AS HISTORY; only the LIVE day's claims have to track
+      // the ledger. Replacing the text would destroy a report the reader may
+      // legitimately scroll back to, so the sweep simply stops tracking it.
+      if (pointer.date !== td) {
+        dropMessagePointer(profileId, pointer.id);
+        result.dropped++;
+        continue;
+      }
+      await reconcileProse(profileId, pointer, PROSE[prose], result);
+      continue;
+    }
+
     const tokens = keyboardTokens(pointer.keyboard);
     const inert = inertTokens(tokens, tokenPrefix);
     const family = owningFamily(tokens, tokenPrefix);
@@ -620,6 +689,63 @@ export async function reconcileProfileMessages(
     }
   }
   return result;
+}
+
+// One prose-claim pointer. Folds its own outcome into `result`, mirroring the keyboard
+// arm's claim-first / classify-the-failure posture exactly so the two paths cannot drift
+// about what a failed edit means.
+async function reconcileProse(
+  profileId: number,
+  pointer: MessagePointer,
+  rebuild: ProseRebuilder,
+  result: ReconcileResult
+): Promise<void> {
+  const rebuilt = rebuild(profileId, pointer);
+  if (!rebuilt) return;
+  const hash = messageBodyHash(rebuilt);
+  // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
+  // an hourly sweep over the most-read message in the app off the rate limiter. A
+  // pointer with no recorded hash (pre-migration-153) never matches, so it is left
+  // exactly as delivered rather than edited on a guess.
+  if (pointer.bodyHash == null || pointer.bodyHash === hash) return;
+
+  // CLAIM FIRST (#1788), on the hash rather than the keyboard: a digest's keyboard is
+  // unchanged (often empty) across a prose edit, so it cannot tell two overlapping ticks
+  // apart, while the hash moves on every real edit.
+  if (!claimMessagePointerBody(profileId, pointer.id, pointer.bodyHash, hash)) {
+    result.skipped++;
+    return;
+  }
+  try {
+    await rebuildMessage(profileId, pointer.chatId, pointer.messageId, rebuilt);
+    result.edited++;
+  } catch (e) {
+    if (classifyTelegramFailure(e) === "transient") {
+      // The chat still shows the pre-edit text, so put the witness back and let the next
+      // tick recompute the same plan. Bounded by the pointer's own retention horizon.
+      const kept = releaseMessagePointerBody(
+        profileId,
+        pointer.id,
+        hash,
+        pointer.bodyHash
+      );
+      log.info("prose reconcile deferred (transient, pointer kept)", {
+        profile: profileId,
+        chat: pointer.chatId,
+        kept,
+        err: e instanceof Error ? e.message : String(e),
+      });
+      result.deferred++;
+      return;
+    }
+    log.info("prose reconcile failed (pointer dropped)", {
+      profile: profileId,
+      chat: pointer.chatId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    dropMessagePointer(profileId, pointer.id);
+    result.dropped++;
+  }
 }
 
 // WHAT an edit will be, resolved with no network and no writes. Null means this
