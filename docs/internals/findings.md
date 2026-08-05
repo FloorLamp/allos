@@ -1286,3 +1286,55 @@ as clinically interesting.
 | Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
 | Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
 | Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |
+
+## 3c. A named waiting state says what the DATA is doing (#2097)
+
+The obligation table above decides more than what may be demoted; it also decides
+what a surface may SAY while it has nothing true to report. The morning waiting
+window is the worked example.
+
+Every morning there is a real, measurable gap — the user is awake, the tracker
+has not pushed last night yet, and the sleep surfaces have nothing true to say
+about last night. Measured on a real profile: the sleep row arrives 0.3–1.5 h
+after waking, median ~70 min, so roughly an hour, reliably. What used to render
+in that hour was the most recent RECORDED night — dated honestly, but still a
+large headline duration for a night nobody asked about, and rendered identically
+to "you have not synced in two days". Naming the state is strictly better than
+filling it, and the waiting copy REPLACES the older night's figures rather than
+sitting above them: nothing on screen should be a number the reader has to
+discount.
+
+The rule the copy obeys, and the reason it is here rather than in a UI doc:
+
+> **Say what the DATA is doing, never what the reader should be doing.**
+
+That is what rules the adjacent idea OUT. A "sleep mode" saying something like
+*"you are usually asleep now"* must not be built:
+
+- Sleep is an **observation domain** in §3 — an observation cannot be missed, so
+  nobody promised the app a bedtime, and the line carries meaning only as an
+  implied _should_.
+- It would be **surveillance-shaped** in the sense §4's food-log ruling already
+  uses: content that exists because the system noticed what you just did. Opening
+  the app at 3am is the only trigger, and that is behavior, not a health fact.
+- The app **cannot know why anyone is awake**, and the likeliest reasons —
+  insomnia, pain, a sick child, a newborn, anxiety, a night shift — are the ones
+  to be most careful with. An app that tracks insomnia telling an insomniac they
+  are usually asleep now is the failure case, and at that hour it is not rare.
+- `typicalWakeTime` could not carry the claim anyway: a 28-night median over ≥14
+  nights is meaningless for exactly the shift workers and new parents it would be
+  greeting.
+
+"Tonight's sleep is still in progress" needs no obligation, cannot shame anyone,
+and stays true regardless of why the reader is awake. It also does not need the
+wake anchor to be CORRECT, only to bound a window — which a behavioral claim
+never could.
+
+Reach follows §1 and §2 unchanged: this is a RENDERED state only. No `notify_*`
+marker, no push, no digest line, and no stored state — a missing sync is not a
+safety signal, and the system may reduce contact unilaterally but never increase
+it. The terminal case adds nothing either: a profile that has genuinely stopped
+tracking falls through to what already exists, because "you have stopped tracking
+your sleep" would be the system inventing an obligation out of a user's choice.
+If a suggestion is ever wanted there it belongs to §4's demotion family — detect
+and SUGGEST, where the user's tap is the write.

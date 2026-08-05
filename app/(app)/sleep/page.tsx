@@ -139,7 +139,7 @@ export default async function SleepPage() {
             </p>
           )}
           {waitingPreviousNight && (
-            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               Most recent recorded night · {waitingPreviousNight}
             </p>
           )}

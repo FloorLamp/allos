@@ -837,3 +837,22 @@ observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
 and asks the user to check, rather than asserting a cause it has no evidence for.
 The Data → Review row makes the same distinction — "sync has stopped" instead of
 "sync failed", which would claim a failure that never happened.
+
+**…and what it deliberately cannot see: the abandoned device (#2097).** The
+paragraph above states it outright — staleness measures the SYNC, not the DATA,
+so a rest week is not a broken connection. That is right for the attention
+surface and makes the signal structurally unable to answer a different question:
+*has this person stopped tracking sleep?* Someone wears a tracker for months and
+then stops, but the phone keeps syncing steps: `ok=1` events with non-zero
+inserted counts, green badge, nothing stale. Only the sleep rows end.
+
+The morning waiting window (`lib/sleep-waiting.ts`) needs that answer, so it
+carries its own **data-side** predicate — `isSleepTracking` over the wake-days a
+SYNCING source recorded — and checks it BEFORE any clock branch. Unguarded the
+failure would not merely be a missing check, it would RECUR: "no last night, past
+typical wake" is true every morning once someone stops, and `typicalWakeTime`
+keeps supplying an anchor for roughly two more weeks. The predicate requires the
+night immediately before last night plus 2 of the 3 before it, so a forgotten
+charge is tolerated while an abandoned device asks once and never again. Its
+terminal state adds nothing new — the existing dated label, then the four-night
+stale CTA, with a genuinely dead connection still handled by Data → Review.
