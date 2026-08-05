@@ -87,7 +87,14 @@ export default function DoseStatusControl({
   }
 
   // The online write (used by both the acting path and every cross-profile write).
-  async function submit(target: "taken" | "skipped" | "clear") {
+  //
+  // "refused" is the write core answering honestly (#2039): the dose was retired by a
+  // schedule edit, or its item is paused, so NOTHING was written. That is not a network
+  // failure — retrying or queueing it would keep failing — so it is reported in the
+  // server's own words instead of "try again".
+  async function submit(
+    target: "taken" | "skipped" | "clear"
+  ): Promise<"ok" | "refused" | "failed"> {
     setBusy(true);
     const fd = new FormData();
     fd.set("dose_id", String(doseId));
@@ -96,11 +103,15 @@ export default function DoseStatusControl({
     // member's dose from its board; absent on the acting board (byte-identical).
     if (profileId != null) fd.set("profileId", String(profileId));
     try {
-      await setDoseStatus(fd);
+      const result = await setDoseStatus(fd);
+      if (!result.ok) {
+        toast(result.error, { tone: "error" });
+        return "refused";
+      }
       setOptimistic(null);
-      return true;
+      return "ok";
     } catch {
-      return false;
+      return "failed";
     } finally {
       setBusy(false);
     }
@@ -115,8 +126,8 @@ export default function DoseStatusControl({
     // no target profileId, so it would replay against the acting profile. Go straight
     // online; if the network drops, surface a retry toast rather than mis-target.
     if (profileId != null) {
-      const ok = await submit(target);
-      if (!ok)
+      // A refusal already said what happened, in the server's words.
+      if ((await submit(target)) === "failed")
         toast("Couldn't update this dose. Try again.", { tone: "error" });
       return;
     }
@@ -142,7 +153,13 @@ export default function DoseStatusControl({
     fd.set("dose_id", String(doseId));
     fd.set("status", target);
     try {
-      await setDoseStatus(fd);
+      const result = await setDoseStatus(fd);
+      // The write core refused (retired dose / paused item, #2039). Nothing was
+      // written, so say so rather than clearing the optimistic state as if it had been.
+      if (!result.ok) {
+        toast(result.error, { tone: "error" });
+        return;
+      }
       setOptimistic(null);
     } catch (err) {
       const stillOnline = navigator.onLine !== false;
