@@ -13,13 +13,15 @@ import { loadDataset } from "./loader";
 import { fieldStrategy } from "./matcher";
 import type { FoodDrugEntry } from "@/scripts/gen-food-drug-interactions";
 
+// TYPES ONLY from the generator. A VALUE re-export would pull the generator module —
+// and its `node:fs` / `node:path` imports — into every client bundle that reaches this
+// dataset (the medication form's food notice does), which fails the build outright.
 export type {
   FoodDrugEntry,
   FoodDrugCatalogMapping,
   FoodDrugCatalogRule,
   Severity,
 } from "@/scripts/gen-food-drug-interactions";
-export { FOOD_DRUG_CATALOG_RULES } from "@/scripts/gen-food-drug-interactions";
 
 // The validated dataset (envelope + guarantees). Throws at module load if the committed
 // JSON ever violates the contract — a loud, early failure.
