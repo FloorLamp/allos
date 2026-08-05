@@ -1,9 +1,10 @@
 "use client";
 
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -38,6 +39,11 @@ import {
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
+import {
+  aggregateLongRange,
+  longRangeBucketLabel,
+  longRangeCaption,
+} from "@/lib/long-range-series";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -144,28 +150,64 @@ export default function LineChartCard({
   // date in the tooltip (matching the journal charts). Callers passing their own
   // formatters, or non-date x-values (e.g. HH:MM intraday), are unaffected.
   const isoDates = data.length > 0 && ISO_DATE.test(data[0].date);
+  // Long-range aggregation (#1938): a dense daily series over a long window (the
+  // 1Y pill, All time) plots as calendar-bucket means with a low–high band — the
+  // ONE shared decision + computation in lib/long-range-series, applied here in
+  // the one funnel every windowed line chart renders through, so no surface can
+  // bucket the same series differently. Null (the common case — every span ≤180d,
+  // every sparse series) keeps the raw plot byte-for-byte.
+  const longRange =
+    isoDates && key === "value"
+      ? aggregateLongRange(
+          (data as { date: string; value: number | null }[]).map((d) => ({
+            date: d.date,
+            value: d.value,
+          }))
+        )
+      : null;
+  const plotData: { date: string; value: number | null; band?: [number, number] }[] =
+    longRange
+      ? longRange.points.map((p) => ({
+          date: p.date,
+          value: p.value,
+          band: [p.lo, p.hi] as [number, number],
+        }))
+      : (data as { date: string; value: number | null }[]);
   const tickFmt =
-    tickFormatter ?? (isoDates ? (v: string) => v.slice(5) : undefined);
+    tickFormatter ??
+    (isoDates
+      ? longRange?.grain === "month"
+        ? // Month buckets: a MM-DD tick would read "02-01" for February — the
+          // year-month is the honest tick at that grain.
+          (v: string) => v.slice(0, 7)
+        : (v: string) => v.slice(5)
+      : undefined);
   const labelFmt =
     labelFormatter ??
     (isoDates ? (v: string) => formatLongDate(v, formatPrefs) : undefined);
   // Snap annotation markers onto charted dates so their vertical ReferenceLines
-  // land on the category axis (recharts otherwise drops an off-point x).
+  // land on the category axis (recharts otherwise drops an off-point x). Charted =
+  // PLOTTED: an aggregated chart snaps them onto its bucket starts.
   const snapped = annotations?.length
     ? snapAnnotationsToDates(
         annotations,
-        data.map((d) => d.date)
+        plotData.map((d) => d.date)
       )
     : [];
   const snappedWindows = windows?.length
     ? snapWindowsToDates(
         windows,
-        data.map((d) => d.date)
+        plotData.map((d) => d.date)
       )
     : [];
   const tooltipLabel = (value: string) => {
     const date = String(value);
-    const formatted = labelFmt ? labelFmt(date) : date;
+    let formatted = labelFmt ? labelFmt(date) : date;
+    // An aggregated point is a bucket, and its tooltip must say so — "Week of
+    // Sunday, June 28" / "February 2026", never a bare day that implies a reading.
+    if (longRange) {
+      formatted = longRangeBucketLabel(longRange.grain, date, formatted);
+    }
     return annotationTooltipLabel(formatted, date, snapped, snappedWindows);
   };
   if (data.length === 0) {
@@ -177,11 +219,15 @@ export default function LineChartCard({
       </div>
     );
   }
-  return (
+  // The value formatter the tooltip shares between the mean line and (aggregated
+  // charts only) the band's low–high pair — one number shape per chart.
+  const fmtValue = (n: number) =>
+    groupYTicks ? groupChartValue(n, decimals) : roundChartValue(n, decimals);
+  const chart = (
     <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
+        <ComposedChart
+          data={plotData}
           syncId={syncId}
           margin={sparkline ? chartSparklineMargin : chartFullMargin}
         >
@@ -201,14 +247,19 @@ export default function LineChartCard({
             }
           />
           <Tooltip
-            formatter={(v) => [
-              `${
-                groupYTicks
-                  ? groupChartValue(Number(v), decimals)
-                  : roundChartValue(Number(v), decimals)
-              }${unit}`,
-              label,
-            ]}
+            formatter={(v) => {
+              // The band's [lo, hi] pair renders as one "Range" row; a lone value
+              // is the series itself — labelled as an average when aggregated,
+              // because a bucket mean is not a reading.
+              if (Array.isArray(v)) {
+                const [lo, hi] = v.map(Number);
+                return [`${fmtValue(lo)}–${fmtValue(hi)}${unit}`, "Range"];
+              }
+              return [
+                `${fmtValue(Number(v))}${unit}`,
+                longRange ? `${label} (avg)` : label,
+              ];
+            }}
             labelFormatter={(value) => tooltipLabel(String(value))}
             {...chartTooltipProps(c, motion)}
           />
@@ -262,6 +313,21 @@ export default function LineChartCard({
               strokeOpacity={0.6}
             />
           ))}
+          {/* The spread band, under the mean line — each bucket's low–high as a
+              range Area in the series' own colour, so noise reads as visible
+              spread instead of a scribble. */}
+          {longRange && (
+            <Area
+              dataKey="band"
+              stroke="none"
+              fill={color}
+              fillOpacity={0.14}
+              activeDot={false}
+              legendType="none"
+              {...chartMarkMotion(motion)}
+              connectNulls={connectNulls}
+            />
+          )}
           <Line
             type="monotone"
             dataKey={key}
@@ -269,7 +335,7 @@ export default function LineChartCard({
             strokeWidth={2}
             dot={chartLineDot(c, {
               color,
-              pointCount: data.length,
+              pointCount: plotData.length,
               // Tile sparklines opt into resting points; dense series still fall
               // through chartLineDot's shared clutter threshold.
               enabled: showDots && (!sparkline || sparklineDots),
@@ -278,8 +344,23 @@ export default function LineChartCard({
             {...chartMarkMotion(motion)}
             connectNulls={connectNulls}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
+    </div>
+  );
+  if (!longRange || sparkline) return chart;
+  // The aggregated chart's honesty caption (#1938): each point is a summary, and
+  // the plot must say so on the surface, not only in the tooltip. Sparklines skip
+  // it — a tile has no room for a caption, and its numbers are the caller's.
+  return (
+    <div className="min-w-0 max-w-full">
+      {chart}
+      <p
+        className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+        data-testid="chart-long-range-note"
+      >
+        {longRangeCaption(longRange.grain)}
+      </p>
     </div>
   );
 }

@@ -51,6 +51,9 @@ import {
   BIOMARKER_PICKER_OVERDUE,
   BIOMARKER_PICKER_FLAGGED,
   BIOMARKER_PICKER_MEASURED,
+  E2E_LOGIN_LONG_RANGE,
+  LONG_RANGE_PROFILE,
+  LONG_RANGE_DAYS,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -850,5 +853,33 @@ export function seedMetricFold(): void {
   seedMemberLogin(E2E_LOGIN_METRIC_FOLD, pid, "read");
   console.log(
     `e2e: seeded metric-fold fixture — profile ${pid} (${METRIC_FOLD_PROFILE}) (#2029)`
+  );
+}
+
+// ── Long-horizon tracking: the 1Y range aggregates (issue #1938) ──
+export function seedLongRange(): void {
+  // ~8 months of DAILY weigh-ins ending yesterday — see the constants' header in
+  // e2e/logins/trends.ts. The values carry a slow decline plus a weekly wobble,
+  // so every full weekly bucket has a real low–high spread for the band. Relative
+  // dates → never stale; read-only in its spec; idempotent (own rows cleared).
+  const pid = fixtureProfileId(LONG_RANGE_PROFILE);
+  const anchor = today(pid);
+  setUserBirthdate(pid, shiftDateStr(anchor, -365 * 36));
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
+
+  const insBm = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+     VALUES (?, ?, ?, 'e2e:long-range')`
+  );
+  for (let i = 0; i < LONG_RANGE_DAYS; i++) {
+    // i = 0 is the OLDEST day; the series ends yesterday (complete days, #1909).
+    const day = shiftDateStr(anchor, -(LONG_RANGE_DAYS - i));
+    const value = 82 - i * (4 / LONG_RANGE_DAYS) + (i % 7) * 0.25;
+    insBm.run(pid, day, Number(value.toFixed(2)));
+  }
+
+  seedMemberLogin(E2E_LOGIN_LONG_RANGE, pid, "read");
+  console.log(
+    `e2e: seeded long-range fixture — profile ${pid} (${LONG_RANGE_PROFILE}) (#1938)`
   );
 }
