@@ -1283,9 +1283,9 @@ export default function PortalsSurface({
                 </button>
                 <p className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400">
                   Only if two people sign in to {portal.name} with their own
-                  accounts — and add them <strong>before</strong> that first
-                  run. The tool writes each login&apos;s name into its own
-                  configuration then, and never rewrites it.
+                  accounts — and add them before that first run, because the
+                  tool writes each login’s name into its own configuration then
+                  and never rewrites it.
                 </p>
               </div>
             )}
@@ -1544,13 +1544,11 @@ export default function PortalsSurface({
                 className="text-xs text-slate-500 dark:text-slate-400"
                 data-testid="guide-login-note"
               >
-                <strong className="font-medium text-slate-700 dark:text-slate-200">
-                  First, if two people sign in to this portal with their own
-                  accounts, add each login above.
-                </strong>{" "}
-                One person needs nothing — the portal is its login. Two do,
-                because the tool writes each login&apos;s name into its own
-                configuration on this first run and never rewrites it.
+                <strong>Two people, two logins.</strong> If two people sign in
+                to this portal with their own accounts, add each login above
+                first — the tool writes each login’s name into its own
+                configuration on this run and never rewrites it. One person
+                needs nothing: the portal is its login.
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 <a
