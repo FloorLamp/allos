@@ -362,8 +362,11 @@ edit after this ships gives the dose a real history and the fallback goes quiet 
 dueness-relevant change, and new doses are seeded with a version at birth so their first
 edit has something to close. The version table is APPEND-ONLY beyond the same-day
 upsert: an earlier version is never rewritten, which is what makes a past day judgeable.
-It is registered in `deleteProfile`'s sweep (which runs with foreign keys OFF, so the
-CASCADE would not fire) and captured by undo-delete as a grandchild entity.
+The schema-derived profile-delete sweep clears it automatically
+(`lib/profile-delete.ts`, #2126 — the sweep runs with foreign keys OFF, so the
+CASCADE would not fire), undo-delete captures it as a grandchild entity, and it
+exports as the browse-only **Dose schedule history** dataset (#2129 — history
+undo preserves must not be history export drops).
 
 **Sleep attribution.** `bedtimeDoseDisposition` (#1972) keeps its fact/judgment split
 untouched — a logged night renders on the log alone — but its judgment inputs are now

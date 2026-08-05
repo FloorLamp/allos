@@ -2294,6 +2294,13 @@ supplement/medication, wellness practice, substance-use history row, **practice
 session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.
 
+The same contract holds at the bulk surface (#2125): selecting rows of an
+undoable kind on **Data → Manage** — activities, body metrics, biomarker
+records, supplements/medications, practice sessions, substance history —
+captures each row and offers one "Deleted N · Undo" toast, so the row menu and
+the bulk checkbox never disagree about whether a delete is reversible. ("Delete
+all" on a dataset stays deliberately permanent, and says so.)
+
 The toast is no longer the only way back. **Data → Trash** (issue #2013) lists
 every capture that is still restorable — what it was, when you deleted it, how
 many related rows came with it, and when it expires — with **Restore** (the same

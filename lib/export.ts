@@ -564,6 +564,38 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Correction lineage (#1404): a reading's prior values as they stood before a
+    // re-import overwrote them ('corrected'/'amended' results). History undo
+    // already preserves; export must not silently drop (#2129). A child of
+    // medical_records (JOINed via mr.profile_id), so browse/export-only — the
+    // parent reading is the deletable unit.
+    key: "medical_record_revisions",
+    label: "Record revisions",
+    table: "medical_record_revisions",
+    deletable: false,
+    columns: [
+      "record",
+      "date",
+      "value",
+      "value_num",
+      "unit",
+      "reference_range",
+      "flag",
+      "result_status",
+      "superseded_by_status",
+      "source",
+      "superseded_at",
+    ],
+    select: `SELECT rv.id, mr.name AS record, rv.date, rv.value, rv.value_num,
+              rv.unit, rv.reference_range, rv.flag, rv.result_status,
+              rv.superseded_by_status, rv.source, rv.superseded_at
+       FROM medical_record_revisions rv JOIN medical_records mr ON mr.id = rv.record_id
+       WHERE mr.profile_id = ? ORDER BY rv.superseded_at DESC, rv.id DESC`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM medical_record_revisions rv JOIN medical_records mr ON mr.id = rv.record_id
+       WHERE mr.profile_id = ?`,
+  }),
+  tableDataset({
     key: "immunizations",
     label: "Immunizations",
     table: "immunizations",
@@ -776,6 +808,40 @@ export const DATASETS: ExportDataset[] = [
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
+       WHERE ii.profile_id = ?`,
+  }),
+  tableDataset({
+    // Dose schedule HISTORY (#1973/#2000): the dueness-relevant schedule of each
+    // dose as of every effective_from day, so past adherence keeps being judged by
+    // the rule that held then. Undo already preserves these rows; export must not
+    // silently drop them (#2129) — the supplements dataset carries only the
+    // CURRENT derived schedule string. A grandchild of intake_items (JOINed
+    // through intake_item_doses via ii.profile_id), so browse/export-only.
+    key: "dose_schedule_versions",
+    label: "Dose schedule history",
+    table: "intake_dose_schedule_versions",
+    deletable: false,
+    columns: [
+      "item",
+      "dose_amount",
+      "effective_from",
+      "time_of_day",
+      "weekdays",
+      "start_date",
+      "end_date",
+      "created_at",
+    ],
+    select: `SELECT v.id, ii.name AS item, d.amount AS dose_amount, v.effective_from,
+              v.time_of_day, v.weekdays, v.start_date, v.end_date, v.created_at
+       FROM intake_dose_schedule_versions v
+       JOIN intake_item_doses d ON d.id = v.dose_id
+       JOIN intake_items ii ON ii.id = d.item_id
+       WHERE ii.profile_id = ?
+       ORDER BY ii.name, v.dose_id, v.effective_from DESC, v.id DESC`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM intake_dose_schedule_versions v
+       JOIN intake_item_doses d ON d.id = v.dose_id
+       JOIN intake_items ii ON ii.id = d.item_id
        WHERE ii.profile_id = ?`,
   }),
   tableDataset({

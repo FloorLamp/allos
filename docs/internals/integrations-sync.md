@@ -389,8 +389,9 @@ almost all unchanged, so persisting them would explode the store — recording
 only the value-changing dispositions is both the minimum #1212 asked for and the
 natural volume cap. It's a CHILD table (no own `profile_id`; reaches it via the
 event join, the exercise_sets convention), so it's absent from `OWNED_TABLES`
-and `deleteProfile` clears it explicitly through its parent before the
-owned-tables sweep (which runs with `foreign_keys` OFF). The four keyed upserts
+and the schema-derived profile-delete sweep (`lib/profile-delete.ts`, #2126)
+clears it through its parent before the owned-tables loop (which runs with
+`foreign_keys` OFF). The four keyed upserts
 (`normalize.ts`) take an optional `SyncRowSink` and push each persisted
 inserted/updated row's id alongside their existing `tallyUpsert` call (no
 re-implementation — the observation-substrate guard still holds); the sink is
