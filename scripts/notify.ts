@@ -108,10 +108,7 @@ import {
   getConnection,
   pruneSyncEvents,
 } from "../lib/integrations/connections";
-import { runStravaSync } from "../lib/integrations/strava-sync";
-import { runOuraSync } from "../lib/integrations/oura-sync";
-import { runWithingsSync } from "../lib/integrations/withings-sync";
-import { runWeatherSync } from "../lib/integrations/weather-sync";
+import { pullRunners } from "../lib/integrations/pull-runners";
 import { evaluateSyncRequests } from "../lib/portal-requests";
 
 const log = createLogger("notify");
@@ -225,54 +222,27 @@ async function poll(): Promise<never> {
 }
 
 // Pull from a profile's connected pull-integrations once per tick. Best-effort: a
-// sync failure must never affect the notification flow or the process exit code.
+// sync failure must never affect the notification flow or the process exit code, and
+// one provider throwing must not stop the next — which is why each run is isolated.
+//
+// This used to be four copy-pasted try/if(connected)/log blocks (#2040). It now
+// iterates the registry's pull providers, so the fifth costs nothing here.
 async function syncIntegrations(profileId: number) {
-  try {
-    if (getConnection(profileId, "strava")?.status === "connected") {
-      const r = await runStravaSync(profileId);
-      log.info("strava sync", { profile: profileId, ...(r as object) });
+  for (const runner of pullRunners()) {
+    try {
+      // Only a live connection syncs. Weather is gated the same way — its enable flag
+      // IS its connection row — and runWeatherSync additionally no-ops without a home
+      // location. Every pull is an idempotent rolling window, so re-running the
+      // overlap each tick is free.
+      if (getConnection(profileId, runner.id)?.status !== "connected") continue;
+      const r = await runner.run(profileId);
+      log.info(`${runner.id} sync`, { profile: profileId, ...(r as object) });
+    } catch (e) {
+      log.error(`${runner.id} sync failed`, {
+        profile: profileId,
+        err: e instanceof Error ? e : String(e),
+      });
     }
-  } catch (e) {
-    log.error("strava sync failed", {
-      profile: profileId,
-      err: e instanceof Error ? e : String(e),
-    });
-  }
-  try {
-    if (getConnection(profileId, "oura")?.status === "connected") {
-      const r = await runOuraSync(profileId);
-      log.info("oura sync", { profile: profileId, ...(r as object) });
-    }
-  } catch (e) {
-    log.error("oura sync failed", {
-      profile: profileId,
-      err: e instanceof Error ? e : String(e),
-    });
-  }
-  try {
-    if (getConnection(profileId, "withings")?.status === "connected") {
-      const r = await runWithingsSync(profileId);
-      log.info("withings sync", { profile: profileId, ...(r as object) });
-    }
-  } catch (e) {
-    log.error("withings sync failed", {
-      profile: profileId,
-      err: e instanceof Error ? e : String(e),
-    });
-  }
-  try {
-    // Keyless Open-Meteo UV/weather (#1172): gated on the enable flag, and
-    // runWeatherSync itself no-ops without a home location. Idempotent rolling
-    // window, so re-fetching the overlap each tick is free.
-    if (getConnection(profileId, "weather")?.status === "connected") {
-      const r = await runWeatherSync(profileId);
-      log.info("weather sync", { profile: profileId, ...(r as object) });
-    }
-  } catch (e) {
-    log.error("weather sync failed", {
-      profile: profileId,
-      err: e instanceof Error ? e : String(e),
-    });
   }
 }
 

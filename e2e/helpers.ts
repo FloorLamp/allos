@@ -190,6 +190,29 @@ export async function expandUpcomingAggregates(
   }
 }
 
+// Open EVERY day group in a provider's sync history (#1991).
+//
+// The history is grouped by day and every day but the NEWEST renders collapsed, so a
+// spec asserting on an individual run has to open the day it lives in first. Which
+// day a fixture's UTC stamp lands on depends on the run's pinned timezone
+// (e2e/pinned-timezone.ts), so open them all rather than naming one — and skip the
+// already-open newest, because clicking that would CLOSE it.
+export async function openAllSyncDays(scope: Page | Locator): Promise<void> {
+  const days = scope.locator('details[data-testid^="sync-day-"]');
+  const count = await days.count();
+  for (let i = 0; i < count; i++) {
+    const disclosure = days.nth(i);
+    const open = await disclosure.evaluate(
+      (el) => (el as HTMLDetailsElement).open
+    );
+    if (open) continue;
+    const summary = disclosure.locator("summary");
+    await summary.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await summary.click();
+    await expect(disclosure).toHaveJSProperty("open", true);
+  }
+}
+
 // Mobile clipped-content guard (issue #1063). The app shell deliberately clips
 // horizontal overflow (`<main className="… overflow-x-clip">` in
 // app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they

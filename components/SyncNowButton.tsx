@@ -2,11 +2,9 @@
 
 import { useTransition } from "react";
 import { IconRefresh } from "@tabler/icons-react";
-import { syncStravaNow } from "@/app/(app)/integrations/strava/actions";
-import { syncOuraNow } from "@/app/(app)/integrations/oura/actions";
-import { syncWithingsNow } from "@/app/(app)/integrations/withings/actions";
-import { syncWeatherNow } from "@/app/(app)/integrations/weather/actions";
+import { syncNow } from "@/app/(app)/integrations/sync-actions";
 import { useToast } from "@/components/Toast";
+import type { IntegrationId } from "@/lib/types";
 
 // THE per-provider "Sync now" (#208, unified in #1772). Pulls the recurring stream on
 // demand — the same idempotent sync the hourly tick runs — and toasts the outcome;
@@ -15,25 +13,19 @@ import { useToast } from "@/components/Toast";
 // setup page and Review's Connected sources: those used to offer different sync
 // affordances for the same run (a redirecting <form> here, this button there). Only
 // for a provider with a pull path — Health Connect is push-only and shows an
-// explainer instead — gated on the button's provider id.
-export default function SyncNowButton({ provider }: { provider: string }) {
+// explainer instead, and the action refuses an id with no pull facet (#2040), so this
+// button no longer keeps its own list of which four providers can sync.
+export default function SyncNowButton({
+  provider,
+}: {
+  provider: IntegrationId;
+}) {
   const [pending, start] = useTransition();
   const toast = useToast();
 
   function run() {
-    const sync =
-      provider === "strava"
-        ? syncStravaNow
-        : provider === "oura"
-          ? syncOuraNow
-          : provider === "withings"
-            ? syncWithingsNow
-            : provider === "weather"
-              ? syncWeatherNow
-              : null;
-    if (!sync) return;
     start(async () => {
-      const res = await sync();
+      const res = await syncNow(provider);
       toast(res.message, {
         tone: res.status === "error" ? "error" : "success",
       });

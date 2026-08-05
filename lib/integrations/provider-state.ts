@@ -15,10 +15,9 @@
 // badge, a different outcome sentence, or a different history shape has to change it
 // here, where all three change together.
 
-import { formatSplitLabel, formatWindow, isNoOpSyncEvent } from "./sync-log";
+import { formatSplitLabel, formatWindow } from "./sync-log";
 import { isTruncatedSyncEvent } from "./sync-details";
 import { isSyncStale } from "./staleness";
-import { daysBetweenDateStr } from "../date";
 
 // The event fields every state answer is derived from. Structurally typed rather than
 // importing the row type, so the pure tier never drags @/lib/db in behind it.
@@ -54,6 +53,18 @@ export type SyncVocabulary = "records" | "forecast";
 // free.
 export function syncVocabularyForKind(kind: string): SyncVocabulary {
   return kind === "public" ? "forecast" : "records";
+}
+
+// What ONE RUN of this provider is called (#1991). The day-grouped history counts
+// runs — "26 pushes today" — and a phone exporter pushing to us is not "syncing", nor
+// is a keyless forecast fetch. Derived from the provider KIND for the same reason the
+// vocabulary is: a future provider of a known kind gets the right word for free.
+export type SyncRunNoun = "push" | "sync" | "refresh";
+
+export function syncRunNounForKind(kind: string): SyncRunNoun {
+  if (kind === "push") return "push";
+  if (kind === "public") return "refresh";
+  return "sync";
 }
 
 // The semantic tone of a status/outcome, resolved to classes in exactly one place
@@ -233,6 +244,62 @@ export function intermittentReassurance(vocabulary: SyncVocabulary): string {
 // last event.
 export const INTERMITTENT_HEADLINE = "Working, with interruptions";
 
+// The status card's HEADLINE (#1991 pin 9). The card answers "what's the state of
+// this source" and then STOPS: it states the standing as a sentence and, below,
+// today's activity as an aggregate — never a restatement of the newest run's split,
+// its drill-in, or its raw link, all of which live in the history the same page
+// renders underneath. Two copies of one event on one screen was the defect.
+export function standingHeadline(
+  standing: ProviderStanding,
+  noun: SyncRunNoun = "sync"
+): string {
+  switch (standing) {
+    case "healthy":
+      return noun === "push" ? "Receiving normally" : "Syncing normally";
+    case "partial":
+      return "Working — more still upstream";
+    case "intermittent":
+      return INTERMITTENT_HEADLINE;
+    case "failing":
+      return noun === "push" ? "Not receiving" : "Not syncing";
+    case "needs-reauth":
+      return "Needs reconnecting";
+    case "not-connected":
+      return "Not connected";
+    case "never-synced":
+      return `Connected — waiting for the first ${noun}`;
+  }
+}
+
+// Today's activity, as one aggregate sentence: "26 pushes today, 340 records added,
+// 12 updated." Null when the newest recorded day is not today — an old day's tally
+// dressed as "today" would be a lie, and the header's timestamp already says when the
+// last run was.
+export function periodActivityLabel(
+  day: { runs: number; inserted: number; updated: number } | null,
+  isToday: boolean,
+  noun: SyncRunNoun = "sync",
+  vocabulary: SyncVocabulary = "records"
+): string | null {
+  if (!day || !isToday || day.runs === 0) return null;
+  const head = `${day.runs} ${day.runs === 1 ? noun : pluralRunNoun(noun)} today`;
+  if (vocabulary === "forecast") {
+    const revised = day.inserted + day.updated;
+    return revised === 0
+      ? `${head}, nothing revised`
+      : `${head}, ${revised} ${revised === 1 ? "reading" : "readings"} revised`;
+  }
+  const parts: string[] = [];
+  if (day.inserted > 0) parts.push(`${day.inserted} records added`);
+  if (day.updated > 0) parts.push(`${day.updated} updated`);
+  return parts.length ? `${head}, ${parts.join(", ")}` : `${head}, nothing new`;
+}
+
+// "push" → "pushes", "refresh" → "refreshes", "sync" → "syncs".
+export function pluralRunNoun(noun: SyncRunNoun): string {
+  return noun === "sync" ? "syncs" : `${noun}es`;
+}
+
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one
 // shared rule, so the page can promise what the badge and the digest will do.
 export function escalationPolicyLabel(thresholdDays: number | null): string {
@@ -333,42 +400,6 @@ export function formatCoverage(
 
 // ---- History ---------------------------------------------------------------
 
-// One row of the sync-history TABLE (#1772). The old surface was a flex-wrapped
-// inline run of timestamp + outcome + window per event: nothing aligned, the window
-// repeated verbatim on every row (noise when identical, unremarked when it differed —
-// which is exactly when it carries signal, see #1771), the failure REASON rendered
-// only for the latest event so a historical "Sync failed" row explained nothing, and
-// an hourly provider filled every slot with near-identical no-ops.
-export type SyncHistoryRow<T extends SyncEventFacts = SyncEventFacts> =
-  | {
-      kind: "event";
-      ev: T;
-      // Only when this run's window departs from the run norm — a divergence NOTE
-      // (windowDivergence). Identical windows are stated once, above the table.
-      window: string | null;
-    }
-  | {
-      kind: "quiet";
-      // A maximal run of CONSECUTIVE no-op syncs (#137), the same collapsing the
-      // Imports feed does — an hourly provider otherwise fills all ten slots inside
-      // one day with rows that say nothing.
-      count: number;
-      newestAt: string;
-      oldestAt: string;
-    }
-  | {
-      kind: "failure-run";
-      // A maximal run of CONSECUTIVE IDENTICAL failures (#1880 item 3), collapsed
-      // the same way no-ops are: "Failed ×2 · 4:00–5:00 PM · reason". The table then
-      // SHOWS intermittency instead of encoding it as an alternating zebra.
-      count: number;
-      newestAt: string;
-      oldestAt: string;
-      error: string | null;
-      // The newest event of the run, for stable keys and admin drill-ins.
-      newest: T;
-    };
-
 // The window the LATEST windowed run covers (#1880 item 4). The norm used to be a
 // majority vote over the whole event set, so after a day rollover the header —
 // computed from stale history — contradicted the newest row. The latest run is the
@@ -385,129 +416,9 @@ export function runWindowNorm(
   return null;
 }
 
-// The raw [start, end] of the latest windowed run — the divergence comparisons below
-// need the parts, not the label.
-function latestWindow(
-  events: readonly SyncEventFacts[]
-): { start: string | null; end: string | null } | null {
-  for (const ev of events) {
-    if (ev.window_start || ev.window_end) {
-      return { start: ev.window_start ?? null, end: ev.window_end ?? null };
-    }
-  }
-  return null;
-}
-
-// An OLDER row's divergence note against the latest run's window (#1880 item 4).
-// Null when the row matches the norm (or has no window). A run that shares the
-// norm's start but stopped one day short is the day-rollover case, and says so:
-// "covered → 2026-08-08 (before the day rolled)". Anything else states its own
-// window in full.
-export function windowDivergence(
-  ev: SyncEventFacts,
-  norm: { start: string | null; end: string | null } | null,
-  vocabulary: SyncVocabulary = "records"
-): string | null {
-  const start = ev.window_start ?? null;
-  const end = ev.window_end ?? null;
-  if (!start && !end) return null;
-  if (!norm) return formatCoverage(ev, vocabulary);
-  if (start === norm.start && end === norm.end) return null;
-  if (start === norm.start && end && norm.end) {
-    const gap = daysBetweenDateStr(end.slice(0, 10), norm.end.slice(0, 10));
-    if (gap === 1) return `covered → ${end} (before the day rolled)`;
-    if (gap != null && gap > 0) return `covered → ${end}`;
-  }
-  return formatCoverage(ev, vocabulary);
-}
-
-// Fold a provider's events (NEWEST-FIRST, as the queries return them) into table
-// rows: consecutive no-ops collapsed (#137), consecutive IDENTICAL failures
-// collapsed (#1880 item 3), and each surviving row carrying its window only when it
-// departs from the latest run's norm. Pure → unit-testable.
-export function buildHistoryRows<T extends SyncEventFacts>(
-  eventsNewestFirst: readonly T[],
-  vocabulary: SyncVocabulary = "records"
-): SyncHistoryRow<T>[] {
-  const norm = latestWindow(eventsNewestFirst);
-  const divergence = (ev: T) => windowDivergence(ev, norm, vocabulary);
-  const out: SyncHistoryRow<T>[] = [];
-  let i = 0;
-  while (i < eventsNewestFirst.length) {
-    const ev = eventsNewestFirst[i];
-    if (!ev.ok) {
-      // A maximal run of consecutive failures WITH THE SAME REASON — an upstream
-      // outage retried hourly. A failure with a different reason starts its own
-      // run (two different causes must not collapse into one row).
-      let j = i;
-      while (
-        j < eventsNewestFirst.length &&
-        !eventsNewestFirst[j].ok &&
-        (eventsNewestFirst[j].error ?? null) === (ev.error ?? null)
-      )
-        j++;
-      const run = eventsNewestFirst.slice(i, j);
-      if (run.length === 1) {
-        out.push({ kind: "event", ev, window: divergence(ev) });
-      } else {
-        out.push({
-          kind: "failure-run",
-          count: run.length,
-          newestAt: run[0].at,
-          oldestAt: run[run.length - 1].at,
-          error: ev.error ?? null,
-          newest: run[0],
-        });
-      }
-      i = j;
-      continue;
-    }
-    if (!isNoOpSyncEvent(ev)) {
-      out.push({ kind: "event", ev, window: divergence(ev) });
-      i++;
-      continue;
-    }
-    let j = i;
-    while (
-      j < eventsNewestFirst.length &&
-      isNoOpSyncEvent(eventsNewestFirst[j])
-    )
-      j++;
-    const run = eventsNewestFirst.slice(i, j);
-    // A single quiet sync is not a run — collapsing it would hide a row and gain
-    // nothing, so it renders as itself.
-    if (run.length === 1) {
-      out.push({ kind: "event", ev: run[0], window: divergence(run[0]) });
-    } else {
-      out.push({
-        kind: "quiet",
-        count: run.length,
-        newestAt: run[0].at,
-        oldestAt: run[run.length - 1].at,
-      });
-    }
-    i = j;
-  }
-  return out;
-}
-
-// The quiet-run summary sentence, in the provider's vocabulary. Pure.
-export function quietRunLabel(
-  count: number,
-  vocabulary: SyncVocabulary = "records"
-): string {
-  return vocabulary === "forecast"
-    ? `${count} refreshes with no change`
-    : `${count} syncs with no new data`;
-}
-
-// A collapsed failure run's shared reason, count-qualified so the row still says the
-// reason held for EVERY run it collapsed (#1880 item 3). Null when the runs carried
-// no recorded reason.
-export function failureRunReason(
-  count: number,
-  error: string | null
-): string | null {
-  if (!error) return null;
-  return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
-}
+// The per-run TABLE this module used to fold events into (buildHistoryRows,
+// windowDivergence, quietRunLabel, failureRunReason) is gone: #1991 replaced the
+// per-run log with a DAY-grouped one, and its rules — including the collapse of
+// consecutive identical failures those helpers owned — live in
+// lib/integrations/sync-history-days.ts. `runWindowNorm` survives because the window
+// is still stated once, above the history.

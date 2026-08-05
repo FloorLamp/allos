@@ -65,7 +65,11 @@ export default async function HealthConnectPage() {
   )!;
 
   return (
-    <div>
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="integration-page"
+    >
       <Link
         href="/data?section=import"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -75,7 +79,7 @@ export default async function HealthConnectPage() {
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 
-      <PageContainer width="reading" className="grid gap-6">
+      <div className="grid gap-6">
         <HealthConnectSetup
           endpoint={endpoint}
           connected={connected}
@@ -164,6 +168,7 @@ export default async function HealthConnectPage() {
             <div className="card">
               <IntegrationStatusHeader
                 state={state}
+                detail="period"
                 isAdmin={login.role === "admin"}
                 controls={
                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -179,8 +184,8 @@ export default async function HealthConnectPage() {
         )}
 
         <RecommendedSettings />
-      </PageContainer>
-    </div>
+      </div>
+    </PageContainer>
   );
 }
 

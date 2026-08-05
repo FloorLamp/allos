@@ -62,7 +62,11 @@ export default async function WithingsPage(props: {
   )!;
 
   return (
-    <div>
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="integration-page"
+    >
       <Link
         href="/data?section=import"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -91,10 +95,11 @@ export default async function WithingsPage(props: {
       )}
 
       {connected ? (
-        <PageContainer width="reading" className="grid gap-6">
+        <div className="grid gap-6">
           <div className="card">
             <IntegrationStatusHeader
               state={state}
+              detail="period"
               isAdmin={login.role === "admin"}
               controls={
                 <>
@@ -112,9 +117,9 @@ export default async function WithingsPage(props: {
           <SetupCard callbackUrl={callbackUrl} />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
-        </PageContainer>
+        </div>
       ) : (
-        <PageContainer width="reading" className="grid gap-6">
+        <div className="grid gap-6">
           <div className="card space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Enter your Withings API application&rsquo;s{" "}
@@ -198,9 +203,9 @@ export default async function WithingsPage(props: {
           </div>
 
           <SetupCard callbackUrl={callbackUrl} />
-        </PageContainer>
+        </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

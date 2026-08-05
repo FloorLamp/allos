@@ -154,8 +154,11 @@ surface FORMATS its answers:
   " UTC" suffix, and Review showed relative-only labels that could collide.
 - **One Sync now.** The four redirecting per-provider form actions
   (`sync{Strava,Oura,Withings,Weather}Action`) are gone; `SyncNowButton` serves
-  both the setup page and Review over the `sync*Now` actions, which revalidate the
-  surfaces they feed (so no client-side refresh).
+  both the setup page and Review, and since #2040 it calls ONE generic
+  `syncNow(id)` (`app/(app)/integrations/sync-actions.ts`) rather than four
+  `sync*Now` actions with an identical skeleton. The action revalidates the
+  surfaces the run feeds (so no client-side refresh) from the registry's
+  `pull.revalidates`.
 - **Deliberate surface roles (#1880 item 2: the alert IS the card).** The setup
   page is the provider's home — shared status header (`IntegrationStatusHeader`),
   controls, and the full history table. On Review, an ESCALATED source renders
@@ -203,6 +206,62 @@ consecutive IDENTICAL failures collapse like no-ops do ("Failed ×2" +
 `failureRunReason`), so an alternating Failed/Refreshed hour reads as a pattern
 instead of a zebra; failures with different reasons never group.
 
+**History groups by DAY (#1991).** #1772 made the history a real table but left it a
+per-RUN log, and a per-run log is the wrong shape for a source that fires ~70×/day:
+the Health Connect exporter re-sends its rolling window every ~20 minutes, so the
+table read "Synced · N new · 4 changed · 73 unchanged" seventy times over. The
+repeating "73 unchanged" is the tell — it is not news, and a real anomaly was
+invisible in that stream. `lib/integrations/sync-history-days.ts` (pure) is the rule:
+
+- **A day is one line** — `26 pushes · 340 new · 12 changed`, plus an attention chip
+  when the day contains one (`syncDayAttention`, worst-first: failures outrank a
+  cut-short run, which outranks dropped rows). The day is the READER'S: `syncEventDay`
+  resolves the profile's local date, because a UTC slice puts a 21:00 push on the
+  wrong side of midnight for anyone east or west of Greenwich. The run NOUN comes
+  from the provider kind (`syncRunNounForKind`), the same derivation the vocabulary
+  uses — a phone exporter pushes, a keyless cache refreshes.
+- **Opening a day itemizes only what earned it**: anything that failed, was cut short,
+  or skipped rows, plus the NEWEST run (that is what you came to check). Everything
+  else collapses to a range — `7 syncs · routine · 128 new` — with "Show each →".
+  This is #137's no-op collapsing generalized from _nothing happened_ to _nothing
+  NOTABLE happened_, and it is frequency-agnostic: Health Connect collapses
+  dramatically, an hourly source turns 24 rows into a line plus its anomalies, and a
+  once-a-week import renders one line either way. No per-provider variants.
+- **The newest day opens by default.** It is the common visit; collapsing it would
+  make every check two taps.
+- **The WINDOW column is gone.** It was structurally constant per provider (an entire
+  column of em-dashes for Health Connect) and is already stated once above the list.
+- **The raw payload is one admin-only link per run, opening a dialog**
+  (`components/RawPayloadDialog.tsx`). The inline `<details>` version rendered Expand
+  all / Collapse all / Copy / Download plus a scrolling object tree INSIDE a history
+  row — an admin debugging tool in the primary reading position, pushing the actual
+  history below the fold. Same capability, same gate, no longer the centrepiece.
+  `RawPayloadViewer` (inline) stays where it IS the content: Review's inbox card and
+  the Imports feed each show one event with nothing beneath it to bury.
+
+`SyncHistoryTable` is now a PROJECTOR: it turns SQLite rows into plain serializable
+views so the interactive list (`SyncHistoryDays`, a client component) can own the
+"Show each" state without a row proxy crossing the boundary.
+
+**The status card answers and stops (#1991 pin 9).** On the provider's own page the
+status card and the first history row carried the identical split, the same
+"What this wrote", and the same "View raw" — the #1772/#1880 duplication, now inside a
+single screen. `IntegrationStatusHeader` takes a `detail` projection:
+`"period"` (the source page) states the standing as a sentence
+(`standingHeadline`) plus TODAY'S aggregate (`periodActivityLabel` — "26 pushes today,
+340 records added, 12 updated", and null rather than a lie when the newest recorded
+day is not today), and nothing about the newest run; `"run"` (Review's inbox card)
+keeps the newest run's split, coverage, drill-in and raw link, because that card shows
+ONE event with nothing beneath it — that IS its content. Same component, same shape,
+one per-surface choice, exactly like the existing `controls` slot.
+
+**And the source pages are CENTRED (#1991 item 6, #1880 item 5).** Every
+`app/(app)/integrations/*` page now wraps its whole content — back link, header, cards
+— in ONE `<PageContainer width="reading" className="mx-auto">`; the inner containers
+became plain grids. `mx-auto` alone passes through `className` by design (the page
+WIDTH still comes from the named token), so `lib/__tests__/page-width-scan.test.ts`
+stays satisfied.
+
 **Per-row provenance drill-in (#1333, #1212 parts 1–2).** The deferred "what
 this sync wrote" drill-in now ships. A child table `integration_sync_rows`
 (migration 110) records, per sync, WHICH records the keyed upserts persisted:
@@ -242,14 +301,30 @@ daily rows) but `runWeatherSync` records no `integration_sync_rows` — and is
 right not to, because it writes cells of the GLOBAL location-keyed forecast cache,
 which name no user record (#1212's own scoping decision). An expander that
 promises record detail and apologizes 100% of the time reads as broken. The gate
-is what the EVENT carries, never a provider hardcode: `eventsWithProvenance`
-(`lib/queries/integrations.ts`) does ONE indexed seek per provider over
+is what the EVENT carries, never a provider hardcode: `provenanceCountsByEvent`
+(`lib/queries/integrations.ts`) does ONE indexed, grouped seek per provider over
 `integration_sync_rows` — sync-event ids are monotonic, so the rendered set is
 bounded below by its oldest id — profile-scoped through the parent event per the
-child-table convention. The resolved ids ride on `IntegrationState`, the drill-in
-renders only for those, and the apologetic fallback branch is deleted (it is now
-unreachable for genuine pre-#1333 legacy events too). The split label stays as the
-summary either way.
+child-table convention. The resolved counts ride on `IntegrationState`
+(`provenanceCounts`), the drill-in renders only for events that have some, and the
+apologetic fallback branch is deleted (it is now unreachable for genuine pre-#1333
+legacy events too).
+
+**…and it COUNTS what it can show (#1991 defect 1).** The label used to be the split
+total while the list was `integration_sync_rows`. Since the sink deliberately skips
+minute-grain targets with no row id, a Health Connect push rendered
+"What this wrote (30)" and expanded to three rows: overstating by 10× while looking
+complete — worse than #1771's empty case, which at least announced itself.
+`drilldownCoverage(written, itemizable)` (`lib/integrations/sync-history-days.ts`) is
+the one rule, with three outcomes decided from DATA rather than a provider list:
+everything written → itemize all; partial → itemize what it can and name the
+remainder ("+27 more this run wrote — not itemizable (no per-record link)"); nothing
+→ no drill-in at all. The remainder is deliberately NOT named by KIND: the provenance
+table is what knows which rows they were, and it does not record them — inferring
+"heart-rate samples" from a subtraction would be the system asserting knowledge it
+does not have. The bulk still counts in the run's split; it stops pretending to be
+openable. `SyncRowsDrilldown` also re-labels itself from the LOADED rows once open,
+so the promise and the list can never disagree in front of the reader.
 
 **Metric sample identity (#1101/#1102).** `metric_samples` keys a provider
 record on `(profile_id, metric, source, origin, start_time)`; nullable `origin`
@@ -616,6 +691,60 @@ provenance sinks are chunk-transactional, `HealthConnectWriteError` carries the
 committed split, and the route records ONE `ok=0` event with the real counts
 plus drillable per-row provenance (mirroring the Fitbit Takeout shape from
 #1617) instead of null counts over durable rows.
+
+**One pull-sync runner (#2040).** The per-provider pull stack used to duplicate at
+three layers, and the files said so themselves — `withings-sync.ts` opened with
+"Mirrors oura-sync.ts", `oura-sync.ts` with "Mirrors strava-sync.ts". Each module
+declared its own `TIMEOUT_MS` / `MAX_PAGES` / `RESCAN_DAYS` /
+`INITIAL_BACKFILL_DAYS`, implemented its own `fetchPages()` with the same 429 →
+truncate-and-keep-cursor rule, and ended in its own ~60-line `writeTx` → cursor →
+`recordSync`/`recordSyncEvent`/`recordSyncRows` tail; four `sync*Now` actions shared
+one skeleton; and the notify tick fanned out four copy-pasted
+`try { if (connected) … } catch {}` blocks. The cause was structural — `registry.ts`
+had a `kind` facet but no way to say "this is a provider we pull", so every layer
+above it enumerated providers by hand, and Garmin would have been a fifth copy of
+all three.
+
+- **The facet.** `IntegrationDef.pull` (`lib/types/integrations.ts`) declares
+  `revalidates` — the surfaces a completed run feeds, swept by
+  `lib/__tests__/nav-routes.test.ts` exactly like an in-`app/` `revalidatePath`
+  target — plus an OPTIONAL `paging` block (`timeoutMs`, `maxPages`, `rescanDays`,
+  `backfillDays`) for a credentialed paged pull. Weather declares no `paging`: it
+  is keyless with no cursor and no pagination, and inventing numbers to make the
+  shape uniform is exactly the "forcing a non-OAuth provider into the facet" the
+  issue ruled out. `pullPaging(id)` THROWS for a provider that declares none,
+  because a module silently reading `undefined` for `maxPages` would sync nothing
+  forever. `PULL_INTEGRATIONS` excludes `planned` entries — Garmin's card is real,
+  its runner is not.
+- **The pure half.** `lib/integrations/pull-window.ts` owns the rate-limit rule
+  (429, plus a provider's own dialect — Withings' envelope `601`), the page cap,
+  the day/second re-scan window arithmetic, and the two CURSOR POLICIES.
+  `hold-on-truncate` (Oura, Withings) holds a window-edge cursor when a run is cut
+  short, or the days past the re-scan margin would be stranded forever;
+  `advance-to-processed` (Strava) advances anyway, because that cursor names the
+  newest activity actually IMPORTED and holding it would re-pay every per-activity
+  detail call the truncated run already spent. One rule, pinned once.
+- **The runner.** `lib/integrations/pull-sync.ts` `runPullSync(profileId, spec)`
+  owns credentials (a `null` token is "not connected" and logs nothing; a THROW is
+  a recorded failure), the needs_reauth flip on a definitive auth status, the one
+  `writeTx` over the shared `normalize.ts` upserts, the post-commit hooks, the
+  cursor decision, and the whole `recordSync` / `recordSyncEvent` / `recordSyncRows`
+  accounting including the `truncated` marker. A provider's `PullSpec` supplies
+  only what is genuinely its own: how to authorize, how to page (`next_token` vs
+  `offset`/`more` vs `page`), how to map rows, and what to call its counts.
+- **The layers above.** `lib/integrations/pull-runners.ts` binds `run` + the
+  outcome sentence per id — kept OUT of `registry.ts`, which the pure tier and
+  client components import and which must not drag `@/lib/db` behind it. It
+  throws at startup for a facet with no runner bound. `syncNow(id)` and the tick
+  both iterate it; `getIntegrationState`'s `canSyncNow` is now `isPullIntegration`
+  rather than a hand-kept id set.
+
+Behaviour is identical per provider — the existing DB suites
+(`sync-orchestrators`, `oura-sync`, `withings-sync`) pass unedited, and
+`lib/__db_tests__/pull-runner.test.ts` adds the property they cannot show: two
+providers through the one runner, each with its own rows, counts, events and
+cursor shape, idempotent on a second pass, and one failing without touching the
+other.
 
 **Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
 cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not

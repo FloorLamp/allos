@@ -6,12 +6,10 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  buildHistoryRows,
   consecutiveLeadingFailures,
   escalationPolicyLabel,
   eventVerdict,
   failureConsequence,
-  failureRunReason,
   FAILING_CONSECUTIVE_RUNS,
   formatCoverage,
   formatSyncChange,
@@ -20,12 +18,10 @@ import {
   intermittentRunsLabel,
   needsAttention,
   providerStanding,
-  quietRunLabel,
   runWindowNorm,
   standingBadge,
   standingEscalates,
   syncVocabularyForKind,
-  windowDivergence,
   type SyncEventFacts,
 } from "@/lib/integrations/provider-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
@@ -311,45 +307,19 @@ describe("formatCoverage", () => {
   });
 });
 
-describe("buildHistoryRows", () => {
+describe("runWindowNorm", () => {
   const win = { window_start: "2026-07-18", window_end: "2026-08-07" };
 
-  it("states the window once and flags only the rows that differ", () => {
+  it("states the window from the LATEST windowed run, never a majority vote", () => {
+    // #1880 item 4: after a day rollover the header must agree with the newest run.
+    // Under the old majority rule it claimed the older reach and contradicted it.
     const events = [
-      ev({ id: 5, inserted: 1, ...win }),
-      ev({ id: 4, inserted: 2, ...win }),
-      // A run that covered something else — this is exactly where the window
-      // carries signal (see #1771's failure-vs-success asymmetry).
-      ev({
-        id: 3,
-        inserted: 1,
-        window_start: "2026-07-10",
-        window_end: "2026-08-01",
-      }),
-    ];
-    expect(runWindowNorm(events)).toBe("2026-07-18 → 2026-08-07");
-    const rows = buildHistoryRows(events);
-    expect(rows.map((r) => (r.kind === "event" ? r.window : "quiet"))).toEqual([
-      null,
-      null,
-      "2026-07-10 → 2026-08-01",
-    ]);
-  });
-
-  // #1880 item 4: the norm is the LATEST run's window, never a majority vote over
-  // stale history — so after a day rollover the header agrees with the newest row
-  // and the OLDER rows note their divergence.
-  it("derives the norm from the latest run, with older rows noting the day roll", () => {
-    const events = [
-      // The newest run reaches → 08-09 (the day rolled)…
       ev({
         id: 9,
         inserted: 1,
         window_start: "2026-07-20",
         window_end: "2026-08-09",
       }),
-      // …while every older run covered → 08-08. Under the majority rule the
-      // HEADER would claim → 08-08 and contradict the newest row.
       ev({
         id: 8,
         inserted: 2,
@@ -364,37 +334,6 @@ describe("buildHistoryRows", () => {
       }),
     ];
     expect(runWindowNorm(events)).toBe("2026-07-20 → 2026-08-09");
-    const rows = buildHistoryRows(events);
-    expect(rows.map((r) => (r.kind === "event" ? r.window : "?"))).toEqual([
-      null,
-      "covered → 2026-08-08 (before the day rolled)",
-      "covered → 2026-08-08 (before the day rolled)",
-    ]);
-  });
-
-  it("keeps the day-roll phrase for exactly a one-day gap, and states other divergence plainly", () => {
-    const norm = { start: "2026-07-20", end: "2026-08-09" };
-    // Same start, end more than a day short: shortened but no rollover claim.
-    expect(
-      windowDivergence(
-        ev({ window_start: "2026-07-20", window_end: "2026-08-01" }),
-        norm
-      )
-    ).toBe("covered → 2026-08-01");
-    // A different start states the whole window.
-    expect(
-      windowDivergence(
-        ev({ window_start: "2026-07-10", window_end: "2026-08-09" }),
-        norm
-      )
-    ).toBe("2026-07-10 → 2026-08-09");
-    // Matching the norm says nothing at all.
-    expect(
-      windowDivergence(
-        ev({ window_start: "2026-07-20", window_end: "2026-08-09" }),
-        norm
-      )
-    ).toBeNull();
   });
 
   it("skips windowless failures when picking the norm", () => {
@@ -405,88 +344,7 @@ describe("buildHistoryRows", () => {
     expect(runWindowNorm(events)).toBe("2026-07-18 → 2026-08-07");
   });
 
-  it("collapses a run of consecutive no-ops (#137) but never a lone one", () => {
-    const events = [
-      ev({ id: 9, inserted: 1 }),
-      ev({ id: 8, unchanged: 40 }),
-      ev({ id: 7, unchanged: 40 }),
-      ev({ id: 6, unchanged: 40 }),
-      ev({ id: 5, ok: 0, error: "token refresh failed" }),
-      ev({ id: 4, unchanged: 40 }),
-      ev({ id: 3, inserted: 2 }),
-    ];
-    const rows = buildHistoryRows(events);
-    expect(rows.map((r) => r.kind)).toEqual([
-      "event",
-      "quiet",
-      "event",
-      "event",
-      "event",
-    ]);
-    const quiet = rows[1];
-    expect(quiet.kind === "quiet" && quiet.count).toBe(3);
-    // A LONE failure is never collapsed — it stays its own visible row with its
-    // reason.
-    expect(rows[2].kind === "event" && rows[2].ev.id).toBe(5);
-    // The lone no-op between the failure and the meaningful run is NOT collapsed:
-    // hiding one row behind a summary of one gains nothing.
-    expect(rows[3].kind === "event" && rows[3].ev.id).toBe(4);
-  });
-
-  // #1880 item 3: consecutive IDENTICAL failures group like consecutive no-ops do,
-  // so an alternating Failed/Refreshed hour reads as a pattern, not a zebra.
-  it("groups consecutive identical failures into one ×N row", () => {
-    const err = "weather fetch failed (503)";
-    const events = [
-      ev({ id: 9, ok: 0, at: "2026-08-01 09:00:00", error: err }),
-      ev({ id: 8, inserted: 5, at: "2026-08-01 08:00:00" }),
-      ev({ id: 7, ok: 0, at: "2026-08-01 07:00:00", error: err }),
-      ev({ id: 6, ok: 0, at: "2026-08-01 06:00:00", error: err }),
-      ev({ id: 5, inserted: 3, at: "2026-08-01 05:00:00" }),
-    ];
-    const rows = buildHistoryRows(events);
-    expect(rows.map((r) => r.kind)).toEqual([
-      "event", // the lone newest failure stays a row with its reason
-      "event",
-      "failure-run", // 07:00 + 06:00 collapse
-      "event",
-    ]);
-    const run = rows[2];
-    if (run.kind !== "failure-run") throw new Error("expected failure-run");
-    expect(run.count).toBe(2);
-    expect(run.newestAt).toBe("2026-08-01 07:00:00");
-    expect(run.oldestAt).toBe("2026-08-01 06:00:00");
-    expect(run.error).toBe(err);
-  });
-
-  it("never groups consecutive failures with DIFFERENT reasons", () => {
-    const events = [
-      ev({ id: 9, ok: 0, error: "rate limit reached (429)" }),
-      ev({ id: 8, ok: 0, error: "token refresh failed (401)" }),
-      ev({ id: 7, inserted: 1 }),
-    ];
-    const rows = buildHistoryRows(events);
-    // Two causes, two rows — collapsing them would hide which failure said what.
-    expect(rows.map((r) => r.kind)).toEqual(["event", "event", "event"]);
-  });
-
-  it("labels a failure run with its count-qualified shared reason", () => {
-    expect(failureRunReason(2, "weather fetch failed (503)")).toBe(
-      "weather fetch failed (503) — both runs"
-    );
-    expect(failureRunReason(4, "weather fetch failed (503)")).toBe(
-      "weather fetch failed (503) — all 4 runs"
-    );
-    expect(failureRunReason(2, null)).toBeNull();
-  });
-
-  it("labels a quiet run in the provider's own vocabulary", () => {
-    expect(quietRunLabel(3)).toBe("3 syncs with no new data");
-    expect(quietRunLabel(3, "forecast")).toBe("3 refreshes with no change");
-  });
-
   it("returns nothing for a provider with no events", () => {
-    expect(buildHistoryRows([])).toEqual([]);
     expect(runWindowNorm([])).toBeNull();
   });
 });

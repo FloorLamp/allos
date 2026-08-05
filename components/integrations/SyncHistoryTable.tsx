@@ -1,38 +1,53 @@
 import { IconHistory } from "@tabler/icons-react";
 import type { IntegrationState } from "@/lib/queries/integrations";
-import type { IntegrationId } from "@/lib/types";
+import type { IntegrationSyncEvent } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
 import { syncStalenessThreshold } from "@/lib/integrations/staleness";
 import {
-  buildHistoryRows,
   escalationPolicyLabel,
   eventVerdict,
-  failureRunReason,
   formatSyncChange,
-  quietRunLabel,
   runWindowNorm,
+  syncRunNounForKind,
 } from "@/lib/integrations/provider-state";
-import { STATUS_TEXT_TONE } from "./StatusBadge";
-import SyncTimestamp from "./SyncTimestamp";
-import { SyncDetailsNotes } from "./SyncOutcome";
-import RawPayloadViewer from "@/components/RawPayloadViewer";
-import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
+import {
+  drilldownCoverage,
+  failureRunReason,
+  groupSyncDays,
+  syncDayAttention,
+  syncDayLabel,
+  syncRangeLabel,
+} from "@/lib/integrations/sync-history-days";
+import {
+  originChoiceLabel,
+  parseSyncEventDetails,
+} from "@/lib/integrations/sync-details";
+import SyncHistoryDays, {
+  type SyncDayEntryView,
+  type SyncDayView,
+  type SyncRunView,
+} from "./SyncHistoryDays";
 
-// The provider's sync history, on the provider's own page (#1772).
+// The provider's sync history, on the provider's own page (#1772), GROUPED BY DAY
+// (#1991).
 //
 // #1212 retired the duplicate copy and left Review's expander as the single history;
-// #1614 routed Weather into it. Neither redesigned it for the primary role it had
-// inherited — it was still the #208 debug feed: a flex-wrapped inline run of
-// timestamp + outcome + window per event with nothing aligned, the failure REASON
-// rendered only for the latest event (so a "Sync failed" row in history explained
-// nothing, and the moment a success landed even the most recent failure's reason
-// vanished from the UI entirely), the window repeated verbatim on every row, no
-// absolute times, a per-row expander nested inside the history expander, and no
-// no-op collapsing, so an hourly provider filled every slot inside a day.
+// #1772 rebuilt it as a real table on the provider's own page. Neither fixed what a
+// high-frequency source does to a per-run log: the Health Connect exporter re-sends
+// its rolling window every ~20 minutes, so the table read
+// "Synced · N new · 4 changed · 73 unchanged" about seventy times a day. The
+// repeating "73 unchanged" is the tell — it is not news, and a real anomaly was
+// invisible in that stream.
 //
-// This is the redesign, and it lives HERE because the setup page is the provider's
-// home: status, controls, and history in one place. History still renders in exactly
-// ONE place (#1212's rule holds) — Review is now an inbox that links to it.
+// So: one line per DAY, expanding to only what earned it (the pure rules live in
+// lib/integrations/sync-history-days.ts); the WINDOW column is gone, because it was
+// structurally constant for a given provider and is already stated once in this
+// header; and the admin raw viewer is one link per run opening a dialog instead of a
+// JSON tree rendered inline in the primary reading position.
+//
+// This component PROJECTS: it turns SQLite rows into plain serializable views so the
+// interactive list (SyncHistoryDays) can be a client component without a row proxy
+// ever crossing the boundary.
 export default function SyncHistoryTable({
   state,
   isAdmin = false,
@@ -41,16 +56,72 @@ export default function SyncHistoryTable({
   isAdmin?: boolean;
 }) {
   const { history, vocabulary } = state;
-  const rows = buildHistoryRows(history, vocabulary);
-  // Stated ONCE above the table, from the LATEST run (#1880 item 4) — after a day
-  // rollover the header must agree with the newest row, so OLDER rows note their
-  // divergence ("covered → …, before the day rolled"), never the reverse.
+  const noun = syncRunNounForKind(state.kind);
+  // Stated ONCE above the history, from the LATEST run (#1880 item 4) — which is why
+  // no row carries a window of its own any more.
   const norm = runWindowNorm(history, vocabulary);
-  const provenance = new Set(state.provenanceEventIds);
   // The visible escalation policy (#1880 item 1): the page states the one shared
   // rule, so the amber/red the badge and digest will show is never a surprise.
   const policy = escalationPolicyLabel(
-    syncStalenessThreshold(getIntegration(state.id as IntegrationId))
+    syncStalenessThreshold(getIntegration(state.id))
+  );
+
+  const toRun = (ev: IntegrationSyncEvent): SyncRunView => {
+    const verdict = eventVerdict(ev, vocabulary);
+    const change = ev.ok ? formatSyncChange(ev, vocabulary) : null;
+    const written = ev.ok ? (ev.inserted ?? 0) + (ev.updated ?? 0) : 0;
+    const coverage = drilldownCoverage(
+      written,
+      state.provenanceCounts[ev.id] ?? 0
+    );
+    const details = parseSyncEventDetails(ev.details ?? null);
+    return {
+      id: ev.id,
+      at: ev.at,
+      ok: ev.ok !== 0,
+      verdict,
+      change: change?.primary ?? null,
+      changeMuted: change?.muted ?? false,
+      skipped: ev.skipped ?? 0,
+      error: ev.error ?? null,
+      notes: details
+        ? [...details.warnings, ...details.origins.map(originChoiceLabel)]
+        : [],
+      itemizable: coverage.offer ? coverage.itemizable : 0,
+      remainder: coverage.offer ? coverage.remainder : 0,
+      hasRaw: !!ev.raw_ref,
+    };
+  };
+
+  const days: SyncDayView[] = groupSyncDays(history, state.timeZone).map(
+    (day) => ({
+      day: day.day,
+      label: syncDayLabel(day, noun, vocabulary),
+      attention: syncDayAttention(day),
+      newestAt: day.newestAt,
+      entries: day.entries.map((entry): SyncDayEntryView => {
+        if (entry.kind === "run") {
+          return { kind: "run", reason: entry.reason, run: toRun(entry.ev) };
+        }
+        if (entry.kind === "failure-run") {
+          return {
+            kind: "failure-run",
+            count: entry.runs.length,
+            newestAt: entry.runs[0].at,
+            oldestAt: entry.runs[entry.runs.length - 1].at,
+            reason: failureRunReason(entry.runs.length, entry.error),
+            runs: entry.runs.map(toRun),
+          };
+        }
+        return {
+          kind: "range",
+          label: syncRangeLabel(entry.runs, noun, vocabulary),
+          newestAt: entry.runs[0].at,
+          oldestAt: entry.runs[entry.runs.length - 1].at,
+          runs: entry.runs.map(toRun),
+        };
+      }),
+    })
   );
 
   return (
@@ -73,144 +144,13 @@ export default function SyncHistoryTable({
         )}
       </div>
 
-      {rows.length === 0 ? (
+      {days.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           No syncs recorded yet. Each run will be listed here — what it wrote,
           skipped, or errored.
         </p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[36rem] text-left text-sm">
-            <thead className="section-label">
-              <tr>
-                <th scope="col" className="py-1 pr-3 font-medium">
-                  When
-                </th>
-                <th scope="col" className="py-1 pr-3 font-medium">
-                  Outcome
-                </th>
-                <th scope="col" className="py-1 pr-3 font-medium">
-                  What changed
-                </th>
-                <th scope="col" className="py-1 font-medium">
-                  Window
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-black/5 dark:divide-white/5">
-              {rows.map((row) => {
-                if (row.kind === "quiet") {
-                  // A run of CONSECUTIVE no-ops (#137), the same collapsing the
-                  // Imports feed does.
-                  return (
-                    <tr
-                      key={`quiet-${row.newestAt}-${row.count}`}
-                      data-testid="sync-history-quiet"
-                      className="text-slate-500 dark:text-slate-400"
-                    >
-                      <td className="py-2 pr-3 align-top text-xs">
-                        <SyncTimestamp value={row.newestAt} relativeOnly /> –{" "}
-                        <SyncTimestamp value={row.oldestAt} relativeOnly />
-                      </td>
-                      <td className="py-2 pr-3 align-top" colSpan={3}>
-                        {quietRunLabel(row.count, vocabulary)}
-                      </td>
-                    </tr>
-                  );
-                }
-                if (row.kind === "failure-run") {
-                  // Consecutive IDENTICAL failures collapse (#1880 item 3) — the
-                  // same treatment consecutive no-ops get, so the table SHOWS the
-                  // flap pattern instead of striping it.
-                  const reason = failureRunReason(row.count, row.error);
-                  return (
-                    <tr
-                      key={`failures-${row.newest.id}`}
-                      data-testid="sync-history-failure-run"
-                    >
-                      <td className="py-2 pr-3 align-top text-xs text-slate-500 dark:text-slate-400">
-                        <SyncTimestamp value={row.newestAt} relativeOnly /> –{" "}
-                        <SyncTimestamp value={row.oldestAt} relativeOnly />
-                      </td>
-                      <td className="py-2 pr-3 align-top" colSpan={3}>
-                        <span className={`font-medium ${STATUS_TEXT_TONE.bad}`}>
-                          Failed ×{row.count}
-                        </span>
-                        {reason && (
-                          <p className="mt-0.5 break-words text-xs text-rose-700 dark:text-rose-300">
-                            {reason}
-                          </p>
-                        )}
-                        {isAdmin && row.newest.raw_ref && (
-                          <RawPayloadViewer id={row.newest.id} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                }
-                const ev = row.ev;
-                const verdict = eventVerdict(ev, vocabulary);
-                const change = ev.ok ? formatSyncChange(ev, vocabulary) : null;
-                const written = ev.ok
-                  ? (ev.inserted ?? 0) + (ev.updated ?? 0)
-                  : 0;
-                return (
-                  <tr key={ev.id} data-testid={`sync-history-row-${ev.id}`}>
-                    <td className="py-2 pr-3 align-top text-xs text-slate-500 dark:text-slate-400">
-                      <SyncTimestamp value={ev.at} />
-                    </td>
-                    <td className="py-2 pr-3 align-top">
-                      <span
-                        className={`font-medium ${STATUS_TEXT_TONE[verdict.tone]}`}
-                      >
-                        {verdict.label}
-                      </span>
-                      {/* The REASON, on EVERY failure row — not only the latest one.
-                          Two bare "Sync failed" rows with no explanation was the live
-                          behaviour this replaces. */}
-                      {!ev.ok && ev.error && (
-                        <p
-                          className="mt-0.5 break-words text-xs text-rose-700 dark:text-rose-300"
-                          data-testid={`sync-error-${ev.id}`}
-                        >
-                          {ev.error}
-                        </p>
-                      )}
-                      <SyncDetailsNotes ev={ev} />
-                      {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
-                    </td>
-                    <td className="py-2 pr-3 align-top">
-                      {change ? (
-                        <span
-                          className={
-                            change.muted
-                              ? "text-slate-500 dark:text-slate-400"
-                              : "text-slate-700 dark:text-slate-200"
-                          }
-                        >
-                          {change.primary}
-                        </span>
-                      ) : (
-                        <span aria-hidden>—</span>
-                      )}
-                      {ev.skipped ? (
-                        <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
-                          · {ev.skipped} skipped
-                        </span>
-                      ) : null}
-                      {written > 0 && provenance.has(ev.id) && (
-                        <SyncRowsDrilldown eventId={ev.id} count={written} />
-                      )}
-                    </td>
-                    <td className="py-2 align-top text-xs text-slate-500 dark:text-slate-400">
-                      {row.window ?? <span aria-hidden>—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <SyncHistoryDays days={days} isAdmin={isAdmin} />
       )}
 
       <p

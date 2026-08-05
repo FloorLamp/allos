@@ -17,7 +17,7 @@ import {
 } from "@/lib/integrations/connections";
 import { runStravaSync } from "@/lib/integrations/strava-sync";
 import {
-  eventsWithProvenance,
+  provenanceCountsByEvent,
   getConnectedSources,
   getIntegrationSyncEvents,
   getLastSuccessfulSyncAt,
@@ -362,13 +362,13 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
       (weather.latest!.inserted ?? 0) + (weather.latest!.updated ?? 0)
     ).toBeGreaterThan(0);
     // … and yet nothing was recorded to drill into.
-    expect(weather.provenanceEventIds).toEqual([]);
+    expect(weather.provenanceCounts).toEqual({});
   });
 });
 
 // The other half of the #1771 gate: a provider that DOES record provenance still
 // resolves it, so the drill-in stays reachable exactly where it can deliver.
-describe("eventsWithProvenance — the drill-in gate", () => {
+describe("provenanceCountsByEvent — the drill-in gate, and its count", () => {
   let p: number;
   let withRows: number;
   let withoutRows: number;
@@ -407,14 +407,16 @@ describe("eventsWithProvenance — the drill-in gate", () => {
     ]);
   });
 
-  it("names only the events that recorded rows", () => {
-    const ids = eventsWithProvenance(
+  it("names only the events that recorded rows, and how many each holds", () => {
+    const counts = provenanceCountsByEvent(
       p,
       "strava",
       Math.min(withRows, withoutRows)
     );
-    expect(ids).toContain(withRows);
-    expect(ids).not.toContain(withoutRows);
+    // The COUNT is the point (#1991): the drill-in labels itself with what it will
+    // LIST, so an event with one recorded row must promise exactly one.
+    expect(counts[withRows]).toBe(1);
+    expect(counts[withoutRows]).toBeUndefined();
   });
 
   it("is profile-scoped through the parent event", () => {
@@ -422,12 +424,12 @@ describe("eventsWithProvenance — the drill-in gate", () => {
       db.prepare("INSERT INTO profiles (name) VALUES ('PROV-GATE-B')").run()
         .lastInsertRowid
     );
-    expect(eventsWithProvenance(other, "strava", 1)).toEqual([]);
+    expect(provenanceCountsByEvent(other, "strava", 1)).toEqual({});
   });
 
   it("threads through to the Connected-sources card", () => {
     const strava = getConnectedSources(p).find((s) => s.id === "strava")!;
-    expect(strava.provenanceEventIds).toContain(withRows);
-    expect(strava.provenanceEventIds).not.toContain(withoutRows);
+    expect(strava.provenanceCounts[withRows]).toBe(1);
+    expect(strava.provenanceCounts[withoutRows]).toBeUndefined();
   });
 });

@@ -50,7 +50,11 @@ export default async function WeatherPage(props: {
     : null;
 
   return (
-    <div>
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="integration-page"
+    >
       <Link
         href="/data?section=import"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -66,7 +70,7 @@ export default async function WeatherPage(props: {
         </Notice>
       )}
 
-      <PageContainer width="reading" className="grid gap-6">
+      <div className="grid gap-6">
         <div className="card space-y-4">
           {!home ? (
             <div className="space-y-3">
@@ -92,6 +96,7 @@ export default async function WeatherPage(props: {
             <>
               <IntegrationStatusHeader
                 state={state}
+                detail="period"
                 isAdmin={login.role === "admin"}
                 controls={
                   <>
@@ -168,8 +173,8 @@ export default async function WeatherPage(props: {
         {connected && (
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         )}
-      </PageContainer>
-    </div>
+      </div>
+    </PageContainer>
   );
 }
 

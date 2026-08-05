@@ -113,7 +113,11 @@ export default async function CalendarFeedPage() {
   const familyGroups = groupConsolidatedPreviewRows(familyRows);
 
   return (
-    <div>
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="integration-page"
+    >
       <Link
         href="/data"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -123,7 +127,7 @@ export default async function CalendarFeedPage() {
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 
-      <PageContainer width="reading" className="grid gap-6">
+      <div className="grid gap-6">
         <CalendarFeedConfig
           enabled={feed.enabled}
           detail={feed.detail}
@@ -208,7 +212,7 @@ export default async function CalendarFeedPage() {
             />
           </div>
         </div>
-      </PageContainer>
-    </div>
+      </div>
+    </PageContainer>
   );
 }

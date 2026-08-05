@@ -1,4 +1,8 @@
-import type { IntegrationDef, IntegrationId } from "@/lib/types";
+import type {
+  IntegrationDef,
+  IntegrationId,
+  IntegrationPagingTunables,
+} from "@/lib/types";
 
 // Declarative list of integrations. The Integrations page renders from this, so
 // adding a provider is a matter of adding an entry (and, for 'available' ones, a
@@ -70,6 +74,30 @@ export const INTEGRATIONS: IntegrationDef[] = [
     staleAfterDays: 3,
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
+    pull: {
+      paging: {
+        // Longer than the other pulls: the hourly tick processes profiles
+        // SEQUENTIALLY and Strava's list+detail loop is the slowest of them (#476).
+        timeoutMs: 30_000,
+        // Strava's cap is on DETAIL calls, not pages — each new activity costs one
+        // extra request for calories, and Strava allows 200 requests / 15 min.
+        maxPages: 150,
+        // The cursor tracks an activity's START time, but a ride recorded offline
+        // can be uploaded days later with an older start; a strict `after = cursor`
+        // would skip it forever. Seven days of trailing re-scan catches those.
+        rescanDays: 7,
+        // No bounded backfill: a first-ever run pages Strava's whole history, a few
+        // hundred detail calls at a time until the cursor catches up.
+        backfillDays: 0,
+      },
+      revalidates: [
+        "/",
+        "/training",
+        "/trends",
+        "/integrations/strava",
+        "/data",
+      ],
+    },
   },
   {
     id: "oura",
@@ -96,6 +124,16 @@ export const INTEGRATIONS: IntegrationDef[] = [
     stoppedConsequence:
       "Sleep, HRV, and workouts from your ring have stopped arriving.",
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
+    pull: {
+      paging: {
+        timeoutMs: 15_000,
+        maxPages: 25,
+        rescanDays: 3,
+        // Oura requires an explicit start_date, so the first run names one.
+        backfillDays: 30,
+      },
+      revalidates: ["/", "/training", "/trends", "/integrations/oura", "/data"],
+    },
   },
   {
     id: "withings",
@@ -124,6 +162,21 @@ export const INTEGRATIONS: IntegrationDef[] = [
     stoppedConsequence:
       "Measurements from your scale and cuff have stopped arriving.",
     docsUrl: "https://developer.withings.com/",
+    pull: {
+      paging: {
+        timeoutMs: 15_000,
+        maxPages: 25,
+        rescanDays: 3,
+        backfillDays: 30,
+      },
+      revalidates: [
+        "/",
+        "/trends",
+        "/timeline",
+        "/integrations/withings",
+        "/data",
+      ],
+    },
   },
   {
     id: "garmin",
@@ -237,6 +290,15 @@ export const INTEGRATIONS: IntegrationDef[] = [
     stoppedConsequence:
       "UV and daylight readings for your home location have stopped arriving.",
     docsUrl: "https://open-meteo.com/",
+    // Weather IS a pull provider — the hourly tick runs it and "Sync now" offers it —
+    // so it dispatches like the rest. It carries NO `paging` block: there is no
+    // credential, no cursor, and no pagination, just a fixed rolling window the module
+    // owns (WEATHER_WINDOW_DAYS / WEATHER_FORECAST_DAYS). Declaring maxPages/rescanDays
+    // here to make the shape uniform would be a fiction — which is exactly the "forcing
+    // a non-OAuth provider into the facet" the consolidation was told not to do.
+    pull: {
+      revalidates: ["/", "/timeline", "/integrations/weather", "/data"],
+    },
   },
   {
     id: "calendar-feed",
@@ -259,4 +321,39 @@ export const INTEGRATIONS: IntegrationDef[] = [
 
 export function getIntegration(id: IntegrationId): IntegrationDef | undefined {
   return INTEGRATIONS.find((i) => i.id === id);
+}
+
+// A registered provider allos PULLS (#2040) — one that declares the `pull` facet AND
+// is actually shippable. `planned` entries (Garmin) are excluded: the preview card is
+// real, the runner is not.
+export type PullIntegrationDef = IntegrationDef & {
+  pull: NonNullable<IntegrationDef["pull"]>;
+};
+
+export function isPullIntegration(
+  def: IntegrationDef
+): def is PullIntegrationDef {
+  return def.pull != null && def.status === "available";
+}
+
+// THE pull-provider list. The generic "Sync now" action and the hourly tick iterate
+// this instead of naming providers by hand, so adding the fifth (Garmin) is a facet
+// plus a runner — not a fifth copy of an action, a tick block, and a page loop.
+export const PULL_INTEGRATIONS: PullIntegrationDef[] =
+  INTEGRATIONS.filter(isPullIntegration);
+
+export function getPullIntegration(
+  id: IntegrationId
+): PullIntegrationDef | undefined {
+  return PULL_INTEGRATIONS.find((i) => i.id === id);
+}
+
+// The paging bounds a credentialed paged pull runs under. Throws for an id that
+// declares none, because a pull module reaching for `maxPages` and silently getting
+// `undefined` would fetch nothing at all — better to fail at module load, where a
+// registry mistake is obvious, than to sync zero rows forever.
+export function pullPaging(id: IntegrationId): IntegrationPagingTunables {
+  const paging = getPullIntegration(id)?.pull.paging;
+  if (!paging) throw new Error(`no paging tunables registered for '${id}'`);
+  return paging;
 }
