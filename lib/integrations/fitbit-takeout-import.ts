@@ -160,7 +160,7 @@ function parseFamily(
     case "daily_readiness":
       return parseVendorScoreCsv(text, tz, "daily_readiness");
     case "sleep":
-      return parseSleepJson(text);
+      return parseSleepJson(text, tz);
     case "exercise":
       return parseExerciseJson(text, tz);
     case "computed_temperature":

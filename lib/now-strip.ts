@@ -108,6 +108,13 @@ export interface NowSignals {
   // summary read returns the most recent recorded wake-day, which may be days
   // old, so the caller compares its `wakeDay` to today before setting this.
   freshSleepSummary: boolean;
+  // The profile is in the morning WAITING window (#2097) — last night is not in
+  // hand but is expected, so the sleep card has a named state to render rather
+  // than a different night's figures. That is a real answer to "how did I sleep",
+  // not filler, so it promotes on the same terms as a fresh summary; the wake
+  // window below still decides WHEN, which keeps the pre-wake in-progress state
+  // off the strip by construction.
+  sleepWaiting: boolean;
   // Minutes since a just-finished workout that has something to recap, or null.
   // Sourced from `getWorkoutPresence().sinceMin` while state is "finished" and
   // the recap carries working sets — the SAME gate the standalone card uses.
@@ -162,9 +169,10 @@ function scoreCard(id: NowCardId, s: NowSignals): number | null {
       return TIER["session-recap"] - s.workoutFinishedMinAgo;
     }
     case "sleep-last-night": {
-      // Nothing to show without an actual last-night summary — the wake window
-      // alone would promote an empty card, which is the filler this file refuses.
-      if (!s.freshSleepSummary) return null;
+      // Nothing to show without an actual last-night summary OR the named waiting
+      // state — the wake window alone would promote an empty card, which is the
+      // filler this file refuses.
+      if (!s.freshSleepSummary && !s.sleepWaiting) return null;
       const wake = s.wakeMinutes ?? DEFAULT_WAKE_MINUTES;
       const since = s.minutesOfDay - wake;
       if (since < 0 || since > WAKE_WINDOW_MIN) return null;

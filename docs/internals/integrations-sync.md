@@ -406,6 +406,30 @@ those secondary consumers from disagreeing with authoritative totals.
 Metric-sample tombstones use the same origin/start identity, so deleting an
 in-progress snapshot remains sticky when its next push has a later end.
 
+**A stored sleep session is an ABSOLUTE INSTANT (#2096).** `start_time` is both
+the natural upsert key and the value every read path hands to `new Date()`, and
+ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary
+stored as bare wall clock denotes a moment that is a property of the container's
+`TZ` rather than of the data. The Fitbit Takeout parser stored the vendor's
+zoneless `startTime`/`endTime` verbatim; on one profile's 52 nights that moved
+the derived typical wake time by four hours between the profile's zone and
+`TZ=UTC` (what Docker ships), and moved the night count too, as sessions
+re-bucketed across the wake-day boundary. It stayed hidden because
+`readSleepSessions` pins the whole read to ONE elected source, so the zoneless
+rows sat inert on any profile whose newest sleep came from elsewhere.
+`parseSleepJson` now takes `tz` and resolves each boundary through
+`zonedWallIsoToUtc` (`lib/date.ts`) — the seconds-and-millis, refuses-rather-than-
+guesses sibling of `zonedWallTimeToUtc`. The wake DAY still comes from Fitbit's
+own `dateOfSleep`, which was never zone-derived. `lib/__tests__/sleep-session-instants.test.ts`
+holds the invariant across all four sleep-emitting parsers, because a reader
+cannot repair a stamp that arrived without a zone. Migration 155 reinterprets the
+rows already stored — skipping edit-locked ones, and moving the delete tombstones
+with them so a re-import cannot resurrect a deleted night under the new key.
+This is a SIBLING of the clock-skew canonicalization (#2088), not the same
+mechanism: that one repairs an absolute timestamp carrying a wrong plausible
+offset, inferred from cross-source duplicate evidence; here nothing is wrong by
+an offset, the offset is simply absent, and the profile's zone is the answer.
+
 **Substrate-by-convention helpers (#944).** The observation-shaped tables are
 NOT merged (#860 rejected that), but the behaviors every keyed upsert shares are
 ONE helper each so a new importer can't re-implement (or forget) one. All three
@@ -869,3 +893,32 @@ observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
 and asks the user to check, rather than asserting a cause it has no evidence for.
 The Data → Review row makes the same distinction — "sync has stopped" instead of
 "sync failed", which would claim a failure that never happened.
+
+**…and what it deliberately cannot see: the abandoned device (#2097).** The
+paragraph above states it outright — staleness measures the SYNC, not the DATA,
+so a rest week is not a broken connection. That is right for the attention
+surface and makes the signal structurally unable to answer a different question:
+_has this person stopped tracking sleep?_ Someone wears a tracker for months and
+then stops, but the phone keeps syncing steps: `ok=1` events with non-zero
+inserted counts, green badge, nothing stale. Only the sleep rows end.
+
+The answer is a **data-side** predicate, `isSleepTracking` (`lib/sleep-summary.ts`,
+#2102) — the companion to `isLastNight`, since the two are halves of one question:
+is last night in hand, and is it even coming. At least 2 of the 3 nights BEFORE
+last night must carry a recorded night, which tolerates a forgotten charge while
+giving up after two or three consecutive misses. ONE predicate, two consumers: the
+morning digest's one-hour deferral (#2102) and the waiting window
+(`lib/sleep-waiting.ts`, #2097), so nothing can disagree about whether someone has
+stopped. The waiting window checks it BEFORE any clock branch; unguarded the
+failure would not merely be a missing check, it would RECUR — "no last night, past
+typical wake" is true every morning once someone stops, and `typicalWakeTime` keeps
+supplying an anchor for roughly two more weeks.
+
+The two consumers differ only in what they FEED it, and deliberately. The digest
+passes every recorded night: deferring a send is a question about whether to wait.
+The waiting window passes only the wake-days a SYNCING source recorded, because it
+PROMISES an arrival — a manual-only logger has nothing coming, and "waiting" for
+something nobody is sending is the message that teaches people to ignore the
+surface. Its terminal state adds nothing new: the existing dated label, then the
+four-night stale CTA, with a genuinely dead connection still handled by
+Data → Review.

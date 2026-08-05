@@ -345,6 +345,51 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 115 (#1488) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
   },
   {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes: "PRAGMA table_info(metric_samples)",
+    why: "migration 155 (#2096) shape guard: a schema-shape PRAGMA (do `edited` and `origin` exist yet?) so the migration no-ops against an older at-rest shape — reads column metadata, never rows; mirrors migration 115's guard on this table",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes:
+      "SELECT id, profile_id, metric, origin, start_time, end_time FROM metric_samples WHERE source = ? AND edited = 0 AND metric IN (${placeholders})",
+    why: "migration 155 (#2096) one-shot converge: reinterprets Fitbit Takeout's ZONELESS sleep boundaries as absolute instants across ALL profiles. Deliberately unscoped because the defect is a property of the SOURCE, not of a profile — every Takeout row ever written carries it. It never reads one profile's data into another's: profile_id is SELECTED so each row is converted in ITS OWN profile's timezone, and the UPDATE below keys on the row's own id.",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes:
+      "SELECT id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?",
+    why: "migration 155 (#2096) collision probe: profile_id-scoped by construction — it asks whether the converted natural key is already occupied WITHIN the row's own profile before updating",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes:
+      "UPDATE metric_samples SET start_time = ?, end_time = ? WHERE id = ?",
+    why: "migration 155 (#2096): the per-row converge UPDATE, keyed by the id its own SELECT produced (ids never recycle — AUTOINCREMENT), with the instant computed from that row's profile timezone",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes:
+      "SELECT id, profile_id, natural_key FROM import_tombstones WHERE target_table = 'metric_samples'",
+    why: "migration 155 (#2096): the delete tombstones must move with the rows they suppress or a deleted Takeout night resurrects on the next import. Unscoped for the same reason as the row converge, and profile_id is SELECTED so each key is re-derived in its own profile's timezone — the identical shape migration 083 used when it last re-keyed this table.",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes:
+      "SELECT id FROM import_tombstones WHERE profile_id = ? AND target_table = 'metric_samples' AND natural_key = ?",
+    why: "migration 155 (#2096) tombstone collision probe: profile_id-scoped by construction — asks whether the converted key already exists within the row's own profile",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes: "UPDATE import_tombstones SET natural_key = ? WHERE id = ?",
+    why: "migration 155 (#2096): the per-tombstone re-key, keyed by the id its own SELECT produced",
+  },
+  {
+    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
+    includes: "DELETE FROM import_tombstones WHERE id = ?",
+    why: "migration 155 (#2096): drops a re-keyed tombstone that would duplicate one already present in the SAME profile (the set-membership dedupe), keyed by the id its own SELECT produced",
+  },
+  {
     file: "lib/migrations/versions/075-extraction-completed-at.ts",
     includes: "PRAGMA table_info(medical_documents)",
     why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",

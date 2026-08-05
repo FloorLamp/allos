@@ -146,10 +146,18 @@ export function tzOffsetMs(tz: string, at: Date): number {
   return asUtc - at.getTime();
 }
 
+// Settle a wall clock expressed as "the same fields read as if they were UTC" onto
+// the real instant in `tz`. Two passes so a wall time near a DST transition lands on
+// the offset actually in force AT that instant rather than the one in force at the
+// naive guess (which is a different side of the transition). Pure (Intl only).
+function settleWallUtc(naiveUtc: number, tz: string): Date {
+  const first = new Date(naiveUtc - tzOffsetMs(tz, new Date(naiveUtc)));
+  return new Date(naiveUtc - tzOffsetMs(tz, first));
+}
+
 // The UTC instant whose wall-clock time in `tz` is `dateStr` (YYYY-MM-DD) at
 // `hhmm` (HH:MM). The inverse of zonedDateParts: turns a user-entered local time
-// ("gave it at 4:02pm today") into the absolute instant to store. Two-pass so a
-// wall time near a DST transition settles on the correct offset. Pure (Intl only).
+// ("gave it at 4:02pm today") into the absolute instant to store. Pure (Intl only).
 export function zonedWallTimeToUtc(
   tz: string,
   dateStr: string,
@@ -157,10 +165,38 @@ export function zonedWallTimeToUtc(
 ): Date {
   const [h, m] = hhmm.split(":").map(Number);
   const [y, mo, d] = dateStr.split("-").map(Number);
-  const naiveUtc = Date.UTC(y, mo - 1, d, h || 0, m || 0, 0);
-  let inst = new Date(naiveUtc - tzOffsetMs(tz, new Date(naiveUtc)));
-  inst = new Date(naiveUtc - tzOffsetMs(tz, inst));
-  return inst;
+  return settleWallUtc(Date.UTC(y, mo - 1, d, h || 0, m || 0, 0), tz);
+}
+
+// A ZONELESS wall-clock timestamp ("2026-07-25T23:14:30.000" — the shape a vendor
+// export writes when it records what the device's clock said and nothing about where
+// that clock was) resolved to the absolute instant it denotes in `tz`.
+//
+// The same question as zonedWallTimeToUtc, asked by an INGEST path rather than a
+// form, so it differs in two ways: it carries SECONDS and MILLISECONDS (a session
+// boundary is stated to the second, and truncating would quietly move every stored
+// window), and it REFUSES rather than guessing — an unparseable or offset-bearing
+// string is not a wall clock, and returning a plausible Date for one would let a
+// caller store an instant it never derived. Null on anything but a bare wall clock;
+// the caller decides whether that is a skip or an already-absolute passthrough.
+const WALL_CLOCK =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
+export function zonedWallIsoToUtc(tz: string, wall: string): Date | null {
+  const m = WALL_CLOCK.exec(wall.trim());
+  if (!m) return null;
+  const n = (i: number) => (m[i] === undefined ? 0 : Number(m[i]));
+  const ms = m[7] === undefined ? 0 : Number(m[7].padEnd(3, "0"));
+  const [mo, day, hour, min, sec] = [n(2), n(3), n(4), n(5), n(6)];
+  // Range-checked because Date.UTC ROLLS OVER: month 13 silently becomes the
+  // following January, which would turn a garbage string into a plausible instant a
+  // year away instead of a refusal the caller can count as skipped.
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+  if (hour > 23 || min > 59 || sec > 59) return null;
+  const naiveUtc = Date.UTC(n(1), mo - 1, day, hour, min, sec, ms);
+  if (Number.isNaN(naiveUtc)) return null;
+  const inst = settleWallUtc(naiveUtc, tz);
+  return Number.isNaN(inst.getTime()) ? null : inst;
 }
 
 // Serialize an instant to SQLite's `datetime('now')` shape — "YYYY-MM-DD HH:MM:SS"

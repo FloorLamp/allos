@@ -57,7 +57,7 @@ import {
   seedRestCard,
   seedWellDayTilt,
 } from "./seed/coaching";
-import { seedSleep } from "./seed/sleep";
+import { seedSleep, seedSleepWaiting } from "./seed/sleep";
 import {
   seedMultiSourceMetric,
   seedSourceCompare,
@@ -130,6 +130,7 @@ seedHouseholdRollup();
 seedWeeklyRecap();
 seedRestEpisode();
 seedSleep();
+seedSleepWaiting();
 seedMultiSourceMetric();
 seedTrainingZones();
 seedRuleDomains();

@@ -4,6 +4,7 @@ import {
   RECOVERY_ACTIVITIES,
   SPORTS,
 } from "@/lib/activities-catalog";
+import { zonedDateParts } from "@/lib/date";
 import {
   classifyTakeoutEntry,
   isHealthConnectRoundTrip,
@@ -925,9 +926,13 @@ describe("the archive's TWO timestamp conventions", () => {
     ]);
   });
 
-  it("leaves a T-separated SLEEP stamp alone — that one really is local", () => {
+  it("resolves the LOCAL sleep stamp into the instant it denotes (#2096)", () => {
     // 23:14:30 matches the 23:23 LOCAL onset Health Connect reports for the same
-    // night. Converting it would move a night's sleep to the wrong day.
+    // night — the wall clock really is local, which is exactly why it has to be
+    // interpreted in the profile zone rather than stored raw. Stored raw, every read
+    // path resolved it against the SERVER's zone, so the moment it denoted moved with
+    // the container. New York is UTC−4 on that July date, so 23:14:30 local is
+    // 03:14:30Z the next day.
     const out = parseSleepJson(
       JSON.stringify([
         {
@@ -938,11 +943,105 @@ describe("the archive's TWO timestamp conventions", () => {
           duration: 25020000,
           levels: { summary: { deep: { minutes: 58 } } },
         },
-      ])
+      ]),
+      TZ
     );
     const total = out.samples.find((x) => x.metric === "sleep_min")!;
+    // The wake day is `dateOfSleep`, stated by the vendor, and must NOT start moving.
     expect(total.date).toBe("2026-07-26");
-    expect(total.start_time).toBe("2026-07-25T23:14:30.000");
+    expect(total.start_time).toBe("2026-07-26T03:14:30.000Z");
+    expect(total.end_time).toBe("2026-07-26T10:11:30.000Z");
+    // …and reading it back in the profile zone returns the clock Fitbit wrote,
+    // seconds included: the conversion is lossless, not a truncation to the minute.
+    expect(zonedDateParts(TZ, new Date(total.start_time))).toMatchObject({
+      date: "2026-07-25",
+      hhmm: "23:14",
+    });
+  });
+
+  it("parses to the same instant whatever the SERVER's timezone is", () => {
+    // The assertion the bug fails, and the one that matters operationally: the
+    // container's TZ is not a property of the data. Production is Docker (UTC);
+    // a developer's machine is not.
+    const log = JSON.stringify([
+      {
+        logId: 1,
+        dateOfSleep: "2026-07-26",
+        startTime: "2026-07-25T23:14:30.000",
+        endTime: "2026-07-26T06:11:30.000",
+        duration: 25020000,
+      },
+    ]);
+    const prev = process.env.TZ;
+    try {
+      const under = (serverTz: string) => {
+        process.env.TZ = serverTz;
+        const s = parseSleepJson(log, TZ).samples[0];
+        return [s.start_time, s.end_time, s.date];
+      };
+      expect(under("UTC")).toEqual(under("America/New_York"));
+      expect(under("UTC")).toEqual(under("Asia/Tokyo"));
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+    }
+  });
+
+  it("carries the SAME instant into the stage rows' dedupe key", () => {
+    // Stage rows key on `<start>#<stage>`; if the total converted and the stages
+    // didn't, one night's rows would split across two start_times.
+    const out = parseSleepJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          dateOfSleep: "2026-07-26",
+          startTime: "2026-07-25T23:14:30.000",
+          endTime: "2026-07-26T06:11:30.000",
+          duration: 25020000,
+          type: "stages",
+          levels: { summary: { deep: { minutes: 58 } } },
+        },
+      ]),
+      TZ
+    );
+    const deep = out.samples.find((x) => x.metric === "sleep_deep_min")!;
+    expect(deep.start_time).toBe("2026-07-26T03:14:30.000Z#deep");
+    expect(deep.end_time).toBe("2026-07-26T10:11:30.000Z");
+  });
+
+  it("refuses an unresolvable boundary instead of guessing one", () => {
+    const out = parseSleepJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          dateOfSleep: "2026-07-26",
+          startTime: "not a timestamp",
+          endTime: "2026-07-26T06:11:30.000",
+          duration: 25020000,
+        },
+      ]),
+      TZ
+    );
+    expect(out.samples).toEqual([]);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("normalizes an already-absolute stamp rather than passing it through", () => {
+    // Fitbit does not write one today, but if it ever does the stored key must be the
+    // same canonical string either shape produces — otherwise one night lands twice.
+    const out = parseSleepJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          dateOfSleep: "2026-07-26",
+          startTime: "2026-07-25T23:14:30.000-04:00",
+          endTime: "2026-07-26T06:11:30.000-04:00",
+          duration: 25020000,
+        },
+      ]),
+      TZ
+    );
+    expect(out.samples[0].start_time).toBe("2026-07-26T03:14:30.000Z");
   });
 
   it("wraps an end clock past midnight rather than rolling the date", () => {
@@ -975,13 +1074,13 @@ describe("classic (unstaged) sleep logs", () => {
   ]);
 
   it("takes the TOTAL but refuses the incomparable breakdown", () => {
-    const out = parseSleepJson(CLASSIC);
+    const out = parseSleepJson(CLASSIC, TZ);
     expect(out.samples).toEqual([
       {
         metric: "sleep_min",
         date: "2026-06-13",
-        start_time: "2026-06-13T13:20:00.000",
-        end_time: "2026-06-13T14:34:00.000",
+        start_time: "2026-06-13T17:20:00.000Z",
+        end_time: "2026-06-13T18:34:00.000Z",
         value: 74,
       },
     ]);
@@ -1008,7 +1107,8 @@ describe("classic (unstaged) sleep logs", () => {
             },
           },
         },
-      ])
+      ]),
+      TZ
     );
     const stages = out.samples.filter((x) => x.metric !== "sleep_min");
     expect(stages.map((x) => x.metric).sort()).toEqual([

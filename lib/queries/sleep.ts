@@ -27,8 +27,14 @@ import {
   getSupplements,
 } from "./intake/schedule";
 import { getIntakeLogsInRange } from "./intake/adherence";
-import { today } from "../db";
-import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "../date";
+import { db, today } from "../db";
+import { now } from "../clock";
+import {
+  daysBetweenDateStr,
+  hhmmToMinutes,
+  shiftDateStr,
+  zonedDateParts,
+} from "../date";
 import {
   getActiveSituations,
   getTimezone,
@@ -54,6 +60,15 @@ import {
   type SleepRegularityOptions,
 } from "../sleep-regularity";
 import {
+  sleepWaitingState,
+  MIN_ARRIVAL_SAMPLES,
+  type SleepWaitingState,
+} from "../sleep-waiting";
+import { getIntegrationAttention, getLatestSyncEvent } from "./integrations";
+import {
+  isLastNight,
+  isSleepTracking,
+  SLEEP_TRACKING_WINDOW_NIGHTS,
   lastNightSummary,
   latestDailySleepSummary,
   consistencyNights,
@@ -532,4 +547,117 @@ export function getSleepRegularityInsight(
 ): string | null {
   const trend = getSleepRegularityTrend(profileId, opts);
   return regularityTravelInsight(trend, getSituationEvents(profileId));
+}
+
+// ── the morning waiting window (#2097) ───────────────────────────────────────
+
+// The wake-days a SYNCING source recorded, over the tracking lookback. Manual rows
+// are excluded on purpose: the waiting state promises something is arriving, and a
+// hand-logged night is not something anybody is sending. Bounded to the lookback
+// plus last night, so this is a short indexed range read, not a history scan.
+export function getSyncedSleepWakeDays(
+  profileId: number,
+  todayStr: string,
+  lookbackNights = SLEEP_TRACKING_WINDOW_NIGHTS
+): string[] {
+  const since = shiftDateStr(todayStr, -lookbackNights);
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT date FROM metric_samples
+          WHERE profile_id = ? AND metric = 'sleep_min' AND source <> 'manual'
+            AND date >= ? AND date <= ?
+          ORDER BY date`
+      )
+      .all(profileId, since, todayStr) as { date: string }[]
+  ).map((r) => r.date);
+}
+
+// How long after a night ENDS its row actually lands, in minutes — the one genuinely
+// new measurement this feature needs. Joins each inserted `sleep_min` row to the
+// sync-row provenance that wrote it (#1333) and takes the median.
+//
+// `inserted` only, and lags outside a plausible same-morning band are dropped: an
+// ARCHIVE import (a Fitbit Takeout zip) inserts hundreds of nights at once, whose
+// "lag" is months, and letting those into the sample would quote an ETA measured on
+// a one-off backfill instead of the daily rhythm this state is about.
+//
+// Returns null under MIN_ARRIVAL_SAMPLES — `integration_sync_rows` retention reaches
+// back ~12 days, so the sample is often thin, and a median built on three mornings
+// is not something to put on screen as a promise.
+export const ARRIVAL_LAG_MAX_MIN = 12 * 60;
+
+export function getSleepArrivalLagMinutes(
+  profileId: number,
+  limit = 28
+): number | null {
+  const rows = db
+    .prepare(
+      `SELECT (julianday(r.created_at) - julianday(s.end_time)) * 1440 AS lag
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+         JOIN metric_samples s ON s.id = r.target_id
+        WHERE e.profile_id = ? AND s.profile_id = ?
+          AND r.target_table = 'metric_samples'
+          AND r.disposition = 'inserted'
+          AND s.metric = 'sleep_min'
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?`
+    )
+    .all(profileId, profileId, limit * 4) as { lag: number | null }[];
+  const lags = rows
+    .map((r) => r.lag)
+    .filter((v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN)
+    .slice(0, limit)
+    .sort((a, b) => a - b);
+  if (lags.length < MIN_ARRIVAL_SAMPLES) return null;
+  const mid = Math.floor(lags.length / 2);
+  const median = lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
+  return Math.round(median);
+}
+
+// The profile's morning waiting state, or null when the ordinary surfaces have
+// something true to say. Gathers; the decision itself is the pure sleepWaitingState
+// so the dashboard tile, the /sleep hero and the Now strip cannot disagree (#221).
+export function getSleepWaitingState(
+  profileId: number,
+  summaryWakeDay: string | null
+): SleepWaitingState | null {
+  const todayStr = today(profileId);
+  const hasLastNight =
+    summaryWakeDay != null && isLastNight(summaryWakeDay, todayStr);
+  // The cheapest exit first: with last night in hand nothing else is worth reading.
+  if (hasLastNight) return null;
+  const tz = getTimezone(profileId);
+  const minutesOfDay = hhmmToMinutes(zonedDateParts(tz, now()).hhmm);
+  const tracking = isSleepTracking(
+    getSyncedSleepWakeDays(profileId, todayStr),
+    todayStr
+  );
+  if (!tracking) return null;
+  const attention = getIntegrationAttention(profileId);
+  return sleepWaitingState({
+    hasLastNight,
+    minutesOfDay,
+    wakeMinutes: typicalWakeTime(profileId),
+    tracking,
+    arrivalLagMin: getSleepArrivalLagMinutes(profileId),
+    providerHealthy: attention.length === 0,
+    lastCheckedAt: latestSleepSyncAt(profileId),
+  });
+}
+
+// The most recent sync ATTEMPT of whichever provider last wrote this profile's
+// sleep — "last checked 6:33 AM". Reuses the grid's own per-provider event read
+// rather than introducing a second notion of when a source was last contacted.
+function latestSleepSyncAt(profileId: number): string | null {
+  const row = db
+    .prepare(
+      `SELECT source FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND source <> 'manual'
+        ORDER BY date DESC LIMIT 1`
+    )
+    .get(profileId) as { source: string } | undefined;
+  if (!row) return null;
+  return getLatestSyncEvent(profileId, row.source)?.at ?? null;
 }

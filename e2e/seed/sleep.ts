@@ -8,7 +8,13 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone } from "../../lib/settings";
-import { PROFILE_ID } from "./common";
+import { PROFILE_ID, fixtureProfileId, seedMemberLogin } from "./common";
+import {
+  E2E_LOGIN_SLEEP_WAITING,
+  SLEEP_WAITING_PROFILE,
+  E2E_LOGIN_SLEEP_INPROGRESS,
+  SLEEP_INPROGRESS_PROFILE,
+} from "../fixture-logins";
 
 // ── Sleep regularity, Sleep page, Oura vendor daily scores ──
 export function seedSleep(): void {
@@ -222,5 +228,57 @@ export function seedSleep(): void {
   }
   console.log(
     "e2e: seeded Oura sleep/readiness daily scores (14 days) for profile 1 (#1069)"
+  );
+}
+
+// ── The morning waiting window (#2097) ───────────────────────────────────────
+//
+// Two read-only fixtures, one per side of the wake anchor. Each carries 14 SYNCED
+// nights on wake-days today−1 … today−14 and NOTHING on today's wake-day: last night
+// is not in hand, the three nights before it are, and no provider is failing — which
+// is exactly the state the waiting copy is for.
+//
+// The branch is fixed by the wake anchor, not by the run's start hour. The suite pins
+// local time to 13:mm (e2e/pinned-timezone.ts), so a 12:00 median wake puts the render
+// an hour past the anchor (inside the arrival window → "waiting"), and a 15:00 median
+// wake puts it before the anchor entirely (→ "in progress"). Wake times are written as
+// WALL CLOCK in each profile's own zone, so the median is the stated hour whatever the
+// pinned offset is.
+//
+// Deliberately NO integration_sync_rows: with no measured arrival lag the ETA is
+// withheld and the copy degrades to the plain wording — the common state on a young
+// profile, and the one worth pinning in a browser test.
+function seedWaitingNights(profileId: number, wakeHhmm: string): void {
+  db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(profileId);
+  const anchor = today(profileId);
+  const tz = getTimezone(profileId);
+  const insert = db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 450)`
+  );
+  for (let back = 1; back <= 14; back++) {
+    const wakeDay = shiftDateStr(anchor, -back);
+    const bedDay = shiftDateStr(wakeDay, -1);
+    insert.run(
+      profileId,
+      wakeDay,
+      zonedWallTimeToUtc(tz, bedDay, "23:30").toISOString(),
+      zonedWallTimeToUtc(tz, wakeDay, wakeHhmm).toISOString()
+    );
+  }
+}
+
+export function seedSleepWaiting(): void {
+  const waitingId = fixtureProfileId(SLEEP_WAITING_PROFILE);
+  seedWaitingNights(waitingId, "12:00");
+  seedMemberLogin(E2E_LOGIN_SLEEP_WAITING, waitingId, "read");
+
+  const inProgressId = fixtureProfileId(SLEEP_INPROGRESS_PROFILE);
+  seedWaitingNights(inProgressId, "15:00");
+  seedMemberLogin(E2E_LOGIN_SLEEP_INPROGRESS, inProgressId, "read");
+
+  console.log(
+    `e2e: seeded morning-waiting fixtures — profile ${waitingId} (${SLEEP_WAITING_PROFILE}, inside the arrival window) and profile ${inProgressId} (${SLEEP_INPROGRESS_PROFILE}, before the wake anchor) (#2097)`
   );
 }
