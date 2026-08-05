@@ -124,6 +124,35 @@ duplicates of controls already on it:
   survives rather than being deleted because it is the only way to reverse a
   demotion off-Telegram, which is the whole point of the #1714 mirror.
 
+**Two cadences, not one (#2121 step 1).** The tick does two unrelated things, and
+they are now bounded by different constraints. _Evaluating what is due to send_ is
+bounded only by the tick process's ~0.5 s boot, so it may run as often as the
+scheduler fires. _Polling external providers_ is bounded by those providers' API
+quotas, and is held to a per-provider cadence declared in the integrations registry
+(`pull.cadenceMinutes`, hourly for all four today) and enforced in
+`lib/integrations/pull-tick.ts` — see
+[`integrations-sync.md`](./integrations-sync.md). The consequence for this document:
+**a finer tick multiplies due evaluations and not provider API calls**, which is
+what makes taking the tick below the hour (#2121 step 2) a one-line change per
+scheduler shape rather than a quota decision. `docker-notify.sh` still fires hourly;
+nothing in this file's timing has changed yet.
+
+**The retry budget is the slot window times the tick rate, and it is undecided on
+purpose (#2121 item 3).** A send marker is written only on `delivered`, so a slot
+whose sends FAIL retries on every tick inside its `slotDue` window: at the hourly
+tick that is at most 2 attempts, at 15-minute ticks 8, at 1-minute ticks 120 — with
+no edit to `slotDue` and nothing in a review to notice. Nothing user-visible
+repeats (nothing delivered ⇒ nothing marked, and the per-day marker still admits
+one delivered send per slot per day); what scales is failure-log volume and how
+hard a channel is hammered during an outage. No cap is implemented, because the
+right number is not knowable from the scheduler's side — #1855's email channel
+wants MORE retries (SMTP greylisting is designed to be retried) while a push
+service returning 429 wants fewer — and a counter would be persisted `notify_*`
+state to mint, key, sweep and declare for a quantity currently pinned at 2. The
+decision surface is written out at `slotDue` in `lib/notifications/schedule.ts`:
+whoever re-derives that window at minute grain owns the attempt count it implies,
+and either accepts it, caps it, or backs it off in the same change.
+
 **Notifications** (`lib/notifications/`) are delivered over three channels —
 Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly
 tick (`npm run notify` / the `notify` Docker service). Sends are deduped per

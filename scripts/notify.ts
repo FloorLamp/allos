@@ -106,11 +106,8 @@ import { slotDue, inWakingWindow } from "../lib/notifications/schedule";
 import { db, today, checkpointWal } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
-import {
-  getConnection,
-  pruneSyncEvents,
-} from "../lib/integrations/connections";
-import { pullRunners } from "../lib/integrations/pull-runners";
+import { pruneSyncEvents } from "../lib/integrations/connections";
+import { syncIntegrations } from "../lib/integrations/pull-tick";
 import { evaluateSyncRequests } from "../lib/portal-requests";
 
 const log = createLogger("notify");
@@ -223,36 +220,18 @@ async function poll(): Promise<never> {
   }
 }
 
-// Pull from a profile's connected pull-integrations once per tick. Best-effort: a
-// sync failure must never affect the notification flow or the process exit code, and
-// one provider throwing must not stop the next — which is why each run is isolated.
-//
-// This used to be four copy-pasted try/if(connected)/log blocks (#2040). It now
-// iterates the registry's pull providers, so the fifth costs nothing here.
-async function syncIntegrations(profileId: number) {
-  for (const runner of pullRunners()) {
-    try {
-      // Only a live connection syncs. Weather is gated the same way — its enable flag
-      // IS its connection row — and runWeatherSync additionally no-ops without a home
-      // location. Every pull is an idempotent rolling window, so re-running the
-      // overlap each tick is free.
-      if (getConnection(profileId, runner.id)?.status !== "connected") continue;
-      const r = await runner.run(profileId);
-      log.info(`${runner.id} sync`, { profile: profileId, ...(r as object) });
-    } catch (e) {
-      log.error(`${runner.id} sync failed`, {
-        profile: profileId,
-        err: e instanceof Error ? e : String(e),
-      });
-    }
-  }
-}
-
 // Evaluate + send this hour's due slots for a single profile. Returns true if any
 // configured channel failed. Never throws for an ordinary send failure (so one
 // profile can't stop the loop); a thrown error is caught by the caller.
 async function tickProfile(profile: ProfileRow): Promise<boolean> {
-  // Runs every hour regardless of which notification slots are due.
+  // THE PULL PASS, ON ITS OWN CADENCE (#2121 step 1). Runs on every tick regardless
+  // of which notification slots are due — but a provider is POLLED only once per its
+  // registry-declared cadence window (hourly for all four today). That is the whole
+  // decoupling: everything below this line is "what is due to send", bounded only by
+  // this process's ~0.5 s boot and free to be evaluated as often as the scheduler
+  // fires; the line itself is "call someone else's API", bounded by their quota. A
+  // finer tick multiplies the former and not the latter. The loop and its guard live
+  // in lib/integrations/pull-tick.ts so both halves are testable.
   await syncIntegrations(profile.id);
 
   // Decide due slots by the profile's configured-TZ hour/weekday so scheduling

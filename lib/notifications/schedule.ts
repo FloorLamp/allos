@@ -13,6 +13,37 @@
 // day's real 23:00 send, permanently drifting the slot to midnight. DST
 // transitions never occur at midnight, so the wrap isn't needed for the
 // spring-forward case.
+//
+// ── THE RETRY COUNT IS A PRODUCT OF TWO GRAINS, AND ONLY ONE OF THEM IS HERE ──
+//
+// UNDECIDED ON PURPOSE (#2121 item 3). This window plus the tick rate — not this
+// window alone — decide how many times a FAILING send is re-attempted, because a
+// send marker is written only on `delivered`: nothing delivered means nothing marked,
+// so every tick inside the window tries again. At the hourly tick this file was
+// written for, "a two-hour window" means at most 2 attempts. It is the tick rate that
+// turns that into a knob: 15-minute ticks make it 8, 1-minute ticks make it 120, with
+// no edit to this function and nothing in a code review to notice.
+//
+// WHAT DOES AND DOES NOT CHANGE when it does. Nothing user-visible repeats — the
+// per-day marker still admits exactly one delivered send per slot per day, which is
+// the constraint #2121 states as non-negotiable. What scales is failure-log volume
+// and how hard a channel is hammered while it is down, i.e. an OUTAGE behavior, not a
+// notification behavior.
+//
+// WHY NO CAP IS IMPLEMENTED HERE. A cap needs an attempt COUNTER, and a counter is
+// persisted state that has to be minted, keyed, swept and (being a `notify_*` key)
+// declared in SEND_MARKER_REGISTRY — for a quantity that is currently pinned at 2 and
+// harmless. More decisively, the right number is not knowable from this side: #1855's
+// email channel wants MORE retries, not fewer (SMTP greylisting is designed to be
+// retried), while a push service returning 429 wants fewer. A cap chosen now would be
+// chosen for a tick rate that does not exist yet and a channel set that is about to
+// change.
+//
+// SO: WHOEVER TAKES THE TICK BELOW THE HOUR OWNS THIS DECISION. Re-deriving this
+// window at minute grain (#2121's schedule-format wave) means writing down the
+// attempt count it implies at the chosen tick rate, and either accepting it, capping
+// it, or backing it off — deliberately, in the same change. The window and the retry
+// budget are the same number, and this is where it is spelled.
 export function slotDue(slotHour: number, currentHour: number): boolean {
   return currentHour === slotHour || currentHour === slotHour + 1;
 }

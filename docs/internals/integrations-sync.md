@@ -834,6 +834,51 @@ providers through the one runner, each with its own rows, counts, events and
 cursor shape, idempotent on a second pass, and one failing without touching the
 other.
 
+**Poll cadence is declared, not implied by the scheduler (#2121 step 1).** The
+notify tick used to conflate two different cadences: _how often it evaluates what
+is due to send_ (bounded only by the tick process's ~0.5 s boot) and _how often it
+calls someone else's API_ (bounded by that provider's quota). Because the pull pass
+ran unconditionally at the top of every profile's tick, the second was silently
+pinned to the first — measured in #2121, a 1-minute tick would have meant ~1,440
+Strava calls per profile per day, at or over typical app quotas. That is what made
+the tick rate a quota decision rather than a scheduling one.
+
+- **Where it is declared.** `pull.cadenceMinutes` in `registry.ts`, beside the
+  provider's other delivery metadata, for the same reason `staleAfterDays` lives
+  there: the right number is a property of the provider's quota, not of the
+  scheduler. All four pull providers declare `60` today — hourly, exactly what
+  they were polled at before — each with its own reasoning. A provider that
+  declares none gets `DEFAULT_PULL_CADENCE_MINUTES` (60), so a new provider joins
+  at the cadence the quota table was measured against and must opt IN to anything
+  finer. Read it only through `pullCadenceMinutes()`.
+- **How it is enforced.** `lib/integrations/pull-cadence.ts` is the pure decision;
+  `lib/integrations/pull-tick.ts` is the tick's pull pass (moved out of
+  `scripts/notify.ts` so the loop that decides how many external calls an instance
+  makes is testable at all). A provider is polled at most once per epoch-aligned
+  window of `cadenceMinutes` — buckets, not "minutes since the last poll", because
+  elapsed-since needs a slack tolerance that an hourly cron would trip over
+  (09:00:01 → 10:00:00 measures 59m59s) and that then drifts the effective cadence
+  earlier at fine tick rates.
+- **No new state.** The last-run fact was already recorded: every run appends an
+  `integration_sync_events` row, indexed on `(profile_id, provider, at)` and swept
+  by the #388 retention pass. The guard reads it. It keys on the last ATTEMPT, not
+  the last SUCCESS — a failed poll spent an API call, and "the remote is failing"
+  is the worst case in which to retry on every tick.
+- **Manual "Sync now" is not guarded.** It goes through
+  `app/(app)/integrations/sync-actions.ts` straight to the runner. The system may
+  reduce its own contact unilaterally; it does not overrule a user's own action,
+  and "I just connected this, sync it" is why anyone presses that button.
+- **The seam for what comes next.** A pull-based Health Connect ingest (#1563) and
+  Garmin (#1863) join the polled set through the same dial and should declare
+  cadence and quota posture in their scoping, rather than inheriting whatever the
+  scheduler happens to be set to.
+
+`lib/__tests__/pull-cadence.test.ts` asserts the quota bound as a bound — it
+simulates a day of ticks at 1/15/60-minute rates and counts the polls admitted —
+and `lib/__db_tests__/tick-repetition.test.ts` drives the real pass with stubbed
+provider hosts: two ticks in one window make one round of outbound calls and write
+one event row per provider.
+
 **Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
 cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not
 advance), but its event carries `details.truncated` plus a standard Review
