@@ -501,7 +501,8 @@ test("a protocol deep link pins its group, and the protein control still sits by
       `food-group-${FOOD_PIN_GROUP}`
     );
     const rows = quickLog.locator('li[data-testid^="food-group-"]');
-    await expect(rows.first()).toHaveAttribute("data-prefilled", "true");
+    const firstRow = rows.first(); // first-ok: the pin LEADING the quick rows is the assertion, on this spec's own fixture profile
+    await expect(firstRow).toHaveAttribute("data-prefilled", "true");
 
     // The control leads the rows it outranks — including the pin, which it now
     // outranks BY RANK rather than by position in a list it never joined.
