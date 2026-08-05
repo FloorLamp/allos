@@ -5,8 +5,11 @@ import {
   windowsOverlap,
   proximityMatch,
   proximityComparisons,
-  wholeHourClockOffset,
-  MAX_CLOCK_OFFSET_HOURS,
+  clockOffsetMinutes,
+  formatClockOffset,
+  MAX_CLOCK_OFFSET_MIN,
+  MIN_CLOCK_OFFSET_MIN,
+  CLOCK_OFFSET_MINUTE_PARTS,
   clusterActivityDuplicates,
   autoMergeCluster,
   crossSource,
@@ -558,32 +561,76 @@ describe("findActivityDuplicates", () => {
   });
 });
 
-describe("wholeHourClockOffset (#2011)", () => {
-  it("reports a 1h and a 2h whole-hour start gap", () => {
+describe("clockOffsetMinutes (#2011, widened by #2063)", () => {
+  it("reports a 1h and a 2h whole-hour start gap, in minutes", () => {
     expect(
-      wholeHourClockOffset({ start: 545, end: 570 }, { start: 485, end: 510 })
-    ).toBe(1);
+      clockOffsetMinutes({ start: 545, end: 570 }, { start: 485, end: 510 })
+    ).toBe(60);
     expect(
-      wholeHourClockOffset({ start: 485, end: 510 }, { start: 605, end: 630 })
-    ).toBe(2);
+      clockOffsetMinutes({ start: 485, end: 510 }, { start: 605, end: 630 })
+    ).toBe(120);
   });
 
-  it("rejects a gap that is not a whole number of hours", () => {
+  // The bug (#2063): every one of these is a real pair of UTC offsets one provider
+  // can resolve instead of the other, and the old `gap % 60 !== 0` guard rejected
+  // all of them.
+  it.each([
+    ["India +5:30 read as +5:00 or +6:00", 30],
+    ["Nepal +5:45 read as +5:00", 45],
+    ["Newfoundland -3:30 read as -2:00", 90],
+    ["Chatham +12:45 read as +11:00", 105],
+  ])("admits the fractional offset gap: %s", (_zone, gap) => {
     expect(
-      wholeHourClockOffset({ start: 545, end: 570 }, { start: 500, end: 525 })
-    ).toBeNull();
-  });
-
-  it("rejects a zero gap and anything past MAX_CLOCK_OFFSET_HOURS", () => {
-    expect(
-      wholeHourClockOffset({ start: 545, end: 570 }, { start: 545, end: 575 })
-    ).toBeNull();
-    expect(
-      wholeHourClockOffset(
+      clockOffsetMinutes(
         { start: 545, end: 570 },
-        { start: 545 + (MAX_CLOCK_OFFSET_HOURS + 1) * 60, end: 570 }
+        { start: 545 - gap, end: 570 - gap }
+      )
+    ).toBe(gap);
+  });
+
+  it("still rejects a gap no pair of UTC offsets could produce", () => {
+    // 40 and 20 minutes apart: two sessions, not one session twice.
+    expect(
+      clockOffsetMinutes({ start: 545, end: 570 }, { start: 505, end: 530 })
+    ).toBeNull();
+    expect(
+      clockOffsetMinutes({ start: 545, end: 570 }, { start: 465, end: 490 })
+    ).toBeNull();
+  });
+
+  it("rejects the quarter hour — the documented out-of-scope residual", () => {
+    // Chatham read as +13:00 is a real 15-minute misresolution, but :15 is also the
+    // grid people schedule on, so the safety margin wins (see the constant's note).
+    expect(CLOCK_OFFSET_MINUTE_PARTS).not.toContain(15);
+    expect(
+      clockOffsetMinutes({ start: 545, end: 570 }, { start: 530, end: 555 })
+    ).toBeNull();
+  });
+
+  it("rejects a zero gap and anything past the maximum", () => {
+    // Zero is the only offset-shaped gap below MIN_CLOCK_OFFSET_MIN, and it means
+    // "the two clocks agree" — same-instant rows are the OVERLAP path's business.
+    expect(MIN_CLOCK_OFFSET_MIN).toBe(30);
+    expect(
+      clockOffsetMinutes({ start: 545, end: 570 }, { start: 545, end: 575 })
+    ).toBeNull();
+    expect(
+      clockOffsetMinutes(
+        { start: 545, end: 570 },
+        { start: 545 + MAX_CLOCK_OFFSET_MIN + 60, end: 570 }
       )
     ).toBeNull();
+  });
+});
+
+describe("formatClockOffset", () => {
+  it("keeps the whole hour's historical spelling and names the fractions", () => {
+    expect(formatClockOffset(60)).toBe("1h");
+    expect(formatClockOffset(120)).toBe("2h");
+    expect(formatClockOffset(30)).toBe("30m");
+    expect(formatClockOffset(45)).toBe("45m");
+    expect(formatClockOffset(90)).toBe("1h30m");
+    expect(formatClockOffset(105)).toBe("1h45m");
   });
 });
 
@@ -662,16 +709,43 @@ describe("findActivityDuplicates — wrong-offset clock rescue (#2011)", () => {
     );
   });
 
-  it("does NOT pair when the gap is not a whole hour", () => {
+  // #2063: the same walk on an Asia/Kolkata profile, one provider resolving +5:30 and
+  // the other +5:00. The gap is 30 minutes — offset-shaped, and rejected outright
+  // before this, so the day carried the walk twice for every household in a
+  // half-hour zone.
+  it("pairs a HALF-hour offset — India, Newfoundland — and names it", () => {
+    const pairs = findActivityDuplicates([
+      hc,
+      { ...stravaOffset, start_time: "08:35", end_time: "09:00" },
+    ]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("medium");
+    expect(pairs[0].reason).toBe(
+      "Same day, similar duration/distance — clocks differ by 30m"
+    );
+  });
+
+  it("pairs a THREE-QUARTER offset — Chatham +12:45 read as +11:00 — and names it", () => {
+    const pairs = findActivityDuplicates([
+      hc,
+      { ...stravaOffset, start_time: "07:20", end_time: "07:45" },
+    ]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].reason).toBe(
+      "Same day, similar duration/distance — clocks differ by 1h45m"
+    );
+  });
+
+  it("does NOT pair when the gap is not offset-shaped", () => {
     expect(
       findActivityDuplicates([
         hc,
-        { ...stravaOffset, start_time: "08:20", end_time: "08:45" },
+        { ...stravaOffset, start_time: "08:25", end_time: "08:50" },
       ])
     ).toHaveLength(0);
   });
 
-  it("does NOT pair beyond MAX_CLOCK_OFFSET_HOURS", () => {
+  it("does NOT pair beyond MAX_CLOCK_OFFSET_MIN", () => {
     expect(
       findActivityDuplicates([
         hc,

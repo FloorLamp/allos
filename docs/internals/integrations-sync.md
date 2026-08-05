@@ -57,13 +57,20 @@ minutes, and effort. The duration/distance proximity check could not save it: it
 is the fallback for MISSING times, unreachable once both rows have one.
 
 So the cross-source path carries a narrow rescue below the overlap check —
-non-overlapping windows, a WHOLE-hour start gap of 1–2 hours
-(`wholeHourClockOffset`, capped by `MAX_CLOCK_OFFSET_HOURS`), and proximity
-agreement on BOTH duration and distance (`proximityComparisons === 2`; one measure
-is too weak to carry a pair whose clocks already disagree). The whole-hour
-requirement is the entire safety margin: two genuinely distinct back-to-back
-sessions do not begin at the same minute past the hour, an offset copy of one
-session does exactly. The result is MEDIUM and says so — "clocks differ by 1h" —
+non-overlapping windows, an OFFSET-SHAPED start gap of 30 to 120 minutes
+(`clockOffsetMinutes`, bounded by `MIN_CLOCK_OFFSET_MIN`/`MAX_CLOCK_OFFSET_MIN`),
+and proximity agreement on BOTH duration and distance (`proximityComparisons === 2`;
+one measure is too weak to carry a pair whose clocks already disagree).
+Offset-shaped means a whole number of hours plus one of `CLOCK_OFFSET_MINUTE_PARTS`
+— because the world's UTC offsets are not all whole hours (#2063): India +5:30,
+Newfoundland -3:30, Nepal +5:45, Chatham +12:45. The original guard admitted only
+integer hours and so rejected exactly those households' duplicates. The quarter
+hour is the one documented exclusion: reachable in principle (Chatham read as
++13:00) but also the grid people schedule on, so it would cost more safety margin
+than it buys. That shape requirement is the entire safety margin: two genuinely
+distinct back-to-back sessions do not begin an exact UTC offset apart, an offset
+copy of one session does exactly. The result is MEDIUM and says so — "clocks differ
+by 1h", "clocks differ by 30m" —
 because `autoMergeCluster` still demands genuinely overlapping windows, so nothing
 merges itself on this evidence; the pair waits for a person. Nothing about this is
 Strava-specific and none of it belongs in a parser: any provider can report a bad

@@ -211,30 +211,63 @@ export function proximityMatch(
   return compared != null && compared > 0;
 }
 
-// The widest whole-hour clock disagreement the cross-source rescue below will
-// forgive. One hour is the common case (a non-DST utc_offset, a DST boundary); two
-// covers a doubly-wrong offset and travel. Beyond that the "same activity, wrong
-// clock" reading stops being more plausible than "two sessions".
-export const MAX_CLOCK_OFFSET_HOURS = 2;
+// The widest clock disagreement the cross-source rescue below will forgive. One
+// hour is the common case (a non-DST utc_offset, a DST boundary); two covers a
+// doubly-wrong offset and travel. Beyond that the "same activity, wrong clock"
+// reading stops being more plausible than "two sessions".
+export const MAX_CLOCK_OFFSET_MIN = 120;
 
-// Whether two clock windows are separated by a WHOLE number of hours — the
-// fingerprint of a provider reporting the right instant against the wrong UTC
-// offset (issue #2011). Returns the offset in hours, or null when the gap is not a
-// clean 1–2 hours. Measured on the START minute: a shifted clock moves the whole
-// window rigidly, so the start carries the signal and the end adds only the two
-// rows' duration disagreement as noise.
+// The narrowest one. Half an hour, not an hour, because the world's UTC offsets are
+// not all whole hours (#2063) — see CLOCK_OFFSET_MINUTE_PARTS.
+export const MIN_CLOCK_OFFSET_MIN = 30;
+
+// ── WHICH GAPS ARE OFFSET-SHAPED (#2063) ─────────────────────────────────────
 //
-// The whole-hour requirement is the entire safety margin. Two genuinely distinct
-// back-to-back sessions of similar length do not begin at the same minute past the
-// hour; an offset copy of ONE session does, exactly.
-export function wholeHourClockOffset(
+// The rescue's premise is "the right instant against the wrong UTC offset", so the
+// gaps it forgives are the gaps REAL UTC OFFSETS differ by — and several of those
+// are not whole hours: India +5:30, Newfoundland -3:30, Nepal +5:45, Chatham +12:45,
+// Eucla +8:45. A provider that resolves one of those against a whole-hour neighbour
+// lands its copy 30 or 45 minutes off, which the original `gap % 60 !== 0` guard
+// rejected outright — the same defect this rescue exists for, silently unfixed for
+// every household in those zones.
+//
+// So the admitted gaps are a whole number of hours PLUS one of these minute parts.
+// 15 is deliberately absent: it is reachable in principle (Chatham read as +13:00,
+// Eucla as +9:00 — populations in the hundreds), but the quarter hour is also the
+// grid people actually schedule on, so admitting it would spend the safety margin
+// below on the least likely misresolution in the world. That residual is the
+// documented out-of-scope case, not an oversight.
+export const CLOCK_OFFSET_MINUTE_PARTS: readonly number[] = [0, 30, 45];
+
+// Whether two clock windows are separated by an OFFSET-SHAPED gap — the fingerprint
+// of a provider reporting the right instant against the wrong UTC offset (issue
+// #2011, widened by #2063). Returns the gap in MINUTES, or null when it is not one
+// of those. Measured on the START minute: a shifted clock moves the whole window
+// rigidly, so the start carries the signal and the end adds only the two rows'
+// duration disagreement as noise.
+//
+// The shape requirement is the entire safety margin. Two genuinely distinct
+// back-to-back sessions of similar length do not begin an exact offset apart; an
+// offset copy of ONE session does, exactly.
+export function clockOffsetMinutes(
   x: TimeWindow,
   y: TimeWindow
 ): number | null {
   const gap = Math.abs(x.start - y.start);
-  if (gap % 60 !== 0) return null;
-  const hours = gap / 60;
-  return hours >= 1 && hours <= MAX_CLOCK_OFFSET_HOURS ? hours : null;
+  if (!CLOCK_OFFSET_MINUTE_PARTS.includes(gap % 60)) return null;
+  return gap >= MIN_CLOCK_OFFSET_MIN && gap <= MAX_CLOCK_OFFSET_MIN
+    ? gap
+    : null;
+}
+
+// The gap as a person reads it in the pair's reason — "1h", "30m", "1h30m". Whole
+// hours keep their historical spelling, so widening the rescue changed no existing
+// message.
+export function formatClockOffset(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
 }
 
 // Build a detected pair from two rows: the stable order-independent signature plus
@@ -259,7 +292,7 @@ function buildPair<T extends ActivityDupInput>(
 
 // Classify one CROSS-SOURCE pair, or null when they are NOT a likely duplicate:
 //   - both rows have clock windows → HIGH if they overlap;
-//   - both have windows that DON'T overlap → the whole-hour clock rescue below
+//   - both have windows that DON'T overlap → the wrong-offset clock rescue below
 //     (MEDIUM), else NOT a duplicate;
 //   - only one (or neither) has a window → duration/distance proximity → MEDIUM,
 //     else null.
@@ -270,21 +303,22 @@ function buildPair<T extends ActivityDupInput>(
 // Two timestamps from two sources are not two observations — they are two assertions,
 // and one of them can be false. A provider that sends the right instant against the
 // wrong UTC offset (a non-DST `utc_offset`, a DST boundary, a third-party push) lands
-// its copy a whole hour off, the windows miss by minutes, and the duplicate silently
+// its copy an offset off, the windows miss by minutes, and the duplicate silently
 // splits into two activities that double every rollup for the day. The old proximity
 // fallback could not catch it: it is the fallback for MISSING times, unreachable once
 // both rows have one.
 //
-// So the rescue is deliberately narrow — non-overlapping, a 1–2 hour WHOLE-hour start
-// gap, and proximity agreement on BOTH duration and distance (one measure is too weak
-// to carry a pair whose clocks already disagree). MEDIUM is the right confidence:
+// So the rescue is deliberately narrow — non-overlapping, a 30-to-120-minute
+// OFFSET-SHAPED start gap (clockOffsetMinutes, #2063), and proximity agreement on
+// BOTH duration and distance (one measure is too weak to carry a pair whose clocks
+// already disagree). MEDIUM is the right confidence:
 // autoMergeCluster still requires genuinely overlapping windows, so nothing merges
 // itself on this evidence — the pair is surfaced in Data → Review for a person, with
 // the clock discrepancy named in the reason so they can see which copy to keep.
 //
 // Same-source pairs get NO such rescue (see classifySameSourcePair): one source is one
-// clock, so its two rows cannot disagree about the offset, and a whole-hour gap there
-// really is two sessions.
+// clock, so its two rows cannot disagree about the offset, and an offset-shaped gap
+// there really is two sessions.
 function classifyCrossSourcePair<T extends ActivityDupInput>(
   a: T,
   b: T
@@ -294,13 +328,13 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
   if (wa && wb) {
     if (windowsOverlap(wa, wb))
       return buildPair(a, b, "high", "Overlapping start/end times");
-    const offsetHours = wholeHourClockOffset(wa, wb);
-    if (offsetHours != null && proximityComparisons(a, b) === 2)
+    const offsetMin = clockOffsetMinutes(wa, wb);
+    if (offsetMin != null && proximityComparisons(a, b) === 2)
       return buildPair(
         a,
         b,
         "medium",
-        `Same day, similar duration/distance — clocks differ by ${offsetHours}h`
+        `Same day, similar duration/distance — clocks differ by ${formatClockOffset(offsetMin)}`
       );
     return null;
   }
@@ -316,7 +350,7 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
 // fallback is DELIBERATELY NOT applied here — two similar same-day gym sessions from
 // one source are usually legitimate, and matching them on closeness alone would
 // flag real back-to-back workouts. So a same-source pair missing either window is
-// left alone. The cross-source whole-hour clock rescue (#2011) is likewise NOT
+// left alone. The cross-source wrong-offset clock rescue (#2011) is likewise NOT
 // applied: one source is one clock, so its two rows cannot disagree about the UTC
 // offset, and an hour between them is an hour of the person's actual day.
 function classifySameSourcePair<T extends ActivityDupInput>(
