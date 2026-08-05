@@ -168,23 +168,38 @@ export function resolveUpdateState({
 }
 
 /**
- * What to do about a worker that was ALREADY waiting when this page loaded (#1905).
+ * What to do about a worker that is WAITING behind this page (#1905).
  *
  * THE LOOP THIS CLOSES. A manual browser refresh (F5, pull-to-refresh) fetches the
  * new build's HTML and assets over the network — but a refresh never activates a
  * WAITING service worker. Platform behaviour: only the skip-waiting handshake, or
- * closing every tab of the origin, does that. So the fresh load finds
- * `registration.waiting` still present and re-offers, and the bar comes back offering
- * an "update" to a page that is already running the new build. Forever, until the
+ * closing every tab of the origin, does that. So the fresh load ends up behind the
+ * new build's pending worker and re-offers, and the bar comes back offering an
+ * "update" to a page that is already running the new build. Forever, until the
  * user taps the bar's own Reload. Only the WORKER path loops this way; the sha
  * fallback's baseline is the freshly-served sha, so a refresh self-clears it.
  *
- * THE DISCRIMINATOR is the sha the document was served with against the sha the
- * server reports. Equal means the page already HAS the new build's assets and the
- * waiting worker is merely queued to take over subsequent fetches — nothing to
- * decide, nothing to reload, so activate it silently and never raise the bar. The
- * bar is then left with exactly its charter (#1700): a deploy discovered MID-SESSION,
- * where the running document genuinely predates the build.
+ * WHEN THE WORKER ARRIVED IS NOT PART OF THE QUESTION. The first cut of this fix
+ * keyed on `registration.waiting` being present when registration answered, and
+ * missed the commoner shape of the same loop: on the FIRST load after a deploy the
+ * new worker is usually not waiting YET, because this page's own
+ * `register("/sw.js?v=<new sha>")` call is what tells the browser a deploy happened
+ * at all (the update tick refetches the OLD versioned URL, whose bytes a deploy
+ * does not change). That worker installs seconds after load and lands through
+ * `updatefound` — a "mid-session" install in the platform's eyes, raised by a page
+ * that already IS the new build. Offering it re-created the loop this decision
+ * exists to close, one refresh later than before.
+ *
+ * THE DISCRIMINATOR is therefore only the sha the document was served with against
+ * the sha the server reports, for every waiting worker however it arrived. Equal
+ * means the page already HAS the new build's assets and the waiting worker is
+ * merely queued to take over subsequent fetches — nothing to decide, nothing to
+ * reload, so activate it silently and never raise the bar. Different means the
+ * running document genuinely predates the deploy, which is the bar's whole charter
+ * (#1700). The comparison is only as honest as the read is fresh: the caller
+ * re-arms the read for each newly-waiting worker (see `useDeployedVersion`'s
+ * `generation`), so a second deploy under the same open page is never judged
+ * against the answer read for the first.
  *
  * `wait` is the third answer and not a hedge: the sha read is a round-trip, and
  * offering before it lands would flash the bar on every first load after a deploy.
@@ -193,25 +208,20 @@ export function resolveUpdateState({
  * never learn the deployed sha — we `offer`, which is the behaviour that shipped;
  * silence is not something to invent for a context we cannot evaluate.
  */
-export type LoadTimeUpdatePlan = "activate-silently" | "offer" | "wait";
+export type WaitingWorkerPlan = "activate-silently" | "offer" | "wait";
 
-export function loadTimeUpdatePlan({
-  waitingAtLoad,
+export function waitingWorkerPlan({
   pageSha,
   deployedSha,
   deployedSettled,
 }: {
-  /** A worker was waiting when registration first answered — not installed since. */
-  waitingAtLoad: boolean;
   /** The commit this document was served with. */
   pageSha: string | null;
   /** The commit the server reports, once it has answered. */
   deployedSha: string | null;
   /** The one sha read has finished, with or without an answer. */
   deployedSettled: boolean;
-}): LoadTimeUpdatePlan {
-  // Mid-session discovery is the bar's whole purpose; it is not this decision.
-  if (!waitingAtLoad) return "offer";
+}): WaitingWorkerPlan {
   // No baseline, nothing to compare — the page cannot claim to be on the new build.
   if (!pageSha) return "offer";
   if (!deployedSettled) return "wait";

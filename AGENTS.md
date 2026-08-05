@@ -339,8 +339,9 @@ exposing paths, versions, or health data. Keep status composition in
 A deploy leaves open tabs on a build the server no longer serves. The service
 worker installs and **waits** rather than taking over, one merged pending state
 raises one "Update ready" bar, only the tab that tapped ever reloads, and a
-manual refresh consumes a load-time waiting worker silently instead of
-re-offering it. A tab that navigates while still stale hits a deleted chunk; the
+waiting worker for the build the page already runs — found waiting at load, or
+installed by the page's own registration just after it — is consumed silently
+instead of re-offered. A tab that navigates while still stale hits a deleted chunk; the
 top-level error boundary recognises that signature and hard-reloads **once**,
 under a rationed `sessionStorage` guard, before rendering any card.
 
