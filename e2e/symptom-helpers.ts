@@ -130,23 +130,23 @@ export async function openTempEntry(bar: Locator): Promise<void> {
 //   • the note write core is UPDATE-only (a note for a not-yet-committed symptom
 //     row returns `invalid`), so a save racing the prior tap's still-in-flight
 //     action fails legitimately;
-//   • settledClick can't pin the save POST — the dashboard toasters poll via a
-//     Server Action POST that is indistinguishable from any mutation POST (the
-//     same ambiguity documented in the hygiene guard's waitForTimeout allowlist).
+//   • no helper in helpers.ts applies: the save fires from the input's onBlur, and
+//     settledClick/settledUpload correlate a wait with a CLICK or a file pick.
 // So: fill, blur (the input's onBlur IS the save path — no submit-button click,
 // whose pre-click blur unmounts the form under the button), await THE save
 // action's POST completing, THEN reload and assert the SERVER-rendered note.
 //
 // The POST wait is load-bearing twice over: a reload fired right after blur
 // ABORTS the still-in-flight save action (every iteration kills its own write),
-// and a generic any-POST wait is NOT safe here — the dashboard toasters poll via
-// Server-Action POSTs, and waitForResponse also matches a response whose request
-// STARTED before arming, so it can resolve on a bystander instantly and the
-// reload still aborts the save. The predicate therefore pins the SAVE by its own
-// multipart body (the note text rides in the action's FormData) — the one POST
-// that provably is the mutation. On a timeout (the blur save didn't fire — e.g. a
-// refresh remounted the input mid-fill) the reload-assert fails the iteration
-// and the idempotent flow retries.
+// and a bare any-POST wait would not be safe here — `waitForResponse` also matches
+// a response whose request STARTED before arming, so it can resolve on a bystander
+// instantly and the reload still aborts the save. (That half is exactly what #1952
+// removed from settledClick/settledUpload; this predicate predates it and is
+// TIGHTER than either.) It pins the SAVE by its own multipart body — the note text
+// rides in the action's FormData — which is the one POST that provably is this
+// mutation, a thing the header filter deliberately does not attempt. On a timeout
+// (the blur save didn't fire — e.g. a refresh remounted the input mid-fill) the
+// reload-assert fails the iteration and the idempotent flow retries.
 export async function saveNote(
   page: Page,
   key: string,
