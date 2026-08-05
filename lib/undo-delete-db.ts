@@ -25,6 +25,7 @@ import {
 import { unlinkVideoFiles } from "./video/store";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
+import { invalidateDoseScheduleVersions } from "./queries/intake/schedule";
 import { unlinkFollowUpsForMedicalRecord } from "./followup-write";
 import {
   writeImportTombstoneForRow,
@@ -506,6 +507,13 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       profileId
     );
   });
+  // A restored supplement brings back its dose schedule history (the `doseVersions`
+  // entity above), and the current-schedule readers memoize that history per profile
+  // (#2066). Dropping the entry here means the restored item's past days are judged by
+  // the rules it actually had, immediately, rather than by the pre-#1973 "this row,
+  // always" fallback for the remainder of the TTL. Unconditional because it costs one
+  // re-join at most and no restore kind is worth reasoning about separately.
+  invalidateDoseScheduleVersions(profileId);
   return true;
 }
 

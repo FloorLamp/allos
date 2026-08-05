@@ -1106,7 +1106,15 @@ export function deleteAdministrationLog(
       )
       .run(profileId, JSON.stringify({ administration: captured }));
 
-    db.prepare(`DELETE FROM intake_item_logs WHERE id = ?`).run(logId);
+    // Scoped at the DELETE too (#2059), not only at the SELECT that captured the row:
+    // an undo is the one write here that destroys a record of something taken, so it is
+    // the last statement that should depend on a sibling query staying correct.
+    db.prepare(
+      `DELETE FROM intake_item_logs
+        WHERE id = ? AND item_id IN (
+          SELECT id FROM intake_items WHERE profile_id = ?
+        )`
+    ).run(logId, profileId);
     // Invert the supply decrement the administration applied (a 'taken' row consumed
     // supply). incrementSupply is a no-op when quantity_on_hand IS NULL (untracked).
     if (row.status === "taken" && row.supply_adjusted === 1) {
@@ -1898,10 +1906,22 @@ export function restampDoseLogsCore(
       if (!t) continue;
       const instant = resolve(t.tapAt);
       if (dateStrInTz(tz, instant) !== t.row.date) crossedMidnight = true;
-      db.prepare(`UPDATE intake_item_logs SET given_at = ? WHERE id = ?`).run(
-        utcSqlString(instant),
-        id
-      );
+      // Re-scoped at the point of the WRITE (#2059), not only at the read that
+      // produced `id`. The burst ids already come from the profile-filtered SELECT
+      // above, so this changes no outcome today — it is the same double defence every
+      // other `intake_item_logs` write in this file carries, and the reason CLAUDE.md
+      // asks for it is that the ONE statement that mutates a row must not depend on a
+      // sibling query staying correct through a later refactor or a new call site.
+      // Scoped through dose → item rather than the row's own `item_id`, so the write
+      // and the burst SELECT walk the identical join.
+      db.prepare(
+        `UPDATE intake_item_logs SET given_at = ?
+          WHERE id = ? AND dose_id IN (
+            SELECT d.id FROM intake_item_doses d
+            JOIN intake_items s ON s.id = d.item_id
+           WHERE s.profile_id = ?
+          )`
+      ).run(utcSqlString(instant), id, profileId);
     }
     const anchorRow = byId.get(burst.fromId)?.row;
     return {

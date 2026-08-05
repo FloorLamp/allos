@@ -27,13 +27,15 @@ import {
   ADHERENCE_PATTERN_DAYS,
 } from "@/lib/adherence-patterns";
 import {
+  getDoseScheduleVersions,
+  getSleepMoodData,
   getSupplementDoses,
   getSupplements,
-  getSleepMoodData,
+  invalidateDoseScheduleVersions,
 } from "@/lib/queries";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { setTimezone } from "@/lib/settings";
-import { doseDueOn } from "@/lib/supplement-schedule";
+import { doseBucketOn, doseDueOn } from "@/lib/supplement-schedule";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -166,7 +168,12 @@ describe("migration 151 — seeding an existing dose changes nothing (#1973)", (
       expect(v.end_date).toBe(v.row_end);
     }
 
-    // The behavioural claim: every day of the window answers identically.
+    // The behavioural claim: every day of the window answers identically. The memo
+    // (#2066) is dropped first — the `before` read primed it with the historyless
+    // state, and a claim about what the SEEDED rows answer must be measured against
+    // the seeded rows rather than against a cache that predates them. Production never
+    // hits this: the migration runs at boot, before any read.
+    invalidateDoseScheduleVersions(profileId);
     expect(duenessOverWindow(profileId, anchor)).toBe(before);
 
     // And a replay adds nothing (the NOT EXISTS guard), so the non-version-gated
@@ -379,5 +386,86 @@ describe("bedtime attribution reads the slot in force that night (#1973/#1972)",
         (row) => row.date === wakeDay
       )?.bedtimeSupplements
     ).toMatchObject({ due: 1, taken: 1, state: "taken" });
+  });
+});
+
+// ---- 4. The history read is memoized, and answers identically (#2066) -------
+//
+// `withScheduleVersions` runs on EVERY current-schedule read, and both the hourly tick
+// and a single page render fan `getSupplementDoses` out across several consumers — each
+// of which was re-joining the same profile's whole history. The memo collapses that to
+// one join per profile per request/tick. Its correctness argument has exactly two
+// halves, and both are pinned here: the answers never change, and a write is never read
+// back stale.
+
+describe("#2066 — memoizing the history join changes no answer", () => {
+  it("attaches the same history on every read, and re-joins after an invalidation", () => {
+    const { profileId, anchor } = makeProfile("dose-versions-memo");
+    const born = `${shiftDateStr(anchor, -60)} 09:00:00`;
+    const movedOn = shiftDateStr(anchor, -10);
+    const { doseId } = seedItemWithDose(profileId, "Memo Melatonin", born, {
+      time_of_day: "morning",
+    });
+    const addVersion = db.prepare(
+      `INSERT INTO intake_dose_schedule_versions
+         (dose_id, effective_from, time_of_day, weekdays, start_date, end_date, created_at)
+       VALUES (?,?,?,NULL,NULL,NULL,?)`
+    );
+    addVersion.run(doseId, born.slice(0, 10), "morning", born);
+    addVersion.run(doseId, movedOn, "evening", `${movedOn} 09:00:00`);
+
+    const readBucket = (date: string) =>
+      doseBucketOn(
+        getSupplementDoses(profileId).find((d) => d.id === doseId)!,
+        date
+      );
+    const before = shiftDateStr(movedOn, -1);
+    // The uncached reader is the reference answer; the memoized attach must agree with
+    // it on the FIRST read (the miss) and on every read after (the hits).
+    expect(getDoseScheduleVersions(profileId).get(doseId)).toHaveLength(2);
+    expect(readBucket(before)).toBe("Morning");
+    expect(readBucket(before)).toBe("Morning");
+    expect(readBucket(anchor)).toBe("Evening");
+
+    // A version written behind the memo's back — the shape a restore or another process
+    // produces. Inside the TTL the reader is entitled to its cached answer …
+    addVersion.run(doseId, anchor, "midday", `${anchor} 09:00:00`);
+    expect(readBucket(anchor)).toBe("Evening");
+    // … and the invalidation the write paths call is what makes it current again.
+    invalidateDoseScheduleVersions(profileId);
+    expect(readBucket(anchor)).toBe("Midday");
+    // The earlier days are untouched by any of it: a memo is not allowed to be a second
+    // opinion about history.
+    expect(readBucket(before)).toBe("Morning");
+  });
+
+  it("keeps each profile's history to itself", () => {
+    const mine = makeProfile("dose-versions-memo-mine");
+    const theirs = makeProfile("dose-versions-memo-theirs");
+    const born = `${shiftDateStr(mine.anchor, -60)} 09:00:00`;
+    const movedOn = shiftDateStr(mine.anchor, -10);
+    const a = seedItemWithDose(mine.profileId, "Mine", born, {
+      time_of_day: "morning",
+    });
+    const b = seedItemWithDose(theirs.profileId, "Theirs", born, {
+      time_of_day: "morning",
+    });
+    db.prepare(
+      `INSERT INTO intake_dose_schedule_versions
+         (dose_id, effective_from, time_of_day, weekdays, start_date, end_date, created_at)
+       VALUES (?,?,'evening',NULL,NULL,NULL,?)`
+    ).run(a.doseId, movedOn, `${movedOn} 09:00:00`);
+
+    // Reading mine first primes the memo; the other profile must not be answered from
+    // it — keyed per profile, and the join it runs is still scoped through the parent.
+    expect(
+      getSupplementDoses(mine.profileId).find((d) => d.id === a.doseId)!
+        .versions
+    ).toHaveLength(1);
+    const other = getSupplementDoses(theirs.profileId).find(
+      (d) => d.id === b.doseId
+    )!;
+    expect(other.versions).toBeUndefined();
+    expect(doseBucketOn(other, mine.anchor)).toBe("Morning");
   });
 });
