@@ -172,10 +172,14 @@ learned by losing work to it:
    issues actually closed (close manually with a comment if not), update the
    task list, and **update the release notes** (below).
 
-## Release notes (standing owner directive, 2026-07-24; revised 2026-07-29)
+## Release notes (standing owner directive, 2026-07-24; revised 2026-07-29, 2026-08-05)
 
 Every merge updates ONE release-notes surface, curated by the orchestrator in
-plain product language (what the user/operator sees, never internal jargon):
+plain product language (what the user/operator sees, never internal jargon).
+**At most TWO release-notes batches per day** (owner directive 2026-08-05):
+accumulate merged entries in the pending file and ship mid-run and at wind-down,
+not per merge train. **Write entries concisely** — a sentence or two per entry;
+what changed and why the user cares, nothing more:
 
 - **The in-app What's-new page (#1421)** — `lib/release-notes.json`, checked in
   and rendered at `/whats-new` (ships WITH the image so a `docker compose pull`

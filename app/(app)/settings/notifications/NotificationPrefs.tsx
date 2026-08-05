@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { NotifySchedule } from "@/lib/settings";
+import { formatNotifyTime } from "@/lib/notifications/schedule";
 import type { NotificationKind } from "@/lib/notifications/types";
 import {
   NOTIFICATION_KIND_REGISTRY,
@@ -77,6 +78,16 @@ const SLOT_FIELD: Record<(typeof SLOTS)[number], string> = {
   Evening: "supp_evening_hour",
   Bedtime: "supp_bedtime_hour",
 };
+// The fallback each slot's time input seeds when switched from Off to "At time"
+// — the shared defaults (DEFAULT_INTAKE_REMINDER_MINUTES) as "HH:MM".
+const SLOT_SEED: Record<string, string> = {
+  supp_morning_hour: "08:00",
+  supp_midday_hour: "13:00",
+  supp_evening_hour: "20:00",
+  supp_bedtime_hour: "22:00",
+  digest_hour: "08:00",
+  recap_hour: "09:00",
+};
 const WEEKDAYS = [
   "Sunday",
   "Monday",
@@ -87,9 +98,72 @@ const WEEKDAYS = [
   "Saturday",
 ];
 
-function hourValue(h: number | null, auto: boolean): string {
+// The stored/form value for a slot: "" (off), "auto", or "HH:MM" (#2121 minute
+// grain — the same format the settings tier persists).
+function timeValue(minute: number | null, auto: boolean): string {
   if (auto) return "auto";
-  return h == null ? "" : String(h);
+  return minute == null ? "" : formatNotifyTime(minute);
+}
+
+// One schedule time control at minute grain (#2121): a mode select (Off /
+// optional Auto / At time) beside a native time input once a concrete time is
+// chosen. The single form value stays the persisted vocabulary — "" (off),
+// "auto", or "HH:MM" — so the control writes exactly what the settings tier
+// stores, through the same autosave-on-change path the old hour selects used.
+// Switching to "At time" seeds the previous concrete time (or the slot's shared
+// default) so the change saves a real value immediately; a cleared/incomplete
+// time input is ignored rather than saved as off — Off is the select's job.
+function TimeControl({
+  value,
+  onChange,
+  autoOption,
+  seed,
+  label,
+  testId,
+  selectClassName,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  autoOption: string | null;
+  seed: string;
+  label: string;
+  testId?: string;
+  selectClassName?: string;
+}) {
+  const mode = value === "" ? "" : value === "auto" ? "auto" : "time";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={mode}
+        onChange={(e) => {
+          const m = e.target.value;
+          if (m === "time") onChange(mode === "time" ? value : seed);
+          else onChange(m);
+        }}
+        className={selectClassName ?? "input flex-1 basis-28"}
+        aria-label={`${label} mode`}
+        data-testid={testId}
+      >
+        <option value="">Off</option>
+        {autoOption != null && <option value="auto">{autoOption}</option>}
+        <option value="time">At time</option>
+      </select>
+      {mode === "time" && (
+        <input
+          type="time"
+          value={value}
+          onChange={(e) => {
+            // An empty value is a half-edited input (or a cleared picker) — never
+            // save it as "off"; the mode select owns Off.
+            if (e.target.value !== "") onChange(e.target.value);
+          }}
+          className="input w-auto"
+          aria-label={`${label} time`}
+          data-testid={testId ? `${testId}-time` : undefined}
+        />
+      )}
+    </div>
+  );
 }
 
 export default function NotificationPrefs({
@@ -100,7 +174,8 @@ export default function NotificationPrefs({
   moodCheckinEnabled,
   moodRecapEnabled,
   sleepDigestEnabled,
-  wakeHour,
+  wakeMinute,
+  subHourlyAtRisk,
   telegramDisabled,
   pushDisabled,
   haDisabled,
@@ -115,9 +190,12 @@ export default function NotificationPrefs({
   moodCheckinEnabled: boolean;
   moodRecapEnabled: boolean;
   sleepDigestEnabled: boolean;
-  // The profile's typical wake hour (0-23) that "Auto" resolves to, or null when
-  // there isn't enough sleep data yet (#1117).
-  wakeHour: number | null;
+  // The profile's typical wake minute of day that "Auto" resolves to, or null
+  // when there isn't enough sleep data yet (#1117).
+  wakeMinute: number | null;
+  // Sub-hourly times the scheduler's OBSERVED tick cadence cannot land on time
+  // (#2121 constraint 4), or null when everything configured is honoured.
+  subHourlyAtRisk: { times: string[]; intervalMin: number } | null;
   telegramDisabled: NotificationKind[];
   pushDisabled: NotificationKind[];
   haDisabled: NotificationKind[];
@@ -133,18 +211,18 @@ export default function NotificationPrefs({
     mood_checkin_enabled: moodCheckinEnabled ? "1" : "0",
     mood_recap_enabled: moodRecapEnabled ? "1" : "0",
     digest_sleep_enabled: sleepDigestEnabled ? "1" : "0",
-    supp_morning_hour: hourValue(
-      schedule.supplementHours.Morning,
+    supp_morning_hour: timeValue(
+      schedule.supplementMinutes.Morning,
       schedule.morningAuto
     ),
-    supp_midday_hour: hourValue(schedule.supplementHours.Midday, false),
-    supp_evening_hour: hourValue(schedule.supplementHours.Evening, false),
-    supp_bedtime_hour: hourValue(schedule.supplementHours.Bedtime, false),
+    supp_midday_hour: timeValue(schedule.supplementMinutes.Midday, false),
+    supp_evening_hour: timeValue(schedule.supplementMinutes.Evening, false),
+    supp_bedtime_hour: timeValue(schedule.supplementMinutes.Bedtime, false),
     workout_enabled: schedule.workoutEnabled ? "1" : "0",
-    digest_hour: hourValue(schedule.digestHour, schedule.digestAuto),
+    digest_hour: timeValue(schedule.digestMinute, schedule.digestAuto),
     recap_day:
       schedule.weeklyRecapDay == null ? "" : String(schedule.weeklyRecapDay),
-    recap_hour: String(schedule.weeklyRecapHour ?? 9),
+    recap_hour: formatNotifyTime(schedule.weeklyRecapMinute ?? 9 * 60),
     milestones_enabled: schedule.milestonesEnabled ? "1" : "0",
     preventive_enabled: schedule.preventiveEnabled ? "1" : "0",
     waking_start_hour: String(schedule.wakingStartHour),
@@ -162,9 +240,9 @@ export default function NotificationPrefs({
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   const autoLabel =
-    wakeHour == null
+    wakeMinute == null
       ? "Auto (wake time)"
-      : `Auto (~${String(wakeHour).padStart(2, "0")}:00)`;
+      : `Auto (~${formatNotifyTime(wakeMinute)})`;
 
   function set(field: string, v: string) {
     const next = { ...values, [field]: v };
@@ -278,9 +356,9 @@ export default function NotificationPrefs({
         return true;
       case "toggle":
         return values[e.control.field] === "1";
-      case "hour":
+      case "time":
         return values[e.control.field] !== "";
-      case "day-hour":
+      case "day-time":
         return values[e.control.dayField] !== "";
     }
   }
@@ -298,8 +376,23 @@ export default function NotificationPrefs({
         <div>
           <label className="label">Reminder slots</label>
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Reminders go out on the hour, in this profile&rsquo;s timezone.
+            Reminders go out at these times, in this profile&rsquo;s timezone.
           </p>
+          {/* Sub-hourly honesty (#2121): the scheduler reports its observed
+              cadence; a time it cannot land on is named rather than delivered
+              late silently. */}
+          {subHourlyAtRisk && (
+            <p
+              className="mb-2 text-xs text-amber-700 dark:text-amber-400"
+              data-testid="sub-hourly-tick-warning"
+            >
+              This server&rsquo;s notification scheduler runs about every{" "}
+              {subHourlyAtRisk.intervalMin} minutes, so{" "}
+              {subHourlyAtRisk.times.join(", ")} may be delivered late (or, in
+              the last hour of the day, not at all). Use on-the-hour times, or
+              run the scheduler more often.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {SLOTS.map((w) => {
               const field = SLOT_FIELD[w];
@@ -308,26 +401,17 @@ export default function NotificationPrefs({
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {w}
                   </span>
-                  <select
-                    value={values[field]}
-                    onChange={(e) => set(field, e.target.value)}
-                    className="input mt-1"
-                    aria-label={`${w} reminder hour`}
-                    data-testid={
-                      w === "Morning" ? "supp-morning-hour" : undefined
-                    }
-                  >
-                    <option value="">Off</option>
-                    {/* The Morning slot can follow the profile's wake time (#1117). */}
-                    {w === "Morning" && (
-                      <option value="auto">{autoLabel}</option>
-                    )}
-                    {HOURS.map((i) => (
-                      <option key={i} value={i}>
-                        {String(i).padStart(2, "0")}:00
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-1">
+                    <TimeControl
+                      value={values[field]}
+                      onChange={(v) => set(field, v)}
+                      /* The Morning slot can follow the profile's wake time (#1117). */
+                      autoOption={w === "Morning" ? autoLabel : null}
+                      seed={SLOT_SEED[field]}
+                      label={`${w} reminder`}
+                      testId={w === "Morning" ? "supp-morning-hour" : undefined}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -471,32 +555,23 @@ export default function NotificationPrefs({
                       : e.blurb}
                   </p>
 
-                  {e.control.type === "hour" && (
-                    <select
-                      value={values[e.control.field]}
-                      onChange={(ev) =>
-                        set(
-                          (e.control as { field: string }).field,
-                          ev.target.value
-                        )
-                      }
-                      className="input mt-2 sm:w-56"
-                      aria-label={`${e.label} hour`}
-                      data-testid={e.controlTestId ?? `kind-hour-${e.kind}`}
-                    >
-                      <option value="">Off</option>
-                      {e.control.auto && (
-                        <option value="auto">{autoLabel}</option>
-                      )}
-                      {HOURS.map((i) => (
-                        <option key={i} value={i}>
-                          {String(i).padStart(2, "0")}:00
-                        </option>
-                      ))}
-                    </select>
+                  {e.control.type === "time" && (
+                    <div className="mt-2">
+                      <TimeControl
+                        value={values[e.control.field]}
+                        onChange={(v) =>
+                          set((e.control as { field: string }).field, v)
+                        }
+                        autoOption={e.control.auto ? autoLabel : null}
+                        seed={SLOT_SEED[e.control.field] ?? "08:00"}
+                        label={e.label}
+                        testId={e.controlTestId ?? `kind-time-${e.kind}`}
+                        selectClassName="input sm:w-40"
+                      />
+                    </div>
                   )}
 
-                  {e.control.type === "day-hour" && (
+                  {e.control.type === "day-time" && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <select
                         value={values[e.control.dayField]}
@@ -517,24 +592,22 @@ export default function NotificationPrefs({
                           </option>
                         ))}
                       </select>
+                      {/* The weekday owns Off; the time input is always a
+                          concrete "HH:MM" (defaulting to 09:00). */}
                       {on && (
-                        <select
-                          value={values[e.control.hourField]}
-                          onChange={(ev) =>
-                            set(
-                              (e.control as { hourField: string }).hourField,
-                              ev.target.value
-                            )
-                          }
-                          className="input sm:w-32"
-                          aria-label={`${e.label} hour`}
-                        >
-                          {HOURS.map((i) => (
-                            <option key={i} value={i}>
-                              {String(i).padStart(2, "0")}:00
-                            </option>
-                          ))}
-                        </select>
+                        <input
+                          type="time"
+                          value={values[e.control.timeField]}
+                          onChange={(ev) => {
+                            if (ev.target.value !== "")
+                              set(
+                                (e.control as { timeField: string }).timeField,
+                                ev.target.value
+                              );
+                          }}
+                          className="input w-auto"
+                          aria-label={`${e.label} time`}
+                        />
                       )}
                     </div>
                   )}

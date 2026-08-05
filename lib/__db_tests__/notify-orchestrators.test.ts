@@ -431,9 +431,10 @@ function escalationFixture(profileId: number): {
   return { doseId, date };
 }
 
-// Default Morning slot hour = 8; default wait = 120 min → threshold 10:00. Any tick
-// hour ≥ 10 escalates. Use 12.
-const LATE_HOUR = 12;
+// Default Morning slot 08:00; default wait = 120 min → threshold 10:00. Any tick
+// minute-of-day ≥ 600 escalates. Use noon (runEscalations takes the real
+// profile-local minute since #2121).
+const LATE_MINUTE = 12 * 60;
 
 describe("runEscalations orchestrator", () => {
   it("marker lifecycle + ack flow: escalated → per-dose marker written", async () => {
@@ -446,7 +447,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscSend",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -464,7 +465,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscFail",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(true);
@@ -481,7 +482,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscNoChannel",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -523,7 +524,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscConfirmed",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -546,7 +547,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscSuppressed",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -581,7 +582,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscOverride",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -607,7 +608,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscFanOut",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);
@@ -641,7 +642,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscAccounting",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(true);
@@ -671,7 +672,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscAccountingClear",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     // Cleared only because this dispatch actually ATTEMPTED the failing channel —
@@ -690,7 +691,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscElapsed",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
@@ -720,7 +721,7 @@ describe("runEscalations orchestrator", () => {
       p,
       "EscSkip",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);

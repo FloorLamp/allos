@@ -21,7 +21,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { hourInTz, shiftDateStr } from "@/lib/date";
+import { minuteOfDayInTz, shiftDateStr } from "@/lib/date";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -57,8 +57,9 @@ const NIGHT_MIN = 430;
 // The eleven measured arrival lags, in minutes after the wake instant:
 // 06:02, 06:06, 06:15, 06:27, 06:50, 07:05, 07:11, 07:26, 07:26, 07:42, 07:49.
 const MEASURED_LAGS = [22, 26, 35, 47, 70, 85, 91, 106, 106, 122, 129];
-// What that distribution resolves the auto digest hour to.
-const RESOLVED_HOUR = 8;
+// What that distribution resolves the auto digest time to at minute grain
+// (#2121): wake 340 + p90 lag 122 + 1 = 07:43. The old whole-hour answer was 8.
+const RESOLVED_MINUTE = WAKE_MINUTE + 122 + 1;
 
 let seq = 0;
 
@@ -172,23 +173,38 @@ type TickOutcome = "not-due" | "already-sent" | "deferred" | "sent";
 
 // scripts/notify.ts's digest conditional, term for term:
 //
-//   sched.digestHour != null &&
-//   slotDue(sched.digestHour, hour) &&
+//   sched.digestMinute != null &&
+//   slotDue(sched.digestMinute, minute, tickMinutes) &&
 //   getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date &&
-//   !deferDigestForSleep(profile.id, sched.digestHour, hour, sched.digestAuto)
+//   !deferDigestForSleep(profile.id, sched.digestMinute, minute, tickMinutes,
+//                        sched.digestAuto)
 //     → runDigest(...)
+// Driven at the hourly cadence — the coarsest supported scheduler — so the
+// deferral's decline-then-send rhythm is exactly the shipped hour/hour+1 one.
+const TICK_MINUTES = 60;
 async function tickDigest(
   profileId: number,
   name: string
 ): Promise<TickOutcome> {
-  const hour = hourInTz("UTC", new Date());
+  const minute = minuteOfDayInTz("UTC", new Date());
   const date = today(profileId);
   const sched = getNotifySchedule(profileId);
-  if (sched.digestHour == null || !slotDue(sched.digestHour, hour))
+  if (
+    sched.digestMinute == null ||
+    !slotDue(sched.digestMinute, minute, TICK_MINUTES)
+  )
     return "not-due";
   if (getProfileSetting(profileId, DIGEST_MARKER_KEY) === date)
     return "already-sent";
-  if (deferDigestForSleep(profileId, sched.digestHour, hour, sched.digestAuto))
+  if (
+    deferDigestForSleep(
+      profileId,
+      sched.digestMinute,
+      minute,
+      TICK_MINUTES,
+      sched.digestAuto
+    )
+  )
     return "deferred";
   await runDigest(profileId, name, date);
   return "sent";
@@ -204,31 +220,36 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("the `auto` digest hour resolves past the arrivals (#2102 defect 1)", () => {
-  it("lands after every measured arrival instead of on the wake hour", () => {
+describe("the `auto` digest time resolves past the arrivals (#2102 defect 1)", () => {
+  it("lands past the p90 arrival at minute grain, no longer rounded to an hour", () => {
     const p = seedMeasuredProfile("AutoResolve");
     const sched = getNotifySchedule(p);
 
-    // The old answer was 6 — round(340/60) — which is before ALL eleven arrivals.
+    // The old answer was hour 6 — round(340/60) — before ALL eleven arrivals.
     expect(Math.round(WAKE_MINUTE / 60)).toBe(6);
-    expect(sched.digestHour).toBe(RESOLVED_HOUR);
+    expect(sched.digestMinute).toBe(RESOLVED_MINUTE); // 07:43
     expect(sched.digestAuto).toBe(true);
-    for (const lag of MEASURED_LAGS)
-      expect(WAKE_MINUTE + lag).toBeLessThan(RESOLVED_HOUR * 60);
+    // The p90 share of arrivals is in hand by then; the tail (129 min, 1 of 11)
+    // is the deferral's job. Strictly earlier than the old whole-hour 08:00.
+    const inHand = MEASURED_LAGS.filter(
+      (lag) => WAKE_MINUTE + lag < RESOLVED_MINUTE
+    );
+    expect(inHand.length / MEASURED_LAGS.length).toBeGreaterThanOrEqual(0.9);
+    expect(RESOLVED_MINUTE).toBeLessThan(8 * 60);
   });
 
-  it("leaves the `auto` Morning intake hour on the WAKE hour", () => {
+  it("leaves the `auto` Morning intake time on the WAKE minute", () => {
     // Constraint 4: the Morning slot needs you awake, not your tracker synced, so
-    // the wake hour is the correct answer for it. The arrival lag is the digest's
-    // alone and must not leak into the shared helper.
+    // the wake minute is the correct answer for it. The arrival lag is the
+    // digest's alone and must not leak into the Morning resolution.
     const p = seedMeasuredProfile("MorningUntouched");
     const sched = getNotifySchedule(p);
-    expect(sched.supplementHours.Morning).toBe(6);
+    expect(sched.supplementMinutes.Morning).toBe(WAKE_MINUTE); // 05:40, unrounded
     expect(sched.morningAuto).toBe(true);
-    expect(sched.digestHour).toBe(RESOLVED_HOUR);
+    expect(sched.digestMinute).toBe(RESOLVED_MINUTE);
   });
 
-  it("falls back to the wake hour when the arrival sample is too thin", () => {
+  it("falls back to the wake minute when the arrival sample is too thin", () => {
     // No provenance rows at all — a manually logged sleeper, or an instance whose
     // integration_sync_rows retention has aged out. The deferral is the safety net
     // for this profile, not a percentile built on nothing.
@@ -236,18 +257,19 @@ describe("the `auto` digest hour resolves past the arrivals (#2102 defect 1)", (
     for (let back = 1; back <= 20; back++)
       seedNight(p, shiftDateStr(FROZEN_DAY, -back));
     setProfileSetting(p, "notify_digest_hour", "auto");
-    expect(getNotifySchedule(p).digestHour).toBe(6);
+    expect(getNotifySchedule(p).digestMinute).toBe(WAKE_MINUTE);
   });
 });
 
 describe("the digest defers ONCE for a pending night (#2102 defect 2)", () => {
-  it("declines at its hour, then sends at hour+1 WITH the Sleep section", async () => {
+  it("declines on its first attempt, then sends on the retry WITH the Sleep section", async () => {
     const p = seedMeasuredProfile("DeferThenArrive");
     const td = today(p);
     const fetchMock = stubFetch();
 
-    // 08:00 — last night has not landed. The digest declines; nothing is sent and,
-    // crucially, nothing is MARKED, so the retry hour still sees the day as open.
+    // 08:00 — the hourly tick's first attempt for the 07:43 slot. Last night has
+    // not landed. The digest declines; nothing is sent and, crucially, nothing is
+    // MARKED, so the retry attempt still sees the day as open.
     expect(digestSleepPending(p)).toBe(true);
     expect(await tickDigest(p, "DeferThenArrive")).toBe("deferred");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -257,7 +279,7 @@ describe("the digest defers ONCE for a pending night (#2102 defect 2)", () => {
     seedNight(p, FROZEN_DAY);
     expect(digestSleepPending(p)).toBe(false);
 
-    // 09:00 — the retry hour sends, and last night is in the message.
+    // 09:00 — the retry attempt sends, and last night is in the message.
     vi.setSystemTime(at("09:00"));
     expect(await tickDigest(p, "DeferThenArrive")).toBe("sent");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -299,16 +321,16 @@ describe("the digest defers ONCE for a pending night (#2102 defect 2)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves a MANUALLY set hour alone", async () => {
-    // Constraint 1: a manual hour is user-owned timing. Deferring it silently would
+  it("leaves a MANUALLY set time alone", async () => {
+    // Constraint 1: a manual time is user-owned timing. Deferring it silently would
     // make the user's own setting untrue.
     const p = seedMeasuredProfile("ManualHour");
-    setProfileSetting(p, "notify_digest_hour", String(RESOLVED_HOUR));
+    setProfileSetting(p, "notify_digest_hour", "08:00");
     const fetchMock = stubFetch();
 
     const sched = getNotifySchedule(p);
     expect(sched.digestAuto).toBe(false);
-    expect(sched.digestHour).toBe(RESOLVED_HOUR);
+    expect(sched.digestMinute).toBe(8 * 60);
     // Same pending night, same hour — and it sends anyway.
     expect(digestSleepPending(p)).toBe(true);
     expect(await tickDigest(p, "ManualHour")).toBe("sent");

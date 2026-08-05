@@ -255,6 +255,22 @@ export function hourInTz(tz: string, d: Date = new Date()): number {
   return Number(h) % 24;
 }
 
+// Minute of day (0–1439) of an instant in the given timezone — the sub-hourly
+// sibling of hourInTz (#2121), and the ONE derivation every scheduling comparison
+// resolves "now" through. Uses the same Intl path (with the same %-24 midnight
+// fold), so the two can never disagree about which hour an instant is in.
+export function minuteOfDayInTz(tz: string, d: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return ((get("hour") % 24) * 60 + get("minute")) % 1440;
+}
+
 // Weekday (0=Sun … 6=Sat) of a stored YYYY-MM-DD calendar date, independent of any
 // timezone (UTC-anchored so the process TZ can't shift it across midnight).
 export function weekdayOfDateStr(dateStr: string): number {

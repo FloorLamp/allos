@@ -12,7 +12,7 @@
 //   1. It is a RANKER, NOT AN ENGINE (#221). Every signal it consumes is already
 //      computed by somebody else for another purpose — `typicalWakeTime` (#1117,
 //      the wake-aware morning notify slot), `getWorkoutPresence` (#924, the
-//      finish nudge + the recap card), `getNotifySchedule().supplementHours` (the
+//      finish nudge + the recap card), `getNotifySchedule().supplementMinutes` (the
 //      existing mealtime-shaped anchors), `getMoodOnDate` (the check-in card),
 //      `getLastNightSummary` (the sleep widget). Nothing here reads a DB, derives
 //      a new health fact, or invents a second definition of anything. That is
@@ -37,7 +37,7 @@
 // `hhmmToMinutes(zonedDateParts(tz, now()).hhmm)` and passes the number in. No
 // client clock, no UTC day math, and no `new Date()` anywhere below this line.
 
-import { DEFAULT_INTAKE_REMINDER_HOURS } from "./notifications/schedule";
+import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 
 // The cards the strip can promote. Three are dashboard widget ids (the strip
 // renders the grid's own node for them); `session-recap` is the post-workout card
@@ -70,10 +70,10 @@ export const MEAL_WINDOW_MIN = 60;
 // The wake anchor used when the profile has no `typicalWakeTime` yet (it needs 14
 // nights in the trailing window before it returns anything). This is deliberately
 // the SAME fallback the wake-aware morning notify slot uses
-// (`wakeHour ?? DEFAULT_INTAKE_REMINDER_HOURS.Morning`, lib/settings/notifications),
+// (`wakeMinute ?? DEFAULT_INTAKE_REMINDER_MINUTES.Morning`, lib/settings/notifications),
 // so a profile without sleep history gets one answer to "when does this person's
 // morning start", not two.
-export const DEFAULT_WAKE_MINUTES = DEFAULT_INTAKE_REMINDER_HOURS.Morning * 60;
+export const DEFAULT_WAKE_MINUTES = DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 
 // Tier weights. Deliberately coarse and FIXED rather than a tuned continuous
 // score: the strip's job is "which of these is most worth a glance", and a

@@ -57,14 +57,18 @@ services:
       retries: 3
       start_period: 20s
 
-  # Notification scheduler — the built-in replacement for an external hourly cron.
+  # Notification scheduler — the built-in replacement for an external cron.
   # Same image and data dir as the app; runs the tick (node dist/notify.cjs) once
-  # at the top of every hour, plus the Telegram button-tap poller (getUpdates)
-  # for setups without a public URL. Decides what's due itself and dedupes per
-  # day/slot, so it's safe to restart. Shares the SQLite DB via the same bind mount (WAL
-  # mode handles the concurrent access). Reminders still send only once you've
+  # every 15 minutes at the quarter-hour (#2121 — sub-hourly reminder times need a
+  # sub-hourly tick), plus the Telegram button-tap poller (getUpdates) for setups
+  # without a public URL. Decides what's due itself and dedupes per day/slot, so
+  # it's safe to restart. Shares the SQLite DB via the same bind mount (WAL mode
+  # handles the concurrent access). Reminders still send only once you've
   # configured a channel in Settings → Notifications. Remove this service if you'd
-  # rather drive the tick from a host crontab instead.
+  # rather drive the tick from a host crontab instead — hourly (`0 * * * *`) still
+  # works, but sub-hourly reminder times will fire up to an hour late (Settings →
+  # Notifications shows a warning); use `*/15 * * * *` to match this sidecar. Run
+  # exactly ONE tick scheduler, never both.
   allos-notify:
     container_name: allos-notify
     image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}

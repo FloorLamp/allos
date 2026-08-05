@@ -60,11 +60,11 @@ export const ALL_NOTIFICATION_KINDS = [
 export type KindControl =
   | { type: "always" }
   | { type: "toggle"; field: string }
-  // An hour select whose "Off" value is the kind's disable, optionally offering the
-  // wake-aware "Auto" sentinel (#1117).
-  | { type: "hour"; field: string; auto: boolean }
-  // A weekday select (whose "Off" is the disable) plus an hour select.
-  | { type: "day-hour"; dayField: string; hourField: string };
+  // A time control ("HH:MM" at minute grain, #2121) whose "Off" mode is the kind's
+  // disable, optionally offering the wake-aware "Auto" sentinel (#1117).
+  | { type: "time"; field: string; auto: boolean }
+  // A weekday select (whose "Off" is the disable) plus a time control.
+  | { type: "day-time"; dayField: string; timeField: string };
 
 // An extra opt-in that belongs to a kind's MESSAGE rather than being a kind of its
 // own — the morning digest's sleep section, the weekly recap's mood line. They render
@@ -192,7 +192,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     label: "Morning digest",
     blurb: "One daily summary, including today’s what’s-due list.",
     safety: false,
-    control: { type: "hour", field: "digest_hour", auto: true },
+    control: { type: "time", field: "digest_hour", auto: true },
     controlTestId: "digest-hour",
     extras: [
       {
@@ -209,9 +209,9 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     blurb: "A once-a-week summary of your last seven days.",
     safety: false,
     control: {
-      type: "day-hour",
+      type: "day-time",
       dayField: "recap_day",
-      hourField: "recap_hour",
+      timeField: "recap_hour",
     },
     // Names the lines the recap ACTUALLY composes (lib/weekly-recap.ts). It
     // advertised "volume" and "streak" until #1966 noticed: #1935 cut both of

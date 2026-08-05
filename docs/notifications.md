@@ -148,26 +148,35 @@ marker, so a wrong URL / unreachable HA surfaces on **Settings → Server**.
   channel exactly as they do for Telegram — a suppressed reminder never reaches
   HA either.
 
-Sending is driven by a tick that runs **every hour**. Each tick sends whatever
-is scheduled for the current hour (supplement windows at their configured hours;
-the workout reminder on your inferred training days/time) and not already sent
-today, deduped per day/slot so a retry never double-sends. Timing follows the
-per-profile timezone you pick in **Settings → Health profile** (stored in the DB and
-shared with the notifier; new profiles inherit the **Settings → Server**
-instance default), defaulting to UTC until set.
+Sending is driven by a tick that runs **every 15 minutes** in the default
+Docker setup. Reminder times are minute-precise (#2121): each tick sends
+whatever is scheduled at or just before the current profile-local minute
+(supplement windows at their configured times; the workout reminder on your
+inferred training days/time) and not already sent today, deduped per day/slot
+so a retry never double-sends — a failing send is retried exactly once, an hour
+later, at any tick rate. Timing follows the per-profile timezone you pick in
+**Settings → Health profile** (stored in the DB and shared with the notifier;
+new profiles inherit the **Settings → Server** instance default), defaulting to
+UTC until set.
 
 **Docker (default):** the `allos-notify` service in `docker-compose.yml` runs
-the tick on the hour automatically — no host crontab needed — and keeps the
+the tick every 15 minutes automatically — no host crontab needed — and keeps the
 Telegram button-tap poller running alongside it (idle unless polling mode is
 selected). It shares the app's image and database; bring it up with the rest of
 the stack (`docker compose up -d`). Remove that service if you'd rather drive
 the tick yourself.
 
-**Without Docker / external scheduler:** add an hourly cron entry instead:
+**Without Docker / external scheduler:** add a cron entry instead. The tick
+observes its own cadence, so any steady rhythm works:
 
 ```cron
-0 * * * * cd /app && npm run notify
+*/15 * * * * cd /app && npm run notify
 ```
+
+An hourly `0 * * * *` entry also still works exactly as before — but reminder
+times set between the hours will then fire at the next hour (up to ~an hour
+late), and Settings → Notifications shows a warning naming the affected times.
+Run exactly one tick scheduler (the Docker sidecar OR a crontab, never both).
 
 Manual sends for testing:
 `npm run notify -- morning|midday|evening|bedtime|workout` (in the running

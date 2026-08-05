@@ -14,7 +14,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   buildIntakeReminderForSlots,
   collectWindowDoses,
-  getPreWorkoutSlotHour,
+  getPreWorkoutSlotMinute,
 } from "@/lib/notifications/supplements";
 import { inferWorkoutSchedule } from "@/lib/queries";
 
@@ -90,7 +90,7 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
     const inf = inferWorkoutSchedule(p);
     expect(inf.hasPattern).toBe(true);
     expect(inf.hour).toBe(18);
-    expect(getPreWorkoutSlotHour(p)).toBe(17);
+    expect(getPreWorkoutSlotMinute(p)).toBe(17 * 60);
 
     const td = today(p);
     const pre = collectWindowDoses(p, "PreWorkout", td);
@@ -112,8 +112,8 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
     expect(
       collectWindowDoses(p, "PreWorkout", td).map((e) => e.supp.name)
     ).not.toContain("Beta-Alanine (test)");
-    // No anytime pre_workout dose → the pseudo-slot has no hour.
-    expect(getPreWorkoutSlotHour(p)).toBeNull();
+    // No anytime pre_workout dose → the pseudo-slot has no time.
+    expect(getPreWorkoutSlotMinute(p)).toBeNull();
   });
 
   it("no inferable cadence → the #558 fallback: the dose stays in Morning, no pseudo-slot", () => {
@@ -125,7 +125,7 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
        VALUES (?, ?, 'strength', 'One-off (test)')`
     ).run(p, today(p));
 
-    expect(getPreWorkoutSlotHour(p)).toBeNull();
+    expect(getPreWorkoutSlotMinute(p)).toBeNull();
     expect(
       collectWindowDoses(p, "Morning", today(p)).map((e) => e.supp.name)
     ).toContain("Creatine (test)");

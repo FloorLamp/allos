@@ -3,6 +3,7 @@
 // meal slot wins, while legacy events fall back to their tap instant.
 
 import { getProfileSetting, getTimezone } from "./settings";
+import { parseNotifyTime } from "./notifications/schedule";
 import {
   foodSlotAnchors,
   foodSlotBoundaries,
@@ -12,20 +13,21 @@ import {
 } from "./food-slot";
 import { zonedDateParts } from "./date";
 
-// The profile's configured notify slot HOURS (0–23 each, or null when unset/off) — the
-// one read both the bucket boundaries and the ranking anchors are derived from, so the
-// two can never describe different schedules.
-function profileSlotHours(profileId: number): {
+// The profile's configured notify slot TIMES (minutes of day, or null when
+// unset/off) — the one read both the bucket boundaries and the ranking anchors are
+// derived from, so the two can never describe different schedules. Parsed through
+// the shared parseNotifyTime so the stored "HH:MM" format (and its legacy integer
+// fallback) has ONE reader. Absent and "auto" both resolve to null here, exactly
+// as this module always treated them: the food buckets re-anchor only on a fully
+// MANUAL schedule, and chasing the wake time would put a sleep read on every food
+// ranking.
+function profileSlotMinutes(profileId: number): {
   morning: number | null;
   midday: number | null;
   evening: number | null;
 } {
-  const raw = (key: string): number | null => {
-    const value = getProfileSetting(profileId, key);
-    if (value == null || value === "") return null;
-    const n = Number(value);
-    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
-  };
+  const raw = (key: string): number | null =>
+    parseNotifyTime(getProfileSetting(profileId, key), null, null);
   return {
     morning: raw("notify_supp_morning_hour"),
     midday: raw("notify_supp_midday_hour"),
@@ -36,7 +38,7 @@ function profileSlotHours(profileId: number): {
 export function profileFoodSlotBoundaries(
   profileId: number
 ): FoodSlotBoundaries {
-  return foodSlotBoundaries(profileSlotHours(profileId));
+  return foodSlotBoundaries(profileSlotMinutes(profileId));
 }
 
 // The profile's per-window ranking anchors (#2019) — the point each window is "about",
@@ -44,7 +46,7 @@ export function profileFoodSlotBoundaries(
 export function profileFoodSlotAnchors(
   profileId: number
 ): Record<FoodSlot, number> {
-  return foodSlotAnchors(profileSlotHours(profileId));
+  return foodSlotAnchors(profileSlotMinutes(profileId));
 }
 
 export function foodSlotForProfileInstant(

@@ -14,7 +14,12 @@ import {
   isProfileMutedForLogin,
   getProfileHouseholdRound,
   getLoginDigestDemotions,
+  getSetting,
 } from "@/lib/settings";
+import {
+  formatNotifyTime,
+  subHourlySlotsAtRisk,
+} from "@/lib/notifications/schedule";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
@@ -128,6 +133,30 @@ export default async function NotificationsSettingsPage() {
   const haConfigured = ha.enabled && isValidWebhookUrl(ha.webhookUrl);
   const householdRound = getProfileHouseholdRound(profile.id);
 
+  // Sub-hourly honesty check (#2121 constraint 4): the scheduler records its
+  // OBSERVED cadence each tick (`notify_tick_interval_min`); when a configured
+  // slot time is sub-hourly and that cadence can't land on it, say so here rather
+  // than delivering late silently. Absent (tick never ran) reads as hourly.
+  const schedule = getNotifySchedule(profile.id);
+  const observedTickMin = Number(getSetting("notify_tick_interval_min")) || 60;
+  const atRiskMinutes = subHourlySlotsAtRisk(
+    [
+      ...Object.values(schedule.supplementMinutes),
+      schedule.digestMinute,
+      schedule.weeklyRecapDay != null ? schedule.weeklyRecapMinute : null,
+    ],
+    observedTickMin
+  );
+  const subHourlyAtRisk =
+    atRiskMinutes.length > 0
+      ? {
+          times: [...new Set(atRiskMinutes)]
+            .sort((a, b) => a - b)
+            .map(formatNotifyTime),
+          intervalMin: observedTickMin,
+        }
+      : null;
+
   return (
     <SettingsGroupLayout group="notifications" login={login} profile={profile}>
       <Section
@@ -169,7 +198,7 @@ export default async function NotificationsSettingsPage() {
                 ~520px form column the old page crammed it into (#1451.B). */}
             <PageContainer width="reading">
               <NotificationPrefs
-                schedule={getNotifySchedule(profile.id)}
+                schedule={schedule}
                 workoutSummary={workoutScheduleSummary(profile.id)}
                 foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
                 foodLoggingRelevant={isFoodLoggingRelevant(
@@ -178,12 +207,11 @@ export default async function NotificationsSettingsPage() {
                 moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}
                 sleepDigestEnabled={getProfileSleepDigest(profile.id)}
-                wakeHour={(() => {
-                  // What "Auto" resolves to (#1117): the profile's typical wake
-                  // hour, or null when there isn't enough sleep data yet.
-                  const m = typicalWakeTime(profile.id);
-                  return m == null ? null : Math.min(23, Math.round(m / 60));
-                })()}
+                // What "Auto" resolves to (#1117): the profile's typical wake
+                // minute, or null when there isn't enough sleep data yet. At
+                // minute grain (#2121) it is passed unrounded.
+                wakeMinute={typicalWakeTime(profile.id)}
+                subHourlyAtRisk={subHourlyAtRisk}
                 telegramDisabled={getLoginTelegramDisabledKinds(login.id)}
                 pushDisabled={getLoginPushDisabledKinds(login.id)}
                 haDisabled={ha.disabledKinds}

@@ -1,16 +1,23 @@
 #!/bin/sh
 # In-container notification scheduler — the Dockerized replacement for an external
-# `0 * * * *` cron entry. Runs the hourly tick (`node dist/notify.cjs`, the
-# bundled scripts/notify.ts) once at the top of every hour. The tick itself
-# decides what's actually due for the current hour and dedupes per day/slot, so
-# this loop only needs to fire reliably once per clock hour.
+# cron entry. Runs the tick (`node dist/notify.cjs`, the bundled scripts/notify.ts)
+# once every 15 minutes, aligned to the quarter-hour, so sub-hourly reminder times
+# (#2121) are honoured. The tick itself decides what's actually due for the current
+# profile-local minute and dedupes per day/slot — it also OBSERVES its own cadence
+# (the notify_tick_last_run_at watermark) and sizes its slot windows from it, so
+# this loop only needs to fire on a steady rhythm; changing TICK_SECONDS needs no
+# app config. An hourly host crontab (`0 * * * *`) remains fully supported: slots
+# degrade to at-most-an-hour-late, exactly the pre-#2121 behavior, and Settings →
+# Notifications warns when a configured sub-hourly time can't be honoured. Run
+# exactly ONE tick scheduler (this sidecar OR a crontab, never both).
 #
-# Sleeping to the next hour boundary (rather than a flat `sleep 3600`) keeps ticks
-# aligned to the wall clock and self-correcting against drift from each run's
-# duration. Hour matching uses local time, so set TZ (see docker-compose.yml).
+# Sleeping to the next boundary (rather than a flat `sleep`) keeps ticks aligned
+# to the wall clock and self-correcting against drift from each run's duration.
 set -e
 
-echo "[notify-scheduler] started; first tick at the top of the next hour"
+TICK_SECONDS=900 # 15 minutes; the app observes whatever rhythm this actually is
+
+echo "[notify-scheduler] started; first tick at the next quarter-hour boundary"
 
 # Telegram button-tap poller (getUpdates long poll), for deployments without a
 # public URL. Safe to run unconditionally: it idles unless Settings →
@@ -24,7 +31,7 @@ echo "[notify-scheduler] started; first tick at the top of the next hour"
 
 while true; do
   now=$(date +%s)
-  next=$(( (now / 3600 + 1) * 3600 ))
+  next=$(( (now / TICK_SECONDS + 1) * TICK_SECONDS ))
   sleep $(( next - now ))
   # Never let a single failed tick kill the loop — log and keep scheduling.
   node /app/dist/notify.cjs || echo "[notify-scheduler] tick failed (exit $?); continuing"

@@ -84,12 +84,12 @@ describe("registry rows are well-formed", () => {
         case "always":
           break;
         case "toggle":
-        case "hour":
+        case "time":
           expect(e.control.field, `${e.kind} control field`).toBeTruthy();
           break;
-        case "day-hour":
+        case "day-time":
           expect(e.control.dayField).toBeTruthy();
-          expect(e.control.hourField).toBeTruthy();
+          expect(e.control.timeField).toBeTruthy();
           break;
       }
     }
@@ -98,10 +98,10 @@ describe("registry rows are well-formed", () => {
   it("form field names are unique across rows (no two kinds writing one setting)", () => {
     const fields: string[] = [];
     for (const e of NOTIFICATION_KIND_REGISTRY) {
-      if (e.control.type === "toggle" || e.control.type === "hour")
+      if (e.control.type === "toggle" || e.control.type === "time")
         fields.push(e.control.field);
-      if (e.control.type === "day-hour")
-        fields.push(e.control.dayField, e.control.hourField);
+      if (e.control.type === "day-time")
+        fields.push(e.control.dayField, e.control.timeField);
       for (const x of e.extras ?? []) fields.push(x.field);
     }
     expect(new Set(fields).size, fields.join(", ")).toBe(fields.length);

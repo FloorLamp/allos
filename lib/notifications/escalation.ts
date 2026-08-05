@@ -49,10 +49,10 @@ export interface EscalationCandidate {
   // Which surface the item lives on, so the message can carry the right deep link
   // (#1716) — a medication points at Medications, a supplement at the Supplements tab.
   kind: SupplementKind;
-  // The window's scheduled reminder hour (0–23, profile-local), so the elapsed
-  // check anchors on when the reminder went out.
-  slotHour: number;
-  // Minutes after the slot hour to wait before escalating an unconfirmed dose.
+  // The window's scheduled reminder minute of day (0–1439, profile-local), so the
+  // elapsed check anchors on when the reminder went out (#2121 minute grain).
+  slotMinute: number;
+  // Minutes after the slot time to wait before escalating an unconfirmed dose.
   escalateAfterMin: number;
   // Optional override chat for this escalation (else the profile's own chat).
   escalateChatId: string | null;
@@ -72,7 +72,9 @@ export interface EscalationDecisionInput {
   skippedDoseIds?: Iterable<number>;
   // Dose ids already escalated today (per-day/slot dedup).
   escalatedDoseIds: Iterable<number>;
-  // Minutes since profile-local midnight (the hourly tick passes hour*60).
+  // Minutes since profile-local midnight (the tick passes the real minute of day
+  // since #2121 — no longer quantised to hour*60, so finer ticks shrink the
+  // escalation latency by construction).
   nowMinutes: number;
 }
 
@@ -92,12 +94,16 @@ export interface EscalationDue {
   escalateChatId: string | null;
 }
 
-// The hourly tick's clock never advances past 23:00: nowMinutes = hour*60 with
-// hour ∈ [0,23], so its maximum is 23*60 = 1380. An escalation threshold beyond
-// that final tick is unreachable and the escalation silently never fires — the
-// shipped Bedtime slot (22:00) with the default 120-min wait computes 22*60+120 =
-// 1440 (midnight). We clamp the effective threshold to the day's last tick so a
-// late-evening critical dose still escalates once, at 23:00, instead of never.
+// The day's last GUARANTEED tick is 23:00: the coarsest supported scheduler (a
+// host crontab on `0 * * * *`) never advances nowMinutes past 23*60 = 1380. An
+// escalation threshold beyond that tick would be unreachable on such a deployment
+// and the escalation would silently never fire — the shipped Bedtime slot (22:00)
+// with the default 120-min wait computes 22*60+120 = 1440 (midnight). We clamp
+// the effective threshold to that last guaranteed tick so a late-evening critical
+// dose still escalates once, by 23:00, instead of never. The clamp deliberately
+// stays at the HOURLY deployment's final tick even now that the sidecar ticks
+// finer (#2121): a finer tick fires the clamped escalation a few minutes earlier
+// at worst, while raising the clamp would make hourly deployments skip it.
 //
 // We deliberately do NOT wrap the escalation past midnight to recover it the next
 // day: the per-dose escalation dedup marker (notify_last_esc_<dose>, set by
@@ -122,10 +128,10 @@ export function escalationsDue(
     if (confirmed.has(c.doseId)) continue; // already taken
     if (skipped.has(c.doseId)) continue; // deliberately skipped — a decision (#232)
     if (escalated.has(c.doseId)) continue; // already escalated today
-    // Clamp so a slotHour+escalateAfterMin past the day's last tick still fires
-    // at 23:00 rather than never (see LAST_TICK_MINUTES). #189
+    // Clamp so a slotMinute+escalateAfterMin past the day's last guaranteed tick
+    // still fires by 23:00 rather than never (see LAST_TICK_MINUTES). #189
     const threshold = Math.min(
-      c.slotHour * 60 + c.escalateAfterMin,
+      c.slotMinute + c.escalateAfterMin,
       LAST_TICK_MINUTES
     );
     if (input.nowMinutes < threshold) continue;
@@ -137,7 +143,7 @@ export function escalationsDue(
       ...(c.product ? { product: c.product } : {}),
       window: c.window,
       kind: c.kind,
-      unconfirmedMinutes: Math.max(0, input.nowMinutes - c.slotHour * 60),
+      unconfirmedMinutes: Math.max(0, input.nowMinutes - c.slotMinute),
       escalateChatId: c.escalateChatId,
     });
   }
