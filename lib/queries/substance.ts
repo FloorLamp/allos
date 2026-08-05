@@ -8,22 +8,25 @@
 // The target lives on the EXISTING frequency_targets table (scope_kind
 // 'substance', migration 072) for every substance; this module only derives.
 // Substance targets carry CAP semantics (a ceiling), the inverse of every other
-// frequency scope's floor, which is why they are EXCLUDED from
-// getFrequencyTargetProgress and read here instead — same table, dedicated
-// (inverted) computation, one place. Both week readers share the SAME profile
-// week window (weekWindowStart / trailingWeeks) — no second "week" definition
-// (#223).
+// frequency scope's floor. Since #2034 that is a DECLARED axis rather than a
+// separate module: these reads are the `direction: "cap"` tenant of the one
+// cadence ledger (lib/queries/cadence-ledger.ts), so they share its week windows,
+// its per-source gathers and its verdict vocabulary with the floor readers while
+// keeping the anti-nudge guarantee that made them separate in the first place —
+// a cap week has no "N to go" state to render. This module is the substance-shaped
+// formatting over that tenant.
 
-import { db, today } from "../db";
-import { getWeekMode, getWeekStart } from "../settings";
-import { trailingWeeks } from "../week-window";
-import { weekWindowStart } from "./profile-week";
-import { getWeeklyServingsForGroup } from "./nutrition";
+import { db } from "../db";
+import {
+  cadenceWindows,
+  getCadenceScopeCounts,
+  type CadenceWindow,
+} from "./cadence-ledger";
 import {
   ALCOHOL_FOOD_GROUP,
   SUBSTANCES,
-  substanceDef,
   substanceCapStatus,
+  substanceDef,
   type Substance,
   type SubstanceCapStatus,
 } from "../substance-use";
@@ -112,25 +115,15 @@ export function getSubstanceTarget(
   };
 }
 
-// This week's units for a substance_log-ledger substance (nicotine/cannabis) —
-// the SUM twin of getWeeklyServingsForGroup over the same week window.
-function getWeeklySubstanceUnits(
-  profileId: number,
-  substance: Substance,
-  weekStart: string
-): number {
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(units), 0) AS n FROM substance_log
-        WHERE profile_id = ? AND date >= ? AND substance = ?`
-    )
-    .get(profileId, weekStart, substance) as { n: number };
-  return row.n;
-}
+// The cadence-ledger scope a substance is counted through. The ledger owns the
+// dispatch to the substance's own store (alcohol on food_log — a standard drink IS
+// one serving of the curated `alcohol` food group; nicotine/cannabis on the
+// substance_log counter ledger), so this module never re-decides it.
+const substanceScope = (substance: Substance) =>
+  ({ kind: "substance", value: substance }) as const;
 
-// This week's state for ONE substance: units logged (dispatched to the
-// substance's ledger — the SAME weekly rollup its other surfaces read, #221)
-// plus the target's cap status when a target is set.
+// This week's state for ONE substance: units logged (the SAME weekly rollup its
+// other surfaces read, #221) plus the target's cap status when a target is set.
 export interface SubstanceWeekState {
   substance: Substance;
   weekStart: string;
@@ -143,15 +136,19 @@ export function getSubstanceWeekState(
   profileId: number,
   substance: Substance
 ): SubstanceWeekState {
-  const weekStart = weekWindowStart(profileId);
-  const count =
-    substanceDef(substance).ledger === "food-log"
-      ? getWeeklyServingsForGroup(profileId, ALCOHOL_FOOD_GROUP, weekStart)
-      : getWeeklySubstanceUnits(profileId, substance, weekStart);
+  const [window] = cadenceWindows(profileId, {
+    weeks: 1,
+    includeCurrent: true,
+  });
+  const count = getCadenceScopeCounts(
+    profileId,
+    substanceScope(substance),
+    [window]
+  )[0];
   const target = getSubstanceTarget(profileId, substance);
   return {
     substance,
-    weekStart,
+    weekStart: window.start,
     count,
     target,
     status: target ? substanceCapStatus(count, target.cap) : null,
@@ -183,40 +180,20 @@ export function getSubstanceWeeklyTrend(
   substance: Substance,
   weeks: number = SUBSTANCE_TREND_WEEKS
 ): SubstanceTrendWeek[] {
-  const wins = trailingWeeks(
-    today(profileId),
-    getWeekMode(profileId),
-    getWeekStart(profileId),
-    weeks
+  const windows: CadenceWindow[] = cadenceWindows(profileId, {
+    weeks,
+    includeCurrent: true,
+  });
+  const counts = getCadenceScopeCounts(
+    profileId,
+    substanceScope(substance),
+    windows
   );
-  const oldest = wins[0].start;
-  const rows =
-    substanceDef(substance).ledger === "food-log"
-      ? (db
-          .prepare(
-            `SELECT date, servings AS units FROM food_log
-              WHERE profile_id = ? AND group_key = ? AND date >= ?`
-          )
-          .all(profileId, ALCOHOL_FOOD_GROUP, oldest) as {
-          date: string;
-          units: number;
-        }[])
-      : (db
-          .prepare(
-            `SELECT date, units FROM substance_log
-              WHERE profile_id = ? AND substance = ? AND date >= ?`
-          )
-          .all(profileId, substance, oldest) as {
-          date: string;
-          units: number;
-        }[]);
-  return wins.map((w) => ({
+  return windows.map((w, i) => ({
     start: w.start,
     end: w.end,
     isCurrent: w.isCurrent,
-    count: rows
-      .filter((r) => r.date >= w.start && r.date <= w.end)
-      .reduce((sum, r) => sum + r.units, 0),
+    count: counts[i],
   }));
 }
 

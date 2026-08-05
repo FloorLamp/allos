@@ -18,7 +18,11 @@
 // at-ceiling state is a SUCCESS ("that's plenty", #1259), never a red flag, and an
 // under-floor week is a fact, not a nag.
 
-import { frequencyRangeState } from "./practice";
+import {
+  cadenceVerdict,
+  cadenceWeekMet,
+  type FloorVerdict,
+} from "./cadence";
 import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +36,9 @@ import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
 //   • "under"      — the floor was not cleared.
 // `at-ceiling` implies `met` (a valid cadence always has ceiling > floor), so the
 // met COUNT includes both.
-export type PracticeWeekVerdict = "at-ceiling" | "met" | "under";
+// Since #2034 this IS the cadence ledger's floor-direction verdict set, not a
+// parallel vocabulary that happens to have the same three members.
+export type PracticeWeekVerdict = FloorVerdict;
 
 // The verdict for a COMPLETED week. `elapsedDays` is 7 because the week is over —
 // which is exactly why the pace half of frequencyRangeState collapses to
@@ -42,15 +48,19 @@ export function practiceWeekVerdict(
   floor: number,
   ceiling: number | null
 ): PracticeWeekVerdict {
-  const state = frequencyRangeState(count, floor, ceiling, 7);
-  if (state.atCeiling) return "at-ceiling";
-  return state.met ? "met" : "under";
+  return cadenceVerdict({
+    direction: "floor",
+    count,
+    target: floor,
+    ceiling,
+    elapsedDays: 7,
+  }) as PracticeWeekVerdict;
 }
 
 // Whether a verdict cleared the week's floor. `at-ceiling` counts: it is the range
 // model's most-complete state, not a separate failure mode.
 export function practiceWeekMet(verdict: PracticeWeekVerdict): boolean {
-  return verdict !== "under";
+  return cadenceWeekMet(verdict);
 }
 
 // Short, calm labels for the strip legend and each cell's accessible name.
