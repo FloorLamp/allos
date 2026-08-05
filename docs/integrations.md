@@ -331,7 +331,12 @@ pending row and the same-person suggestion carries the old mapping over. The
 manual **"pre-bind a patient by hand"** escape hatch survives at the end of each
 login's patient list, labelled as one: patients normally appear by themselves
 after a run, spelled the way the portal spells them, and a guess is refused
-rather than corrected.
+rather than corrected. Hand-typing a label that is **already mapped** is not a
+bind but a re-point, and it takes exactly the Change-profile rules: you must be
+able to write **both** the profile the patient currently maps to and the one you
+chose, and the move is atomic — a member who cannot write the current owner's
+profile is refused, so typing a household member's label can never re-route
+their documents.
 
 **What a member sees.** Members see exactly the logins that cover profiles they
 can access, under a note saying so; a first-contact portal that no run has

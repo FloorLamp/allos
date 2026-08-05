@@ -14,6 +14,7 @@ import {
   bindPortalIdentity,
   createPortal,
   createPortalAccount,
+  IDENTITY_ALREADY_MAPPED_ERROR,
   ignorePortalIdentity,
   isPortalSoftware,
   portalById,
@@ -185,5 +186,73 @@ describe("remapPortalIdentity — the atomic Change profile (#1836)", () => {
 
   it("returns false for a row that does not exist", () => {
     expect(remapPortalIdentity(999_999, profileOne, profileTwo)).toBe(false);
+  });
+});
+
+// ── writeBinding never silently re-points a live binding (#2103) ─────────────
+//
+// The bind upsert's ON CONFLICT used to re-point an existing live binding at whatever
+// profile the caller named — under a caller that authorized only the TARGET side. The
+// core now refuses that transition with a typed error: a re-point belongs to
+// remapPortalIdentity's two-authorization compare-and-swap, and the check runs INSIDE
+// the write transaction so a racing bind cannot slip past the action's pre-resolve.
+describe("bindPortalIdentity re-point refusal (#2103)", () => {
+  it("REFUSES to re-point a live binding at a different profile, and changes nothing", () => {
+    const bound = bindPortalIdentity(account.id, "BIND, TAKEN", profileOne);
+    expect(bound.ok).toBe(true);
+    const id = bound.ok ? bound.id : 0;
+
+    const overwrite = bindPortalIdentity(account.id, "BIND, TAKEN", profileTwo);
+    expect(overwrite).toEqual({
+      ok: false,
+      error: IDENTITY_ALREADY_MAPPED_ERROR,
+    });
+    expect(portalIdentityState(id)).toEqual({
+      profileId: profileOne,
+      ignored: false,
+    });
+  });
+
+  it("re-binding the SAME profile stays an idempotent success on the same row", () => {
+    const bound = bindPortalIdentity(account.id, "BIND, SAME", profileOne);
+    expect(bound.ok).toBe(true);
+    const id = bound.ok ? bound.id : 0;
+
+    const again = bindPortalIdentity(account.id, "BIND, SAME", profileOne);
+    expect(again.ok).toBe(true);
+    expect(again.ok ? again.id : 0).toBe(id);
+    expect(portalIdentityState(id)).toEqual({
+      profileId: profileOne,
+      ignored: false,
+    });
+  });
+
+  it("still binds over an IGNORED row — un-ignoring by mapping is not a re-point", () => {
+    const ignored = ignorePortalIdentity(account.id, "BIND, RECONSIDERED");
+    expect(ignored.ok).toBe(true);
+
+    const bound = bindPortalIdentity(
+      account.id,
+      "BIND, RECONSIDERED",
+      profileTwo
+    );
+    expect(bound.ok).toBe(true);
+    const state = portalIdentityState(bound.ok ? bound.id : 0);
+    expect(state).toEqual({ profileId: profileTwo, ignored: false });
+  });
+
+  it("an IGNORE can no longer flip a live binding to refused through the upsert", () => {
+    const bound = bindPortalIdentity(account.id, "BIND, GUARDED", profileOne);
+    expect(bound.ok).toBe(true);
+    const id = bound.ok ? bound.id : 0;
+
+    expect(ignorePortalIdentity(account.id, "BIND, GUARDED")).toEqual({
+      ok: false,
+      error: IDENTITY_ALREADY_MAPPED_ERROR,
+    });
+    expect(portalIdentityState(id)).toEqual({
+      profileId: profileOne,
+      ignored: false,
+    });
   });
 });

@@ -114,7 +114,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "bindIdentityAction",
-    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check",
+    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check. When the typed label is already LIVE-BOUND to a different profile the action is a RE-POINT, not a bind (#2103), and it takes remapIdentityAction's discipline: requireProfileWriteAccess on BOTH the current owner (resolved from the row, #1747) and the target, then remapPortalIdentity's compare-and-swap",
     gate: "requireProfileWriteAccess",
   },
   {

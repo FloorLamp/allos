@@ -142,6 +142,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/portals.ts",
+    includes:
+      "SELECT id, profile_id AS profileId, ignored FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "boundIdentityState (#2103): the bind action's resolve-the-current-owner lookup, keyed on the EXTERNAL (login, label) identity the caller typed — the same resolve-then-gate shape as portalIdentityState, one row earlier in the flow. It exists because the bind upsert would otherwise silently RE-POINT a live binding under a caller that authorized only the target side; the action gates BOTH resolved profiles (remapIdentityAction's discipline) and writeBinding re-checks inside its transaction. Filtering by profile_id would presuppose the answer",
+  },
+  {
+    file: "lib/portals.ts",
     includes: "DELETE FROM portal_identities WHERE id = ? AND ignored = 1",
     why: "unignorePortalIdentity (#1739): removes an IGNORED binding, which by the migration-131 CHECK carries NO profile_id — there is literally nothing to scope by, which is why the statement scopes by `ignored = 1` instead. That predicate is the protection: this path can never touch a live binding, so it cannot become a back door around the profile gate the normal unbind takes",
   },
