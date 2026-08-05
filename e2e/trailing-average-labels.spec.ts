@@ -98,22 +98,23 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
 
     const summary = page.getByTestId("metric-period-stats");
     await expect(summary).toBeVisible();
-    // One reading, so every window holds it and the three collapse onto one card.
+    // One reading, so every window holds it and all four collapse onto one card
+    // (keyed by the widest window, 365 since #1938).
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(1);
-    await expect(page.getByTestId("period-readings-90")).toContainText(
+    await expect(page.getByTestId("period-readings-365")).toContainText(
       "1 reading"
     );
 
     // The figure is today's reading and carries its own label and test id — an
     // average and a single in-progress reading are never the same element.
-    await expect(page.getByTestId("period-today-reading-90")).toContainText(
+    await expect(page.getByTestId("period-today-reading-365")).toContainText(
       String(DAY_ONE_WEIGHT_KG)
     );
     // The app's copy uses a typographic apostrophe; assert what it renders.
-    await expect(page.getByTestId("period-stat-90")).toContainText(
+    await expect(page.getByTestId("period-stat-365")).toContainText(
       "Today’s reading"
     );
-    await expect(page.getByTestId("period-average-90")).toHaveCount(0);
+    await expect(page.getByTestId("period-average-365")).toHaveCount(0);
     await expect(summary).not.toContainText("No readings");
 
     // …and the coverage note stops claiming "through yesterday" while it does so.
@@ -132,13 +133,14 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
     });
     await page.goto("/trends/metric/weight");
 
-    // 7d holds nothing; 30d and 90d hold the stale reading and collapse together.
+    // 7d holds nothing; 30d, 90d and 365d hold the stale reading and collapse
+    // together onto the widest key.
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(2);
     await expect(page.getByTestId("period-readings-7")).toContainText(
       "No readings"
     );
     await expect(page.getByTestId("period-today-reading-7")).toHaveCount(0);
-    await expect(page.getByTestId("period-average-90")).toContainText(
+    await expect(page.getByTestId("period-average-365")).toContainText(
       String(DAY_ONE_STALE_WEIGHT_KG)
     );
     // The card is back to describing complete days, because it is describing them.
