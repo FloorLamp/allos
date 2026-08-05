@@ -29,6 +29,7 @@ import {
 import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { acceptEatenAt } from "@/lib/food-eating-time";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { recordReading } from "@/lib/reading-writes";
@@ -482,12 +483,27 @@ function applyFoodIntent(
       if (!isFoodSlot(payload.mealSlot)) return { status: "rejected" };
       mealSlot = payload.mealSlot;
     }
+    // The stated eating time (#2053), validated rather than trusted. It came off the
+    // client's own wall clock, so — exactly like a queued dose's `clientTakenAt` — the
+    // comparison is between two independent REAL clocks and deliberately sits outside the
+    // app's test-clock seam (see resolveQueuedTakenAt's "real time on purpose" note). An
+    // instant that is in the future, or whose profile-local date isn't the day this
+    // serving is landing on, costs the STATEMENT and never the serving.
+    const stated = acceptEatenAt(
+      typeof payload.eatenAt === "string" ? new Date(payload.eatenAt) : null,
+      getTimezone(profileId),
+      date,
+      new Date()
+    );
     const outcome = logFoodServingCore(
       profileId,
       group,
       date,
       loggedAt,
-      mealSlot
+      mealSlot,
+      stated
+        ? { eatenAt: stated.toISOString(), source: "stated" as const }
+        : undefined
     );
     if (outcome.kind === "unknown-group") {
       return {

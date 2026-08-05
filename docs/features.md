@@ -1054,7 +1054,17 @@ carries burst-collapsed `−1h · −2h · −3h` chips plus an absolute-hour pi
 common case of being slow to tap. A correction moves the serving's meal — and, when
 it crosses local midnight, its day and counter row — so last night's dinner logged
 after midnight is a tap plus one chip rather than a dead end. A web log with no stated
-time records NO eating time rather than a confident wrong one, and the nudge's ranking
+time still records NO eating time rather than a confident wrong one — the web "+" carries
+no "I'm eating now" contract, since the same button logs the apple in your hand and
+backfills Sunday's dinner. What it has instead (#2053) is a small **Now / Earlier…** row
+above the add controls: an explicit choice writes `time_source = 'stated'`, silence writes
+nothing, and the offered "earlier" hours are absolute local wall times resolved server-side
+in the profile's timezone and filtered to hours that land on the day being logged to, so a
+chip the write would refuse is never on screen. The statement is sticky across the taps of
+one meal, hidden on a backfill day (where "now" is meaningless), and rides the **offline
+queue**: an offline tap carries the chosen instant into replay, which validates it —
+future, or a profile-local date that isn't the row's own day, costs the STATEMENT and never
+the serving. The nudge's ranking
 now weights each serving by how near it was eaten to the window it is ranking for,
 which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling
 that let editing a supplement reminder hour move which meal a historical serving

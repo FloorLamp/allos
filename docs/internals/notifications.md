@@ -472,7 +472,14 @@ the contract is false because the tap was late.
 `time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
 stamp migration 056 froze, and stays the ranking input. A write with nothing to
 state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
-reintroduce the guess under a more authoritative name. On the dose side there is no
+reintroduce the guess under a more authoritative name. The web bar's own **Now /
+Earlier…** chips (#2053, `lib/food-eating-time.ts`) are how that silence is broken
+deliberately: they write `'stated'` for either shape, because the web "+" declares no
+contract of its own, so the source of the instant is the person who said so. Online the
+form carries the CHOICE and the server resolves it — a tab open for an hour cannot stamp
+a stale "now"; offline the capture carries a resolved instant and the replay validates it
+through the same `acceptEatenAt` gate, which is `resolveQueuedTakenAt`'s untrusted-client-
+clock posture applied to eating time. On the dose side there is no
 schema at all: `intake_item_logs.given_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
 

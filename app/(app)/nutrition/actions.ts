@@ -12,6 +12,13 @@ import {
   updateFoodLogEventCore,
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
+import {
+  acceptEatenAt,
+  parseEatingTimeChoice,
+  resolveEatingTimeChoice,
+} from "@/lib/food-eating-time";
+import { now as clockNow } from "@/lib/clock";
+import { getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   addProteinGramsCore,
@@ -71,12 +78,30 @@ export async function logFoodServing(
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
+  // The eating-time statement (#2053), when the user made one. The form carries the
+  // CHOICE ("now" or an absolute local hour), never a client instant: the server resolves
+  // it against its own clock and the profile's timezone, so a page that has been open for
+  // an hour cannot stamp a stale "now" and no browser has to convert a profile-local hour
+  // with its own locale. An absent or unusable choice records NO eating time — the
+  // validate-never-drop rule: the serving always lands, the statement is what is lost.
+  const choice = parseEatingTimeChoice(formData.get("eaten_at"));
+  const eatenAt = choice
+    ? acceptEatenAt(
+        resolveEatingTimeChoice(choice, clockNow(), getTimezone(profile.id)),
+        getTimezone(profile.id),
+        fields.date,
+        clockNow()
+      )
+    : null;
   const outcome = logFoodServingCore(
     profile.id,
     fields.group,
     fields.date,
     undefined,
-    fields.mealSlot
+    fields.mealSlot,
+    // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
+    // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
+    eatenAt ? { eatenAt: eatenAt.toISOString(), source: "stated" } : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
