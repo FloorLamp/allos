@@ -4,6 +4,20 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2142,
+          "title": "Sleep mornings, told honestly",
+          "body": "Two fixes from one investigation. Fitbit Takeout nights were stored as the watch's bare clock reading, so what time you “woke up” could shift by hours depending on the server — imported nights are now pinned to the real moment in your own timezone, and already-imported nights are corrected in place (hand-edited nights are left alone). And the morning gap before your tracker delivers is now named: instead of showing a big number for an older night, the sleep card and page say “Waiting for last night's sleep” — with an arrival estimate once your own rhythm is known — then step aside the moment the night lands.",
+          "kind": "fix",
+          "issues": [2096, 2097]
+        },
+        {
+          "pr": 2141,
+          "title": "The morning digest waits for your sleep",
+          "body": "An automatic digest hour now schedules itself for after your tracker actually delivers the night — measured from your own history — and if last night still hasn't arrived at send time, the digest holds for one more hour before sending either way. No more sleep section missing at random.",
+          "kind": "improvement",
+          "issues": [2102]
+        },
+        {
           "pr": 2101,
           "title": "Provider clock errors, fixed once at the door",
           "body": "A workout arriving with a wrong time-zone offset used to be repaired symptom by symptom. Now one rule at import decides: when the true time is known, the session is filed correctly on arrival — even across midnight, even in half-hour zones like India's or Newfoundland's — and when only two disagreeing clocks exist, the pair is surfaced in Data → Review with the difference named, never guessed. The trends chart and the table beneath it also now always agree on how many readings a day has.",
