@@ -4,6 +4,48 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2083,
+          "title": "Sync history reads as days, not a wall of rows",
+          "body": "A source that syncs seventy times a day used to produce seventy identical history rows. The history now groups by day — notable runs (errors, imports, truncations) itemized, routine ones folded into an openable range — and the drill-in counts only what it can actually list, naming the remainder instead of guessing. Sync pages are also centred like the rest of the app. Under the hood, every pulled provider now runs through one shared sync engine, so each safety rule is enforced once for all of them.",
+          "kind": "fix",
+          "issues": [2040, 1991]
+        },
+        {
+          "pr": 2082,
+          "title": "One tap means one log",
+          "body": "Every one-tap logging button now guards against the accidental double-tap: a brief cooldown after each success, keyed to the exact write so skip-then-unskip and similar corrections stay instant. The two taps that genuinely expect an interval — practice sessions and refills — ask a gentle \"log another?\" before repeating, with the refill window sized from your own supply. The practice button also shows today's live count instead of one frozen when the page loaded.",
+          "kind": "fix",
+          "issues": [2041, 2007]
+        },
+        {
+          "pr": 2081,
+          "title": "The self-correcting digest gets cheaper and tougher",
+          "body": "The morning digest's self-correction now checks a cheap \"did anything change?\" stamp before rebuilding, so the hourly sweep does almost no work on a quiet day while your resolving act still updates the chat within the hour. And one profile's failure can no longer stall everyone else's message corrections — each is isolated.",
+          "kind": "fix",
+          "issues": [2070, 2069, 2071]
+        },
+        {
+          "pr": 2080,
+          "title": "Belt-and-braces on dose corrections",
+          "body": "The in-chat dose-time correction now re-checks profile ownership at the exact moment it writes — it was safe before, but only by the grace of a neighboring query, and a new automated scan keeps every ledger write honest from now on. The dose schedule-history read that runs every hour is also cached briefly, keeping reminder ticks fast without ever judging a day by the wrong rule.",
+          "kind": "fix",
+          "issues": [2059, 2065, 2066]
+        },
+        {
+          "pr": 2079,
+          "title": "Logging-only tabs stop signing you out early",
+          "body": "A tab used purely for logging — never navigating — used to let its sign-in cookie quietly expire weeks before the server would have ended the session. The cookie now stays in step with the server. Also: when an edit shrinks a day's alcohol tally, the earliest drinks are removed from the record rather than the latest, keeping \"last drink at\" accurate.",
+          "kind": "fix",
+          "issues": [2058, 2072, 2073]
+        },
+        {
+          "pr": 2078,
+          "title": "Weekly counts stop at today",
+          "body": "A workout accidentally logged with a future date could quietly mark this week's training target as met — silencing its reminder — or inflate a substance cap. Weekly counts now stop at today on every surface, and the Fitness trends window no longer includes days that haven't happened.",
+          "kind": "fix",
+          "issues": [2034, 2042, 2043]
+        },
+        {
           "pr": 2074,
           "title": "The web dose checkbox stops pretending",
           "body": "Marking a dose from the web now refuses the same cases the chat and offline paths always refused — a paused medication can no longer be logged (and have a unit of supply deducted) by a stale browser tab, and the checkbox reports why instead of acting as if the write landed. Deleting a wellness practice session or a single food serving now offers Undo, like other deletions — and removing one serving of three leaves the other two alone.",
