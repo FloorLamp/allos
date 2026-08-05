@@ -11,11 +11,29 @@
 
 import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
-import { isRealIsoDate } from "./date";
+import { isRealIsoDate, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
 import { foodSlotForProfileEvent } from "./profile-food-slot";
+import { getTimezone } from "./settings";
 import { isProteinNudgeKey } from "./protein-nudge";
+import { burstFrom, type TapEvent } from "./correction-time";
+
+// Where an event's eating instant came from (issue #2019, migration 154). `tap` is the
+// button's own contract — "I'm eating now" — which is a measurement with known error,
+// not a guess; `stated` is a human answer, whether a correction chip, the picker, or a
+// web statement. A NULL column is the third and most common answer for history: nobody
+// said, and nothing invented one.
+export type FoodTimeSource = "tap" | "stated";
+
+// The eating-time half of a serving write. Optional throughout: a caller with no
+// statement to make omits it and the row keeps a NULL `eaten_at`, because defaulting a
+// backfill to now would reintroduce the guess under a more authoritative name.
+export interface FoodEatingTime {
+  // ISO-8601 UTC instant the serving was eaten.
+  eatenAt: string;
+  source: FoodTimeSource;
+}
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
@@ -79,7 +97,13 @@ export function logFoodServingCore(
   // without an explicit meal retain the legacy timestamp-derived behavior. The instant
   // remains injectable so tests can seed a specific legacy slot.
   loggedAt: string = clockNow().toISOString(),
-  mealSlot?: FoodSlot
+  mealSlot?: FoodSlot,
+  // WHEN IT WAS EATEN (#2019) — a separate fact from `loggedAt`, which stays the tap
+  // stamp migration 056 froze. The Telegram button passes its own tap instant with
+  // source `tap`, because that button's declared contract IS "I'm eating now"; the web
+  // bar passes nothing unless the user states a time, so a backfill records no eating
+  // time rather than a confident wrong one.
+  time?: FoodEatingTime
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
@@ -98,9 +122,17 @@ export function logFoodServingCore(
     // byte-identical to the pre-ledger write.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(profileId, slug, date, loggedAt, mealSlot ?? null);
+         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      slug,
+      date,
+      loggedAt,
+      mealSlot ?? null,
+      time?.eatenAt ?? null,
+      time?.source ?? null
+    );
     const row = db
       .prepare(
         `SELECT servings FROM food_log
@@ -457,5 +489,115 @@ export function deleteFoodLogEventCore(
       id: eventId,
       vacated: placementOf(profileId, row.date, row.group_key, slot),
     };
+  });
+}
+
+// ---- Eating-time correction (issue #2019) ----
+
+// One ledger row as the correction offer reads it: the row id, the immutable tap stamp
+// (burst identity and every chip offset are computed from THIS, never from the corrected
+// instant), and a display label for a lone-tap row.
+export interface FoodTapRow extends TapEvent {
+  groupKey: string;
+}
+
+// The typed result of a burst re-stamp:
+//   restamped — `count` rows now carry a stated eating instant; `movedDays` of them
+//               also changed calendar day, taking their serving with them.
+//   no-burst  — the anchor row is gone or belongs to another profile (a forged or
+//               long-stale token). Nothing is written and the caller says so rather
+//               than confirming a correction that did not happen.
+export type FoodRestampOutcome =
+  | { kind: "restamped"; count: number; movedDays: number }
+  | { kind: "no-burst" };
+
+// Re-stamp a whole burst's eating time (issue #2019).
+//
+// `resolve` maps each row's OWN tap instant to the instant it should now carry, which is
+// what keeps a burst's internal spread intact: four servings tapped across six minutes
+// stay six minutes apart after a −2h chip instead of collapsing onto one instant. The
+// picker's resolver ignores its argument and returns one absolute instant for the burst,
+// which is the correct shape there — the user answered for the meal, not per serving.
+//
+// IDEMPOTENT BY CONSTRUCTION. Every offer is anchored to `logged_at`, which nothing ever
+// edits, so the same chip tapped twice writes the same instant. Two people tapping the
+// same message cannot walk a serving four hours into the past.
+//
+// CROSS-MIDNIGHT RE-DATING FALLS OUT. `eaten_at` decides the row's calendar day, so a
+// correction that crosses local midnight moves the event's `date` AND the `food_log`
+// counter it belongs to, in the SAME IMMEDIATE transaction — the ledger row and the day
+// counter are one fact in two shapes (the updateFoodLogEventCore discipline), so exactly
+// one serving exists throughout and the day tallies, slot tallies and weekly-target
+// progress all recompute live off the moved pair. This is what turns "last night's dinner
+// logged after midnight" from a dead end into a tap plus one chip.
+//
+// THE RESERVED `__protein__` ROW is re-stamped but never re-dated. It is a ranking event,
+// not a serving: its truth is the `protein_log` grams total, keyed by DAY, and the ledger
+// row carries no grams to move with it. So its instant gets corrected — which is what
+// makes protein DISTRIBUTION computable, the actual recommendation — while its day stays
+// where the grams are. Moving one without the other is the corruption; moving neither
+// while still fixing the instant is the honest limit of a grams-less row.
+export function restampFoodEventsCore(
+  profileId: number,
+  fromEventId: number,
+  resolve: (tapAt: string) => Date
+): FoodRestampOutcome {
+  return writeTx(() => {
+    // The burst is re-derived from the LEDGER at tap time, from the anchor id forward —
+    // the token carries an id only, so which rows a chip moves is never a memory of what
+    // some earlier keyboard rendered.
+    const rows = db
+      .prepare(
+        `SELECT id, group_key, date, logged_at FROM food_log_events
+          WHERE profile_id = ? AND id >= ?
+          ORDER BY logged_at, id
+          LIMIT 200`
+      )
+      .all(profileId, fromEventId) as {
+      id: number;
+      group_key: string;
+      date: string;
+      logged_at: string;
+    }[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const burst = burstFrom(
+      rows.map((r) => ({ id: r.id, tapAt: r.logged_at, label: r.group_key })),
+      fromEventId
+    );
+    if (!burst) return { kind: "no-burst" as const };
+
+    const tz = getTimezone(profileId);
+    let movedDays = 0;
+    for (const id of burst.ids) {
+      const row = byId.get(id);
+      if (!row) continue;
+      const instant = resolve(row.logged_at);
+      const eatenAt = instant.toISOString();
+      const nextDate = zonedDateParts(tz, instant).date;
+      const reDate = nextDate !== row.date && !isProteinNudgeKey(row.group_key);
+      if (reDate) {
+        db.prepare(
+          `UPDATE food_log SET servings = servings - 1
+            WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
+        ).run(profileId, row.date, row.group_key);
+        db.prepare(
+          `DELETE FROM food_log
+            WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+        ).run(profileId, row.date, row.group_key);
+        db.prepare(
+          `INSERT INTO food_log (profile_id, date, group_key, servings)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT (profile_id, date, group_key)
+           DO UPDATE SET servings = servings + 1`
+        ).run(profileId, nextDate, row.group_key);
+        movedDays++;
+      }
+      db.prepare(
+        `UPDATE food_log_events
+            SET eaten_at = ?, time_source = 'stated', date = ?
+          WHERE id = ? AND profile_id = ?`
+      ).run(eatenAt, reDate ? nextDate : row.date, id, profileId);
+    }
+    return { kind: "restamped" as const, count: burst.ids.length, movedDays };
   });
 }

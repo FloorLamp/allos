@@ -30,18 +30,23 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { type FoodSlot } from "../food-slot";
+import { foodSlotAnchors, type FoodSlot } from "../food-slot";
 import {
   foodSlotForProfileInstant,
+  profileFoodSlotAnchors,
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
-import { blendFoodOrder, demoteCappedGroups } from "../food-rank";
+import {
+  blendFoodOrder,
+  demoteCappedGroups,
+  slotProximityOccurrences,
+} from "../food-rank";
 import {
   foodEventWindow,
-  foodEventsInWindow,
   slotServingCounts,
   type FoodLedgerEvent,
 } from "../food-slot-count";
+import { hhmmToMinutes } from "../date";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
@@ -200,7 +205,8 @@ export function getFoodMealDays(
 
   const events = db
     .prepare(
-      `SELECT id, group_key AS name, date, logged_at, meal_slot FROM food_log_events
+      `SELECT id, group_key AS name, date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY logged_at, id`
     )
@@ -218,7 +224,8 @@ export function getFoodMealDays(
       event.logged_at,
       tz,
       boundaries,
-      event.meal_slot
+      event.meal_slot,
+      event.eaten_at
     );
     const slotCounts = day.slotCounts[slot];
     slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
@@ -230,7 +237,10 @@ export function getFoodMealDays(
       name: group.name,
       date: event.date,
       mealSlot: slot,
-      time: zonedDateParts(tz, new Date(event.logged_at)).hhmm,
+      // The EATING time where one was captured (#2019), the tap time otherwise. The
+      // list exists to make two servings of one group distinguishable, and after a
+      // correction the tap time is no longer the number the user would recognise.
+      time: zonedDateParts(tz, new Date(event.eaten_at ?? event.logged_at)).hhmm,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.
@@ -386,7 +396,7 @@ function gatherFoodRankingSignals(
 ): {
   t: string;
   overall: { name: string; date: string; weight: number }[];
-  slot: { name: string; date: string }[];
+  slot: { name: string; date: string; weight?: number }[];
 } {
   const t = today(profileId);
   const since = recentWindowStart(profileId);
@@ -403,22 +413,35 @@ function gatherFoodRankingSignals(
     }[]
   ).map((r) => ({ name: r.name, date: r.date, weight: r.servings }));
 
-  // Slot signal: the per-tap ledger, each event's window derived at read time. Only when a
-  // window is requested — otherwise the blend degrades to pure overall frecency.
-  let slot: { name: string; date: string }[] = [];
+  // Slot signal: the per-tap ledger, weighted by PROXIMITY to the requested window's
+  // anchor (#2019) rather than by bucket equality. Only when a window is requested —
+  // otherwise the blend degrades to pure overall frecency.
+  //
+  // Each event contributes at the minute it was EATEN when one was captured (`eaten_at`,
+  // #2019), and at the minute it was TAPPED otherwise. The minute is read in the
+  // profile's timezone; the anchor is the profile's own configured slot hour. Nothing
+  // here asks which BUCKET an event fell in, so the 14:59/15:01 cliff is gone and an
+  // event that never claimed a meal still participates.
+  let slot: { name: string; date: string; weight?: number }[] = [];
   if (window) {
-    const boundaries = profileFoodSlotBoundaries(profileId);
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+        `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+           FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
       .all(profileId, since) as FoodLedgerEvent[];
-    slot = foodEventsInWindow(events, tz, boundaries, window).map((e) => ({
-      name: e.name,
-      date: e.date,
-    }));
+    slot = slotProximityOccurrences(
+      events.map((e) => ({
+        name: e.name,
+        date: e.date,
+        minuteOfDay: hhmmToMinutes(
+          zonedDateParts(tz, new Date(e.eaten_at ?? e.logged_at)).hhmm
+        ),
+      })),
+      profileFoodSlotAnchors(profileId)[window]
+    );
   }
   return { t, overall, slot };
 }
@@ -493,7 +516,8 @@ export function getFoodSlotServingsOnDate(
   const tz = getTimezone(profileId);
   const events = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+      `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
         WHERE profile_id = ? AND date = ?`
     )
     .all(profileId, date) as FoodLedgerEvent[];

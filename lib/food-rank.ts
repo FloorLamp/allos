@@ -16,6 +16,7 @@
 
 import { decayedWeight } from "./decay";
 import { foodGroupBySlug } from "./food-groups";
+import { clockDistanceMin } from "./food-slot";
 
 export interface FoodOccurrence {
   name: string;
@@ -92,4 +93,50 @@ function decayWeights(
     w.set(o.name, (w.get(o.name) ?? 0) + add);
   }
   return w;
+}
+
+// ---- Slot signal by PROXIMITY, not by bucket (issue #2019) ----
+
+// How far from a window's anchor a tap can be and still say anything about that window.
+// Four hours: wide enough that a 15:30 lunch still counts for the midday nudge, narrow
+// enough that breakfast says nothing about dinner.
+export const SLOT_PROXIMITY_SPAN_MIN = 240;
+
+// A tap's contribution to one window, from how close it was to that window's anchor.
+// Linear to zero at the span edge, so the signal degrades smoothly instead of falling
+// off a cliff.
+//
+// THE CLIFF THIS REPLACES. Bucket equality gave a 14:59 tap full credit for Midday and a
+// 15:01 tap none at all — two taps two minutes apart landing in different worlds, on a
+// boundary the user never chose (it was derived from their SUPPLEMENT reminder hours).
+// Proximity keeps the same intent — "what does this profile eat at this time of day" —
+// with no boundary anywhere in it, which is also why the event no longer has to claim a
+// meal to participate.
+export function slotProximityWeight(
+  minuteOfDay: number,
+  anchorMinute: number,
+  span: number = SLOT_PROXIMITY_SPAN_MIN
+): number {
+  const d = clockDistanceMin(minuteOfDay, anchorMinute);
+  return d >= span ? 0 : 1 - d / span;
+}
+
+// The slot occurrences for one window: every tap, weighted by how near it fell to that
+// window's anchor. Zero-weight taps are dropped so the blend's decay never has to carry
+// rows that contribute nothing.
+//
+// `minuteOfDay` is the EATING minute where one was captured (`eaten_at`) and the tap
+// minute otherwise, which is the whole point of #2019 — a dinner tapped at 23:40 and
+// corrected to 19:00 now ranks as a dinner instead of teaching the morning nudge.
+export function slotProximityOccurrences(
+  events: readonly { name: string; date: string; minuteOfDay: number }[],
+  anchorMinute: number,
+  span: number = SLOT_PROXIMITY_SPAN_MIN
+): FoodOccurrence[] {
+  const out: FoodOccurrence[] = [];
+  for (const e of events) {
+    const weight = slotProximityWeight(e.minuteOfDay, anchorMinute, span);
+    if (weight > 0) out.push({ name: e.name, date: e.date, weight });
+  }
+  return out;
 }
