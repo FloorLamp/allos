@@ -337,7 +337,11 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     // page in the app, and measurably over the default 5s budget on a loaded runner
     // (both before and after this issue's rows). A named ceiling, not a sleep: the
     // assertion still fails if the form never mounts.
-    await expect(page.locator("#m-weight")).toBeVisible({ timeout: 20_000 });
+    // The form mounted — which group it opens is the #2014 entry-point decision,
+    // not what this test is about.
+    await expect(overlay.getByTestId("measurements-quick-add")).toBeVisible({
+      timeout: 20_000,
+    });
     expect(page.url()).toBe(before);
 
     // And it is transactional: dismissing discards, which is safe here (the

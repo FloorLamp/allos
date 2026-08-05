@@ -690,8 +690,11 @@ Charts and analysis live in four tabs:
   cross-domain set of saved, drag-orderable tiles, the one curated area where
   nothing appears unless you put it there — then the **Practices** lens, and
   finally the **body census**: vitals, acute temperature, sleep and outdoor-time
-  signals, body composition, and the shared **Log measurements** form. A **Data
-  check** card catches probable weight-entry errors before they skew charts.
+  signals, body composition, and the shared **Log measurements** form — which
+  groups its fields into **Vitals**, **Body** and **Sleep & recovery**, opening the
+  one your entry point implies (and the one a deep link names) with the rest a tap
+  away. A **Data check** card catches probable weight-entry errors before they skew
+  charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
@@ -2336,9 +2339,12 @@ overlays for:
   temperature, sleep, HRV, and resting heart rate;
 - a **wellness practice** — every practice you track, with this week's standing
   and today's count, one tap from logging a session;
-- **a document** — the same upload form the Data page carries, including the
-  camera input, so a lab report or a photo of an after-visit summary can be
-  filed without leaving the page you were on.
+- **a document** — the same upload form the Data page carries, so a lab report or
+  a photo of an after-visit summary can be filed without leaving the page you were
+  on. On a phone that form offers two equal actions, **Upload** and **Camera** —
+  there is no drag-and-drop on touch, so the drop zone is desktop-only and the
+  camera opens the shared capture surface (live preview, EXIF stripped) rather
+  than a bare file input.
 
 Saving closes the overlay and leaves the underlying page in place. Practice and
 food logging deliberately keep the overlay open — a session or a serving is

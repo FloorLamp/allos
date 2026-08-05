@@ -18,6 +18,7 @@ import {
   loadQuickEntry,
   type QuickEntryData,
 } from "@/app/(app)/quick-entry-actions";
+import type { MeasurementGroup } from "@/lib/measurements-deeplink";
 import type { QuickEntryForm } from "@/lib/quick-log";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
@@ -92,6 +93,10 @@ interface QuickEntryApi {
 
 export interface QuickEntryPrefill {
   foodGroup?: string;
+  // Which measurements group the CALLER's context implies (#2014). The vitals
+  // card's "Log reading" opens Vitals; a row with no context passes nothing and the
+  // form falls back to the profile's last-written group, seeded to Vitals.
+  measurementGroup?: MeasurementGroup;
 }
 
 const Ctx = createContext<QuickEntryApi | null>(null);
@@ -232,6 +237,8 @@ function QuickEntryBody({
           showBodyFat={data.showBodyFat}
           showGrowth={data.showGrowth}
           showHeadCirc={data.showHeadCirc}
+          profileId={data.profileId}
+          defaultGroup={prefill?.measurementGroup}
           onSaved={onDone}
         />
       );

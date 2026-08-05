@@ -270,7 +270,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     // #1486: the body quick-add is the combined "Log measurements" form in the
     // desktop "+ Log" modal.
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
-    await page.getByLabel("Weight (kg)").fill("72.4");
+    await page.getByLabel("Weight", { exact: true }).fill("72.4");
     await page.getByRole("button", { name: "Save measurements" }).click();
     await expect(page.getByText("Measurements saved")).toBeVisible();
 

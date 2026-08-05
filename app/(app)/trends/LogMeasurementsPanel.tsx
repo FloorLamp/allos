@@ -106,9 +106,13 @@ export default function LogMeasurementsPanel(
             className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"
             data-testid="log-measurements-modal-body"
           >
+            {/* Trends → Body opens the BODY group (#2014): this affordance sits
+                under the body census, so the reading the person came to log is a
+                body one. A ?focus=/?new= deep link still wins over it. */}
             <MeasurementsQuickAdd
               {...measurementProps}
               presentation="modal"
+              defaultGroup="body"
               onSaved={() => setOpen(false)}
             />
           </div>

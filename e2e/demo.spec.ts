@@ -38,11 +38,12 @@ test("the demo user can sign in, sees the banner, and uploads are disabled", asy
   // The persistent banner is on the authenticated app too.
   await expect(page.getByTestId("demo-banner")).toBeVisible();
 
-  // Blocked edit affordance: the medical-upload input is disabled with a hint.
+  // Blocked edit affordance: the medical upload is disabled with a hint. The
+  // control the user can actually see is the drop zone's button (#1993); the file
+  // input it drives is disabled too, so neither path can start an upload.
   await page.goto("/data?section=import");
-  const input = page.getByTestId("medical-upload-input");
-  await expect(input).toBeVisible();
-  await expect(input).toBeDisabled();
+  await expect(page.getByTestId("medical-upload-choose")).toBeDisabled();
+  await expect(page.getByTestId("medical-upload-input")).toBeDisabled();
   await expect(page.getByTestId("upload-disabled-hint")).toBeVisible();
 
   // Account-management surfaces are trimmed for the shared demo login (#278):

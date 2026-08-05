@@ -498,6 +498,30 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
   return drawer;
 }
 
+// Open one of the "Log measurements" form's disclosure groups (issue #2014).
+//
+// The form shows exactly ONE group on mount — chosen by the entry point — so a spec
+// that fills a field in another group has to open it first. Opening is a pure client
+// toggle with no POST and no navigation, and it is a real TOGGLE (a second click
+// closes it), so a retry loop would be a coin flip: this is the hydratedClick case —
+// wait for React's markers on the button, click ONCE, then assert.
+//
+// Idempotent by inspection, not by re-clicking: an already-open group is left alone,
+// so a spec can call it without knowing which group its entry point opened.
+export async function openMeasurementGroup(
+  page: Page,
+  form: Locator,
+  group: "vitals" | "body" | "sleep"
+): Promise<void> {
+  const fields = form.locator(`#measurements-group-${group}-fields`);
+  if (await fields.isVisible()) return;
+  await hydratedClick(
+    page,
+    form.getByTestId(`measurements-group-${group}-toggle`)
+  );
+  await expect(fields).toBeVisible();
+}
+
 // The identity bar's view-set readout (issue #1801).
 //
 // The multi-profile view used to be asserted through ProfileViewStrip's chips;

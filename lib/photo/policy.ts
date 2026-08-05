@@ -23,6 +23,18 @@ export const PHOTO_THUMB_QUALITY = 78;
 // Client-side canvas re-encode quality (0-1 for canvas.toBlob).
 export const PHOTO_CLIENT_QUALITY = 0.85;
 
+// A PHOTOGRAPHED DOCUMENT is not a physique photo (#1993). The shared capture
+// surface re-encodes through a canvas, which is a win here — it strips the EXIF a
+// photo of a lab report should never carry (GPS, device) — but the presets above
+// are tuned for skin tone and body outline, where JPEG ringing is invisible and
+// 2048px is plenty. Text is the opposite: ringing lands ON the strokes, and the
+// long edge is what decides whether a downstream extraction can read a reference
+// range. So the document path re-encodes larger and at higher quality. The SERVER
+// pipeline still downscales and strips regardless — this only decides how legible
+// the bytes are when they get there.
+export const DOCUMENT_CAPTURE_MAX_EDGE = 3000;
+export const DOCUMENT_CAPTURE_QUALITY = 0.92;
+
 // Upload byte cap shared by every photo-capture domain (#1284): a phone snapshot is
 // well under this; anything larger is a mistake or abuse. This is the ONE place the
 // ceiling lives so the domain ingests (lib/photo/ingest.ts, lib/symptom-photo-write.ts,

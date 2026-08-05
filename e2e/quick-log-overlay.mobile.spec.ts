@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
-import { settledClick } from "./helpers";
+import { openMeasurementGroup, settledClick } from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -176,6 +176,11 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
     const overlay = await openQuickEntry(page, "log-measurements");
     // The overlay mounts the EXISTING MeasurementsQuickAdd — same element ids the
     // Trends page's mount carries, because it is the same component, not a copy.
+    // The sheet row carries no context, so the form opens Vitals (#2014): a weight
+    // is in Body, one tap away.
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, form, "body");
     const weight = overlay.locator("#m-weight");
     await expect(weight).toBeVisible();
     await weight.fill(SHELL_WEIGHT_KG);
@@ -306,6 +311,11 @@ test("the food and vitals overlays mount the same forms their pages carry", asyn
     // addMeasurements returned, so the write reached the same server action the
     // page mount uses. (That action's persistence is already pinned by the action
     // tier and manual-vitals.spec.ts — a mount, not a new write path.)
+    await openMeasurementGroup(
+      page,
+      vitalsBody.getByTestId("measurements-quick-add"),
+      "vitals"
+    );
     await vitals.locator("#m-systolic").fill("118");
     await vitals.locator("#m-diastolic").fill("76");
     await settledClick(
@@ -396,12 +406,11 @@ test("the Add document row files an upload in place, camera input included", asy
     const overlay = await openQuickEntry(page, "add-document");
     const body = page.getByTestId("quick-entry-body");
     await expect(body).toHaveAttribute("data-form", "document");
-    // The camera capture comes free with the shared form (#1423) — "photograph the
-    // after-visit summary" works from the sheet with no camera UI of its own.
-    await expect(overlay.getByTestId("medical-upload-camera")).toHaveAttribute(
-      "capture",
-      "environment"
-    );
+    // The camera capture comes free with the shared form (#1423/#1993) —
+    // "photograph the after-visit summary" works from the sheet with no camera UI
+    // of its own, as one of the phone's two equal actions. The capture flow itself
+    // is document-capture.mobile.spec.ts'.
+    await expect(overlay.getByTestId("medical-upload-camera")).toBeVisible();
 
     await overlay.getByTestId("medical-upload-input").setInputFiles({
       name: filename,

@@ -28,7 +28,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   // with no signal.
   await context.setOffline(true);
 
-  await form.getByLabel("Weight (kg)").fill("81.4");
+  await form.getByLabel("Weight", { exact: true }).fill("81.4");
   await form.getByLabel("Notes").fill(marker);
   await form.getByRole("button", { name: "Save measurements" }).click();
 
@@ -82,7 +82,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
   await expect(form).toBeVisible();
 
   await context.setOffline(true);
-  await form.getByLabel("Weight (kg)").fill("77.3");
+  await form.getByLabel("Weight", { exact: true }).fill("77.3");
   await form.getByLabel("Notes").fill(marker);
   await form.getByRole("button", { name: "Save measurements" }).click();
 

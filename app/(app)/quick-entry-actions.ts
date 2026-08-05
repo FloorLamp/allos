@@ -80,6 +80,8 @@ export type QuickEntryData =
       // so the overlay gathers ONE prop set instead of two.
       form: "measurements";
       defaultDate: string;
+      // Scopes the form's last-written-group memory (#2014) to the data subject.
+      profileId: number;
       weightUnit: WeightUnit;
       temperatureUnit: TemperatureUnit;
       showBodyFat: boolean;
@@ -145,6 +147,7 @@ export async function loadQuickEntry(
     return {
       form: "measurements",
       defaultDate: date,
+      profileId: profile.id,
       weightUnit: prefs.weightUnit,
       temperatureUnit: prefs.temperatureUnit,
       // #493: body fat isn't tracked for a growth-tracked profile, and the page
