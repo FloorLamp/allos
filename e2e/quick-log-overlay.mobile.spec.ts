@@ -202,10 +202,79 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
     await page.reload();
     expect(page.url()).toBe(dashboardUrl);
 
+    // AND THE SHEET REMEMBERS (#2068). Same context-free row, no deep link and no
+    // prefill — but this profile last wrote a Body reading, so the form now opens
+    // Body instead of the Vitals default it opened above. This is the half of the
+    // #2014 disclosure that had no browser test: every existing spec covered the
+    // fallback or an explicit `defaultGroup`.
+    const remembered = await openQuickEntry(page, "log-measurements");
+    const rememberedForm = remembered.getByTestId("measurements-quick-add");
+    await expect(rememberedForm).toBeVisible();
+    await expect(
+      rememberedForm.getByTestId("measurements-group-body-toggle")
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      rememberedForm.getByTestId("measurements-group-vitals-toggle")
+    ).toHaveAttribute("aria-expanded", "false");
+    await expect(remembered.locator("#m-weight")).toBeVisible();
+
     await page.goto("/trends?view=all");
     await expect(page.getByTestId("body-history-table")).toContainText(
       SHELL_WEIGHT_KG
     );
+  } finally {
+    await page.context().close();
+  }
+});
+
+// #2068: the SAME memory, on the offline path. `rememberGroup` was called only on
+// the online success branch, so a reading queued with no signal taught the form
+// nothing — the sheet kept reopening on Vitals for someone whose every entry was a
+// weight. Queueing is saving from where the person is standing, so it remembers too.
+// (The replay itself is offline-queue.spec.ts's subject; here it is only the wait
+// that lets the sheet — which loads through a Server Action — be reopened.)
+test("a measurement QUEUED offline is remembered by the next sheet too", async ({
+  browser,
+}) => {
+  const OFFLINE_WEIGHT_KG = "78.2";
+  const page = await signIn(browser);
+  const context = page.context();
+  try {
+    await page.goto("/");
+
+    const overlay = await openQuickEntry(page, "log-measurements");
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, form, "body");
+
+    // Offline BEFORE the submit — the dead-reception moment, from the sheet rather
+    // than from the Trends page mount.
+    await context.setOffline(true);
+    await overlay.locator("#m-weight").fill(OFFLINE_WEIGHT_KG);
+    // A plain click, not settledClick: this submit deliberately posts NOTHING —
+    // the queue is the whole point — so there is no Server Action response to
+    // settle on. The toast is the honest signal, and it is the same one
+    // offline-queue.spec.ts waits for.
+    await overlay.getByRole("button", { name: "Save measurements" }).click();
+    await expect(
+      page.getByText("Saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    // The offline branch leaves the sheet open (there is no server round trip to
+    // close on), so it is dismissed here rather than closing itself.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+
+    await context.setOffline(false);
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    const reopened = await openQuickEntry(page, "log-measurements");
+    await expect(
+      reopened
+        .getByTestId("measurements-quick-add")
+        .getByTestId("measurements-group-body-toggle")
+    ).toHaveAttribute("aria-expanded", "true");
   } finally {
     await page.context().close();
   }

@@ -357,6 +357,16 @@ export default function MeasurementsQuickAdd({
         return v == null ? null : String(v);
       })
     );
+    // Spelled ONCE and called from BOTH save outcomes (#2068). The memory is about
+    // which group the person reached for, not about which transport carried it: a
+    // reading queued offline is a reading they logged, and the next sheet must open
+    // where they left off whether or not the network was up. It was on the online
+    // branch alone, so a day of offline entries silently taught the form nothing.
+    // A REFUSED save records nothing — an inline validation error and the
+    // growth-only offline case never reach here.
+    const rememberWritten = (): void => {
+      if (written) rememberGroup(profileId, written);
+    };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
@@ -374,6 +384,7 @@ export default function MeasurementsQuickAdd({
         });
       }
       if (hasVitals) await enqueue("vitals", date, vitals);
+      rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
       tempUnitDetection.reset();
@@ -395,7 +406,7 @@ export default function MeasurementsQuickAdd({
       setError("Couldn't save these measurements. Try again.");
       return;
     }
-    if (written) rememberGroup(profileId, written);
+    rememberWritten();
     toast(metric ? `${metric.label} saved` : "Measurements saved");
     formRef.current?.reset();
     tempUnitDetection.reset();
