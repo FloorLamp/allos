@@ -526,9 +526,15 @@ export interface ParkedActivity {
 //
 // Each entry carries its reason because the reason is the decision; the completeness
 // test reads this table so the next scope kind cannot join by omission.
+//
+// A kind may also narrow to specific VALUES (#2067). `type` is the one that does: the
+// kind spans strength/cardio/sport (lib/lifts TYPE_SCOPES), and admitting it wholesale
+// admitted a value nothing downstream can drive — the same one-value-away version of
+// the #2017 bug. The completeness test reads `values` too, so a new member of a
+// narrowed kind's vocabulary also cannot join by omission.
 export const WORKOUT_TARGET_SCOPES: Record<
   string,
-  { admitted: boolean; reason: string }
+  { admitted: boolean; values?: readonly string[]; reason: string }
 > = {
   region: {
     admitted: true,
@@ -540,8 +546,16 @@ export const WORKOUT_TARGET_SCOPES: Record<
   },
   type: {
     admitted: true,
+    // NOT `sport`, the third TYPE_SCOPES value (#2067). The cardio picker keys on
+    // scope_value === "cardio" and the strength path takes everything else, so a
+    // behind `type:sport` target was both listed as a deficit to close AND eligible
+    // to SCOPE the strength suggestion — the message would answer "behind on sport"
+    // with a lift slate that closes nothing. A sport frequency target is reachable
+    // today (Training → frequency targets offers all three), so this is a live
+    // mismatch, not a hypothetical one.
+    values: ["strength", "cardio"],
     reason:
-      "resolves to a session the message names — a strength slate or a cardio activity",
+      "strength and cardio resolve to a session the message names — a strength slate or a cardio activity; `sport` resolves to neither picker and would be a listed-but-undriveable deficit",
   },
   practice: {
     admitted: false,
@@ -564,14 +578,21 @@ export const WORKOUT_TARGET_SCOPES: Record<
   },
 };
 
-// Whether a frequency-target scope kind may appear in a workout recommendation. An
-// unregistered kind is OUT — the allowlist's whole point.
-export function isWorkoutTargetScope(scopeKind: string): boolean {
-  return WORKOUT_TARGET_SCOPES[scopeKind]?.admitted === true;
+// Whether a frequency target may appear in a workout recommendation. An unregistered
+// kind is OUT — the allowlist's whole point — and so is a value outside a narrowed
+// kind's `values`. Takes BOTH halves of the scope so no caller can ask the weaker
+// question by accident (#2067).
+export function isWorkoutTargetScope(
+  scopeKind: string,
+  scopeValue: string
+): boolean {
+  const entry = WORKOUT_TARGET_SCOPES[scopeKind];
+  if (entry?.admitted !== true) return false;
+  return entry.values ? entry.values.includes(scopeValue) : true;
 }
 
 function isWorkoutTarget(t: RoutineTargetProgress): boolean {
-  return isWorkoutTargetScope(t.target.scope_kind);
+  return isWorkoutTargetScope(t.target.scope_kind, t.target.scope_value);
 }
 
 function isCardioTarget(t: RoutineTargetProgress): boolean {

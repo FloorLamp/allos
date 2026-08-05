@@ -20,6 +20,7 @@ import {
   isWorkoutNudgeSuppressed,
 } from "@/lib/workout-nudge";
 import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import { TYPE_SCOPES } from "@/lib/lifts";
 import type {
   CardioRecent,
   RoutineTargetProgress,
@@ -653,13 +654,64 @@ describe("the workout behind list is an allowlist of scope kinds (#2017)", () =>
   });
 
   it("admits only the scopes a lift or a cardio session can close", () => {
+    // A representative value per kind: the first ADMITTED one where the kind narrows
+    // its vocabulary (#2067), any value where it does not.
+    const sample = (kind: string): string =>
+      WORKOUT_TARGET_SCOPES[kind].values?.[0] ?? "Chest";
     expect(
-      FREQUENCY_SCOPE_KINDS.filter((k) => isWorkoutTargetScope(k))
+      FREQUENCY_SCOPE_KINDS.filter((k) => isWorkoutTargetScope(k, sample(k)))
     ).toEqual(["region", "group", "type"]);
   });
 
   it("excludes an unregistered scope kind by default", () => {
-    expect(isWorkoutTargetScope("breathing_pattern")).toBe(false);
+    expect(isWorkoutTargetScope("breathing_pattern", "box")).toBe(false);
+  });
+
+  // ---- and only the VALUES one can close (#2067) ----
+
+  it("narrows `type` to strength and cardio — `sport` drives no session", () => {
+    expect(isWorkoutTargetScope("type", "strength")).toBe(true);
+    expect(isWorkoutTargetScope("type", "cardio")).toBe(true);
+    expect(isWorkoutTargetScope("type", "sport")).toBe(false);
+  });
+
+  it("has an explicit decision for every type scope VALUE, not just the kind", () => {
+    // The #2017 completeness test checked kinds, which is how `type:sport` slipped
+    // through one value away. A new member of TYPE_SCOPES fails this until someone
+    // decides whether the workout message can close it.
+    const admitted = WORKOUT_TARGET_SCOPES.type.values ?? [];
+    for (const value of admitted) expect(TYPE_SCOPES).toContain(value);
+    expect(TYPE_SCOPES.filter((v) => !admitted.includes(v))).toEqual(["sport"]);
+  });
+
+  it("keeps a behind type:sport target out of the list AND out of the scope pick", () => {
+    // The live mismatch: `sport` has the worse fraction, so before the narrowing it
+    // both listed as a deficit and won the strength scope pick — mapping to no
+    // region, it silently unscoped the suggestion and named "sport" as the target a
+    // lift slate would close.
+    const nw = recommendNextWorkout({
+      today: TODAY,
+      routine: [
+        {
+          target: { id: 1, scope_kind: "region", scope_value: "Back" },
+          count: 1,
+          per_week: 2,
+          met: false,
+        },
+        {
+          target: { id: 9, scope_kind: "type", scope_value: "sport" },
+          count: 0,
+          per_week: 3,
+          met: false,
+        },
+      ],
+      strength: REPORTED_STRENGTH,
+      cardio: REPORTED_CARDIO,
+    });
+    expect(nw.behind.map((t) => t.scopeValue)).not.toContain("sport");
+    expect(nw.behind.map((t) => t.scopeValue)).toEqual(["Back"]);
+    expect(nw.focus).toEqual(["Back"]);
+    expect(nw.items.every((i) => i.target?.scopeValue !== "sport")).toBe(true);
   });
 
   it("keeps a practice out of the rendered behind list", () => {

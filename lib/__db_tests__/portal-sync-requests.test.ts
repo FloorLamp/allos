@@ -26,6 +26,7 @@ import {
 import {
   evaluatePostVisitRequests,
   evaluateStalenessRequests,
+  evaluateSyncRequests,
   listSyncRequests,
   openSyncRequests,
   requestSync,
@@ -604,5 +605,91 @@ describe("reach — an Upcoming item and a digest line sharing one key", () => {
   it("does not carry the item onto a profile the request is not about", () => {
     const { f } = withOpenRequest("scope");
     expect(syncRequestItems(f.dadProfile, today(f.dadProfile))).toEqual([]);
+  });
+});
+
+// ---- The hourly sweep's round trips (#2064) -----------------------------------
+//
+// "Has the tool ever run" is one column on a row both automatic creators ALREADY
+// fetch. Asking for it again was a third per-account statement inside the hourly
+// loops. This pins the property rather than the implementation: the number of times
+// the sweep touches `portal_run_reports` must not grow when the household grows.
+
+// Every statement executed while `fn` runs, by SQL source. better-sqlite3 exposes
+// `.source` on a prepared statement, so wrapping the three execution methods on the
+// shared prototype records the whole sweep without touching the module under test.
+function statementSources<T>(fn: () => T): string[] {
+  const proto = Object.getPrototypeOf(db.prepare("SELECT 1")) as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >;
+  const sources: string[] = [];
+  const original = { get: proto.get, all: proto.all, run: proto.run };
+  for (const method of ["get", "all", "run"] as const) {
+    proto[method] = function (this: { source: string }, ...args: unknown[]) {
+      sources.push(this.source);
+      return original[method].apply(this, args);
+    };
+  }
+  try {
+    fn();
+  } finally {
+    Object.assign(proto, original);
+  }
+  return sources;
+}
+
+const runReportReads = (sources: string[]): number =>
+  sources.filter((s) => s.includes("portal_run_reports")).length;
+
+describe("the ever-ran fact rides the existing join (#2064)", () => {
+  it("does not cost one more statement per portal login", () => {
+    const f = fixture("everran");
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
+
+    // Settle first: the sweep is idempotent, so a second pass over the SAME state
+    // does the same reads — which is what makes the two measurements comparable.
+    evaluateSyncRequests(todayFor);
+    const before = statementSources(() => evaluateSyncRequests(todayFor));
+
+    // Three more logins on this portal, each MAPPED (so both loops reach the
+    // ever-ran gate for them) and never run (so the carve-out keeps them silent and
+    // the settled state is unchanged). Pre-#2064 this added two `portal_run_reports`
+    // statements per login; the join answers for all of them now.
+    for (const tag of ["A", "B", "C"]) {
+      expect(createPortalAccount(f.portalId, `Extra${tag}`).ok).toBe(true);
+      const extra = accountsForPortal(f.portalId).find(
+        (a) => a.name === `Extra${tag}`
+      )!;
+      expect(
+        bindPortalIdentity(extra.id, `PATIENT extra ${tag}`, f.dadProfile).ok
+      ).toBe(true);
+    }
+
+    const after = statementSources(() => evaluateSyncRequests(todayFor));
+    expect(runReportReads(after)).toBe(runReportReads(before));
+
+    // And the two enumerations that now carry the column each run exactly ONCE per
+    // sweep, however many logins the household has.
+    expect(after.filter((s) => s.includes("everRan"))).toHaveLength(2);
+  });
+
+  it("returns the same verdicts the per-account read did", () => {
+    const f = fixture("everran-verdict");
+    // Never run: the setup carve-out keeps BOTH creators silent even though the
+    // login is mapped, has no check clock at all, and has a visit yesterday.
+    db.prepare(
+      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+    evaluateSyncRequests(todayFor);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
+
+    // One reported run ends the carve-out, and the same sweep now raises.
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
+    evaluateSyncRequests(todayFor);
+    const raised = openSyncRequests().find((r) => r.accountId === f.mom.id);
+    expect(raised?.reason).toBe("post-visit");
   });
 });
