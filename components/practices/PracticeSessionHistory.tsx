@@ -7,6 +7,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useToast } from "@/components/Toast";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import DateField from "@/components/DateField";
 import NotesText from "@/components/NotesText";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -43,6 +44,7 @@ export default function PracticeSessionHistory({
 }) {
   const toast = useToast();
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
   const formatPrefs = useFormatPrefs();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -85,19 +87,18 @@ export default function PracticeSessionHistory({
     setPendingId(session.id);
     const fd = new FormData();
     fd.set("id", String(session.id));
-    let outcome: PracticeSessionMutationOutcome;
     try {
-      outcome = await removePracticeSession(fd);
+      // The shared undoable-delete wiring (#2038): removing one session is now the same
+      // offer as removing the whole practice, or a substance history row — one engine,
+      // applied evenly, so the shared history table (#1491) can assume undo instead of
+      // branching per domain.
+      await undoable(removePracticeSession, fd, {
+        deletedMessage: "Session deleted",
+      });
     } catch {
       toast("Couldn't delete that session.", { tone: "error" });
+    } finally {
       setPendingId(null);
-      return;
-    }
-    setPendingId(null);
-    if (outcome.kind === "deleted") {
-      toast("Session deleted");
-    } else {
-      toast("Couldn't find that session.", { tone: "error" });
     }
   }
 

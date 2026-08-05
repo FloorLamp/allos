@@ -5,7 +5,10 @@ import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 
 // How long the Undo toast stays up (ms). The holding row itself lives ~24h, but the
 // toast is the only affordance, so it lingers well past the default success toast.
-const UNDO_TOAST_MS = 15000;
+// Exported so a surface that wires its own Undo toast (the food-log bar, which must
+// reconcile its authoritative serving counts on both halves of the round trip) offers
+// the same window rather than picking a second number.
+export const UNDO_TOAST_MS = 15000;
 
 // Shared client wiring for an undoable delete (issue #30). Runs a delete server
 // action that returns an `{ undoId }` token, then shows a toast whose "Undo" action

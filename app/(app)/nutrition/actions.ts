@@ -182,7 +182,8 @@ export async function updateFoodLogEvent(
 // The bar SETS both from these numbers rather than decrementing locally, exactly as it
 // does for a correction's `from`/`to`.
 export type FoodEventDeleteResult =
-  { ok: true; vacated: FoodEventPlacement } | { ok: false; error: string };
+  | { ok: true; vacated: FoodEventPlacement; undoId: number }
+  | { ok: false; error: string };
 
 // Remove ONE named logged serving (issue #1963). The bar's "−" is group-scoped and pops
 // the newest tap in the window by `logged_at`; since #1934 a corrected serving keeps its
@@ -210,7 +211,7 @@ export async function deleteFoodLogEvent(
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");
-  return { ok: true, vacated: outcome.vacated };
+  return { ok: true, vacated: outcome.vacated, undoId: outcome.undoId };
 }
 
 // ---- Protein-grams quick-add (issue #824) ----
