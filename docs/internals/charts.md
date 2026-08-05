@@ -204,6 +204,31 @@ the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts`
 pins both halves at 390px — no axis inside a tile, axes still present (and ticks
 still ≥ 10px) on a full-size chart.
 
+### Long ranges aggregate (#1938)
+
+**A year of daily readings is not 365 marks.** Past ~6 months of span, a dense
+series plots as calendar-bucket means — weekly, monthly past ~2 years — with the
+bucket's low–high spread as a band behind the mean line, so day-to-day noise
+becomes visible spread instead of the point-per-day scribble #1932 documents.
+The decision and the computation are ONE pure function,
+`aggregateLongRange` (`lib/long-range-series.ts`), applied inside
+`LineChartCardInner` — the funnel every windowed line chart renders through — so
+no surface can bucket the same series two ways:
+
+- **Span picks the grain, density decides at all.** Spans ≤ 180 days (every
+  short quick range) always plot raw; a long-span series under ~2 readings per
+  occupied bucket (weekly weigh-ins, occasional labs) is already legible and
+  stays raw too.
+- **The chart says so.** An aggregated plot carries a caption
+  ("Weekly averages · band shows each week's low–high",
+  `data-testid="chart-long-range-note"`), its tooltip labels buckets
+  ("Week of …" / "February 2026") and marks the series value "(avg)", and the
+  band appears as a "Range" tooltip row. Sparklines aggregate for legibility but
+  skip the caption — their numbers are the caller's inline text.
+- **Buckets are calendar-anchored** (UTC calendar math from `lib/date.ts`), so
+  a chart re-rendered tomorrow shifts by one bucket instead of re-cutting all
+  of them; annotations snap onto the plotted bucket starts.
+
 ---
 
 ## 4. Identity is never color-alone

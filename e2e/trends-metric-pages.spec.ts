@@ -9,6 +9,8 @@ import {
   METRIC_FOLD_DUPLICATED_BPM,
   METRIC_FOLD_CLINIC_ONLY_BPM,
   METRIC_FOLD_EXPECTED_READINGS,
+  E2E_LOGIN_LONG_RANGE,
+  LONG_RANGE_DAYS,
 } from "./fixture-logins";
 
 // Trends → Body sparkline-tile overview + per-metric detail pages, Phase 2 of #1067.
@@ -438,22 +440,23 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       "through yesterday"
     );
     // The fixture's steps series is three consecutive days ending TODAY, so the
-    // summary covers the two complete ones — and the trailing 7/30/90-day windows
-    // contain the same readings and collapse onto ONE card (#1541); the page used
-    // to render the identical four numbers three times. The card is keyed by the
-    // WIDEST window it covers, and says how many readings it summarises.
+    // summary covers the two complete ones — and the trailing 7/30/90/365-day
+    // windows contain the same readings and collapse onto ONE card (#1541); the
+    // page used to render the identical four numbers several times. The card is
+    // keyed by the WIDEST window it covers (365 since #1938), and says how many
+    // readings it summarises.
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(1);
-    await expect(page.getByTestId("period-stat-90")).toBeVisible();
-    await expect(page.getByTestId("period-readings-90")).toContainText(
+    await expect(page.getByTestId("period-stat-365")).toBeVisible();
+    await expect(page.getByTestId("period-readings-365")).toContainText(
       "2 readings"
     );
     // Recency is today's job: the card's Latest is today's 7,600, the same value
     // the page hero shows — while the average beside it (8,650) is history's.
-    await expect(page.getByTestId("period-stat-90")).toContainText("7,600");
-    await expect(page.getByTestId("period-average-90")).toHaveText("8,650");
-    const average = page.getByTestId("period-average-90");
+    await expect(page.getByTestId("period-stat-365")).toContainText("7,600");
+    await expect(page.getByTestId("period-average-365")).toHaveText("8,650");
+    const average = page.getByTestId("period-average-365");
     const supportingValue = page
-      .getByTestId("period-stat-90")
+      .getByTestId("period-stat-365")
       .locator("dd")
       .first(); // first-ok: any supporting value establishes the type-size hierarchy
     const averageFontSize = await average.evaluate((el) =>
@@ -521,6 +524,54 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     await page.context().close();
   });
 
+  // #1938: past 90 days the app used to offer only raw "All time", which on a
+  // daily-cadence metric is the unreadable point-per-day scribble #1932 documents.
+  // The 1Y quick range must instead render the shared long-range aggregation:
+  // weekly means, a low–high band, and the caption that says so — while the 90D
+  // default keeps plotting raw points, because a short window was never the
+  // problem.
+  test("the 1Y range renders an aggregated weekly chart on a daily-cadence metric, and 90D stays raw", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_LONG_RANGE,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto("/trends/metric/weight");
+
+    const chart = page.getByTestId("metric-detail-chart");
+    await expect(chart).toBeVisible();
+    // The default 90D window: dense (a reading per complete day) but short — the
+    // raw plot, with no aggregation caption and no band.
+    await expect(page.getByTestId("chart-long-range-note")).toHaveCount(0);
+    await expect(chart.locator(".recharts-area")).toHaveCount(0);
+
+    // The 1Y pill is part of the shared quick-range row and lights like any other.
+    const oneYearPill = page.getByRole("link", { name: "1Y", exact: true });
+    await followLink(page, oneYearPill, /from=/);
+    await expect(oneYearPill).toHaveAttribute("aria-current", "page");
+
+    // The full daily series is in the window (`data-points` counts the fold's raw
+    // readings)…
+    await expect(chart).toHaveAttribute("data-points", String(LONG_RANGE_DAYS));
+    // …but the plot is the aggregate: a spread band behind the mean line, and the
+    // caption naming the grain — a summary chart, not a 240-point scribble.
+    await expect(chart.locator(".recharts-area")).toHaveCount(1);
+    const note = page.getByTestId("chart-long-range-note");
+    await expect(note).toBeVisible();
+    await expect(note).toContainText("Weekly averages");
+
+    // With ~8 months of daily history every rolling window genuinely differs, so
+    // the #1938 365d column earns its own card alongside 7/30/90.
+    await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(4);
+    await expect(page.getByTestId("period-readings-365")).toContainText(
+      `${LONG_RANGE_DAYS} readings`
+    );
+
+    await page.context().close();
+  });
+
   test("windows that really differ still get their own card, and no stat value wraps at phone width", async ({
     browser,
   }) => {
@@ -534,12 +585,13 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     await page.goto("/trends/metric/weight");
 
     // The fixture's two weigh-ins sit 9 and 1 days back: the 7d window (yesterday
-    // back through today−7, complete days only per #1909) holds ONE of them, 30d
-    // and 90d hold both — so the collapse is partial and the card count is a real
-    // signal rather than a constant.
+    // back through today−7, complete days only per #1909) holds ONE of them, while
+    // 30d, 90d and 365d hold both — so the collapse is partial and the card count
+    // is a real signal rather than a constant. The merged run is keyed by its
+    // widest window (365 since #1938).
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(2);
     await expect(page.getByTestId("period-stat-7")).toBeVisible();
-    await expect(page.getByTestId("period-stat-90")).toBeVisible();
+    await expect(page.getByTestId("period-stat-365")).toBeVisible();
 
     // No value wraps onto a second line: a wrapped `dd` is ~2× the height of the
     // `dt` beside it, which never wraps. Behavioral, not a pixel budget (#868).

@@ -870,10 +870,17 @@ The default window is the last 90 days. Every tab uses the same range model and
 event overlays, and every starred tile opens the corresponding full chart rather
 than maintaining a second interpretation. A hub configuration is carried by the
 URL — the range, tab, and compare params are shareable and bookmarkable — not by
-a stored view list.
+a stored view list. The shared quick ranges are **7D / 30D / 90D / 1Y** plus
+"All time" and a custom picker — 1Y is a trailing 365 inclusive days, the
+long-horizon window that used to be reachable only by hand-typing dates. Over a
+long window a dense daily series does not plot point-per-day: line charts share
+one aggregation (`lib/long-range-series.ts`) that renders spans past ~6 months
+as **weekly means with a low–high band** (monthly past ~2 years), with a caption
+naming the grain — so "All time" is a readable archive rather than a scribble,
+while a sparse series (weekly weigh-ins, occasional labs) keeps its raw points.
 
 **Trailing averages cover complete days.** A metric's detail page carries a
-**Rolling summary** — 7, 30, and 90-day windows with an average, range, and
+**Rolling summary** — 7, 30, 90, and 365-day windows with an average, range, and
 change each, independent of the chart's range control and collapsed into one
 card wherever the windows genuinely hold the same readings. Those windows end
 **yesterday**: today is not history until it ends, and for a cumulative metric
@@ -1269,7 +1276,7 @@ arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
 and import drilldown asks — so no call site decides for itself. A **continuous**
 vital (blood pressure, SpO2, respiratory rate, body temperature) opens on its
 metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
-7/30/90-day summary, and the readings table with row actions. Every **episodic**
+7/30/90/365-day summary, and the readings table with row actions. Every **episodic**
 reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
 markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
 measures) — opens on `/biomarkers/view`, which reads it against its reference and

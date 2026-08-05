@@ -270,8 +270,8 @@ describe("bodyMetricPeriodStats", () => {
   // Today-exclusion itself is pinned in lib/__tests__/trailing-average.test.ts.
   const today = "2026-07-23";
 
-  // #1541 — the whole point of the collapse: three windows that contain the SAME
-  // readings produced three identical cards, which is the common case for any
+  // #1541 — the whole point of the collapse: windows that contain the SAME
+  // readings produced identical cards, which is the common case for any
   // series younger than a week (every new install, every fresh integration).
   it("collapses windows that cover the same readings into one card", () => {
     const stats = bodyMetricPeriodStats(
@@ -285,9 +285,9 @@ describe("bodyMetricPeriodStats", () => {
     );
     expect(stats).toHaveLength(1);
     const [only] = stats;
-    expect(only.windows).toEqual([7, 30, 90]);
-    expect(only.days).toBe(90);
-    expect(only.label).toBe("7–90d");
+    expect(only.windows).toEqual([7, 30, 90, 365]);
+    expect(only.days).toBe(365);
+    expect(only.label).toBe("7–365d");
     // The count + the covered span — the passthrough that makes the card explicable.
     expect(only.count).toBe(3);
     expect(only.from).toBe("2026-07-20");
@@ -295,7 +295,7 @@ describe("bodyMetricPeriodStats", () => {
   });
 
   it("collapses only the coincident RUN, keeping a window that really differs", () => {
-    // 7d holds one reading; 30d and 90d both hold two → two cards, not three.
+    // 7d holds one reading; 30d, 90d and 365d all hold two → two cards, not four.
     const stats = bodyMetricPeriodStats(
       [
         { date: "2026-07-01", value: 78.4 },
@@ -304,14 +304,16 @@ describe("bodyMetricPeriodStats", () => {
       today,
       1
     );
-    expect(stats.map((s) => s.label)).toEqual(["7d", "30–90d"]);
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30–365d"]);
     expect(stats.map((s) => s.count)).toEqual([1, 2]);
     expect(stats[1].delta).toBeCloseTo(-0.5, 5);
   });
 
-  it("keeps three cards when all three windows genuinely differ", () => {
+  it("keeps four cards when all four windows genuinely differ", () => {
     const stats = bodyMetricPeriodStats(
       [
+        // Inside 365d only (#1938 — the long-horizon column earns its card).
+        { date: "2025-10-01", value: 110 },
         { date: "2026-04-25", value: 100 },
         { date: "2026-07-01", value: 80 },
         { date: "2026-07-20", value: 76 },
@@ -319,18 +321,20 @@ describe("bodyMetricPeriodStats", () => {
       today,
       1
     );
-    expect(stats.map((s) => s.label)).toEqual(["7d", "30d", "90d"]);
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30d", "90d", "365d"]);
+    expect(stats.map((s) => s.count)).toEqual([1, 2, 3, 4]);
     expect(stats.every((s) => s.windows.length === 1)).toBe(true);
   });
 
-  it("collapses three EMPTY windows too — one 'no readings' card, not three", () => {
+  it("collapses four EMPTY windows too — one 'no readings' card, not four", () => {
+    // The only reading is older than even the 365d window's reach.
     const stats = bodyMetricPeriodStats(
-      [{ date: "2026-01-01", value: 5 }],
+      [{ date: "2024-01-01", value: 5 }],
       today
     );
     expect(stats).toHaveLength(1);
     expect(stats[0].count).toBe(0);
-    expect(stats[0].label).toBe("7–90d");
+    expect(stats[0].label).toBe("7–365d");
   });
 
   // ── The degenerate inputs (#1545) ──────────────────────────────────────────
@@ -345,8 +349,8 @@ describe("bodyMetricPeriodStats", () => {
     const stats = bodyMetricPeriodStats([], today);
     expect(stats).toHaveLength(1);
     expect(stats[0]).toMatchObject({
-      label: "7–90d",
-      windows: [7, 30, 90],
+      label: "7–365d",
+      windows: [7, 30, 90, 365],
       count: 0,
       from: null,
       to: null,
@@ -366,7 +370,7 @@ describe("bodyMetricPeriodStats", () => {
     );
     expect(stats).toHaveLength(1);
     const [only] = stats;
-    expect(only.label).toBe("7–90d");
+    expect(only.label).toBe("7–365d");
     expect(only.count).toBe(1);
     // latest === min === max, and the change is against ITSELF: exactly zero, not
     // null. A single reading is a real (if uninformative) answer, and the card must

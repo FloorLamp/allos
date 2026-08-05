@@ -211,3 +211,17 @@ export const METRIC_FOLD_STREAM_DAYS = 3;
 // What the page must end up showing: 3 streamed days + the clinic-only day. The
 // duplicated clinic copy is in NEITHER the chart nor the table.
 export const METRIC_FOLD_EXPECTED_READINGS = 4;
+
+// ── Long-horizon tracking (issue #1938) ──────────────────────────────────────
+// A dedicated ADULT profile with ~8 months of DAILY weigh-ins — the daily-cadence
+// long series the 1Y quick range exists for. Dense past the aggregation span
+// threshold, so the 1Y window must render the weekly-mean + band chart (with its
+// honesty caption) while the default 90D window keeps plotting raw points; no
+// shared fixture holds a long dense series without other specs exact-counting it.
+// Read-only in its spec, so --repeat-each stays clean.
+export const E2E_LOGIN_LONG_RANGE = "e2e_long_range";
+export const LONG_RANGE_PROFILE = "Long Range (e2e)";
+// Daily weigh-ins, ending yesterday. 240 days: comfortably past the 180-day
+// aggregation threshold at 1Y while leaving the 90-day default window dense with
+// raw points — the pair of states the spec contrasts.
+export const LONG_RANGE_DAYS = 240;

@@ -86,7 +86,9 @@ function gatherInsightContext(
 
   // "What's trending" digest over the trailing 90-day window, adapted to findings.
   const restricted = isTrainingRestricted(profileId);
-  const range = quickRanges(date)[2]; // 90D window (label/from/to)
+  // By LABEL, not index — #1938 grew the shared set to four pills, and this read
+  // must keep meaning "the 90D window" whatever the row's length.
+  const range = quickRanges(date).find((qr) => qr.label === "90D")!;
   const series = buildDigestSeries(profileId, loginId ?? 0, range, restricted);
   const trends = summarizeTrends(series, { limit: 5 }).map(trendItemToFinding);
 

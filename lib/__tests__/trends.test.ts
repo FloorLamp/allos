@@ -103,13 +103,31 @@ describe("rangeSummaryLabel", () => {
 
 describe("quick-range vocabulary (shared with the Timeline)", () => {
   const today = "2026-07-08";
-  it("offers 7D / 30D / 90D windows ending today", () => {
+  it("offers 7D / 30D / 90D / 1Y windows ending today", () => {
     const qr = quickRanges(today);
-    expect(qr.map((r) => r.label)).toEqual(["7D", "30D", "90D"]);
+    expect(qr.map((r) => r.label)).toEqual(["7D", "30D", "90D", "1Y"]);
     expect(qr.every((r) => r.to === today)).toBe(true);
     expect(qr[0].from).toBe("2026-07-02"); // 6 days back = 7 inclusive days
     expect(qr[1].from).toBe("2026-06-09"); // 29 days back = 30 inclusive days
     expect(qr[2].from).toBe("2026-04-10"); // 89 days back = 90 inclusive days
+    expect(qr[3].from).toBe("2025-07-09"); // 364 days back = 365 inclusive days
+  });
+
+  // #1938: 1Y is pure UTC-anchored calendar arithmetic — 364 days back, whatever
+  // the calendar holds. Across a leap day the window's start LOOKS a day "short"
+  // in month-and-day terms precisely because it still spans exactly 365 days; and
+  // DST cannot shift it because shiftDateStr never leaves UTC midnight.
+  it("keeps the 1Y window at exactly 365 inclusive days across a leap day", () => {
+    const oneYear = (t: string) =>
+      quickRanges(t).find((r) => r.label === "1Y")!;
+    // Window covering 2028-02-29 (2028 is a leap year).
+    expect(oneYear("2028-07-08").from).toBe("2027-07-10");
+    // Anchored ON the leap day itself.
+    expect(oneYear("2028-02-29").from).toBe("2027-03-02");
+    // Ending the day before a leap day.
+    expect(oneYear("2028-02-28").from).toBe("2027-03-01");
+    // A plain year for contrast: same 364-day distance, different calendar.
+    expect(oneYear("2026-07-08").from).toBe("2025-07-09");
   });
 
   it("marks a matching window active and others inactive", () => {

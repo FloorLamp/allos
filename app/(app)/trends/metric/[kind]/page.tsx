@@ -647,12 +647,43 @@ function BackLink() {
 // cards, so a collapsed single card fills the card instead of sitting in a third
 // of it. Below `sm` the windows STACK (#1541 fix 2): at 390px a hard `grid-cols-3`
 // leaves 76px of content per cell against a `Range` row needing ~110px, so the
-// value broke mid-range onto a second line — by arithmetic, not by accident.
+// value broke mid-range onto a second line — by arithmetic, not by accident. Four
+// windows (the #1938 365d column) wrap into a 2×2 grid for the same reason: four
+// abreast at 640px is back under that arithmetic's floor.
 const PERIOD_COLS: Record<number, string> = {
   1: "sm:grid-cols-1",
   2: "sm:grid-cols-2",
   3: "sm:grid-cols-3",
+  4: "sm:grid-cols-2",
 };
+
+// How many `sm` columns the grid above resolves to — the input the per-item
+// borders need (divide-x/divide-y utilities assume one row or one column, which a
+// 2×2 grid is neither, so each cell draws its own edges instead).
+function periodGridCols(statCount: number): number {
+  return statCount === 4 ? 2 : Math.max(1, statCount);
+}
+
+// The separators between period cells, per cell: a top rule in the phone stack, a
+// left rule between `sm` row neighbours plus a top rule for the second 2×2 row,
+// and (in the desktop sidebar) back to top rules only when `xl` restacks to one
+// column.
+function periodItemBorders(
+  index: number,
+  cols: number,
+  desktopSidebar: boolean
+): string {
+  if (index === 0) return "";
+  const out = ["border-black/10", "dark:border-white/10", "border-t"];
+  const startsRow = index % cols === 0;
+  if (!startsRow) out.push("sm:border-l");
+  if (index < cols) out.push("sm:border-t-0");
+  if (desktopSidebar) {
+    if (!startsRow) out.push("xl:border-l-0");
+    if (index < cols) out.push("xl:border-t");
+  }
+  return out.join(" ");
+}
 
 function PeriodStatsCard({
   stats,
@@ -712,33 +743,33 @@ function PeriodStatsCard({
             <>
               This is your first reading, so there is no completed day to
               average yet — the figure below is today&rsquo;s reading. Rolling
-              7, 30, and 90-day averages start once a day is complete.
+              7, 30, 90, and 365-day averages start once a day is complete.
             </>
           ) : (
             <>
-              Rolling 7, 30, and 90-day windows through yesterday — complete
-              days only. Average, range, and change cover those days; Latest is
-              the most recent reading, including today&rsquo;s.
+              Rolling 7, 30, 90, and 365-day windows through yesterday —
+              complete days only. Average, range, and change cover those days;
+              Latest is the most recent reading, including today&rsquo;s.
             </>
           )}
         </p>
       </div>
       <div
-        className={`grid grid-cols-1 divide-y divide-black/10 dark:divide-white/10 ${
+        className={`grid grid-cols-1 ${
           desktopSidebar
-            ? `sm:divide-x sm:divide-y-0 xl:grid-cols-1 xl:divide-x-0 xl:divide-y ${
-                PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"
-              }`
-            : `sm:divide-x sm:divide-y-0 ${
-                PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"
-              }`
+            ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`
+            : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3")
         }`}
       >
-        {stats.map((s) => (
+        {stats.map((s, i) => (
           <article
             key={s.label}
             data-testid={`period-stat-${s.days}`}
-            className="min-w-0 px-4 py-4 sm:px-5"
+            className={`min-w-0 px-4 py-4 sm:px-5 ${periodItemBorders(
+              i,
+              periodGridCols(stats.length),
+              desktopSidebar
+            )}`}
           >
             <div className="flex min-w-0 items-start justify-between gap-3">
               <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
