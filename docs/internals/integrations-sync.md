@@ -154,8 +154,11 @@ surface FORMATS its answers:
   " UTC" suffix, and Review showed relative-only labels that could collide.
 - **One Sync now.** The four redirecting per-provider form actions
   (`sync{Strava,Oura,Withings,Weather}Action`) are gone; `SyncNowButton` serves
-  both the setup page and Review over the `sync*Now` actions, which revalidate the
-  surfaces they feed (so no client-side refresh).
+  both the setup page and Review, and since #2040 it calls ONE generic
+  `syncNow(id)` (`app/(app)/integrations/sync-actions.ts`) rather than four
+  `sync*Now` actions with an identical skeleton. The action revalidates the
+  surfaces the run feeds (so no client-side refresh) from the registry's
+  `pull.revalidates`.
 - **Deliberate surface roles (#1880 item 2: the alert IS the card).** The setup
   page is the provider's home — shared status header (`IntegrationStatusHeader`),
   controls, and the full history table. On Review, an ESCALATED source renders
@@ -616,6 +619,60 @@ provenance sinks are chunk-transactional, `HealthConnectWriteError` carries the
 committed split, and the route records ONE `ok=0` event with the real counts
 plus drillable per-row provenance (mirroring the Fitbit Takeout shape from
 #1617) instead of null counts over durable rows.
+
+**One pull-sync runner (#2040).** The per-provider pull stack used to duplicate at
+three layers, and the files said so themselves — `withings-sync.ts` opened with
+"Mirrors oura-sync.ts", `oura-sync.ts` with "Mirrors strava-sync.ts". Each module
+declared its own `TIMEOUT_MS` / `MAX_PAGES` / `RESCAN_DAYS` /
+`INITIAL_BACKFILL_DAYS`, implemented its own `fetchPages()` with the same 429 →
+truncate-and-keep-cursor rule, and ended in its own ~60-line `writeTx` → cursor →
+`recordSync`/`recordSyncEvent`/`recordSyncRows` tail; four `sync*Now` actions shared
+one skeleton; and the notify tick fanned out four copy-pasted
+`try { if (connected) … } catch {}` blocks. The cause was structural — `registry.ts`
+had a `kind` facet but no way to say "this is a provider we pull", so every layer
+above it enumerated providers by hand, and Garmin would have been a fifth copy of
+all three.
+
+- **The facet.** `IntegrationDef.pull` (`lib/types/integrations.ts`) declares
+  `revalidates` — the surfaces a completed run feeds, swept by
+  `lib/__tests__/nav-routes.test.ts` exactly like an in-`app/` `revalidatePath`
+  target — plus an OPTIONAL `paging` block (`timeoutMs`, `maxPages`, `rescanDays`,
+  `backfillDays`) for a credentialed paged pull. Weather declares no `paging`: it
+  is keyless with no cursor and no pagination, and inventing numbers to make the
+  shape uniform is exactly the "forcing a non-OAuth provider into the facet" the
+  issue ruled out. `pullPaging(id)` THROWS for a provider that declares none,
+  because a module silently reading `undefined` for `maxPages` would sync nothing
+  forever. `PULL_INTEGRATIONS` excludes `planned` entries — Garmin's card is real,
+  its runner is not.
+- **The pure half.** `lib/integrations/pull-window.ts` owns the rate-limit rule
+  (429, plus a provider's own dialect — Withings' envelope `601`), the page cap,
+  the day/second re-scan window arithmetic, and the two CURSOR POLICIES.
+  `hold-on-truncate` (Oura, Withings) holds a window-edge cursor when a run is cut
+  short, or the days past the re-scan margin would be stranded forever;
+  `advance-to-processed` (Strava) advances anyway, because that cursor names the
+  newest activity actually IMPORTED and holding it would re-pay every per-activity
+  detail call the truncated run already spent. One rule, pinned once.
+- **The runner.** `lib/integrations/pull-sync.ts` `runPullSync(profileId, spec)`
+  owns credentials (a `null` token is "not connected" and logs nothing; a THROW is
+  a recorded failure), the needs_reauth flip on a definitive auth status, the one
+  `writeTx` over the shared `normalize.ts` upserts, the post-commit hooks, the
+  cursor decision, and the whole `recordSync` / `recordSyncEvent` / `recordSyncRows`
+  accounting including the `truncated` marker. A provider's `PullSpec` supplies
+  only what is genuinely its own: how to authorize, how to page (`next_token` vs
+  `offset`/`more` vs `page`), how to map rows, and what to call its counts.
+- **The layers above.** `lib/integrations/pull-runners.ts` binds `run` + the
+  outcome sentence per id — kept OUT of `registry.ts`, which the pure tier and
+  client components import and which must not drag `@/lib/db` behind it. It
+  throws at startup for a facet with no runner bound. `syncNow(id)` and the tick
+  both iterate it; `getIntegrationState`'s `canSyncNow` is now `isPullIntegration`
+  rather than a hand-kept id set.
+
+Behaviour is identical per provider — the existing DB suites
+(`sync-orchestrators`, `oura-sync`, `withings-sync`) pass unedited, and
+`lib/__db_tests__/pull-runner.test.ts` adds the property they cannot show: two
+providers through the one runner, each with its own rows, counts, events and
+cursor shape, idempotent on a second pass, and one failing without touching the
+other.
 
 **Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
 cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not

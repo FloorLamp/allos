@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PULL_INTEGRATIONS } from "@/lib/integrations/registry";
 
 // Static consistency guard for the sidebar ↔ App-Router routes, in the same
 // "pure" spirit as profile-scoping.test.ts: it reads the repo's own source as
@@ -316,6 +317,29 @@ describe("nav ↔ route consistency", () => {
     expect(
       bad,
       `revalidatePath targets with no matching route under app/ (the refresh is a silent no-op):\n${bad.join("\n")}`
+    ).toEqual([]);
+  });
+  it("every registry pull `revalidates` route resolves (issue #2040)", () => {
+    // The four per-provider sync actions each carried their own hand-written
+    // revalidate fan-out under app/, where the sweep above found them. #2040 moved
+    // those lists into the registry's pull facet — outside app/ — so the same
+    // guarantee needs the same sweep here, or a retired route would go quietly
+    // un-revalidated on every manual sync.
+    const bad: string[] = [];
+    let seen = 0;
+    for (const def of PULL_INTEGRATIONS) {
+      for (const target of def.pull.revalidates) {
+        seen++;
+        if (!revalidateResolves(target)) bad.push(`${def.id} → ${target}`);
+      }
+    }
+    expect(
+      seen,
+      "no pull providers registered — extractor broken?"
+    ).toBeGreaterThan(0);
+    expect(
+      bad,
+      `registry pull revalidates with no matching route under app/:\n${bad.join("\n")}`
     ).toEqual([]);
   });
 });
