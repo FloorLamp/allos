@@ -4,7 +4,10 @@ import { useState, type FormEvent } from "react";
 import { IconCheck, IconClock } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import DateField from "@/components/DateField";
+import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_LABEL,
@@ -19,6 +22,17 @@ import { logPractice } from "@/app/(app)/wellness/actions";
 // point). Today's running count sits beside the button (the PRN widget shape) so a
 // deliberate second tap is informed, not accidental. The button is a plain formatter
 // over the one server action every practice surface shares.
+//
+// A practice session is the CADENCED case of #2007 — additive, but with a real
+// ~daily expectation — so all three layers apply here:
+//
+//   1. the shared ledger's post-success cooldown absorbs the accidental double-tap;
+//   2. the affordance RENDERS today's state (#1893): once a session is logged the
+//      button reads "Log another" and names the day's count, so the second tap is
+//      never byte-identical to the first;
+//   3. only then, a deliberate second tap of the same day ASKS — a confirm, never a
+//      block (#798): a genuine second sauna is legitimate, so the dialog's default is
+//      to proceed and cancelling writes nothing.
 export default function LogPracticeButton({
   practice,
   todayCount,
@@ -26,18 +40,43 @@ export default function LogPracticeButton({
   today,
   defaultDurationMin = null,
   showDetails = false,
+  lastLoggedTime = null,
 }: {
   practice: string;
+  // Sessions already logged on `today`, by contract — both the line beside the button
+  // and the day-scoped re-log question read it.
   todayCount: number;
   atCeiling?: boolean;
-  today?: string;
+  // The acting profile's today (YYYY-MM-DD).
+  today: string;
   defaultDurationMin?: number | null;
   showDetails?: boolean;
+  // The local HH:MM of today's most recent session, when the surface knows it. The
+  // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
+  // the count still asks an honest question rather than inventing a time.
+  lastLoggedTime?: string | null;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
+  const ledger = useOptimisticLedger("practice-session");
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [count, setCount] = useState(todayCount);
+  // The time the confirm names, dropped once this mount logs its own session: the
+  // action answers with the day's count, not with a local clock reading, and a stale
+  // time on a fresh session would be the informational half telling a small lie.
+  const [lastTime, setLastTime] = useState(lastLoggedTime);
+  // Follow the SERVER whenever it disagrees. The local count exists so a tap answers
+  // instantly, but every write here revalidates, and sessions can also be deleted or
+  // corrected from the history table beside this button — after which a local count
+  // frozen at mount would both label the button wrongly and ask the re-log question
+  // about a day that no longer has a session in it.
+  const [serverCount, setServerCount] = useState(todayCount);
+  if (serverCount !== todayCount) {
+    setServerCount(todayCount);
+    setCount(todayCount);
+    setLastTime(lastLoggedTime);
+  }
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
@@ -45,6 +84,7 @@ export default function LogPracticeButton({
   function report(outcome: PracticeLogOutcome) {
     if (outcome.kind === "logged") {
       setCount(outcome.count);
+      setLastTime(null);
       toast(
         outcome.count === 1
           ? "Logged today's session"
@@ -56,19 +96,45 @@ export default function LogPracticeButton({
   }
 
   async function onClick() {
-    setPending(true);
-    let outcome: PracticeLogOutcome;
-    try {
-      const fd = new FormData();
-      fd.set("practice", practice);
-      outcome = await logPractice(fd);
-    } catch {
-      setPending(false);
-      toast("Couldn't log that session. Try again.");
+    // Inside the post-success window this tap is the second half of a double-tap:
+    // absorbed silently, and — checked here rather than inside `tap` — never
+    // escalated into a dialog the user did not ask for.
+    if (ledger.blocked()) return;
+    // Layer 3. `count` is TODAY's by the prop's contract, so a non-zero count is a
+    // session already logged on `today`; the shared decision owns what that means.
+    const asks = shouldConfirmRelog({
+      affordance: ledger.affordance,
+      lastLoggedDate: count > 0 ? today : null,
+      today,
+    });
+    if (
+      asks &&
+      !(await confirm({
+        title: "Log another session?",
+        message: practiceRelogMessage(practice, count, lastTime),
+        confirmLabel: "Log session",
+      }))
+    )
       return;
-    }
-    setPending(false);
-    report(outcome);
+    await ledger.tap({
+      write: () => {
+        const fd = new FormData();
+        fd.set("practice", practice);
+        return logPractice(fd);
+      },
+      settle: (outcome) => {
+        report(outcome);
+        // A refused log (a forged date, a stale target) wrote nothing, so the tap
+        // stays immediately retryable instead of cooling down.
+        return outcome.kind === "logged"
+          ? { kind: "keep" }
+          : { kind: "rollback" };
+      },
+      onError: () => {
+        toast("Couldn't log that session. Try again.");
+        return { kind: "rollback" };
+      },
+    });
   }
 
   async function onDetailedSubmit(event: FormEvent<HTMLFormElement>) {
@@ -112,15 +178,24 @@ export default function LogPracticeButton({
       <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || ledger.pending()}
           onClick={onClick}
           data-testid="practice-log-button"
+          // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
+          // second tap of a day is visibly a SECOND one before it is taken. The
+          // count itself is on the line beside it — the title carries the whole
+          // sentence for a pointer, and the label stays short enough for a phone.
+          title={
+            count === 0
+              ? `Log a ${practice} session for today`
+              : `Log another ${practice} session — ${count} already logged today`
+          }
           className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
         >
           <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-          Log now
+          {count === 0 ? "Log now" : "Log another"}
         </button>
-        {showDetails && today && (
+        {showDetails && (
           <button
             type="button"
             onClick={() => setDetailsOpen(true)}
@@ -136,7 +211,7 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {detailsOpen && today && (
+      {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}
           onClose={() => setDetailsOpen(false)}

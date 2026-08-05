@@ -19,6 +19,7 @@ import {
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import NotesText from "@/components/NotesText";
 import { round, fmtTemp } from "@/lib/units";
 import { zonedDateParts } from "@/lib/date";
@@ -41,8 +42,10 @@ import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
-// server's authoritative value (#748 item 2). A symptom-day keeps its WORST severity — a
-// normal tap raises it (server-enforced); selecting a lower labeled chip uses the narrow
+// server's authoritative value (#748 item 2) — through the shared `useOptimisticLedger`
+// (#2041), which also absorbs the second half of a double-tap (#2007 layer 1). A tap is
+// IDEMPOTENT here (the day keeps its worst severity), so it never confirms: a normal tap
+// RAISES the severity (server-enforced); selecting a lower labeled chip uses the narrow
 // lower action directly; the × clears the day's row.
 //
 // Active-first layout (#857): the LOGGED symptoms render expanded (label + labeled
@@ -147,6 +150,7 @@ export default function SymptomLogBar({
   const [noteDraft, setNoteDraft] = useState("");
   const [, startTransition] = useTransition();
   const toast = useToast();
+  const ledger = useOptimisticLedger<number>("symptom-severity");
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const [tempOpen, setTempOpen] = useState(false);
@@ -393,19 +397,35 @@ export default function SymptomLogBar({
   // Tap RAISES (worst-severity), matching the server. Adding from the picker taps at 1.
   async function tap(key: string, severity: number) {
     const prev = severities[key] ?? 0;
-    setSeverity(key, Math.max(prev, severity));
-    const fd = new FormData();
-    fd.set("symptom", key);
-    fd.set("severity", String(severity));
-    fd.set("date", activeDate);
-    const res = await logSymptom(withTarget(fd));
-    if (res.ok) setSeverity(key, res.severity);
-    else {
-      setSeverity(key, prev);
-      toast(res.error || "Couldn't log that symptom — try again.", {
-        tone: "error",
-      });
-    }
+    await ledger.tap({
+      // Keyed on the TRANSITION, like the dose control's: a row's chips all write the
+      // same day's severity, so "the same write twice" is prev→next, not the chip.
+      // Two taps of one chip share a key and the second is absorbed; every deliberate
+      // move — raise, then lower back to where it started — is a different transition
+      // and always lands.
+      key: `${key}:${prev}->${severity}`,
+      from: prev,
+      optimistic: Math.max(prev, severity),
+      commit: (value) => setSeverity(key, value),
+      write: () => {
+        const fd = new FormData();
+        fd.set("symptom", key);
+        fd.set("severity", String(severity));
+        fd.set("date", activeDate);
+        return logSymptom(withTarget(fd));
+      },
+      settle: (res) => {
+        if (res.ok) return { kind: "adopt", value: res.severity };
+        toast(res.error || "Couldn't log that symptom — try again.", {
+          tone: "error",
+        });
+        return { kind: "rollback" };
+      },
+      onError: () => {
+        toast("Couldn't log that symptom — try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
@@ -413,17 +433,28 @@ export default function SymptomLogBar({
   async function lower(key: string, severity: number) {
     const prev = severities[key] ?? 0;
     if (severity >= prev) return;
-    setSeverity(key, severity);
-    const fd = new FormData();
-    fd.set("symptom", key);
-    fd.set("severity", String(severity));
-    fd.set("date", activeDate);
-    const res = await lowerSymptom(withTarget(fd));
-    if (res.ok) setSeverity(key, res.severity);
-    else {
-      setSeverity(key, prev);
-      toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
-    }
+    await ledger.tap({
+      key: `${key}:${prev}->${severity}`,
+      from: prev,
+      optimistic: severity,
+      commit: (value) => setSeverity(key, value),
+      write: () => {
+        const fd = new FormData();
+        fd.set("symptom", key);
+        fd.set("severity", String(severity));
+        fd.set("date", activeDate);
+        return lowerSymptom(withTarget(fd));
+      },
+      settle: (res) => {
+        if (res.ok) return { kind: "adopt", value: res.severity };
+        toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+      onError: () => {
+        toast("Couldn't lower that symptom.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   async function saveNote(key: string, value: string) {
@@ -444,18 +475,36 @@ export default function SymptomLogBar({
   async function clear(key: string) {
     const prev = severities[key] ?? 0;
     const prevNote = notes[key] ?? "";
-    setSeverity(key, 0);
     setNote(key, "");
     if (noteEditing === key) setNoteEditing(null);
-    const fd = new FormData();
-    fd.set("symptom", key);
-    fd.set("date", activeDate);
-    const res = await removeSymptom(withTarget(fd));
-    if (!res.ok) {
-      setSeverity(key, prev);
+    const restoreNote = () => {
       if (prevNote) setNote(key, prevNote);
-      toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
-    }
+    };
+    await ledger.tap({
+      key: `${key}:${prev}->clear`,
+      from: prev,
+      optimistic: 0,
+      commit: (value) => setSeverity(key, value),
+      write: () => {
+        const fd = new FormData();
+        fd.set("symptom", key);
+        fd.set("date", activeDate);
+        return removeSymptom(withTarget(fd));
+      },
+      settle: (res) => {
+        // The × has no authoritative number to adopt — the row is gone — so the
+        // optimistic zero stands and only a refusal puts the day back.
+        if (res.ok) return { kind: "keep" };
+        restoreNote();
+        toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+      onError: () => {
+        restoreNote();
+        toast("Couldn't remove that symptom.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   function addCustom(name: string = customDraft) {

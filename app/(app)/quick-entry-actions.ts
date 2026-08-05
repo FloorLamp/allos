@@ -123,6 +123,9 @@ export type QuickEntryData =
       // computation the Wellness page reads.
       form: "practice";
       practices: TrackedPractice[];
+      // The acting profile's today (YYYY-MM-DD): the row's log button asks a
+      // day-scoped question before a second session (#2007 layer 3).
+      today: string;
     }
   | {
       // The ONE cycle offer state (#1892) — the same `cycleControlState` the Cycle
@@ -228,7 +231,7 @@ export async function loadQuickEntry(
           "No tracked practices yet. Add one under Wellness to log sessions from here.",
       };
     }
-    return { form: "practice", practices };
+    return { form: "practice", practices, today: date };
   }
 
   if (form === "cycle") {

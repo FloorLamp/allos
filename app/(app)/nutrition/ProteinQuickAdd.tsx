@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import {
@@ -21,7 +22,10 @@ import {
 // The number in the box is the delta for BOTH buttons (the FoodLogBar +/- idiom): "+"
 // adds it to the day, "−" removes it. Optimistic local total, a Server Action per tap,
 // reconciled to the server's authoritative total (#748 item 2) so a failed write can't
-// leave a phantom gram count. The box pre-fills with the last-used amount (scoop sizes
+// leave a phantom gram count — through the shared `useOptimisticLedger` (#2041), which
+// also carries the post-success cooldown that absorbs a double-tap (#2007 layer 1).
+// Protein grams are ADDITIVE and declare no expected interval, so a repeat tap a moment
+// later still lands and NEVER raises a confirm. The box pre-fills with the last-used amount (scoop sizes
 // repeat). The control renders as a peer to the food-group rows: direct gram entry
 // belongs in the logging flow, while nutrient gauges remain read-only analysis.
 
@@ -41,23 +45,27 @@ export default function ProteinQuickAdd({
   const [amount, setAmount] = useState<string>(
     lastPreset != null ? String(lastPreset) : ""
   );
-  const [busy, setBusy] = useState(false);
   const toast = useToast();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
+  const ledger = useOptimisticLedger<number>("protein-grams");
 
   const grams = Number(amount);
+  const busy = ledger.pending("add") || ledger.pending("undo");
   const canSubmit = Number.isFinite(grams) && grams > 0 && !busy;
+
+  // Whether the tap reached a write at all, and what the write said. Modeled instead
+  // of branching mid-flight so the ledger sees ONE settlement per tap.
+  type ProteinTap =
+    | { kind: "queued" }
+    | { kind: "offline-undo" }
+    | { kind: "wrote"; res: ProteinLogResult };
 
   async function apply(delta: 1 | -1) {
     if (!(Number.isFinite(grams) && grams > 0)) {
       toast("Enter a protein amount in grams.", { tone: "error" });
       return;
     }
-    setBusy(true);
-    // Optimistic: reflect the change immediately (clamped at zero on remove).
-    setTotal((t) => Math.max(0, t + delta * grams));
-    const rollback = () => setTotal((t) => Math.max(0, t - delta * grams));
     // Queue an ADD tap while offline (#1596): the captured grams + day replay
     // through the same write core on reconnect, so a post-shake log with no
     // signal never fails; the optimistic total stands in until then. UNDO stays
@@ -73,45 +81,62 @@ export default function ProteinQuickAdd({
       toast("Saved offline — will sync when you reconnect.");
     };
     const undoNeedsConnection = () => {
-      rollback();
       toast("You're offline — removing protein needs a connection.", {
         tone: "error",
       });
     };
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      if (delta === 1) await queueOffline();
-      else undoNeedsConnection();
-      setBusy(false);
-      return;
-    }
-    const fd = new FormData();
-    fd.set("grams", String(grams));
-    fd.set("date", today);
-    let res: ProteinLogResult;
-    try {
-      res =
-        delta === 1 ? await addProteinGrams(fd) : await undoProteinGrams(fd);
-    } catch (err) {
-      // Connection dropped mid-tap — queue an add instead of a false failure.
-      if (shouldQueueOffline(navigator.onLine !== false, err)) {
-        if (delta === 1) await queueOffline();
-        else undoNeedsConnection();
-      } else {
-        rollback();
+    await ledger.tap<ProteinTap>({
+      // The key names the WRITE: an immediate correction with "−" is a different
+      // write from the "+" that preceded it and must not be absorbed by its cooldown.
+      key: delta === 1 ? "add" : "undo",
+      from: total,
+      // Optimistic: reflect the change immediately (clamped at zero on remove).
+      optimistic: Math.max(0, total + delta * grams),
+      commit: setTotal,
+      write: async () => {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          if (delta === -1) return { kind: "offline-undo" };
+          await queueOffline();
+          return { kind: "queued" };
+        }
+        const fd = new FormData();
+        fd.set("grams", String(grams));
+        fd.set("date", today);
+        return {
+          kind: "wrote",
+          res:
+            delta === 1
+              ? await addProteinGrams(fd)
+              : await undoProteinGrams(fd),
+        };
+      },
+      settle: (out) => {
+        if (out.kind === "queued") return { kind: "keep" };
+        if (out.kind === "offline-undo") {
+          undoNeedsConnection();
+          return { kind: "rollback" };
+        }
+        // Reconcile with the server's authoritative daily total.
+        if (out.res.ok) return { kind: "adopt", value: out.res.grams };
+        toast(out.res.error || "Couldn't save that — try again.", {
+          tone: "error",
+        });
+        return { kind: "rollback" };
+      },
+      onError: async (err) => {
+        // Connection dropped mid-tap — queue an add instead of a false failure.
+        if (shouldQueueOffline(navigator.onLine !== false, err)) {
+          if (delta === 1) {
+            await queueOffline();
+            return { kind: "keep" };
+          }
+          undoNeedsConnection();
+          return { kind: "rollback" };
+        }
         toast("Couldn't save that — try again.", { tone: "error" });
-      }
-      setBusy(false);
-      return;
-    }
-    if (res.ok) {
-      // Reconcile with the server's authoritative daily total.
-      setTotal(res.grams);
-    } else {
-      // Roll back this tap.
-      rollback();
-      toast(res.error || "Couldn't save that — try again.", { tone: "error" });
-    }
-    setBusy(false);
+        return { kind: "rollback" };
+      },
+    });
   }
 
   return (

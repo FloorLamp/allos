@@ -279,12 +279,13 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
     );
   const before = await rowIds();
 
-  // Tap a low-ranked, zero-weight group twice. The server re-ranks by
-  // recency-decayed frequency, so WITHOUT the client-side order freeze these
-  // taps would push this row up its tier on the refresh; with the freeze the row
-  // stays put until the user navigates away.
+  // Tap a low-ranked, zero-weight group. The server re-ranks by recency-decayed
+  // frequency, so WITHOUT the client-side order freeze this tap would push the row
+  // up its tier on the refresh; with the freeze it stays put until the user
+  // navigates away. ONE tap: a second one here would land inside the post-success
+  // cooldown (#2007) and be absorbed, and one serving is all the re-ranking
+  // pressure this assertion needs.
   await revealFoodGroup(page, "other_vegetables");
-  await page.getByTestId("log-other_vegetables").click();
   await page.getByTestId("log-other_vegetables").click();
   // The weekly rollup is server-rendered, so its row appearing proves the
   // router.refresh() (which carries the re-ranked order) has landed.
@@ -293,7 +294,6 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
   expect(await rowIds()).toEqual(before);
 
   // Restore the fixture.
-  await page.getByTestId("undo-other_vegetables").click();
   await page.getByTestId("undo-other_vegetables").click();
 });
 
@@ -387,4 +387,54 @@ test("the Trends → Nutrition tab is the over-time view, not the duplicate roll
   await expect(page.getByTestId("nutrition-macros-chart")).toBeVisible();
   await expect(page.getByTestId("nutrition-trends-rollup")).toHaveCount(0);
   await expect(page.getByTestId("food-weekly-rollup")).toHaveCount(0);
+});
+
+test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // A group untouched by the other specs, so parallel runs don't collide.
+  const slug = "legumes";
+  await revealFoodGroup(page, slug);
+  const count = page.getByTestId(`count-${slug}`);
+  const before = Number((await count.textContent())?.trim() || "0");
+  const add = page.getByTestId(`log-${slug}`);
+
+  // The fat-finger double: two taps in the same instant. The second lands inside the
+  // post-success cooldown and is absorbed — no second request, no queued write.
+  await add.click();
+  await add.click();
+  await expect(count).toHaveText(String(before + 1));
+  // A food serving is ADDITIVE and declares no expected interval, so it must never
+  // raise the re-log question, however many times it is tapped.
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+
+  // The pin: a reload re-reads the server's own count, so this is the row that
+  // exists and not the optimistic number the second tap would also have shown.
+  await page.reload();
+  await revealFoodGroup(page, slug);
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(
+    String(before + 1)
+  );
+
+  // A deliberate repeat still lands — the reload cleared the window — and still
+  // asks nothing.
+  await settledClick(page, page.getByTestId(`log-${slug}`));
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(
+    String(before + 2)
+  );
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+
+  // Restore the fixture. An undo is a DIFFERENT write from the log above it, so it
+  // is never absorbed by that tap's cooldown.
+  await settledClick(page, page.getByTestId(`undo-${slug}`));
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(
+    String(before + 1)
+  );
+  await page.reload();
+  await revealFoodGroup(page, slug);
+  await settledClick(page, page.getByTestId(`undo-${slug}`));
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(String(before));
 });

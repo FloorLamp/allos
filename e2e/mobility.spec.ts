@@ -94,4 +94,47 @@ test.describe("Mobility (#840)", () => {
 
     await page.close();
   });
+
+  test("a failed toggle rolls the move back instead of leaving a phantom chip (#2041)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MOBILITY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+
+    await page.goto("/training?tab=overview");
+    // A move the log-flow test above never touches, so the two are order-independent.
+    const chip = page.getByTestId("mobility-move-cat_cow");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute("aria-pressed", "false");
+    const total = page.getByTestId("mobility-move-total");
+    const before = (await total.textContent())?.trim() ?? "";
+
+    // Every write from this page now fails at the network edge. The shared ledger
+    // owns what happens next: the optimistic flip is UNDONE and the failure is
+    // stated — the tap is never silently treated as if it had landed.
+    const trainingUrl = (url: URL) => url.pathname.startsWith("/training");
+    await page.route(trainingUrl, (route) =>
+      route.request().method() === "POST" ? route.abort() : route.continue()
+    );
+    await chip.click();
+    await expect(page.getByTestId("toast")).toContainText(
+      "Couldn't save that move"
+    );
+    await expect(chip).toHaveAttribute("aria-pressed", "false");
+    await expect(total).toHaveText(before);
+    await page.unroute(trainingUrl);
+
+    // Nothing was written, so the fixture needs no cleanup — and the reload proves
+    // it rather than trusting the rolled-back chip.
+    await page.reload();
+    await expect(page.getByTestId("mobility-move-cat_cow")).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+
+    await page.close();
+  });
 });

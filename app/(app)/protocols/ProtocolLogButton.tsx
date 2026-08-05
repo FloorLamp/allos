@@ -23,7 +23,8 @@ export default function ProtocolLogButton({
   ongoing: boolean;
   todayCount?: number;
   atCeiling?: boolean;
-  today?: string;
+  // The acting profile's today (YYYY-MM-DD) — see LogPracticeButton.
+  today: string;
   defaultDurationMin?: number | null;
   showDetails?: boolean;
 }) {

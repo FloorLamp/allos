@@ -406,6 +406,14 @@ export default function MedicationCard({
                   itemId={s.id}
                   hasLastFill={s.last_fill_size != null}
                   lastFillSize={s.last_fill_size}
+                  // How long a FULL fill lasts (not how much is left) — the same
+                  // computation the low-supply badge runs, applied to the fill size.
+                  supplyCycleDays={daysOfSupplyForItem(
+                    s.last_fill_size,
+                    s.qty_per_dose,
+                    refillRate,
+                    doses.length
+                  )}
                 />
               )}
               <OverflowMenu

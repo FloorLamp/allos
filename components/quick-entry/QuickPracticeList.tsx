@@ -28,8 +28,12 @@ import type { TrackedPractice } from "@/lib/queries/wellness";
 // the user is done.
 export default function QuickPracticeList({
   practices,
+  today,
 }: {
   practices: TrackedPractice[];
+  // The acting profile's today (YYYY-MM-DD) — the day the counts are counting, and
+  // the day the re-log question is asked about (#2007 layer 3).
+  today: string;
 }) {
   return (
     <ul data-testid="quick-entry-practice-list" className="flex flex-col gap-2">
@@ -56,6 +60,7 @@ export default function QuickPracticeList({
             <LogPracticeButton
               practice={practice.name}
               todayCount={practice.todayCount}
+              today={today}
             />
           </div>
         </li>

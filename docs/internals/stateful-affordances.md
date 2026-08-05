@@ -186,3 +186,64 @@ Two defects were fixed by #1893:
   refilled". Treated with the #798 pattern — an informational
   "Refilled just now (+90)" line for a short window, never a gate, because two
   bottles is a legitimate restock.
+
+## The one-tap feedback family (#2041, #2007)
+
+An additive affordance stays plain (above) — but "plain" was never a licence for
+each one to answer _"did my tap land?"_ its own way, and by the 2026-08-05 survey
+one-tap logging had four unrelated answers and five hand-rolled copies of the
+same optimistic-reconcile code. The decision is recorded here and enforced as
+data in `lib/one-tap.ts` (`ONE_TAP_AFFORDANCES`), which every surface running the
+shared hook must name itself in.
+
+**The four feedback designs.** A new one-tap surface picks one of these; it does
+not invent a fifth.
+
+| design             | when it applies                                                                                           | who uses it                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `optimistic-count` | there is a number beside the tap that can move now and reconcile after (the #748 item 2 pattern)          | food servings, protein grams, mobility moves, symptom severity |
+| `cooldown`         | no count to move — the figure arrives with the action's revalidation, so the inert window IS the feedback | substance units                                                |
+| `outcome-toast`    | the write can REFUSE, so the tap is answered from its typed outcome and never confirmed unconditionally   | dose confirm/skip, PRN dose, practice session                  |
+| `recency-line`     | additive with a corrupting double-tap: an informational line beside a button that stays enabled (#798)    | mark refilled                                                  |
+
+**How a second tap is classified.** This is what decides whether a confirm may
+ever appear, and it is declared per affordance rather than inferred:
+
+- **idempotent** — a second tap changes nothing (mobility's set semantics, dose
+  status per (dose, date), preventive done per (rule, date), the mood upsert, the
+  one-row-per-date weight quick-add). Layer 1 only.
+- **additive** — a second tap writes again _and that is the point_ (food serving,
+  protein grams, PRN dose, substance units). Layer 1 only, and it **must never
+  confirm**: `expectedInterval: "none"` is stated explicitly on every one of them
+  so the confirm cannot leak in by omission.
+- **cadenced** — additive with a real expected interval: practice sessions (~a
+  day) and mark refilled (a supply cycle, weeks). These get all three layers.
+
+**The three layers** (#2007), in the order a user meets them:
+
+1. **Post-success cooldown** — `POST_SUCCESS_COOLDOWN_MS`, domain-blind, on every
+   affordance that runs `useOptimisticLedger`. `useFormStatus` already disables a
+   control _during_ its request; this closes the instant _after_ the response,
+   when the control re-enables and a queued tap lands a real second write. It is
+   a UI debounce, not a gate: nothing is refused, the tap is absorbed, and a
+   failed or refused write skips the cooldown entirely so a retry is immediate.
+   Whether the window dims the control follows the feedback design — a surface
+   with an optimistic count absorbs silently (the count already answered), one
+   without disables so the swallowed tap is visible.
+2. **The affordance renders today's state** — the practice button reads "Log
+   another" and names the day's count once a session exists, so the second tap is
+   never byte-identical to the first (the #1893 doctrine applied to an additive
+   write).
+3. **Cadence-aware confirm** — `shouldConfirmRelog` in `lib/one-tap.ts`, only for
+   the two cadenced affordances. Always a confirm, never a block (#798): a
+   genuine second sauna and a pharmacy that filled 180 as two bottles are both
+   real, so the dialog's default is to proceed. Practice asks when a session is
+   already logged today; refill asks inside a window sized from how long a fill
+   actually lasts (`daysOfSupplyForItem` over `last_fill_size`), capped at three
+   days so an early restock is never nagged.
+
+**Surfaces deliberately not on the hook.** Preventive done, care-plan done, the
+mood check-in and the weight quick-add are idempotent AND already single-flight
+through a form action or a transition, so a landed repeat is a no-op by
+construction. They are classified above; wiring them to the hook would add a
+window without closing a hazard.

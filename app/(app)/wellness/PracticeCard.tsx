@@ -33,6 +33,7 @@ export default function PracticeCard({
   const confirm = useConfirm();
   const toast = useToast();
   const undoable = useUndoableDelete();
+  const todaySessions = sessions.filter((session) => session.date === today);
 
   async function untrack() {
     if (practice.targetId == null) return;
@@ -190,7 +191,17 @@ export default function PracticeCard({
 
       <LogPracticeButton
         practice={practice.name}
-        todayCount={sessions.filter((session) => session.date === today).length}
+        todayCount={todaySessions.length}
+        // The latest time today's sessions carry, so the re-log question can name it
+        // ("You logged Sauna today at 08:12"). A bare one-tap session records no
+        // time, and then the question simply doesn't claim one.
+        lastLoggedTime={
+          todaySessions
+            .map((session) => session.time)
+            .filter((time): time is string => time != null)
+            .sort()
+            .at(-1) ?? null
+        }
         atCeiling={practice.atCeiling}
         today={today}
         defaultDurationMin={practice.previousDurationMin}
