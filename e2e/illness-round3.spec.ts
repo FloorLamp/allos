@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { randomBytes } from "node:crypto";
-import { followLink, settledClick, settledUpload } from "./helpers";
+import {
+  followLink,
+  settledClick,
+  settledFill,
+  settledUpload,
+} from "./helpers";
 import { openTempEntry } from "./symptom-helpers";
 
 // Illness round 3 (#859). The seed makes profile 1 currently sick with an OPEN "Illness"
@@ -97,8 +102,7 @@ test.describe("Illness round 3 (#859)", () => {
     }
 
     // The logging-area shortcut points to the SAME hidden camera input owned by the
-    // gallery. Upload a uniquely-salted PNG through that input and re-drive until a
-    // thumbnail renders.
+    // gallery. Upload a uniquely-salted PNG through that input.
     const addPhotoShortcut = page.getByTestId("episode-add-photo-shortcut");
     await expect(addPhotoShortcut).toHaveAttribute(
       "for",
@@ -106,22 +110,25 @@ test.describe("Illness round 3 (#859)", () => {
     );
     const captionInput = strip.getByLabel("Caption (optional)");
 
-    // settledUpload's POST arm matches ANY same-origin POST, and this page fires
-    // unrelated posts (earlier steps' revalidations, the offline-queue flush), so
-    // a satisfied settle doesn't prove the UPLOAD landed — CI hit exactly that
-    // (settle resolved, 0 thumbnails for 15s). toPass is justified (a commented
-    // last resort): only an actually-applied upload renders a delete button, so
-    // the loop cannot false-pass; a re-driven attempt that double-lands is
-    // absorbed by the delete-ALL cleanup below.
-    await expect(async () => {
-      await captionInput.fill("Rash on left forearm");
-      await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
-        name: `rash-${randomBytes(6).toString("hex")}.png`,
-        mimeType: "image/png",
-        buffer: uniquePng(),
-      });
-      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 }); // first-ok: asserts a photo delete button renders before the delete loop — order-agnostic
-    }).toPass({ timeout: 45_000 }); // topass-ok: upload-until-applied: only an actually-applied photo renders a delete button, so the loop can't false-pass; a double-land is absorbed by the delete-all cleanup
+    // This was a 45s upload-until-applied `toPass` loop, and its comment said why:
+    // settledUpload's arm matched ANY same-origin POST, and this page fires unrelated
+    // ones (earlier steps' revalidations, the offline-queue flush to
+    // /api/offline-replay), so a satisfied settle did not prove the UPLOAD landed —
+    // CI hit exactly that, settle resolved and 0 thumbnails for 15s. #1952 made the
+    // arm correlate with the upload's own Server Action (started after the
+    // setInputFiles AND carrying next-action, which the /api flush by construction
+    // does not), so the settle is now the signal and re-driving the write we are
+    // waiting on — the #1400 self-racing shape — is no longer needed.
+    //
+    // The caption input is CONTROLLED (`value={caption}`); the loop was what
+    // rescued a pre-hydration swallow (#1941), so the fill becomes settledFill.
+    await settledFill(page, captionInput, "Rash on left forearm");
+    await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
+      name: `rash-${randomBytes(6).toString("hex")}.png`,
+      mimeType: "image/png",
+      buffer: uniquePng(),
+    });
+    await expect(deleteButtons.first()).toBeVisible(); // first-ok: asserts a photo delete button renders before the delete loop — order-agnostic
 
     await expect(page.getByText("Photo attached.")).toBeVisible();
     const captionedPhoto = strip

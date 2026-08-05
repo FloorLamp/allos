@@ -1,7 +1,13 @@
 import { test, expect } from "./fixtures";
 import { randomBytes } from "node:crypto";
 import { loginAs } from "./nav";
-import { followLink, settledClick, settledUpload } from "./helpers";
+import {
+  followLink,
+  settledClick,
+  settledFill,
+  settledSelect,
+  settledUpload,
+} from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SICK_PHOTO } from "./fixture-logins";
 
 // #1093 — the symptom↔photo cross-link, end to end. This OWNS a dedicated sick-solo login
@@ -68,19 +74,25 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     const captionInput = strip.getByLabel("Caption (optional)");
     const caption = `Cough photo ${randomBytes(4).toString("hex")}`;
 
-    // Tag the photo to "cough" and upload. settledUpload's POST arm matches any
-    // same-origin POST and this page fires unrelated revalidations, so re-drive until a
-    // tagged thumbnail actually renders (only an applied upload adds a delete button).
-    await expect(async () => {
-      await symptomSelect.selectOption("cough");
-      await captionInput.fill(caption);
-      await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
-        name: `cough-${randomBytes(6).toString("hex")}.png`,
-        mimeType: "image/png",
-        buffer: uniquePng(),
-      });
-      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 }); // first-ok: asserts a photo delete button rendered before the assertions below — order-agnostic
-    }).toPass({ timeout: 45_000 }); // topass-ok: upload-until-applied — only an actually-applied photo renders a delete button, so this can't false-pass; a double-land is absorbed by the delete-all cleanup
+    // Tag the photo to "cough" and upload. This was a 45s upload-until-applied
+    // `toPass` loop because settledUpload's arm accepted ANY same-origin POST and
+    // this page fires unrelated ones, so a satisfied settle did not prove the upload
+    // landed. #1952 made that wait correlate with the upload's own Server Action, so
+    // the settle IS the signal and the re-drive is gone — a retry loop that re-fires
+    // the write it is waiting on is the #1400 self-racing shape, kept only while
+    // nothing better existed.
+    //
+    // Both fields are CONTROLLED (`value={photoSymptom}` / `value={caption}`), and
+    // it was the loop, not the raw calls, that was rescuing a pre-hydration swallow
+    // (#1941) — so they take the settled forms now that there is no second attempt.
+    await settledSelect(page, symptomSelect, "cough");
+    await settledFill(page, captionInput, caption);
+    await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
+      name: `cough-${randomBytes(6).toString("hex")}.png`,
+      mimeType: "image/png",
+      buffer: uniquePng(),
+    });
+    await expect(deleteButtons.first()).toBeVisible(); // first-ok: asserts a photo delete button rendered before the assertions below — order-agnostic
 
     await expect(page.getByText("Photo attached.")).toBeVisible();
 
