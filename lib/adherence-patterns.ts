@@ -137,45 +137,31 @@ export interface DoseAdherenceInput {
   suppressMoveSuggestion?: boolean;
 }
 
-// The lower bound (YYYY-MM-DD) a dose's adherence pattern may be inferred from —
-// the day the dose has existed with its CURRENT schedule (#430). A pattern window
-// must never reach back before this, or it manufactures "phantom misses" on days
-// the dose didn't exist (defeating the min-history gate) and re-accuses a re-timed
-// dose for the weeks it sat in its OLD slot. Derived from the timestamps the
-// builder reads:
-//   - the parent item's created_at is the earliest the dose could have existed;
-//   - the dose's own created_at (when present) refines that;
-//   - the dose's updated_at (set whenever the schedule/time is edited) resets the
-//     window on a re-time, so a dose moved evening→morning is judged only on days
-//     it was actually a morning dose.
-// The effective start is the LATEST of these (a re-time can only move it forward,
-// never expose pre-creation days). Pure string-date math (each timestamp is
-// "YYYY-MM-DD…", which sorts chronologically), so it's client-safe and testable.
+// ---- The retired edit clamp (#430 → #1973) --------------------------------
 //
-// The narrower sibling is `doseExistsSince` (lib/supplement-adherence.ts), the bound
-// a history STRIP/percentage uses. The two are deliberately different questions: this
-// one asks "over what window may I infer a claim about the dose's CURRENT slot"
-// (so a re-time resets it), while that one asks only "when did this dose exist at
-// all" (so a re-time must NOT erase the days it was genuinely taken in its old slot).
-// Both exist to keep a fixed lookback from manufacturing pre-existence misses (#430,
-// #1442); neither may be swapped for the other.
-export function doseAdherenceSince(
-  itemCreatedAt: string | null | undefined,
-  doseCreatedAt: string | null | undefined,
-  doseUpdatedAt: string | null | undefined
-): string | null {
-  const dateOf = (t: string | null | undefined): string | null =>
-    t ? t.slice(0, 10) : null;
-  // The dose's own lifetime lower bound: its last re-time, else its creation,
-  // else (no dose timestamps stored yet) the parent item's creation.
-  const doseSince =
-    dateOf(doseUpdatedAt) ?? dateOf(doseCreatedAt) ?? dateOf(itemCreatedAt);
-  const candidates = [dateOf(itemCreatedAt), doseSince].filter(
-    (d): d is string => d != null
-  );
-  if (candidates.length === 0) return null;
-  return candidates.reduce((a, b) => (a >= b ? a : b));
-}
+// `doseAdherenceSince` used to live here: the lower bound a pattern could be inferred
+// from, taken as the LATEST of the item's creation, the dose's creation, and the dose's
+// `updated_at`. That last term is gone, and with it the function.
+//
+// The rule it implemented — "editing a dose must not rewrite adherence history" — is
+// right, and it is not being relaxed. The MECHANISM was the problem: taking the bound
+// from `updated_at` meant any schedule edit voided every day before it, so the invariant
+// was honoured by throwing the history away. Erasing the past and re-judging it are the
+// same mistake in opposite directions; both are a present edit deciding what was true
+// before it.
+//
+// The correct implementation is to record WHEN each schedule applied and judge each day
+// against the version in force on it — lib/intake-cadence `doseScheduleAsOf`, resolved
+// inside `doseOnDay`, stored by migration 151. A pre-edit day is now judged by the
+// pre-edit rule instead of being dropped, in EITHER direction: once-daily → three-times-
+// daily invents no retroactive misses, and daily → every-other-day quietly improves
+// nothing.
+//
+// What survives is the genuinely different question the clamp was conflating with the
+// edit: when did this dose EXIST at all. That bound is `doseWindowSince`
+// (lib/supplement-adherence.ts) — timezone-aware, and widened by logged history because
+// a log is proof the dose existed on its date (#430/#1442) — and the pattern builder
+// reads it, the same one the strip it summarizes reads.
 
 // ---- Helpers --------------------------------------------------------------
 

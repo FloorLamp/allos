@@ -61,9 +61,12 @@ import {
 } from "@/lib/supplement-schedule";
 import {
   CADENCE_KINDS,
+  doseScheduleDiffers,
   normalizeWeekdays,
   type CadenceKind,
+  type DoseSchedule,
 } from "@/lib/intake-cadence";
+import { getDoseScheduleVersions } from "@/lib/queries";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { HistoricalDoseOutcome } from "@/lib/types";
 import type {
@@ -367,6 +370,44 @@ const insertDoseStmt = () =>
      VALUES (?,?,?,?,?,?,?,?,?)`
   );
 
+// Record ONE version of a dose's schedule, effective from a profile-local calendar day
+// (#1973, migration 151). UPSERT on (dose_id, effective_from): several schedule edits on
+// one day collapse to that day's final state, which is the right grain because dueness is
+// evaluated per DAY. Append-only in every other respect — an earlier version is never
+// rewritten, which is what makes a past day judgeable by the rule that applied then.
+//
+// `created_at` comes from the CLOCK SEAM (sqlNow, #1534) and is deliberately NOT the same
+// value as `effective_from`: a backfilled version records a past effective day while
+// having been written now.
+const insertScheduleVersionStmt = () =>
+  db.prepare(
+    `INSERT INTO intake_dose_schedule_versions
+       (dose_id, effective_from, time_of_day, weekdays, start_date, end_date, created_at)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(dose_id, effective_from) DO UPDATE SET
+       time_of_day = excluded.time_of_day,
+       weekdays    = excluded.weekdays,
+       start_date  = excluded.start_date,
+       end_date    = excluded.end_date,
+       created_at  = excluded.created_at`
+  );
+
+function recordScheduleVersion(
+  doseId: number,
+  effectiveFrom: string,
+  schedule: DoseSchedule
+): void {
+  insertScheduleVersionStmt().run(
+    doseId,
+    effectiveFrom,
+    schedule.time_of_day ?? null,
+    schedule.weekdays ?? null,
+    schedule.start_date ?? null,
+    schedule.end_date ?? null,
+    sqlNow()
+  );
+}
+
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
 // inside a transaction.
 function insertDoses(
@@ -380,11 +421,15 @@ function insertDoses(
     weekdays?: string | null;
     start_date?: string | null;
     end_date?: string | null;
-  }[]
+  }[],
+  // The profile-LOCAL calendar day the doses are born on — the first version's
+  // `effective_from` (#1973). Local rather than a UTC slice of `created_at` because it is
+  // compared against the profile-local windows every adherence surface is built from.
+  birthDay: string
 ) {
   const ins = insertDoseStmt();
-  doses.forEach((d, i) =>
-    ins.run(
+  doses.forEach((d, i) => {
+    const info = ins.run(
       suppId,
       d.amount,
       d.time_of_day,
@@ -394,8 +439,13 @@ function insertDoses(
       d.weekdays ?? null,
       d.start_date ?? null,
       d.end_date ?? null
-    )
-  );
+    );
+    // Seed the schedule history at birth (#1973). Without this first version, the FIRST
+    // edit would have nothing to close: the new version would become the earliest one,
+    // and the resolver's before-recorded-history fallback would judge every past day by
+    // the NEW rule — the retroactive re-judgment this whole feature exists to prevent.
+    recordScheduleVersion(Number(info.lastInsertRowid), birthDay, d);
+  });
 }
 
 interface PairInput {
@@ -579,7 +629,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         supplyId
       );
     const suppId = Number(info.lastInsertRowid);
-    insertDoses(suppId, doses);
+    insertDoses(suppId, doses, todayStr);
     reconcilePairs(suppId, pairs, profile.id);
     // Ensure-course-on-create: a new medication opens an initial course
     // on the chosen date (today for quick-add). A no-op for supplements (kind
@@ -679,10 +729,15 @@ export async function updateSupplement(
     // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
       .prepare(
-        "SELECT active, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, quantity_on_hand, created_at FROM intake_items WHERE id = ? AND profile_id = ?"
       )
       .get(id, profile.id) as
-      { active: number; quantity_on_hand: number | null } | undefined;
+      | {
+          active: number;
+          quantity_on_hand: number | null;
+          created_at: string | null;
+        }
+      | undefined;
     if (!owned) return false;
     // A medication can have several historical courses. The edit form submits the
     // specific current/latest course it displayed, and this scoped lookup prevents a
@@ -814,6 +869,35 @@ export async function updateSupplement(
                                 ELSE updated_at END
         WHERE id = ? AND item_id = ? AND retired = 0`
     );
+    // The PRE-EDIT schedule of every dose being kept, read under the write lock before
+    // any UPDATE lands (#1973). This is the version a schedule change closes: once the
+    // row is overwritten the old rule is unrecoverable, which is precisely why the clamp
+    // existed. Read as one statement rather than per dose — the form submits a handful.
+    const priorSchedules = new Map<
+      number,
+      DoseSchedule & { created_at: string | null }
+    >(
+      (
+        db
+          .prepare(
+            `SELECT d.id, d.created_at, d.time_of_day, d.weekdays,
+                    d.start_date, d.end_date
+               FROM intake_item_doses d
+               JOIN intake_items s ON s.id = d.item_id
+              WHERE d.item_id = ? AND d.retired = 0 AND s.profile_id = ?`
+          )
+          .all(id, profile.id) as ({
+          id: number;
+          created_at: string | null;
+        } & DoseSchedule)[]
+      ).map((r) => [r.id, r])
+    );
+    // Which doses already have a recorded history, so a dose from any origin (an
+    // importer insert, a seeded row, a pre-#1973 row this migration missed) gets its
+    // PRE-EDIT schedule recorded before the new version is appended. Without that
+    // backfill the new version would be the earliest one, and the resolver's
+    // before-recorded-history fallback would judge every past day by the NEW rule.
+    const historyByDose = getDoseScheduleVersions(profile.id);
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
       if (d.id) {
@@ -837,6 +921,28 @@ export async function updateSupplement(
           id
         );
         keptIds.push(d.id);
+        // Effective-date the change (#1973). A dueness-relevant edit APPENDS a version
+        // effective today; every earlier day keeps resolving to the rule that was in
+        // force then, so the history is neither rewritten nor thrown away. A cosmetic
+        // edit (amount, food timing, sort) cannot reach `doseScheduleDiffers` and
+        // therefore cannot move an adherence boundary at all.
+        const prior = priorSchedules.get(d.id);
+        if (prior && doseScheduleDiffers(prior, d)) {
+          const priorVersions = historyByDose.get(d.id);
+          if (!priorVersions || priorVersions.length === 0) {
+            // Lazy backfill: the pre-edit rule, effective from the dose's birth. The
+            // anchor is the same one migration 151 seeds from — the dose's created_at,
+            // else the parent item's, else the epoch — so a backfilled history and a
+            // migrated one are indistinguishable.
+            const born = (
+              prior.created_at ??
+              owned.created_at ??
+              "1970-01-01"
+            ).slice(0, 10);
+            recordScheduleVersion(d.id, born, prior);
+          }
+          recordScheduleVersion(d.id, todayStr, d);
+        }
       } else {
         const info = ins.run(
           id,
@@ -849,7 +955,11 @@ export async function updateSupplement(
           d.start_date ?? null,
           d.end_date ?? null
         );
-        keptIds.push(Number(info.lastInsertRowid));
+        const newId = Number(info.lastInsertRowid);
+        // A dose added by an edit is born today; seed its first version so its own
+        // first schedule change has something to close (#1973).
+        recordScheduleVersion(newId, todayStr, d);
+        keptIds.push(newId);
       }
     });
     // A dose the user removed is RETIRED (kept, flagged) when adherence logs
@@ -1479,7 +1589,8 @@ export async function acceptSuggestion(
         amount,
         time_of_day: t,
         food_timing: s.food_timing ?? "any",
-      }))
+      })),
+      today(profile.id)
     );
     db.prepare(
       "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ?"

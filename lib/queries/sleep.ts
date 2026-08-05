@@ -35,9 +35,8 @@ import {
   getSituationEvents,
   getFreeDays,
 } from "../settings";
-import { doseAdherenceSince } from "../adherence-patterns";
-import { indexTakenByDose } from "../supplement-adherence";
-import { doseDueOn, timeBucket } from "../supplement-schedule";
+import { doseExistsSince, indexTakenByDose } from "../supplement-adherence";
+import { doseBucketOn, doseDueOn } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
   bedtimeDoseDisposition,
@@ -332,15 +331,32 @@ function bedtimeSupplementsByWakeDay(
       // with a taken/skipped log renders on the strength of that log alone (so a
       // paused, retired, or later-edited dose keeps its history — #1972), while an
       // unlogged night is still judged by the dose's lifetime and schedule below.
+      //
+      // Both inputs to that judgment are now effective-dated (#1973):
+      //
+      //   • `isBedtimeDose` asks which slot the dose held ON THAT NIGHT, not which one
+      //     it holds today. This closes the residual #1972 named and could not fix on
+      //     its own: nothing recorded a past slot, so a dose re-timed INTO the bedtime
+      //     slot retroactively claimed every earlier log as a bedtime log. Versions are
+      //     that record, so both directions now resolve — a dose moved OUT of bedtime
+      //     keeps the nights it really was a bedtime dose (the #1972 fix, intact), and
+      //     one moved IN stops claiming nights it was an evening dose.
+      //
+      //   • `adherenceSince` is the dose's EXISTENCE bound and nothing else. It used to
+      //     be doseAdherenceSince(), which folded `updated_at` in and so voided every
+      //     night before any schedule edit — the erase-the-history reading of the
+      //     invariant that #1973 replaced. A night before the dose existed still carries
+      //     no expectation; a night before it was merely EDITED is judged by the version
+      //     in force then, via doseDueOn below.
       const disposition = bedtimeDoseDisposition({
         sleepDate,
         logged: resolved,
-        isBedtimeDose: timeBucket(dose.time_of_day) === "Before sleep",
+        isBedtimeDose: doseBucketOn(dose, sleepDate) === "Before sleep",
         isCurrentDose: item.active === 1 && dose.retired === 0,
-        adherenceSince: doseAdherenceSince(
+        adherenceSince: doseExistsSince(
           item.created_at,
           dose.created_at,
-          dose.updated_at
+          timezone
         ),
       });
       if (disposition === "excluded") return [];

@@ -4,7 +4,11 @@
 // intake_items JOIN.
 // Current-schedule reads: the live supplement/medication items, their currently
 // scheduled (non-retired) doses, and the AI suggestions awaiting review.
-import { cadenceLabel, type ItemCadence } from "../../intake-cadence";
+import {
+  cadenceLabel,
+  type DoseScheduleVersion,
+  type ItemCadence,
+} from "../../intake-cadence";
 import { db } from "../../db";
 import type {
   Supplement,
@@ -115,14 +119,64 @@ export function resolveMedicationAcrossProfiles(
 // reminders, refill math, digests) reads through here; history reads join
 // intake_item_doses directly and still see retired rows.
 export function getSupplementDoses(profileId: number): SupplementDose[] {
-  return db
-    .prepare(
-      `SELECT d.* FROM intake_item_doses d
+  return withScheduleVersions(
+    profileId,
+    db
+      .prepare(
+        `SELECT d.* FROM intake_item_doses d
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND d.retired = 0
         ORDER BY d.item_id, d.sort, d.id`
+      )
+      .all(profileId) as SupplementDose[]
+  );
+}
+
+// Every dose's effective-dated schedule history (#1973, migration 151), oldest first,
+// keyed by dose id. Scoped through the parent item's profile_id like every other read in
+// this module (the version table is a grandchild and carries no profile_id of its own).
+//
+// ONE query for the whole profile rather than a per-dose lookup: the callers that need
+// history need it for every dose they are about to iterate (an adherence window, a
+// digest, a reminder pass), and a dose's history is a handful of rows.
+export function getDoseScheduleVersions(
+  profileId: number
+): Map<number, DoseScheduleVersion[]> {
+  const rows = db
+    .prepare(
+      `SELECT v.dose_id, v.effective_from, v.time_of_day,
+              v.weekdays, v.start_date, v.end_date
+         FROM intake_dose_schedule_versions v
+         JOIN intake_item_doses d ON d.id = v.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ?
+        ORDER BY v.dose_id, v.effective_from, v.id`
     )
-    .all(profileId) as SupplementDose[];
+    .all(profileId) as (DoseScheduleVersion & { dose_id: number })[];
+  const out = new Map<number, DoseScheduleVersion[]>();
+  for (const { dose_id, ...version } of rows) {
+    const list = out.get(dose_id);
+    if (list) list.push(version);
+    else out.set(dose_id, [version]);
+  }
+  return out;
+}
+
+// Attach each dose's schedule history to the rows a schedule read returns, so every
+// consumer of a dose row can ask `doseDueOn` about ANY day and get the rule that was in
+// force then (#1973). A dose with no recorded history keeps `versions` absent, which the
+// resolver reads as "this row, always" — the pre-#1973 behaviour, unchanged.
+function withScheduleVersions(
+  profileId: number,
+  doses: SupplementDose[]
+): SupplementDose[] {
+  if (doses.length === 0) return doses;
+  const byDose = getDoseScheduleVersions(profileId);
+  for (const d of doses) {
+    const versions = byDose.get(d.id);
+    if (versions) d.versions = versions;
+  }
+  return doses;
 }
 
 // Every dose row, including retired doses retained for adherence history. This is
@@ -131,14 +185,17 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
 export function getSupplementDosesForHistory(
   profileId: number
 ): SupplementDose[] {
-  return db
-    .prepare(
-      `SELECT d.* FROM intake_item_doses d
+  return withScheduleVersions(
+    profileId,
+    db
+      .prepare(
+        `SELECT d.* FROM intake_item_doses d
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ?
         ORDER BY d.item_id, d.sort, d.id`
-    )
-    .all(profileId) as SupplementDose[];
+      )
+      .all(profileId) as SupplementDose[]
+  );
 }
 
 // AI suggestions still awaiting review, newest first.

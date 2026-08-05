@@ -6,7 +6,9 @@
 import "../../scripts/load-env";
 
 import path from "node:path";
+import { zonedWallTimeToUtc, utcSqlString } from "../../lib/date";
 import { db, today } from "../../lib/db";
+import { getTimezone } from "../../lib/settings";
 import { PROFILE_ID } from "./common";
 import { PARITY_MED_NAME } from "./intake";
 
@@ -513,26 +515,35 @@ export function seedRecordsBrowser(): void {
   // daily + active with no taken-log today, so they surface as due. Fully synthetic.
   //
   // STAMPED FROM THE FROZEN CLOCK, not SQL's `datetime('now')` default. These rows
-  // are dose LIFETIME anchors, and `doseAdherenceSince` (lib/adherence-patterns) uses
-  // them to decide which nights/days a dose was even alive for — so leaving them on
-  // real wall-clock silently coupled a fixture to real-vs-frozen skew. Concretely:
-  // the Sleep hero's bedtime-supplement line (lib/queries/sleep.ts) excludes a dose
-  // whose lifetime starts AFTER the night it is summarizing (`sleepDate < since`),
-  // and last night's sleepDate is frozen-today − 1. With `created_at` = REAL today
-  // and `today()` = FROZEN today the two normally agree (the #1103 pinned timezone
-  // guarantees local date == frozen UTC date) and this bedtime dose is correctly
-  // excluded from last night. But inside #1464's hazard window the freeze instant is
-  // nudged FORWARD across UTC midnight — frozen date D+1, real date still D — so
-  // `since` = D and `sleepDate` = D, the strict `<` no longer holds, and this
-  // NEIGHBOR fixture leaked into sleep-page.spec's hero assertion as a second due
-  // bedtime supplement ("1 of 2 taken" instead of "All taken"). Deterministic for a
-  // ~30-minute band each day, on any branch. Dating from `today()` puts the anchor
-  // on the same clock every consumer reads, so the exclusion is intentional rather
-  // than an accident of when the suite happened to run. (Midnight-local, because
-  // only the DATE is ever read — every consumer slices to 10 chars.)
+  // are dose LIFETIME anchors, and the dose-existence bound (`doseExistsSince`,
+  // lib/supplement-adherence) uses them to decide which nights/days a dose was even
+  // alive for — so leaving them on real wall-clock silently coupled a fixture to
+  // real-vs-frozen skew. Concretely: the Sleep hero's bedtime-supplement line
+  // (lib/queries/sleep.ts) excludes a dose whose lifetime starts AFTER the night it
+  // is summarizing (`sleepDate < since`), and last night's sleepDate is frozen-today
+  // − 1. With `created_at` = REAL today and `today()` = FROZEN today the two
+  // normally agree and this bedtime dose is correctly excluded from last night. But
+  // inside #1464's hazard window the freeze instant is nudged FORWARD across UTC
+  // midnight — frozen date D+1, real date still D — so `since` = D and `sleepDate` =
+  // D, the strict `<` no longer holds, and this NEIGHBOR fixture leaked into
+  // sleep-page.spec's hero assertion as a second due bedtime supplement ("1 of 2
+  // taken" instead of "All taken"). Deterministic for a ~30-minute band each day, on
+  // any branch. Dating from `today()` puts the anchor on the same clock every
+  // consumer reads, so the exclusion is intentional rather than an accident of when
+  // the suite happened to run.
+  //
+  // The anchor is a real INSTANT for profile-local midnight, not the naive string
+  // `${today()} 00:00:00`. `created_at` columns are UTC SQL, and the bound converts
+  // them back to the profile's calendar day, so a naive local wall-time stored as if
+  // it were UTC reads a day EARLY under the #1103 pin (Etc/GMT+10 → local 14:00 the
+  // previous day) and the dose stopped being excluded from last night at all. Same
+  // rule as every other profile-local fixture instant: build it with
+  // zonedWallTimeToUtc(getTimezone(profile), day, "HH:MM").
   const DOSE_ORDER_MORNING = "Zeaxanthin Morning (e2e)";
   const DOSE_ORDER_BEDTIME = "Ashwagandha Bedtime (e2e)";
-  const doseOrderCreatedAt = `${today(PROFILE_ID)} 00:00:00`;
+  const doseOrderCreatedAt = utcSqlString(
+    zonedWallTimeToUtc(getTimezone(PROFILE_ID), today(PROFILE_ID), "00:00")
+  );
   for (const [name, timeOfDay, amount] of [
     [DOSE_ORDER_MORNING, "morning", "1 cap"],
     [DOSE_ORDER_BEDTIME, "bedtime", "300 mg"],

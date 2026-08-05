@@ -1,6 +1,6 @@
 // Factual bedtime-supplement context for the Sleep page. This module does not
 // compute what "bedtime", "due", or "logged" mean: the query layer reuses
-// isDueOn(), timeBucket(), doseAdherenceSince(), and the shared dose-log index,
+// isDueOn(), doseBucketOn(), doseExistsSince(), and the shared dose-log index,
 // then asks bedtimeDoseDisposition() below which doses belong to a night and
 // hands those to the pure reducer.
 
@@ -44,11 +44,18 @@ export interface BedtimeDoseDispositionInput {
   sleepDate: string;
   // A taken or skipped log exists for this dose on `sleepDate`.
   logged: boolean;
-  // The dose's CURRENT slot is the Before-sleep bucket.
+  // The dose held the Before-sleep bucket ON `sleepDate`. Effective-dated (#1973):
+  // the caller resolves the schedule VERSION in force that night (doseBucketOn), not
+  // the current row, so a dose re-timed into or out of the bedtime slot is attributed
+  // to the slot it actually occupied on the night being summarized.
   isBedtimeDose: boolean;
   // Item active and dose not retired, i.e. the dose is still part of the regimen.
   isCurrentDose: boolean;
-  // doseAdherenceSince(): the first day this dose's current slot may be judged.
+  // The first day this dose may be judged over: the day it EXISTED from
+  // (doseExistsSince), and nothing else. Before #1973 this folded in the dose's
+  // `updated_at`, so any schedule edit voided every night before it — the invariant
+  // "editing a dose must not rewrite adherence history" honoured by erasing the
+  // history. A night before an EDIT is now judged by the version in force then.
   adherenceSince: string | null;
 }
 

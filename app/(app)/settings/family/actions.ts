@@ -315,6 +315,16 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       db.prepare(
         "DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
       ).run(id);
+      // Dose schedule history (#1973) — a GRANDCHILD, so it is cleared before the dose
+      // rows it hangs off. Its FK is ON DELETE CASCADE, but this sweep runs with
+      // foreign_keys OFF, so the cascade would not fire and the rows would be orphaned
+      // PHI.
+      db.prepare(
+        `DELETE FROM intake_dose_schedule_versions
+          WHERE dose_id IN (SELECT d.id FROM intake_item_doses d
+                              JOIN intake_items i ON i.id = d.item_id
+                             WHERE i.profile_id = ?)`
+      ).run(id);
       db.prepare(
         "DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
       ).run(id);

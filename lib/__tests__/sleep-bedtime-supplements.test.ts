@@ -75,9 +75,11 @@ describe("which doses belong to a night", () => {
   };
 
   // Issue #1972 regression pin. A dose logged for night N and edited on night
-  // N+5 must still report that night. The edit moves the dose's adherence lower
-  // bound (doseAdherenceSince keys off updated_at), and that bound used to be
-  // applied before the log was consulted, erasing the logged night entirely.
+  // N+5 must still report that night. The edit moved the dose's adherence lower
+  // bound (pre-#1973 that bound keyed off updated_at), and it used to be applied
+  // before the log was consulted, erasing the logged night entirely. The bound is
+  // now existence-only, but the ORDER is what this pins: a log is a fact, and no
+  // bound may be consulted ahead of it.
   it("keeps a logged night when the dose was edited afterwards", () => {
     expect(
       bedtimeDoseDisposition({
