@@ -129,8 +129,17 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   ).toBeVisible({ timeout: 15_000 });
   await expect(label).toContainText(`${before + 1} today`, { timeout: 15_000 });
 
-  // A second immediate tap is deduplicated. Make that explicit instead of showing
-  // the same success copy as a newly persisted administration.
+  // A second tap is deduplicated SERVER-side, and says so instead of showing the same
+  // success copy as a newly persisted administration. The reload is what makes the tap
+  // reach the server at all: a PRN dose is additive and never confirms, but it does
+  // carry the post-success cooldown (#2007 layer 1), and a fresh mount is the honest
+  // way past a two-second client window without sleeping through it.
+  await page.reload();
+  await expect(widget).toBeVisible();
+  if (!(await item.isVisible())) {
+    await widget.getByTestId("quick-log-prn-more").locator("summary").click();
+  }
+  await expect(item.getByTestId("prn-log-now")).toBeVisible();
   await settledClick(page, item.getByTestId("prn-log-now"));
   await expect(
     page.getByRole("status").filter({

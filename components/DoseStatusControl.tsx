@@ -32,9 +32,12 @@ import {
 //
 // A dose check-off is IDEMPOTENT per (dose, date), so it never asks anything (#2007's
 // classification) — but it still gets layer 1, the shared ledger's post-success
-// cooldown, keyed per CONTROL rather than per target: the second half of a double-tap
-// on ✅ arrives as the OPPOSITE target ("clear", because the first tap already flipped
-// the state), which is exactly the accidental un-take this closes.
+// cooldown, keyed by the TRANSITION (from-state → target) rather than by the button.
+// This is a tri-state toggle, so "the same write twice" is the transition, not the
+// control: the second tap of a fat-finger double lands before the server's state has
+// come back, re-sends `clear → taken`, and is absorbed — while every deliberate
+// correction (un-take, un-skip, skip after take) is a DIFFERENT transition off a
+// control the app has already re-rendered, and always goes through.
 export type DoseVariant = "circle" | "pill";
 
 export default function DoseStatusControl({
@@ -66,8 +69,12 @@ export default function DoseStatusControl({
     "taken" | "skipped" | "clear" | null
   >(null);
   const ledger = useOptimisticLedger("dose-status");
-  const busy = ledger.pending("take") || ledger.pending("skip");
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
+  // Whichever transition this control could start from here is the one in flight.
+  const busy =
+    ledger.pending(`${state}->taken`) ||
+    ledger.pending(`${state}->skipped`) ||
+    ledger.pending(`${state}->clear`);
   const isTaken = state === "taken";
   const isSkipped = state === "skipped";
   const toast = useToast();
@@ -128,17 +135,19 @@ export default function DoseStatusControl({
   // cooldown standing between the user and a second attempt.
   type DoseTap = "wrote" | "nothing";
 
-  async function apply(
-    target: "taken" | "skipped" | "clear",
-    control: "take" | "skip"
-  ) {
-    // The double-tap gate, per control (see the header note on why not per target).
-    if (ledger.blocked(control)) return;
+  function transitionKey(target: "taken" | "skipped" | "clear"): string {
+    return `${state}->${target}`;
+  }
+
+  async function apply(target: "taken" | "skipped" | "clear") {
+    const key = transitionKey(target);
+    // The double-tap gate (see the header note on why the transition is the key).
+    if (ledger.blocked(key)) return;
     // Stamp the tap moment up front: everything below (the online round-trip, its
     // failure, the queue write) happens after the dose was actually taken.
     const tappedAt = new Date();
     await ledger.tap<DoseTap>({
-      key: control,
+      key,
       write: () => runTap(target, tappedAt),
       settle: (outcome) =>
         outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
@@ -263,7 +272,7 @@ export default function DoseStatusControl({
     >
       <button
         type="button"
-        onClick={() => apply(isTaken ? "clear" : "taken", "take")}
+        onClick={() => apply(isTaken ? "clear" : "taken")}
         disabled={busy}
         className={takeClass}
         aria-pressed={isTaken}
@@ -281,7 +290,7 @@ export default function DoseStatusControl({
       </button>
       <button
         type="button"
-        onClick={() => apply(isSkipped ? "clear" : "skipped", "skip")}
+        onClick={() => apply(isSkipped ? "clear" : "skipped")}
         disabled={busy}
         className={skipClass}
         aria-pressed={isSkipped}
