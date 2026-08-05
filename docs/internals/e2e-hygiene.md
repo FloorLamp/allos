@@ -641,6 +641,22 @@ page still in customize mode, `Saving` up, Save disabled. The same spec already 
 `settledClick` twenty lines earlier for the household chip, so the fix was
 consistency, not a technique.
 
+**Measured, not argued** (CDP CPU throttle standing in for a loaded shard, 3 runs
+each; the same instrument #1964 used):
+
+| CPU throttle | Save's action POST resolves | "Edit dashboard" back |
+| ------------ | --------------------------- | --------------------- |
+| 1× (idle)    | 1.9–2.1 s                   | 2.1–2.6 s             |
+| 8×           | 2.6–3.0 s                   | 3.2–4.6 s             |
+| 20×          | 3.9–4.4 s                   | **7.0–7.2 s**         |
+
+So the bare click's 5 s default loses outright at 20×, and is inside its own
+margin of error at 8×. `settledClick` does not raise a ceiling — it **absorbs the
+slow part into the helper's own 15 s budget**: after it returns, the remaining wait
+for the client flip is 2.8–3.1 s at 20×, comfortably back inside the 5 s default.
+That is the whole difference between waiting on the right signal and widening the
+wrong one.
+
 Worth stating because the reflex is the other one: **do not widen the ceiling.** That
 is the move this suite has lost with repeatedly (`wellness-practices:137` went 5 s →
 20 s → 45 s → `test.slow()` and still overran; what fixed it was removing the work,
