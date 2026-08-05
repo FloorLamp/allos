@@ -80,8 +80,10 @@ export type QuickLogTarget =
 // not — the same completeness discipline `RECONCILE_PREFIXES` applies to buttons and
 // `KIND_REISSUE` to message kinds.
 //
-//   • `instant`  — the log carries a real moment, some consumer reads it, and there is a
-//                  correction affordance whose UNIT matches that consumer's tolerance.
+//   • `instant`  — the log carries a real moment and some consumer reads it. A ONE-TAP
+//                  instant additionally needs a correction affordance whose UNIT matches
+//                  that consumer's tolerance; an instant the FORM asks for is stated
+//                  right the first time and has nothing to correct afterwards.
 //   • `day-only` — the log is about a DAY. This is not a gap and it is not laziness:
 //                  capturing precision nothing consumes is how a later reader comes to
 //                  invent a meaning for it.
@@ -89,17 +91,34 @@ export type QuickLogTarget =
 // ADMISSION TEST FOR `instant`, all three required: (1) some consumer reads the instant;
 // (2) the tap contract is "this is happening now"; (3) the correction unit matches the
 // consumer's tolerance. Failing any one of them means `day-only` with the reason written
-// down, so "we decided against it" and "nobody looked" stay distinguishable.
+// down, so "we decided against it" and "nobody looked" stay distinguishable. (2) and (3)
+// are about a TAP: an entry that opens a form STATING the time answers both by asking,
+// and declares `correctionUnit: "none"` rather than naming a correction it does not have.
 export type QuickLogTimeSemantic = "instant" | "day-only";
+
+// How an `instant` entry's time gets corrected — required for one, so the third leg of
+// the admission test is answered out loud rather than left to a reader's guess (the
+// METRIC_KNOWLEDGE discipline: an explicit `none`, with the reason beside it).
+//
+//   • "hour" — the hour chips of lib/correction-time.ts (food, dose): a late tap is
+//              hours late, and the consumers tolerate that grain.
+//   • "day"  — corrected a DAY at a time, through the dated form that owns the
+//              exception (a period start that actually began yesterday).
+//   • "none" — the form STATES the time on entry, so there is no correction affordance
+//              at all. It was `"hour"` on the activity and measurements entries until
+//              #2062, whose own `why` text said in the same breath that no chip exists
+//              for them — an unenforced field is still documentation, and it read as a
+//              promise of a correction UI those two forms have never had.
+export type QuickLogCorrectionUnit = "hour" | "day" | "none";
 
 export interface QuickLogTime {
   semantic: QuickLogTimeSemantic;
   // Required in BOTH directions. For `instant`, WHICH consumer reads it and at what
   // grain; for `day-only`, why an instant would be precision nothing consumes.
   why: string;
-  // The correction chips' unit, for an `instant` entry — hours where a late tap is
-  // hours late, days where a missed start is days late.
-  chipUnit?: "hour" | "day";
+  // How an `instant` entry is corrected (required for one). A `day-only` entry leaves it
+  // unset: there is no instant to correct.
+  correctionUnit?: QuickLogCorrectionUnit;
 }
 
 export interface QuickLogItem {
@@ -137,8 +156,8 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     target: { kind: "activity" },
     time: {
       semantic: "instant",
-      why: "A session already carries start and end instants, and the whole training model reads them — duration, the live-session presence, the post-workout dose window. It is not a one-TAP log at all: the editor asks for the times, so there is nothing for a chip to correct.",
-      chipUnit: "hour",
+      why: "A session already carries start and end instants, and the whole training model reads them — duration, the live-session presence, the post-workout dose window. It is not a one-TAP log at all: the editor asks for the times, so there is nothing to correct afterwards.",
+      correctionUnit: "none",
     },
     training: true,
   },
@@ -153,7 +172,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     time: {
       semantic: "instant",
       why: "#2019: `eaten_at` is read by eating-window length and protein distribution, both of which tolerate about half an hour, and the Telegram button's contract is 'I am eating now'. Corrected in hour chips. The WEB bar states a time or leaves it null — it never defaults to now, because a backfill has no instant to offer.",
-      chipUnit: "hour",
+      correctionUnit: "hour",
     },
   },
   {
@@ -168,7 +187,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     time: {
       semantic: "instant",
       why: "#2020: `given_at` arms the PRN redose window and keys the phantom-dose proximity guard — the safety-relevant instant in the app. Hour chips, because redose intervals are measured in hours.",
-      chipUnit: "hour",
+      correctionUnit: "hour",
     },
   },
   {
@@ -185,8 +204,8 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     target: { kind: "overlay", form: "measurements" },
     time: {
       semantic: "instant",
-      why: "A reading time is part of the reading and the form ASKS for it — body temperature has carried one since #800/#843, and morning-vs-evening weight is a real difference. Stated on entry rather than corrected afterwards, so no chips.",
-      chipUnit: "hour",
+      why: "A reading time is part of the reading and the form ASKS for it — body temperature has carried one since #800/#843, and morning-vs-evening weight is a real difference. Stated on entry rather than corrected afterwards, so no correction affordance exists.",
+      correctionUnit: "none",
     },
   },
   {
@@ -223,7 +242,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     time: {
       semantic: "instant",
       why: "A period start is DAY-granular but genuinely correctable — 'it started yesterday' is the common case, and the #1892 duration sanity checks judge the corrected date. So the semantic is instant with a DAY unit, and the correction flows through the stateful write core rather than around it.",
-      chipUnit: "day",
+      correctionUnit: "day",
     },
     cycle: true,
   },

@@ -23,6 +23,7 @@ import {
   buildFoodDrugEventFindings,
   buildFoodDrugVarianceFindings,
   foodDrugEventItems,
+  foodDrugLedgerFor,
 } from "@/lib/food-drug-ledger-findings";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
 import {
@@ -268,5 +269,69 @@ describe("food–drug VARIANCE findings (#2021)", () => {
     for (let i = 0; i < 7; i++)
       logServing(p, "leafy_greens", shiftDateStr(t, -i), 2);
     expect(buildFoodDrugVarianceFindings(p, t)).toEqual([]);
+  });
+});
+
+// ---- ONE gather behind both shapes (#2060) ----
+//
+// The event finding (care tier, via rawUpcoming) and the variance finding (coaching
+// tier) are read by different surfaces that one page renders together, and each used to
+// re-run the whole gather: every intake item matched through `matchFoodInteractions`,
+// plus the food-log range read. They now share `foodDrugLedgerFor`, wrapped in the
+// request-scoped cache() shim.
+//
+// The DEDUPE itself is not observable here — outside a server request React's cache()
+// has no dispatcher and calls straight through (lib/request-cache.ts says so), which is
+// also why this tier can assert the gather's CONTRACT instead: one input, both shapes
+// derived from it, and no food-log read at all when nothing matched.
+describe("the shared ledger gather (#2060)", () => {
+  it("is the single input both finding shapes are formatted from", () => {
+    const p = newProfile("fd-gather-shared");
+    const t = today(p);
+    // One profile carrying BOTH signals at once: an open-ended warfarin course with a
+    // greens swing (variance) and a metronidazole course with alcohol logged today
+    // (event) — the co-render the issue is about.
+    addMedication(p, "Coumadin (warfarin)", { start: shiftDateStr(t, -60) });
+    addMedication(p, "Flagyl (metronidazole)", {
+      start: shiftDateStr(t, -2),
+      end: shiftDateStr(t, 4),
+    });
+    for (let i = 7; i < 14; i++)
+      logServing(p, "leafy_greens", shiftDateStr(t, -i), 0.5);
+    for (let i = 0; i < 7; i++)
+      logServing(p, "leafy_greens", shiftDateStr(t, -i), 2);
+    logServing(p, "alcohol", t, 2);
+
+    const ledger = foodDrugLedgerFor(p, t);
+    expect(ledger.items.map((i) => i.name).sort()).toEqual([
+      "Coumadin (warfarin)",
+      "Flagyl (metronidazole)",
+    ]);
+    // Both courses' windows come from the dose rows, and the servings cover today back
+    // through the two variance windows the detectors read.
+    expect(
+      ledger.servings.some((s) => s.group === "alcohol" && s.date === t)
+    ).toBe(true);
+    expect(
+      ledger.servings.filter((s) => s.group === "leafy_greens")
+    ).toHaveLength(14);
+
+    // Both shapes still fire, unchanged, off that one gather.
+    expect(buildFoodDrugEventFindings(p, t).map((f) => f.title)).toContain(
+      "Alcohol logged today while taking Flagyl (metronidazole)"
+    );
+    expect(buildFoodDrugVarianceFindings(p, t).map((f) => f.title)).toEqual([
+      "Leafy greens up this week — Coumadin (warfarin)",
+    ]);
+  });
+
+  it("skips the food-log read entirely when no item matched a rule", () => {
+    const p = newProfile("fd-gather-no-item");
+    const t = today(p);
+    addMedication(p, "Simvastatin", { start: shiftDateStr(t, -30) });
+    logServing(p, "alcohol", t, 3);
+    // Simvastatin's only rule (grapefruit) is excluded from the ledger, so nothing
+    // matches — and with no item to detect against, the day's servings are never read.
+    expect(foodDrugLedgerFor(p, t)).toEqual({ items: [], servings: [] });
   });
 });

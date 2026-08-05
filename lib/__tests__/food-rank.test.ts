@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blendFoodOrder } from "@/lib/food-rank";
+import { blendFoodOrder, proteinSplitIndex } from "@/lib/food-rank";
 
 // Pure slot-aware blend (issue #950): slot frecency LEADS, overall frecency BACKFILLS,
 // catalog order breaks the final tie. The degrade-to-overall property is the load-
@@ -121,5 +121,54 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
       TODAY
     );
     expect(ranked[0]).toBe("alcohol");
+  });
+});
+
+// ---- The protein control's slice point (#1980, fixed in #2061) ----
+//
+// The bar renders the protein entry as its own control between two slices of the quick
+// rows. The rank it was given counts groups in the RANKED order; the rows it is sliced
+// into are the quick set, which a deep link can reorder by pinning its own group to the
+// front. These cases are that mismatch, in the shape the bar hits it.
+
+describe("proteinSplitIndex (#2061)", () => {
+  it("splits after the rows that outrank protein when the rendered order is the ranked one", () => {
+    // Six quick rows drawn in rank order; protein ranked 4th overall, and two of those
+    // four groups are in the quick set → the control renders after two rows.
+    expect(proteinSplitIndex([0, 1, 5, 7, 9, 11], 4)).toBe(2);
+  });
+
+  it("renders the control first when every quick row is outranked by protein", () => {
+    expect(proteinSplitIndex([3, 4, 8], 2)).toBe(0);
+  });
+
+  it("renders the control last when every quick row outranks protein", () => {
+    expect(proteinSplitIndex([0, 1, 2], 9)).toBe(3);
+  });
+
+  it("a PINNED deep-link row that protein outranks puts the control above it", () => {
+    // The bug: `fried_food` is pinned to the front by a "Log servings" deep link even
+    // though it ranks 9th, and protein ranks 3rd. Counting the quick rows that outrank
+    // protein gives 2 — which would leave the rank-1 and rank-2 rows BELOW the control
+    // while the rank-9 pin sat above it. The scan answers 0: the first rendered row is
+    // already one protein outranks, so the control leads.
+    expect(proteinSplitIndex([9, 0, 1, 4, 6, 8], 3)).toBe(0);
+  });
+
+  it("a PINNED row that outranks protein keeps the control below it", () => {
+    // Same pin, ranked ahead of protein this time: the pinned row stays above the
+    // control, and the control still lands before the first row protein outranks.
+    expect(proteinSplitIndex([1, 0, 2, 7, 9], 3)).toBe(3);
+  });
+
+  it("an untracked profile splits after every row, so the control renders last", () => {
+    // proteinRank null = the entry was never ranked (#559: a cold start still gets the
+    // control, it just goes at the end).
+    expect(proteinSplitIndex([0, 1, 2], null)).toBe(3);
+    expect(proteinSplitIndex([], null)).toBe(0);
+  });
+
+  it("a rank of 0 puts the control above everything", () => {
+    expect(proteinSplitIndex([0, 1, 2], 0)).toBe(0);
   });
 });

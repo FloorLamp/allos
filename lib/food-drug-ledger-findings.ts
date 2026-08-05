@@ -29,6 +29,7 @@
 // Both key through the shared suppression bus, so a dismissal on any surface silences
 // every surface.
 
+import { cache } from "./request-cache";
 import { getSupplements, getSupplementDoses } from "./queries/intake";
 import { getFoodServingsInRange } from "./queries/nutrition";
 import { getUserAge } from "./settings";
@@ -142,23 +143,48 @@ function priorWindowLoggedDays(
   return days.size;
 }
 
-// The ONE gather each finding shape formats over (#221).
+// The ONE gather each finding shape formats over (#221) — one function, not two
+// independent re-derivations (#2060).
+export interface FoodDrugLedger {
+  items: LedgerItem[];
+  servings: LedgerServing[];
+}
+
+// Wrapped in the shared request-scoped `cache()` shim, because the two finding shapes
+// are read by DIFFERENT surfaces that a single page renders together: the event finding
+// through rawUpcoming → the Needs-attention hero, the variance finding through
+// collectCoachingFindings. Each builder used to run the whole gather itself — every
+// intake item matched through `matchFoodInteractions`, plus the food-log range read — so
+// a dashboard render paid for it twice. Keyed on (profileId, date), so one request
+// collapses to one read; outside a request (the notify sidecar, the DB test tier) the
+// shim calls through and the behavior is identical.
+//
+// The empty-items short circuit is preserved and moved INTO the gather: no matched item
+// means nothing to detect, so the food log is never read for it.
+export const foodDrugLedgerFor = cache(function foodDrugLedgerFor(
+  profileId: number,
+  date: string
+): FoodDrugLedger {
+  const items = ledgerItems(profileId);
+  if (items.length === 0) return { items, servings: [] };
+  return { items, servings: ledgerServings(profileId, date) };
+});
+
 export function foodDrugEventFindingsFor(
   profileId: number,
   date: string
 ): FoodDrugEventFinding[] {
-  const items = ledgerItems(profileId);
+  const { items, servings } = foodDrugLedgerFor(profileId, date);
   if (items.length === 0) return [];
-  return detectFoodDrugEvents(items, ledgerServings(profileId, date), date);
+  return detectFoodDrugEvents(items, servings, date);
 }
 
 export function foodDrugVarianceFindingsFor(
   profileId: number,
   date: string
 ): FoodDrugVarianceFinding[] {
-  const items = ledgerItems(profileId);
+  const { items, servings } = foodDrugLedgerFor(profileId, date);
   if (items.length === 0) return [];
-  const servings = ledgerServings(profileId, date);
   return detectFoodDrugVariance(
     items,
     servings,
