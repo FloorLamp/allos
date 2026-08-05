@@ -12,6 +12,7 @@ import {
 } from "@/lib/integrations/provider-state";
 import {
   drilldownCoverage,
+  failureRunReason,
   groupSyncDays,
   syncDayAttention,
   syncDayLabel,
@@ -108,7 +109,7 @@ export default function SyncHistoryTable({
             count: entry.runs.length,
             newestAt: entry.runs[0].at,
             oldestAt: entry.runs[entry.runs.length - 1].at,
-            reason: failureRunReasonLabel(entry.runs.length, entry.error),
+            reason: failureRunReason(entry.runs.length, entry.error),
             runs: entry.runs.map(toRun),
           };
         }
@@ -160,14 +161,4 @@ export default function SyncHistoryTable({
       </p>
     </div>
   );
-}
-
-// A collapsed failure run's shared reason, count-qualified so the line still says the
-// reason held for EVERY run it collapsed (#1880 item 3).
-function failureRunReasonLabel(
-  count: number,
-  error: string | null
-): string | null {
-  if (!error) return null;
-  return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
 }

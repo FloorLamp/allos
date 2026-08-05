@@ -225,6 +225,17 @@ export function syncDayAttention(day: {
   return null;
 }
 
+// A collapsed failure run's shared reason, count-qualified so the line still says the
+// reason held for EVERY run it collapsed (#1880 item 3). Null when the runs carried no
+// recorded reason.
+export function failureRunReason(
+  count: number,
+  error: string | null
+): string | null {
+  if (!error) return null;
+  return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
+}
+
 // A collapsed range's line: "7 syncs · routine · 128 new". The time span beside it is
 // rendered from the runs' own timestamps, in the reader's clock.
 export function syncRangeLabel(

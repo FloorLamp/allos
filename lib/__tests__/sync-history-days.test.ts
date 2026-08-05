@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   drilldownCoverage,
   drilldownRemainderLabel,
+  failureRunReason,
   groupSyncDays,
   notableReason,
   syncDayAttention,
@@ -157,6 +158,17 @@ describe("failures inside a day", () => {
     expect(day.entries[2]).toMatchObject({ kind: "run", reason: "routine" });
     expect(day.failed).toBe(3);
     expect(syncDayAttention(day)).toEqual({ label: "3 failed", tone: "bad" });
+  });
+
+  it("labels a collapsed failure run with its count-qualified shared reason", () => {
+    // #1880 item 3's copy, moved here with the collapse it belongs to.
+    expect(failureRunReason(2, "weather fetch failed (503)")).toBe(
+      "weather fetch failed (503) — both runs"
+    );
+    expect(failureRunReason(4, "weather fetch failed (503)")).toBe(
+      "weather fetch failed (503) — all 4 runs"
+    );
+    expect(failureRunReason(2, null)).toBeNull();
   });
 
   it("ranks a failure above a cut-short run above dropped rows", () => {
