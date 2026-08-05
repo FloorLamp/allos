@@ -4,6 +4,11 @@ import {
   activityWindow,
   windowsOverlap,
   proximityMatch,
+  proximityComparisons,
+  wholeHourClockOffset,
+  MAX_CLOCK_OFFSET_HOURS,
+  clusterActivityDuplicates,
+  autoMergeCluster,
   crossSource,
   sameSourceDuplicate,
   activityToken,
@@ -550,6 +555,187 @@ describe("findActivityDuplicates", () => {
     ];
     const pairs = findActivityDuplicates(rows);
     expect(pairs.map((p) => p.confidence)).toEqual(["high", "medium"]);
+  });
+});
+
+describe("wholeHourClockOffset (#2011)", () => {
+  it("reports a 1h and a 2h whole-hour start gap", () => {
+    expect(
+      wholeHourClockOffset({ start: 545, end: 570 }, { start: 485, end: 510 })
+    ).toBe(1);
+    expect(
+      wholeHourClockOffset({ start: 485, end: 510 }, { start: 605, end: 630 })
+    ).toBe(2);
+  });
+
+  it("rejects a gap that is not a whole number of hours", () => {
+    expect(
+      wholeHourClockOffset({ start: 545, end: 570 }, { start: 500, end: 525 })
+    ).toBeNull();
+  });
+
+  it("rejects a zero gap and anything past MAX_CLOCK_OFFSET_HOURS", () => {
+    expect(
+      wholeHourClockOffset({ start: 545, end: 570 }, { start: 545, end: 575 })
+    ).toBeNull();
+    expect(
+      wholeHourClockOffset(
+        { start: 545, end: 570 },
+        { start: 545 + (MAX_CLOCK_OFFSET_HOURS + 1) * 60, end: 570 }
+      )
+    ).toBeNull();
+  });
+});
+
+describe("proximityComparisons", () => {
+  it("counts the agreeing dimensions and returns null on a disagreement", () => {
+    expect(
+      proximityComparisons(
+        { duration_min: 25, distance_km: 2.1 },
+        { duration_min: 25, distance_km: 2.11 }
+      )
+    ).toBe(2);
+    expect(
+      proximityComparisons(
+        { duration_min: 25, distance_km: null },
+        { duration_min: 26, distance_km: 2.1 }
+      )
+    ).toBe(1);
+    expect(
+      proximityComparisons(
+        { duration_min: 25, distance_km: 2.1 },
+        { duration_min: 25, distance_km: 4 }
+      )
+    ).toBeNull();
+    expect(
+      proximityComparisons(
+        { duration_min: null, distance_km: null },
+        { duration_min: 25, distance_km: 2.1 }
+      )
+    ).toBe(0);
+  });
+});
+
+// The reported case (#2011): one 25-minute walk imported from Health Connect and
+// from Strava, whose copy carries a non-DST utc_offset and so lands exactly an hour
+// early. The windows miss by 35 minutes, which used to be a final `return null` —
+// the day then carried the walk twice in every distance/effort rollup.
+describe("findActivityDuplicates — wrong-offset clock rescue (#2011)", () => {
+  const hc = act({
+    id: 1,
+    source: "health-connect",
+    external_id: "hc:walk-1",
+    start_time: "09:05",
+    end_time: "09:30",
+    duration_min: 25,
+    distance_km: 2.1,
+  });
+  // Same walk, one hour early. Zeroed max speed / elevation are the fingerprint of a
+  // third-party push into Strava, which is where the bad offset comes from.
+  const stravaOffset = act({
+    id: 2,
+    source: "strava",
+    external_id: "strava:walk-1",
+    start_time: "08:05",
+    end_time: "08:30",
+    duration_min: 25,
+    distance_km: 2.11,
+  });
+
+  it("pairs the non-overlapping cross-source copies at MEDIUM and names the offset", () => {
+    const pairs = findActivityDuplicates([hc, stravaOffset]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("medium");
+    expect(pairs[0].reason).toBe(
+      "Same day, similar duration/distance — clocks differ by 1h"
+    );
+  });
+
+  it("pairs a two-hour offset too, and names it", () => {
+    const pairs = findActivityDuplicates([
+      hc,
+      { ...stravaOffset, start_time: "07:05", end_time: "07:30" },
+    ]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].reason).toBe(
+      "Same day, similar duration/distance — clocks differ by 2h"
+    );
+  });
+
+  it("does NOT pair when the gap is not a whole hour", () => {
+    expect(
+      findActivityDuplicates([
+        hc,
+        { ...stravaOffset, start_time: "08:20", end_time: "08:45" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair beyond MAX_CLOCK_OFFSET_HOURS", () => {
+    expect(
+      findActivityDuplicates([
+        hc,
+        { ...stravaOffset, start_time: "06:05", end_time: "06:30" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair on one comparable measure alone", () => {
+    expect(
+      findActivityDuplicates([
+        { ...hc, distance_km: null },
+        stravaOffset,
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair when duration or distance actually disagree", () => {
+    expect(
+      findActivityDuplicates([
+        hc,
+        { ...stravaOffset, distance_km: 4.2 },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT rescue a SAME-source whole-hour pair — one source is one clock", () => {
+    expect(
+      findActivityDuplicates([
+        { ...hc, source: "strava", external_id: "strava:walk-a" },
+        { ...stravaOffset, external_id: "strava:walk-b" },
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("does NOT pair two genuinely distinct sessions an hour apart at different minutes", () => {
+    expect(
+      findActivityDuplicates([
+        act({
+          id: 1,
+          source: null,
+          start_time: "08:00",
+          end_time: "08:25",
+          duration_min: 25,
+          distance_km: 2.1,
+        }),
+        act({
+          id: 2,
+          source: "strava",
+          external_id: "strava:pm",
+          start_time: "09:12",
+          end_time: "09:37",
+          duration_min: 25,
+          distance_km: 2.1,
+        }),
+      ])
+    ).toHaveLength(0);
+  });
+
+  it("leaves the rescued pair for a human — autoMergeCluster refuses non-overlapping windows", () => {
+    const pairs = findActivityDuplicates([hc, stravaOffset]);
+    const cluster = clusterActivityDuplicates(pairs)[0];
+    expect(cluster.confidence).toBe("medium");
+    expect(autoMergeCluster(cluster.members)).toBeNull();
   });
 });
 

@@ -176,6 +176,29 @@ function withinTolerance(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) / max <= tol;
 }
 
+// How many of the shared magnitude dimensions (duration, distance) both rows report
+// AND agree on within PROXIMITY_TOLERANCE — or null the moment one of them
+// DISAGREES. 0 means the rows share no comparable number at all, which is not a
+// match either. Exported so the two proximity callers below can demand different
+// STRENGTHS of the same evidence without forking the tolerance math.
+export function proximityComparisons(
+  a: Pick<ActivityDupInput, "duration_min" | "distance_km">,
+  b: Pick<ActivityDupInput, "duration_min" | "distance_km">
+): number | null {
+  let compared = 0;
+  if (a.duration_min != null && b.duration_min != null) {
+    if (!withinTolerance(a.duration_min, b.duration_min, PROXIMITY_TOLERANCE))
+      return null;
+    compared++;
+  }
+  if (a.distance_km != null && b.distance_km != null) {
+    if (!withinTolerance(a.distance_km, b.distance_km, PROXIMITY_TOLERANCE))
+      return null;
+    compared++;
+  }
+  return compared;
+}
+
 // The "medium" fallback when clock times aren't both available: every dimension
 // both rows report (duration, distance) must be within PROXIMITY_TOLERANCE, and at
 // least one dimension must actually be compared (two rows that share no comparable
@@ -184,18 +207,34 @@ export function proximityMatch(
   a: Pick<ActivityDupInput, "duration_min" | "distance_km">,
   b: Pick<ActivityDupInput, "duration_min" | "distance_km">
 ): boolean {
-  let compared = 0;
-  if (a.duration_min != null && b.duration_min != null) {
-    if (!withinTolerance(a.duration_min, b.duration_min, PROXIMITY_TOLERANCE))
-      return false;
-    compared++;
-  }
-  if (a.distance_km != null && b.distance_km != null) {
-    if (!withinTolerance(a.distance_km, b.distance_km, PROXIMITY_TOLERANCE))
-      return false;
-    compared++;
-  }
-  return compared > 0;
+  const compared = proximityComparisons(a, b);
+  return compared != null && compared > 0;
+}
+
+// The widest whole-hour clock disagreement the cross-source rescue below will
+// forgive. One hour is the common case (a non-DST utc_offset, a DST boundary); two
+// covers a doubly-wrong offset and travel. Beyond that the "same activity, wrong
+// clock" reading stops being more plausible than "two sessions".
+export const MAX_CLOCK_OFFSET_HOURS = 2;
+
+// Whether two clock windows are separated by a WHOLE number of hours — the
+// fingerprint of a provider reporting the right instant against the wrong UTC
+// offset (issue #2011). Returns the offset in hours, or null when the gap is not a
+// clean 1–2 hours. Measured on the START minute: a shifted clock moves the whole
+// window rigidly, so the start carries the signal and the end adds only the two
+// rows' duration disagreement as noise.
+//
+// The whole-hour requirement is the entire safety margin. Two genuinely distinct
+// back-to-back sessions of similar length do not begin at the same minute past the
+// hour; an offset copy of ONE session does, exactly.
+export function wholeHourClockOffset(
+  x: TimeWindow,
+  y: TimeWindow
+): number | null {
+  const gap = Math.abs(x.start - y.start);
+  if (gap % 60 !== 0) return null;
+  const hours = gap / 60;
+  return hours >= 1 && hours <= MAX_CLOCK_OFFSET_HOURS ? hours : null;
 }
 
 // Build a detected pair from two rows: the stable order-independent signature plus
@@ -219,9 +258,33 @@ function buildPair<T extends ActivityDupInput>(
 }
 
 // Classify one CROSS-SOURCE pair, or null when they are NOT a likely duplicate:
-//   - both rows have clock windows → HIGH if they overlap, else NOT a duplicate
-//     (two timed sessions at different times of day are genuinely distinct);
-//   - otherwise fall back to duration/distance proximity → MEDIUM, else null.
+//   - both rows have clock windows → HIGH if they overlap;
+//   - both have windows that DON'T overlap → the whole-hour clock rescue below
+//     (MEDIUM), else NOT a duplicate;
+//   - only one (or neither) has a window → duration/distance proximity → MEDIUM,
+//     else null.
+//
+// THE CLOCK RESCUE (issue #2011). Non-overlap used to be the end of the story here:
+// "two timed sessions at different times of day are genuinely distinct". That is
+// right about one person's day and wrong about two providers' claims ABOUT that day.
+// Two timestamps from two sources are not two observations — they are two assertions,
+// and one of them can be false. A provider that sends the right instant against the
+// wrong UTC offset (a non-DST `utc_offset`, a DST boundary, a third-party push) lands
+// its copy a whole hour off, the windows miss by minutes, and the duplicate silently
+// splits into two activities that double every rollup for the day. The old proximity
+// fallback could not catch it: it is the fallback for MISSING times, unreachable once
+// both rows have one.
+//
+// So the rescue is deliberately narrow — non-overlapping, a 1–2 hour WHOLE-hour start
+// gap, and proximity agreement on BOTH duration and distance (one measure is too weak
+// to carry a pair whose clocks already disagree). MEDIUM is the right confidence:
+// autoMergeCluster still requires genuinely overlapping windows, so nothing merges
+// itself on this evidence — the pair is surfaced in Data → Review for a person, with
+// the clock discrepancy named in the reason so they can see which copy to keep.
+//
+// Same-source pairs get NO such rescue (see classifySameSourcePair): one source is one
+// clock, so its two rows cannot disagree about the offset, and a whole-hour gap there
+// really is two sessions.
 function classifyCrossSourcePair<T extends ActivityDupInput>(
   a: T,
   b: T
@@ -229,8 +292,17 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
   const wa = activityWindow(a);
   const wb = activityWindow(b);
   if (wa && wb) {
-    if (!windowsOverlap(wa, wb)) return null;
-    return buildPair(a, b, "high", "Overlapping start/end times");
+    if (windowsOverlap(wa, wb))
+      return buildPair(a, b, "high", "Overlapping start/end times");
+    const offsetHours = wholeHourClockOffset(wa, wb);
+    if (offsetHours != null && proximityComparisons(a, b) === 2)
+      return buildPair(
+        a,
+        b,
+        "medium",
+        `Same day, similar duration/distance — clocks differ by ${offsetHours}h`
+      );
+    return null;
   }
   if (proximityMatch(a, b))
     return buildPair(a, b, "medium", "Same day, similar duration/distance");
@@ -244,7 +316,9 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
 // fallback is DELIBERATELY NOT applied here — two similar same-day gym sessions from
 // one source are usually legitimate, and matching them on closeness alone would
 // flag real back-to-back workouts. So a same-source pair missing either window is
-// left alone.
+// left alone. The cross-source whole-hour clock rescue (#2011) is likewise NOT
+// applied: one source is one clock, so its two rows cannot disagree about the UTC
+// offset, and an hour between them is an hour of the person's actual day.
 function classifySameSourcePair<T extends ActivityDupInput>(
   a: T,
   b: T
