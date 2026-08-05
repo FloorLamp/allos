@@ -14,6 +14,7 @@ import {
   recommendNextWorkout,
   recoveryOverrideLine,
 } from "../workout-recommendation";
+import { parkedDisclosureLines } from "../weather-training";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput, getActivitiesByDate } from "../queries";
@@ -136,9 +137,36 @@ export function recommendWorkout(
   // the time the formatter ran the connection between "Suggested: Back" and the list
   // that explains it was gone. Ordering + marking live in the pure core beside the
   // recommendation; label formatting belongs to the formatter.
-  const driver =
-    nw.items.find((i) => i.reason === "routine-gap")?.target ?? null;
-  const behind = orderBehindTargets(nw.behind, driver?.id ?? null);
+  //
+  // The DRIVERS come from the core, which names its own (#2015). This used to read
+  // `items.find(routine-gap)?.target` — the FIRST routine-gap item — but the core pushes
+  // them in a fixed order (cardio, then strength) while the focus/exercises/title all
+  // come from the strength half. So any day behind on both marked Cardio on a message
+  // that suggested a back workout, and pushed the larger deficit to second place.
+  // `driverIds` is derived from the items the message names, so the two cannot disagree.
+  const behind = orderBehindTargets(nw.behind, nw.driverIds);
+
+  // The cardio session the core already picked (#2016). It is fully formed — the
+  // activity chosen, weather-parked candidates excluded (#1724) — and used to be dropped
+  // wholesale at this boundary, leaving only its `← today` marker pointing at a session
+  // the message never suggested. Both sessions are named now; strength still leads.
+  const cardioItem =
+    nw.items.find((i) => i.reason === "routine-gap" && i.kind === "cardio") ??
+    null;
+  const cardio =
+    cardioItem?.target != null
+      ? {
+          activity: cardioItem.activity?.activity ?? null,
+          count: cardioItem.target.count,
+          perWeek: cardioItem.target.perWeek,
+        }
+      : null;
+
+  // Weather parking, disclosed (#2002). The dashboard card and the Training overview
+  // already render these through contextNotes; the nudge rendered nothing, so an outdoor
+  // ride silently became a stationary bike. Same formatter, canonical °C — the
+  // notification path has no login whose temperature preference it could read.
+  const parkedNotes = parkedDisclosureLines(nw.parked);
 
   const top = recs[0];
   const rest =
@@ -154,13 +182,18 @@ export function recommendWorkout(
   const onTrack =
     top?.kind === "ontrack" ? { title: top.title, detail: top.detail } : null;
 
-  // Nothing to suggest and nothing to note → no reminder.
-  if (!nw.focus.length && !nw.exercises.length && !rest && !onTrack)
+  // Nothing to suggest and nothing to note → no reminder. A named cardio session counts
+  // as something to suggest (#2016): a profile behind only on cardio, with no strength
+  // history to fall back on, used to get silence even though the core had picked its
+  // activity.
+  if (!nw.focus.length && !nw.exercises.length && !cardio && !rest && !onTrack)
     return null;
 
   return {
     focus: nw.focus,
     exercises: nw.exercises,
+    cardio,
+    parkedNotes,
     behind,
     rest,
     onTrack,

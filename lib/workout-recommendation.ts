@@ -172,20 +172,33 @@ export interface OrderedBehindTarget extends BehindTarget {
 // Training overview all format one ordered result and a future surface cannot
 // reintroduce a different order (#221).
 //
-// `driverId` is the behind target that drove the lead routine-gap item, or null when
-// the suggestion came from habit/variety rather than a behind target — in which case
-// nothing is marked and the list is pure deficit order.
+// `driverIds` are the behind targets whose sessions the message actually NAMES — empty
+// (or null) when the suggestion came from habit/variety rather than a behind target, in
+// which case nothing is marked and the list is pure deficit order.
+//
+// PLURAL since #2016: a routine behind on both cardio and strength has the message name
+// BOTH sessions, so both targets are addressed and both are marked. The ordering rule is
+// unchanged — driving-first, then deficit — so two drivers simply lead in deficit order.
+// A bare number is still accepted, which is what the single-driver call sites and the
+// #1709 unit tests pass.
 export function orderBehindTargets(
   behind: readonly BehindTarget[],
-  driverId: number | null
+  driverIds: number | readonly number[] | null
 ): OrderedBehindTarget[] {
+  const drivers = new Set<number>(
+    driverIds == null
+      ? []
+      : typeof driverIds === "number"
+        ? [driverIds]
+        : driverIds
+  );
   const deficit = (t: BehindTarget) => t.perWeek - t.count;
   return behind
     .map((t, i) => ({
       ...t,
       // A driver that is somehow no longer behind can't be marked — it wouldn't be in
       // this list at all, and a marker pointing at nothing is worse than none.
-      driving: driverId != null && t.id === driverId,
+      driving: t.id != null && drivers.has(t.id),
       order: i,
     }))
     .sort(
@@ -398,6 +411,14 @@ export interface NextWorkoutItem {
 
 export interface NextWorkout {
   items: NextWorkoutItem[];
+  // The behind targets whose sessions this recommendation actually NAMES (#2015/#2016).
+  // The core names its own drivers rather than leaving a formatter to infer them from
+  // array position: `items[0]` is a FIXED order (cardio, then strength), so reading the
+  // driver off it marked the cardio target on a message that suggested a back workout.
+  // One element per routine-gap item carrying an identified target — today at most two
+  // (the cardio session and the strength session), both of which the message names, so
+  // the marker can never point at something unrendered. Empty on every other path.
+  driverIds: number[];
   // The shared strength-workout suggestion, used by every surface: the focus
   // regions to emphasize and a ranked exercise list. Computed once, scoped to a
   // behind strength target when one exists, so Telegram and the dashboard agree.
@@ -488,6 +509,70 @@ export interface ParkedActivity {
 }
 
 // ---- Target helpers ----
+
+// WHICH TARGETS A WORKOUT MESSAGE MAY CARRY (#2017).
+//
+// The rule, stated once: a target belongs in a workout recommendation only if THIS
+// message can help you close it. The engine suggests lifts and cardio sessions; it
+// cannot suggest a light-therapy session, a mobility routine or a plate of vegetables,
+// so naming those targets asks the reader to act on something the message never offered
+// — and, for a practice, is a SECOND contact for a fact that already has its own
+// pace-aware `practice` nudge (the attention doctrine's contact-consent rule).
+//
+// An ALLOWLIST, never a subtraction. The pool used to be "everything that is not
+// literally `type:cardio`", so every scope kind a sibling feature added — food groups,
+// mobility regions, substance caps, wellness practices — opted itself in silently. A new
+// scope kind is now excluded until someone writes down why it can be closed here.
+//
+// Each entry carries its reason because the reason is the decision; the completeness
+// test reads this table so the next scope kind cannot join by omission.
+export const WORKOUT_TARGET_SCOPES: Record<
+  string,
+  { admitted: boolean; reason: string }
+> = {
+  region: {
+    admitted: true,
+    reason: "resolves to muscle regions the message's exercise list names",
+  },
+  group: {
+    admitted: true,
+    reason: "resolves to muscle regions the message's exercise list names",
+  },
+  type: {
+    admitted: true,
+    reason:
+      "resolves to a session the message names — a strength slate or a cardio activity",
+  },
+  practice: {
+    admitted: false,
+    reason:
+      "a wellness practice has its OWN pace-aware nudge (the `practice` kind); carrying it here would be a second contact for a fact that already has one",
+  },
+  mobility_region: {
+    admitted: false,
+    reason:
+      "physical training, but the engine suggests no mobility work today (#840), so the message cannot help close it; revisit if a mobility suggestion ever ships",
+  },
+  substance: {
+    admitted: false,
+    reason:
+      "per_week is an inverted CAP (#998) — 'behind' there means UNDER the limit, i.e. good — so listing it as a deficit to close inverts the goal",
+  },
+  food_group: {
+    admitted: false,
+    reason: "not training; nothing a workout suggestion can close",
+  },
+};
+
+// Whether a frequency-target scope kind may appear in a workout recommendation. An
+// unregistered kind is OUT — the allowlist's whole point.
+export function isWorkoutTargetScope(scopeKind: string): boolean {
+  return WORKOUT_TARGET_SCOPES[scopeKind]?.admitted === true;
+}
+
+function isWorkoutTarget(t: RoutineTargetProgress): boolean {
+  return isWorkoutTargetScope(t.target.scope_kind);
+}
 
 function isCardioTarget(t: RoutineTargetProgress): boolean {
   return t.target.scope_kind === "type" && t.target.scope_value === "cardio";
@@ -1182,6 +1267,17 @@ function resolveParked(
   return out;
 }
 
+// The drivers a result declares (#2015): every routine-gap item that names an
+// identified behind target. Derived from the items the message renders, so a target is
+// marked BECAUSE its session is named — the two cannot drift apart again, and adding a
+// third routine-gap item later can't silently re-point the arrow.
+function driverIdsOf(items: readonly NextWorkoutItem[]): number[] {
+  return items
+    .filter((i) => i.reason === "routine-gap")
+    .map((i) => i.target?.id)
+    .filter((id): id is number => id != null);
+}
+
 export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   const { routine, strength, cardio, today } = input;
 
@@ -1210,7 +1306,13 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   // A behind region/group target fully within an excluded region is dropped from the
   // nag/behind set (the routine-gap exclusion); type targets and partially-trainable
   // targets stay.
+  //
+  // The scope allowlist is applied HERE, at the source (#2017), because `behind` feeds
+  // BOTH the scope pick and the rendered "Behind this week" list: restricting it once
+  // keeps a practice/food/substance target from scoping a strength workout AND from
+  // being listed as a deficit this message asks the reader to close.
   const behind = routine
+    .filter(isWorkoutTarget)
     .filter((t) => !t.met)
     .filter((t) => !targetFullyExcluded(t, excluded));
   const behindTargets = behind.map(toBehindTarget);
@@ -1252,6 +1354,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
         session.focus.every((r) => excluded.has(r));
       return {
         items: [item],
+        driverIds: driverIdsOf([item]),
         focus: session.focus,
         exercises,
         primary: lead,
@@ -1332,7 +1435,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
         target: null,
       });
     }
-    return { items, ...base };
+    return { items, driverIds: driverIdsOf(items), ...base };
   }
 
   // No weekly routine: a habit-based next workout.
@@ -1344,7 +1447,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
       activity: null,
       target: null,
     });
-    return { items, ...base };
+    return { items, driverIds: driverIdsOf(items), ...base };
   }
   if (primary) {
     items.push({
@@ -1354,7 +1457,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
       activity: null,
       target: null,
     });
-    return { items, ...base };
+    return { items, driverIds: driverIdsOf(items), ...base };
   }
   const activity = pickOldestCardio(cardio, today, parkedNames);
   if (activity) {
@@ -1365,7 +1468,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
       activity,
       target: null,
     });
-    return { items, ...base };
+    return { items, driverIds: driverIdsOf(items), ...base };
   }
   items.push({
     kind: "setup",
@@ -1374,5 +1477,5 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     activity: null,
     target: null,
   });
-  return { items, ...base };
+  return { items, driverIds: driverIdsOf(items), ...base };
 }

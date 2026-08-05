@@ -19,6 +19,7 @@ import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { migrate } from "@/lib/db";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
 import {
   ALLERGY_CRITICALITIES,
   ALLERGY_STATUSES,
@@ -110,6 +111,17 @@ const REGISTRY: {
     expected: MEDICAL_CATEGORIES,
   },
   { table: "equipment", column: "category", expected: EQUIPMENT_CATEGORIES },
+  // Frequency-target scopes (migrations 031/059/072/099). Load-bearing beyond the
+  // usual parity concern: consumers DECIDE per scope kind whether a target belongs on
+  // their surface (#2017's workout allowlist is one), and the pure tier enumerates
+  // FREQUENCY_SCOPE_KINDS to prove each has a decision. A migration that grows the
+  // CHECK without growing the array would let the next scope kind reach those surfaces
+  // undecided — which is exactly how a wellness practice ended up in a workout message.
+  {
+    table: "frequency_targets",
+    column: "scope_kind",
+    expected: FREQUENCY_SCOPE_KINDS,
+  },
   {
     table: "provider_affiliations",
     column: "status",
