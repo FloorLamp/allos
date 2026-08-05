@@ -14,7 +14,11 @@
 //     optimistic delta, rollback on failure, ADOPT the server's authoritative total
 //     on success — was hand-rolled on five surfaces, each re-deriving the rollback
 //     closure. `ledgerReducer` is that pattern as a pure machine;
-//     `components/useOptimisticLedger.ts` is the one React binding over it.
+//     `components/useOptimisticLedger.ts` is the one React binding over it. This is
+//     the CLIENT half of the day-counter contract whose server half #2037 settled in
+//     `lib/day-counter-ledger.ts` — step 4 there ("an authoritative re-SELECT, so the
+//     caller answers with what the database now holds") is exactly the number the
+//     `adopt` settlement here takes over whatever the tap guessed.
 //  3. THE RE-LOG CONFIRM (#2007 layer 3). Whether a deliberate second tap should
 //     ask first, from the affordance's declared interval + when the last one
 //     happened + now. Pure, so the web button, the Telegram handler and any future
