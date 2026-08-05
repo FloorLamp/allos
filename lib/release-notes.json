@@ -4,6 +4,27 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2148,
+          "title": "Health summaries say what they actually know",
+          "body": "Three surfaces stopped overstating their data. The Longevity biomarker pillar now says how many markers its ratio covers and how current they are — results past their retest window are named, and a panel with only old results goes neutral instead of green. The Fitness check counts tests with a current value separately from tests with any value, each test on its own clock (a month-old resting heart rate is old; a month-old strength test isn't), and the domain bars say they show your best result, with the spread. And injuries can now be declared at the level you mean — a movement, specific lifts, a side — so one sore press no longer removes every chest suggestion; the recovery easing percentage is your setting when you declare one, and the app's 60% is named as an adjustable default when you don't.",
+          "kind": "feature",
+          "issues": [2023, 2024, 2025]
+        },
+        {
+          "pr": 2147,
+          "title": "App updates no longer eat mid-workout edits",
+          "body": "If the app updates while you're mid-workout, your edits are no longer lost: the editor tells you an update landed, keeps your entry safely on your device, and offers it back after one tap to reload. Quick-log taps made in that state are saved and delivered automatically once the page is fresh.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2120,
+          "title": "The update bar stops re-offering what you already have",
+          "body": "After an update, refreshing the page really does take it now — the \"Update ready\" bar no longer reappears on the very page that just loaded the new version. It only shows when there is genuinely a newer build than the one you're on.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
           "pr": 2142,
           "title": "Sleep mornings, told honestly",
           "body": "Two fixes from one investigation. Fitbit Takeout nights were stored as the watch's bare clock reading, so what time you “woke up” could shift by hours depending on the server — imported nights are now pinned to the real moment in your own timezone, and already-imported nights are corrected in place (hand-edited nights are left alone). And the morning gap before your tracker delivers is now named: instead of showing a big number for an older night, the sleep card and page say “Waiting for last night's sleep” — with an arrival estimate once your own rhythm is known — then step aside the moment the night lands.",
