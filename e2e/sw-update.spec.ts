@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { UPDATE_PENDING_KEY } from "@/lib/sw-update";
 
 // Deferred service-worker activation (issue #1700), driven against the real worker.
 //
@@ -107,10 +108,23 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   page,
 }) => {
   test.slow();
-  await page.addInitScript(() => {
+  await page.addInitScript((pendingKey) => {
     const n = Number(sessionStorage.getItem("swSpecLoads") ?? "0");
     sessionStorage.setItem("swSpecLoads", String(n + 1));
-  });
+    // Record when THIS document raises the update-pending marker (#1906), so the
+    // back half can require the raise-then-consume ORDER. Sampling the marker
+    // alone cannot: the reloaded page inherits the tapped page's marker, clears
+    // it on mount, and only then re-raises it for its own worker generation — a
+    // poll could land in that gap and read "consumed" before anything was raised.
+    let raised = false;
+    const original = sessionStorage.setItem.bind(sessionStorage);
+    sessionStorage.setItem = (key: string, value: string) => {
+      if (key === pendingKey) raised = true;
+      original(key, value);
+    };
+    (window as unknown as Record<string, unknown>).__swSpecPendingRaised = () =>
+      raised;
+  }, UPDATE_PENDING_KEY);
 
   await interceptVersion(page);
   await page.goto("/training");
@@ -159,25 +173,46 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   // The fresh load re-registers the app's OWN version, which becomes the next
   // WAITING worker — for the build this page is already running, because the page's
   // own registration is what discovered it. That is the #1905 refresh shape, and
-  // the fixed contract is that it is consumed SILENTLY: the worker generation
-  // activates on its own (the settle point below — no sleep involved), no bar
-  // returns, and nothing reloads. The bar re-offering here was the ping-pong this
-  // spec used to institutionalise.
+  // the fixed contract is that it is consumed SILENTLY: the page posts the
+  // skip-waiting handshake, clears its pending state, raises no bar and reloads
+  // nothing.
+  //
+  // The settle point is the page's own pending state (#1906) — raised for the new
+  // generation, then cleared — NOT the worker reaching `active` (#2155). Chrome may
+  // hold a skip-waiting activation until the outgoing worker is idle: observed
+  // stalls on an idle page outlast any reasonable ceiling, and nothing but the next
+  // navigation un-sticks them, so the activation instant is the platform's
+  // bookkeeping, not this app's contract. What IS the app's contract: the pending
+  // state its own generation raised was consumed rather than offered, and the
+  // generation is still held by the registration (waiting, or already active) —
+  // nothing ping-ponged it back into a bar.
   await expect
     .poll(
       () =>
-        page.evaluate(async (specVersion) => {
-          const reg = await navigator.serviceWorker.getRegistration();
-          if (!reg || !reg.active || reg.waiting || reg.installing)
-            return false;
-          return !reg.active.scriptURL.includes(specVersion);
-        }, NEXT_VERSION),
+        page.evaluate(
+          async ({ specVersion, pendingKey }) => {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (!reg) return "no registration";
+            const appGeneration = [reg.active, reg.waiting].some(
+              (sw) => sw && !sw.scriptURL.includes(specVersion)
+            );
+            if (!appGeneration) return "app generation not registered yet";
+            const raised = (
+              window as unknown as Record<string, () => boolean>
+            ).__swSpecPendingRaised();
+            if (!raised) return "pending state not raised yet";
+            if (sessionStorage.getItem(pendingKey) !== null)
+              return "pending state not consumed yet";
+            return "consumed silently";
+          },
+          { specVersion: NEXT_VERSION, pendingKey: UPDATE_PENDING_KEY }
+        ),
       {
         timeout: SW_SETTLE_MS,
-        message: "the app's own worker generation to be silently activated",
+        message: "the app's own worker generation to be consumed silently",
       }
     )
-    .toBe(true);
+    .toBe("consumed silently");
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem("swSpecLoads"))).toBe(
     "2"

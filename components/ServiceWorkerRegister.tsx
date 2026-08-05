@@ -45,7 +45,10 @@ import {
 //   * only the tab that ASKED reloads. Activation is registration-wide, so every
 //     open tab sees `controllerchange` — a second tab sitting on a half-filled form
 //     must not be reloaded because someone tapped in the first.
-//   * at most one reload per activation (the loop guard).
+//   * the tap is answered at most once per navigation, but a late controller swap
+//     re-answers it (#2155): when activation stalls past the fallback timer, the
+//     fallback's navigation went out under the OLD worker and the swap can strand
+//     it, so the controllerchange reload replaces it rather than deferring to it.
 //   * a dismissed bar stays dismissed for this build; it is an offer, not a nag.
 //   * the tap is always answered: if the waiting worker has gone stale and the
 //     handshake never lands, the page reloads anyway on a short fallback timer.
@@ -162,9 +165,11 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
       if (
         shouldReloadOnControllerChange({
           requestedByThisTab: requestedRef.current,
-          alreadyReloaded: reloadedRef.current,
         })
       ) {
+        // Deliberately reloads even when the fallback timer already did (#2155):
+        // that navigation was dispatched under the OLD worker and the swap this
+        // event announces can strand it. See shouldReloadOnControllerChange.
         reloadedRef.current = true;
         window.location.reload();
       }
