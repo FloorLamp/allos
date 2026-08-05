@@ -502,7 +502,9 @@ export function logHistoricalDose(
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+  // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
+  // so is the stored given_at this may be re-validating, so all three must agree.
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, givenAt);
@@ -648,7 +650,9 @@ export function updateHistoricalDose(
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+  // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
+  // so is the stored given_at this may be re-validating, so all three must agree.
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, givenAt);

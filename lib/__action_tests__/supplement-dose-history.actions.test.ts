@@ -11,7 +11,9 @@
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { now as clockNow } from "@/lib/clock";
+import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import { getIntakeDoseHistory } from "@/lib/queries";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
@@ -215,6 +217,61 @@ describe("updateHistoricalDose action — supplements", () => {
       AUDIT_ACTIONS.doseLogBackfill,
       AUDIT_ACTIONS.doseLogAmend,
     ]);
+  });
+
+  // #2031: the write cores judge a given_at against the CLOCK SEAM's now, not the
+  // wall clock. Under a frozen clock that LEADS real time — exactly what #1464's
+  // forward nudge produces for ~30 minutes before UTC midnight — an entry at the
+  // app's own now is in the real future, and judging it on the wall clock refused
+  // the app's own timestamps. This pins the wiring (the call site's clock choice),
+  // where lib/__tests__/dose-log-window-clock.test.ts pins the predicate.
+  it("accepts an entry at the app's own now while the frozen clock leads real time", async () => {
+    const previous = process.env.ALLOS_TEST_NOW;
+    // ~52 min ahead: the skew an in-band nudge to next-midnight+30 produces at 23:38Z.
+    process.env.ALLOS_TEST_NOW = new Date(
+      Date.now() + 52 * 60_000
+    ).toISOString();
+    try {
+      const { profile } = seedActor();
+      const { itemId, doseId } = seedSupplement(profile.id);
+      const { date, hhmm } = zonedDateParts(
+        getTimezone(profile.id),
+        clockNow()
+      );
+
+      const logged = await logHistoricalDose(
+        fd({ id: itemId, dose_id: doseId, date, time: hhmm, amount: "15 mg" })
+      );
+      expect(logged.ok).toBe(true);
+      const logId = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0]
+        .id;
+
+      const amended = await updateHistoricalDose(
+        fd({ id: itemId, log_id: logId, date, time: hhmm, amount: "45 mg" })
+      );
+      expect(amended.ok).toBe(true);
+      expect(
+        getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].amount
+      ).toBe("45 mg");
+
+      // The #797 forgery rule still bites, measured on that same app clock.
+      expect(
+        await updateHistoricalDose(
+          fd({
+            id: itemId,
+            log_id: logId,
+            date: shiftDateStr(date, 1),
+            time: hhmm,
+          })
+        )
+      ).toEqual({
+        ok: false,
+        error: "Choose a date and time that are not in the future.",
+      });
+    } finally {
+      if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = previous;
+    }
   });
 
   it("reports stale for a log this profile doesn't own", async () => {

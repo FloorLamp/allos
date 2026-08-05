@@ -32,16 +32,41 @@ export function isDoseDateAccepted(todayStr: string, date: string): boolean {
 // skew tolerates clock differences between the client and server.
 export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
+// WHICH CLOCK `now` MUST BE (issue #2031). The two guards below take it as a REQUIRED
+// argument — deliberately, with no `new Date()` default — because picking the wrong
+// clock is silent and only fails for ~30 minutes a day.
+//
+// Both guards compare a given_at against `now` AND its profile-local date against
+// `todayStr`, and `todayStr` always comes from `today()`, i.e. from the app's clock
+// seam (lib/clock.ts). So `now` must come from that SAME seam: a guard whose two
+// halves read two different clocks is not one predicate, it is two, and the caller
+// gets to find out which one disagreed. Concretely, the timestamp being validated is
+// itself app-clock-derived — the amend form prefills the log's stored given_at, which
+// `sqlNow()` (#1534) wrote from the seam — so judging it against the real wall clock
+// asks whether the app's own "now" is in the future, which inside #1464's forward
+// nudge is exactly what it is.
+//
+// This does NOT weaken #797's forgery rule. `now()` returns real time whenever
+// ALLOS_TEST_NOW is unset, which is always in production (it is a test hook, absent
+// from .env.example, and boot-tasks warns loudly if an instance sets it) — so the
+// production comparison is byte-identical to `new Date()`. What changes is only that
+// a frozen-clock e2e run judges a frozen-clock timestamp on the frozen clock.
+//
+// The counter-example is `resolveQueuedTakenAt` below, which keeps REAL time on
+// purpose: its input came off an untrusted CLIENT wall clock, so the comparison is
+// genuinely between two independent real clocks rather than inside the app's own
+// calendar frame.
+
 // Whether a supplied given_at instant is acceptable, given the profile timezone, its
 // today (YYYY-MM-DD), and "now": not in the future past the skew, and its profile-
 // local date within DOSE_LOG_DATE_WINDOW_DAYS of today (so a same-day or recent retro
-// time lands, a far-off/forged one doesn't). Pure — `now` is injected so it's fully
-// deterministic in a unit test.
+// time lands, a far-off/forged one doesn't). Pure — `now` is injected (see the clock
+// note above) so it's fully deterministic in a unit test.
 export function isGivenAtAccepted(
   tz: string,
   todayStr: string,
   givenAt: Date,
-  now: Date = new Date()
+  now: Date
 ): boolean {
   if (Number.isNaN(givenAt.getTime())) return false;
   if (givenAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS) return false;
@@ -88,12 +113,13 @@ export function resolveQueuedTakenAt(
 // itself establishes use by that date. It may therefore reach any distance into the
 // past; the detail page supplies the deliberate-entry UI and the write core enforces
 // medication-course boundaries. A historical dose still cannot be created in the
-// future.
+// future. `now` is required and must be the app clock — see the clock note above
+// isGivenAtAccepted.
 export function isHistoricalDoseTimeAccepted(
   tz: string,
   todayStr: string,
   givenAt: Date,
-  now: Date = new Date()
+  now: Date
 ): boolean {
   if (Number.isNaN(givenAt.getTime())) return false;
   if (givenAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS) return false;
