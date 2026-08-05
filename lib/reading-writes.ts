@@ -185,7 +185,10 @@ export type ReadingRecordOutcome =
       rowId: number;
       disposition: UpsertDisposition;
     }
-  | { ok: false; error: "unplaceable" | "invalid" | "edit-locked" };
+  | {
+      ok: false;
+      error: "unplaceable" | "invalid" | "edit-locked" | "document-import";
+    };
 
 function hasProvenance(p: ReadingProvenance | undefined): boolean {
   return !!p && Object.keys(p).length > 0;
@@ -200,6 +203,12 @@ function hasProvenance(p: ReadingProvenance | undefined): boolean {
  * hand-corrected is refused with `edit-locked` — that is the whole point of the lock.
  * A `manual` write is the USER, and a user may always correct their own row; refusing
  * there would mean a person could not re-enter a value they had previously fixed.
+ *
+ * A DOCUMENT-linked reading is refused with `document-import`: those rows belong to the
+ * import footprint and must be written by `persistDocumentImport`, so that clear,
+ * reassign and the extracted counts can still see them. Clause 2 of the placement policy
+ * is unaffected — a document still forces the observation store, the core simply is not
+ * the thing that writes it.
  *
  * Dispositions are classified by `classifyUpsert` so the accounting a sync reports is
  * the accounting this core produces. An OBSERVATION is always `inserted`: a
@@ -323,6 +332,16 @@ export function recordReading(
       }
       case "medical_records": {
         const p = input.provenance;
+        // A DOCUMENT-derived row is the import pipeline's, not this core's. Binding a
+        // `document_id` here would create a row that clear / reassign / extracted-count
+        // cannot see — the import-footprint contract (#453/#422), which
+        // `persistDocumentImport` is the single entry point for. So the core REFUSES
+        // rather than writing a row with the link quietly dropped: a placement policy
+        // may decide which store a reading belongs in, it may not decide to lose its
+        // document.
+        if (p?.documentId != null) {
+          return { ok: false, error: "document-import" } as const;
+        }
         // The name the SOURCE printed, when it differs from the canonical — the row's
         // `name` column has always carried that, with the canonical beside it.
         const reported = p?.reportedName?.trim();
@@ -330,8 +349,8 @@ export function recordReading(
           .prepare(
             `INSERT INTO medical_records
                (profile_id, date, category, name, value, value_num, unit, canonical_name,
-                source, external_id, notes, reference_range, document_id, encounter_id, provider_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`
+                source, external_id, notes, reference_range, encounter_id, provider_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
           )
           .run(
             profileId,
@@ -345,7 +364,6 @@ export function recordReading(
             sourceKey,
             input.notes ?? null,
             p?.reportedRange ?? null,
-            p?.documentId ?? null,
             p?.encounterId ?? null,
             p?.providerId ?? null
           );

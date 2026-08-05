@@ -40,9 +40,19 @@ import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
+// A clinical ENCOUNTER, so a reading can carry the provenance that forces the
+// observation store without carrying a document (which belongs to the import core).
+let encounterId: number;
 
 beforeAll(() => {
   p = seedProfile("READING-WRITES");
+  encounterId = Number(
+    db
+      .prepare(
+        `INSERT INTO encounters (profile_id, date, type, reason) VALUES (?, '2026-01-06', 'office', 'annual')`
+      )
+      .run(p.profileId).lastInsertRowid
+  );
 });
 
 describe("the placement policy against the registry it replaces", () => {
@@ -91,18 +101,20 @@ describe("a reading submitted by identity lands where the policy says", () => {
   });
 
   it("files the SAME identity as an observation when it carries provenance", () => {
+    // Clause 2: a clinic-measured resting heart rate keeps its provenance, so it goes to
+    // the observation store even though the identity has a registered stream.
     const outcome = recordReading(p.profileId, {
       name: "Resting Heart Rate",
       value: 61,
       unit: "bpm",
       date: "2026-01-06",
       category: "vitals",
-      provenance: { documentId: p.documentId, reportedRange: "60-100 bpm" },
+      provenance: { encounterId, reportedRange: "60-100 bpm" },
     });
     expect(outcome).toMatchObject({ ok: true, store: "medical_records" });
     const row = db
       .prepare(
-        `SELECT canonical_name, value_num, unit, document_id, reference_range
+        `SELECT canonical_name, value_num, unit, encounter_id, reference_range
            FROM medical_records WHERE profile_id = ? AND date = '2026-01-06'`
       )
       .get(p.profileId) as Record<string, unknown>;
@@ -110,9 +122,24 @@ describe("a reading submitted by identity lands where the policy says", () => {
       canonical_name: "Resting Heart Rate",
       value_num: 61,
       unit: "bpm",
-      document_id: p.documentId,
+      encounter_id: encounterId,
       reference_range: "60-100 bpm",
     });
+  });
+
+  it("refuses a DOCUMENT-linked reading, which belongs to the import core", () => {
+    // The import-footprint contract (#453/#422): a document_id-bearing row must be
+    // written by persistDocumentImport or clear / reassign / the extracted counts cannot
+    // see it. The core refuses rather than dropping the link.
+    expect(
+      recordReading(p.profileId, {
+        name: "Oxygen Saturation",
+        value: 96,
+        unit: "%",
+        date: "2026-01-06",
+        provenance: { documentId: p.documentId },
+      })
+    ).toEqual({ ok: false, error: "document-import" });
   });
 
   it("brings both back as ONE series, keyed by identity", () => {
