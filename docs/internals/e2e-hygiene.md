@@ -806,9 +806,10 @@ seam, **`lib/clock.ts`**:
   time (production is inert, zero behavior change), set ⇒ that fixed instant. It
   NEVER monkey-patches the global `Date`: timers, session TTLs, and Playwright's
   own waiting keep real time. Only DATE-DERIVATION paths route through it —
-  `today()` (`lib/db.ts`, the load-bearing consumer), the `now`-defaulting
-  parameters of the workout-presence / recommend / redose / food-slot / dose-log
-  read+write cores, and the seed math that anchors fixtures — so the fixtures
+  `today()` (`lib/db.ts`, the load-bearing consumer), the injected `now` of the
+  workout-presence / recommend / redose / food-slot / dose-log read+write cores
+  (required, not defaulted, for the dose-log future guards — see #2031 below),
+  and the seed math that anchors fixtures — so the fixtures
   and the app agree on "today" by construction. Durations, log/audit timestamps,
   and cache TTLs stay real.
 - `playwright.config.ts` computes `FROZEN_NOW` ONCE at config load — the run's
@@ -884,6 +885,34 @@ scan's reach, so the write sites that must not rely on one bind `sqlNow()`
 explicitly (`intake_items`, `intake_item_doses`, `intake_item_logs`,
 `medical_documents`, `conditions`, `allergies`, `imaging_studies`, `goals`,
 `injuries`).
+
+**The third half: VALIDATORS that ask "is this in the future" (#2031).** The two
+rules above put every date-semantic stamp on the seam. A guard that then judges
+one of those stamps against a real `new Date()` re-opens the same band from the
+other end — and this one is a product REFUSAL, not a stale read. `dose-history`
+failed 3/3, deterministically, in the ~30 minutes before UTC midnight: the
+amend form prefills the stored `given_at` that `sqlNow()` wrote from the nudged
+frozen clock, `isHistoricalDoseTimeAccepted` compared it against real now, and
+the app refused its own timestamp with *"Choose a date and time that are not in
+the future."* (PR #2000's gate run; independently on PR #2030's shard 1 at
+23:41Z, an unrelated lib-only PR).
+
+The rule: **a guard whose other half already reads the seam must read the seam
+for its `now` too.** Both dose-log future guards
+(`isGivenAtAccepted`, `isHistoricalDoseTimeAccepted`) compare the given_at's
+profile-local date against a `today()`-derived `todayStr`, so their `now` is
+`now()` — and both take it as a REQUIRED argument, no `new Date()` default, so
+the next call site has to choose on purpose. Production is unaffected: the
+override is unset there, so `now()` IS `new Date()` and #797's forgery rule is
+byte-identical. The counter-example stays a counter-example:
+`resolveQueuedTakenAt` compares an untrusted CLIENT wall clock against the
+server's, two genuinely independent real clocks, and keeps real time.
+
+Note that the freeze instant CANNOT be fixed instead. `resolveFreezeInstant`
+nudges forward precisely because real time will cross midnight mid-run; any
+frozen instant that survives the crossing is, by construction, in the real
+future for part of the run. Refusing to nudge only trades this band for
+#1464's. The seam side is the only side where both bands close.
 
 The belt to that braces is a **CI backstop** in `.github/actions/e2e-setup` (so
 the sharded matrix, the changed-spec lane and `e2e-full.yml` all inherit it):

@@ -98,7 +98,12 @@ ALLOWS multiples/day and carries its own double-tap guard — a short-window
 genuinely-different intake times both land. `given_at` is user-suppliable for
 retro entry ("gave it at 4pm"), bounded by the #614-style `isGivenAtAccepted`
 window guard (`lib/dose-log-window.ts`, pure): not meaningfully in the future,
-and its profile-local date within the dose-log window of today. Each accepted,
+and its profile-local date within the dose-log window of today. "Now" is a
+REQUIRED argument to that guard and to `isHistoricalDoseTimeAccepted`, and every
+call site passes the clock seam's `now()` (#2031) — the guard's other half
+compares against a `today()`-derived date, and a predicate reading two different
+clocks refused the app's own frozen-clock timestamps for ~30 minutes a day under
+e2e. Production is unchanged (the override is unset, so `now()` is real time). Each accepted,
 non-duplicate administration decrements supply once. The medication detail
 History section can backfill and edit a taken dose at any past date in the
 recorded medication course; scheduled doses retain one-per-day semantics, PRN
