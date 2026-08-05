@@ -32,7 +32,12 @@ import {
   getActivityVideosForActivities,
   deleteActivityVideoCore,
 } from "@/lib/activity-video-write";
-import { captureDelete, sweepDeletedRows } from "@/lib/undo-delete-db";
+import {
+  captureDelete,
+  emptyTrash,
+  purgeDeletedRow,
+  sweepDeletedRows,
+} from "@/lib/undo-delete-db";
 
 let profileId: number;
 let activityId: number;
@@ -382,6 +387,59 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       sweepDeletedRows(1);
       expect(fs.existsSync(abs(storedPath))).toBe(true);
       expect(getActivityVideos(profileId, keeper)).toHaveLength(1);
+    });
+
+    // #2013: a 30-day trash needs "Delete permanently" and "Empty trash", and BOTH
+    // must route through the same collect-then-unlink path the expiry sweep uses. A
+    // by-hand purge that removed only the deleted_rows row would leak the captured
+    // clips onto disk with nothing left pointing at them — the #1290 leak, re-opened
+    // by hand, and now on the one delete path a user reaches deliberately.
+    it("Delete permanently unlinks the captured clip + poster immediately", () => {
+      const act = newActivity("Purge by hand");
+      const out = addActivityVideoCore(
+        profileId,
+        { activityId: act, exercise: null, caption: null },
+        ingested(buildMp4Fixture({ durationSec: 6, creationDate: "2026-07-03" })),
+        Buffer.from("HAND-PURGE-POSTER")
+      );
+      expect(out.kind).toBe("added");
+      const row = db
+        .prepare(
+          `SELECT stored_path, poster_path FROM activity_videos WHERE activity_id = ?`
+        )
+        .get(act) as { stored_path: string; poster_path: string };
+
+      const undoId = captureDelete("activity", profileId, act)!;
+      // Still on disk: the capture is restorable, so the files must be too.
+      expect(fs.existsSync(abs(row.stored_path))).toBe(true);
+
+      // No backdating, no tick — the user said "permanently" and meant now.
+      expect(purgeDeletedRow(profileId, undoId)).toEqual({ kind: "purged" });
+      expect(fs.existsSync(abs(row.stored_path))).toBe(false);
+      expect(fs.existsSync(abs(row.poster_path))).toBe(false);
+    });
+
+    it("Empty trash unlinks every captured clip it purges", () => {
+      const act = newActivity("Empty trash clip");
+      const out = addActivityVideoCore(
+        profileId,
+        { activityId: act, exercise: null, caption: null },
+        ingested(buildMp4Fixture({ durationSec: 7, creationDate: "2026-07-04" })),
+        Buffer.from("EMPTY-TRASH-POSTER")
+      );
+      expect(out.kind).toBe("added");
+      const row = db
+        .prepare(
+          `SELECT stored_path, poster_path FROM activity_videos WHERE activity_id = ?`
+        )
+        .get(act) as { stored_path: string; poster_path: string };
+
+      captureDelete("activity", profileId, act);
+      expect(fs.existsSync(abs(row.stored_path))).toBe(true);
+
+      expect(emptyTrash(profileId)).toBeGreaterThanOrEqual(1);
+      expect(fs.existsSync(abs(row.stored_path))).toBe(false);
+      expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });
   });
 
