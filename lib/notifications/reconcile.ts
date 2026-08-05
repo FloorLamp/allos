@@ -65,7 +65,12 @@ import {
   isLowSupply,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../refill";
-import { getProfileFoodTelegram, getUserAge } from "../settings";
+import {
+  getProfileFoodTelegram,
+  getProfileSetting,
+  getUserAge,
+  setProfileSetting,
+} from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
 import {
   collectWindowDoses,
@@ -95,10 +100,14 @@ import {
 import { getIntakeItemObligation } from "../queries/intake/adherence";
 import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
+import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
 import {
+  decideProseGather,
   decideReconcile,
+  formatProseGatherRecord,
   keyboardTokens,
   messageBodyHash,
+  parseProseGatherRecord,
   type ReconcileDecision,
   reconcileClosingText,
   stripTokens,
@@ -537,17 +546,38 @@ type ProseRebuilder = (
   p: MessagePointer
 ) => NotificationMessage | null;
 
-const PROSE: Record<ProseReconciler, ProseRebuilder> = {
-  // gatherDigestInput → buildDigest → renderDigestMessage: byte-for-byte the pipeline
-  // runDigest performs, so a reconciled digest is exactly the message that would have
-  // been sent had it been composed now. A day whose content has fallen away entirely
-  // (buildDigest returns null) leaves the delivered report alone rather than blanking
-  // it — reconciliation corrects claims, it does not delete a message the user read.
-  digest: (profileId, p) =>
-    withDigestProfileName(profileId, (name) => {
-      const model = buildDigest(gatherDigestInput(profileId, name));
-      return model ? renderDigestMessage(model) : null;
-    }),
+interface ProseClaim {
+  rebuild: ProseRebuilder;
+  // THE CHEAP PRE-CHECK (#2069): a fingerprint of the ledgers whose writes can move this
+  // kind's claims, read before the rebuild is paid for. Null for a kind that declares
+  // none, which then rebuilds every tick exactly as it did before.
+  stamp: ((profileId: number) => string) | null;
+  // How long a recorded gather may stand before the rebuild happens anyway, whatever the
+  // stamp says. This is what lets a stamp be a curated accelerator rather than a
+  // completeness claim — see ./digest-deps.
+  floorMs: number;
+  // The profile_settings key holding the last gather's record. A LITERAL per kind, never
+  // composed from a variable: the send-marker scan (#2036) can only resolve literals, and
+  // an unresolvable `notify_…` key is exactly the hole that registry exists to close.
+  gatherKey: string;
+}
+
+const PROSE: Record<ProseReconciler, ProseClaim> = {
+  digest: {
+    // gatherDigestInput → buildDigest → renderDigestMessage: byte-for-byte the pipeline
+    // runDigest performs, so a reconciled digest is exactly the message that would have
+    // been sent had it been composed now. A day whose content has fallen away entirely
+    // (buildDigest returns null) leaves the delivered report alone rather than blanking
+    // it — reconciliation corrects claims, it does not delete a message the user read.
+    rebuild: (profileId) =>
+      withDigestProfileName(profileId, (name) => {
+        const model = buildDigest(gatherDigestInput(profileId, name));
+        return model ? renderDigestMessage(model) : null;
+      }),
+    stamp: digestDependencyStamp,
+    floorMs: DIGEST_REGATHER_FLOOR_MS,
+    gatherKey: "notify_digest_recon",
+  },
 };
 
 // The profile's display name, which the digest title carries. Read here rather than
@@ -599,6 +629,12 @@ export interface ReconcileResult {
   // reconcile passes are running against one profile — benign, and the whole point is
   // that the SECOND one costs no Telegram calls.
   skipped: number;
+  // Pointers whose own reconciliation THREW (#2070) — a compute failure, not a transport
+  // one, so nothing was assumed about the message and the pointer was left as found. The
+  // sweep carried on to every remaining pointer; this is the count that says so, and it
+  // is what the tick logs so a persistent per-profile build bug is visible rather than
+  // silently starving that profile's stale-keyboard cleanup.
+  failed: number;
 }
 
 // Reconcile every live message for one profile. Best-effort throughout: a failed edit
@@ -617,150 +653,187 @@ export async function reconcileProfileMessages(
     deferred: 0,
     pruned: 0,
     skipped: 0,
+    failed: 0,
   };
   result.pruned = pruneMessagePointers(profileId);
   const td = today(profileId);
 
   for (const pointer of liveMessagePointers(profileId)) {
     result.examined++;
-
-    // ── The prose-claim class (#1913 item 4) ──────────────────────────────
+    // ── ONE POINTER'S FAILURE IS ONE POINTER'S FAILURE (#2070) ─────────────
     //
-    // Handled first and completely: a report's claims are its sentences, and the token
-    // machinery below has nothing to say about them (every digest button is inert).
-    const prose = proseReconcilerFor(pointer.kind);
-    if (prose) {
-      // DAY ROLLOVER CLOSES THE POINTER, NOT THE MESSAGE. Yesterday's digest described
-      // yesterday and is honest AS HISTORY; only the LIVE day's claims have to track
-      // the ledger. Replacing the text would destroy a report the reader may
-      // legitimately scroll back to, so the sweep simply stops tracking it.
-      if (pointer.date !== td) {
-        dropMessagePointer(profileId, pointer.id);
-        result.dropped++;
-        continue;
-      }
-      await reconcileProse(profileId, pointer, PROSE[prose], result);
-      continue;
-    }
-
-    const tokens = keyboardTokens(pointer.keyboard);
-    const inert = inertTokens(tokens, tokenPrefix);
-    const family = owningFamily(tokens, tokenPrefix);
-    const reconciler = family ? FAMILIES[family] : null;
-
-    // An UNKNOWN or claim-less keyboard is left exactly as it is: failing safe means
-    // never closing a message nobody has reasoned about.
-    const dead = reconciler
-      ? reconciler.dead(profileId, tokens, pointer)
-      : new Set<string>();
-
-    // HOW LATE this message may still be acted on is the FAMILY's answer, read off the
-    // guard its own tap handler consults (#2018) — never a comparison re-derived here.
-    // `pointer.date` is the send-time subject-local day, which is the date every dated
-    // token on the keyboard carries, so it is the same (tokenDate, today) pair the
-    // handler would evaluate on a tap.
-    const decision = decideReconcile({
-      keyboard: pointer.keyboard,
-      dead,
-      inert,
-      expired: messageExpiry(family, pointer.date, td),
-    });
-
-    // WHAT this pass intends to do, decided BEFORE anything touches the network — so
-    // the claim below can be made against the same plan the edit will perform.
-    const plan = planEdit(profileId, pointer, tokens, reconciler, decision);
-    if (!plan) continue;
-
-    // CLAIM FIRST, EDIT SECOND (#1788). Two overlapping ticks read the same pre-edit
-    // keyboard and would otherwise both call the Bot API for an identical result: the
-    // end state converges, but the rate-limit budget this sweep's zero-call steady
-    // state exists to protect is spent twice. The compare-and-swap on the pointer's
-    // stored blob lets exactly one pass through; the loser skips without a call.
-    const claimed =
-      plan.kind === "close"
-        ? claimMessagePointerClose(profileId, pointer.id, pointer.version)
-        : claimMessagePointerKeyboard(
-            profileId,
-            pointer.id,
-            pointer.version,
-            plan.keyboard
-          );
-    if (!claimed) {
-      result.skipped++;
-      continue;
-    }
-
+    // Everything a single pointer needs is inside this call, so a throw from any of it —
+    // a reconciler predicate, a prose rebuild, a claim — stops HERE. It used to
+    // propagate out of the sweep entirely, and because the digest is normally the
+    // earliest-`sent_at` pointer of the day, a digest that could not be rebuilt for one
+    // profile meant NO other pointer of that profile was examined that tick: a same-day
+    // dose or escalation keyboard the ledger had already resolved kept its live "✅
+    // Taken" button up, for as long as the build kept failing. A stale coaching nudge is
+    // an annoyance; a live confirm button on a dose already taken is the prompt that
+    // invites a double dose, and it must not be starved by an unrelated bug.
+    //
+    // WHAT THE FAILURE MEANS IS STILL CLASSIFIED, NEVER ASSUMED (#1885): this is a
+    // COMPUTE failure, which says nothing whatsoever about whether the message is still
+    // reachable, so the pointer is left exactly as it was found and the next tick tries
+    // again. Only ./telegram-error's classification may forget a pointer.
     try {
-      if (plan.kind === "close") {
-        await closeMessage(pointer.chatId, pointer.messageId, plan.text);
-        // The claim already removed the row — closing IS forgetting the pointer.
-        result.closed++;
-      } else if (plan.kind === "rebuild") {
-        await rebuildMessage(
-          profileId,
-          pointer.chatId,
-          pointer.messageId,
-          plan.message
-        );
-        result.edited++;
-      } else {
-        await updateMessageKeyboard(
-          pointer.chatId,
-          pointer.messageId,
-          plan.keyboard
-        );
-        result.edited++;
-      }
+      await reconcilePointer(profileId, pointer, td, result);
     } catch (e) {
-      // WHAT THE FAILURE MEANS IS CLASSIFIED, NEVER ASSUMED (#1885). The transport
-      // throws one typed error for every Bot API failure alike, so "the edit threw" on
-      // its own says nothing about whether the message still exists. Only the permanent
-      // cases may forget the pointer; a transient one has to leave a retry possible.
-      if (classifyTelegramFailure(e) === "transient") {
-        // Rate limit, 5xx, network reach failure, timeout, unconfigured token: the
-        // message is still sitting in the chat showing its pre-edit keyboard. The claim
-        // already mutated (or deleted) the row before the call, so KEEPING the pointer
-        // means putting it back — otherwise the next tick would read a row that claims
-        // an edit which never happened, and the stale keyboard would stand forever.
-        // Retries stay bounded by the pointer's own retention horizon (the pruner at the
-        // top of this sweep), so this can never become a retry-forever loop.
-        //
-        // Delivery HEALTH is untouched here, deliberately: reconcile never dispatches,
-        // so it has no channel result to fold, and the set/clear/freeze decision in
-        // ./delivery-status stays the only thing that moves that marker. A failed edit
-        // must neither raise a delivery alarm nor clear one a real send has raised.
-        const kept =
-          plan.kind === "close"
-            ? restoreMessagePointer(pointer)
-            : releaseMessagePointerKeyboard(
-                profileId,
-                pointer.id,
-                plan.keyboard,
-                pointer.version
-              );
-        log.info("message reconcile deferred (transient, pointer kept)", {
-          profile: profileId,
-          chat: pointer.chatId,
-          kept,
-          err: e instanceof Error ? e.message : String(e),
-        });
-        result.deferred++;
-        continue;
-      }
-      // A dead pointer: Telegram refuses edits on a deleted message, a chat the bot
-      // was removed from, or a message past its edit horizon. Nothing is recoverable,
-      // so forget it rather than retry forever. (A no-op for a close, whose claim
-      // already deleted the row.)
-      log.info("message reconcile failed (pointer dropped)", {
+      result.failed++;
+      log.error("message reconcile failed for one pointer (sweep continues)", {
         profile: profileId,
         chat: pointer.chatId,
-        err: e instanceof Error ? e.message : String(e),
+        kind: pointer.kind,
+        err: e instanceof Error ? e : String(e),
       });
-      dropMessagePointer(profileId, pointer.id);
-      result.dropped++;
     }
   }
   return result;
+}
+
+// ONE live pointer, start to finish. Extracted from the sweep so the try/catch above can
+// bound it (#2070); the logic is unchanged.
+async function reconcilePointer(
+  profileId: number,
+  pointer: MessagePointer,
+  td: string,
+  result: ReconcileResult
+): Promise<void> {
+  // ── The prose-claim class (#1913 item 4) ──────────────────────────────
+  //
+  // Handled first and completely: a report's claims are its sentences, and the token
+  // machinery below has nothing to say about them (every digest button is inert).
+  const prose = proseReconcilerFor(pointer.kind);
+  if (prose) {
+    // DAY ROLLOVER DROPS THE POINTER, IT DOES NOT CLOSE THE MESSAGE. Yesterday's digest described
+    // yesterday and is honest AS HISTORY; only the LIVE day's claims have to track
+    // the ledger. Replacing the text would destroy a report the reader may
+    // legitimately scroll back to, so the sweep simply stops tracking it.
+    if (pointer.date !== td) {
+      dropMessagePointer(profileId, pointer.id);
+      result.dropped++;
+      return;
+    }
+    await reconcileProse(profileId, pointer, PROSE[prose], result);
+    return;
+  }
+
+  const tokens = keyboardTokens(pointer.keyboard);
+  const inert = inertTokens(tokens, tokenPrefix);
+  const family = owningFamily(tokens, tokenPrefix);
+  const reconciler = family ? FAMILIES[family] : null;
+
+  // An UNKNOWN or claim-less keyboard is left exactly as it is: failing safe means
+  // never closing a message nobody has reasoned about.
+  const dead = reconciler
+    ? reconciler.dead(profileId, tokens, pointer)
+    : new Set<string>();
+
+  // HOW LATE this message may still be acted on is the FAMILY's answer, read off the
+  // guard its own tap handler consults (#2018) — never a comparison re-derived here.
+  // `pointer.date` is the send-time subject-local day, which is the date every dated
+  // token on the keyboard carries, so it is the same (tokenDate, today) pair the
+  // handler would evaluate on a tap.
+  const decision = decideReconcile({
+    keyboard: pointer.keyboard,
+    dead,
+    inert,
+    expired: messageExpiry(family, pointer.date, td),
+  });
+
+  // WHAT this pass intends to do, decided BEFORE anything touches the network — so
+  // the claim below can be made against the same plan the edit will perform.
+  const plan = planEdit(profileId, pointer, tokens, reconciler, decision);
+  if (!plan) return;
+
+  // CLAIM FIRST, EDIT SECOND (#1788). Two overlapping ticks read the same pre-edit
+  // keyboard and would otherwise both call the Bot API for an identical result: the
+  // end state converges, but the rate-limit budget this sweep's zero-call steady
+  // state exists to protect is spent twice. The compare-and-swap on the pointer's
+  // stored blob lets exactly one pass through; the loser skips without a call.
+  const claimed =
+    plan.kind === "close"
+      ? claimMessagePointerClose(profileId, pointer.id, pointer.version)
+      : claimMessagePointerKeyboard(
+          profileId,
+          pointer.id,
+          pointer.version,
+          plan.keyboard
+        );
+  if (!claimed) {
+    result.skipped++;
+    return;
+  }
+
+  try {
+    if (plan.kind === "close") {
+      await closeMessage(pointer.chatId, pointer.messageId, plan.text);
+      // The claim already removed the row — closing IS forgetting the pointer.
+      result.closed++;
+    } else if (plan.kind === "rebuild") {
+      await rebuildMessage(
+        profileId,
+        pointer.chatId,
+        pointer.messageId,
+        plan.message
+      );
+      result.edited++;
+    } else {
+      await updateMessageKeyboard(
+        pointer.chatId,
+        pointer.messageId,
+        plan.keyboard
+      );
+      result.edited++;
+    }
+  } catch (e) {
+    // WHAT THE FAILURE MEANS IS CLASSIFIED, NEVER ASSUMED (#1885). The transport
+    // throws one typed error for every Bot API failure alike, so "the edit threw" on
+    // its own says nothing about whether the message still exists. Only the permanent
+    // cases may forget the pointer; a transient one has to leave a retry possible.
+    if (classifyTelegramFailure(e) === "transient") {
+      // Rate limit, 5xx, network reach failure, timeout, unconfigured token: the
+      // message is still sitting in the chat showing its pre-edit keyboard. The claim
+      // already mutated (or deleted) the row before the call, so KEEPING the pointer
+      // means putting it back — otherwise the next tick would read a row that claims
+      // an edit which never happened, and the stale keyboard would stand forever.
+      // Retries stay bounded by the pointer's own retention horizon (the pruner at the
+      // top of this sweep), so this can never become a retry-forever loop.
+      //
+      // Delivery HEALTH is untouched here, deliberately: reconcile never dispatches,
+      // so it has no channel result to fold, and the set/clear/freeze decision in
+      // ./delivery-status stays the only thing that moves that marker. A failed edit
+      // must neither raise a delivery alarm nor clear one a real send has raised.
+      const kept =
+        plan.kind === "close"
+          ? restoreMessagePointer(pointer)
+          : releaseMessagePointerKeyboard(
+              profileId,
+              pointer.id,
+              plan.keyboard,
+              pointer.version
+            );
+      log.info("message reconcile deferred (transient, pointer kept)", {
+        profile: profileId,
+        chat: pointer.chatId,
+        kept,
+        err: e instanceof Error ? e.message : String(e),
+      });
+      result.deferred++;
+      return;
+    }
+    // A dead pointer: Telegram refuses edits on a deleted message, a chat the bot
+    // was removed from, or a message past its edit horizon. Nothing is recoverable,
+    // so forget it rather than retry forever. (A no-op for a close, whose claim
+    // already deleted the row.)
+    log.info("message reconcile failed (pointer dropped)", {
+      profile: profileId,
+      chat: pointer.chatId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    dropMessagePointer(profileId, pointer.id);
+    result.dropped++;
+  }
 }
 
 // One prose-claim pointer. Folds its own outcome into `result`, mirroring the keyboard
@@ -769,17 +842,53 @@ export async function reconcileProfileMessages(
 async function reconcileProse(
   profileId: number,
   pointer: MessagePointer,
-  rebuild: ProseRebuilder,
+  claim: ProseClaim,
   result: ReconcileResult
 ): Promise<void> {
-  const rebuilt = rebuild(profileId, pointer);
+  // FIRST PRE-CHECK, AND THE FREE ONE (#2069). A pointer with no recorded hash
+  // (pre-migration-153) has nothing for the comparison below to match, so it is left
+  // exactly as delivered rather than edited on a guess — which means a rebuild for it
+  // could never produce an edit, and paying for one is pure waste.
+  if (pointer.bodyHash == null) return;
+
+  // SECOND PRE-CHECK: IS THE REBUILD WORTH PAYING FOR? (#2069)
+  //
+  // This pointer stays live until rollover, so without this the sweep ran the full
+  // `gatherDigestInput` — the tick's heaviest per-profile read — on every remaining tick
+  // of the day, ~15 times out of 16 only to hash the result and find it identical. The
+  // cheap stamp says whether any ledger this kind's claims are derived from has been
+  // written since the last real rebuild; the floor makes sure the stamp can only ever
+  // make a rebuild sooner, never cancel one. See ./digest-deps for that division.
+  const stamp = claim.stamp ? claim.stamp(profileId) : null;
+  const gate = decideProseGather({
+    date: pointer.date,
+    stamp,
+    last: parseProseGatherRecord(getProfileSetting(profileId, claim.gatherKey)),
+    nowMs: clockNow().getTime(),
+    floorMs: claim.floorMs,
+  });
+  if (!gate.gather) return;
+
+  const rebuilt = claim.rebuild(profileId, pointer);
+  // Recorded only once the rebuild has actually SUCCEEDED, and against the stamp read
+  // BEFORE it: a write that lands mid-rebuild is either already in this render or still
+  // ahead of the recorded stamp, so it can never be skipped as "already seen". A rebuild
+  // that throws records nothing and is retried next tick (#2070).
+  if (stamp != null)
+    setProfileSetting(
+      profileId,
+      claim.gatherKey,
+      formatProseGatherRecord({
+        date: pointer.date,
+        stamp,
+        at: clockNow().getTime(),
+      })
+    );
   if (!rebuilt) return;
   const hash = messageBodyHash(rebuilt);
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
-  // an hourly sweep over the most-read message in the app off the rate limiter. A
-  // pointer with no recorded hash (pre-migration-153) never matches, so it is left
-  // exactly as delivered rather than edited on a guess.
-  if (pointer.bodyHash == null || pointer.bodyHash === hash) return;
+  // an hourly sweep over the most-read message in the app off the rate limiter.
+  if (pointer.bodyHash === hash) return;
 
   // CLAIM FIRST (#1788), on the hash rather than the keyboard: a digest's keyboard is
   // unchanged (often empty) across a prose edit, so it cannot tell two overlapping ticks

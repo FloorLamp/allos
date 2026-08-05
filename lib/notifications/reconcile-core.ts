@@ -78,6 +78,87 @@ export function messageBodyHash(msg: NotificationMessage): string {
     .digest("hex");
 }
 
+// ---- Is the rebuild worth paying for? (issue #2069) ------------------------
+//
+// The witness above answers "did the render change?", but only AFTER the render has been
+// paid for — and for the digest that render is the tick's heaviest per-profile read. A
+// sent digest's pointer stays live until rollover, so the sweep was paying it on every
+// remaining tick of the day just to discover, ~15 times out of 16, that nothing moved.
+//
+// So the prose arm asks a cheaper question first, and the DECISION is here, pure, next to
+// the witness it guards. The DB half supplies two facts — a cheap dependency stamp over
+// the ledgers this kind's claims are derived from, and what it recorded the last time it
+// actually rebuilt — and this decides whether to gather.
+//
+// THE FLOOR IS WHY A STAMP IS ALLOWED TO BE INCOMPLETE. A stamp can make a rebuild
+// PROMPT; it is never trusted to prove one unnecessary forever. Once the recorded gather
+// is older than the caller's floor, the rebuild happens regardless of what the stamp says,
+// so the worst a missing dependency can cost is latency — never a claim left standing for
+// the rest of the day. That is the same posture as the sweep's failure handling (#1885):
+// the cheap signal decides what to do FAST, and it is never allowed to decide that
+// nothing needs looking at.
+
+export interface ProseGatherRecord {
+  // The pointer date the recorded gather was for. A new day is always a fresh subject.
+  date: string;
+  // The dependency stamp as of that gather.
+  stamp: string;
+  // When it happened, epoch ms — the floor's anchor.
+  at: number;
+}
+
+export type ProseGatherReason =
+  "no-stamp" | "no-record" | "new-day" | "stamp-moved" | "floor" | "unchanged";
+
+export interface ProseGatherDecision {
+  gather: boolean;
+  reason: ProseGatherReason;
+}
+
+export function decideProseGather(input: {
+  // The live pointer's date.
+  date: string;
+  // The cheap dependency stamp, or null for a kind that declares no pre-check.
+  stamp: string | null;
+  // What the last real rebuild recorded, or null if there is none.
+  last: ProseGatherRecord | null;
+  nowMs: number;
+  floorMs: number;
+}): ProseGatherDecision {
+  // No pre-check declared ⇒ the kind rebuilds every tick, exactly as before. A reconciler
+  // that has not been given a stamp must not be quietly throttled by the floor alone.
+  if (input.stamp == null) return { gather: true, reason: "no-stamp" };
+  if (!input.last) return { gather: true, reason: "no-record" };
+  if (input.last.date !== input.date)
+    return { gather: true, reason: "new-day" };
+  if (input.last.stamp !== input.stamp)
+    return { gather: true, reason: "stamp-moved" };
+  // A record from the future (a clock step back) is not evidence of a recent gather, so
+  // the elapsed comparison is written to fail OPEN rather than to trust it.
+  const elapsed = input.nowMs - input.last.at;
+  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= input.floorMs)
+    return { gather: true, reason: "floor" };
+  return { gather: false, reason: "unchanged" };
+}
+
+// The record's stored form — one profile_settings value, `date|stamp|epochMs`. Parsing is
+// the #947 posture: a value this module cannot read is treated as ABSENT (so the next tick
+// rebuilds) rather than throwing on the sweep.
+export function formatProseGatherRecord(r: ProseGatherRecord): string {
+  return `${r.date}|${r.stamp}|${r.at}`;
+}
+
+export function parseProseGatherRecord(
+  raw: string | undefined | null
+): ProseGatherRecord | null {
+  if (!raw) return null;
+  const [date, stamp, at] = raw.split("|");
+  if (!date || !stamp || !at) return null;
+  const ms = Number(at);
+  if (!Number.isFinite(ms)) return null;
+  return { date, stamp, at: ms };
+}
+
 // The callback-token prefix of a button, or null for a url/deep-link button (which
 // carries no token and is therefore never a state claim).
 export function tokenPrefix(token: string | undefined): string | null {

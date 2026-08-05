@@ -505,6 +505,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     expr: "profileSql",
     why: "getProviderMergeImpact profiles-touched aggregate (#275): a GLOBAL, deliberately profile-AGNOSTIC count across every profile (the admin-only merge shows 'N across M profiles'). `profileSql` is one of two hand-authored strings over the bound PROVIDER_LINK_COLUMNS — the plain SELECT DISTINCT profile_id, or, for the child medication_courses (no own profile_id, #1204), a JOIN to intake_items resolving the parent's profile_id. Neither reads one profile's data into another's — it is the count itself that spans profiles by design.",
   },
+  {
+    file: "lib/notifications/digest-deps.ts",
+    expr: "digestStampSql()",
+    why: "the digest reconciler's dependency stamp (#2069): one UNION ALL composed by `digestStampSql` from the declared DIGEST_DEPENDENCIES, whose every arm opens its WHERE with `profile_id = ?` — or, for the child intake_item_logs, with its parent's `i.profile_id = ?` through the JOIN (the child-table convention). Read-only aggregates, no DML. lib/__db_tests__/message-reconcile.test.ts asserts that per declared entry, and that one profile's write cannot move another's stamp, which is stronger than this scan's per-literal read.",
+  },
   ...(
     ["upsert", "decrement", "drop", "select", "incrementExisting"] as const
   ).map((expr) => ({

@@ -1274,6 +1274,20 @@ null status), and one pure decision —
   re-inserted verbatim — original id and `sent_at` included
   (`restoreMessagePointer`). The result carries these as `deferred`.
 
+**One pointer's failure is one pointer's failure (#2070).** The classification above is
+about the TRANSPORT. A pointer's own reconciliation can also throw before any network
+call — a malformed row surfaced by a rebuild, a bad settings edge case — and the sweep
+used to walk every pointer in one unguarded loop, so that exception propagated out of
+`reconcileProfileMessages` entirely. Because the digest is normally the earliest-`sent_at`
+pointer of the day, a digest that could not be rebuilt meant **no other pointer for that
+profile was examined that tick**, including a same-day dose or escalation keyboard the
+ledger had already resolved — a live "✅ Taken" on a dose already taken, for as long as
+the build kept failing. Each pointer now runs inside its own `try`/`catch`. A COMPUTE
+failure is classified the same way #1885 classifies a transport one, and it says nothing
+about whether the message is still reachable: the pointer is left exactly as found (never
+dropped, never edited on a guess), the result carries it as `failed`, the tick logs it, and
+the sweep carries on to every remaining pointer.
+
 The **unknown default is transient** on purpose, because the two mistakes are not
 symmetric: a wrong "permanent" is unrecoverable, while a wrong "transient" costs at
 most one fast-failing call per tick until the pointer ages out. Keeping the original
@@ -1441,9 +1455,30 @@ A **prose-claim class**, declared by message KIND in `KIND_PROSE`
   without the pointer table holding a second copy of a message full of health facts, and
   it doubles as the #1788 compare-and-swap for a prose edit — a digest's keyboard blob is
   unchanged (often empty) across one, so it cannot tell two overlapping ticks apart.
-- **Day rollover closes the POINTER, not the message.** A dated report is honest AS
-  HISTORY; only the LIVE day's claims must track the ledger. Replacing yesterday's digest
-  text would destroy a report the reader may legitimately scroll back to.
+- **Day rollover DROPS the pointer; it does not close the message.** A dated report is
+  honest AS HISTORY; only the LIVE day's claims must track the ledger. Replacing
+  yesterday's digest text would destroy a report the reader may legitimately scroll back
+  to, so the prose branch simply stops tracking it — untracked, no edit, no closing line.
+  It never reaches `decideReconcile`'s keyboard-expiry arm, which could not have closed a
+  digest anyway (every token is inert, so that arm sees no claim). The registry's `digest`
+  entry says exactly this since #2071; it previously described a rollover close that does
+  not happen, and this registry is read as ground truth for what has been decided versus
+  what nobody has looked at.
+- **The rebuild is pre-checked before it is paid for (#2069).** A sent digest's pointer
+  stays live until rollover, so the sweep was running the full `gatherDigestInput` — a
+  coaching scan, a ~20-domain `collectUpcoming` and a per-document footprint loop — on
+  every remaining tick of the day, ~15 times out of 16 only to hash the result and find it
+  identical. Two cheap questions now come first: a pointer with no recorded `body_hash`
+  can never be edited (so a rebuild for it is pure waste), and a **dependency stamp**
+  (`lib/notifications/digest-deps.ts`) of narrow indexed aggregates over the ledgers the
+  digest's claims derive from says whether anything moved. A resolution the user makes —
+  the dose logged, the workout recorded, the item dismissed — still reaches the chat on
+  the very next tick. The stamp is an **accelerator, not an oracle**: `decideProseGather`
+  (pure, in `reconcile-core.ts`) forces the rebuild anyway once the recorded gather is
+  older than the kind's floor, so a dependency nobody declared costs latency, never a
+  claim left standing for the rest of the day. The record lives in one `profile_settings`
+  key, `notify_digest_recon`, declared as a non-marker in the send-marker registry: it
+  gates a silent EDIT and can never suppress a send.
 - **The completeness scan covers this class**, so the next report-shaped message has to
   answer "do your sentences reconcile?" rather than inherit silence. The weekly recap
   answers **no**, and says why: it describes seven days that are already over, so its
