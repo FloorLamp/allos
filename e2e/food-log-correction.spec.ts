@@ -246,3 +246,66 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
     String(morningBefore)
   );
 });
+
+test("removing one serving offers Undo, and Undo brings the serving back (#2038)", async ({
+  page,
+}) => {
+  test.slow(); // the nutrition route compiles on first hit
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  await page.getByTestId("food-slot-midday").click();
+  await expect(page.getByTestId("food-slot-chip")).toHaveText("Midday");
+  await revealFoodGroup(page, "berries");
+
+  const middayBefore = await slotTotal(page, "Midday");
+  const idsBefore = await loggedIds(page);
+  const countBefore = Number(
+    (await page.getByTestId("count-berries").textContent())?.trim() || "0"
+  );
+
+  await page.getByTestId("log-berries").click();
+  await expect(page.getByTestId("count-berries")).toHaveText(
+    String(countBefore + 1)
+  );
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
+  const eventId = await newRowId(page, idsBefore);
+
+  // ⋯ → Remove this serving. Until #2038 this was permanent: the PRECISE control was
+  // the unforgiving one, sitting beside a group "−" whose mistap costs one tap.
+  const row = page.getByTestId(`food-logged-${eventId}`);
+  await row.getByRole("button", { name: /^Actions for the/ }).click();
+  await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
+  await expect(page.getByText("Serving removed.")).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await expect(page.getByTestId("count-berries")).toHaveText(
+    String(countBefore)
+  );
+  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+
+  // THE PIN: the toast carries an Undo, and taking it gives the serving back — both the
+  // ledger row and the day counter it decremented.
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  await expect(page.getByText("Restored.")).toBeVisible();
+  await expect(page.getByTestId("count-berries")).toHaveText(
+    String(countBefore + 1)
+  );
+  expect(await slotTotal(page, "Midday")).toBe(middayBefore + 1);
+  // The restore re-inserts with a NEW id (the undo substrate's contract), so the row is
+  // identified as the one row this test added rather than by its original id.
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
+  const restoredId = await newRowId(page, idsBefore);
+  await expect(page.getByTestId(`food-logged-${restoredId}`)).toHaveAttribute(
+    "data-group",
+    "berries"
+  );
+
+  // Leave the fixture as found.
+  await removeServingRow(page, restoredId);
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length);
+  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+});

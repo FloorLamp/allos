@@ -387,8 +387,7 @@ export type PracticeSessionMutationOutcome =
 // to give back. `not-found` covers a leaked/stale id and another profile's row alike —
 // the capture is id + profile_id scoped, so nothing is written either way.
 export type PracticeSessionDeleteOutcome =
-  | { kind: "deleted"; id: number; undoId: number }
-  | { kind: "not-found" };
+  { kind: "deleted"; id: number; undoId: number } | { kind: "not-found" };
 
 // ── Routines (#738, migration 039) ─────────────────────────────────────────────
 // A routine is a declarative, user-owned program the user ADOPTS (from the

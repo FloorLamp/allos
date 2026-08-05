@@ -1095,7 +1095,12 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   ) {
     return formError("Couldn't update this dose.");
   }
-  const outcome = setDoseStatusCore(profileId, doseId, today(profileId), target);
+  const outcome = setDoseStatusCore(
+    profileId,
+    doseId,
+    today(profileId),
+    target
+  );
   revalidateIntake();
   return doseStatusResult(outcome);
 }
