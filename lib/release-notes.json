@@ -4,6 +4,41 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2074,
+          "title": "The web dose checkbox stops pretending",
+          "body": "Marking a dose from the web now refuses the same cases the chat and offline paths always refused — a paused medication can no longer be logged (and have a unit of supply deducted) by a stale browser tab, and the checkbox reports why instead of acting as if the write landed. Deleting a wellness practice session or a single food serving now offers Undo, like other deletions — and removing one serving of three leaves the other two alone.",
+          "kind": "fix",
+          "issues": [2039, 2038]
+        },
+        {
+          "pr": 2057,
+          "title": "Correct a clinic reading right on the chart that shows it",
+          "body": "A clinic-measured reading folded onto a device metric's chart — a visit's resting heart rate beside your watch's — can now be corrected or deleted right there, instead of being chartable but untouchable. Underneath, new readings route to the right store by what they measure, and clinical provenance (which document, which visit) is always preserved.",
+          "kind": "fix",
+          "issues": [2032]
+        },
+        {
+          "pr": 2055,
+          "title": "A wrong time zone stops doubling your workout",
+          "body": "When two sources record the same workout but one reports it against the wrong UTC offset, the copies used to land an hour apart and count as two activities, doubling the day's totals. Pairs a whole hour apart that agree on duration and distance now surface in Data → Review with the clock difference named — and nothing merges automatically; you choose which copy to keep.",
+          "kind": "fix",
+          "issues": [2011]
+        },
+        {
+          "pr": 2054,
+          "title": "Your food log meets your medication's own guidance",
+          "body": "Log a drink during a treatment whose label says \"avoid alcohol\" and Allos now notices: a calm note appears on Upcoming naming what you logged and what the label says — never a push notification, never a judgment. Only interactions the data can honestly support will fire; the rest decline with a written reason rather than guessing. Food-group ranking is also now one computation, so the web bar and the Telegram keyboard order groups identically, and the protein entry ranks on the web too.",
+          "kind": "feature",
+          "issues": [2021, 1980]
+        },
+        {
+          "pr": 2052,
+          "title": "Tell the chat when you actually ate or took it",
+          "body": "A Telegram food or dose tap now records when the thing actually happened, not just when you tapped. Tapped late? For about an hour afterward, one-tap chips (−1h, −2h, −3h — or an exact hour) correct the time right in the chat, and a whole late-logged meal or bedtime handful corrects together. Meal slots are no longer guessed from the clock, and a dose correction only ever moves the time earlier, so redose safety timing never loosens.",
+          "kind": "feature",
+          "issues": [2019, 2020]
+        },
+        {
           "pr": 2048,
           "title": "The morning digest fixes itself",
           "body": "The digest is a report, and reports can go stale: “8/9 taken — missed Glycine” used to sit in your chat all day after you logged that Glycine in the app. Now the delivered message quietly updates to match what actually happened, and only when something really changed. The digest’s workout preview also names the same workout the workout reminder suggests, sync problems explain why they matter to you, new-document lines say what was found and where, and lines that need a person to act are marked apart from the purely informational ones.",
