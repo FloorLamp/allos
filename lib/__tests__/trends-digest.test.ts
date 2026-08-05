@@ -4,6 +4,7 @@ import {
   robustSeriesSummary,
   type DigestSeries,
 } from "../trends-digest";
+import * as trends from "../trends";
 
 // Two points 10 days apart, so `days` is a predictable 10 in the labels.
 function series(
@@ -293,6 +294,35 @@ describe("robustSeriesSummary — shared tile/digest core (#398)", () => {
     expect(
       robustSeriesSummary({ points: [{ value: 5 }, { value: null }] })
     ).toBeNull();
+  });
+
+  it("reports up/down/flat and counts only the finite points", () => {
+    // Inherited from the deleted lib/trends.summarizeSeries (#2044), which is now the
+    // only place these are asserted: nulls are skipped rather than treated as zero,
+    // and an unchanged series is "flat", not a direction.
+    expect(
+      robustSeriesSummary({ points: [{ value: 10 }, { value: 15 }] })?.direction
+    ).toBe("up");
+    expect(
+      robustSeriesSummary({ points: [{ value: 20 }, { value: 8 }] })?.direction
+    ).toBe("down");
+    const flat = robustSeriesSummary({
+      points: [{ value: 5 }, { value: null }, { value: 5 }],
+    });
+    expect(flat?.direction).toBe("flat");
+    expect(flat?.count).toBe(2);
+    expect(flat?.absChange).toBe(0);
+  });
+
+  it("is the ONLY series summary — lib/trends.ts carries no literal-endpoint twin", () => {
+    // #2044: `summarizeSeries` computed direction from the LITERAL first/last points,
+    // had zero non-test callers, and sat in the more general-sounding module, so a new
+    // surface would grep it up first and reintroduce the noisy-edge bug (#37) this
+    // function exists to prevent. One question, one computation.
+    expect(
+      Object.keys(trends),
+      "lib/trends.ts must not re-grow a series summarizer — robustSeriesSummary is the one computation (#2044)"
+    ).not.toContain("summarizeSeries");
   });
 
   it("uses ROBUST endpoints, not the literal last, so a lone noisy endpoint is not a trend", () => {

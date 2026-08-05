@@ -3,6 +3,12 @@ import { cache } from "../request-cache";
 import { biomarkerFamily } from "../canonical-name";
 import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
 import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
+import {
+  inRepresentativeCte,
+  medicalDedupSpec,
+  medicalLatestSpec,
+  representativeCte,
+} from "../representative-ids";
 import type {
   CanonicalBiomarker,
   MedicalDocument,
@@ -188,44 +194,35 @@ function likeContains(q: string): string {
 // Representative rule: prefer a MANUAL row (document_id IS NULL — manual entries
 // carry no document; both import paths stamp one) over an imported twin, so the
 // user's own entry and its reference_range/flag win; then the most-recent physical
-// row (id DESC — a proxy for the newest upload, since a reprocess re-inserts). The
+// row (id DESC — a proxy for the newest upload, since a reprocess re-inserts). That
+// is the shared `document` preference axis, and the window is emitted by the shared
+// builder (lib/representative-ids.ts, #2035) rather than hand-written here. The
 // single `?` binds profile_id.
-const DEDUP_IDS_CTE = `deduped AS (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE,
-                   date, value, value_num, unit
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM medical_records
-    WHERE profile_id = ?
-  ) WHERE rn = 1
-)`;
+const DEDUP_IDS_CTE = representativeCte(
+  "deduped",
+  medicalDedupSpec(BIOMARKER_FAMILY_KEY)
+);
 // Membership test: this row is the surviving representative of its content-identity.
-const IN_DEDUPED = `id IN (SELECT id FROM deduped)`;
+const IN_DEDUPED = inRepresentativeCte("deduped");
 
 // CTE that ranks every reading within its biomarker group (keyed on the #482
 // FAMILY identity, case-insensitively — so the vitamin-D 25-OH variants share one
 // current reading) newest-first — date, then id as tie-break — and keeps
-// only rn = 1, the current reading. Ranked over the DE-DUPED id set (not all rows)
-// so the "current value" filter and is_latest marker agree with the de-duplicated
-// list: whichever representative dedup kept is the one ranked here, so a manual
-// reading preferred by dedup is also the one flagged current. Filtered by
+// only rn = 1, the current reading. That ordering is the shared `recency` axis (the
+// SQL half of lib/latest-per-group.isLaterReading, #944). Ranked over the DE-DUPED id
+// set (not all rows) so the "current value" filter and is_latest marker agree with
+// the de-duplicated list: whichever representative dedup kept is the one ranked here,
+// so a manual reading preferred by dedup is also the one flagged current. Filtered by
 // profile_id, independent of the table's other filters (category/panel/range/q).
 // The `?` binds profile_id (a second time, after the deduped CTE's).
-const LATEST_IDS_CTE = `latest AS (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE
-      ORDER BY date DESC, id DESC
-    ) AS rn
-    FROM medical_records
-    WHERE profile_id = ? AND ${IN_DEDUPED}
-  ) WHERE rn = 1
-)`;
+const LATEST_IDS_CTE = representativeCte(
+  "latest",
+  medicalLatestSpec(BIOMARKER_FAMILY_KEY),
+  { where: IN_DEDUPED }
+);
 // True for the current reading in a biomarker group — a membership test against
 // the ranked CTE above. Same identity the "current value" filter uses.
-const LATEST_IN_GROUP = `id IN (SELECT id FROM latest)`;
+const LATEST_IN_GROUP = inRepresentativeCte("latest");
 
 // Build an ORDER BY clause for the given sort column, or `fallback` when none
 // is set. Columns and direction are whitelisted, so this is safe to inline.

@@ -157,6 +157,11 @@ export interface RobustSummary {
   material: boolean;
 }
 
+// `points` must be CHRONOLOGICAL (oldest → newest) — the order every body-metric /
+// volume / biomarker series is shaped into before charting, and what makes "first k"
+// and "last k" mean the start and end of the window. Nulls and non-finite values are
+// filtered here, so a caller may pass a series with gaps (the `DigestSeries.points`
+// contract is stricter: already null-free).
 export function robustSeriesSummary(
   series: Pick<DigestSeries, "range" | "minPctChange"> & {
     points: readonly { value: number | null }[];
