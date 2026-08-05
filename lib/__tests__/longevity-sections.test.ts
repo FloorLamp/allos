@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  bareOptimalHitRate,
   buildPillars,
   optimalRangeHitRate,
   optimalShareRows,
@@ -26,7 +27,7 @@ const FULL_INPUTS: PillarInputs = {
   strength: { level: "advanced", lift: "Back Squat" },
   sleep: { sri: 84 },
   bioAge: { delta: bioAgeDelta(45, 50) },
-  optimal: { optimal: 31, total: 38 },
+  optimal: bareOptimalHitRate(31, 38),
 };
 
 describe("longevitySections is a pure regrouping of the widget's pillar model", () => {

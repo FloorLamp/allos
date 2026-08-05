@@ -47,7 +47,7 @@ export default function ActivityOverlay({
   prefill = null,
   live = false,
   deloadContext,
-  recoveringContext = { temperedRegions: [] },
+  recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   hidden = false,
   onMinimize,

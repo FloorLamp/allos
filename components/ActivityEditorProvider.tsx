@@ -114,7 +114,7 @@ export default function ActivityEditorProvider({
   lastActivity = null,
   restricted = false,
   deloadContext,
-  recoveringContext = { temperedRegions: [] },
+  recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   presence,
   liveEditData = null,

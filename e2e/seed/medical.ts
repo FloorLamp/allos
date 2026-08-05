@@ -55,6 +55,8 @@ import {
   REPORTS_SOURCE_NAME,
   REPORTS_SOURCE_PROVIDER,
   REPORTS_SOURCE_DOCUMENT,
+  E2E_LOGIN_LONGEVITY_STALE,
+  LONGEVITY_STALE_PROFILE,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -1181,5 +1183,46 @@ export function seedReportPanes(): void {
   console.log(
     `e2e: seeded Reports panes — empty profile ${emptyId} (${REPORTS_EMPTY_PROFILE}), ` +
       `attributed profile ${sourceId} (${REPORTS_SOURCE_PROFILE}) doc ${documentId} (#1598)`
+  );
+}
+
+// ── Longevity › optimal-biomarker freshness (#2023) ──────────────────────────
+// Two FAVORABLE lab readings drawn ~900 days ago — well past the retest window for
+// an uncurated annual analyte. The optimal share is 2 of 2, which on a current panel
+// would read green; because every judged reading is past its own clock, the pillar
+// must render NEUTRAL with "all based on older results". Isolated on purpose (#868):
+// aging profile 1's labs would change the panel every neighbour spec reads.
+// Synthetic values, obviously-fictional profile.
+export function seedLongevityStalePanel(): void {
+  const pid = fixtureProfileId(LONGEVITY_STALE_PROFILE);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-02-20')`
+  ).run(pid);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+  ).run(pid);
+  // Assert the shape rather than assume it — a reused dev server may hold an earlier
+  // generation of this fixture.
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(pid);
+  const drawn = shiftDateStr(today(pid), -900);
+  const ins = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?)`
+  );
+  ins.run(
+    pid,
+    drawn,
+    "Total Cholesterol",
+    "170",
+    170,
+    "mg/dL",
+    "Total Cholesterol"
+  );
+  ins.run(pid, drawn, "HDL Cholesterol", "70", 70, "mg/dL", "HDL Cholesterol");
+  reconcileFlags(pid);
+  seedMemberLogin(E2E_LOGIN_LONGEVITY_STALE, pid, "write");
+  console.log(
+    `e2e: seeded old-only optimal-biomarker panel for profile ${pid} (${LONGEVITY_STALE_PROFILE}) (#2023)`
   );
 }

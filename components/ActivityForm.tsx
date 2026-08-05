@@ -104,7 +104,7 @@ export default function ActivityForm({
   prefill = null,
   live = false,
   deloadContext,
-  recoveringContext = { temperedRegions: [] },
+  recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   onClose,
   stickyFooter = false,

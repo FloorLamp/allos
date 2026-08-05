@@ -34,13 +34,57 @@ import {
   type RangeBadge,
 } from "./reference-range";
 import { convertToCanonical, sameUnit } from "./unit-conversions";
+import { biomarkerRetestStatus } from "./reference-range";
+import {
+  tallyFreshness,
+  type FreshnessState,
+  type FreshnessTally,
+} from "./freshness";
 import type { CanonicalBiomarker, MedicalFlag, Sex } from "./types";
 
 // ── Optimal-range hit rate ("31 of 38 markers optimal") ──────────────────────
 
+// How BROAD the judged panel is (#2023). "8 of 10 optimal" off a two-analyte metabolic
+// stub and off a 40-marker annual panel are not the same claim, and the share alone
+// cannot tell them apart — a changing denominator moves it even when nothing improved.
+// The bands are DISCLOSURE, never a weight: no marker's verdict changes because of them.
+export type OptimalCoverage = "narrow" | "moderate" | "broad";
+
+// Judged-marker thresholds for the bands above. Deliberately coarse and documented rather
+// than tuned: below a basic panel, around one, and beyond one.
+export const OPTIMAL_COVERAGE_BANDS = { narrow: 5, broad: 15 } as const;
+
+export function optimalCoverage(judged: number): OptimalCoverage {
+  if (judged < OPTIMAL_COVERAGE_BANDS.narrow) return "narrow";
+  if (judged < OPTIMAL_COVERAGE_BANDS.broad) return "moderate";
+  return "broad";
+}
+
+// The optimal-share model (#2023). `optimal`/`total` keep their exact prior meaning — the
+// numerator and the JUDGED denominator — and the denominator stays first-class and
+// visible. Everything else is context the pillar previously threw away between the gather
+// and the ratio, so the same "8 of 10" can no longer describe a fresh panel and a
+// five-year-old one identically.
 export interface OptimalHitRate {
   optimal: number;
   total: number;
+  // Retest-clock state across the JUDGED readings, from the existing biomarker retest
+  // computation (never a second staleness algorithm). `notApplicable` means the reading
+  // carries no clock we can read — an undated fixture row, or a non-lab class — and is
+  // deliberately NOT counted as stale.
+  freshness: FreshnessTally;
+  // Optimal AND still inside its retest window: the subset an honestly "current" claim
+  // could rest on.
+  currentOptimal: number;
+  // Gathered readings that could not be judged at all (no curated band, no canonical row,
+  // unconvertible unit). Excluded from numerator and denominator as before — surfaced so
+  // the denominator's absences are visible instead of silent.
+  unjudged: number;
+  // Newest / oldest effective reading date among the judged markers, or null when none
+  // carried a date.
+  latestDate: string | null;
+  oldestDate: string | null;
+  coverage: OptimalCoverage;
 }
 
 // One tracked biomarker's latest reading + its canonical ranges. `value_num`/unit
@@ -50,6 +94,13 @@ export interface BiomarkerReading {
   value_num: number | null;
   unit: string | null;
   cb: CanonicalBiomarker | null | undefined;
+  // The reading's effective date + the retest-clock inputs (#2023), so the pillar can
+  // state how current its ratio is. All OPTIONAL: absent ⇒ the retest status is
+  // "not-applicable" and the pillar reports unknown freshness rather than inventing
+  // staleness — which is exactly the pre-#2023 blindness, now named instead of hidden.
+  date?: string | null;
+  category?: string | null;
+  retestDays?: number | null;
 }
 
 // A reading carrying its display + canonical names, for the expanded Longevity
@@ -76,25 +127,120 @@ function judgeReading(
   return badge === "unknown" ? null : badge;
 }
 
+// The retest-clock state for one gathered reading (#2023), from the EXISTING biomarker
+// retest computation — the same `biomarkerRetestStatus` the Biomarkers table, the Upcoming
+// retest generator and the staleness chips read, now over the shared freshness vocabulary.
+// Longevity mints no clock of its own. Without a `today` (terse pure fixtures) or a date,
+// there is nothing to judge and the state is "not-applicable" — unknown freshness, never
+// assumed-stale.
+function readingFreshness(
+  r: BiomarkerReading,
+  today: string | null | undefined
+): FreshnessState {
+  if (!today || !r.date) return "not-applicable";
+  return biomarkerRetestStatus(r.date, r.category ?? null, today, r.retestDays);
+}
+
 // The share of tracked biomarkers whose LATEST reading sits in its optimal band.
 // A marker counts toward the denominator only when we can judge it — a curated
 // range exists and the value converts to the canonical unit (rangeBadge !==
 // "unknown"); the numerator is the "optimal" verdicts. Consumes rangeBadge (the
 // existing pure judgment) so the count agrees with the badges shown elsewhere.
+//
+// #2023: the same single pass now also carries the retest-clock state, the coverage band,
+// and the unjudged remainder, so the pillar and the expanded breakdown describe one set of
+// readings judged once.
 export function optimalRangeHitRate(
   readings: BiomarkerReading[],
   sex?: Sex | null,
-  age?: number | null
+  age?: number | null,
+  today?: string | null
 ): OptimalHitRate {
   let optimal = 0;
   let total = 0;
+  let currentOptimal = 0;
+  let unjudged = 0;
+  let latestDate: string | null = null;
+  let oldestDate: string | null = null;
+  const states: FreshnessState[] = [];
   for (const r of readings) {
     const badge = judgeReading(r, sex, age);
-    if (badge == null) continue;
+    if (badge == null) {
+      unjudged++;
+      continue;
+    }
     total++;
-    if (badge === "optimal") optimal++;
+    const state = readingFreshness(r, today);
+    states.push(state);
+    if (badge === "optimal") {
+      optimal++;
+      if (state === "current") currentOptimal++;
+    }
+    if (r.date) {
+      if (latestDate == null || r.date > latestDate) latestDate = r.date;
+      if (oldestDate == null || r.date < oldestDate) oldestDate = r.date;
+    }
   }
-  return { optimal, total };
+  return {
+    optimal,
+    total,
+    freshness: tallyFreshness(states),
+    currentOptimal,
+    unjudged,
+    latestDate,
+    oldestDate,
+    coverage: optimalCoverage(total),
+  };
+}
+
+// The hit rate for a bare numerator/denominator carrying NO freshness or coverage
+// information — the shape this model had before #2023. Production always goes through
+// `optimalRangeHitRate` over the real gather; this exists for callers and fixtures that
+// genuinely hold only the two counts, and it reports freshness as UNKNOWN (all
+// not-applicable) rather than fabricating "current", so such a caller keeps exactly the
+// pre-#2023 tone and copy instead of silently claiming recency.
+export function bareOptimalHitRate(
+  optimal: number,
+  total: number
+): OptimalHitRate {
+  return {
+    optimal,
+    total,
+    freshness: { current: 0, due: 0, notApplicable: total },
+    currentOptimal: 0,
+    unjudged: 0,
+    latestDate: null,
+    oldestDate: null,
+    coverage: optimalCoverage(total),
+  };
+}
+
+// The pillar's detail line (#2023) — the ONE place the ratio's context is phrased, so the
+// dashboard widget and the Longevity page section say the same thing. Named the panel's
+// size and its retest state; never a second computation, just a formatting of the model
+// above. Freshness we could not read at all keeps the pre-#2023 copy rather than
+// asserting anything about recency.
+export function optimalPillarDetail(rate: OptimalHitRate): string {
+  const { freshness } = rate;
+  const known = freshness.current + freshness.due;
+  if (known === 0) return "Tracked markers inside their optimal range";
+  const parts: string[] = [];
+  const note =
+    rate.coverage === "narrow"
+      ? " (narrow panel)"
+      : rate.coverage === "broad"
+        ? " (broad panel)"
+        : "";
+  parts.push(`${rate.total} marker${rate.total === 1 ? "" : "s"}${note}`);
+  if (freshness.due === 0) parts.push("all current");
+  else if (freshness.current === 0)
+    parts.push(
+      rate.latestDate
+        ? `all based on older results (latest ${rate.latestDate})`
+        : "all based on older results"
+    );
+  else parts.push(`${freshness.due} based on older results`);
+  return parts.join(" · ");
 }
 
 // The per-marker breakdown behind the hit rate, for the Longevity page's expanded
@@ -120,6 +266,12 @@ export interface OptimalShareRow {
   // one — a band printed in canonical units beside a value in the lab's units
   // would be a false comparison, and this card has no room to spell both out.
   optimalText: string | null;
+  // The reading's effective date and its retest-clock state (#2023) — the SAME
+  // `biomarkerRetestStatus` the hit rate tallied, so the expanded rows reconcile with the
+  // pillar's stale count exactly (pinned by a pure test). `date` is null on a gather that
+  // carried none.
+  date: string | null;
+  freshness: FreshnessState;
 }
 
 // Trim float noise from a converted/stored reading for display (170 → "170",
@@ -145,7 +297,8 @@ function optimalBandText(
 export function optimalShareRows(
   readings: NamedBiomarkerReading[],
   sex?: Sex | null,
-  age?: number | null
+  age?: number | null,
+  today?: string | null
 ): OptimalShareRow[] {
   const rows: OptimalShareRow[] = [];
   for (const r of readings) {
@@ -161,6 +314,8 @@ export function optimalShareRows(
       unit: r.unit,
       flag: rangeBadgeFlag(badge),
       optimalText: optimalBandText(r, sex, age),
+      date: r.date ?? null,
+      freshness: readingFreshness(r, today),
     });
   }
   return rows.sort((a, b) => {
@@ -261,8 +416,18 @@ function vo2Tone(p: number): PillarTone {
   return "bad";
 }
 
-function optimalTone(rate: OptimalHitRate): PillarTone {
+// The optimal pillar's tone (#2023). An OLD-ONLY panel — every judged reading past its own
+// retest window, none current — makes no judgment at all: it renders neutral with a
+// "based on older results" detail rather than a current-looking green. That is the whole
+// honesty fix; the share bands are unchanged for everything else, and no marker is
+// weighted or re-scored.
+//
+// UNKNOWN freshness (no dates / no clock to read) is deliberately NOT treated as stale:
+// the gate needs positive evidence that results are old (`due > 0`), so a caller that
+// supplies no dates behaves exactly as before.
+export function optimalTone(rate: OptimalHitRate): PillarTone {
   if (rate.total === 0) return "neutral";
+  if (rate.freshness.current === 0 && rate.freshness.due > 0) return "neutral";
   const frac = rate.optimal / rate.total;
   if (frac >= 0.8) return "good";
   if (frac >= 0.5) return "warn";
@@ -345,7 +510,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       key: "optimal-biomarkers",
       label: "Biomarkers optimal",
       value: `${inputs.optimal.optimal} of ${inputs.optimal.total}`,
-      detail: "Tracked markers inside their optimal range",
+      detail: optimalPillarDetail(inputs.optimal),
       tone: optimalTone(inputs.optimal),
       trend: null,
       href: pillarHref("optimal-biomarkers"),

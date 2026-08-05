@@ -8,17 +8,31 @@ import { db, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import {
   injuryConstraints,
+  isDateStr,
+  isValidLaterality,
+  isValidMovementPattern,
   isValidRegion,
   isValidMuscleId,
+  parseInjuryExercises,
+  parseLoadFactor,
+  parseMovements,
   parseMuscles,
   parseRegions,
   temperedRegions,
   INJURY_STATUSES,
   type Injury,
   type InjuryConstraint,
+  type InjuryLaterality,
   type InjuryStatus,
 } from "./injury-model";
+import { exerciseHistoryKey, type MovementPattern } from "./lifts";
 import type { MuscleId, MuscleRegion } from "./lifts";
+
+// The columns every read selects — one list so a new #2024 field can't be selected by one
+// reader and missed by another.
+const INJURY_COLUMNS = `id, label, regions, muscles, status, since, resolved_date, notes,
+                        created_at, laterality, movements, exercises, load_factor,
+                        review_date`;
 
 interface InjuryRow {
   id: number;
@@ -30,6 +44,11 @@ interface InjuryRow {
   resolved_date: string | null;
   notes: string | null;
   created_at: string;
+  laterality: string | null;
+  movements: string | null;
+  exercises: string | null;
+  load_factor: number | null;
+  review_date: string | null;
 }
 
 function rowToInjury(r: InjuryRow): Injury {
@@ -43,6 +62,18 @@ function rowToInjury(r: InjuryRow): Injury {
     resolvedDate: r.resolved_date,
     notes: r.notes,
     createdAt: r.created_at,
+    // #2024 — defensive reads: a stored value outside the vocabulary is dropped rather
+    // than thrown, exactly like `regions`/`muscles` above, so a legacy or hand-edited row
+    // degrades to the region-scoped constraint it always was.
+    laterality:
+      r.laterality != null && isValidLaterality(r.laterality)
+        ? r.laterality
+        : null,
+    movements: parseMovements(r.movements),
+    exercises: parseInjuryExercises(r.exercises),
+    loadFactor: r.load_factor != null ? parseLoadFactor(r.load_factor) : null,
+    reviewDate:
+      r.review_date != null && isDateStr(r.review_date) ? r.review_date : null,
   };
 }
 
@@ -51,7 +82,7 @@ function rowToInjury(r: InjuryRow): Injury {
 export function getInjuries(profileId: number): Injury[] {
   const rows = db
     .prepare(
-      `SELECT id, label, regions, muscles, status, since, resolved_date, notes, created_at
+      `SELECT ${INJURY_COLUMNS}
          FROM injuries
         WHERE profile_id = ?
         ORDER BY (status = 'resolved') ASC,
@@ -64,7 +95,7 @@ export function getInjuries(profileId: number): Injury[] {
 export function getInjury(profileId: number, id: number): Injury | undefined {
   const r = db
     .prepare(
-      `SELECT id, label, regions, muscles, status, since, resolved_date, notes, created_at
+      `SELECT ${INJURY_COLUMNS}
          FROM injuries WHERE id = ? AND profile_id = ?`
     )
     .get(id, profileId) as InjuryRow | undefined;
@@ -87,15 +118,24 @@ export function getInjuryConstraints(profileId: number): InjuryConstraint[] {
 // disagree on the injury axis (#221/#1115). Parallels getFormDeloadContext: empty when
 // no recovering injury applies (byte-for-byte the prior form behavior). Membership is
 // what the form reads (region ∈ set), so serialization order is immaterial.
+//
+// #2024 — the form ALSO carries the resolved constraints themselves, so a lift the user
+// picks can be tempered by an exercise- or movement-scoped constraint (and by the user's
+// own declared load preference) rather than only by its coarse region. Plain serializable
+// data; the client resolves it through the same pure `exerciseInjuryVerdict` every server
+// surface uses, so the logger and its deep-link target still can't disagree.
 export interface FormRecoveringContext {
   temperedRegions: MuscleRegion[];
+  constraints: InjuryConstraint[];
 }
 
 export function getFormRecoveringContext(
   profileId: number
 ): FormRecoveringContext {
+  const constraints = getInjuryConstraints(profileId);
   return {
-    temperedRegions: [...temperedRegions(getInjuryConstraints(profileId))],
+    temperedRegions: [...temperedRegions(constraints)],
+    constraints,
   };
 }
 
@@ -108,31 +148,55 @@ export interface InjuryInput {
   status?: InjuryStatus;
   since?: string | null;
   notes?: string | null;
+  // #2024, all optional and all USER-DECLARED. Omitting every one of them writes exactly
+  // the region-scoped constraint this core always wrote.
+  laterality?: InjuryLaterality | null;
+  movements?: MovementPattern[];
+  exercises?: string[];
+  loadFactor?: number | null;
+  reviewDate?: string | null;
 }
 
 // A typed outcome so an action answers from what happened (never unconditionally confirm).
 export type InjuryWriteOutcome =
   { kind: "ok"; id: number } | { kind: "invalid" };
 
-function sanitize(input: InjuryInput): {
+interface SanitizedInjury {
   label: string;
   regions: MuscleRegion[];
   muscles: MuscleId[];
   status: InjuryStatus;
   since: string | null;
   notes: string | null;
-} | null {
+  laterality: InjuryLaterality | null;
+  movements: MovementPattern[];
+  exercises: string[];
+  loadFactor: number | null;
+  reviewDate: string | null;
+}
+
+function sanitize(input: InjuryInput): SanitizedInjury | null {
   const label = input.label.trim();
   if (!label) return null;
   const regions = [...new Set(input.regions.filter(isValidRegion))];
   const muscles = [...new Set((input.muscles ?? []).filter(isValidMuscleId))];
   // At least one region (or a fine muscle that rolls up to one) is required — an injury
-  // with no affected region can't constrain anything.
+  // with no affected region can't constrain anything. The #2024 precision NARROWS a
+  // constraint within its region; it never replaces the region, so this stays required.
   if (regions.length === 0 && muscles.length === 0) return null;
   const status: InjuryStatus =
     input.status && INJURY_STATUSES.includes(input.status)
       ? input.status
       : "active";
+  // Exercise identities are normalized through the canonical identity function, never
+  // stored as the raw label the user picked from (#2024's no-duplicate-vocabulary rule).
+  const exercises = [
+    ...new Set(
+      (input.exercises ?? [])
+        .map((e) => exerciseHistoryKey(String(e)))
+        .filter((k) => k.length > 0)
+    ),
+  ].slice(0, 20);
   return {
     label: label.slice(0, 120),
     regions,
@@ -140,7 +204,43 @@ function sanitize(input: InjuryInput): {
     status,
     since: input.since ?? null,
     notes: (input.notes ?? "").trim().slice(0, 1000) || null,
+    laterality:
+      input.laterality != null && isValidLaterality(input.laterality)
+        ? input.laterality
+        : null,
+    movements: [
+      ...new Set((input.movements ?? []).filter(isValidMovementPattern)),
+    ],
+    exercises,
+    // A recovery preference only means anything while recovering; storing one on an
+    // active/resolved row would silently reappear on a later status change the user never
+    // tied it to.
+    loadFactor:
+      status === "recovering" && input.loadFactor != null
+        ? parseLoadFactor(input.loadFactor)
+        : null,
+    reviewDate:
+      input.reviewDate != null && isDateStr(input.reviewDate)
+        ? input.reviewDate
+        : null,
   };
+}
+
+// The #2024 columns, in the order both writes bind them.
+function scopeBindings(s: SanitizedInjury): [
+  string | null, // laterality
+  string | null, // movements JSON
+  string | null, // exercises JSON
+  number | null, // load_factor
+  string | null, // review_date
+] {
+  return [
+    s.laterality,
+    s.movements.length ? JSON.stringify(s.movements) : null,
+    s.exercises.length ? JSON.stringify(s.exercises) : null,
+    s.loadFactor,
+    s.reviewDate,
+  ];
 }
 
 // Log a new injury. Single IMMEDIATE transaction (#468).
@@ -156,8 +256,8 @@ export function logInjuryCore(
         .prepare(
           `INSERT INTO injuries
              (profile_id, label, regions, muscles, status, since, resolved_date, notes,
-              created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              created_at, laterality, movements, exercises, load_factor, review_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           profileId,
@@ -170,7 +270,8 @@ export function logInjuryCore(
           s.status === "resolved" ? (s.since ?? null) : null,
           s.notes,
           // created_at from the clock seam (#1534) — the Timeline day fallback.
-          sqlNow()
+          sqlNow(),
+          ...scopeBindings(s)
         ).lastInsertRowid
     );
     return { kind: "ok" as const, id };
@@ -203,7 +304,8 @@ export function updateInjuryCore(
     db.prepare(
       `UPDATE injuries
           SET label = ?, regions = ?, muscles = ?, status = ?, since = ?,
-              resolved_date = ?, notes = ?
+              resolved_date = ?, notes = ?, laterality = ?, movements = ?,
+              exercises = ?, load_factor = ?, review_date = ?
         WHERE id = ? AND profile_id = ?`
     ).run(
       s.label,
@@ -213,6 +315,7 @@ export function updateInjuryCore(
       s.since,
       resolvedDate,
       s.notes,
+      ...scopeBindings(s),
       id,
       profileId
     );
@@ -230,13 +333,24 @@ export function setInjuryStatusCore(
 ): InjuryWriteOutcome {
   if (!INJURY_STATUSES.includes(status)) return { kind: "invalid" };
   return writeTx(() => {
+    // A recovery load preference only means anything while recovering (#2024): leaving
+    // `recovering` clears it, so it can't silently reappear on a later transition the user
+    // never tied it to. Everything else the user declared is left exactly as they wrote it —
+    // a status change is not permission to rewrite their constraint.
     const res = db
       .prepare(
         `UPDATE injuries
-            SET status = ?, resolved_date = ?
+            SET status = ?, resolved_date = ?,
+                load_factor = CASE WHEN ? = 'recovering' THEN load_factor ELSE NULL END
           WHERE id = ? AND profile_id = ?`
       )
-      .run(status, status === "resolved" ? resolvedDate : null, id, profileId);
+      .run(
+        status,
+        status === "resolved" ? resolvedDate : null,
+        status,
+        id,
+        profileId
+      );
     return res.changes > 0
       ? { kind: "ok" as const, id }
       : { kind: "invalid" as const };

@@ -16,7 +16,9 @@
 // computation"). Every read goes through an already profile-scoped query, so no
 // `.prepare` lives here and the scoping guard is unaffected.
 
+import { today } from "../db";
 import { getUserSex, getUserAge } from "../settings";
+import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
   getLatestMedicalRecordByCanonical,
   getMedicalRecords,
@@ -35,6 +37,7 @@ import {
   optimalRangeHitRate,
   optimalShareRows,
   type NamedBiomarkerReading,
+  type OptimalHitRate,
   type OptimalShareRow,
   type Pillar,
   type PillarInputs,
@@ -128,11 +131,13 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
     }
   }
 
-  // % of tracked biomarkers in their optimal range — the curated optimal bands.
+  // % of tracked biomarkers in their optimal range — the curated optimal bands, plus the
+  // freshness/coverage context the pillar states (#2023).
   const hitRate = optimalRangeHitRate(
     gatherOptimalReadings(profileId),
     sex,
-    age
+    age,
+    today(profileId)
   );
   if (hitRate.total > 0) inputs.optimal = hitRate;
 
@@ -143,6 +148,12 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
 // Longevity page's per-marker breakdown (getOptimalShareRows) — the expanded
 // section judges exactly the readings the pillar counted, never a second query
 // shape (#1042 phase 4).
+//
+// #2023: the gather now carries each reading's DATE, category and curated retest cadence
+// through to the pure model instead of dropping them, so the pillar can state how current
+// its ratio is. The cadence comes from the existing `retestDaysForBiomarker` lookup and the
+// verdict from the existing `biomarkerRetestStatus` — Longevity adds no retest model of
+// its own (#2023 non-goal).
 function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
   return getMedicalRecords(profileId, { current: true })
     .filter((r) => LAB_CATEGORIES.has(r.category) && r.canonical_name)
@@ -152,6 +163,9 @@ function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
       value_num: r.value_num,
       unit: r.unit,
       cb: getCanonicalBiomarker(r.canonical_name as string) ?? null,
+      date: r.date,
+      category: r.category,
+      retestDays: retestDaysForBiomarker(r.canonical_name ?? r.name),
     }));
 }
 
@@ -161,5 +175,22 @@ function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
 export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
   const sex = getUserSex(profileId);
   const age = getUserAge(profileId);
-  return optimalShareRows(gatherOptimalReadings(profileId), sex, age);
+  return optimalShareRows(
+    gatherOptimalReadings(profileId),
+    sex,
+    age,
+    today(profileId)
+  );
+}
+
+// The optimal-share MODEL behind the pillar (#2023), for the Longevity page's expanded
+// section header — the same gather + the same `optimalRangeHitRate` the pillar consumed,
+// so the section's coverage/freshness line and the pillar's detail can't disagree.
+export function getOptimalHitRate(profileId: number): OptimalHitRate {
+  return optimalRangeHitRate(
+    gatherOptimalReadings(profileId),
+    getUserSex(profileId),
+    getUserAge(profileId),
+    today(profileId)
+  );
 }

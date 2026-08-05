@@ -23,6 +23,11 @@ function inj(over: Partial<Injury> = {}): Injury {
     resolvedDate: null,
     notes: null,
     createdAt: "2026-07-01 00:00:00",
+    laterality: null,
+    movements: [],
+    exercises: [],
+    loadFactor: null,
+    reviewDate: null,
     ...over,
   };
 }
