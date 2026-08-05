@@ -11,12 +11,12 @@ since #30.
 It is **a read model plus a window plus two purges**. It is emphatically **not a
 second restore engine.** All of the hard machinery already existed:
 
-| Concern | Owner | Note |
-| --- | --- | --- |
-| Capture | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows, one transaction with the delete |
-| Restore | `restoreDeletedRow` | new ids, external-FK reconciliation (#202/#375), merge inversion (#199/#200), re-import tombstone removal (#200) |
-| Retention purge | `sweepDeletedRows` | one call per hourly notify tick, global, unlinks orphaned clip files (#1290) |
-| Auth | `requireWriteAccess()` + profile-scoped SQL | a token cannot be replayed across profiles |
+| Concern         | Owner                                                                                         | Note                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows, one transaction with the delete                                   |
+| Restore         | `restoreDeletedRow`                                                                           | new ids, external-FK reconciliation (#202/#375), merge inversion (#199/#200), re-import tombstone removal (#200) |
+| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290)                                     |
+| Auth            | `requireWriteAccess()` + profile-scoped SQL                                                   | a token cannot be replayed across profiles                                                                       |
 
 The Trash adds: `lib/trash.ts` (pure derivation), `lib/queries/trash.ts` (the
 list), `purgeDeletedRow` / `emptyTrash` (`lib/undo-delete-db.ts`), the section
@@ -88,7 +88,7 @@ authoritative, and best-effort filesystem work must never hold the write lock.
 ## Rendering
 
 `deleted_rows.label` is a deliberately generic, non-PHI kind descriptor
-("activity", "body metric") — enough to *count* a trash, not to *choose* from
+("activity", "body metric") — enough to _count_ a trash, not to _choose_ from
 one. The identifying content lives in `payload`, so `lib/trash.ts` reads a
 title/date/note out of the captured ROOT row. That means the Trash renders PHI
 and sits behind the same session gate as every other `(app)` surface, with free
@@ -110,7 +110,7 @@ The table has three writers; only two capture a deleted row.
 `captureDelete` (the kind registry) and the `administration` ledger capture are
 both restored by `restoreDeletedRow`, and both appear.
 
-A **bulk correction** (#1603) snapshots the *inverse of an edit* into the same
+A **bulk correction** (#1603) snapshots the _inverse of an edit_ into the same
 store to reuse its purge timer. It is not a deleted row, its undo is
 `undoBulkCorrection` (a guarded per-row UPDATE that skips rows changed since and
 reports how many), and it already has its own affordance on Data → Review.

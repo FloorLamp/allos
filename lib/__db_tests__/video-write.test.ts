@@ -399,7 +399,9 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       const out = addActivityVideoCore(
         profileId,
         { activityId: act, exercise: null, caption: null },
-        ingested(buildMp4Fixture({ durationSec: 6, creationDate: "2026-07-03" })),
+        ingested(
+          buildMp4Fixture({ durationSec: 6, creationDate: "2026-07-03" })
+        ),
         Buffer.from("HAND-PURGE-POSTER")
       );
       expect(out.kind).toBe("added");
@@ -424,7 +426,9 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       const out = addActivityVideoCore(
         profileId,
         { activityId: act, exercise: null, caption: null },
-        ingested(buildMp4Fixture({ durationSec: 7, creationDate: "2026-07-04" })),
+        ingested(
+          buildMp4Fixture({ durationSec: 7, creationDate: "2026-07-04" })
+        ),
         Buffer.from("EMPTY-TRASH-POSTER")
       );
       expect(out.kind).toBe("added");

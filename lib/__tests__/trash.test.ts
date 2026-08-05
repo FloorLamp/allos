@@ -63,8 +63,12 @@ describe("trashEntry derivation", () => {
   });
 
   it("falls back to the raw kind when the label column is blank", () => {
-    expect(trashEntry(capture({ label: null }), 30, NOW).label).toBe("activity");
-    expect(trashEntry(capture({ label: "  " }), 30, NOW).label).toBe("activity");
+    expect(trashEntry(capture({ label: null }), 30, NOW).label).toBe(
+      "activity"
+    );
+    expect(trashEntry(capture({ label: "  " }), 30, NOW).label).toBe(
+      "activity"
+    );
   });
 
   it("derives a title for each registry root's own title column", () => {
@@ -147,7 +151,11 @@ describe("trashEntry expiry math", () => {
   it("never reports a negative remainder for a capture the tick hasn't reached", () => {
     // The sweep runs hourly, so an expired capture is visible for up to an hour. It
     // reads as "expires today", not "expires in -3 days".
-    const e = trashEntry(capture({ deletedAt: "2026-06-01 00:00:00" }), 30, NOW);
+    const e = trashEntry(
+      capture({ deletedAt: "2026-06-01 00:00:00" }),
+      30,
+      NOW
+    );
     expect(e.expiresInDays).toBe(0);
   });
 

@@ -53,7 +53,9 @@ function newActivity(profileId: number, title: string): number {
 
 const backdate = (undoId: number, modifier: string) =>
   db
-    .prepare(`UPDATE deleted_rows SET deleted_at = datetime('now', ?) WHERE id = ?`)
+    .prepare(
+      `UPDATE deleted_rows SET deleted_at = datetime('now', ?) WHERE id = ?`
+    )
     .run(modifier, undoId);
 
 const holdingRows = (undoId: number) =>
@@ -150,9 +152,7 @@ describe("restore from the Trash is the same core as undo", () => {
     expect(restoreDeletedRow(p.profileId, undoId)).toBe(true);
 
     const restored = db
-      .prepare(
-        `SELECT id FROM activities WHERE profile_id = ? AND title = ?`
-      )
+      .prepare(`SELECT id FROM activities WHERE profile_id = ? AND title = ?`)
       .get(p.profileId, `${p.tag} Strength Day`) as { id: number };
     expect(restored).toBeTruthy();
     // New id (restore never re-uses the deleted row's), children intact.
@@ -195,7 +195,9 @@ describe("delete permanently", () => {
     expect(purgeDeletedRow(p.profileId, undoId)).toEqual({ kind: "gone" });
     expect(holdingRows(undoId)).toBe(1);
     // The rightful owner can.
-    expect(purgeDeletedRow(other.profileId, undoId)).toEqual({ kind: "purged" });
+    expect(purgeDeletedRow(other.profileId, undoId)).toEqual({
+      kind: "purged",
+    });
   });
 
   it("a purged capture is unrestorable — the point of 'permanently'", () => {
@@ -211,13 +213,12 @@ describe("empty trash", () => {
     const mine = seedProfile("TRASH-EMPTY-MINE");
     const theirs = seedProfile("TRASH-EMPTY-THEIRS");
 
-    const mineUndos = ["a", "b"].map(
-      (n) =>
-        captureDelete(
-          "activity",
-          mine.profileId,
-          newActivity(mine.profileId, `TRASH-EMPTY-MINE ${n}`)
-        )!
+    const mineUndos = ["a", "b"].map((n) =>
+      captureDelete(
+        "activity",
+        mine.profileId,
+        newActivity(mine.profileId, `TRASH-EMPTY-MINE ${n}`)
+      )!
     );
     const theirUndo = captureDelete(
       "activity",

@@ -140,8 +140,7 @@ export function trashEntry(
 ): TrashEntry {
   const payload = readPayload(capture.payload);
   const rootKey = payload ? rootEntityKey(capture.kind, payload) : undefined;
-  const root =
-    payload && rootKey ? (payload.rows[rootKey]?.[0] ?? null) : null;
+  const root = payload && rootKey ? (payload.rows[rootKey]?.[0] ?? null) : null;
 
   let captured = 0;
   if (payload)

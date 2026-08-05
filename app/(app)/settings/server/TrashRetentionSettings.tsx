@@ -40,11 +40,12 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Deleted rows stay restorable under Data → Trash for this many days, then
-        the hourly notify tick purges them for good. The window holds the deleted
-        row’s full content <em>and</em> any video clips captured with it, so a
-        longer window means deleted health data stays on this server longer —
-        anyone can remove a row immediately with “Delete permanently”. Allowed
-        range: {MIN_TRASH_RETENTION_DAYS}–{MAX_TRASH_RETENTION_DAYS} days.
+        the hourly notify tick purges them for good. The window holds the
+        deleted row’s full content <em>and</em> any video clips captured with
+        it, so a longer window means deleted health data stays on this server
+        longer — anyone can remove a row immediately with “Delete permanently”.
+        Allowed range: {MIN_TRASH_RETENTION_DAYS}–{MAX_TRASH_RETENTION_DAYS}{" "}
+        days.
       </p>
 
       <div className="flex items-end gap-2">

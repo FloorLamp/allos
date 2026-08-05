@@ -9,10 +9,7 @@
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
 import { db, writeTx } from "./db";
-import {
-  DEFAULT_TRASH_RETENTION_DAYS,
-  daysAgoModifier,
-} from "./retention";
+import { DEFAULT_TRASH_RETENTION_DAYS, daysAgoModifier } from "./retention";
 import { dayCounterSpecFor } from "./day-counter-ledger";
 import { dayCounterLedger } from "./day-counter-ledger-db";
 import {
@@ -599,8 +596,7 @@ export function purgeDeletedRow(
           WHERE id = ? AND profile_id = ? AND kind <> ?`
       )
       .get(undoId, profileId, TRASH_EXCLUDED_KIND) as
-      | { payload: string }
-      | undefined;
+      { payload: string } | undefined;
     if (!row) return null;
     const files = capturedVideoFilesOf([row]);
     db.prepare(
