@@ -42,8 +42,12 @@ import {
   answerCallbackQuery,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
-import { logFoodServingCore } from "@/lib/food-log-write";
+import {
+  logFoodServingCore,
+  restampFoodEventsCore,
+} from "@/lib/food-log-write";
 import { markDoseTaken } from "@/lib/queries";
+import { restampDoseLogsCore } from "@/lib/queries/intake/adherence";
 import { now as clockNow } from "@/lib/clock";
 import { getFoodCorrectionBursts } from "@/lib/queries";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
@@ -599,6 +603,83 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
       "2026-08-05 18:02:00",
       "2026-08-05 18:04:00",
     ]);
+  });
+});
+
+// ---- #2059: the WRITE carries the scope, not only the read that fed it -----
+//
+// Both correction cores mint their burst from a profile-scoped SELECT, which is exactly
+// why the UPDATE has to re-state the scope anyway: the ONE statement that mutates a row
+// must not be correct only because a sibling query above it still is. The module
+// comments on both cores promise "the anchor row is gone OR BELONGS TO ANOTHER PROFILE
+// ⇒ no-burst"; until now nothing asserted the second half in either domain.
+//
+// In both cases the stranger's own ledger is seeded LAST, so its ids sit inside the
+// `id >= anchor` window the cores scan — the rows really are in front of the writer, and
+// only the scoping keeps them (and the owner's) still.
+describe("a correction anchored on another profile's row writes nothing (#2059)", () => {
+  const backAnHour = (tapAt: string): Date =>
+    new Date(Date.parse(tapAt) - 3_600_000);
+
+  it("food: a foreign anchor is no-burst, and neither ledger moves", () => {
+    const owner = newProfile("Ledger Lena");
+    const stranger = newProfile("Stranger Stig");
+    setNow(NOW_ISO);
+    logFoodServingCore(
+      owner,
+      "leafy_greens",
+      today(owner),
+      "2026-08-05T19:02:00Z"
+    );
+    logFoodServingCore(
+      stranger,
+      "nuts_seeds",
+      today(stranger),
+      "2026-08-05T19:04:00Z"
+    );
+    const ownerBefore = foodEvents(owner);
+    const strangerBefore = foodEvents(stranger);
+
+    expect(
+      restampFoodEventsCore(stranger, ownerBefore[0].id, backAnHour)
+    ).toEqual({ kind: "no-burst" });
+    expect(foodEvents(owner)).toEqual(ownerBefore);
+    // Not even the stranger's OWN row moves: an anchor he doesn't hold is not a burst,
+    // so the write never runs at all rather than running over whatever came next.
+    expect(foodEvents(stranger)).toEqual(strangerBefore);
+  });
+
+  it("dose: every log id in the database, swept as a stranger's anchor, moves only his own", () => {
+    const owner = newProfile("Owner Odile");
+    const stranger = newProfile("Stranger Sven");
+    const ownerDose = seedDose(owner, "Owner's Amlodipine");
+    const strangerDose = seedDose(stranger, "Stranger's Amlodipine");
+    setNow(NOW_ISO);
+    markDoseTaken(owner, ownerDose.doseId, ownerDose.itemId, today(owner));
+    stampTap(doseLogs(owner)[0].id, "2026-08-05 19:02:00");
+    markDoseTaken(
+      stranger,
+      strangerDose.doseId,
+      strangerDose.itemId,
+      today(stranger)
+    );
+    stampTap(doseLogs(stranger)[0].id, "2026-08-05 19:04:00");
+    const ownerBefore = doseLogs(owner);
+    const strangerBefore = doseLogs(stranger);
+
+    // The property, not one case: whatever id the stranger names, the owner's ledger is
+    // untouched. A later refactor that widened the burst selection would fail here.
+    for (const row of [...ownerBefore, ...strangerBefore]) {
+      restampDoseLogsCore(stranger, row.id, backAnHour);
+    }
+    expect(doseLogs(owner)).toEqual(ownerBefore);
+    // His own anchor still works — the scoping refuses the stranger, not the feature.
+    expect(doseLogs(stranger).map((r) => r.givenAt)).toEqual([
+      "2026-08-05 18:04:00",
+    ]);
+    expect(doseLogs(stranger).map((r) => r.takenAt)).toEqual(
+      strangerBefore.map((r) => r.takenAt)
+    );
   });
 });
 
