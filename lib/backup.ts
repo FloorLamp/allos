@@ -696,7 +696,13 @@ export function runScheduledBackup(tickMinutes = 60): {
   const minute = minuteOfDayInTz(tz, now);
   const today = dateStrInTz(tz, now);
   if (
-    !isBackupDue(cfg, minute, tickMinutes, getSetting("backup_last_date"), today)
+    !isBackupDue(
+      cfg,
+      minute,
+      tickMinutes,
+      getSetting("backup_last_date"),
+      today
+    )
   ) {
     return { ran: false, failed: false };
   }

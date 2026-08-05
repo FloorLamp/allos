@@ -140,7 +140,12 @@ describe("shouldDeferDigest — once, and only into an attempt that exists", () 
     const ask = vi.fn(() => true);
     expect(
       shouldDeferDigest(
-        { slotMinute: 7 * 60, currentMinute: 7 * 60, tickMinutes: 60, auto: false },
+        {
+          slotMinute: 7 * 60,
+          currentMinute: 7 * 60,
+          tickMinutes: 60,
+          auto: false,
+        },
         ask
       )
     ).toBe(false);
@@ -158,7 +163,10 @@ describe("shouldDeferDigest — once, and only into an attempt that exists", () 
     // same-day retry: declining there would DROP the digest for the day rather
     // than delay it.
     expect(
-      shouldDeferDigest(at(LAST_DEFERRABLE_MINUTE, LAST_DEFERRABLE_MINUTE), pending)
+      shouldDeferDigest(
+        at(LAST_DEFERRABLE_MINUTE, LAST_DEFERRABLE_MINUTE),
+        pending
+      )
     ).toBe(true);
     expect(shouldDeferDigest(at(23 * 60, 23 * 60), pending)).toBe(false);
   });

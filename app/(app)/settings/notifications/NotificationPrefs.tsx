@@ -409,9 +409,7 @@ export default function NotificationPrefs({
                       autoOption={w === "Morning" ? autoLabel : null}
                       seed={SLOT_SEED[field]}
                       label={`${w} reminder`}
-                      testId={
-                        w === "Morning" ? "supp-morning-hour" : undefined
-                      }
+                      testId={w === "Morning" ? "supp-morning-hour" : undefined}
                     />
                   </div>
                 </div>

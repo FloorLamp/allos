@@ -247,7 +247,13 @@ describe("isBackupDue — the hour stays hour-typed; the clock is minutes (#2121
 
   it("is never due when disabled", () => {
     expect(
-      isBackupDue({ enabled: false, hour: 3 }, 3 * 60, 60, undefined, "2026-07-06")
+      isBackupDue(
+        { enabled: false, hour: 3 },
+        3 * 60,
+        60,
+        undefined,
+        "2026-07-06"
+      )
     ).toBe(false);
   });
 });

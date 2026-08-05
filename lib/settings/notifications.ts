@@ -766,7 +766,8 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
   const wakeMinute = needsWake ? typicalWakeTime(profileId) : null;
   // Auto/absent Morning resolves to the wake minute, or the hardcoded default when
   // no sleep data yet — graceful degradation.
-  const morningAutoValue = wakeMinute ?? DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
+  const morningAutoValue =
+    wakeMinute ?? DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 
   // The DIGEST's auto value (#2102). It resolves past the time last night's sleep
   // typically ARRIVES, not the time the profile wakes: the digest prints a Sleep

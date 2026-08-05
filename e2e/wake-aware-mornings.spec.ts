@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures";
-import { settledCheckSave, settledFillSave, settledSelectSave } from "./helpers";
+import {
+  settledCheckSave,
+  settledFillSave,
+  settledSelectSave,
+} from "./helpers";
 
 // Wake-aware mornings (issue #1117) at minute grain (#2121): the wake-derived
 // "Auto" state on the Morning intake slot + the morning digest, a manual

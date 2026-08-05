@@ -78,7 +78,9 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     expect(getProfileSetting(profile.id, "notify_supp_morning_hour")).toBe(
       "09:00"
     );
-    expect(getNotifySchedule(profile.id).supplementMinutes.Morning).toBe(9 * 60);
+    expect(getNotifySchedule(profile.id).supplementMinutes.Morning).toBe(
+      9 * 60
+    );
   });
 
   it("records 'auto' for the digest, turning it on at the wake hour", async () => {

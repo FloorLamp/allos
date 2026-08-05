@@ -213,7 +213,8 @@ export const AUTO_TIME = "auto";
 // Format a minute-of-day as the canonical stored/form value ("HH:MM", 24h,
 // zero-padded). The one serializer parseNotifyTime round-trips.
 export function formatNotifyTime(minute: number): string {
-  const m = ((Math.round(minute) % MINUTES_PER_DAY) + MINUTES_PER_DAY) %
+  const m =
+    ((Math.round(minute) % MINUTES_PER_DAY) + MINUTES_PER_DAY) %
     MINUTES_PER_DAY;
   const h = Math.floor(m / 60);
   return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;

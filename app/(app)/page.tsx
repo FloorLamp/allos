@@ -1101,8 +1101,11 @@ export default async function Dashboard() {
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
   const nowSlots = getNotifySchedule(profile.id).supplementMinutes;
-  const nowMealAnchors = [nowSlots.Morning, nowSlots.Midday, nowSlots.Evening]
-    .filter((m): m is number => m != null);
+  const nowMealAnchors = [
+    nowSlots.Morning,
+    nowSlots.Midday,
+    nowSlots.Evening,
+  ].filter((m): m is number => m != null);
 
   // What the strip is ALLOWED to promote: a grid widget the user still has visible
   // AND that has something to render, or the standalone recap card under the same
