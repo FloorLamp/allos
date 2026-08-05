@@ -817,7 +817,8 @@ export default function MeasurementsQuickAdd({
 // INTRINSIC columns (#2014): sized by the CONTAINER, not by the window, because
 // this one form is mounted in hosts ~400px, ~912px and a page column wide. Picking
 // a better breakpoint value only moves which host is wrong.
-const GRID_CLASS = "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+const GRID_CLASS =
+  "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
 
 function Field({
   label,

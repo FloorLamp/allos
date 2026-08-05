@@ -82,7 +82,9 @@ test.describe("Document capture on a phone (issue #1993)", () => {
     const cameraBox = await camera.boundingBox();
     expect(uploadBox).not.toBeNull();
     expect(cameraBox).not.toBeNull();
-    expect(Math.abs(uploadBox!.width - cameraBox!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(uploadBox!.width - cameraBox!.width)).toBeLessThanOrEqual(
+      1
+    );
     expect(Math.abs(uploadBox!.height - cameraBox!.height)).toBeLessThanOrEqual(
       1
     );

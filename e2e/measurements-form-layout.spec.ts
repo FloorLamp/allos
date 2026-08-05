@@ -146,8 +146,18 @@ test("a collapsed group announces its value and still saves it", async ({
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
 
-    // A deep-past date so this write owns its row outright.
-    await settledFill(page, form.locator("#m-date"), LOG_DATE);
+    // A deep-past date so this write owns its row outright. settledFill can't
+    // express this one: DateField accepts ISO and then re-renders the COMMITTED
+    // value in the display format, so the post-fill assertion is that reformat —
+    // which is itself the proof React took the value (a pre-hydration fill would
+    // sit there as the raw ISO string until hydration reverted it).
+    const dateField = form.locator("#m-date");
+    await expect(async () => {
+      await dateField.fill(LOG_DATE);
+      await expect(dateField).toHaveValue(/Jan 3, 2026|2026-01-03/, {
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 10_000 }); // topass-ok: hydration-guarded fill of a controlled date field — absolute value, so re-application is a no-op (the settledFill contract, with the display-format reformat as the settle)
     const weight = form.locator("#m-weight");
     await settledFill(page, weight, LOG_WEIGHT);
 

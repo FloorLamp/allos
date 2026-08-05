@@ -103,7 +103,10 @@ describe("measurementGroupSummary", () => {
 
   it("summarizes a blood pressure as ONE reading", () => {
     expect(
-      measurementGroupSummary("vitals", from({ systolic: "120", diastolic: "80" }))
+      measurementGroupSummary(
+        "vitals",
+        from({ systolic: "120", diastolic: "80" })
+      )
     ).toBe("120/80");
     // Half-typed still announces itself — the value must not be invisible.
     expect(measurementGroupSummary("vitals", from({ systolic: "120" }))).toBe(
@@ -125,7 +128,10 @@ describe("measurementGroupSummary", () => {
       )
     ).toBe("5.2 mmol/L");
     expect(
-      measurementGroupSummary("body", from({ weight: "165", weight_unit: "lb" }))
+      measurementGroupSummary(
+        "body",
+        from({ weight: "165", weight_unit: "lb" })
+      )
     ).toBe("165 lb");
   });
 

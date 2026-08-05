@@ -255,7 +255,10 @@ export default function UploadForm({
           a drop uses, so there is still ONE submit and one `file` field. (The other
           one-tap phone path for a document is the share sheet —
           app/share-target/route.ts.) */}
-      <div className="flex gap-3 sm:hidden" data-testid="medical-upload-actions">
+      <div
+        className="flex gap-3 sm:hidden"
+        data-testid="medical-upload-actions"
+      >
         <button
           type="button"
           className="btn flex-1"

@@ -165,7 +165,9 @@ test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", 
     await expect(form.locator("#measurements-group-body-fields")).toBeVisible();
     await expect(form.getByLabel("Weight", { exact: true })).toBeVisible();
     await expect(form.getByLabel("Body Fat", { exact: true })).toBeVisible();
-    await expect(form.locator("#measurements-group-vitals-fields")).toBeHidden();
+    await expect(
+      form.locator("#measurements-group-vitals-fields")
+    ).toBeHidden();
     await expect(form.getByLabel("Systolic", { exact: true })).toHaveCount(1);
 
     await openMeasurementGroup(page, form, "vitals");
