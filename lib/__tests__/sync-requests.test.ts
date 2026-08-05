@@ -11,6 +11,7 @@ import {
   isSyncRequestExpired,
   isSyncRequestOpen,
   isSyncRequestReason,
+  mayAutoRequestSync,
   shouldWriteSyncRequest,
   syncRequestCardLine,
   syncRequestCopy,
@@ -156,12 +157,63 @@ describe("answering — the next run report satisfies the request", () => {
   });
 });
 
-describe("staleness evaluation", () => {
-  it("NEVER fires for a portal login with no mapped patients", () => {
-    // Checked first and unconditionally: there is no profile whose Upcoming could carry
-    // the nudge, and first contact is the card's job, not this one's.
+describe("the setup carve-out (#2010)", () => {
+  it("lets an automatic ask through ONLY once the tool has reported a run", () => {
+    expect(mayAutoRequestSync({ everRan: false })).toBe(false);
+    expect(mayAutoRequestSync({ everRan: true })).toBe(true);
+  });
+
+  it("keeps staleness silent before the first run, whatever else is true", () => {
+    // The hand pre-bind case: a portal added, one label bound by hand, the tool never
+    // installed. Mapped patients, a null clock and a decade of elapsed days used to add
+    // up to "you are overdue"; the household actually owes the FIRST run, which the
+    // page's own checklist already asks for.
+    for (const mappedPatients of [1, 5]) {
+      for (const lastCheckedAt of [null, "2020-01-01 00:00:00"]) {
+        expect(
+          isStalenessDue({
+            everRan: false,
+            mappedPatients,
+            lastCheckedAt,
+            today: "2026-03-04",
+          })
+        ).toBe(false);
+      }
+    }
+    // Even with the cadence knob wound down to a day.
     expect(
       isStalenessDue({
+        everRan: false,
+        mappedPatients: 1,
+        lastCheckedAt: "2026-03-01 09:00:00",
+        today: "2026-03-31",
+        cadenceDays: 1,
+      })
+    ).toBe(false);
+  });
+
+  it("counts a DELIVERY-ONLY push as having run while leaving the clock null", () => {
+    // A push that never contacted the portal stamps no check clock (#1888) — but it
+    // proves the tool is installed and pointed at this login, which is the only thing
+    // the carve-out is about. So the never-checked clause takes over from here.
+    expect(
+      isStalenessDue({
+        everRan: true,
+        mappedPatients: 1,
+        lastCheckedAt: null,
+        today: "2026-03-04",
+      })
+    ).toBe(true);
+  });
+});
+
+describe("staleness evaluation", () => {
+  it("NEVER fires for a portal login with no mapped patients", () => {
+    // Checked unconditionally: there is no profile whose Upcoming could carry the nudge,
+    // and first contact is the card's job, not this one's.
+    expect(
+      isStalenessDue({
+        everRan: true,
         mappedPatients: 0,
         lastCheckedAt: null,
         today: "2026-03-04",
@@ -169,6 +221,7 @@ describe("staleness evaluation", () => {
     ).toBe(false);
     expect(
       isStalenessDue({
+        everRan: true,
         mappedPatients: 0,
         lastCheckedAt: "2020-01-01 00:00:00",
         today: "2026-03-04",
@@ -179,6 +232,7 @@ describe("staleness evaluation", () => {
   it("respects the cadence constant at its exact boundary", () => {
     expect(STALENESS_CADENCE_DAYS).toBe(30);
     const base = {
+      everRan: true,
       mappedPatients: 2,
       today: "2026-03-31",
     };
@@ -198,6 +252,7 @@ describe("staleness evaluation", () => {
   it("honors an explicit cadence override (the per-portal knob's seam)", () => {
     expect(
       isStalenessDue({
+        everRan: true,
         mappedPatients: 1,
         lastCheckedAt: "2026-03-25 09:00:00",
         today: "2026-03-31",
@@ -206,6 +261,7 @@ describe("staleness evaluation", () => {
     ).toBe(true);
     expect(
       isStalenessDue({
+        everRan: true,
         mappedPatients: 1,
         lastCheckedAt: "2026-03-25 09:00:00",
         today: "2026-03-31",
@@ -214,9 +270,12 @@ describe("staleness evaluation", () => {
     ).toBe(false);
   });
 
-  it("treats a mapped login that has NEVER been checked as stale", () => {
+  it("treats a mapped login whose RUNS never succeed as stale", () => {
+    // Pinned against the carve-out above: the tool runs here and keeps failing, so the
+    // clock is null forever and this is the household that most needs the nudge.
     expect(
       isStalenessDue({
+        everRan: true,
         mappedPatients: 1,
         lastCheckedAt: null,
         today: "2026-03-04",

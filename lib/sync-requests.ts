@@ -236,9 +236,50 @@ export function shouldWriteSyncRequest(
   return syncRequestSalience(incoming) > syncRequestSalience(existing.reason);
 }
 
+// ── The setup carve-out (#2010) ──────────────────────────────────────────────
+//
+// NO AUTOMATIC ASK BEFORE THE TOOL HAS EVER RUN. Every automatic creator below shares one
+// assumption — the tool is installed, pointed at this login, and merely due (or newly
+// worth) another run. A household still in SETUP owes something else entirely: install
+// the tool, mint a token, run it once. The page's own checklist says exactly that, in
+// better words, and a push telling that household it is "overdue for a routine check"
+// contradicts the page it links to.
+//
+// WHY `mappedPatients` DOES NOT ANSWER THIS. It was the proxy, and it only holds under
+// "a mapped identity implies a run already happened". That is false BY DESIGN: the card
+// ships a hand pre-bind ("bind a label you know exactly, spelled the way the portal
+// spells it") precisely so the first run files records straight away instead of dumping
+// them into pending. One pre-bound label on a portal whose tool was never installed is
+// `mapped = 1`, and it used to be enough to start nagging.
+//
+// WHAT `everRan` MUST READ. Raw existence of a run report for this login, NOT the check
+// clock. `lastReportAt`/`lastOkAt` are stamped through `reportCountsAsCheck`, which
+// deliberately excludes a delivery-only push — but a delivery-only push still proves the
+// tool exists and is pointed here, so it ENDS the setup carve-out while leaving the
+// staleness clock untouched. The two questions are different, so they read different
+// columns; reusing the check-clock constant here would be the exact confusion that
+// constant exists to prevent (#1888).
+//
+// NOT THE STAGE MACHINE. `portalSetupStage` is tempting and wrong: `map-patients`
+// outranks everything but the empty registry, so a long-running household that picks up
+// one new pending patient drops out of `steady` — and silencing staleness there would
+// mute the nudge on exactly the households that use the feature most. The narrow
+// condition is the stage machine's PRE-RUN band (`create-token` / `first-run`), which is
+// `reportCount <= 0` and nothing else. Do not "simplify" this to a stage check.
+//
+// MANUAL IS EXEMPT, and stays that way. A person pressing "Request sync" has decided for
+// themselves; the attention doctrine lets the system reduce contact unilaterally, never
+// overrule a user's own action.
+export function mayAutoRequestSync(input: { everRan: boolean }): boolean {
+  return input.everRan;
+}
+
 // ── Staleness ────────────────────────────────────────────────────────────────
 
 // Should a staleness request be raised for this portal login?
+//
+// SILENT BEFORE THE FIRST RUN, first of all — the shared carve-out above, so this rule
+// and the post-visit creator can never disagree about what "still in setup" means.
 //
 // SILENT WITHOUT MAPPED PATIENTS, unconditionally and first. A portal login with nothing
 // bound to a profile has no profile whose Upcoming could carry the nudge and no
@@ -246,15 +287,20 @@ export function shouldWriteSyncRequest(
 // row, and worse, it would nag about a setup step ("map these patients") the card
 // already asks for in its own words. First contact is the card's job, not this one's.
 //
-// NEVER CHECKED counts as stale. A login with bound patients and no run at all is the
-// clearest possible case of "records are not flowing"; treating a missing timestamp as
-// "not yet due" would keep the one household that most needs the nudge silent forever.
+// NEVER CHECKED counts as stale — and this clause survives the carve-out above, because
+// the two states are different. A login whose tool RUNS and keeps failing has
+// `lastCheckedAt = null` forever, and that household genuinely needs the nudge: doing the
+// first run is the setup step, failing it is a hygiene problem.
 export function isStalenessDue(input: {
+  // Has the tool ever reported a run on this login at all — any row, including a
+  // delivery-only push. See `mayAutoRequestSync`.
+  everRan: boolean;
   mappedPatients: number;
   lastCheckedAt: string | null;
   today: string;
   cadenceDays?: number;
 }): boolean {
+  if (!mayAutoRequestSync(input)) return false;
   if (input.mappedPatients <= 0) return false;
   if (!input.lastCheckedAt) return true;
   const days = daysBetweenDateStr(dayOf(input.lastCheckedAt), input.today);

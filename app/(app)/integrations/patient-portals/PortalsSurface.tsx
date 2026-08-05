@@ -1021,6 +1021,11 @@ export default function PortalsSurface({
       portalAccounts.every(
         (a) => identitiesOf(a.id).length === 0 && pendingOf(a.id).length === 0
       );
+    // The portal is still its one implicit login — the state where the login layer is
+    // invisible and adding one is still free (#1930). A household that already named a
+    // login knows the concept, and `multi` renders the sub-groups from there.
+    const soleImplicitLogin =
+      portalAccounts.length === 1 && portalAccounts[0].implicit;
     return (
       <section
         key={portal.id}
@@ -1191,6 +1196,18 @@ export default function PortalsSurface({
               all allos keeps — never a password, and never the web address you
               sign in at.
             </p>
+            {/* THE NAME IS A KEY (#1930). The slug is minted from this text and the
+                companion tool quotes it in its configuration for good — renaming the
+                login later changes the label here and never that key. The placeholder
+                reads like a nickname, so the field says what it actually is. */}
+            <p
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="account-name-note"
+            >
+              What you type becomes the name the companion tool quotes in its
+              configuration — so name it once and leave it. Renaming a login
+              later changes what you read here, never what the tool quotes.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={loginName}
@@ -1229,15 +1246,50 @@ export default function PortalsSurface({
         )}
 
         {waitingFirstRun ? (
-          <p
-            className="text-sm text-slate-600 dark:text-slate-300"
-            data-testid="portal-waiting"
-          >
-            Waiting for its first run — start the companion tool on the computer
-            that signs in to {portal.name}. It reports which patients that login
-            covers, and they appear here to be mapped. The first run fetches
-            your full history and can take several minutes.
-          </p>
+          <div className="space-y-2">
+            <p
+              className="text-sm text-slate-600 dark:text-slate-300"
+              data-testid="portal-waiting"
+            >
+              Waiting for its first run — start the companion tool on the
+              computer that signs in to {portal.name}. It reports which patients
+              that login covers, and they appear here to be mapped. The first
+              run fetches your full history and can take several minutes.
+            </p>
+            {/* THE LOGIN, WHERE IT IS STILL CHEAP (#1930). A fresh portal has exactly
+                one login — the implicit one, which never surfaces — so the middle layer
+                of portal → login → patient has nothing on screen to reason from, and
+                its only affordance is a ⋯ entry nobody has a reason to open. Before the
+                first run this is not a secondary action: the tool writes the login's
+                name into its config on that run and never rewrites it, so the choice is
+                recoverable in one direction only. The rule for WHEN you want one sits
+                out here beside the button instead of inside the form it opens. The ⋯
+                entry stays; this adds an affordance rather than moving one. */}
+            {isAdmin && soleImplicitLogin && addingLogin !== portal.id && (
+              <div
+                className="flex flex-wrap items-center gap-x-3 gap-y-1"
+                data-testid="portal-login-prompt"
+              >
+                <button
+                  type="button"
+                  className="btn-ghost text-sm"
+                  data-testid="portal-add-login-cta"
+                  onClick={() => {
+                    setAddingLogin(portal.id);
+                    setLoginName("");
+                  }}
+                >
+                  ＋ Add a login
+                </button>
+                <p className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400">
+                  Only if two people sign in to {portal.name} with their own
+                  accounts — and add them before that first run, because the
+                  tool writes each login’s name into its own configuration then
+                  and never rewrites it.
+                </p>
+              </div>
+            )}
+          </div>
         ) : null}
 
         {multi ? (
@@ -1480,21 +1532,40 @@ export default function PortalsSurface({
             3,
             "Run the companion tool on that computer",
             stepState(false, stage === "first-run"),
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              <a
-                href="https://github.com/FloorLamp/allos"
-                target="_blank"
-                rel="noreferrer"
-                className="text-brand-700 hover:underline dark:text-brand-300"
-                data-testid="guide-tool-link"
+            <>
+              {/* THE LOGIN STEP, SAID BEFORE THE RUN (#1930). The guide walked a
+                  household straight past the middle layer of the object model and then
+                  pointed at the first run — and the order is recoverable in one
+                  direction only, because the tool fills a blank login name into its
+                  configuration on that run and never rewrites one. It is folded into
+                  this step rather than made a step of its own: a login is optional by
+                  design, and a numbered step is a thing you owe. */}
+              <p
+                className="text-xs text-slate-500 dark:text-slate-400"
+                data-testid="guide-login-note"
               >
-                Get the companion tool
-              </a>{" "}
-              and start it on the computer that signs in to the portal. It signs
-              in the way you would — you type the two-factor code — and reports
-              which patients that login covers. The first run fetches your full
-              history and can take several minutes.
-            </p>
+                <strong>Two people, two logins.</strong> If two people sign in
+                to this portal with their own accounts, add each login above
+                first — the tool writes each login’s name into its own
+                configuration on this run and never rewrites it. One person
+                needs nothing: the portal is its login.
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                <a
+                  href="https://github.com/FloorLamp/allos"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-brand-700 hover:underline dark:text-brand-300"
+                  data-testid="guide-tool-link"
+                >
+                  Get the companion tool
+                </a>{" "}
+                and start it on the computer that signs in to the portal. It
+                signs in the way you would — you type the two-factor code — and
+                reports which patients that login covers. The first run fetches
+                your full history and can take several minutes.
+              </p>
+            </>
           )}
           {guideStep(
             4,
