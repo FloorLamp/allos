@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Locator } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -12,6 +13,21 @@ import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // card starts on the ESTIMATED basis, no protein_log rows). The spec drives the grams
 // add + undo on that isolated profile, so logging never races the shared protein-adequacy
 // spec. Add→undo leaves the fixture as found; every interaction settles via settledClick.
+
+// How many ranked food-group rows sit ABOVE the protein control in the quick-log
+// section — the observable of "the protein entry is ranked, not pinned" (#1980).
+async function rowsAbove(quickLog: Locator): Promise<number> {
+  const proteinBox = await quickLog
+    .getByTestId("protein-quickadd")
+    .boundingBox();
+  expect(proteinBox).not.toBeNull();
+  const boxes = await Promise.all(
+    (await quickLog.locator('li[data-testid^="food-group-"]').all()).map(
+      (row) => row.boundingBox()
+    )
+  );
+  return boxes.filter((b) => b !== null && b.y < proteinBox!.y).length;
+}
 
 test("logging protein grams sums into the adequacy floor, undo removes it (#824)", async ({
   browser,
@@ -31,9 +47,8 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     await expect(card).toHaveAttribute("data-basis", "estimated");
 
     // The quick-add is a peer of regular food rows, not part of nutrient analysis.
-    const quickadd = page
-      .getByTestId("food-quick-log")
-      .getByTestId("protein-quickadd");
+    const quickLog = page.getByTestId("food-quick-log");
+    const quickadd = quickLog.getByTestId("protein-quickadd");
     await expect(quickadd).toBeVisible();
     await expect(
       page.getByTestId("nutrients-card").getByTestId("protein-quickadd")
@@ -50,6 +65,22 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     await expect(page.getByTestId("protein-intake")).toContainText(
       /30 g logged/
     );
+
+    // RANKED, not pinned (#1980). The profile tracks protein now, so the reserved protein
+    // entry joins the ONE food-group ranking and the control renders at the position its
+    // own ledger signal earned — with ranked rows BELOW it, where it used to be pinned
+    // after (untracked) or before (tracked) the whole list by layout alone. (The row order
+    // is frozen per mount, so this is read after a reload rather than expecting the live
+    // list to re-sort under the finger that just tapped. The untracked half of the rule —
+    // no control at all on the compact quick-log sheet — is pinned by
+    // quick-log-overlay.mobile.spec.ts, whose fixture profile never logs protein; this one
+    // cannot assert it, because an add records the scoop-size preset for good.)
+    await page.reload();
+    await expect(quickadd).toBeVisible();
+    const rows = await quickLog
+      .locator('li[data-testid^="food-group-"]')
+      .count();
+    expect(await rowsAbove(quickLog)).toBeLessThan(rows);
 
     // Undo removes the grams from the same day's total → back to the estimated basis.
     await settledClick(page, page.getByTestId("protein-quickadd-undo"));
