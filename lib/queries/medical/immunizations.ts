@@ -1,5 +1,9 @@
 import { db } from "../../db";
 import {
+  REPRESENTATIVE_SPECS,
+  representativeCte,
+} from "../../representative-ids";
+import {
   immuneThresholdFor,
   titerImmuneStatus,
   type OverrideKind,
@@ -16,18 +20,22 @@ import type {
   MedicalRecord,
 } from "../../types";
 
+// One row per (vaccine, date, dose label) across overlapping documents. The window is
+// emitted by the shared builder (lib/representative-ids.ts, #2035) from the
+// `immunizations` registry row, which declares the `source` preference axis — the
+// manual-beats-imported rule keyed on the `source` string BECAUSE this table has no
+// document_id column. That divergence used to be an un-named re-spelling of the rule
+// its six siblings wrote as `(document_id IS NULL) DESC`, which is exactly how one
+// provenance rule becomes two (#2005). Binds profile_id twice (CTE, then the read).
+const IMMUNIZATION_DEDUPED = representativeCte(
+  "imm_deduped",
+  REPRESENTATIVE_SPECS.immunizations
+);
+
 export function getImmunizations(profileId: number): Immunization[] {
   return db
     .prepare(
-      `WITH imm_deduped AS (
-         SELECT id FROM (
-           SELECT id, ROW_NUMBER() OVER (
-             PARTITION BY profile_id, vaccine, date, COALESCE(dose_label, '')
-             ORDER BY (source IS NULL OR source NOT LIKE 'document:%') DESC, id DESC
-           ) AS rn
-           FROM immunizations WHERE profile_id = ?
-         ) WHERE rn = 1
-       )
+      `WITH ${IMMUNIZATION_DEDUPED}
        SELECT id, date, vaccine, dose_label, notes,
               lot_number, route, site, reaction,
               source, external_id, created_at,
