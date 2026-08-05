@@ -224,8 +224,7 @@ export default async function OverviewSection() {
     exercises: i.exercises,
     loadFactor: i.loadFactor,
     reviewDate: i.reviewDate,
-    reviewDue:
-      i.status !== "resolved" && injuryReviewDue(i, todayStr),
+    reviewDue: i.status !== "resolved" && injuryReviewDue(i, todayStr),
   }));
   const hasInjurySituation = getActiveSituations(profile.id).some(
     isBuiltInInjurySituation

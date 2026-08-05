@@ -37,11 +37,11 @@ want a re-check" are the same arithmetic.
 
 ## Tenants
 
-| Tenant | Interval | Exemptions |
-| --- | --- | --- |
-| Biomarkers — `biomarkerRetestStatus` (`lib/reference-range/qualitative.ts`) | the analyte's curated `retest_days`, else the flat default | genomics, non-lab categories, durable immune positives (#516), immutable attributes (#548), QC metrics (#687) |
-| Fitness check — `lib/fitness-freshness.ts` via `buildFitnessCheckModel` | the test's DECLARED policy: the profile's retest cadence, or a per-test fixed clock | an unmeasured test (no reading to date) |
-| Longevity's optimal-biomarker pillar | — | consumes the biomarker adapter above; mints nothing |
+| Tenant                                                                      | Interval                                                                            | Exemptions                                                                                                    |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Biomarkers — `biomarkerRetestStatus` (`lib/reference-range/qualitative.ts`) | the analyte's curated `retest_days`, else the flat default                          | genomics, non-lab categories, durable immune positives (#516), immutable attributes (#548), QC metrics (#687) |
+| Fitness check — `lib/fitness-freshness.ts` via `buildFitnessCheckModel`     | the test's DECLARED policy: the profile's retest cadence, or a per-test fixed clock | an unmeasured test (no reading to date)                                                                       |
+| Longevity's optimal-biomarker pillar                                        | —                                                                                   | consumes the biomarker adapter above; mints nothing                                                           |
 
 A tenant **adapts** onto the shared decision. It does not fork it, and it does
 not re-derive "is this stale" in a component.

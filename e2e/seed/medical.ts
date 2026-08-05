@@ -1210,7 +1210,15 @@ export function seedLongevityStalePanel(): void {
        (profile_id, date, category, name, value, value_num, unit, canonical_name)
      VALUES (?, ?, 'lab', ?, ?, ?, ?, ?)`
   );
-  ins.run(pid, drawn, "Total Cholesterol", "170", 170, "mg/dL", "Total Cholesterol");
+  ins.run(
+    pid,
+    drawn,
+    "Total Cholesterol",
+    "170",
+    170,
+    "mg/dL",
+    "Total Cholesterol"
+  );
   ins.run(pid, drawn, "HDL Cholesterol", "70", 70, "mg/dL", "HDL Cholesterol");
   reconcileFlags(pid);
   seedMemberLogin(E2E_LOGIN_LONGEVITY_STALE, pid, "write");

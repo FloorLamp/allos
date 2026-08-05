@@ -103,10 +103,13 @@ describe("boundary validation refuses bad input rather than storing it", () => {
   it("drops an unknown side and an unknown movement pattern", async () => {
     const { profile } = seedActor();
     await logInjury(
-      injuryForm({ label: "knee", laterality: "sideways" }, {
-        regions: ["Legs"],
-        movements: ["legs", "levitate"],
-      })
+      injuryForm(
+        { label: "knee", laterality: "sideways" },
+        {
+          regions: ["Legs"],
+          movements: ["legs", "levitate"],
+        }
+      )
     );
     const [row] = getInjuries(profile.id);
     expect(row.laterality).toBeNull();
@@ -129,9 +132,12 @@ describe("boundary validation refuses bad input rather than storing it", () => {
   it("drops a malformed review date", async () => {
     const { profile } = seedActor();
     await logInjury(
-      injuryForm({ label: "knee", reviewDate: "next tuesday" }, {
-        regions: ["Legs"],
-      })
+      injuryForm(
+        { label: "knee", reviewDate: "next tuesday" },
+        {
+          regions: ["Legs"],
+        }
+      )
     );
     expect(getInjuries(profile.id)[0].reviewDate).toBeNull();
   });
@@ -181,18 +187,24 @@ describe("status changes never rewrite what the user declared", () => {
   it("an edit can widen a constraint back to its region", async () => {
     const { profile } = seedActor();
     await logInjury(
-      injuryForm({ label: "shoulder", status: "active" }, {
-        regions: ["Chest"],
-        movements: ["push"],
-      })
+      injuryForm(
+        { label: "shoulder", status: "active" },
+        {
+          regions: ["Chest"],
+          movements: ["push"],
+        }
+      )
     );
     const id = getInjuries(profile.id)[0].id;
     expect(getInjuryConstraints(profile.id)[0].scope).toBe("movement");
 
     await updateInjury(
-      injuryForm({ id: String(id), label: "shoulder", status: "active" }, {
-        regions: ["Chest"],
-      })
+      injuryForm(
+        { id: String(id), label: "shoulder", status: "active" },
+        {
+          regions: ["Chest"],
+        }
+      )
     );
     expect(getInjuryConstraints(profile.id)[0].scope).toBe("region");
   });
@@ -227,9 +239,9 @@ describe("profile scoping and migration compatibility", () => {
     expect((await setInjuryStatus(form)).ok).toBe(false);
     expect(
       (
-        db
-          .prepare("SELECT status FROM injuries WHERE id = ?")
-          .get(theirId) as { status: string }
+        db.prepare("SELECT status FROM injuries WHERE id = ?").get(theirId) as {
+          status: string;
+        }
       ).status
     ).toBe("active");
   });

@@ -55,7 +55,11 @@ export function freshnessState(
 ): FreshnessState {
   if (opts?.exempt) return "not-applicable";
   if (ageDays == null || !Number.isFinite(ageDays)) return "not-applicable";
-  if (intervalDays == null || !Number.isFinite(intervalDays) || intervalDays <= 0)
+  if (
+    intervalDays == null ||
+    !Number.isFinite(intervalDays) ||
+    intervalDays <= 0
+  )
     return "not-applicable";
   return ageDays > intervalDays ? "due" : "current";
 }

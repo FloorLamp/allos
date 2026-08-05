@@ -80,8 +80,8 @@ export default function FitnessDomainBars({
           data-testid={`${testIdPrefix}-caption`}
           className="pt-1 text-xs text-slate-500 dark:text-slate-400"
         >
-          Each bar is the domain&apos;s best result against published norms — not
-          an average, and not a score for the whole domain.
+          Each bar is the domain&apos;s best result against published norms —
+          not an average, and not a score for the whole domain.
           {staleTotal > 0
             ? ` ${staleTotal} measured test${
                 staleTotal === 1 ? "" : "s"

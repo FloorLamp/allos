@@ -188,7 +188,9 @@ describe("the domain rollup names the best norms result (#2025)", () => {
     expect(strength.normsCount).toBe(2);
     expect(strength.bestPercentile).not.toBeNull();
     expect(strength.lowestPercentile).not.toBeNull();
-    expect(strength.bestPercentile!).toBeGreaterThan(strength.lowestPercentile!);
+    expect(strength.bestPercentile!).toBeGreaterThan(
+      strength.lowestPercentile!
+    );
     // The bar is the BEST result — the model never claims it is the domain.
     expect(strength.bestPercentile).toBe(
       Math.max(

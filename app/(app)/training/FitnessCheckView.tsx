@@ -140,7 +140,9 @@ export default function FitnessCheckView({
 
         {model.domains.some((d) => d.bestPercentile != null) && (
           <section className="rounded-xl border border-black/10 p-4 dark:border-white/10">
-            <h3 className="mb-2 text-sm font-semibold">By domain — best result</h3>
+            <h3 className="mb-2 text-sm font-semibold">
+              By domain — best result
+            </h3>
             <FitnessDomainBars domains={model.domains} />
           </section>
         )}

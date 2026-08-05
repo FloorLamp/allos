@@ -22,7 +22,12 @@ function sRec(over: Partial<StrengthRecent> = {}): StrengthRecent {
   return {
     exercise: "Bench Press",
     bodyweight: false,
-    lastSessionBest: { weightKg: 100, reps: 5, targetReps: 5, toFailure: false },
+    lastSessionBest: {
+      weightKg: 100,
+      reps: 5,
+      targetReps: 5,
+      toFailure: false,
+    },
     lastDate: "2026-07-01",
     ...over,
   };
@@ -77,7 +82,9 @@ describe("a precise constraint removes the named lift, not the region", () => {
 
   it("the removal is disclosed at the level it was declared", () => {
     const nw = recommendNextWorkout(input({ injuries: [benchOnly] }));
-    expect(nw.excludedExercises.map((d) => d.exercise)).toEqual(["Bench Press"]);
+    expect(nw.excludedExercises.map((d) => d.exercise)).toEqual([
+      "Bench Press",
+    ]);
     expect(nw.excludedExercises[0].injuryLabels).toEqual(["right shoulder"]);
     expect(contextNotes(nw).join(" ")).toContain("Bench Press");
   });
@@ -115,7 +122,9 @@ describe("a movement-scoped constraint acts on its pattern", () => {
     expect(nw.exercises).not.toContain("Bench Press");
     expect(nw.exercises).toContain("Squat");
     expect(nw.excludedRegions).toEqual([]);
-    expect(nw.excludedExercises.map((d) => d.exercise)).toContain("Bench Press");
+    expect(nw.excludedExercises.map((d) => d.exercise)).toContain(
+      "Bench Press"
+    );
   });
 });
 

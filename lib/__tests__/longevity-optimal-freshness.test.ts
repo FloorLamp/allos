@@ -69,7 +69,12 @@ describe("optimalCoverage bands the denominator", () => {
   });
 
   it("2-of-2 and 32-of-40 are no longer the same claim", () => {
-    const narrow = optimalRangeHitRate([lab(170, 10), lab(175, 10)], null, null, TODAY);
+    const narrow = optimalRangeHitRate(
+      [lab(170, 10), lab(175, 10)],
+      null,
+      null,
+      TODAY
+    );
     const broad = optimalRangeHitRate(
       Array.from({ length: 20 }, (_, i) => lab(170, 10, `Marker ${i}`)),
       null,
@@ -93,7 +98,9 @@ describe("optimalRangeHitRate carries freshness from the existing retest computa
     );
     expect(rate).toMatchObject({ optimal: 2, total: 3, currentOptimal: 2 });
     expect(rate.freshness).toEqual({ current: 3, due: 0, notApplicable: 0 });
-    expect(optimalPillarDetail(rate)).toBe("3 markers (narrow panel) · all current");
+    expect(optimalPillarDetail(rate)).toBe(
+      "3 markers (narrow panel) · all current"
+    );
   });
 
   it("mixed: the stale count is explicit and the ratio is unchanged", () => {
@@ -182,7 +189,13 @@ describe("optimalTone never paints an old-only panel green", () => {
 
   it("one current reading is enough to judge the share again", () => {
     const rate = optimalRangeHitRate(
-      [lab(170, 10), lab(175, 900), lab(170, 900), lab(175, 900), lab(195, 900)],
+      [
+        lab(170, 10),
+        lab(175, 900),
+        lab(170, 900),
+        lab(175, 900),
+        lab(195, 900),
+      ],
       null,
       null,
       TODAY
@@ -196,7 +209,12 @@ describe("optimalTone never paints an old-only panel green", () => {
   });
 
   it("a changing denominator moves the share but not the marker verdicts", () => {
-    const two = optimalRangeHitRate([lab(170, 10), lab(195, 10)], null, null, TODAY);
+    const two = optimalRangeHitRate(
+      [lab(170, 10), lab(195, 10)],
+      null,
+      null,
+      TODAY
+    );
     const four = optimalRangeHitRate(
       [lab(170, 10), lab(195, 10), lab(170, 10), lab(170, 10)],
       null,
@@ -242,7 +260,12 @@ describe("expanded rows reconcile exactly with the pillar counts", () => {
 
 describe("the pillar renders the enriched detail", () => {
   it("an old-only pillar states it is based on older results and makes no judgment", () => {
-    const rate = optimalRangeHitRate([lab(170, 900), lab(175, 900)], null, null, TODAY);
+    const rate = optimalRangeHitRate(
+      [lab(170, 900), lab(175, 900)],
+      null,
+      null,
+      TODAY
+    );
     const [pillar] = buildPillars({ optimal: rate });
     expect(pillar.value).toBe("2 of 2");
     expect(pillar.tone).toBe("neutral");
@@ -250,7 +273,12 @@ describe("the pillar renders the enriched detail", () => {
   });
 
   it("a current pillar names the panel size", () => {
-    const rate = optimalRangeHitRate([lab(170, 10), lab(175, 10)], null, null, TODAY);
+    const rate = optimalRangeHitRate(
+      [lab(170, 10), lab(175, 10)],
+      null,
+      null,
+      TODAY
+    );
     const [pillar] = buildPillars({ optimal: rate });
     expect(pillar.detail).toContain("2 markers");
     expect(pillar.detail).toContain("all current");

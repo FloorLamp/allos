@@ -34,7 +34,15 @@ function insertLab(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, value_num, unit, canonical_name)
      VALUES (?, ?, 'lab', ?, ?, ?, ?, ?)`
-  ).run(profileId, date, canonical, String(valueNum), valueNum, unit, canonical);
+  ).run(
+    profileId,
+    date,
+    canonical,
+    String(valueNum),
+    valueNum,
+    unit,
+    canonical
+  );
 }
 
 function pillar(profileId: number) {

@@ -67,7 +67,10 @@ describe("scope precedence", () => {
   it("resolved injuries still exert no effect at any scope", () => {
     expect(
       injuryConstraints([
-        inj({ status: "resolved", exercises: [exerciseHistoryKey("Bench Press")] }),
+        inj({
+          status: "resolved",
+          exercises: [exerciseHistoryKey("Bench Press")],
+        }),
       ])
     ).toEqual([]);
   });
@@ -160,7 +163,10 @@ describe("overlapping constraints", () => {
   };
 
   it("active exclusion wins over recovering tempering on the same lift", () => {
-    const v = exerciseInjuryVerdict([recoveringRegion, activeLift], "Bench Press");
+    const v = exerciseInjuryVerdict(
+      [recoveringRegion, activeLift],
+      "Bench Press"
+    );
     expect(v.kind).toBe("excluded");
     expect(v.labels).toEqual(["bench tweak"]);
   });
@@ -202,7 +208,10 @@ describe("the 60% is a fallback, not a prescription", () => {
   });
 
   it("a user-declared preference wins and is not marked a fallback", () => {
-    const v = exerciseInjuryVerdict([{ ...base, loadFactor: 0.85 }], "Back Squat");
+    const v = exerciseInjuryVerdict(
+      [{ ...base, loadFactor: 0.85 }],
+      "Back Squat"
+    );
     expect(v.factor).toBe(0.85);
     expect(v.fallback).toBe(false);
   });
@@ -263,7 +272,10 @@ describe("laterality is disclosed, never pretended", () => {
       lateralityLimitation({ ...leftKnee, laterality: null }, "Back Squat")
     ).toBeNull();
     expect(
-      lateralityLimitation({ ...leftKnee, laterality: "bilateral" }, "Back Squat")
+      lateralityLimitation(
+        { ...leftKnee, laterality: "bilateral" },
+        "Back Squat"
+      )
     ).toBeNull();
   });
 
@@ -287,11 +299,10 @@ describe("exercise disclosures name only what actually changed", () => {
   };
 
   it("lists the excluded lift and not its unaffected neighbours", () => {
-    const d = exerciseDisclosures([benchOnly], [
-      "Bench Press",
-      "Cable Fly",
-      "Barbell Row",
-    ]);
+    const d = exerciseDisclosures(
+      [benchOnly],
+      ["Bench Press", "Cable Fly", "Barbell Row"]
+    );
     expect(d.excluded.map((x) => x.exercise)).toEqual(["Bench Press"]);
     expect(d.tempered).toEqual([]);
   });
