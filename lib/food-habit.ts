@@ -11,6 +11,7 @@ import {
   SEVERITY_RANK,
   type Severity,
 } from "./food-drug-interactions";
+import { FOOD_DRUG_INTERACTIONS } from "./datasets/food-drug-interactions";
 import type { SafetyMedication } from "./supplement-safety";
 
 // The findings-bus namespace for a food-habit-behind observation. Keyed on the food
@@ -30,28 +31,33 @@ export function isFoodHabitBehind(p: FrequencyTargetProgress): boolean {
 
 // ---- Food-group ↔ food–drug interaction screen (issue #661) ----
 
-// Curated food-group slug → food–drug interaction entry keys (lib/food-drug-
-// interactions.json). Only groups whose membership IS the interaction's food —
-// unambiguous, well-established — are wired, so a habit target inherits the EXACT
-// warning the medication's own /medicine row already shows via matchFoodInteractions
-// ("one question, one computation": the two surfaces format the same hit). Grapefruit-
-// family interactions have no dedicated group (the catalog's closest is the broad
-// "fruit"), so they are deliberately LEFT UNMAPPED rather than over-warn every fruit
-// habit — exclusion discipline over the food-drug dataset's sourcing standard. The
-// anti-drift test pins that every key here resolves to a food-drug entry and every
-// slug to a food group.
-export const FOOD_GROUP_INTERACTION_KEYS: Record<string, string[]> = {
-  // Leafy greens are the canonical vitamin-K food (warfarin consistency).
-  leafy_greens: ["vitamin-k-warfarin"],
-  // Dairy/calcium chelates several oral drugs (absorption timing).
-  dairy: ["dairy-levothyroxine", "dairy-tetracycline", "dairy-fluoroquinolone"],
-  // Alcohol interacts with several common drugs.
-  alcohol: [
-    "alcohol-warfarin",
-    "alcohol-metronidazole",
-    "alcohol-acetaminophen",
-  ],
-};
+// Food-group slug → food–drug interaction entry keys — DERIVED (issue #2021) from the
+// dataset's own `catalog.groups` declarations rather than re-listed here. Only groups
+// whose membership IS the interaction's food — unambiguous, well-established — carry a
+// mapping, so a habit target inherits the EXACT warning the medication's own /medicine
+// row already shows via matchFoodInteractions ("one question, one computation": the two
+// surfaces format the same hit). Grapefruit, tyramine and potassium entries declare an
+// EMPTY mapping with a written reason (no dedicated group; the catalog's closest is the
+// broad "fruit"), so they stay out of here without a second exclusion list to keep in
+// sync — exclusion discipline over the food-drug dataset's sourcing standard.
+//
+// Note this is the STATIC screen (a tracked habit vs the stack), which is a different
+// question from whether the LEDGER may fire on the mapping (`catalog.rule`): the dairy
+// entries are mapped and screened here, and still excluded from the day-granular ledger
+// findings because their rule is a separation window. The anti-drift test pins that every
+// key resolves to a food-drug entry and every slug to a food group.
+export const FOOD_GROUP_INTERACTION_KEYS: Record<string, string[]> =
+  buildFoodGroupInteractionKeys();
+
+function buildFoodGroupInteractionKeys(): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const entry of FOOD_DRUG_INTERACTIONS) {
+    for (const slug of entry.catalog.groups) {
+      (map[slug] ??= []).push(entry.key);
+    }
+  }
+  return map;
+}
 
 // One food–drug interaction a tracked food-group habit conflicts with, given the
 // profile's active medications. Carries the med that matched plus the SAME advice copy

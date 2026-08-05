@@ -1,5 +1,5 @@
 {
-  "$comment": "SOURCE OF TRUTH for the baked FOOD–DRUG interaction dataset (issue #154, extends #144; migrated onto the curated-dataset framework in issue #860 Track B). Per-ITEM food guidance — unlike the drug–drug checker (lib/datasets/data/drug-interactions.json) each entry fires off a SINGLE item (a medication or supplement), needing no second drug. HAND-MAINTAINED here; the committed framework envelope lib/datasets/data/food-drug-interactions.json is GENERATED from this file by scripts/gen-food-drug-interactions.ts (`npm run gen:food-drug-interactions`) and is never hand-edited. A few dozen canonical, high-severity pairs cover the ground — keep it human-reviewable and cited. Facts from PUBLIC-DOMAIN sources: FDA Structured Product Labeling / DailyMed (the label's drug-interactions / patient-counseling sections are a public-domain U.S. Government work), NIH MedlinePlus / NLM, and RxNorm ingredient CUIs (public-domain NLM vocabulary). No copyrighted commercial database (Micromedex/Lexicomp/FDB/Multum) is vendored. Each entry is keyed on RxNorm ingredient CUIs (authoritative) with a normalized name/synonym fallback, mirroring drug-interactions. INFORMATIONAL, never prescriptive — 'discuss with your prescriber or pharmacist'; absence of an entry does NOT mean a food is safe with a drug.",
+  "$comment": "SOURCE OF TRUTH for the baked FOOD–DRUG interaction dataset (issue #154, extends #144; migrated onto the curated-dataset framework in issue #860 Track B). Per-ITEM food guidance — unlike the drug–drug checker (lib/datasets/data/drug-interactions.json) each entry fires off a SINGLE item (a medication or supplement), needing no second drug. HAND-MAINTAINED here; the committed framework envelope lib/datasets/data/food-drug-interactions.json is GENERATED from this file by scripts/gen-food-drug-interactions.ts (`npm run gen:food-drug-interactions`) and is never hand-edited. A few dozen canonical, high-severity pairs cover the ground — keep it human-reviewable and cited. Facts from PUBLIC-DOMAIN sources: FDA Structured Product Labeling / DailyMed (the label's drug-interactions / patient-counseling sections are a public-domain U.S. Government work), NIH MedlinePlus / NLM, and RxNorm ingredient CUIs (public-domain NLM vocabulary). No copyrighted commercial database (Micromedex/Lexicomp/FDB/Multum) is vendored. Each entry is keyed on RxNorm ingredient CUIs (authoritative) with a normalized name/synonym fallback, mirroring drug-interactions. INFORMATIONAL, never prescriptive — 'discuss with your prescriber or pharmacist'; absence of an entry does NOT mean a food is safe with a drug. Every entry additionally declares its CATALOG MAPPING (issue #2021): `catalog.groups` names the food-log groups the rule is about, and `catalog.rule` says whether the ledger may fire on it — `event` (a serving logged inside the item's active window, plus any `tailDays`), `variance` (a swing in a trailing window), or `none` with a written `reason`. A mapped-or-excluded-with-reason decision is REQUIRED for every entry; the generator refuses an entry without one, so a new interaction cannot be added without deciding whether the food log can honestly speak to it.",
   "interactions": [
     {
       "key": "grapefruit-statin",
@@ -19,7 +19,12 @@
       "severity": "major",
       "advice": "Avoid grapefruit and grapefruit juice — they raise statin blood levels and the risk of muscle injury.",
       "mechanism": "Grapefruit inhibits intestinal CYP3A4, slowing statin breakdown so more drug reaches the bloodstream and myopathy/rhabdomyolysis becomes more likely.",
-      "source": "FDA simvastatin prescribing information (DailyMed)"
+      "source": "FDA simvastatin prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Grapefruit has no catalog group of its own: it collapses into the broad `fruit` group, so a day-granular finding would fire on every apple. Excluded until a finer signal exists (a per-food entry, a new catalog group, or item-level foods) — a per-case product decision, not a blanket catalog expansion."
+      }
     },
     {
       "key": "grapefruit-ccb",
@@ -38,7 +43,12 @@
       "severity": "major",
       "advice": "Avoid grapefruit juice — it can sharply raise blood levels and cause a large drop in blood pressure.",
       "mechanism": "Grapefruit inhibits intestinal CYP3A4, increasing exposure to these dihydropyridine calcium-channel blockers and the risk of hypotension.",
-      "source": "FDA felodipine prescribing information (DailyMed)"
+      "source": "FDA felodipine prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Grapefruit has no catalog group of its own: it collapses into the broad `fruit` group, so a day-granular finding would fire on every apple. Excluded until a finer signal exists (a per-food entry, a new catalog group, or item-level foods) — a per-case product decision, not a blanket catalog expansion."
+      }
     },
     {
       "key": "grapefruit-immunosuppressant",
@@ -56,7 +66,12 @@
       "severity": "major",
       "advice": "Avoid grapefruit — it sharply raises drug levels and the risk of toxicity.",
       "mechanism": "Grapefruit inhibits intestinal CYP3A4, increasing exposure to these narrow-therapeutic-index immunosuppressants.",
-      "source": "FDA tacrolimus prescribing information (DailyMed)"
+      "source": "FDA tacrolimus prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Grapefruit has no catalog group of its own: it collapses into the broad `fruit` group, so a day-granular finding would fire on every apple. Excluded until a finer signal exists (a per-food entry, a new catalog group, or item-level foods) — a per-case product decision, not a blanket catalog expansion."
+      }
     },
     {
       "key": "vitamin-k-warfarin",
@@ -67,7 +82,12 @@
       "severity": "moderate",
       "advice": "Keep vitamin K intake steady — don't suddenly increase leafy greens (kale, spinach, broccoli); big swings change how well warfarin works.",
       "mechanism": "Vitamin K directly opposes warfarin's anticoagulant effect, so inconsistent dietary intake destabilizes the INR.",
-      "source": "FDA warfarin prescribing information (DailyMed)"
+      "source": "FDA warfarin prescribing information (DailyMed)",
+      "catalog": {
+        "groups": ["leafy_greens"],
+        "rule": "variance",
+        "coverageNote": "Counted from logged leafy greens; other vitamin-K vegetables (cruciferous) are logged under their own group and are not counted here."
+      }
     },
     {
       "key": "alcohol-warfarin",
@@ -79,7 +99,11 @@
       "advice": "Limit alcohol — it can unpredictably raise or lower warfarin's effect and add to bleeding risk.",
       "mechanism": "Alcohol alters warfarin metabolism (acutely inhibiting, chronically inducing) and independently impairs clotting, destabilizing the INR.",
       "source": "NIH MedlinePlus — Warfarin",
-      "minLifeStage": "adult"
+      "minLifeStage": "adult",
+      "catalog": {
+        "groups": ["alcohol"],
+        "rule": "event"
+      }
     },
     {
       "key": "dairy-levothyroxine",
@@ -97,7 +121,12 @@
       "severity": "moderate",
       "advice": "Take on an empty stomach with water 30–60 min before eating; keep coffee, dairy, calcium, and iron ≥4 hours apart — they cut absorption.",
       "mechanism": "Food, coffee, and polyvalent cations (calcium, iron) bind levothyroxine in the gut and reduce how much is absorbed, lowering its effect.",
-      "source": "FDA levothyroxine prescribing information (DailyMed)"
+      "source": "FDA levothyroxine prescribing information (DailyMed)",
+      "catalog": {
+        "groups": ["dairy"],
+        "rule": "none",
+        "reason": "`dairy` exists as a catalog group, but this rule is a SEPARATION WINDOW (hours between the dose and the food), and the food log records a day, not an eating time. Excluded here; unblocked by the eaten-at capture (#2019 rung 2)."
+      }
     },
     {
       "key": "dairy-tetracycline",
@@ -116,7 +145,12 @@
       "severity": "moderate",
       "advice": "Don't take with dairy, calcium, iron, or antacids — they bind the antibiotic and can make it fail. Separate by ≥2 hours.",
       "mechanism": "Calcium, magnesium, iron, and other polyvalent cations chelate tetracyclines in the gut, sharply reducing absorption.",
-      "source": "FDA doxycycline prescribing information (DailyMed)"
+      "source": "FDA doxycycline prescribing information (DailyMed)",
+      "catalog": {
+        "groups": ["dairy"],
+        "rule": "none",
+        "reason": "`dairy` exists as a catalog group, but this rule is a SEPARATION WINDOW (hours between the dose and the food), and the food log records a day, not an eating time. Excluded here; unblocked by the eaten-at capture (#2019 rung 2)."
+      }
     },
     {
       "key": "dairy-fluoroquinolone",
@@ -134,7 +168,12 @@
       "severity": "moderate",
       "advice": "Separate from dairy, calcium, iron, magnesium, and antacids by ≥2 hours — they bind the antibiotic and reduce absorption.",
       "mechanism": "Polyvalent cations chelate fluoroquinolones in the gut, markedly reducing absorption and antibacterial effect.",
-      "source": "FDA ciprofloxacin prescribing information (DailyMed)"
+      "source": "FDA ciprofloxacin prescribing information (DailyMed)",
+      "catalog": {
+        "groups": ["dairy"],
+        "rule": "none",
+        "reason": "`dairy` exists as a catalog group, but this rule is a SEPARATION WINDOW (hours between the dose and the food), and the food log records a day, not an eating time. Excluded here; unblocked by the eaten-at capture (#2019 rung 2)."
+      }
     },
     {
       "key": "alcohol-metronidazole",
@@ -146,7 +185,12 @@
       "advice": "Avoid all alcohol during treatment and for 3 days after — the combination causes flushing, nausea, vomiting, and a racing heartbeat.",
       "mechanism": "Metronidazole inhibits acetaldehyde dehydrogenase, producing a disulfiram-like reaction when alcohol is consumed.",
       "source": "FDA metronidazole prescribing information (DailyMed)",
-      "minLifeStage": "adult"
+      "minLifeStage": "adult",
+      "catalog": {
+        "groups": ["alcohol"],
+        "rule": "event",
+        "tailDays": 3
+      }
     },
     {
       "key": "tyramine-maoi",
@@ -166,7 +210,12 @@
       "severity": "major",
       "advice": "Avoid tyramine-rich foods — aged cheeses, cured or smoked meats, fermented soy, and draft beer — they can trigger a dangerous blood-pressure spike.",
       "mechanism": "MAO inhibitors block the breakdown of dietary tyramine, which can release stored norepinephrine and cause a hypertensive crisis.",
-      "source": "FDA MAO inhibitor prescribing information (DailyMed)"
+      "source": "FDA MAO inhibitor prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Only partially reachable, via `fermented` + `processed_meat` + `alcohol` — and those groups are dominated by LOW-tyramine members (yogurt, fresh deli meat, a glass of wine) while the high-tyramine sources the rule names (aged cheese, cured meat, draft beer) are indistinguishable inside them. A firing would be wrong about as often as right, which is the worst outcome for a hypertensive-crisis rule. Excluded until the log can name the food."
+      }
     },
     {
       "key": "potassium-ace-arb",
@@ -195,7 +244,12 @@
       "severity": "moderate",
       "advice": "Go easy on potassium-based salt substitutes and large amounts of high-potassium foods — with an ACE inhibitor/ARB they can push potassium too high.",
       "mechanism": "ACE inhibitors and ARBs reduce potassium excretion, so a big potassium load (especially salt substitutes) can cause hyperkalemia.",
-      "source": "FDA lisinopril prescribing information (DailyMed)"
+      "source": "FDA lisinopril prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Potassium-based salt substitutes and high-potassium foods are not a catalog group and cut across several (tubers, legumes, fruit). Inexpressible at this granularity; excluded rather than approximated."
+      }
     },
     {
       "key": "potassium-diuretic",
@@ -216,7 +270,12 @@
       "severity": "moderate",
       "advice": "Avoid potassium-based salt substitutes and go easy on high-potassium foods — these diuretics already raise potassium and the combination can become dangerous.",
       "mechanism": "Potassium-sparing diuretics retain potassium, so an added dietary potassium load can cause hyperkalemia and arrhythmia.",
-      "source": "FDA spironolactone prescribing information (DailyMed)"
+      "source": "FDA spironolactone prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "Potassium-based salt substitutes and high-potassium foods are not a catalog group and cut across several (tubers, legumes, fruit). Inexpressible at this granularity; excluded rather than approximated."
+      }
     },
     {
       "key": "alcohol-acetaminophen",
@@ -228,7 +287,11 @@
       "advice": "Avoid regular or heavy alcohol — combined with acetaminophen it raises the risk of liver damage. Stay within the daily acetaminophen limit.",
       "mechanism": "Chronic alcohol induces CYP2E1, increasing the toxic acetaminophen metabolite (NAPQI) and the risk of liver injury.",
       "source": "FDA acetaminophen labeling (DailyMed)",
-      "minLifeStage": "adult"
+      "minLifeStage": "adult",
+      "catalog": {
+        "groups": ["alcohol"],
+        "rule": "event"
+      }
     },
     {
       "key": "food-bisphosphonate",
@@ -246,7 +309,12 @@
       "severity": "moderate",
       "advice": "Take first thing in the morning with plain water only, stay upright, and wait ≥30 minutes before any food, coffee, or calcium — food blocks nearly all absorption.",
       "mechanism": "Oral bisphosphonates are very poorly absorbed; any food, coffee, or calcium in the gut reduces the already-low absorption to almost nothing.",
-      "source": "FDA alendronate prescribing information (DailyMed)"
+      "source": "FDA alendronate prescribing information (DailyMed)",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "The food is 'anything but plain water' within 30 minutes of the dose — a separation window against the whole catalog, which day-granular counts cannot express. Excluded here; unblocked by the eaten-at capture (#2019 rung 2)."
+      }
     }
   ]
 }

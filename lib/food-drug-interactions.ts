@@ -29,6 +29,7 @@
 // is domain logic, distinct from the entry's slug identity).
 import {
   FOOD_DRUG_INTERACTIONS,
+  type FoodDrugCatalogMapping,
   type FoodDrugEntry,
 } from "./datasets/food-drug-interactions";
 import { type Severity, SEVERITY_RANK, itemRxcuis } from "./drug-interactions";
@@ -50,6 +51,11 @@ export interface FoodInteractionHit {
   advice: string;
   mechanism: string;
   source: string;
+  // The entry's declared relationship to the food-log catalog (issue #2021) — the groups
+  // it is about and whether the LEDGER may fire on it, or the written reason it can't.
+  // Carried on the hit so the ledger engine reads one matched result rather than looking
+  // the entry up a second time.
+  catalog: FoodDrugCatalogMapping;
 }
 
 // Normalize a name/synonym to the matcher's canonical token form: lowercased,
@@ -113,6 +119,7 @@ export function matchFoodInteractions(
       advice: e.advice,
       mechanism: e.mechanism,
       source: e.source,
+      catalog: e.catalog,
     });
   }
   return hits.sort(

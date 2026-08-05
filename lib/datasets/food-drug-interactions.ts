@@ -15,8 +15,11 @@ import type { FoodDrugEntry } from "@/scripts/gen-food-drug-interactions";
 
 export type {
   FoodDrugEntry,
+  FoodDrugCatalogMapping,
+  FoodDrugCatalogRule,
   Severity,
 } from "@/scripts/gen-food-drug-interactions";
+export { FOOD_DRUG_CATALOG_RULES } from "@/scripts/gen-food-drug-interactions";
 
 // The validated dataset (envelope + guarantees). Throws at module load if the committed
 // JSON ever violates the contract — a loud, early failure.

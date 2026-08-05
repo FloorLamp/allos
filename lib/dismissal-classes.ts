@@ -177,6 +177,16 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`<intakeItemId>:<curatedRuleId>`",
   },
   {
+    prefix: "food-drug-event:",
+    keyClass: "id-keyed",
+    shape: "`<intakeItemId>:<curatedRuleId>:<YYYY-MM-DD>` (#2021)",
+  },
+  {
+    prefix: "food-drug-variance:",
+    keyClass: "id-keyed",
+    shape: "`<intakeItemId>:<curatedRuleId>` (#2021)",
+  },
+  {
     prefix: "followup:",
     keyClass: "id-keyed",
     shape: "`<carePlanItemId>`",

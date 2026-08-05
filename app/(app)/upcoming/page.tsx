@@ -101,6 +101,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
+  // A food-log × food–drug co-occurrence (#2021) — the same alert glyph the curated
+  // med-safety notes carry, since it IS one of them, read off the food log.
+  "food-drug-event": IconAlertTriangle,
   "illness-care": IconTemperature,
   "condition-review": IconClipboardPlus,
   "allergy-med": IconAlertTriangle,

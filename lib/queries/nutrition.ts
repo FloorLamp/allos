@@ -281,6 +281,24 @@ export function getFoodRollupInRange(
   return rollupServings(rows);
 }
 
+// The raw PER-DAY serving rows over an inclusive [from, to] window — the food–drug
+// ledger's input (#2021), which needs each day separately (a same-day co-occurrence, a
+// week-over-week swing) rather than the group totals `getFoodRollupInRange` folds them
+// into. Same table, same filter, one row per (date, group). Profile-scoped.
+export function getFoodServingsInRange(
+  profileId: number,
+  from: string,
+  to: string
+): FoodLogEntry[] {
+  return db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
+        ORDER BY date, group_key`
+    )
+    .all(profileId, from, to) as FoodLogEntry[];
+}
+
 // This week's servings for a single group — the #580 food-habit target progress read,
 // routed through the SAME rollup entries so progress and the card can't disagree.
 export function getWeeklyServingsForGroup(

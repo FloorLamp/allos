@@ -64,6 +64,11 @@ export type UpcomingDomain =
   | "prn-max"
   | "refill"
   | "dietary-limit"
+  // A food-log serving of a mapped group logged inside an active item's food–drug rule
+  // window (#2021) — e.g. alcohol logged during a metronidazole course or its stated
+  // 3-day tail. Care-tier, like the other curated med-safety notes: informational, the
+  // label's own advice line, never prescriptive, and deliberately on NO push channel.
+  | "food-drug-event"
   | "illness-care"
   | "condition-review"
   // An active medication meeting a recorded drug allergy (#1029) — direct,
@@ -138,6 +143,10 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "prn-max": 0.5,
   refill: 1,
   "dietary-limit": 2,
+  // A food-log × food–drug co-occurrence (#2021) — a care-tier informational note about
+  // something already eaten today, sorted with the other med-safety notes, just after the
+  // nutrient-limit warning it most resembles.
+  "food-drug-event": 2.1,
   // A logged symptom crossing a cited duration/trajectory care line (#805) — a
   // care-tier informational finding, grouped with the other "review" safety notes.
   "illness-care": 2.5,

@@ -25,6 +25,12 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   "prn-max": "over-max PRN",
   refill: "refill",
   "dietary-limit": "intake limit",
+  // A food-log × food–drug co-occurrence (#2021). Care-tier on the hero/Upcoming and
+  // deliberately NOT pushed — omitted from DOMAIN_SEQ, so it is never counted in this
+  // digest. Nobody declared "tell me when I drink" (the contact-consent rule), and a
+  // message that arrives because you logged a beer would be surveillance-shaped. The
+  // noun exists only because the Record is exhaustive.
+  "food-drug-event": "food note",
   "illness-care": "illness check",
   // A condition-review suggestion (#685). Care-tier on the hero/Upcoming, but
   // deliberately NOT pushed — omitted from DOMAIN_SEQ (like the "something's off"

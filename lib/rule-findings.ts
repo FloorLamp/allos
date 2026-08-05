@@ -71,6 +71,7 @@ import {
   type DataQualityInputs,
   type DataQualityGap,
 } from "./data-quality";
+import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
 import { situationHistoryResolver } from "./trend-annotations";
 import { getIntakeHistory } from "./intake-history";
 import {
@@ -439,6 +440,7 @@ export function collectCoachingFindings(
     ...buildTargetRightSizeFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
+    ...buildFoodDrugVarianceFindings(profileId, today),
     ...buildSubstanceUseFindings(profileId),
     ...buildProteinAdequacyFindings(profileId),
     ...buildFiberAdequacyFindings(profileId),
