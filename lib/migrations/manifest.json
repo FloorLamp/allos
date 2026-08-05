@@ -154,5 +154,6 @@
   "153-notify-message-prose.ts": "bb3d1209542c98cff1b1b4419d27a9e5fbca4ff05a6c85e8b8e82e4e9e1ed335",
   "154-food-eating-time.ts": "7fc45d52736185b0552f196000d96f71babccdceb50f1b32b05b49f9c9844f9f",
   "155-fitbit-sleep-instants.ts": "411827bba7656429196dad11495fef2366289e3b91582e5cd1d00f9dbc872320",
-  "156-intake-log-item-given.ts": "6a1543cbdbd434a20d585d2a45a232e0e3d0835b486b18154d3c6794036767df"
+  "156-intake-log-item-given.ts": "6a1543cbdbd434a20d585d2a45a232e0e3d0835b486b18154d3c6794036767df",
+  "157-cycling-telemetry.ts": "1fd53af0900aab328a116b94e6105657516cd2d5fc8b6d9b5e550d49c836745a"
 }

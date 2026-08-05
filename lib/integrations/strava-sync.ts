@@ -6,7 +6,7 @@ import {
   getStravaCursor,
   setStravaCursor,
 } from "./connections";
-import { mapStravaActivity } from "./strava";
+import { mapStravaActivity, mapStravaCyclingArtifacts } from "./strava";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import { pullPaging } from "./registry";
 import { isPullRateLimited, DAY_SECONDS } from "./pull-window";
@@ -16,6 +16,12 @@ import type {
   NormActivityRoute,
   NormMetricSample,
 } from "./normalize";
+import {
+  STRAVA_STREAM_KEYS,
+  type NormActivityLap,
+  type NormCyclingTelemetry,
+  type NormSegmentEffort,
+} from "./cycling-telemetry";
 
 // Strava's half of the shared pull runner (#2040): the list+detail request pair, the
 // `page`/`per_page` pagination, and row mapping. Everything either side of that —
@@ -121,6 +127,10 @@ const stravaSpec: PullSpec<
     const activities: NormActivity[] = [];
     const samples: NormMetricSample[] = [];
     const routes: NormActivityRoute[] = [];
+    const cyclingTelemetry: NormCyclingTelemetry[] = [];
+    const activityLaps: NormActivityLap[] = [];
+    const segmentEfforts: NormSegmentEffort[] = [];
+    const cyclingArtifactParents: string[] = [];
     // Raw fetched activity JSON (detailed when available, else the list summary),
     // accumulated for the admin-only raw viewer (issue #9).
     const raw: unknown[] = [];
@@ -128,6 +138,15 @@ const stravaSpec: PullSpec<
     let detailCalls = 0;
     let truncated = false;
     let newestStart = cursor;
+    const snapshotAt = new Date().toISOString();
+
+    // Optional for backward-compatible connections: an older token without
+    // profile:read_all receives 403 and still imports rides, streams, laps, and
+    // segments. Reconnecting grants FTP and athlete-zone snapshots.
+    const athleteRes = await stravaGet("/athlete", token);
+    const athlete = athleteRes.ok ? athleteRes.json : null;
+    const zonesRes = await stravaGet("/athlete/zones", token);
+    const zones = zonesRes.ok ? zonesRes.json : null;
 
     // Page oldest-first via `after`; stop on a short page.
     for (let page = 1; ; page++) {
@@ -181,6 +200,42 @@ const stravaSpec: PullSpec<
           skipped++;
           continue;
         }
+        const sportType = String(summary.sport_type ?? summary.type ?? "");
+        const cycling = [
+          "Ride",
+          "GravelRide",
+          "MountainBikeRide",
+          "EBikeRide",
+          "VirtualRide",
+        ].includes(sportType);
+        if (cycling) {
+          if (detailCalls >= maxDetailCalls) {
+            truncated = true;
+            break;
+          }
+          const keys = STRAVA_STREAM_KEYS.join(",");
+          const streamRes = await stravaGet(
+            `/activities/${summary.id}/streams?keys=${keys}&key_by_type=true`,
+            token
+          );
+          detailCalls++;
+          if (!streamRes.ok && isPullRateLimited(streamRes.status)) {
+            truncated = true;
+            break;
+          }
+          const artifacts = mapStravaCyclingArtifacts(
+            String(summary.id),
+            detail,
+            streamRes.ok ? streamRes.json : null,
+            athlete,
+            zones,
+            snapshotAt
+          );
+          cyclingTelemetry.push(artifacts.telemetry);
+          activityLaps.push(...artifacts.laps);
+          segmentEfforts.push(...artifacts.segmentEfforts);
+          cyclingArtifactParents.push(mapped.activity.external_id);
+        }
         activities.push(mapped.activity);
         samples.push(...mapped.samples);
         if (mapped.route) routes.push(mapped.route);
@@ -195,7 +250,15 @@ const stravaSpec: PullSpec<
     }
 
     return {
-      batch: { activities, samples, routes },
+      batch: {
+        activities,
+        samples,
+        routes,
+        cyclingTelemetry,
+        activityLaps,
+        segmentEfforts,
+        cyclingArtifactParents,
+      },
       raw,
       skipped,
       truncated,

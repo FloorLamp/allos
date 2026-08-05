@@ -50,6 +50,20 @@ export const CARDIO_METRICS = [
   { id: "distance", label: "Distance", chartLabel: "Distance" },
   { id: "duration", label: "Duration", chartLabel: "Duration" },
   { id: "speed", label: "Speed", chartLabel: "Avg speed" },
+  { id: "elevation", label: "Elevation", chartLabel: "Elevation gain" },
+  { id: "heart_rate", label: "Heart rate", chartLabel: "Avg heart rate" },
+  { id: "power", label: "Power", chartLabel: "Avg power" },
+  {
+    id: "weighted_power",
+    label: "Weighted power",
+    chartLabel: "Weighted power",
+  },
+  { id: "cadence", label: "Cadence", chartLabel: "Avg cadence" },
+  {
+    id: "relative_effort",
+    label: "Effort",
+    chartLabel: "Relative effort",
+  },
 ] as const;
 
 export type CardioMetric = (typeof CARDIO_METRICS)[number]["id"];
@@ -61,6 +75,8 @@ export interface AnalyzeOption {
   item: string;
   label: string;
   href: AppRoute;
+  sessions: number;
+  lastDate: string;
 }
 
 // One selectable load context, as the Analyze controls render it (#1610). `lane` is
@@ -91,10 +107,16 @@ export interface AnalyzeView {
   chartLabel: string;
   chartUnit: string;
   color: string;
-  latestActivityId: number;
+  latestHref: AppRoute;
+  latestActivityId?: number;
   chart: { date: string; value: number | null }[];
   columns: string[];
-  sessions: { activityId: number; date: string; cells: string[] }[];
+  sessions: {
+    activityId: number;
+    href: AppRoute;
+    date: string;
+    cells: string[];
+  }[];
   detail: ReactNode;
 }
 
@@ -144,6 +166,14 @@ export function coerceCardioMetric(
 ): CardioMetric {
   if (value === "distance" && stat?.hasDistance) return "distance";
   if (value === "speed" && stat?.hasDistance) return "speed";
+  if (value === "elevation" && stat?.hasElevation) return "elevation";
+  if (value === "heart_rate" && stat?.hasHeartRate) return "heart_rate";
+  if (value === "power" && stat?.hasPower) return "power";
+  if (value === "weighted_power" && stat?.hasWeightedPower)
+    return "weighted_power";
+  if (value === "cadence" && stat?.hasCadence) return "cadence";
+  if (value === "relative_effort" && stat?.hasRelativeEffort)
+    return "relative_effort";
   if (value === "duration") return "duration";
   return stat?.hasDistance ? "distance" : "duration";
 }
@@ -187,16 +217,22 @@ export function buildAnalyzeOptions({
       kind: "strength" as const,
       item: s.exercise,
       metric: coerceStrengthMetric(metric),
+      sessions: s.sessions ?? 0,
+      lastDate: s.lastDate ?? "",
     })),
     ...cardio.map((c) => ({
       kind: "cardio" as const,
       item: c.activity,
       metric: coerceCardioMetric(metric, c),
+      sessions: c.sessions ?? 0,
+      lastDate: c.lastDate ?? "",
     })),
     ...sports.map((s) => ({
       kind: "sport" as const,
       item: s.sport,
       metric: "duration",
+      sessions: s.sessions ?? 0,
+      lastDate: s.lastDate ?? "",
     })),
   ];
   const counts = new Map<string, number>();
@@ -220,8 +256,58 @@ export function buildAnalyzeOptions({
       item: option.item,
       label,
       href: `/training?${params.toString()}`,
+      sessions: option.sessions,
+      lastDate: option.lastDate,
     };
   });
+}
+
+// A small, balanced shortcut set for Analyze. Relevance is history-owned: each
+// available kind contributes its most recently used item, then remaining slots
+// blend recent and frequent items. That keeps a person's main cardio activity
+// reachable even when a long strength history would otherwise occupy every slot.
+export function analyzeQuickLinks(
+  options: readonly AnalyzeOption[],
+  limit = 5
+): AnalyzeOption[] {
+  if (limit <= 0) return [];
+  const candidates = [...options];
+  const recent = [...candidates].sort(compareRecent);
+  const frequent = [...candidates].sort(compareFrequent);
+  const picked: AnalyzeOption[] = [];
+  const seen = new Set<string>();
+  const add = (option: AnalyzeOption | undefined) => {
+    if (!option || picked.length >= limit) return;
+    const key = `${option.kind}:${option.item.trim().toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    picked.push(option);
+  };
+
+  for (const kind of ["strength", "cardio", "sport"] as const) {
+    add(recent.find((option) => option.kind === kind));
+  }
+  for (let i = 0; picked.length < limit && i < candidates.length; i += 1) {
+    add(recent[i]);
+    add(frequent[i]);
+  }
+  return picked.sort(compareRecent);
+}
+
+function compareRecent(a: AnalyzeOption, b: AnalyzeOption): number {
+  return (
+    b.lastDate.localeCompare(a.lastDate) ||
+    b.sessions - a.sessions ||
+    a.label.localeCompare(b.label)
+  );
+}
+
+function compareFrequent(a: AnalyzeOption, b: AnalyzeOption): number {
+  return (
+    b.sessions - a.sessions ||
+    b.lastDate.localeCompare(a.lastDate) ||
+    a.label.localeCompare(b.label)
+  );
 }
 
 export function kindLabel(kind: AnalyzeKind): string {
@@ -274,13 +360,34 @@ export function cardioMetricValue(
   metric: CardioMetric,
   distanceUnit: "km" | "mi"
 ): number | null {
-  return metric === "distance"
-    ? round(kmTo(session.distanceKm, distanceUnit), 2)
-    : metric === "speed"
-      ? session.speedKmh == null
+  switch (metric) {
+    case "distance":
+      return round(kmTo(session.distanceKm, distanceUnit), 2);
+    case "speed":
+      return session.speedKmh == null
         ? null
-        : round(kmTo(session.speedKmh, distanceUnit), 1)
-      : Math.round(session.durationMin);
+        : round(kmTo(session.speedKmh, distanceUnit), 1);
+    case "duration":
+      return Math.round(session.durationMin);
+    case "elevation":
+      return session.elevationM == null
+        ? null
+        : Math.round(
+            distanceUnit === "mi"
+              ? session.elevationM * 3.28084
+              : session.elevationM
+          );
+    case "heart_rate":
+      return session.avgHr;
+    case "power":
+      return session.avgPowerW;
+    case "weighted_power":
+      return session.weightedAvgPowerW;
+    case "cadence":
+      return session.avgCadence;
+    case "relative_effort":
+      return session.relativeEffort;
+  }
 }
 
 export function bestText(session: ExerciseCompareSession, unit: "kg" | "lb") {

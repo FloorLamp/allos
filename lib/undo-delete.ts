@@ -229,6 +229,27 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         childBinds: 1,
       },
       {
+        entity: "telemetry",
+        table: "activity_telemetry",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        entity: "laps",
+        table: "activity_laps",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        entity: "segmentEfforts",
+        table: "activity_segment_efforts",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
         // Training form-check video clips (#1224) — many-per-activity children
         // cascade-deleted with the activity (activity_videos.activity_id ON DELETE
         // CASCADE), so a plain delete CAPTURES and RESTORES their rows exactly like

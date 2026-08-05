@@ -108,6 +108,8 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
     .run(id, profile.id);
   if (info.changes === 0) return formError("Record not found.");
   for (const p of paths) revalidatePath(p);
+  if (table === "activities")
+    revalidatePath("/training/rides/[id]", "page");
   return formOk();
 }
 
@@ -123,6 +125,7 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
 function revalidateActivitySurfaces() {
   revalidatePath("/data");
   revalidatePath("/training");
+  revalidatePath("/training/rides/[id]", "page");
   revalidatePath("/trends");
   revalidatePath("/");
 }

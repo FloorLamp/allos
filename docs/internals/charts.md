@@ -155,6 +155,12 @@ recharts tree.)
 | Stacked segments | 2px surface gap, so segments read as discrete quantities                                              | `chartStackSegmentProps` |
 | Legend           | every ≥ 2-series chart has one                                                                        | `ChartLegend`            |
 
+Linked charts use the shared `LineChartCard` `syncId`/`syncMethod` props. When
+sample rates differ, the caller supplies a value-based nearest-time method; it
+must not use array-index synchronization, which would align a one-minute stream
+with the first minute of a one-second stream. `onActiveLabelChange` is the
+supported escape hatch for a non-chart companion such as the ride route marker.
+
 **Text wears text tokens, never the series color.** Including axis ticks on a
 dual-axis chart: identity belongs to the marks and the legend, and a tick
 painted in a series color is a number wearing a data color.

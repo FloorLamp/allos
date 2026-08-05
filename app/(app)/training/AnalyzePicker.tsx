@@ -25,9 +25,11 @@ const KIND_LABEL: Record<AnalyzeOption["kind"], string> = {
 export default function AnalyzePicker({
   options,
   value,
+  appearance = "field",
 }: {
   options: AnalyzeOption[];
   value: string;
+  appearance?: "field" | "title";
 }) {
   const router = useRouter();
   const [text, setText] = useState(value);
@@ -38,6 +40,17 @@ export default function AnalyzePicker({
 
   useEffect(() => setText(value), [value]);
 
+  const rankedOptions = useMemo(
+    () =>
+      [...options].sort(
+        (a, b) =>
+          b.lastDate.localeCompare(a.lastDate) ||
+          b.sessions - a.sessions ||
+          a.label.localeCompare(b.label)
+      ),
+    [options]
+  );
+
   return (
     <Combobox
       value={text}
@@ -46,10 +59,11 @@ export default function AnalyzePicker({
         const option = byLabel.get(label);
         if (option) router.push(option.href);
       }}
-      options={options.map((o) => o.label)}
+      options={rankedOptions.map((o) => o.label)}
       placeholder="Choose an exercise or activity"
       ariaLabel="Exercise or activity"
       emptyLabel="No training item found"
+      appearance={appearance}
       badgeFor={(label) => {
         const option = byLabel.get(label);
         if (!option) return null;

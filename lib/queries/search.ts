@@ -69,6 +69,7 @@ import type {
   ImagingStudy,
   SkinLesion,
 } from "../types";
+import { rideDetailHref } from "../ride-detail";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -85,7 +86,7 @@ import type {
 // HREF RULE (#1568): a hit's href is the most PRECISE destination its row data
 // supports — the per-record page (biomarker/document/encounter/medication/vaccine,
 // and since #1595 provider/episode/protocol/equipment) or a day/tab-scoped hub link
-// (an activity's timeline day, the goals tab). A bare hub route is correct ONLY where
+// (a non-ride activity's timeline day, the goals tab). A bare hub route is correct ONLY where
 // no precise target exists: the passport list surfaces
 // (condition/allergy/procedure/appointment/family-history/care plan/care goal) and
 // the record surfaces added in #1595 that render no per-row anchor either (imaging,
@@ -188,7 +189,7 @@ function activityHits(
 ): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, title, type, date
+      `SELECT id, title, type, date, components
          FROM activities
         WHERE profile_id = ?${restrictedActivityTypeClause(restricted)}
           AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
@@ -200,13 +201,15 @@ function activityHits(
     title: string;
     type: string;
     date: string;
+    components: string | null;
   }[];
   return rows.map((r) => ({
     domain: "activity",
     key: `activity:${r.id}`,
     title: r.title,
     subtitle: `${r.type[0].toUpperCase()}${r.type.slice(1)} · ${r.date}`,
-    // The activity's DAY on the timeline (#1568), not the /training hub. A hub
+    // A ride now has a guaranteed per-record detail. Other activities use their
+    // DAY on the timeline (#1568), not the /training hub. A hub
     // href here was invisible as a bug: searching from /training — the natural
     // place to look for a workout — made the selection a same-route push, so the
     // palette closed and nothing moved, reading as a dead control.
@@ -215,7 +218,7 @@ function activityHits(
     // renders one newest window with "Load more" (#451), so an older activity's
     // anchor isn't on the page you land on. timelineDayHref filters the feed BY
     // the date, so it resolves for an activity of any age.
-    href: timelineDayHref(r.date),
+    href: rideDetailHref(r) ?? timelineDayHref(r.date),
     date: r.date,
   }));
 }

@@ -58,6 +58,24 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     expect(h.href).not.toBe("/training");
   });
 
+  it("a cycling activity hit lands on its dedicated ride detail", () => {
+    const p = newProfile("palette-ride");
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, components)
+           VALUES (?, '2019-03-15', 'cardio', 'PHREF River Loop', 50, ?)`
+        )
+        .run(p, JSON.stringify([{ name: "Cycling", type: "cardio" }]))
+        .lastInsertRowid
+    );
+
+    expect(hit(p, "PHREF River", "activity", "PHREF River Loop").href).toBe(
+      `/training/rides/${id}`
+    );
+  });
+
   it("a medication hit lands on its detail page; a supplement keeps the kind surface", () => {
     const p = newProfile("palette-intake");
     const medId = Number(

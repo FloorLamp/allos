@@ -394,7 +394,30 @@ const STRAVA_ACT_2 = {
   distance: 5000,
 };
 const STRAVA_DETAIL: Record<number, Record<string, unknown>> = {
-  111: { ...STRAVA_ACT_1, calories: 600 },
+  111: {
+    ...STRAVA_ACT_1,
+    calories: 600,
+    laps: [
+      {
+        id: 11101,
+        lap_index: 1,
+        name: "Synthetic lap",
+        distance: 5000,
+        moving_time: 700,
+        average_watts: 205,
+      },
+    ],
+    segment_efforts: [
+      {
+        id: 11102,
+        name: "Synthetic segment",
+        distance: 900,
+        moving_time: 160,
+        average_watts: 260,
+        segment: { id: 11103 },
+      },
+    ],
+  },
   222: { ...STRAVA_ACT_2, calories: 300 },
 };
 const startSec = (a: { start_date: string }) =>
@@ -421,6 +444,23 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       // Page 1 returns both summaries (a short page < per_page ends paging); later
       // pages are empty.
       return jsonResponse(page === 1 ? [STRAVA_ACT_1, STRAVA_ACT_2] : []);
+    }
+    if (u.endsWith("/athlete/zones")) {
+      return jsonResponse({
+        power: {
+          zones: [
+            { min: 0, max: 180 },
+            { min: 181, max: -1 },
+          ],
+        },
+      });
+    }
+    if (u.endsWith("/athlete")) return jsonResponse({ ftp: 250 });
+    if (u.includes("/activities/111/streams")) {
+      return jsonResponse({
+        time: { data: [0, 1, 2], original_size: 3 },
+        watts: { data: [180, 200, 220], original_size: 3 },
+      });
     }
     if (u.includes("/activities/")) {
       const id = Number(u.split("/activities/")[1].split("?")[0]);
@@ -465,6 +505,34 @@ describe("runStravaSync orchestrator", () => {
       )
       .get(p) as { n: number };
     expect(samples.n).toBe(2);
+    const telemetry = db
+      .prepare(
+        `SELECT t.ftp_w, t.streams_json
+           FROM activity_telemetry t
+           JOIN activities a ON a.id = t.activity_id
+          WHERE t.profile_id = ? AND a.external_id = 'strava:111'`
+      )
+      .get(p) as { ftp_w: number; streams_json: string };
+    expect(telemetry.ftp_w).toBe(250);
+    expect(JSON.parse(telemetry.streams_json).watts.data).toEqual([
+      180, 200, 220,
+    ]);
+    const artifactIds = {
+      lap: (
+        db
+          .prepare(
+            "SELECT id FROM activity_laps WHERE profile_id = ? AND external_id = '11101'"
+          )
+          .get(p) as { id: number }
+      ).id,
+      segment: (
+        db
+          .prepare(
+            "SELECT id FROM activity_segment_efforts WHERE profile_id = ? AND external_id = '11102'"
+          )
+          .get(p) as { id: number }
+      ).id,
+    };
     // Cursor advanced to the NEWEST activity's start.
     expect(getStravaCursor(p)).toBe(startSec(STRAVA_ACT_2));
     // The event records the insert split (2 acts + 2 kcal samples = 4).
@@ -484,6 +552,20 @@ describe("runStravaSync orchestrator", () => {
     const ev2 = getLatestSyncEvent(p, "strava")!;
     expect(ev2.inserted).toBe(0);
     expect(ev2.unchanged).toBe(4);
+    expect(
+      db
+        .prepare(
+          "SELECT id FROM activity_laps WHERE profile_id = ? AND external_id = '11101'"
+        )
+        .get(p)
+    ).toEqual({ id: artifactIds.lap });
+    expect(
+      db
+        .prepare(
+          "SELECT id FROM activity_segment_efforts WHERE profile_id = ? AND external_id = '11102'"
+        )
+        .get(p)
+    ).toEqual({ id: artifactIds.segment });
   });
 
   it("rate limit (429) on a mid-run detail fetch: the run truncates, and the cursor stops at the last fully-imported activity", async () => {

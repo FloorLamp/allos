@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useRef, useState } from "react";
-import { IconSearch, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 
 // Shared autocomplete. Two modes via `allowFreeText`:
@@ -40,6 +40,7 @@ export default function Combobox({
   closeStopsPropagation = false,
   inputClassName = "",
   inputElementRef,
+  appearance = "field",
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -82,9 +83,15 @@ export default function Combobox({
   closeStopsPropagation?: boolean;
   inputClassName?: string;
   inputElementRef?: React.RefObject<HTMLInputElement | null>;
+  // A selected value can also be a page/section identity. The title treatment
+  // keeps the same searchable listbox behavior but removes field chrome, sizes
+  // to its text, swaps search/clear affordances for a compact dropdown chevron,
+  // and gives the open menu a useful width for longer options.
+  appearance?: "field" | "title";
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [showAllOnOpen, setShowAllOnOpen] = useState(false);
   // Keyboard-highlight treatment, shared by the option rows and the
   // free-text row so arrowing through the list looks consistent.
   const highlightCls =
@@ -92,13 +99,15 @@ export default function Combobox({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
+  const titleAppearance = appearance === "title";
 
-  const q = value.trim().toLowerCase();
+  const filterValue = titleAppearance && showAllOnOpen ? "" : value;
+  const q = filterValue.trim().toLowerCase();
   // Fuzzy subsequence match + ranking (see lib/fuzzy): "bpr" finds "Bench
   // Press". An empty query keeps the first 8 options in their original order.
   const filtered = searchTermsFor
-    ? fuzzyFilterWithTerms(options, value, searchTermsFor, 8)
-    : fuzzyFilter(options, value, 8);
+    ? fuzzyFilterWithTerms(options, filterValue, searchTermsFor, 8)
+    : fuzzyFilter(options, filterValue, 8);
   // Headers only in the relevance view (see `groupFor`).
   const showGroups = groupFor != null && q === "";
   const showUse =
@@ -142,20 +151,34 @@ export default function Combobox({
     onChange(v);
     onPick?.(v, query);
     setOpen(false);
+    setShowAllOnOpen(false);
   }
 
   return (
     <div
       ref={ref}
-      className="relative"
+      className={
+        titleAppearance ? "group relative inline-block max-w-full" : "relative"
+      }
       // Let a parent focus trap leave the first Escape to this open picker.
       // The input handler below then closes only the listbox; a second Escape
       // reaches the modal normally.
       data-escape-layer={open ? "true" : undefined}
     >
-      <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
-        <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
-      </span>
+      {!titleAppearance && (
+        <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
+          <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
+        </span>
+      )}
+      {titleAppearance && (
+        <span
+          aria-hidden="true"
+          data-testid="combobox-title-text"
+          className="pointer-events-none absolute inset-y-0 left-0 z-20 flex items-center pr-7 text-2xl leading-tight font-semibold tracking-tight text-slate-900 transition group-hover:text-brand-700 md:text-3xl dark:text-slate-50 dark:group-hover:text-brand-300"
+        >
+          {value || placeholder}
+        </span>
+      )}
       <input
         ref={(node) => {
           inputRef.current = node;
@@ -173,12 +196,25 @@ export default function Combobox({
         aria-label={ariaLabel}
         autoComplete="off"
         placeholder={placeholder}
+        size={
+          titleAppearance
+            ? Math.min(
+                Math.max(value.length || placeholder?.length || 1, 1),
+                32
+              )
+            : undefined
+        }
         onChange={(e) => {
           onChange(e.target.value);
+          setShowAllOnOpen(false);
           setOpen(true);
           setHighlight(0);
         }}
         onFocus={(event) => {
+          if (titleAppearance) {
+            setShowAllOnOpen(true);
+            event.currentTarget.select();
+          }
           setOpen(true);
           if (selectOnFocus) event.currentTarget.select();
         }}
@@ -190,6 +226,7 @@ export default function Combobox({
           // An option/clear press keeps focus (its mousedown preventDefaults), so this
           // never fires mid-selection.
           setOpen(false);
+          setShowAllOnOpen(false);
           onInputBlur?.();
         }}
         onKeyDown={(e) => {
@@ -220,13 +257,17 @@ export default function Combobox({
             setOpen(false);
           }
         }}
-        className={`input pl-9 ${inputClassName} ${
-          badge ? (value && !disabled ? "pr-36" : "pr-28") : ""
-        } ${value && !disabled && !badge ? "pr-10" : ""} ${
-          invalid
-            ? "border-rose-300 focus:border-rose-400 focus:ring-rose-400 dark:border-rose-800 dark:focus:border-rose-700 dark:focus:ring-rose-700"
-            : ""
-        }`}
+        className={
+          titleAppearance
+            ? `input relative z-10 !w-auto max-w-full !rounded-none !border-0 !bg-transparent !px-0 !py-1 !pr-7 text-2xl leading-tight font-semibold tracking-tight !text-transparent !shadow-none caret-brand-600 focus:!border-transparent focus:!ring-0 md:text-3xl dark:!text-transparent dark:caret-brand-400 ${inputClassName}`
+            : `input pl-9 ${inputClassName} ${
+                badge ? (value && !disabled ? "pr-36" : "pr-28") : ""
+              } ${value && !disabled && !badge ? "pr-10" : ""} ${
+                invalid
+                  ? "border-rose-300 focus:border-rose-400 focus:ring-rose-400 dark:border-rose-800 dark:focus:border-rose-700 dark:focus:ring-rose-700"
+                  : ""
+              }`
+        }
       />
       {badge && (
         <span
@@ -237,7 +278,7 @@ export default function Combobox({
           {badge}
         </span>
       )}
-      {value && !disabled && (
+      {value && !disabled && !titleAppearance && (
         <button
           type="button"
           // Accessible name kept to a bare "Clear" (not "Clear <field>"): the field's
@@ -258,11 +299,18 @@ export default function Combobox({
           <IconX className="h-4 w-4" stroke={2} aria-hidden="true" />
         </button>
       )}
+      {titleAppearance && (
+        <span className="pointer-events-none absolute inset-y-0 right-0 z-30 flex items-center text-slate-400 dark:text-slate-500">
+          <IconChevronDown className="h-5 w-5" stroke={2} aria-hidden="true" />
+        </span>
+      )}
       {open && (filtered.length > 0 || showUse || !allowFreeText) && (
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
+          className={`absolute z-50 mt-1 max-h-56 overflow-auto rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900 ${
+            titleAppearance ? "w-80 max-w-[calc(100vw-2rem)]" : "w-full"
+          }`}
         >
           {filtered.length === 0 && !allowFreeText ? (
             <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">

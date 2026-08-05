@@ -35,9 +35,8 @@ const EPISODE_SITUATION = `${ENTITY_MARKER} cold`;
 const PROTOCOL_NAME = `${ENTITY_MARKER} sauna block`;
 const PRACTICE_NAME = `${ENTITY_MARKER} plunge`;
 const EQUIPMENT_NAME = `${ENTITY_MARKER} trap bar`;
-// Deep past on purpose: the journal renders one newest window with "Load more"
-// (#451), so an old activity is exactly the row a journal anchor would strand —
-// the timeline day link has to resolve for an activity of any age.
+// Deep past on purpose: a per-record ride detail must resolve independently of
+// the Journal's newest window (#451).
 const ACTIVITY_DATE = "2019-03-14";
 
 function withDb<T>(fn: (db: Database.Database) => T): T {
@@ -82,14 +81,19 @@ let medId = 0;
 let episodeId = 0;
 let protocolId = 0;
 let equipmentId = 0;
+let activityId = 0;
 
 test.beforeAll(() => {
   cleanup();
   medId = withDb((db) => {
-    db.prepare(
-      `INSERT INTO activities (profile_id, date, type, title, duration_min)
-       VALUES (1, ?, 'cardio', ?, 45)`
-    ).run(ACTIVITY_DATE, ACTIVITY_MARKER);
+    activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min)
+           VALUES (1, ?, 'cardio', ?, 45)`
+        )
+        .run(ACTIVITY_DATE, ACTIVITY_MARKER).lastInsertRowid
+    );
     return Number(
       db
         .prepare(
@@ -169,7 +173,7 @@ test.beforeAll(() => {
 
 test.afterAll(cleanup);
 
-test("an activity hit picked FROM /training navigates to that activity's timeline day", async ({
+test("a ride hit picked FROM /training navigates to its ride detail", async ({
   page,
 }) => {
   test.slow();
@@ -187,17 +191,10 @@ test("an activity hit picked FROM /training navigates to that activity's timelin
     .first(); // first-ok: filtered to a marker THIS spec planted — exactly one activity carries it
   await expect(hit).toBeVisible();
 
-  // The destination, not merely "the palette closed": the day-scoped timeline URL.
-  await followLink(
-    page,
-    hit,
-    new RegExp(
-      `/timeline\\?from=${ACTIVITY_DATE}&to=${ACTIVITY_DATE}#timeline-day-${ACTIVITY_DATE}$`
-    )
-  );
+  // The destination, not merely "the palette closed": the per-record ride URL.
+  await followLink(page, hit, new RegExp(`/training/rides/${activityId}$`));
 
-  // And the anchor it points at actually resolves on the page it landed on.
-  await expect(page.locator(`#timeline-day-${ACTIVITY_DATE}`)).toBeVisible();
+  await expect(page.getByTestId("ride-detail")).toBeVisible();
   await expect(page.getByRole("main")).toContainText(ACTIVITY_MARKER);
 });
 

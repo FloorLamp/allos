@@ -58,7 +58,14 @@ test.describe("Equipment registry (#343)", () => {
     // The specific seeded ride is among the counted sessions (the detail's Recent
     // sessions list) — proof the computation counts THIS bike's own activity, not a
     // brittle total a neighbor can bump.
-    await expect(page.getByText("E2E Registry Ride")).toBeVisible();
+    const rideSession = page.getByTestId("equipment-session-link").filter({
+      hasText: "E2E Registry Ride",
+    });
+    await expect(rideSession).toBeVisible();
+    await expect(rideSession).toHaveAttribute(
+      "href",
+      /^\/training\/rides\/\d+$/
+    );
 
     // Back link returns to the index.
     await followLink(

@@ -843,7 +843,10 @@ export function getActiveCaloriesForActivities(
 // Map an activity row (+ its scoped sets) to the ActivityEditData the editor
 // consumes. Shared by getMostRecentActivityEditData and getActivityEditData so a
 // repeated/resumed draft is identical whichever surface launched it.
-function activityToEditData(profileId: number, a: Activity): ActivityEditData {
+export function activityToEditData(
+  profileId: number,
+  a: Activity
+): ActivityEditData {
   const sets = getSetsForActivities(profileId, [a.id]);
   return {
     id: a.id,
@@ -883,6 +886,20 @@ function activityToEditData(profileId: number, a: Activity): ActivityEditData {
   };
 }
 
+// The profile-scoped stored activity row behind detail readers. Keeping this
+// lookup beside the editor mapping lets read-first activity surfaces share the
+// exact row and edit payload without reaching around the query boundary.
+export function getActivityById(
+  profileId: number,
+  activityId: number
+): Activity | null {
+  return (
+    (db
+      .prepare(`SELECT * FROM activities WHERE id = ? AND profile_id = ?`)
+      .get(activityId, profileId) as Activity | undefined) ?? null
+  );
+}
+
 export function getMostRecentActivityEditData(
   profileId: number
 ): ActivityEditData | null {
@@ -902,9 +919,7 @@ export function getActivityEditData(
   profileId: number,
   activityId: number
 ): ActivityEditData | null {
-  const a = db
-    .prepare(`SELECT * FROM activities WHERE id = ? AND profile_id = ?`)
-    .get(activityId, profileId) as Activity | undefined;
+  const a = getActivityById(profileId, activityId);
   return a ? activityToEditData(profileId, a) : null;
 }
 

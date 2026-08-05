@@ -34,10 +34,12 @@ import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 
 // Re-validate every surface that reads activity-derived data after a create/edit/
 // merge/delete: the Journal feed on /training, the /trends fitness-volume chart +
-// workout heatmap (issue #333), and the dashboard rollups. Kept in one place so the
-// next activity-reading surface is added once, not in each mutation.
+// workout heatmap (issue #333), the dashboard rollups, and every ride detail whose
+// summary/comparison/history may have changed. Kept in one place so the next
+// activity-reading surface is added once, not in each mutation.
 function revalidateActivitySurfaces() {
   revalidatePath("/training");
+  revalidatePath("/training/rides/[id]", "page");
   revalidatePath("/trends");
   revalidatePath("/");
 }
