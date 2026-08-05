@@ -21,10 +21,13 @@ import { fileURLToPath } from "node:url";
 //                          weaker one — sideways-swiping a data table on a phone
 //                          hides the columns that matter even when it "works".
 // This reads the repo's own JSX as TEXT (no DB, no browser, so it stays "pure" in
-// the vitest sense) and fails the build if any component that renders a `<table>`
-// lacks a scroll container in the same file. The check is a per-file string
-// heuristic (a file with multiple tables must wrap them all) — coarse but enough
-// to catch a newly-added unwrapped table, which is the regression it guards.
+// the vitest sense) and fails the build if any `<table>` occurrence lacks a scroll
+// container NEARBY. Tightened for #1491 guard 12b: the old check was per FILE, so
+// a second, unwrapped table slipped through as long as any table in the file had a
+// wrapper. Now every `<table` occurrence must have a marker within the preceding
+// window of source text — a proximity heuristic, not a real JSX ancestry check,
+// but the wrapper is always immediately above the table it wraps in this codebase,
+// so a marker further away than the window is exactly the drift worth flagging.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -36,6 +39,12 @@ const SCAN_DIRS = ["app", "components"];
 // horizontal axis altogether.
 const SCROLL_MARKERS =
   /overflow-x-auto|overflow-auto|<ScrollFade\b|<ResponsiveTable\b/;
+
+// How much source text ABOVE a `<table` occurrence is searched for a marker.
+// Wrappers sit directly above their table; 800 characters spans the wrapper
+// element plus its attributes and a comment block, while staying far too small
+// to let a wrapper at the top of the file excuse an unwrapped table below.
+const WRAPPER_WINDOW = 800;
 
 // Files allowed to render a `<table>` without any of those markers because they use
 // a DIFFERENT, deliberate narrow-viewport strategy:
@@ -86,20 +95,31 @@ function sourceFiles(): { rel: string; text: string }[] {
 }
 
 describe("wide-table mobile scroll boundary (issue #794 cluster 6)", () => {
-  it("every rendered <table> sits inside a horizontal-scroll container (or a deliberate column-hider)", () => {
+  it("every rendered <table> sits inside a nearby horizontal-scroll container (or a deliberate column-hider)", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
-      if (!/<table\b/.test(text)) continue;
       if (ALLOWLIST.has(rel)) continue;
-      if (!SCROLL_MARKERS.test(text)) offenders.push(rel);
+      const re = /<table\b/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text))) {
+        const above = text.slice(
+          Math.max(0, m.index - WRAPPER_WINDOW),
+          m.index
+        );
+        if (!SCROLL_MARKERS.test(above)) {
+          const line = text.slice(0, m.index).split("\n").length;
+          offenders.push(`${rel}:${line}`);
+        }
+      }
     }
     expect(
       offenders,
-      `These files render a <table> with no narrow-viewport strategy, so wide ` +
-        `columns clip silently on a phone. Render it through <ResponsiveTable> ` +
-        `(it stacks as cards below sm — #1426), wrap it in ` +
-        `<div className="overflow-x-auto"> (or <ScrollFade>), or — if it hides ` +
-        `columns responsively instead — allowlist it here:\n${offenders.join("\n")}`
+      `These <table> occurrences have no narrow-viewport strategy nearby, so ` +
+        `wide columns clip silently on a phone. Render them through ` +
+        `<ResponsiveTable> (it stacks as cards below sm — #1426), wrap them in ` +
+        `<div className="overflow-x-auto"> (or <ScrollFade>) directly above, or ` +
+        `— for a deliberate different strategy — allowlist the file here:\n` +
+        offenders.join("\n")
     ).toEqual([]);
   });
 
