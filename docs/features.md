@@ -312,6 +312,19 @@ absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
 
+The biomarker pillar states **how many markers** its ratio describes and **how
+current they are**, because "8 of 10 optimal" says nothing on its own about a
+two-analyte stub versus a forty-marker draw, or about results from last month
+versus five years ago. Each marker's retest state comes from the same retest
+clock the Biomarkers table and the Upcoming retest nudge use — Longevity has no
+staleness rule of its own. A panel where **every** judged marker is past its own
+retest window renders **neutral** with "all based on older results" rather than a
+current-looking green; a mixed panel names its stale count; and a panel with no
+usable dates reports unknown freshness rather than assuming anything. Markers are
+never weighted and no clinical importance is invented — the denominator, its
+coverage band, and the markers without a curated band all stay visible, and the
+expanded rows carry the date and freshness that the pillar counted.
+
 **Protocols** — run an **N-of-1 experiment**: name a dated intervention
 (creatine, a sauna block, Zone 2 emphasis, time-restricted eating), pick the
 **outcome metrics** you care about (any tracked biomarker, resting HR / weight /
@@ -695,6 +708,22 @@ available equipment, an open illness recovery hold, recorded injuries, and
 curated condition-specific training considerations. These considerations are
 informational and cite their source; they never silently forbid an activity.
 
+**Injuries are your constraint, declared at the level you mean.** Logging one
+records what you want left alone, and you can be as precise as the situation
+warrants: a whole region, a movement pattern (pushing, pulling, legs, core),
+specific lifts, or a side. Naming a pattern or a lift keeps the rest of the
+region in your suggestions — marking one sore press no longer costs you every
+chest recommendation. An **active** constraint takes the affected work off the
+card; a **recovering** one eases it back, and you can say how much: the app's
+**60% is a default it names as a default**, and your own setting always wins.
+Every exclusion and every eased target is disclosed on the recommendation, at the
+level you declared it. Where the app can't honor what you said — the suggestion
+picks exercises, not sides, so a one-sided constraint on a two-sided lift applies
+to the whole lift — it says so rather than implying it worked around it. You can
+set a date to revisit a constraint; when it arrives the app **asks**, and nothing
+about your constraint changes until you act. Allos never infers a diagnosis, a
+severity, a prohibited movement, a recovery milestone, or a status change.
+
 Recovery is judged on a rolling per-region window, not on the calendar week.
 Weekly counts still reset with the week — that is what a weekly target means —
 but which region to train next is decided by how long ago it was actually
@@ -740,6 +769,22 @@ markers into one step-by-step flow. A recent compatible value already recorded
 or synced can satisfy a step. Each completed test shows its outcome in place;
 the final summary keeps every marker separate and links into its trend or
 age/sex percentile. Rough or estimated values are labeled accordingly.
+
+**Freshness is per test.** A performed protocol (a 12-minute run, a dead hang, a
+sit-and-reach) inherits your retest cadence, while a continuously measurable body
+value — body fat, resting heart rate — carries its own shorter clock, because a
+scale or a watch re-measures it whenever you use one. Every test in the battery
+declares which applies. Completion therefore distinguishes **"has a current
+value"** from **"has any value at all"**: a stale result keeps its number and its
+provenance and stays visible, but it does not quietly satisfy a "current" count —
+the header says how many are current and how many want a re-check.
+
+The **"By domain"** strip is each domain's **best** result against published
+norms, and says so: it shows the spread when a second norms-backed test in the
+domain disagrees, and captions that it is not an average or a score for the
+domain. Non-norm tiers (rough bands, evidence scales) never enter it, no
+percentile is fabricated for them, and there is still no overall fitness score.
+Training and Longevity render the same component over the same model.
 
 Endurance event plans work backward from a target date through a safe weekly
 volume trajectory, long-session progression, and taper. If the available time is

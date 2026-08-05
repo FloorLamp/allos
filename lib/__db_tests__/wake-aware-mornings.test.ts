@@ -27,7 +27,7 @@ import {
   setProfileSleepDigest,
 } from "@/lib/settings";
 import { gatherDigestSleep } from "@/lib/notifications/digest-data";
-import { DEFAULT_INTAKE_REMINDER_HOURS } from "@/lib/notifications/schedule";
+import { DEFAULT_INTAKE_REMINDER_MINUTES } from "@/lib/notifications/schedule";
 
 const session = (
   metric: string,
@@ -105,49 +105,61 @@ beforeAll(() => {
   );
 });
 
-describe("getNotifySchedule — wake-seeded Morning hour (#1117)", () => {
-  it("seeds the Morning hour from the typical wake time when unset (auto)", () => {
+describe("getNotifySchedule — wake-seeded Morning time (#1117, minutes since #2121)", () => {
+  it("seeds the Morning time from the typical wake minute when unset (auto)", () => {
     const sched = getNotifySchedule(wakeProfile);
-    expect(sched.supplementHours.Morning).toBe(7); // median wake 07:00 → hour 7
+    // Median wake 07:00 → 420 minutes, unrounded (the old wakeMinuteToHour
+    // rounding is deleted at minute grain).
+    expect(sched.supplementMinutes.Morning).toBe(7 * 60);
     expect(sched.morningAuto).toBe(true);
   });
 
-  it("NEVER reseeds a stored manual Morning hour", () => {
+  it("NEVER reseeds a stored manual Morning time (HH:MM or legacy integer)", () => {
+    setProfileSetting(wakeProfile, "notify_supp_morning_hour", "09:15");
+    let sched = getNotifySchedule(wakeProfile);
+    expect(sched.supplementMinutes.Morning).toBe(9 * 60 + 15);
+    expect(sched.morningAuto).toBe(false);
+    // A pre-migration legacy integer hour still means HH:00 — no user's stored
+    // reminder time may move through the format change (#2121 constraint).
     setProfileSetting(wakeProfile, "notify_supp_morning_hour", "9");
-    const sched = getNotifySchedule(wakeProfile);
-    expect(sched.supplementHours.Morning).toBe(9);
+    sched = getNotifySchedule(wakeProfile);
+    expect(sched.supplementMinutes.Morning).toBe(9 * 60);
     expect(sched.morningAuto).toBe(false);
     // restore auto for the other assertions
     setProfileSetting(wakeProfile, "notify_supp_morning_hour", "auto");
-    expect(getNotifySchedule(wakeProfile).supplementHours.Morning).toBe(7);
+    expect(getNotifySchedule(wakeProfile).supplementMinutes.Morning).toBe(
+      7 * 60
+    );
     expect(getNotifySchedule(wakeProfile).morningAuto).toBe(true);
   });
 
   it("falls back to the hardcoded default without sleep data", () => {
     const sched = getNotifySchedule(emptyProfile);
-    expect(sched.supplementHours.Morning).toBe(
-      DEFAULT_INTAKE_REMINDER_HOURS.Morning
+    expect(sched.supplementMinutes.Morning).toBe(
+      DEFAULT_INTAKE_REMINDER_MINUTES.Morning
     );
     expect(sched.morningAuto).toBe(true); // absent = auto, just no data to resolve
   });
 
   it("keeps the digest OFF when absent, but resolves an explicit auto to wake", () => {
-    expect(getNotifySchedule(wakeProfile).digestHour).toBeNull(); // opt-in
+    expect(getNotifySchedule(wakeProfile).digestMinute).toBeNull(); // opt-in
     expect(getNotifySchedule(wakeProfile).digestAuto).toBe(false);
     setProfileSetting(wakeProfile, "notify_digest_hour", "auto");
     const sched = getNotifySchedule(wakeProfile);
-    expect(sched.digestHour).toBe(7);
+    // No measured arrival lags in this fixture → digestAutoMinute returns null
+    // and the digest falls back to the wake minute.
+    expect(sched.digestMinute).toBe(7 * 60);
     expect(sched.digestAuto).toBe(true);
     setProfileSetting(wakeProfile, "notify_digest_hour", ""); // reset off
   });
 });
 
 describe("setNotifySchedule — no blind-write pollution (#1117)", () => {
-  it("persists the 'auto' sentinel, not the resolved hour, on an unchanged re-save", () => {
-    // Read the resolved schedule (Morning auto → 7) and write it straight back.
+  it("persists the 'auto' sentinel, not the resolved time, on an unchanged re-save", () => {
+    // Read the resolved schedule (Morning auto → 07:00) and write it straight back.
     const sched = getNotifySchedule(wakeProfile);
     expect(sched.morningAuto).toBe(true);
-    expect(sched.supplementHours.Morning).toBe(7);
+    expect(sched.supplementMinutes.Morning).toBe(7 * 60);
     setNotifySchedule(wakeProfile, sched);
     // The stored value must be the sentinel, so the next read still resolves live.
     expect(getProfileSetting(wakeProfile, "notify_supp_morning_hour")).toBe(
@@ -156,15 +168,15 @@ describe("setNotifySchedule — no blind-write pollution (#1117)", () => {
     expect(getNotifySchedule(wakeProfile).morningAuto).toBe(true);
   });
 
-  it("persists a manual pick as a number", () => {
+  it("persists a manual pick as HH:MM", () => {
     const sched = getNotifySchedule(wakeProfile);
     setNotifySchedule(wakeProfile, {
       ...sched,
       morningAuto: false,
-      supplementHours: { ...sched.supplementHours, Morning: 10 },
+      supplementMinutes: { ...sched.supplementMinutes, Morning: 10 * 60 + 30 },
     });
     expect(getProfileSetting(wakeProfile, "notify_supp_morning_hour")).toBe(
-      "10"
+      "10:30"
     );
     // restore auto
     setProfileSetting(wakeProfile, "notify_supp_morning_hour", "auto");

@@ -12,6 +12,7 @@ import {
 } from "@/lib/coaching";
 import {
   RECOVERING_LOAD_FACTOR,
+  regionInjuryConstraint,
   temperedRegions,
   type InjuryConstraint,
 } from "@/lib/injury-model";
@@ -134,12 +135,12 @@ describe("form ⇄ Analyze-panel agreement on the recovering-injury axis (#1144)
   // A recovering Chest injury: temperedRegions includes Chest (the same gather
   // getFormRecoveringContext serializes to the form and the Analyze panel reads).
   const constraints: InjuryConstraint[] = [
-    {
+    regionInjuryConstraint({
       id: 1,
       label: "Left pec strain",
       status: "recovering",
       regions: ["Chest"],
-    },
+    }),
   ];
   const tempered = temperedRegions(constraints);
 

@@ -80,7 +80,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 157,
-  name: "157-cycling-telemetry",
+  id: 159,
+  name: "159-cycling-telemetry",
   up,
 };

@@ -489,6 +489,16 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     key: "notify_preventive",
     what: "profile preference: whether preventive nudges are on (distinct from notify_preventive_assessed, which is the tick's per-day gather gate)",
   },
+  // The tick's own cadence bookkeeping (global `settings`), not send markers: neither
+  // key can ever suppress a message — they only size slotDue's attempt bands (#2121).
+  {
+    key: "notify_tick_last_run_at",
+    what: "global watermark: the ISO instant the tick last started, from which the next tick derives its OBSERVED cadence (scripts/notify.ts → observedTickMinutes). Overwritten every tick; means nothing once passed.",
+  },
+  {
+    key: "notify_tick_interval_min",
+    what: "global record of the observed tick cadence in minutes (clamped 1-60), written every tick and read by Settings → Notifications for the sub-hourly honesty warning (subHourlySlotsAtRisk). Never consulted by a send decision — the tick passes the freshly derived value down in-process.",
+  },
   // Login-tier flags — a person/device preference, never a per-subject send marker.
   {
     key: "notify_mute_profile_",

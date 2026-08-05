@@ -22,7 +22,7 @@ import {
 } from "@/lib/lifts";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getInjuryConstraints } from "@/lib/injuries";
-import { temperedRegions, RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
+import { exerciseInjuryVerdict } from "@/lib/injury-model";
 import type { NextSetContext } from "@/lib/coaching";
 import { chartSeries } from "@/lib/chart-colors";
 import {
@@ -631,14 +631,19 @@ function strengthView({
   // slot (mirroring the live form, #923); recovering when a RECOVERING injury covers the
   // lift's region (#838). Both flow through the shared contextualNextSet in the panel.
   const deloadCtx = getFormDeloadContext(profileId, today(profileId));
-  const recovering = temperedRegions(getInjuryConstraints(profileId));
-  const statRegion = regionForExercise(stat.exercise);
+  // #2024: the SHARED per-exercise verdict, so an exercise- or movement-scoped
+  // constraint tempers exactly this lift (rather than its whole coarse region) and the
+  // user's own declared load preference beats the app's fallback fraction.
+  const injuryVerdict = exerciseInjuryVerdict(
+    getInjuryConstraints(profileId),
+    stat.exercise
+  );
   const nextSetContext: NextSetContext = {
     deloadWeek:
       deloadCtx.isDeloadWeek &&
       deloadCtx.routineKeys.includes(exerciseHistoryKey(stat.exercise)),
-    recoveringRegion: statRegion != null && recovering.has(statRegion),
-    recoveringFactor: RECOVERING_LOAD_FACTOR,
+    recoveringRegion: injuryVerdict.kind === "tempered",
+    recoveringFactor: injuryVerdict.factor,
   };
   // ONE load context per comparison (#1610): two registry machines both serialize as
   // the same exact logged name, so charting them together would plot a hotel

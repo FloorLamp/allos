@@ -1033,6 +1033,20 @@ export async function settledSelectSave(
   await awaitAutosaveSettled(scope);
 }
 
+// settledFill + await the card's autosave spinner — the text/time-input analog of
+// settledSelectSave, for autosaving inputs (e.g. the #2121 minute-grain schedule
+// time inputs) whose change handler fires a Server Action.
+export async function settledFillSave(
+  page: Page,
+  field: Locator,
+  value: string,
+  scope: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await settledFill(page, field, value, opts);
+  await awaitAutosaveSettled(scope);
+}
+
 // Set files on a file `<input>` and await the Server-Action POST the resulting
 // change fires — the settledClick idiom for an upload input (which has no click to
 // drive). A hidden camera/file input's `onChange` submits a Server Action (upload

@@ -30,8 +30,10 @@
 // two-hour window and `notify_last_digest` is a hard per-day marker, so declining
 // at the FIRST of those two hours leaves exactly one hour in which the digest must
 // send, marked or not. "Have I already deferred today?" is answered by the clock
-// (`currentHour !== slotHour`), not by a stored flag — which is why nothing here
-// needs to be registered in SEND_MARKER_REGISTRY.
+// (this tick is not the slot's "first" attempt band), not by a stored flag —
+// which is why nothing here needs to be registered in SEND_MARKER_REGISTRY.
+
+import { slotAttempt } from "./schedule";
 
 // ── 1. Resolving the `auto` digest hour ──────────────────────────────────────
 
@@ -55,11 +57,12 @@ export const ARRIVAL_LAG_PERCENTILE = 0.9;
 // normally land".
 export const MAX_ARRIVAL_LAG_MIN = 240;
 
-// The largest slot hour that has a retry hour to defer INTO. `slotDue` deliberately
-// does not wrap past midnight (hour 0 is the next calendar day, where the per-day
-// marker is fresh), so hour 23's window is one hour wide and declining there would
-// drop the digest for the day rather than delay it.
-export const LAST_DEFERRABLE_HOUR = 22;
+// The largest slot minute that has a retry band to defer INTO. `slotAttempt`
+// deliberately does not wrap past midnight (minute 0 is the next calendar day,
+// where the per-day marker is fresh), so a slot at/after 23:00 has no same-day
+// retry band and declining there would drop the digest for the day rather than
+// delay it. 22:59 is the last minute whose +60 retry is still same-day.
+export const LAST_DEFERRABLE_MINUTE = 22 * 60 + 59;
 
 /**
  * The arrival-lag allowance (minutes after waking) the digest hour should clear, or
@@ -80,53 +83,58 @@ export function arrivalLagAllowance(lags: readonly number[]): number | null {
 }
 
 /**
- * The hour (0–23) an `auto` morning digest should resolve to: the first whole hour
+ * The minute of day an `auto` morning digest should resolve to: the first minute
  * STRICTLY AFTER the typical wake time plus the arrival-lag allowance. Null when
  * either input is missing, which is the caller's signal to fall back to today's
- * wake-hour behavior.
+ * wake-time behavior.
  *
- * Rounded UP, not to nearest: rounding to nearest pulls the result back below the
- * arrivals it was computed to clear, which is exactly how 05:40 became 06:00.
- * Strictly after, so a digest scheduled for the same minute the data typically
- * lands is not a race it loses half the time.
+ * At minute grain (#2121) the old round-up-to-the-next-whole-hour is gone with the
+ * rounding problem it papered over: wake 05:40 + a 75-minute allowance now resolves
+ * to 06:56, not 07:00 — the first tick at/after that minute sends. "Strictly
+ * after" (the +1) survives, so a digest scheduled for the same minute the data
+ * typically lands is not a race it loses half the time. Clamped inside the
+ * deferrable range so the auto digest always keeps its retry band.
  *
  * This is the DIGEST's resolution and only the digest's. The `auto` Morning intake
- * hour keeps the shared wake-hour helper deliberately: it needs you awake, not your
- * tracker synced, so the wake hour is the correct answer for it.
+ * time keeps the raw wake minute deliberately: it needs you awake, not your
+ * tracker synced, so the wake time is the correct answer for it.
  */
-export function digestAutoHour(
+export function digestAutoMinute(
   wakeMinute: number | null,
   lagAllowanceMin: number | null
 ): number | null {
   if (wakeMinute == null || lagAllowanceMin == null) return null;
-  const target = wakeMinute + lagAllowanceMin;
-  return Math.min(23, Math.floor(target / 60) + 1);
+  return Math.min(LAST_DEFERRABLE_MINUTE, wakeMinute + lagAllowanceMin + 1);
 }
 
 // ── 2. Deferring one hour when last night has not landed ─────────────────────
 
 export interface DigestDeferInput {
-  /** The digest's resolved slot hour (0–23), profile-local. */
-  slotHour: number;
-  /** The profile-local hour this tick is running in. */
-  currentHour: number;
+  /** The digest's resolved slot minute of day, profile-local. */
+  slotMinute: number;
+  /** The profile-local minute of day this tick is running in. */
+  currentMinute: number;
+  /** The (observed, clamped) tick cadence, so the attempt bands match the tick's. */
+  tickMinutes: number;
   /**
-   * Whether the digest hour is the resolved `auto` hour rather than one the user
-   * typed. Deferral is auto-only: a manually set hour is user-owned timing, and
+   * Whether the digest time is the resolved `auto` time rather than one the user
+   * typed. Deferral is auto-only: a manually set time is user-owned timing, and
    * silently sliding someone's 07:00 to 08:00 makes their own setting untrue.
    */
   auto: boolean;
 }
 
 /**
- * Whether this tick should DECLINE to send the digest and let the retry hour send
- * it instead. `sleepPending` is a thunk so the caller pays for the sleep read only
- * on the one tick per day where the answer can matter.
+ * Whether this tick should DECLINE to send the digest and let the retry attempt
+ * send it instead. `sleepPending` is a thunk so the caller pays for the sleep read
+ * only on the one tick per day where the answer can matter.
  *
- * The deferral is once and only once, by construction:
- *   • it fires only when `currentHour === slotHour`, so the retry hour never defers;
- *   • `slotDue` stops offering the slot after `slotHour + 1`;
- *   • so the digest sends at `slotHour + 1` whether or not sleep arrived.
+ * The deferral is once and only once, by construction (#2121 re-derivation of the
+ * #2102 rule — same structure, expressed over slotAttempt's bands):
+ *   • it declines only on the "first" attempt band, so the retry band never defers;
+ *   • `slotAttempt` offers no third band;
+ *   • so the digest sends on the retry attempt — an hour after the slot, at every
+ *     tick rate — whether or not sleep arrived.
  * The digest also carries activity, upcoming, biomarkers and more — one pending
  * section must never hold the rest hostage, and here it structurally cannot.
  */
@@ -135,7 +143,12 @@ export function shouldDeferDigest(
   sleepPending: () => boolean
 ): boolean {
   if (!input.auto) return false;
-  if (input.currentHour !== input.slotHour) return false;
-  if (input.slotHour > LAST_DEFERRABLE_HOUR) return false;
+  if (
+    slotAttempt(input.slotMinute, input.currentMinute, input.tickMinutes) !==
+    "first"
+  ) {
+    return false;
+  }
+  if (input.slotMinute > LAST_DEFERRABLE_MINUTE) return false;
   return sleepPending();
 }

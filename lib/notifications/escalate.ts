@@ -19,7 +19,7 @@
 // is the user's explicit, warned choice, and the delivery accounting is honest either
 // way.
 
-import { collectWindowDoses, getPreWorkoutSlotHour } from "./supplements";
+import { collectWindowDoses, getPreWorkoutSlotMinute } from "./supplements";
 import { escalationMarkerKey } from "./escalation-keys";
 import { intakeSlotMarkerKey } from "./send-markers";
 import {
@@ -60,7 +60,7 @@ export async function runEscalations(
   profileId: number,
   profileName: string,
   date: string,
-  hour: number,
+  nowMinute: number,
   sched: NotifySchedule
 ): Promise<{ failed: boolean }> {
   // Gather critical, unconfirmed candidates only from slots whose reminder was
@@ -77,16 +77,16 @@ export async function runEscalations(
   // anyway, since isDueOn short-circuits it out of the window entirely.
   const candidates: EscalationCandidate[] = [];
   const sentWindows: EscalationWindow[] = [];
-  const preWorkoutHour = getPreWorkoutSlotHour(profileId);
-  const slots: { w: EscalationWindow; slotHour: number | null }[] = [
+  const preWorkoutMinute = getPreWorkoutSlotMinute(profileId);
+  const slots: { w: EscalationWindow; slotMinute: number | null }[] = [
     ...WINDOWS.map((w) => ({
       w: w as EscalationWindow,
-      slotHour: sched.supplementHours[w],
+      slotMinute: sched.supplementMinutes[w],
     })),
-    { w: "PreWorkout" as EscalationWindow, slotHour: preWorkoutHour },
+    { w: "PreWorkout" as EscalationWindow, slotMinute: preWorkoutMinute },
   ];
-  for (const { w, slotHour } of slots) {
-    if (slotHour == null) continue;
+  for (const { w, slotMinute } of slots) {
+    if (slotMinute == null) continue;
     if (getProfileSetting(profileId, intakeSlotMarkerKey(w)) !== date) continue;
     sentWindows.push(w);
     for (const e of collectWindowDoses(profileId, w, date)) {
@@ -103,7 +103,7 @@ export async function runEscalations(
         product: e.supp.kind === "medication" ? e.supp.product : null,
         window: w,
         kind: e.supp.kind,
-        slotHour,
+        slotMinute,
         escalateAfterMin:
           e.supp.escalate_after_min ?? DEFAULT_ESCALATE_AFTER_MIN,
         escalateChatId: e.supp.escalate_chat_id,
@@ -124,8 +124,9 @@ export async function runEscalations(
     confirmedDoseIds: confirmed,
     skippedDoseIds: skipped,
     escalatedDoseIds,
-    // The tick is hourly, so the elapsed check works at hour granularity.
-    nowMinutes: hour * 60,
+    // The real profile-local minute of day (#2121): a finer tick chases a missed
+    // dose the first tick after its wait elapses instead of at the next hour.
+    nowMinutes: nowMinute,
   });
   if (due.length === 0) return { failed: false };
 

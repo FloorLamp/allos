@@ -23,6 +23,8 @@ function prov(stale = false): FitnessProvenance {
     sourceName: "your check",
     date: "2026-03-01",
     ageDays: 1,
+    freshness: stale ? "due" : "current",
+    freshnessDays: 90,
     stale,
   };
 }
@@ -44,6 +46,7 @@ function res(p: Partial<FitnessTestResult>): FitnessTestResult {
     selfNorm: null,
     favorability: 100,
     provenance: prov(),
+    freshness: "current",
     delta: -2,
     improved: true,
     ...p,
@@ -112,6 +115,13 @@ describe("batteryCompletionSummary (#1307)", () => {
       priorDate: "2025-12-01",
       measuredCount: results.filter((r) => r.measured).length,
       totalCount: results.length,
+      coverage: {
+        total: results.length,
+        measured: results.filter((r) => r.measured).length,
+        fresh: results.filter((r) => r.freshness === "current").length,
+        stale: results.filter((r) => r.freshness === "due").length,
+        unmeasured: results.filter((r) => !r.measured).length,
+      },
       results,
       domains: [],
       headlineFitnessAge: { fitnessAge: 34, clamped: null },

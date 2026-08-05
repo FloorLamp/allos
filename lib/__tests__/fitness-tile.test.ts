@@ -28,6 +28,7 @@ function result(over: Partial<FitnessTestResult>): FitnessTestResult {
     selfNorm: null,
     favorability: null,
     provenance: null,
+    freshness: "not-applicable",
     delta: null,
     improved: null,
     ...over,
@@ -197,6 +198,8 @@ describe("stale provenance desaturates the tile state", () => {
           sourceName: "Oura",
           date: "2025-01-01",
           ageDays: 400,
+          freshness: "due",
+          freshnessDays: 180,
           stale: true,
         },
       })

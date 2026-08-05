@@ -69,7 +69,7 @@ describe("norms percentiles + domain bars", () => {
     expect(vo2.percentile!.percentile).toBe(50);
     expect(vo2.favorability).toBe(50);
     const endurance = m.domains.find((d) => d.domain === "endurance")!;
-    expect(endurance.percentile).toBe(50);
+    expect(endurance.bestPercentile).toBe(50);
     expect(endurance.measuredCount).toBeGreaterThanOrEqual(1);
   });
 
@@ -246,7 +246,7 @@ describe("#1135 self-norm (dead hang / plank)", () => {
     // strength domain has no norms measured → its percentile stays null despite the
     // self-norm band being favorable.
     const strength = m.domains.find((d) => d.domain === "strength")!;
-    expect(strength.percentile).toBeNull();
+    expect(strength.bestPercentile).toBeNull();
     expect(m.headlineFitnessAge).toBeNull();
   });
 });

@@ -17,7 +17,7 @@ import {
   getSetting,
   setSetting,
 } from "./settings";
-import { dateStrInTz, hourInTz, zonedDateParts } from "./date";
+import { dateStrInTz, minuteOfDayInTz, zonedDateParts } from "./date";
 import {
   backupFilename,
   isBackupDue,
@@ -675,10 +675,12 @@ export function performBackup(): {
   return { name, size, verification };
 }
 
-// Scheduler entrypoint, called once per hourly tick. Runs a snapshot when the
+// Scheduler entrypoint, called once per notify tick. Runs a snapshot when the
 // configured hour is due and none has been taken today; failures are recorded and
 // reported (never swallowed) but don't throw, so the notify tick continues.
-export function runScheduledBackup(): {
+// `tickMinutes` is the tick's observed cadence, sizing isBackupDue's attempt
+// bands (#2121) — the default keeps direct callers/tests on hourly semantics.
+export function runScheduledBackup(tickMinutes = 60): {
   ran: boolean;
   failed: boolean;
   error?: string;
@@ -691,9 +693,17 @@ export function runScheduledBackup(): {
   const cfg = getBackupSettings();
   const tz = getInstanceTimezone();
   const now = new Date();
-  const hour = hourInTz(tz, now);
+  const minute = minuteOfDayInTz(tz, now);
   const today = dateStrInTz(tz, now);
-  if (!isBackupDue(cfg, hour, getSetting("backup_last_date"), today)) {
+  if (
+    !isBackupDue(
+      cfg,
+      minute,
+      tickMinutes,
+      getSetting("backup_last_date"),
+      today
+    )
+  ) {
     return { ran: false, failed: false };
   }
   try {
@@ -714,8 +724,9 @@ export function runScheduledBackup(): {
     const error = e instanceof Error ? e.message : String(e);
     // Surface the failure but leave backup_last_date unset, mirroring the
     // notify_last_* pattern: a failed attempt stays unmarked so the natural
-    // hour+1 retry (slotDue's [hour, hour+1] window) can still recover a transient
-    // error. slotDue caps this at two attempts per day, so there's no tight loop.
+    // hour-later retry (slotDue's second attempt band) can still recover a
+    // transient error. slotDue caps this at two attempts per day at every tick
+    // rate, so there's no tight loop.
     setSetting("backup_last_error", error);
     log.error("scheduled backup failed", {
       err: e instanceof Error ? e : error,

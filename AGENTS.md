@@ -206,6 +206,24 @@ calendar, with the payload and level function supplied by the caller; `lensWindo
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
 only the per-lens week caps supplied.
 
+### Freshness
+
+"Is this dated reading still current?" is ONE question too. `lib/freshness.ts`
+owns the decision (`FreshnessState` = `current` / `due` / `not-applicable`, stale
+strictly after the interval) and the counting shape (`FreshnessTally`). A domain
+supplies only what is genuinely its own: WHICH interval applies and WHICH readings
+are exempt from carrying a clock at all. `biomarkerRetestStatus` is the biomarker
+adapter (its category grammar and #516/#548/#687 exemptions stay there);
+`lib/fitness-freshness.ts` is the fitness-battery adapter, where every test
+DECLARES its policy and a completeness test fails an undeclared one. Never
+re-derive staleness in a component, and never fold `not-applicable` into `due`.
+
+An aggregate with nothing current may not render current-shaped copy
+(`hasNoCurrentReading`) — the Longevity optimal pillar goes neutral, the Fitness
+check counts fresh rather than measured. Both keep the stale values visible with
+their provenance: the fix is what the aggregate CLAIMS, never what it hides.
+Phrasing stays per surface. See `docs/internals/freshness.md`.
+
 ### Settings and units
 
 Settings have three storage tiers:
@@ -268,8 +286,12 @@ See `docs/internals/integrations-sync.md`.
 
 ### Notifications
 
-The hourly notification tick can deliver through Telegram, Web Push, and Home
-Assistant. It evaluates dates and slots in each profile's stored timezone.
+The notification tick (every 15 minutes in the Docker sidecar; any steady rhythm
+up to hourly works — it observes its own cadence) can deliver through Telegram,
+Web Push, and Home Assistant. It evaluates dates and slots in each profile's
+stored timezone; slot times are minutes of day, stored as `"HH:MM"`, and a slot
+gets exactly two due attempts a day, an hour apart, at every tick rate
+(`slotAttempt`, `lib/notifications/schedule.ts`).
 
 Refill, preventive, and workout nudges share the Upcoming suppression bus and
 use the same `dedupeKey` as their visible finding. Dose reminders and missed-dose

@@ -63,6 +63,7 @@ import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-ti
 import {
   WAKING_START_HOUR,
   WAKING_END_HOUR,
+  parseNotifyTime,
 } from "@/lib/notifications/schedule";
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
@@ -386,12 +387,13 @@ export async function saveNotificationPrefs(formData: FormData) {
     setProfileSleepDigest(profile.id, v === "on" || v === "1");
   }
 
-  // Per-slot send schedule. "" / "off" → that window is disabled.
-  const hour = (key: string): number | null => {
+  // Per-slot send schedule at minute grain (#2121). "" / "off" → that window is
+  // disabled; the form posts "HH:MM" (a legacy integer hour still parses, meaning
+  // HH:00, so an old open tab can't corrupt a schedule mid-deploy).
+  const time = (key: string): number | null => {
     const raw = String(formData.get(key) ?? "").trim();
     if (raw === "" || raw === "off") return null;
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+    return parseNotifyTime(raw, null, null);
   };
   // A required 0-23 hour with a fallback (the quiet-hours bounds are never "off" —
   // there is always a waking window; the widest is 0→23).
@@ -410,18 +412,18 @@ export async function saveNotificationPrefs(formData: FormData) {
     String(formData.get("supp_morning_hour") ?? "") === "auto";
   const digestAuto = String(formData.get("digest_hour") ?? "") === "auto";
   setNotifySchedule(profile.id, {
-    supplementHours: {
-      Morning: morningAuto ? null : hour("supp_morning_hour"),
-      Midday: hour("supp_midday_hour"),
-      Evening: hour("supp_evening_hour"),
-      Bedtime: hour("supp_bedtime_hour"),
+    supplementMinutes: {
+      Morning: morningAuto ? null : time("supp_morning_hour"),
+      Midday: time("supp_midday_hour"),
+      Evening: time("supp_evening_hour"),
+      Bedtime: time("supp_bedtime_hour"),
     },
     morningAuto,
     workoutEnabled:
       formData.get("workout_enabled") === "on" ||
       formData.get("workout_enabled") === "1",
-    // Morning digest: "auto" → follow wake time; "" / "off" → off; else the hour.
-    digestHour: digestAuto ? null : hour("digest_hour"),
+    // Morning digest: "auto" → follow wake time; "" / "off" → off; else the time.
+    digestMinute: digestAuto ? null : time("digest_hour"),
     digestAuto,
     // Weekly recap (#32): weekday 0-6, "" / "off" → off.
     weeklyRecapDay: (() => {
@@ -430,7 +432,7 @@ export async function saveNotificationPrefs(formData: FormData) {
       const n = Number(raw);
       return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
     })(),
-    weeklyRecapHour: hour("recap_hour") ?? 9,
+    weeklyRecapMinute: time("recap_hour") ?? 9 * 60,
     // Milestone alerts (#32): default on.
     milestonesEnabled:
       formData.get("milestones_enabled") === "on" ||

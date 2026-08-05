@@ -67,10 +67,12 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Power",
       "Cadence",
     ],
-    // Polled by the hourly tick, which records an ok event for EVERY successful poll —
-    // including a quiet one that found no new activities (isQuietSync). So the last
-    // successful sync tracks the CONNECTION's liveness, not the user's training: a
-    // rest week is not staleness. Three days is ~72 missed polls.
+    // Polled hourly — its declared pull cadence (cadenceMinutes below), whatever
+    // rhythm the tick itself runs at (#2121) — and an ok event is recorded for EVERY
+    // successful poll, including a quiet one that found no new activities
+    // (isQuietSync). So the last successful sync tracks the CONNECTION's liveness,
+    // not the user's training: a rest week is not staleness. Three days is ~72
+    // missed polls.
     staleAfterDays: 3,
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
@@ -125,8 +127,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Distance",
       "Calories",
     ],
-    // Polled hourly like Strava, and a quiet poll still records an ok event, so the
-    // same three-day reading applies: nights without the ring off the charger are not
+    // Polled hourly like Strava (declared pull cadence, not the tick rate), and a
+    // quiet poll still records an ok event, so the same three-day reading applies: nights without the ring off the charger are not
     // staleness, a connection that stopped answering is.
     staleAfterDays: 3,
     stoppedConsequence:
@@ -167,8 +169,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Resting HR",
       "Sleep",
     ],
-    // Polled hourly, and a poll that finds no new measurement still records an ok
-    // event — so a week between weigh-ins is NOT staleness (the scale is idle, the
+    // Polled hourly (declared pull cadence, not the tick rate), and a poll that
+    // finds no new measurement still records an ok event — so a week between weigh-ins is NOT staleness (the scale is idle, the
     // connection is fine). Three days measures the poll, which is the thing that can
     // silently die.
     staleAfterDays: 3,

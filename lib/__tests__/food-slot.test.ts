@@ -40,22 +40,34 @@ describe("foodSlotBoundaries", () => {
   });
 
   it("anchors boundaries to the midpoints of a fully configured schedule", () => {
-    // 8 / 13 / 20 → midpoints 10:30 and 16:30.
-    const b = foodSlotBoundaries({ morning: 8, midday: 13, evening: 20 });
+    // 08:00 / 13:00 / 20:00 (minutes since #2121) → midpoints 10:30 and 16:30.
+    const b = foodSlotBoundaries({
+      morning: 8 * 60,
+      midday: 13 * 60,
+      evening: 20 * 60,
+    });
     expect(b).toEqual({ midday: 10 * 60 + 30, evening: 16 * 60 + 30 });
   });
 
-  it("re-anchors a coherently SHIFTED schedule so a late morning stays morning", () => {
-    // A night-owl schedule: morning 14, midday 18, evening 23 → midpoints 16:00, 20:30.
-    const b = foodSlotBoundaries({ morning: 14, midday: 18, evening: 23 });
-    expect(b).toEqual({ midday: 16 * 60, evening: 20 * 60 + 30 });
-    // 14:00 (the configured morning hour) still reads Morning under the shifted buckets.
+  it("re-anchors a coherently SHIFTED sub-hourly schedule so a late morning stays morning", () => {
+    // A night-owl schedule: 14:00 / 18:30 / 23:00 → midpoints 16:15, 20:45.
+    const b = foodSlotBoundaries({
+      morning: 14 * 60,
+      midday: 18 * 60 + 30,
+      evening: 23 * 60,
+    });
+    expect(b).toEqual({ midday: 16 * 60 + 15, evening: 20 * 60 + 45 });
+    // 14:00 (the configured morning time) still reads Morning under the shifted buckets.
     expect(deriveFoodSlot(14 * 60, b)).toBe("Morning");
   });
 
   it("guards a degenerate (non-monotonic) schedule by falling back", () => {
     // midday earlier than morning would invert the buckets — refuse it.
-    const b = foodSlotBoundaries({ morning: 18, midday: 8, evening: 20 });
+    const b = foodSlotBoundaries({
+      morning: 18 * 60,
+      midday: 8 * 60,
+      evening: 20 * 60,
+    });
     expect(b).toEqual({
       midday: DEFAULT_MIDDAY_BOUNDARY_MIN,
       evening: DEFAULT_EVENING_BOUNDARY_MIN,
