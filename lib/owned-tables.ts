@@ -46,6 +46,9 @@
 //     intentionally not profile-scoped.
 export const OWNED_TABLES = [
   "activities",
+  "activity_telemetry",
+  "activity_laps",
+  "activity_segment_efforts",
   "body_metrics",
   "immunizations",
   "immunization_overrides",

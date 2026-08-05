@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   benchmarkState,
+  analyzeQuickLinks,
   buildAnalyzeOptions,
   cardioMetricValue,
   coerceCardioMetric,
@@ -89,6 +90,30 @@ describe("coerceCardioMetric", () => {
       "duration"
     );
   });
+  it("admits cycling sensor metrics only when that signal exists", () => {
+    const cycling = cardio({
+      activity: "Cycling",
+      hasHeartRate: true,
+      hasElevation: true,
+      hasPower: true,
+      hasWeightedPower: true,
+      hasCadence: true,
+      hasRelativeEffort: true,
+    });
+    expect(coerceCardioMetric("heart_rate", cycling)).toBe("heart_rate");
+    expect(coerceCardioMetric("elevation", cycling)).toBe("elevation");
+    expect(coerceCardioMetric("power", cycling)).toBe("power");
+    expect(coerceCardioMetric("weighted_power", cycling)).toBe(
+      "weighted_power"
+    );
+    expect(coerceCardioMetric("cadence", cycling)).toBe("cadence");
+    expect(coerceCardioMetric("relative_effort", cycling)).toBe(
+      "relative_effort"
+    );
+    expect(coerceCardioMetric("power", cardio({ activity: "Run" }))).toBe(
+      "duration"
+    );
+  });
 });
 
 describe("defaultMetric", () => {
@@ -147,6 +172,52 @@ describe("buildAnalyzeOptions", () => {
   });
 });
 
+describe("analyzeQuickLinks", () => {
+  it("balances recent and frequent history across activity kinds", () => {
+    const options = buildAnalyzeOptions({
+      strength: [
+        {
+          ...strengthStat("Squat"),
+          sessions: 20,
+          lastDate: "2026-07-01",
+        },
+        {
+          ...strengthStat("Bench Press"),
+          sessions: 5,
+          lastDate: "2026-08-01",
+        },
+      ],
+      cardio: [
+        {
+          ...cardio({ activity: "Cycling" }),
+          sessions: 8,
+          lastDate: "2026-07-30",
+        },
+        {
+          ...cardio({ activity: "Running" }),
+          sessions: 3,
+          lastDate: "2026-08-02",
+        },
+      ],
+      sports: [
+        {
+          ...sportStat("Tennis"),
+          sessions: 2,
+          lastDate: "2026-07-20",
+        },
+      ],
+      activeRange: "all",
+    });
+
+    const links = analyzeQuickLinks(options);
+    expect(links.map((link) => link.item)).toContain("Cycling");
+    expect(links.map((link) => link.item)).toContain("Tennis");
+    expect(links.map((link) => link.item)).toContain("Squat");
+    expect(links.map((link) => link.item)).toContain("Running");
+    expect(links).toHaveLength(5);
+  });
+});
+
 describe("rangeFilter", () => {
   const rows = [
     { date: "2026-01-01" },
@@ -199,9 +270,17 @@ describe("strengthMetricValue", () => {
 });
 
 describe("cardioMetricValue", () => {
-  const s = { distanceKm: 5, durationMin: 30.4, speedKmh: 10 } as Parameters<
-    typeof cardioMetricValue
-  >[0];
+  const s = {
+    distanceKm: 5,
+    durationMin: 30.4,
+    speedKmh: 10,
+    elevationM: 100,
+    avgHr: 145,
+    avgPowerW: 180,
+    weightedAvgPowerW: 190,
+    avgCadence: 86,
+    relativeEffort: 70,
+  } as Parameters<typeof cardioMetricValue>[0];
   it("selects and rounds per metric; null speed stays null", () => {
     expect(cardioMetricValue(s, "distance", "km")).toBe(5);
     expect(cardioMetricValue(s, "duration", "km")).toBe(30); // Math.round
@@ -209,6 +288,12 @@ describe("cardioMetricValue", () => {
     expect(
       cardioMetricValue({ ...s, speedKmh: null }, "speed", "km")
     ).toBeNull();
+    expect(cardioMetricValue(s, "elevation", "mi")).toBe(328);
+    expect(cardioMetricValue(s, "heart_rate", "km")).toBe(145);
+    expect(cardioMetricValue(s, "power", "km")).toBe(180);
+    expect(cardioMetricValue(s, "weighted_power", "km")).toBe(190);
+    expect(cardioMetricValue(s, "cadence", "km")).toBe(86);
+    expect(cardioMetricValue(s, "relative_effort", "km")).toBe(70);
   });
 });
 

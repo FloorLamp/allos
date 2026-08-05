@@ -167,8 +167,23 @@ observed cadence cannot honour a configured sub-hourly time
 ~an hour late, and a slot after the day's last tick (e.g. 23:50 under hourly
 ticks) never fires at all, because slots never wrap into the next day.
 
-**Notifications** (`lib/notifications/`) are delivered over three channels —
-Telegram, Web Push, and an outbound Home Assistant webhook — driven by a tick
+**The email channel (#1855).** Email is the fourth channel: login-scoped like
+Telegram/push (the address is `logins.email` — the auth address; the enable,
+content mode, and matrix column are `login_settings` keys), fanned out over the
+SAME managing-login set minus the per-(login, profile) mute, deduped by address,
+and sent through the ONE `lib/email.ts` chokepoint. What a mail may CARRY is a
+per-login choice defaulting to **content-free** ("something needs your attention
+— open Allos", structurally message-blind), with **full content** — plainBody
+parity plus deep links, callback tokens always dropped — only ever widened by
+the login's own tap on the Settings control; a shared inbox collapses to the
+more restrictive mode. Button-only kinds are a no-op under the same predicate
+Web Push uses; failures fold into the delivery-health marker and retry on the
+shared attempt band (an hour outlives an SMTP greylist — no email-specific
+retry state). The full design record is `docs/internals/email.md` § "The
+notification channel".
+
+**Notifications** (`lib/notifications/`) are delivered over four channels —
+Telegram, Web Push, an outbound Home Assistant webhook, and email — driven by a tick
 (`npm run notify` / the `notify` Docker service, every 15 minutes; slot times are
 minute-precise since #2121, stored as "HH:MM" by migration 158). Sends are deduped per
 day/slot; timing follows the DB-stored timezone

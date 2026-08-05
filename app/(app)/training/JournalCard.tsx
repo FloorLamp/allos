@@ -14,6 +14,7 @@ import type { UnitPrefs } from "@/lib/settings";
 import { musclesWorked } from "@/lib/muscle-coverage";
 import { SET_STATUS_TITLES } from "@/lib/journal-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
+import { rideDetailHref as resolveRideDetailHref } from "@/lib/ride-detail";
 import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/journal-card.ts (issue #334); re-exported here so the
 // existing `./JournalCard` import path keeps working.
@@ -141,6 +142,7 @@ export default function JournalCard({
   const subjectCanWrite = subject == null ? true : subject.canWrite;
   const videoCanWrite = subject == null ? canWrite : subject.canWrite;
   const showChip = subject != null && !isActing;
+  const rideDetailHref = isActing ? resolveRideDetailHref(activity) : null;
   // Highlight the card whose activity is open in the docked editor, so it's
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
@@ -214,7 +216,15 @@ export default function JournalCard({
                 sportNames={activityComponentSportNames(activity.components)}
               />
               <div className="min-w-0">
-                {subjectCanWrite ? (
+                {rideDetailHref ? (
+                  <Link
+                    href={rideDetailHref}
+                    data-testid="ride-detail-link"
+                    className="block font-semibold text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
+                  >
+                    {activity.title}
+                  </Link>
+                ) : subjectCanWrite ? (
                   <button
                     type="button"
                     onClick={() => openEdit(activity)}
@@ -320,6 +330,7 @@ export default function JournalCard({
                 foldValues={foldValues}
                 editLocked={provenance.editLocked}
                 units={units}
+                detailHref={rideDetailHref}
                 canWrite={subjectCanWrite}
               />
             </div>

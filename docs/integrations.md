@@ -120,7 +120,21 @@ power/cadence. A synced activity's **GPS route** (Strava's summary polyline,
 which respects your privacy zones) is captured too and drawn on its Journal card
 as a small **tile-free SVG route thumbnail** — the route's shape, rendered from
 the stored polyline with no basemap and **no map tiles or external requests**
-(nothing about where you were leaves the box).
+(nothing about where you were leaves the box). On ride detail, Strava's aligned
+time/location stream can also move a position marker as you inspect an effort
+chart; indoor rides and privacy-trimmed streams omit it.
+
+Synced rides use the same read-first ride destination from the Training Log and
+Analyze history, Timeline, global search, cardio history panels, and linked bike
+history. Runs and other activity types retain their Journal destination, so
+importing Strava data does not create a separate navigation model. Training →
+Analyze gives each cycling subtype its own home: road/gravel/e-bike rides remain
+Cycling, MountainBikeRide becomes Mountain Biking, and virtual or trainer rides
+become the indoor-only Stationary Bike activity. Each has its own totals, records,
+range-selectable distance/speed/elevation/HR/power/cadence/effort progression,
+rolling 28-day form, ride-window HR zones, power bests and load, route/telemetry
+coverage, segment PRs, and linked ride history. Ride details link back to that
+state instead of dropping the reader at one Journal row.
 
 1. Create an API application in your
    [Strava API settings](https://www.strava.com/settings/api) to get a **Client

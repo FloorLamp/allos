@@ -39,6 +39,12 @@ describe("formatLongDate", () => {
     expect(formatLongDate("2024-12-25")).toContain("2024");
   });
 
+  it("can include the year for the current calendar year", () => {
+    expect(
+      formatLongDate("2026-06-30", DEFAULT_FORMAT_PREFS, { year: "always" })
+    ).toBe("Tuesday, June 30, 2026");
+  });
+
   it("parses the ISO date as local midnight (no day shift)", () => {
     // Should render the 30th, not the 29th, regardless of timezone.
     expect(formatLongDate("2026-06-30")).toContain("30");

@@ -10,6 +10,9 @@ import {
   getUserAge,
   getLoginTelegramDisabledKinds,
   getLoginPushDisabledKinds,
+  getLoginEmailNotify,
+  getLoginEmailDisabledKinds,
+  isEmailConfigured,
   getNotifyReviewNeeded,
   isProfileMutedForLogin,
   getProfileHouseholdRound,
@@ -32,12 +35,17 @@ import {
   resolveTelegramRecipients,
   wouldMuteSilenceSafety,
 } from "@/lib/notifications/fan-out";
+import {
+  loginEmailAddress,
+  resolveEmailRecipients,
+} from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import PushNotificationSettings from "./PushNotificationSettings";
 import LoginTelegramSettings from "./LoginTelegramSettings";
+import EmailNotificationSettings from "./EmailNotificationSettings";
 import ProfileMuteToggle from "./ProfileMuteToggle";
 import HouseholdRoundSettings from "./HouseholdRoundSettings";
 import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
@@ -131,6 +139,11 @@ export default async function NotificationsSettingsPage() {
   const pushConfigured =
     isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0;
   const haConfigured = ha.enabled && isValidWebhookUrl(ha.webhookUrl);
+  // The email column is deliverable for THIS profile when SMTP is configured and at
+  // least one managing login has the channel enabled with an address (#1855).
+  const smtpConfigured = isEmailConfigured();
+  const emailConfigured =
+    smtpConfigured && resolveEmailRecipients(profile.id).length > 0;
   const householdRound = getProfileHouseholdRound(profile.id);
 
   // Sub-hourly honesty check (#2121 constraint 4): the scheduler records its
@@ -162,7 +175,7 @@ export default async function NotificationsSettingsPage() {
       <Section
         testId="notify-channels"
         title="Channels"
-        scope={`Telegram and Web Push follow your login (${login.username}) across every profile; the Home Assistant webhook follows ${profile.name}.`}
+        scope={`Telegram, Web Push, and Email follow your login (${login.username}) across every profile; the Home Assistant webhook follows ${profile.name}.`}
       >
         <PageContainer width="form" className="space-y-6">
           <LoginTelegramSettings
@@ -173,6 +186,11 @@ export default async function NotificationsSettingsPage() {
           <PushNotificationSettings />
           {!demoRestricted && (
             <>
+              <EmailNotificationSettings
+                email={getLoginEmailNotify(login.id)}
+                address={loginEmailAddress(login.id)}
+                smtpConfigured={smtpConfigured}
+              />
               <HouseholdRoundSettings
                 enabled={householdRound.enabled}
                 memberIds={householdRound.memberIds}
@@ -215,9 +233,11 @@ export default async function NotificationsSettingsPage() {
                 telegramDisabled={getLoginTelegramDisabledKinds(login.id)}
                 pushDisabled={getLoginPushDisabledKinds(login.id)}
                 haDisabled={ha.disabledKinds}
+                emailDisabled={getLoginEmailDisabledKinds(login.id)}
                 telegramConfigured={telegramConfigured}
                 pushConfigured={pushConfigured}
                 haConfigured={haConfigured}
+                emailConfigured={emailConfigured}
               />
             </PageContainer>
           </Section>

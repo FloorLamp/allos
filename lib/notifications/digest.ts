@@ -699,6 +699,9 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
           bodyByChannel: {
             push: textTailBody,
             "home-assistant": textTailBody,
+            // Email strips keyboards exactly like push/HA, so a full-content mail
+            // needs the count in words too (#1855).
+            email: textTailBody,
           },
         }
       : {}),

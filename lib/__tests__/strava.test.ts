@@ -4,7 +4,76 @@ import {
   stravaSportName,
   splitCamelCase,
   rpeToIntensity,
+  mapStravaCyclingArtifacts,
 } from "@/lib/integrations/strava";
+
+describe("mapStravaCyclingArtifacts", () => {
+  it("normalizes streams, FTP/zones, laps, and segment efforts", () => {
+    const result = mapStravaCyclingArtifacts(
+      "12345",
+      {
+        laps: [
+          {
+            id: 91,
+            lap_index: 1,
+            name: "Lap 1",
+            distance: 5000,
+            moving_time: 600,
+            average_watts: 220,
+          },
+        ],
+        segment_efforts: [
+          {
+            id: 81,
+            name: "Synthetic climb",
+            distance: 1200,
+            moving_time: 240,
+            average_watts: 280,
+            pr_rank: 1,
+            segment: { id: 71 },
+          },
+        ],
+      },
+      {
+        time: { data: [0, 1, 2], original_size: 3 },
+        watts: { data: [200, 220, 240], original_size: 3 },
+        latlng: {
+          data: [
+            [38.5, -120.2],
+            [38.6, -120.3],
+            [38.7, -120.4],
+          ],
+          original_size: 3,
+        },
+        ignored: { data: [1] },
+      },
+      { ftp: 250 },
+      {
+        heart_rate: { zones: [{ min: 100, max: 120 }] },
+        power: { zones: [{ min: 0, max: 150 }] },
+      },
+      "2026-07-29T12:00:00.000Z"
+    );
+    expect(result.telemetry).toMatchObject({
+      external_id: "strava:12345",
+      ftp_w: 250,
+      power_zones: [{ min: 0, max: 150 }],
+    });
+    expect(result.telemetry.streams).toHaveProperty("watts");
+    expect(result.telemetry.streams).toHaveProperty("latlng");
+    expect(result.telemetry.streams).not.toHaveProperty("ignored");
+    expect(result.laps[0]).toMatchObject({
+      lap_external_id: "91",
+      distance_m: 5000,
+      average_watts: 220,
+    });
+    expect(result.segmentEfforts[0]).toMatchObject({
+      effort_external_id: "81",
+      segment_id: "71",
+      pr_rank: 1,
+    });
+  });
+});
 
 // A minimal Strava summary-activity record; override per test.
 function stravaRec(over: Record<string, unknown> = {}) {
@@ -109,10 +178,11 @@ describe("mapStravaActivity — cadence (#419)", () => {
 });
 
 describe("stravaSportName", () => {
-  it("maps the known cycling variants all to 'Cycling'", () => {
-    for (const t of ["Ride", "GravelRide", "EBikeRide", "VirtualRide"]) {
+  it("keeps outdoor cycling variants together and virtual rides indoors", () => {
+    for (const t of ["Ride", "GravelRide", "EBikeRide"]) {
       expect(stravaSportName(t)).toBe("Cycling");
     }
+    expect(stravaSportName("VirtualRide")).toBe("Stationary Bike");
   });
 
   it("maps the remaining catalog sports", () => {
@@ -238,6 +308,7 @@ describe("mapStravaActivity — route capture (#569)", () => {
   it("returns a null route for an activity with no map (e.g. a trainer ride)", () => {
     const res = mapStravaActivity(stravaRec({ trainer: true }));
     expect(res!.route).toBeNull();
+    expect(res!.activity.components?.[0].name).toBe("Stationary Bike");
   });
 });
 

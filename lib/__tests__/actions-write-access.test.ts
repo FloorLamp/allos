@@ -225,6 +225,21 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveLoginEmailNotify",
+    why: "login-scoped: the email delivery channel belongs to the LOGIN (#1855) — enable + content mode in login_settings, addressed to the login's own logins.email; never profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "saveLoginEmailNotifyKinds",
+    why: "login-scoped: persists the caller's OWN email per-kind matrix column (login_settings), like the Telegram/push columns (#1855)",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "sendTestEmailNotification",
+    why: "login-scoped: sends a test mail to the caller's OWN address (#1855), bypassing the profile fan-out — reads logins.email + login_settings, writes nothing profile-owned",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "begin2fa",
     why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data (demo-gated, #278)",
     gate: "requireLoginWriteAccess",

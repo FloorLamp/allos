@@ -604,7 +604,99 @@ filtered to what fits the activity (only bikes for a ride, only shoes for a run)
 and defaulting to the last gear you used for that kind of activity (your
 last-worn shoes for a run, your last-ridden bike for a ride); the linked gear
 shows as a chip on the workout card that links to its detail page (strength
-keeps its separate per-set implement tags).
+keeps its separate per-set implement tags). Cycling entries share one
+**read-first ride detail** destination across the Training Log and Analyze
+history, Timeline, global search, cardio history panels, and a bike's equipment history;
+non-cycling sessions keep their Journal destination. The ride detail shows
+active and elapsed time, distance and speed,
+route, bike, notes, provenance, and every provider measurement already stored
+for that ride (heart rate, power and W/kg when an as-of bodyweight exists,
+elevation, cadence, mechanical work, energy, temperature, workout type, and
+relative effort). It compares mutually available performance measurements with
+the median of all other cycling sessions within 30% of the ride's distance (or
+duration when distance is unavailable), keeping the personal baseline
+like-for-like and resistant to one unusual ride. A selectable ranked comparison
+shows every ride as a labeled row on one shared value scale, with the current
+ride highlighted and the similar-ride median drawn through every row; the
+summary tiles carry the exact, color-coded difference from the median, and every
+peer row links to that ride's detail. Previous/next destination previews in the
+ride header link to the immediately adjacent cycling sessions and show each
+ride's title, full date, duration, and distance. Every bike-family activity gets
+the same rich Analyze and detail experience without collapsing unlike riding
+into one baseline. **Cycling**, **Mountain Biking**, **Spinning**, **Stationary
+Bike**, and other bike-like activity names each keep their own totals,
+progression, records, comparison cohort, history, and metric/range navigation
+loop. The canonical **Cycling overview** lives in Training → Analyze: it combines
+all-time totals and records
+with range-selectable progression across distance, duration, speed, elevation,
+heart rate, average and weighted power, cadence, and relative effort. Its
+all-ride rollup also shows rolling 28-day form, personal records, ride-window HR
+distribution, power-curve bests, FTP-relative training load, aggregate power
+zones, mapped-route, telemetry, and segment-data coverage, segment PR records,
+and a linked ride
+history carrying the key sensor measurements. A seasonality panel keeps zero-ride
+months visible, normalizes month and season rates for the amount of calendar
+history actually observed, and names the longest completed-month quiet stretch.
+When daily weather exists for the profile's saved home area, it also compares
+clear, cloudy, wet, and wintry ride-day rates against the number of available
+days in each condition and groups covered ride days by daily high temperature;
+preference copy appears only with enough weather and ride coverage, and the UI
+states that home-area weather is context rather than route-level measurement.
+Indoor-only cycling activities use session language and retain the useful
+duration, heart-rate, cadence, power, training-load, seasonal, history, and
+sensor-depth surfaces. They deliberately omit weather, route, elevation,
+distance splits, laps, segments, and the Course section, even when an upstream
+provider sends a misleading outdoor field. Outdoor variants such as Mountain
+Biking retain those course and conditions surfaces.
+Every ride detail links back to that overview, and its
+latest/history/record links return to ride detail, so cycling is a navigable
+training surface rather than a collection of isolated records. Overview links
+carry their selected metric and range through adjacent, comparison, route-record,
+and return navigation; a supported metric also opens the corresponding ride
+comparison and telemetry trace. One cycling metric registry owns chart colors
+and history labels on both surfaces, and the active progression metric becomes
+the mobile history row's headline. Median delta colors imply better/worse only
+for like-for-like speed; the other directional measurements use a neutral
+comparison tone. The overview keeps the activity header focused on identity and
+navigation; metric and range controls live with the Ride progression chart they
+change. Its reading order then moves through the all-time/recent summary,
+seasonality, power and heart-rate performance, linked ride history, and finally
+sensor/route data coverage, with full-width conditional analysis cards so a
+missing signal cannot leave an empty grid column. The selected activity is the
+Analyze view's heading: its canonical
+activity icon followed by an inline, borderless, searchable picker rather than
+a title repeated beside a form field.
+A **Quick access** row directly below it derives shortcuts from the profile's
+recent and frequent training history, keeps strength, cardio, and sport
+represented, and keeps a stable order while marking the open activity as active,
+so a mainstay such as Cycling is one icon-labeled tap away instead of a search
+query.
+The detail is divided into Overview, Effort, Course, and Details groups with a
+compact in-page navigator; groups without ride data are omitted. The route map,
+route record, splits, laps, and segments all live under Course. A deterministic
+Ride highlights strip distills the dominant recorded heart-rate zone, real
+segment results, and measured
+power/heart-rate drift when those signals exist. When minute-level heart rate
+exists, the page places it with the other effort traces, scopes it to the ride's
+own clock window, and shows the one-minute trace plus five-zone distribution;
+all-day wearable readings outside that window are excluded. The effort charts
+share elapsed-time hover state even when their sample rates differ. For a GPS
+ride, the stored Strava time and location streams also move a position marker on
+the tile-free route drawing; indoor rides and privacy-trimmed streams simply omit
+the marker. A Strava connection additionally imports the recorded power, cadence,
+speed, elevation, heart-rate, grade, and temperature streams; provider laps and
+segment efforts; and an FTP/power-zone snapshot when the connection has profile
+read permission. The ride page turns those optional records into selectable
+elapsed-time traces, 5-second/1-minute/5-minute/20-minute power bests,
+FTP-relative intensity and training load, time in power zones, automatic 5 km
+or 5 mi distance splits, lap and segment tables, and same-route history. When
+the corresponding streams exist it also derives stopped, coasting, and climbing
+time plus second-half power/heart-rate drift; these are labeled as derived
+analysis rather than provider measurements. A missing sensor or permission
+simply omits its section. **Edit ride** opens the existing activity editor,
+keeping the detail itself calm and read-first. Activity edits, merges, deletes,
+review resolutions, and manual Strava syncs invalidate the ride detail alongside
+the surrounding Training and Timeline surfaces.
 
 ### Planning and coaching
 

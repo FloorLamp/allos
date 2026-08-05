@@ -28,6 +28,7 @@
 // resolve to the combo AND the acetaminophen it hides is knowable (#798/#279). Content
 // is INFORMATIONAL, NOT MEDICAL ADVICE (no dosing, no diagnosis).
 
+import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
 import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";

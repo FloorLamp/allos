@@ -162,13 +162,16 @@ function localTodayStr(): string {
 // and on any implicit-locale toLocale* date render.
 
 // Consistent journal date formatting: "Weekday, Month Day", with the year
-// appended only when it isn't the current calendar year. Input is an ISO
-// YYYY-MM-DD string (parsed as local midnight so the day doesn't shift). Pref-aware
-// (#964): the `dateFormat` reorders the month/day; the DEFAULT "mdy" is
-// byte-identical to the old en-US toLocale output ("Monday, January 5[, 2026]").
+// appended only when it isn't the current calendar year by default. A dense set
+// that can cross years may request `year: "always"` while retaining this same long
+// shape. Input is an ISO YYYY-MM-DD string (parsed as local midnight so the day
+// doesn't shift). Pref-aware (#964): the `dateFormat` reorders the month/day; the
+// DEFAULT "mdy" is byte-identical to the old en-US toLocale output ("Monday,
+// January 5[, 2026]").
 export function formatLongDate(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  options: { year?: "auto" | "always" } = {}
 ): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
@@ -180,7 +183,9 @@ export function formatLongDate(
     {
       monthStyle: "long",
       weekday: WEEKDAYS_LONG[d.getDay()],
-      year: d.getFullYear() !== new Date().getFullYear(),
+      year:
+        options.year === "always" ||
+        d.getFullYear() !== new Date().getFullYear(),
     }
   );
 }

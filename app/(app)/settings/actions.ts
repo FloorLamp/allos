@@ -36,6 +36,8 @@ import {
   getLoginTelegram,
   setLoginTelegram,
   setLoginTelegramDisabledKinds,
+  setLoginEmailNotify,
+  setLoginEmailDisabledKinds,
   isProfileMutedForLogin,
   setLoginDigestDemotions,
   setProfileMutedForLogin,
@@ -58,6 +60,7 @@ import {
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
 import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
+import { sendTestEmailToLogin } from "@/lib/notifications/email";
 import { sendFoodOptInPrompt } from "@/lib/notifications/food";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { canAccessProfile } from "@/lib/auth";
@@ -441,6 +444,77 @@ export async function sendTestNotification(): Promise<{
       CHAT_WIDE
     );
     return { ok: true, message: "Sent ✅ — check your Telegram." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---- Email delivery channel (login scope, issue #1855) ----
+//
+// Email is the fourth notification channel and, like Telegram and push, belongs to
+// the LOGIN: the address is the login's own auth address (logins.email), and the
+// enable + content mode + per-kind column live in login_settings. All three actions
+// gate on requireSession() and are allowlisted in actions-write-access.test.ts on
+// that basis.
+
+// Persist this login's email channel: the enable toggle and the content mode. The
+// content mode defaults to CONTENT-FREE (the #1855 owner ruling) and this action —
+// carrying the user's own tap on the Settings control — is the ONLY writer that may
+// widen it to full content.
+export async function saveLoginEmailNotify(formData: FormData): Promise<{
+  ok: boolean;
+}> {
+  const { login } = await requireSession();
+  const enabledRaw = formData.get("email_enabled");
+  const fullRaw = formData.get("email_full_content");
+  setLoginEmailNotify(login.id, {
+    emailEnabled: enabledRaw === "on" || enabledRaw === "1",
+    emailFullContent: fullRaw === "on" || fullRaw === "1",
+  });
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// The per-kind email matrix column (login-scoped, like the Telegram/push columns).
+export async function saveLoginEmailNotifyKinds(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const { login } = await requireSession();
+  const disabled = parseDisabledKinds(
+    String(formData.get("disabled_kinds") ?? "")
+  );
+  setLoginEmailDisabledKinds(login.id, disabled);
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// Send a test mail to the caller's OWN address, bypassing the profile fan-out so a
+// login can always verify its own inbox. The test rides the stored content mode,
+// so what arrives is the shape real reminders will take. Never an unconditional
+// confirm — the typed outcome names what refused.
+export async function sendTestEmailNotification(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { login } = await requireSession();
+  try {
+    const outcome = await sendTestEmailToLogin(login.id);
+    switch (outcome) {
+      case "not-configured":
+        return {
+          ok: false,
+          message:
+            "No outgoing mail server — an admin sets SMTP on Settings → Server first.",
+        };
+      case "no-address":
+        return {
+          ok: false,
+          message:
+            "Your login has no email address — an admin can add one on Settings → Family.",
+        };
+      case "sent":
+        return { ok: true, message: "Sent ✅ — check your inbox." };
+    }
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

@@ -161,7 +161,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     control: { type: "toggle", field: "food_telegram_enabled" },
     controlTestId: "food-telegram-enabled",
     requiresFoodLogging: true,
-    more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push can't deliver this kind.",
+    more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push and Email can't deliver this kind.",
   },
   {
     kind: "mood",

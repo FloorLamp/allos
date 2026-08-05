@@ -187,9 +187,10 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     await expect(page.getByTestId("digest-tune-disclosure")).toBeVisible();
 
     // The schedule/kind cards autosave now, so their explicit Save buttons are gone.
-    // The login Telegram channel card keeps its own Save (it validates a chat id),
-    // so exactly ONE remains — a spec clicking "Save" here needs no card scoping.
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+    // Two channel cards keep their own Save (Telegram validates a chat id; the
+    // email card commits a deliberate content-mode choice, #1855) — so exactly TWO
+    // remain, and a spec clicking "Save" here must scope to its card.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(2);
   });
 
   test("a member sees the group index without admin groups, and no Server section", async ({

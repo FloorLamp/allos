@@ -175,7 +175,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
 
   // Rich measurements are structured list values, not a collection of badges.
   const metrics = ride.getByTestId("activity-metrics");
-  await expect(metrics.locator("li")).toHaveCount(7);
+  await expect(metrics.locator("li")).toHaveCount(8);
   await expect(metrics).not.toContainText("148/171 bpm");
   await expect(metrics).toContainText("210 m");
   await expect(metrics).toContainText("186 W (193 NP)");
@@ -183,6 +183,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(metrics).toContainText("692 kJ");
   await expect(metrics).toContainText("18°C");
   await expect(metrics).toContainText("Effort 72");
+  await expect(metrics.getByTestId("activity-gear")).toHaveText("Road Bike");
   await expect(metrics.locator(".badge")).toHaveCount(0);
   await expect(metrics).toHaveClass(/text-slate-500/);
   await expect(metrics).toHaveClass(/dark:text-slate-400/);
@@ -350,9 +351,8 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
   });
-  await stravaCard
-    .getByRole("button", { name: "Strava morning ride", exact: true })
-    .click();
+  await stravaCard.getByRole("button", { name: "Activity actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
 
   const details = page.getByTestId("imported-activity-details");
   await expect(details).toBeVisible();
@@ -432,9 +432,8 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   await page.setViewportSize({ width: 390, height: 844 });
   // Switching presentation modes closes the docked editor; reopen the same
   // activity in the mobile overlay, then measure the shared content component.
-  await stravaCard
-    .getByRole("button", { name: "Strava morning ride", exact: true })
-    .click();
+  await stravaCard.getByRole("button", { name: "Activity actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const mobilePrimary = page.getByTestId("strava-primary-stats");
   await expect(mobilePrimary).toBeVisible();
   expect(

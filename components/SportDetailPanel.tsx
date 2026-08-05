@@ -10,10 +10,9 @@ import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
-import { journalActivityHref } from "@/lib/timeline-format";
 
 // Per-sport detail: records grid, a duration-over-time trend, and the last few
-// sessions linked to their journal entries. Sports carry only duration, so this
+// sessions linked to their best activity destination. Sports carry only duration, so this
 // is the lightweight cousin of the cardio/exercise panels.
 export default function SportDetailPanel({
   stat,
@@ -68,7 +67,7 @@ export default function SportDetailPanel({
           label="Last done"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={journalActivityHref(stat.lastActivityId)}
+          href={stat.lastHref}
         />
       </dl>
 
