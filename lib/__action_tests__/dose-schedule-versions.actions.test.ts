@@ -284,11 +284,45 @@ describe("#1973 — a cosmetic edit records no version at all", () => {
       })
     );
 
-    expect(doseRows(itemId).map((d) => d.amount).sort()).toEqual([
-      "10 g",
-      "2 scoops",
-    ]);
+    expect(
+      doseRows(itemId)
+        .map((d) => d.amount)
+        .sort()
+    ).toEqual(["10 g", "2 scoops"]);
     expect([versionsOf(first.id), versionsOf(second.id)]).toEqual(before);
+  });
+});
+
+// ---- The memoized reader on the other side of the write (#2066) --------------
+
+describe("#2066 — the memoized history reader never serves a stale edit", () => {
+  it("shows the appended version on the very next current-schedule read", async () => {
+    setDay("2026-07-01");
+    await addSupplement(
+      fd({ name: "Primed", doses: JSON.stringify([dose()]) })
+    );
+    const itemId = lastItemId();
+    const doseId = doseRows(itemId)[0].id;
+    // PRIME the memo, which is the state a real edit arrives in: the page that drew the
+    // form read this profile's schedule seconds earlier.
+    expect(doseBucketOn(readDose(doseId), "2026-07-01")).toBe("Morning");
+
+    setDay("2026-07-20");
+    await updateSupplement(
+      fd({
+        id: String(itemId),
+        name: "Primed",
+        doses: JSON.stringify([
+          { id: doseId, ...dose({ time_of_day: "Evening" }) },
+        ]),
+      })
+    );
+
+    // No waiting out the TTL: the write drops the memo, so the re-render this action
+    // revalidates into reads the version it just wrote …
+    expect(doseBucketOn(readDose(doseId), "2026-07-20")).toBe("Evening");
+    // … and the days before it are still judged by the rule that was in force then.
+    expect(doseBucketOn(readDose(doseId), "2026-07-10")).toBe("Morning");
   });
 });
 

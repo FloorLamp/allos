@@ -69,7 +69,10 @@ import {
   type CadenceKind,
   type DoseSchedule,
 } from "@/lib/intake-cadence";
-import { getDoseScheduleVersions } from "@/lib/queries";
+import {
+  getDoseScheduleVersions,
+  invalidateDoseScheduleVersions,
+} from "@/lib/queries";
 import {
   formError,
   formOk,
@@ -415,6 +418,11 @@ function recordScheduleVersion(
     schedule.end_date ?? null,
     sqlNow()
   );
+  // The current-schedule readers memoize this profile's history for a few seconds
+  // (#2066). This is the write whose result is rendered right afterwards — the edited
+  // page, the rebuilt reminder — so it drops the memo rather than waiting out the TTL.
+  // Cheap and rare: recording a version happens on a dose edit, not on a read.
+  invalidateDoseScheduleVersions();
 }
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run

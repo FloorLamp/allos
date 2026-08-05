@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { norm, prepareArgs, readSource, relPath, sourceFiles } from "./sql-scan";
+import {
+  norm,
+  prepareArgs,
+  readSource,
+  relPath,
+  sourceFiles,
+} from "./sql-scan";
 
 // Issue #2059 — the ONE statement that mutates a ledger row by its raw id must name the
 // profile itself.

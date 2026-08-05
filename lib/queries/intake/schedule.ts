@@ -139,6 +139,10 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
 // ONE query for the whole profile rather than a per-dose lookup: the callers that need
 // history need it for every dose they are about to iterate (an adherence window, a
 // digest, a reminder pass), and a dose's history is a handful of rows.
+//
+// UNMEMOIZED on purpose (contrast the read behind `withScheduleVersions` below): this is
+// what the dose-edit WRITE path reads to decide whether a pre-edit schedule still needs
+// backfilling, and that decision must never be made against a cached answer.
 export function getDoseScheduleVersions(
   profileId: number
 ): Map<number, DoseScheduleVersion[]> {
@@ -162,16 +166,71 @@ export function getDoseScheduleVersions(
   return out;
 }
 
+// The history read behind `withScheduleVersions`, memoized per profile with a short TTL
+// (#2066).
+//
+// WHY THE ATTACH CANNOT SIMPLY BE SKIPPED for callers that "only ask about today". That
+// was the tempting reading of the tick's cost, and it is wrong: the hourly intake gather
+// (lib/notifications/supplements.ts `gatherWindowDoses`) scores each due dose's ADHERENCE
+// STRIP over the trailing window, calling `doseDueOn` for every past day in it. Three of
+// the tick's four `getSupplementDoses` call sites reach that gather, so a lean
+// "current schedule only" reader would silently re-introduce exactly the retroactive
+// re-judgment #1973 exists to prevent. The join is not waste in that path — it is
+// REPETITION: the same profile's history was being re-joined for every one of those
+// calls, and again for every fan-out of the reader inside a single page render (warnings,
+// refill math, upcoming safety and the tab itself all read it).
+//
+// Modeled on lib/db.ts's `tzMemo`, and for the same reason: three processes share one
+// database file, so a process-wide cache has to bound its own staleness rather than
+// assume it observes every write. Within one request or one tick — the whole window that
+// matters here — the TTL never expires and the repetition collapses to one join.
+//
+// The one write whose result is rendered immediately, a dose edit, invalidates in-process
+// through `invalidateDoseScheduleVersions` (see the recordScheduleVersion call sites), so
+// an edited schedule is never read back stale. The two rare admin writers — an undo
+// restore and a profile delete — self-heal inside the TTL; a restore additionally clears
+// it explicitly. A miss anywhere degrades to `versions` absent, which the resolver reads
+// as "this row, always" — the pre-#1973 behaviour, never a WRONG rule.
+const versionsMemo = new Map<
+  number,
+  { at: number; byDose: Map<number, DoseScheduleVersion[]> }
+>();
+const VERSIONS_MEMO_TTL_MS = 5000;
+
+// Drop the memoized schedule history for a profile (or every profile when omitted) so
+// the next current-schedule read re-joins it. Called by the dose-edit write path.
+export function invalidateDoseScheduleVersions(profileId?: number): void {
+  if (profileId == null) versionsMemo.clear();
+  else versionsMemo.delete(profileId);
+}
+
+function memoizedDoseScheduleVersions(
+  profileId: number
+): Map<number, DoseScheduleVersion[]> {
+  const hit = versionsMemo.get(profileId);
+  // Real time, deliberately: this is a DURATION, which the clock seam must never own.
+  const at = Date.now();
+  if (hit && at - hit.at < VERSIONS_MEMO_TTL_MS) return hit.byDose;
+  const byDose = getDoseScheduleVersions(profileId);
+  versionsMemo.set(profileId, { at, byDose });
+  return byDose;
+}
+
 // Attach each dose's schedule history to the rows a schedule read returns, so every
 // consumer of a dose row can ask `doseDueOn` about ANY day and get the rule that was in
 // force then (#1973). A dose with no recorded history keeps `versions` absent, which the
 // resolver reads as "this row, always" — the pre-#1973 behaviour, unchanged.
+//
+// The attached arrays are SHARED with the memo above and across the rows of every reader
+// that ran inside the TTL. Every consumer of `versions` only ever reads it (the resolvers
+// in lib/intake-cadence and lib/supplement-schedule), and a dose's recorded history is
+// append-only by construction, so there is nothing here to copy defensively.
 function withScheduleVersions(
   profileId: number,
   doses: SupplementDose[]
 ): SupplementDose[] {
   if (doses.length === 0) return doses;
-  const byDose = getDoseScheduleVersions(profileId);
+  const byDose = memoizedDoseScheduleVersions(profileId);
   for (const d of doses) {
     const versions = byDose.get(d.id);
     if (versions) d.versions = versions;
