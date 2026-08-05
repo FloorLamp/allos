@@ -100,10 +100,7 @@ import {
 import { getIntakeItemObligation } from "../queries/intake/adherence";
 import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
-import {
-  digestDependencyStamp,
-  DIGEST_REGATHER_FLOOR_MS,
-} from "./digest-deps";
+import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
 import {
   decideProseGather,
   decideReconcile,

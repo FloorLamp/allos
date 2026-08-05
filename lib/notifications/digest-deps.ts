@@ -197,9 +197,9 @@ export function digestDependencyStamp(profileId: number): string {
   const by = new Map(rows.map((r) => [r.t, r.s]));
   return createHash("sha256")
     .update(
-      DIGEST_DEPENDENCIES.map((d) => `${d.table}=${by.get(d.table) ?? ""}`).join(
-        "\n"
-      )
+      DIGEST_DEPENDENCIES.map(
+        (d) => `${d.table}=${by.get(d.table) ?? ""}`
+      ).join("\n")
     )
     .digest("hex")
     .slice(0, 32);

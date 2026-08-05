@@ -513,7 +513,12 @@ describe("the prose rebuild's cheap pre-check (#2069)", () => {
   it("round-trips its stored record, and reads an unparseable one as ABSENT", () => {
     const r = { date: D, stamp: "abc123", at: T0 };
     expect(parseProseGatherRecord(formatProseGatherRecord(r))).toEqual(r);
-    for (const bad of ["", "only-a-date", `${D}|abc123|not-a-number`, undefined])
+    for (const bad of [
+      "",
+      "only-a-date",
+      `${D}|abc123|not-a-number`,
+      undefined,
+    ])
       expect(parseProseGatherRecord(bad)).toBeNull();
     // …and ABSENT means the next tick rebuilds, never that it skips.
     expect(gate({ last: parseProseGatherRecord("junk") })).toEqual({

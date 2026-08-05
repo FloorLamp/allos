@@ -108,12 +108,7 @@ export interface ProseGatherRecord {
 }
 
 export type ProseGatherReason =
-  | "no-stamp"
-  | "no-record"
-  | "new-day"
-  | "stamp-moved"
-  | "floor"
-  | "unchanged";
+  "no-stamp" | "no-record" | "new-day" | "stamp-moved" | "floor" | "unchanged";
 
 export interface ProseGatherDecision {
   gather: boolean;
@@ -134,7 +129,8 @@ export function decideProseGather(input: {
   // that has not been given a stamp must not be quietly throttled by the floor alone.
   if (input.stamp == null) return { gather: true, reason: "no-stamp" };
   if (!input.last) return { gather: true, reason: "no-record" };
-  if (input.last.date !== input.date) return { gather: true, reason: "new-day" };
+  if (input.last.date !== input.date)
+    return { gather: true, reason: "new-day" };
   if (input.last.stamp !== input.stamp)
     return { gather: true, reason: "stamp-moved" };
   // A record from the future (a clock step back) is not evidence of a recent gather, so
