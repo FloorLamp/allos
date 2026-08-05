@@ -6,8 +6,11 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  decideProseGather,
   decideReconcile,
+  formatProseGatherRecord,
   keyboardTokens,
+  parseProseGatherRecord,
   reconcileClosingText,
   RECONCILE_CLOSING,
   stripTokens,
@@ -432,5 +435,90 @@ describe("a family with no date axis is governed by `dead` alone", () => {
         })
       ).toEqual({ action: "close", reason: "resolved" });
     }
+  });
+});
+
+// ---- Is the rebuild worth paying for? (#2069) ------------------------------
+//
+// The prose arm's guard. What it must NEVER do is let a stale claim stand: every case
+// below that is not the exact "same day, same stamp, inside the floor" one has to come
+// out as `gather`, because the render is the only thing that can find the change.
+
+describe("the prose rebuild's cheap pre-check (#2069)", () => {
+  const FLOOR = 3 * 60 * 60 * 1000;
+  const T0 = Date.parse("2026-08-05T09:00:00Z");
+  const record = (over: Partial<{ date: string; stamp: string; at: number }>) =>
+    ({ date: D, stamp: "s1", at: T0, ...over }) as const;
+
+  const gate = (over: {
+    stamp?: string | null;
+    last?: ReturnType<typeof record> | null;
+    date?: string;
+    nowMs?: number;
+  }) =>
+    decideProseGather({
+      date: over.date ?? D,
+      stamp: over.stamp === undefined ? "s1" : over.stamp,
+      last: over.last === undefined ? record({}) : over.last,
+      nowMs: over.nowMs ?? T0 + 60 * 60 * 1000,
+      floorMs: FLOOR,
+    });
+
+  it("skips the rebuild only when the day, the stamp AND the floor all agree", () => {
+    expect(gate({})).toEqual({ gather: false, reason: "unchanged" });
+  });
+
+  it("rebuilds on the first pass, when there is nothing recorded to compare", () => {
+    expect(gate({ last: null })).toEqual({ gather: true, reason: "no-record" });
+  });
+
+  it("rebuilds when the stamp moved — the user resolved something", () => {
+    expect(gate({ stamp: "s2" })).toEqual({
+      gather: true,
+      reason: "stamp-moved",
+    });
+  });
+
+  it("rebuilds for a pointer on a different day than the record", () => {
+    expect(gate({ date: shiftDateStr(D, 1) })).toEqual({
+      gather: true,
+      reason: "new-day",
+    });
+  });
+
+  it("rebuilds past the floor even when the stamp says nothing moved — the stamp is an accelerator, never an oracle", () => {
+    expect(gate({ nowMs: T0 + FLOOR })).toEqual({
+      gather: true,
+      reason: "floor",
+    });
+    expect(gate({ nowMs: T0 + FLOOR - 1 })).toEqual({
+      gather: false,
+      reason: "unchanged",
+    });
+  });
+
+  it("treats a record from the FUTURE as no evidence at all", () => {
+    // A clock stepped backwards must not buy an unbounded skip.
+    expect(gate({ nowMs: T0 - 1 })).toEqual({ gather: true, reason: "floor" });
+  });
+
+  it("never throttles a kind that declares no stamp", () => {
+    expect(gate({ stamp: null })).toEqual({ gather: true, reason: "no-stamp" });
+    expect(gate({ stamp: null, last: null })).toEqual({
+      gather: true,
+      reason: "no-stamp",
+    });
+  });
+
+  it("round-trips its stored record, and reads an unparseable one as ABSENT", () => {
+    const r = { date: D, stamp: "abc123", at: T0 };
+    expect(parseProseGatherRecord(formatProseGatherRecord(r))).toEqual(r);
+    for (const bad of ["", "only-a-date", `${D}|abc123|not-a-number`, undefined])
+      expect(parseProseGatherRecord(bad)).toBeNull();
+    // …and ABSENT means the next tick rebuilds, never that it skips.
+    expect(gate({ last: parseProseGatherRecord("junk") })).toEqual({
+      gather: true,
+      reason: "no-record",
+    });
   });
 });

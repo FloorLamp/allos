@@ -403,7 +403,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "digest",
     reissuable: false,
-    why: "One per day, and the sweep never re-issues it. It also never reaches the keyboard-expiry arm that closes a rolled-over message: `digest` declares a PROSE reconciler below, so the sweep's prose branch owns the pointer end to end, and at the day boundary it DROPS the pointer — untracked, no edit, no closing line — rather than closing the message (#2071). It could not have been closed by that arm anyway: every digest token is inert, so `decideReconcile` sees no claim and answers `none`. The keyboard itself is the offer tail, which the tick re-labels in place rather than re-sending (#1505).",
+    why: "One per day, and the sweep never re-issues it. It also never reaches the keyboard-expiry arm that closes a rolled-over message: `digest` declares a PROSE reconciler below, so the sweep's prose branch owns the pointer end to end, and at the day boundary it DROPS the pointer — untracked, no edit, no closing line — rather than closing the message (#2071). That arm could never have closed one anyway: every digest token is inert, so `decideReconcile` sees no claim and answers `none`. The keyboard itself is the offer tail, which the tick re-labels in place rather than re-sending (#1505).",
   },
   {
     kind: "upcoming",

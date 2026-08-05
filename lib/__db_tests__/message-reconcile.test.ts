@@ -12,6 +12,30 @@
 
 import { vi, describe, it, expect, afterEach, beforeEach } from "vitest";
 
+// The digest gather is what #2069 stopped paying for on every tick and #2070 stopped
+// letting starve the sweep, so both need to see it: this counts every call and can be
+// told to blow one up. `vi.hoisted` because a vi.mock factory is lifted above the imports.
+const gatherState = vi.hoisted(() => ({
+  calls: 0,
+  throwFor: null as number | null,
+}));
+
+vi.mock("@/lib/notifications/digest-data", async (importActual) => {
+  const actual =
+    await importActual<typeof import("@/lib/notifications/digest-data")>();
+  return {
+    ...actual,
+    gatherDigestInput: (
+      ...args: Parameters<typeof actual.gatherDigestInput>
+    ) => {
+      gatherState.calls++;
+      if (gatherState.throwFor === args[0])
+        throw new Error("digest gather blew up");
+      return actual.gatherDigestInput(...args);
+    },
+  };
+});
+
 vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   const actual =
     await importActual<typeof import("@/lib/notifications/telegram-api")>();
@@ -61,6 +85,17 @@ import { logFoodServingCore } from "@/lib/food-log-write";
 import { canonicalFoodGroup } from "@/lib/food-groups";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import {
+  DIGEST_DEPENDENCIES,
+  DIGEST_REGATHER_FLOOR_MS,
+  digestDependencyStamp,
+  digestStampSql,
+} from "@/lib/notifications/digest-deps";
+import {
+  formatProseGatherRecord,
+  parseProseGatherRecord,
+} from "@/lib/notifications/reconcile-core";
+import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { seedLoginTelegram } from "./fixtures";
 
 const editKeyboard = vi.mocked(editMessageReplyMarkupRaw);
@@ -74,6 +109,8 @@ beforeEach(() => {
   });
   editKeyboard.mockClear();
   editText.mockClear();
+  gatherState.calls = 0;
+  gatherState.throwFor = null;
 });
 
 function newProfile(name: string): number {
@@ -1200,5 +1237,209 @@ describe("the morning digest's prose reconciles (#1913 item 4)", () => {
     // sweep's zero-call steady state protects is spent once.
     expect(a.edited + b.edited).toBe(1);
     expect(editText).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---- One pointer's failure is one pointer's failure (#2070) ----------------
+//
+// The sweep walked every live pointer in ONE unguarded loop. The digest is normally the
+// earliest-`sent_at` pointer of the day, so an exception rebuilding it took the whole
+// sweep down and NOTHING else for that profile was examined that tick — including a
+// same-day dose keyboard the ledger had already resolved. A live "✅ Taken" on a dose
+// already taken is the prompt that invites a double dose; a coaching build bug must not
+// be able to keep one up.
+
+describe("a failing rebuild cannot starve the rest of the sweep (#2070)", () => {
+  async function sendDigestFor(profileId: number, name: string): Promise<void> {
+    const model = buildDigest(gatherDigestInput(profileId, name));
+    expect(model, "the fixture should have something to say").not.toBeNull();
+    await dispatch(profileId, renderDigestMessage(model!));
+  }
+
+  it("reconciles the dose keyboard behind a digest whose rebuild throws", async () => {
+    const pid = newProfile("Starve Sten");
+    seedLoginTelegram(pid, "9200");
+    const { itemId, doseId } = seedDose(pid, "Sten D3");
+    // The digest is sent FIRST, which is what puts it ahead of the dose reminder in the
+    // sweep's `sent_at` order — the ordering that made this starve everything.
+    await sendDigestFor(pid, "Starve Sten");
+    await sendMorningReminder(pid);
+    editText.mockClear();
+
+    // Resolved in the app: the reminder's button is now a lie…
+    expect(markDoseTaken(pid, doseId, itemId, today(pid))).toBe("logged");
+    // …and the digest cannot be rebuilt at all this tick.
+    gatherState.throwFor = pid;
+
+    const res = await reconcileProfileMessages(pid);
+
+    // Both pointers were reached, and the safety-tier one was reconciled.
+    expect(res.examined).toBe(2);
+    expect(res.closed).toBe(1);
+    expect(liveTokens(pid).some((t) => t.startsWith("take:"))).toBe(false);
+
+    // The failure is COUNTED, not swallowed — a persistent per-profile build bug has to
+    // be visible rather than silently degrading this profile's cleanup.
+    expect(res.failed).toBe(1);
+
+    // And it is CLASSIFIED, never assumed (#1885): a compute failure says nothing about
+    // whether the message is still in the chat, so the pointer is left exactly as found
+    // — not dropped, not edited on a guess.
+    expect(liveMessagePointers(pid).map((p) => p.kind)).toEqual(["digest"]);
+  });
+
+  it("retries the failed pointer on the next tick, once the build works again", async () => {
+    const pid = newProfile("Retry Rhea");
+    seedLoginTelegram(pid, "9201");
+    const { itemId, doseId } = seedDose(pid, "Rhea D3");
+    await sendDigestFor(pid, "Retry Rhea");
+    editText.mockClear();
+    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1));
+
+    gatherState.throwFor = pid;
+    expect((await reconcileProfileMessages(pid)).failed).toBe(1);
+    expect(editText).not.toHaveBeenCalled();
+
+    // Nothing was recorded for the pre-check either, so the retry is a full rebuild.
+    gatherState.throwFor = null;
+    const res = await reconcileProfileMessages(pid);
+    expect(res.failed).toBe(0);
+    expect(res.edited).toBe(1);
+    expect(String(editText.mock.calls[0][2])).toContain("1/1 taken");
+  });
+});
+
+// ---- The rebuild is pre-checked before it is paid for (#2069) --------------
+//
+// A sent digest's pointer stays live until rollover, so the sweep was running the full
+// `gatherDigestInput` — a coaching scan, a ~20-domain upcoming aggregation and a
+// per-document footprint loop — on every remaining tick of the day, ~15 times out of 16
+// only to hash the result and find it identical.
+
+describe("the digest rebuild is gated by a cheap pre-check (#2069)", () => {
+  async function sendDigestFor(profileId: number, name: string): Promise<void> {
+    const model = buildDigest(gatherDigestInput(profileId, name));
+    expect(model, "the fixture should have something to say").not.toBeNull();
+    await dispatch(profileId, renderDigestMessage(model!));
+  }
+
+  it("gathers once, then costs NOTHING for the rest of an unchanged day", async () => {
+    const pid = newProfile("Precheck Pia");
+    seedLoginTelegram(pid, "9210");
+    seedDose(pid, "Pia D3");
+    await sendDigestFor(pid, "Precheck Pia");
+    gatherState.calls = 0;
+
+    // The first sweep has nothing recorded to compare against, so it rebuilds once.
+    expect((await reconcileProfileMessages(pid)).edited).toBe(0);
+    expect(gatherState.calls).toBe(1);
+
+    // Every further tick of an unchanged day is free — the whole of #2069.
+    for (let tick = 0; tick < 5; tick++)
+      expect((await reconcileProfileMessages(pid)).edited).toBe(0);
+    expect(gatherState.calls).toBe(1);
+    expect(editText).not.toHaveBeenCalled();
+    expect(editKeyboard).not.toHaveBeenCalled();
+  });
+
+  it("still rebuilds and edits on the VERY NEXT tick when the ledger moves", async () => {
+    const pid = newProfile("Precheck Pim");
+    seedLoginTelegram(pid, "9211");
+    const { itemId, doseId } = seedDose(pid, "Pim D3");
+    await sendDigestFor(pid, "Precheck Pim");
+    // One quiet tick settles the record, so what follows is the steady state.
+    await reconcileProfileMessages(pid);
+    editText.mockClear();
+    gatherState.calls = 0;
+
+    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1));
+
+    const res = await reconcileProfileMessages(pid);
+    expect(gatherState.calls).toBe(1);
+    expect(res.edited).toBe(1);
+    expect(String(editText.mock.calls[0][2])).toContain("1/1 taken");
+  });
+
+  it("rebuilds past the floor even when the stamp saw nothing — an accelerator, not an oracle", async () => {
+    const pid = newProfile("Floor Fred");
+    seedLoginTelegram(pid, "9212");
+    seedDose(pid, "Fred D3");
+    await sendDigestFor(pid, "Floor Fred");
+    await reconcileProfileMessages(pid);
+    gatherState.calls = 0;
+    await reconcileProfileMessages(pid);
+    expect(gatherState.calls).toBe(0);
+
+    // Age the record past the floor. This stands in for the change class the stamp
+    // deliberately does not try to see — an in-place edit of a row it does not window —
+    // which must still reach the chat rather than standing until tomorrow.
+    const rec = parseProseGatherRecord(
+      getProfileSetting(pid, "notify_digest_recon")
+    );
+    expect(rec).not.toBeNull();
+    setProfileSetting(
+      pid,
+      "notify_digest_recon",
+      formatProseGatherRecord({
+        ...rec!,
+        at: rec!.at - DIGEST_REGATHER_FLOOR_MS - 1,
+      })
+    );
+
+    await reconcileProfileMessages(pid);
+    expect(gatherState.calls).toBe(1);
+  });
+
+  it("drops the rolled-over pointer without gathering at all", async () => {
+    const pid = newProfile("Rollover Rae");
+    seedLoginTelegram(pid, "9213");
+    seedDose(pid, "Rae D3");
+    await sendDigestFor(pid, "Rollover Rae");
+    db.prepare("UPDATE notify_messages SET date = ? WHERE profile_id = ?").run(
+      shiftDateStr(today(pid), -1),
+      pid
+    );
+    gatherState.calls = 0;
+
+    expect((await reconcileProfileMessages(pid)).dropped).toBe(1);
+    expect(gatherState.calls).toBe(0);
+  });
+
+  it("every declared dependency is profile-scoped and actually runs", () => {
+    // What the profile-scoping scan cannot read off a composed statement, asserted here
+    // instead: each arm's WHERE opens on the profile, directly or through the parent
+    // join the child-table convention requires.
+    for (const dep of DIGEST_DEPENDENCIES) {
+      const where = dep.from.slice(dep.from.search(/\bWHERE\b/));
+      expect(where, dep.table).toMatch(/(?:^|[\s.(])profile_id\s*=\s*\?/);
+    }
+    // …and the composed statement is one SQLite accepts, arm for arm.
+    const pid = newProfile("Scoped Sky");
+    const rows = db
+      .prepare(digestStampSql())
+      .all(DIGEST_DEPENDENCIES.flatMap(() => [pid, "1970-01-01"])) as {
+      t: string;
+    }[];
+    expect(rows.map((r) => r.t).sort()).toEqual(
+      DIGEST_DEPENDENCIES.map((d) => d.table).sort()
+    );
+  });
+
+  it("moves the stamp for the profile that wrote, and only for that one", async () => {
+    const subject = newProfile("Stamp Sara");
+    const bystander = newProfile("Stamp Silas");
+    const { itemId, doseId } = seedDose(subject, "Sara D3");
+    seedDose(bystander, "Silas D3");
+
+    const before = digestDependencyStamp(subject);
+    const bystanderBefore = digestDependencyStamp(bystander);
+    expect(before).toMatch(/^[0-9a-f]{32}$/);
+
+    markDoseTaken(subject, doseId, itemId, today(subject));
+
+    expect(digestDependencyStamp(subject)).not.toBe(before);
+    // Profile-scoped like every other statement in lib/: one subject's ledger write must
+    // not make every other profile pay for a rebuild.
+    expect(digestDependencyStamp(bystander)).toBe(bystanderBefore);
   });
 });

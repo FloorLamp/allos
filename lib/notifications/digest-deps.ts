@@ -35,6 +35,12 @@
 //
 // That division is the honest one to keep in mind when adding to the list: an entry
 // makes its domain PROMPT, and forgetting one costs latency, never correctness.
+//
+// ONE DOMAIN IS DELIBERATELY ABSENT. The daily check-in's store is store-PRIVATE by the
+// #992 contract — no flag, retest, streak or import engine may name that table, and a
+// dependency stamp is no more entitled to than any of them. The check-in therefore
+// reconciles on the floor rather than on the stamp, which is exactly the trade this
+// design is built to make: latency, never a claim left standing.
 
 import { db, today } from "../db";
 import { shiftDateStr } from "../date";
@@ -93,13 +99,6 @@ const DIGEST_DEPENDENCIES: readonly DigestDependency[] = [
     from: `FROM food_log_events
            WHERE profile_id = ? AND date >= ?`,
     why: "The append-only twin of food_log: every serving logged is an event row, so the counter moves even though food_log itself upserts in place.",
-  },
-  {
-    table: "mood_logs",
-    select: `COUNT(*) || ':' || COALESCE(MAX(id), 0)`,
-    from: `FROM mood_logs
-           WHERE profile_id = ? AND date >= ?`,
-    why: "The check-in the digest can report as outstanding.",
   },
   {
     table: "symptom_logs",
@@ -173,12 +172,17 @@ type Prepared = ReturnType<typeof db.prepare>;
 
 let stampStmt: Prepared | null = null;
 
+// The whole stamp as one statement, composed from the declaration above. Exported so the
+// DB tier can assert what the profile-scoping scan cannot read off a statement it did
+// not find as a literal: that every arm is profile-scoped and every arm actually runs.
+export function digestStampSql(): string {
+  return DIGEST_DEPENDENCIES.map(
+    (d) => `SELECT '${d.table}' AS t, ${d.select} AS s ${d.from}`
+  ).join("\n UNION ALL\n");
+}
+
 function statement(): Prepared {
-  return (stampStmt ??= db.prepare(
-    DIGEST_DEPENDENCIES.map(
-      (d) => `SELECT '${d.table}' AS t, ${d.select} AS s ${d.from}`
-    ).join("\n UNION ALL\n")
-  ));
+  return (stampStmt ??= db.prepare(digestStampSql()));
 }
 
 // A short fingerprint of the digest's watched ledgers for one profile. Cheap by
