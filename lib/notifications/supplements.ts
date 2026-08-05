@@ -53,8 +53,60 @@ import { isPrn } from "../supplement-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
 import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
+import { now as clockNow } from "../clock";
+import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import {
+  correctionActions,
+  correctionPickerActions,
+  correctionPickerTitle,
+  DOSE_TIME_PREFIXES,
+} from "./correction-rows";
+import { plainBody } from "./rich-text";
 
 export type { ReminderWindow, IntakeSendSlot };
+
+// ---- The dose-time correction ride-along (issue #2020) ----
+
+// Append the eating-time model's dose twin to a rendered intake message: one row per
+// burst of confirmations tapped in the last hour, derived from the LEDGER rather than
+// from any memory of what an earlier keyboard showed.
+//
+// A RIDE-ALONG in the strict sense — no message is ever SENT because an instant might be
+// wrong. It decorates the reminder that already exists, which is what makes the whole
+// affordance free: the dose keyboard lives for the dose-log window (#2018), so the chips
+// simply appear on whichever copy of it is currently in the chat, and the hourly sweep
+// strips them when the burst ages out.
+//
+// One helper for every site that renders this message — the send, both tap rebuilds and
+// the reconcile rebuild — so the sweep can never produce a keyboard a tap would not
+// (#221), which is exactly the condition its zero-call steady state depends on.
+export function withDoseCorrections(
+  profileId: number,
+  message: NotificationMessage,
+  opts: { now?: Date; pickerAnchor?: number | null } = {}
+): NotificationMessage {
+  const now = opts.now ?? clockNow();
+  const bursts = getDoseCorrectionBursts(profileId, now);
+  if (bursts.length === 0) return message;
+  const tz = getTimezone(profileId);
+  // An OPEN picker survives the rebuild (see `openPickerAnchor`): the sweep re-renders
+  // from this builder, and dropping the drill-down would take the question away from
+  // someone in the middle of answering it.
+  const open = opts.pickerAnchor
+    ? bursts.find((b) => b.fromId === opts.pickerAnchor)
+    : undefined;
+  const extra = open
+    ? correctionPickerActions(DOSE_TIME_PREFIXES, profileId, open, now, tz)
+    : correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz);
+  const body = open
+    ? `${plainBody(message.body)}\n${correctionPickerTitle("when did you take these", open, tz)}`
+    : message.body;
+  return {
+    ...message,
+    body,
+    actions: [...(message.actions ?? []), ...extra],
+  };
+}
 
 // Rolling window for the adherence percentage shown on each line —
 // matches the supplements page's strip length.
@@ -264,11 +316,9 @@ export function buildIntakeReminderForSlots(
   // is pending, so no reminder goes out (a skip stops re-nudging like a take).
   const all = parts.flatMap((p) => p.entries);
   if (all.every((e) => e.taken || e.skipped)) return null;
-  const message = renderMergedIntakeMessage(
+  const message = withDoseCorrections(
     profileId,
-    parts,
-    date,
-    getUserAge(profileId)
+    renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId))
   );
   // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
   // slot's must/should doses carries a More… row exposing the SAME slot's `may`

@@ -119,7 +119,22 @@ day's ledger on its detail page ("2 today · last 4:02pm") instead of a binary
 check-off pill; a SCHEDULED med keeps the tri-state `DoseStatusControl` (in the
 Today panel). Migration 041 backfills `given_at = taken_at` for every existing
 row, so scheduled adherence strips/percentages/escalation read bit-identically
-(pinned by the `administration-ledger` DB-tier regression fixture). The passport
+(pinned by the `administration-ledger` DB-tier regression fixture).
+
+**A late Telegram confirm can be corrected in place (#2020).** A scheduled confirm
+stamps `given_at` = the tap moment, so a bedtime dose confirmed at 07:00 told the PRN
+redose window it was nine hours fresher than it was, and the chat had no way to say
+otherwise. The rebuilt reminder now carries burst-collapsed `dosetime` chips —
+`−1h · −2h · −3h` plus the 🕐 absolute-hour picker, the same model #2019 gave the food
+ledger, over the `given_at` this ledger has had since migration 041 (no schema). The
+correction moves the administration INSTANT only: the row's `date` is schedule-owned
+(#614), so a bedtime dose corrected across midnight still counts for the day the
+reminder was asking about. It does not re-run the `ADMIN_DEDUP_WINDOW_SEC` proximity
+guard (that runs at insert time, and a correction may legitimately move two real
+administrations together — merging one away would destroy a record of something that
+was taken) and it never re-arms an escalation (#1933). Direction of safety: every
+offer moves the instant EARLIER, so the computed freshness only ever shrinks. See
+`docs/internals/notifications.md` for the shared chip/picker model. The passport
 reads structured `kind='medication'` rows as its primary medication source, with
 `medical_records` `category='prescription'` still a fallback for un-modeled
 extracted prescriptions. **PRN redose notice + pediatric label dosing (#798).**

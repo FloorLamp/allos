@@ -355,6 +355,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 116 ADD COLUMN guard: schema-shape introspection so the non-version-gated migrate() replay no-ops — reads column metadata, never food events",
   },
   {
+    file: "lib/migrations/versions/154-food-eating-time.ts",
+    includes: "PRAGMA table_info(food_log_events)",
+    why: "migration 154 (#2019) ADD COLUMN guard for eaten_at/time_source: the same schema-shape introspection migration 116 uses on this table — reads column metadata, never food events",
+  },
+  {
     file: "lib/migrations/versions/090-medical-record-category-classes.ts",
     includes:
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",

@@ -236,3 +236,45 @@ describe("the registry itself", () => {
     }
   });
 });
+
+// ---- The time-semantic completeness guard (issue #2019 §7) ----
+//
+// Two features needed eating time and both routed around the food ledger, because
+// nothing said what a one-tap log's TIME meant. This is the declaration that stops a new
+// quick-log entry from shipping without answering — the RECONCILE_PREFIXES discipline,
+// one registry over.
+describe("quick-log time semantics (#2019 §7)", () => {
+  it("every entry declares a semantic with a written reason", () => {
+    for (const item of QUICK_LOG_ITEMS) {
+      expect(["instant", "day-only"], item.id).toContain(item.time.semantic);
+      // A reason, not a placeholder: the point is that "we decided against it" and
+      // "nobody looked" stay distinguishable a year from now.
+      expect(item.time.why.length, item.id).toBeGreaterThan(40);
+    }
+  });
+
+  it("an `instant` entry names its correction unit; a `day-only` one has none", () => {
+    for (const item of QUICK_LOG_ITEMS) {
+      if (item.time.semantic === "instant") {
+        expect(["hour", "day"], item.id).toContain(item.time.chipUnit);
+      } else {
+        expect(item.time.chipUnit, item.id).toBeUndefined();
+      }
+    }
+  });
+
+  it("food and dose are the two `instant` logs #2019/#2020 built the capture for", () => {
+    const byId = new Map(QUICK_LOG_ITEMS.map((i) => [i.id, i]));
+    expect(byId.get("log-food")!.time).toMatchObject({
+      semantic: "instant",
+      chipUnit: "hour",
+    });
+    expect(byId.get("log-dose")!.time).toMatchObject({
+      semantic: "instant",
+      chipUnit: "hour",
+    });
+    // Practice is the DELIBERATE non-extension: day-granular by design, and nothing
+    // reads an instant, so capturing one would invite a consumer to invent a meaning.
+    expect(byId.get("log-practice")!.time.semantic).toBe("day-only");
+  });
+});

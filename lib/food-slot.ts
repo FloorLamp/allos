@@ -92,3 +92,51 @@ export function deriveFoodSlot(
 export function foodSlotForHhmm(hhmm: string, b: FoodSlotBoundaries): FoodSlot {
   return deriveFoodSlot(hhmmToMinutes(hhmm), b);
 }
+
+// ---- Slot ANCHORS: the point a window is "about" (issue #2019) ----
+
+// The default anchor minute-of-day for each window, used when the profile has not
+// configured a full notify schedule. These are meal times, not bucket midpoints: the
+// midpoint of the default Morning bucket [00:00, 11:00) is 05:30, which is nobody's
+// breakfast, and anchoring proximity there would rank a 05:30 snack above an 08:00 one
+// for the morning nudge.
+export const DEFAULT_SLOT_ANCHORS: Record<FoodSlot, number> = {
+  Morning: 8 * 60,
+  Midday: 12 * 60 + 30,
+  Evening: 18 * 60 + 30,
+};
+
+// The anchor minute for each window, from the profile's configured notify slot HOURS —
+// the SAME three numbers `foodSlotBoundaries` derives its midpoints from, so anchors and
+// boundaries can never describe two different schedules. A coherently shifted rhythm
+// (14:00 morning, 18:00 midday) moves the anchors with it; a partial or non-monotonic
+// configuration falls back to the defaults, exactly as the boundaries do.
+export function foodSlotAnchors(hours: {
+  morning: number | null;
+  midday: number | null;
+  evening: number | null;
+}): Record<FoodSlot, number> {
+  const { morning, midday, evening } = hours;
+  if (
+    morning != null &&
+    midday != null &&
+    evening != null &&
+    morning <= midday &&
+    midday <= evening
+  ) {
+    return {
+      Morning: morning * 60,
+      Midday: midday * 60,
+      Evening: evening * 60,
+    };
+  }
+  return { ...DEFAULT_SLOT_ANCHORS };
+}
+
+// Minutes between two points on a 24-hour CLOCK, the short way round. 23:30 and 00:30
+// are sixty minutes apart, not 1380 — which is what stops a late-evening habit from
+// reading as maximally distant from an early-morning nudge.
+export function clockDistanceMin(a: number, b: number): number {
+  const d = Math.abs(a - b) % (24 * 60);
+  return Math.min(d, 24 * 60 - d);
+}

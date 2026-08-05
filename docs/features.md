@@ -1038,14 +1038,28 @@ as **servings, one tap each** (undo decrements), grouped by whether the guidance
 is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
 meal cards, each with ⋯ row actions to **correct** it — the food group, the day,
 or the meal it belongs to — or to **remove** that one serving. A correction MOVES
-the serving: the day's totals and the per-meal tallies (the same counts the food
-nudge reads) follow it, so a serving tapped into the wrong meal is repaired
+the serving: the day's totals and the per-meal tallies follow it, so a serving tapped into the wrong meal is repaired
 rather than deleted and re-logged under the current time. "Remove this serving"
 is ROW-scoped and is the removal that honours that per-row identity: the group
 row's "−" is the quick group-level control and pops the newest tap in the meal,
 which — since a correction deliberately preserves the tap instant — need not be
 the serving you just moved there. Both write the ledger row and the day counter
-in one transaction, dropping the counter row at zero. A **weekly rollup** — ONE pure
+in one transaction, dropping the counter row at zero.
+
+**When you ate is captured, and correctable (#2019).** A Telegram tap's declared
+contract is "I'm eating now", so the tap instant is recorded as a real eating time
+(`eaten_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+carries burst-collapsed `−1h · −2h · −3h` chips plus an absolute-hour picker for the
+common case of being slow to tap. A correction moves the serving's meal — and, when
+it crosses local midnight, its day and counter row — so last night's dinner logged
+after midnight is a tap plus one chip rather than a dead end. A web log with no stated
+time records NO eating time rather than a confident wrong one, and the nudge's ranking
+now weights each serving by how near it was eaten to the window it is ranking for,
+which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling
+that let editing a supplement reminder hour move which meal a historical serving
+belonged to.
+
+A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from

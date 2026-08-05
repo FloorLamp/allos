@@ -6,15 +6,18 @@
 // never sees it.
 
 import {
+  getFoodCorrectionBursts,
   getFoodNudgeRankedKeys,
   getFoodServingsOnDate,
-  getFoodSlotServingsOnDate,
   getProteinLoggedGrams,
+  getProteinTapsOnDate,
   getProteinQuickAddPreset,
   getProteinToday,
 } from "../queries";
-import { getUserAge } from "../settings";
+import { getTimezone, getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
+import { now as clockNow } from "../clock";
+import type { CorrectionBurst } from "../correction-time";
 import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -45,8 +48,14 @@ export function buildFoodNudge(
   // for a fresh send; the "Show more"/"Show less" handler, a food/protein tap after expansion,
   // and the tick-time reconcile (#1779/#1807) all pass the current visible count (read off the
   // live keyboard) so no rebuild silently resizes a keyboard the user sized.
-  visibleCount?: number
+  visibleCount?: number,
+  // The eating-time ride-along's two knobs (#2019). `now` is the instant tap freshness is
+  // judged against — injected rather than read from the clock here so the send, the
+  // rebuild and the sweep can all be pinned to one time in a test. `picker` renders the
+  // open absolute-hour drill-down in place of the chip rows.
+  opts: { now?: Date; picker?: CorrectionBurst } = {}
 ): NotificationMessage | null {
+  const now = opts.now ?? clockNow();
   if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
   // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
   // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
@@ -54,9 +63,15 @@ export function buildFoodNudge(
   // profile so it surfaces in the slots they shake. Shares blendFoodOrder with the web bar
   // (one computation, #221).
   const rankedKeys = getFoodNudgeRankedKeys(profileId, window);
-  // Buttons are SLOT-scoped counts (#1016); the tally line is the DAY total.
-  const slotServings = getFoodSlotServingsOnDate(profileId, window, date);
+  // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
+  // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
+  // The protein button's own day count (#1379's sibling consistency, on #2019's day
+  // meaning). The reserved key never lands in the food_log counter `dayServings` reads,
+  // so its taps are counted off the ledger and merged in here — the renderer then applies
+  // ONE suffix rule to every button on the keyboard.
+  const proteinTaps = getProteinTapsOnDate(profileId, date);
+  if (proteinTaps > 0) dayServings.set(PROTEIN_NUDGE_KEY, proteinTaps);
   // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
   const pt = getProteinToday(profileId);
@@ -73,19 +88,18 @@ export function buildFoodNudge(
     if (grams > 0) proteinLine = `Protein ${grams} g today`;
   }
   const presetGrams = getProteinQuickAddPreset(profileId) ?? undefined;
-  return renderFoodNudge(
-    profileId,
-    window,
-    date,
-    rankedKeys,
-    slotServings,
-    dayServings,
-    {
-      proteinLine,
-      visibleCount,
-      proteinPresetGrams: presetGrams,
-    }
-  );
+  // The eating-time correction ride-along (#2019), derived from ledger state — so it
+  // rides EVERY food keyboard the builder produces: the send, a tap rebuild, an
+  // expansion, and the hourly reconcile, with no send path of its own.
+  const corrections = getFoodCorrectionBursts(profileId, now);
+  return renderFoodNudge(profileId, window, date, rankedKeys, dayServings, {
+    proteinLine,
+    visibleCount,
+    proteinPresetGrams: presetGrams,
+    corrections,
+    tz: getTimezone(profileId),
+    ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
+  });
 }
 
 // The one-time prompt sent the first time a profile connects Telegram, asking

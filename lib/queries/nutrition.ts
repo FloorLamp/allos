@@ -30,19 +30,30 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { type FoodSlot } from "../food-slot";
+import { foodSlotAnchors, type FoodSlot } from "../food-slot";
 import {
   foodSlotForProfileInstant,
+  profileFoodSlotAnchors,
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
-import { blendFoodOrder, demoteCappedGroups } from "../food-rank";
+import {
+  blendFoodOrder,
+  demoteCappedGroups,
+  slotProximityOccurrences,
+} from "../food-rank";
 import {
   foodEventWindow,
-  foodEventsInWindow,
   slotServingCounts,
   type FoodLedgerEvent,
 } from "../food-slot-count";
-import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import { hhmmToMinutes } from "../date";
+import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import {
+  correctionBursts,
+  CORRECTION_FRESH_MIN,
+  type CorrectionBurst,
+} from "../correction-time";
+import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
@@ -200,7 +211,8 @@ export function getFoodMealDays(
 
   const events = db
     .prepare(
-      `SELECT id, group_key AS name, date, logged_at, meal_slot FROM food_log_events
+      `SELECT id, group_key AS name, date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY logged_at, id`
     )
@@ -218,7 +230,8 @@ export function getFoodMealDays(
       event.logged_at,
       tz,
       boundaries,
-      event.meal_slot
+      event.meal_slot,
+      event.eaten_at
     );
     const slotCounts = day.slotCounts[slot];
     slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
@@ -230,7 +243,11 @@ export function getFoodMealDays(
       name: group.name,
       date: event.date,
       mealSlot: slot,
-      time: zonedDateParts(tz, new Date(event.logged_at)).hhmm,
+      // The EATING time where one was captured (#2019), the tap time otherwise. The
+      // list exists to make two servings of one group distinguishable, and after a
+      // correction the tap time is no longer the number the user would recognise.
+      time: zonedDateParts(tz, new Date(event.eaten_at ?? event.logged_at))
+        .hhmm,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.
@@ -386,7 +403,7 @@ function gatherFoodRankingSignals(
 ): {
   t: string;
   overall: { name: string; date: string; weight: number }[];
-  slot: { name: string; date: string }[];
+  slot: { name: string; date: string; weight?: number }[];
 } {
   const t = today(profileId);
   const since = recentWindowStart(profileId);
@@ -403,22 +420,35 @@ function gatherFoodRankingSignals(
     }[]
   ).map((r) => ({ name: r.name, date: r.date, weight: r.servings }));
 
-  // Slot signal: the per-tap ledger, each event's window derived at read time. Only when a
-  // window is requested — otherwise the blend degrades to pure overall frecency.
-  let slot: { name: string; date: string }[] = [];
+  // Slot signal: the per-tap ledger, weighted by PROXIMITY to the requested window's
+  // anchor (#2019) rather than by bucket equality. Only when a window is requested —
+  // otherwise the blend degrades to pure overall frecency.
+  //
+  // Each event contributes at the minute it was EATEN when one was captured (`eaten_at`,
+  // #2019), and at the minute it was TAPPED otherwise. The minute is read in the
+  // profile's timezone; the anchor is the profile's own configured slot hour. Nothing
+  // here asks which BUCKET an event fell in, so the 14:59/15:01 cliff is gone and an
+  // event that never claimed a meal still participates.
+  let slot: { name: string; date: string; weight?: number }[] = [];
   if (window) {
-    const boundaries = profileFoodSlotBoundaries(profileId);
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+        `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+           FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
       .all(profileId, since) as FoodLedgerEvent[];
-    slot = foodEventsInWindow(events, tz, boundaries, window).map((e) => ({
-      name: e.name,
-      date: e.date,
-    }));
+    slot = slotProximityOccurrences(
+      events.map((e) => ({
+        name: e.name,
+        date: e.date,
+        minuteOfDay: hhmmToMinutes(
+          zonedDateParts(tz, new Date(e.eaten_at ?? e.logged_at)).hhmm
+        ),
+      })),
+      profileFoodSlotAnchors(profileId)[window]
+    );
   }
   return { t, overall, slot };
 }
@@ -493,11 +523,80 @@ export function getFoodSlotServingsOnDate(
   const tz = getTimezone(profileId);
   const events = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+      `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
         WHERE profile_id = ? AND date = ?`
     )
     .all(profileId, date) as FoodLedgerEvent[];
   return slotServingCounts(events, tz, boundaries, window, date);
+}
+
+// How many PROTEIN taps landed on a day (#1073/#1379). The reserved __protein__ key
+// deliberately never reaches the `food_log` day counter — reserved-key discipline keeps a
+// shake from becoming a serving — so its "(n)" suffix has to be counted off the ledger it
+// DOES write to. One row per tap, so the count is taps, not grams; the day's grams stay on
+// the nudge's own protein line. Profile-scoped via the food_log_events filter.
+export function getProteinTapsOnDate(profileId: number, date: string): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM food_log_events
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    )
+    .get(profileId, date, PROTEIN_NUDGE_KEY) as { n: number };
+  return row.n;
+}
+
+// ---- Eating-time correction rows (issue #2019) ----
+
+// The profile's recent food taps as the correction offer reads them: row id, the
+// IMMUTABLE tap stamp (burst identity and every chip offset key on this), and a display
+// name for a lone-tap row. Bounded by the freshness window the offer itself uses, so the
+// read is a handful of rows however busy the day was.
+//
+// THE ROW SET IS A QUERY, not a memory. Nothing records that some earlier keyboard
+// rendered a correction row, which is exactly why the rows survive a rebuild, a pointer
+// rotation and a restart: whichever food keyboard is currently live renders the offers
+// the LEDGER still justifies. Profile-scoped via the food_log_events filter.
+export function getRecentFoodTaps(
+  profileId: number,
+  now: Date = clockNow()
+): FoodTapRow[] {
+  const since = new Date(
+    now.getTime() - CORRECTION_FRESH_MIN * 60_000
+  ).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT id, group_key, logged_at FROM food_log_events
+        WHERE profile_id = ? AND logged_at >= ?
+        ORDER BY logged_at, id
+        LIMIT 100`
+    )
+    .all(profileId, since) as {
+    id: number;
+    group_key: string;
+    logged_at: string;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    groupKey: r.group_key,
+    tapAt: r.logged_at,
+    // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
+    // what it is rather than rendered as a mystery slug.
+    label: isProteinNudgeKey(r.group_key)
+      ? "Protein"
+      : (foodGroupBySlug(r.group_key)?.name ?? r.group_key),
+  }));
+}
+
+// The correction rows one food keyboard should carry right now — the fresh taps,
+// collapsed into bursts, newest first, capped. One computation for the send, every
+// rebuild, and the hourly sweep (#221), so a chat can never show a chip the handler
+// would refuse.
+export function getFoodCorrectionBursts(
+  profileId: number,
+  now: Date = clockNow()
+): CorrectionBurst[] {
+  return correctionBursts(getRecentFoodTaps(profileId, now), now);
 }
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
