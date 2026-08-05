@@ -10,9 +10,11 @@ function prnLogToken(): string {
 export async function handleDoseCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  // Match "/dose" or "/dose@botname" (any trailing args are ignored in v1).
-  if (!/^\/dose(@\w+)?(\s|$)/i.test(text)) return;
+  // Is this text a `/dose`? Asked of the VOCABULARY (#2004), never of a private regex:
+  // `isCommandText` runs the same parser the dispatcher routed on, so aliases,
+  // `@botname` addressing, case and trailing args cannot mean one thing there and
+  // another here.
+  if (!isCommandText("dose", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
@@ -166,8 +168,8 @@ function symptomGridKeys(profileId: number): string[] {
 export async function handleSymptomCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/symptoms?(@\w+)?(\s|$)/i.test(text)) return;
+  // `/symptoms` resolves through the alias table, not through an `s?` here (#2004).
+  if (!isCommandText("symptom", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
@@ -347,8 +349,9 @@ export async function handleSymptomSeverity(
 export async function handleTempCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/temp(erature)?(@\w+)?(\s|$)/i.test(text)) return;
+  // `/temperature` resolves through the alias table, not through an optional group
+  // here (#2004).
+  if (!isCommandText("temp", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
@@ -713,7 +716,7 @@ import {
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { buildMoodCheckin } from "./mood";
-import { parseCommand } from "./telegram-commands";
+import { isCommandText, parseCommand } from "./telegram-commands";
 import {
   chatCommandContext,
   isCommandAvailable,
