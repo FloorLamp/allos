@@ -131,9 +131,13 @@ describe("cross-profile scheduled dose confirm (#1373)", () => {
     const res = await setDoseStatus(
       fd({ dose_id: doseId, status: "taken", profileId: kid.id })
     );
-    // The gate passes (kid is write-granted) but applyDoseStatus scopes the dose to
-    // the kid, so home's dose is untouched — no cross-profile leak.
-    expect(res.ok).toBe(true);
+    // The gate passes (kid is write-granted) but the write core scopes the dose to the
+    // kid, so home's dose is untouched — no cross-profile leak. Since #2039 the action
+    // renders the core's typed outcome instead of confirming unconditionally, so this
+    // forged post is ANSWERED as the stale dose it is rather than reported ok. Only a
+    // forged post can reach here: the control is never rendered for a dose the board's
+    // profile doesn't own.
+    expect(res.ok).toBe(false);
     expect(doseStatus(doseId, today(kid.id))).toBeUndefined();
     expect(doseStatus(doseId, today(home.id))).toBeUndefined();
   });

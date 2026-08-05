@@ -63,9 +63,13 @@ describe("imported wellness practices", () => {
         .get(imported.id, profileId)
     ).toEqual({ duration_min: 45 });
 
-    expect(deletePracticeSession(profileId, imported.id)).toEqual({
+    // Since #2038 a session delete captures for undo and carries the token; the
+    // tombstone below is written by the SAME transaction and is what keeps the resync
+    // from resurrecting the row — undo and idempotency are orthogonal.
+    expect(deletePracticeSession(profileId, imported.id)).toMatchObject({
       kind: "deleted",
       id: imported.id,
+      undoId: expect.any(Number),
     });
     expect(upsertPracticeLogs(profileId, [row], "fitbit-takeout")).toEqual({
       inserted: 0,

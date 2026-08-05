@@ -88,7 +88,7 @@ is a DERIVED view over it — an administration exists for that dose+day. The
 `UNIQUE(dose_id, date)` constraint that used to enforce one-per-day was dropped
 (migration 041), so **idempotency moved from the constraint into the write
 cores**: the scheduled paths (`markDoseTaken`, `markDoseSkipped`,
-`applyDoseStatus`) keep one-taken-row-per-(dose,date) via an explicit
+`setDoseStatusCore`) keep one-taken-row-per-(dose,date) via an explicit
 exists-check inside their `writeTx` (BEGIN IMMEDIATE serializes the
 SELECT-then-INSERT, so a double-tap/replica race no-ops), while the PRN path is
 a NEW auth-blind core `logAdministration(profileId, itemId, givenAt?)` that
@@ -749,12 +749,27 @@ each linked item keeps its own and draws that many units.
 single place either adjustment is written; they now resolve the item's
 `supply_id` (profile-scoped) and land on the POOL when it is set. Every dose-log
 path therefore becomes pool-aware with **no second decrement path**: the page
-tri-state (`applyDoseStatus`), `markDoseTaken` (dashboard hero, Upcoming, the
+tri-state (`setDoseStatusCore`), `markDoseTaken` (dashboard hero, Upcoming, the
 household cockpit's cross-profile confirm, Telegram taps), `logAdministration`
 (PRN quick-log, `/dose`), the historical-dose backfill, the offline replay, and
 the administration undo/restore inverse. `refillSupply` (the one-tap "Refilled")
 tops up the pool, while `last_fill_size` stays on the ITEM ("I buy the 90-count
 bottle" is a fact about how one person restocks).
+
+**One core owns every `intake_item_logs` transition (#2039).** The three scheduled
+paths above are ONE function in `lib/queries/intake/adherence.ts` differing by a
+single flag: the one-way resolvers (`markDoseTaken` / `markDoseSkipped` — Telegram,
+offline replay, dashboard, household) short-circuit on ANY existing row and report
+its ACTUAL status, while the explicit web set (`setDoseStatusCore`) may flip or
+clear because the user is looking at the control. Until #2039 the tri-state was a
+second core living in `app/(app)/nutrition/supplement-actions.ts`, and it had
+drifted: it never refused a PAUSED item, so the one contract `markDoseTaken` exists
+to state held on the Telegram path and not on the web one. The Server Action is now
+a thin authorization + validation boundary that renders the core's typed outcome
+instead of confirming unconditionally, `intake_item_logs` is a registered gated
+table so the scan fails the next parallel core, and the supply crossing reads the
+ledger row's own `supply_adjusted` — clearing a deliberately unadjusted historical
+row hands back nothing.
 
 Both counters are registered gated tables (`STATEFUL_WRITE_TABLES`, #1893):
 outside `refill.ts` and `supply-pool.ts` no module may write `quantity_on_hand`

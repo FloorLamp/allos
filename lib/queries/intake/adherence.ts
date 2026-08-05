@@ -39,6 +39,8 @@ import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
   DoseStatus,
+  DoseStatusOutcome,
+  DoseStatusTarget,
   DoseTakenOutcome,
   EscalationAckOutcome,
   HistoricalDoseOutcome,
@@ -166,44 +168,68 @@ export function getSkippedDoseIds(
   return new Set(rows.map((r) => r.dose_id));
 }
 
-// Log a single dose as taken on `date`, idempotently — the non-React-context
-// counterpart to the toggleTaken server action, callable from the notification
-// webhook. Mirrors toggleTaken's insert (dose_id + item_id + date +
-// amount snapshot) so the supplements page's per-dose adherence reflects it;
-// never deletes. Returns what actually happened so the caller (the Telegram
-// tap handler) can answer honestly: a tap on a button whose dose was since
-// deleted/retired by an edit, or whose item was paused, logs NOTHING and must
-// not be acknowledged as "Logged".
+// ---- The ONE intake_item_logs resolution core (#2039) ---------------------------
 //
-// `takenAt` (#1427) is an OPTIONAL captured intake instant, supplied only by the
-// offline write queue's replay: the tap happened when the user actually took the
-// dose, possibly hours before the connection came back, so the log is stamped with
-// that moment instead of the replay one. It is validated (never trusted) by the pure
-// resolveQueuedTakenAt and silently falls back to the server's own now when unusable
-// — a skewed phone clock must cost the precise minute, never the dose log. Every
-// other caller omits it and behaves byte-identically to before.
-export function markDoseTaken(
+// Every transition of a SCHEDULED dose's daily log row happens here: taken, skipped,
+// and clear, with the on-hand supply coupling inside the same transaction. Until #2039
+// there were two of these — this one (insert-only, typed, the #232 contract) and a
+// tri-state twin living in app/(app)/nutrition/supplement-actions.ts with its own
+// DELETE/INSERT/UPDATE and its own supply crossings — maintained separately, carrying
+// the same #468/#797 BEGIN-IMMEDIATE reasoning in near-identical prose. The repo had
+// already paid for that shape once (lib/offline/writes.ts records a parallel offline
+// dose writer that drifted and was deleted for it), and the twin had in fact drifted:
+// it never refused a PAUSED item, so the one contract markDoseTaken exists to state
+// held on the Telegram/offline path and not on the web one.
+//
+// `intake_item_logs` is now registered in STATEFUL_WRITE_TABLES (lib/stateful-writes.ts)
+// so the scan fails the next parallel core instead of review having to catch it.
+//
+// TWO INTENTS, ONE CORE. `resolveOnly` is the difference and the only one:
+//   • resolveOnly (markDoseTaken / markDoseSkipped — Telegram, offline replay, the
+//     dashboard hero, the household cockpit): resolve an UNRESOLVED dose. ANY existing
+//     row short-circuits and is reported by its ACTUAL status (#280), so a stale ✅ on a
+//     dose meanwhile marked skipped is never answered "Logged" and never overwrites it.
+//   • the explicit set (setDoseStatusCore — the web tri-state check-off): the user is
+//     looking at the control and stating the target, so a flip or a clear is exactly
+//     what they asked for.
+//
+// ONE IMMEDIATE TRANSACTION (#468/#616). Since #797 dropped UNIQUE(dose_id, date) to
+// allow PRN multiples, the exists-check below IS the idempotency guard for a scheduled
+// dose: BEGIN IMMEDIATE serializes all writers up front (three processes write this DB),
+// so the SELECT-then-write is atomic against a concurrent web replica / notify sidecar —
+// a double-tap or Telegram retry reads the committed row and no-ops instead of inserting
+// a second row and double-decrementing supply.
+interface DoseResolveOptions {
+  // Resolve-only intent (above). Absent/false = the explicit web set.
+  resolveOnly?: boolean;
+  // The client-supplied item id riding on a Telegram callback token. NEVER trusted for
+  // the write (#613/#614) — the write always uses the dose row's own item_id — but a
+  // token whose item contradicts the dose's real one is forged/stale and is refused.
+  supplementId?: number | null;
+  // An OPTIONAL captured intake instant (#1427), supplied only by the offline write
+  // queue's replay: the tap happened when the user actually took the dose, possibly
+  // hours before the connection came back. Validated (never trusted) by the pure
+  // resolveQueuedTakenAt and silently falling back to the server's own now when
+  // unusable — a skewed phone clock must cost the precise minute, never the dose log.
+  takenAt?: Date;
+}
+
+function applyDoseStatusCore(
   profileId: number,
   doseId: number,
-  supplementId: number | null,
   date: string,
-  takenAt?: Date
-): DoseTakenOutcome {
-  // A far-off (forged) date can't land a misdated row (issue #614); a legitimate
-  // late tap within the window still logs to the reminder's own day.
+  target: DoseStatusTarget,
+  opts: DoseResolveOptions = {}
+): DoseStatusOutcome {
+  // A far-off (forged) date can't land a misdated row (#614); a legitimate late tap
+  // within the window still logs to the reminder's own day. The web path always passes
+  // today(), so this is free there.
   if (!isDoseDateAccepted(profileId, date)) return "stale-dose";
-  // The check + insert + supply decrement run as one IMMEDIATE transaction (issue
-  // #616 / #468). This is now what enforces one-taken-row-per-(dose,date) for a
-  // SCHEDULED dose: since #797 dropped UNIQUE(dose_id, date) to allow PRN multiples,
-  // the exists-check below IS the idempotency guard. BEGIN IMMEDIATE serializes all
-  // writers up front (three processes write this DB), so the SELECT-then-INSERT is
-  // atomic against a concurrent web replica / notify sidecar — a double-tap or
-  // Telegram retry reads the committed row and no-ops instead of inserting a second.
-  return writeTx((): DoseTakenOutcome => {
-    // The dose id arrives from a Telegram callback, so verify it belongs to this
-    // profile (via its parent supplement) before logging anything against it. Read
-    // the supplement id from the row rather than trusting the callback token. A
-    // retired dose is no longer part of the schedule — treat it like a deleted one.
+  return writeTx((): DoseStatusOutcome => {
+    // The dose id can arrive from a Telegram callback, so verify it belongs to this
+    // profile (via its parent item) before touching anything. Read the item id from the
+    // row rather than trusting the caller. A retired dose is no longer part of the
+    // schedule — treat it like a deleted one.
     const owned = db
       .prepare(
         `SELECT d.item_id AS item_id, d.amount AS amount,
@@ -226,137 +252,178 @@ export function markDoseTaken(
           DoseCadence)
       | undefined;
     if (!owned) return "stale-dose";
-    // A paused/stopped item keeps its buttons in old messages; refuse the tap so
-    // a lingering reminder can't silently log doses (and burn supply) for an item
-    // the user has deliberately paused.
+    // A paused/stopped item keeps its buttons in old messages; refuse the write so a
+    // lingering reminder can't silently log doses (and burn supply) for an item the user
+    // has deliberately paused. The web control is only RENDERED for an active item, so
+    // this is the forged/stale-post case there — it is not a new refusal a real tap can
+    // reach, it is the twin's missing half of the #232 contract.
     if (!owned.active) return "inactive";
-    // The callback token's supplement id is client-supplied and NEVER trusted for
-    // the write (issue #613/#614): the item is always derived from the dose row. A
-    // token whose supp id contradicts the dose's real item is a forged/stale token,
-    // so answer stale rather than logging (the write below uses owned.item_id).
-    if (supplementId != null && supplementId !== owned.item_id) {
+    if (opts.supplementId != null && opts.supplementId !== owned.item_id) {
       return "stale-dose";
     }
-    // An existing log resolves the day; report its ACTUAL status (issue #280) so
-    // a ✅ tap on a dose meanwhile marked skipped is never answered "Logged".
+
     const existing = db
       .prepare(
-        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        `SELECT status, supply_adjusted FROM intake_item_logs
+          WHERE dose_id = ? AND date = ?`
       )
-      .get(doseId, date) as { status: DoseStatus } | undefined;
-    if (existing) {
-      // Don't re-decrement supply, and never overwrite a deliberate skip.
+      .get(doseId, date) as
+      { status: DoseStatus; supply_adjusted: number } | undefined;
+    // An existing log resolves the day for a one-way tap; report its ACTUAL status
+    // (#280) so a ✅ on a dose meanwhile marked skipped is never answered "Logged",
+    // and never re-decrement supply.
+    if (existing && opts.resolveOnly) {
       return existing.status === "skipped"
         ? "already-skipped"
         : "already-taken";
     }
-    // Snapshot the dose amount at confirm time: history must keep showing what
-    // was actually taken even after a later dosage edit rewrites the dose row.
-    // Always write the dose's OWN item id — never the callback token's. given_at is
-    // the tap moment for a scheduled confirm: the schedule dictates WHEN, so a
-    // precise intake time isn't captured here (the PRN path is what makes given_at
-    // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
-    // captured on the client and validated above (#1427). An unusable/absent stamp
-    // COALESCEs to the server's own now, exactly as before — but from the CLOCK SEAM
-    // (sqlNow, #1534), not SQL's `datetime('now')`: `date` above came from `today()`,
-    // so a real-clock fallback would write a self-contradicting row (a given_at whose
-    // profile-local date isn't the row's own date) on any run that crosses midnight.
-    // The exists-check above already guaranteed no row stands for (dose,date), so
-    // this insert can't duplicate.
-    const stamp = resolveQueuedTakenAt(
-      takenAt,
-      getTimezone(profileId),
-      date,
-      // Real time on purpose: a clock-skew comparison, not a date derivation.
-      new Date()
-    );
-    db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
-       VALUES (?,?,?,?, COALESCE(?, ?))`
-    ).run(
-      doseId,
-      owned.item_id,
-      date,
-      owned.amount,
-      stamp ? utcSqlString(stamp) : null,
-      sqlNow()
-    );
-    // Only the taken insert above (reached once, under the write lock) decrements
-    // on-hand supply, once.
-    decrementSupply(profileId, owned.item_id);
+    const current: DoseStatusTarget = existing ? existing.status : "clear";
+    if (current === target) return "unchanged";
+
+    // Whether the row that stands (or stood) actually consumed supply. A taken row
+    // written by this core carries supply_adjusted = 1; a deliberately unadjusted
+    // historical backfill (#1933) carries 0, and clearing THAT must not hand back units
+    // it never took. Only a taken row's flag is meaningful — a skipped row consumed
+    // nothing whatever the column says.
+    const consumed = current === "taken" && existing?.supply_adjusted !== 0;
+
+    if (target === "clear") {
+      db.prepare(
+        "DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      ).run(doseId, date);
+      if (consumed) incrementSupply(profileId, owned.item_id);
+      return "cleared";
+    }
+
+    // Snapshot the dose amount at confirm time: history must keep showing what was
+    // actually taken even after a later dosage edit rewrites the dose row. A skip
+    // records no amount — nothing was consumed.
+    const amount = target === "taken" ? owned.amount : null;
+    if (!existing) {
+      // given_at is the tap moment for a scheduled confirm: the schedule dictates WHEN,
+      // so a precise intake time isn't captured here (the PRN path is what makes given_at
+      // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
+      // captured on the client and validated above (#1427). An unusable/absent stamp
+      // COALESCEs to the server's own now, but from the CLOCK SEAM (sqlNow, #1534), not
+      // SQL's `datetime('now')`: `date` came from `today()`, so a real-clock fallback
+      // would write a self-contradicting row (a given_at whose profile-local date isn't
+      // the row's own date) on any run that crosses midnight. A skip carries none.
+      const stamp = opts.takenAt
+        ? resolveQueuedTakenAt(
+            opts.takenAt,
+            getTimezone(profileId),
+            date,
+            // Real time on purpose: a clock-skew comparison, not a date derivation.
+            new Date()
+          )
+        : null;
+      db.prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
+         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN COALESCE(?, ?) ELSE NULL END)`
+      ).run(
+        doseId,
+        owned.item_id,
+        date,
+        amount,
+        target,
+        target,
+        stamp ? utcSqlString(stamp) : null,
+        sqlNow()
+      );
+    } else {
+      // A flip between the two resolved states. `given_at` is deliberately left alone:
+      // it records when the dose was TAPPED, and a correction of the status is not a
+      // second intake. supply_adjusted follows the write below, so the row always states
+      // whether its decrement is currently applied.
+      db.prepare(
+        `UPDATE intake_item_logs SET status = ?, amount = ?, supply_adjusted = ?
+          WHERE dose_id = ? AND date = ?`
+      ).run(target, amount, target === "taken" ? 1 : 0, doseId, date);
+    }
+
+    // ONLY a taken row consumes supply, so crossing the taken boundary is the sole thing
+    // that moves the count (the symmetric restore #232 calls for): clear/skipped → taken
+    // decrements once, taken → clear/skipped gives back exactly what was taken, and a
+    // skipped ↔ clear flip never touches it.
+    if (target === "taken") decrementSupply(profileId, owned.item_id);
+    else if (consumed) incrementSupply(profileId, owned.item_id);
+
+    if (target === "skipped") return "skipped";
     // The log is written either way — reality is reality. What changes is the ANSWER
     // (#1602): an off-cadence confirm reports itself so the handler can say which days
     // the dose was meant for instead of a bare ✓. Evaluated on the LOG'S date, not
     // today: a late tap on yesterday's reminder is judged against yesterday.
-    const onDay =
-      cadenceOn(owned, date) && doseOnDay(owned, date)
-        ? "logged"
-        : ("logged-off-day" as const);
-    return onDay;
+    return cadenceOn(owned, date) && doseOnDay(owned, date)
+      ? "logged"
+      : "logged-off-day";
   });
 }
 
-// Log a single dose as SKIPPED on `date` (issue #232) — the sibling of
-// markDoseTaken for the Telegram ⏭ button. A skip is a deliberate "chose not to
-// take it" decision, so it writes a status='skipped' log row (amount NULL:
-// nothing was consumed) and NEVER decrements on-hand supply. Same staleness
-// contract as markDoseTaken: refuses a retired/deleted/cross-profile dose
-// (stale-dose) or a paused item (inactive). Idempotent, and — because a
-// taken→skipped change must be an explicit UI toggle, never a stale-button
-// overwrite — it does NOT flip an already-resolved dose: any existing log row
-// for (dose,date) is left untouched and reported by its ACTUAL status
-// ("already-taken" / "already-skipped", issue #280), so a stale ⏭ tap on a
-// taken dose is never answered "Skipped". Returns what actually happened so
-// the tap handler answers honestly.
+// Narrow the shared core's outcome to the one-way resolvers' contract. The two
+// tri-state-only members are unreachable from `resolveOnly` — ANY existing row
+// short-circuits above, so the flip/clear branches are never entered — and answering a
+// stale tap rather than inventing a confirmation is the safe reading if that ever
+// changes.
+function resolvedOutcome(outcome: DoseStatusOutcome): DoseTakenOutcome {
+  return outcome === "cleared" || outcome === "unchanged"
+    ? "stale-dose"
+    : outcome;
+}
+
+// Log a single dose as taken on `date`, idempotently — the non-React-context write used
+// by the dashboard hero, the Upcoming inline confirm, Telegram inline actions, the
+// household cockpit and the offline replay. Never deletes, never overwrites a deliberate
+// skip. Returns what actually happened so the caller can answer honestly: a tap on a
+// button whose dose was since deleted/retired by an edit, or whose item was paused, logs
+// NOTHING and must not be acknowledged as "Logged".
+export function markDoseTaken(
+  profileId: number,
+  doseId: number,
+  supplementId: number | null,
+  date: string,
+  takenAt?: Date
+): DoseTakenOutcome {
+  return resolvedOutcome(
+    applyDoseStatusCore(profileId, doseId, date, "taken", {
+      resolveOnly: true,
+      supplementId,
+      takenAt,
+    })
+  );
+}
+
+// Log a single dose as SKIPPED on `date` (#232) — the sibling of markDoseTaken for the
+// Telegram ⏭ button and the offline skip. A skip is a deliberate "chose not to take it"
+// decision, so it writes a status='skipped' row (amount NULL: nothing was consumed) and
+// NEVER decrements on-hand supply. Same staleness contract as markDoseTaken, and —
+// because a taken→skipped change must be an explicit UI toggle, never a stale-button
+// overwrite — it does NOT flip an already-resolved dose: any existing row for
+// (dose,date) is left untouched and reported by its ACTUAL status (#280).
 export function markDoseSkipped(
   profileId: number,
   doseId: number,
   supplementId: number | null,
   date: string
 ): DoseTakenOutcome {
-  // Same forged-date guard as markDoseTaken (issue #614).
-  if (!isDoseDateAccepted(profileId, date)) return "stale-dose";
-  return writeTx((): DoseTakenOutcome => {
-    const owned = db
-      .prepare(
-        `SELECT d.item_id AS item_id, s.active AS active
-           FROM intake_item_doses d
-           JOIN intake_items s ON s.id = d.item_id
-          WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
-      )
-      .get(doseId, profileId) as
-      { item_id: number; active: number } | undefined;
-    if (!owned) return "stale-dose";
-    if (!owned.active) return "inactive";
-    // The token's supp id is never trusted for the write (issue #613/#614): a
-    // token contradicting the dose's real item is forged/stale.
-    if (supplementId != null && supplementId !== owned.item_id) {
-      return "stale-dose";
-    }
-    // Any existing log (taken OR skipped) means this dose is already resolved for
-    // the day. A stale ⏭ tap must not overwrite a taken dose (the explicit
-    // taken→skipped toggle lives in the web setDoseStatus action); an already-
-    // skipped dose is an idempotent no-op. Either way: leave it, and report the
-    // status that actually stands (issue #280).
-    const existing = db
-      .prepare(
-        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-      )
-      .get(doseId, date) as { status: DoseStatus } | undefined;
-    if (existing) {
-      return existing.status === "skipped"
-        ? "already-skipped"
-        : "already-taken";
-    }
-    // Write the dose's OWN item id (never the callback token's). The exists-check
-    // above (under the IMMEDIATE write lock, #797's replacement for the dropped
-    // UNIQUE) guaranteed no row stands for (dose,date), so this can't duplicate.
-    db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-    ).run(doseId, owned.item_id, date);
-    // Deliberately no decrementSupply: a skipped dose consumes nothing.
-    return "skipped";
-  });
+  return resolvedOutcome(
+    applyDoseStatusCore(profileId, doseId, date, "skipped", {
+      resolveOnly: true,
+      supplementId,
+    })
+  );
+}
+
+// Set one dose to an explicit target status for `date` — the web tri-state check-off's
+// write (#232), auth-blind and profileId-first like every other lib write core. The
+// Server Action (setDoseStatus) is the authorization + validation boundary over it and
+// renders the outcome; it owns no SQL of its own.
+export function setDoseStatusCore(
+  profileId: number,
+  doseId: number,
+  date: string,
+  target: DoseStatusTarget
+): DoseStatusOutcome {
+  return applyDoseStatusCore(profileId, doseId, date, target);
 }
 
 // ---- PRN (as-needed) administrations ledger (#797) ----

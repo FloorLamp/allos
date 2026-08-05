@@ -71,15 +71,20 @@ export async function editPracticeSession(
   return outcome;
 }
 
+// Remove ONE logged session. Answers in the `{ undoId }` shape `useUndoableDelete`
+// consumes (#2038), so the history row gets the same Undo toast every other "remove one
+// logged event" surface offers; a missing/stale id carries the message instead of a token.
 export async function removePracticeSession(
   formData: FormData
-): Promise<PracticeSessionMutationOutcome> {
+): Promise<{ undoId: number | null; error?: string }> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return { kind: "not-found" };
+  const notFound = { undoId: null, error: "Couldn't find that session." };
+  if (!id) return notFound;
   const outcome = deletePracticeSession(profile.id, id);
-  if (outcome.kind === "deleted") revalidatePracticeSurfaces();
-  return outcome;
+  if (outcome.kind !== "deleted") return notFound;
+  revalidatePracticeSurfaces();
+  return { undoId: outcome.undoId };
 }
 
 export async function savePractice(formData: FormData): Promise<FormResult> {

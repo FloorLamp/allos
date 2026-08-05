@@ -72,6 +72,15 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end.",
   },
   {
+    table: "intake_item_logs",
+    cores: ["lib/queries/intake/adherence.ts"],
+    // No `offerState`, honestly: DoseStatusControl already renders from the dose's
+    // taken/skipped/clear state and each surface gates the control on its own
+    // (active && due) read, but that derivation has not been extracted into one shared
+    // pure function. An honest gap, not a claim.
+    why: "#2039/#232: the dose ledger row is a LIFECYCLE row — taken ↔ skipped ↔ clear — and it is what DRIVES the supply counter one column over, so a parallel core desynchronizes the two. It had one: a tri-state twin in the nutrition Server Action module with its own DELETE/INSERT/UPDATE, its own increment/decrement crossings, and (having drifted) no paused-item refusal at all, while lib/offline/writes.ts already records a THIRD parallel dose writer that drifted and was deleted for it. lib/queries/intake/adherence.ts now owns every transition of the table — the tri-state, the one-way resolvers, the PRN administration ledger and the historical-dose corrections — each under one BEGIN IMMEDIATE with a typed refusal (stale-dose / inactive / already-taken / already-skipped). A raw INSERT from a fourth module would re-mint the #797 double-decrement the exists-check under the write lock exists to prevent.",
+  },
+  {
     table: "intake_items",
     columns: ["quantity_on_hand"],
     cores: [

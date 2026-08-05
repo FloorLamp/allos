@@ -11,9 +11,10 @@ import { daysBetweenDateStr, isRealIsoDate } from "./date";
 import { normalizePracticeName } from "./practice";
 import type {
   PracticeLogOutcome,
+  PracticeSessionDeleteOutcome,
   PracticeSessionMutationOutcome,
 } from "./types";
-import { writeImportTombstoneForRow } from "./integrations/tombstones";
+import { captureDelete } from "./undo-delete-db";
 import {
   getPracticeDayCount,
   getPracticeSession,
@@ -140,22 +141,24 @@ export function logPracticeByTargetId(
 }
 
 // Delete one logged session by id (a correction). Profile-scoped so a leaked id no-ops.
+//
+// UNDOABLE since #2038. Deleting a whole practice has been undoable for as long as the
+// wellness-practice kinds have existed, and so has the structurally identical substance
+// history row — deleting ONE session was the odd path out, permanent, which read as an
+// accident rather than a decision. It now captures through the shared substrate: one
+// transaction holds the capture, the delete, and the re-import tombstone that keeps a
+// resync from resurrecting an imported session, exactly as the whole-practice kinds do.
+// The tombstone is removed again if the user undoes, and outlives the 24h buffer if they
+// don't — undo and idempotency are orthogonal and both hold.
 export function deletePracticeSession(
   profileId: number,
   id: number
-): PracticeSessionMutationOutcome {
+): PracticeSessionDeleteOutcome {
   return writeTx(() => {
-    const row = db
-      .prepare(
-        `SELECT external_id FROM practice_logs WHERE id = ? AND profile_id = ?`
-      )
-      .get(id, profileId) as { external_id: string | null } | undefined;
-    if (!row) return { kind: "not-found" };
-    writeImportTombstoneForRow(profileId, "practice_logs", row);
-    const info = db
-      .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
-      .run(id, profileId);
-    return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+    const undoId = captureDelete("practice-session", profileId, id);
+    return undoId == null
+      ? { kind: "not-found" as const }
+      : { kind: "deleted" as const, id, undoId };
   });
 }
 

@@ -39,6 +39,11 @@ import {
 // allowlist — an entry here is a reviewed exception, not a way to be done with the guard.
 const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
   {
+    file: "app/(app)/settings/family/actions.ts",
+    includes: "DELETE FROM intake_item_logs WHERE item_id IN",
+    why: "deleteProfile's erasure sweep (#2039): removing a whole profile is not a dose TRANSITION — there is no state to refuse into and no supply counter left to keep in lock-step, because the intake_items rows carrying it are erased by the same sweep. Routing it through the per-(dose,date) core would mean walking every log row of every item to delete each one individually. The sweep runs with foreign_keys OFF inside one writeTx and is profile-scoped through the parent item, which is the reason it is written as a set delete in the first place.",
+  },
+  {
     file: "app/(app)/nutrition/supplement-actions.ts",
     includes: "INSERT INTO intake_items",
     why: "createSupplement/createMedication: the item's own CREATE form, where quantity_on_hand is the opt-in initial stock the user typed. There is no prior state to transition from — a born row is the additive case the audit criterion leaves plain — and the refill cores only ever adjust an EXISTING counter relative to its locked read.",

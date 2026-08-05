@@ -42,6 +42,8 @@ const KIND_LABELS: Record<string, string> = {
   "wellness-practice-history": "wellness practice history",
   "substance-alcohol-history": "substance use history",
   "substance-history": "substance use history",
+  "practice-session": "practice session",
+  "food-serving": "food serving",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
   // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
@@ -244,6 +246,26 @@ export function captureDelete(
       ).run(rootId, profileId);
     }
 
+    // A day COUNTER the root is one tick of (#2038): decrement it by one and drop the
+    // row only when the day empties. The counted fact leaves with the root row, so this
+    // happens in the SAME transaction as the capture and the delete — the ledger row and
+    // its day counter are one fact in two shapes and must never be observable apart.
+    // Table/column names come from the constant registry, never from user input.
+    for (const child of spec.entities.slice(1)) {
+      if (!child.counter) continue;
+      for (const row of rows[child.entity] ?? []) {
+        const { column } = child.counter;
+        db.prepare(
+          `UPDATE ${child.table} SET ${column} = ${column} - 1
+            WHERE id = ? AND profile_id = ? AND ${column} > 0`
+        ).run(row.id, profileId);
+        db.prepare(
+          `DELETE FROM ${child.table}
+            WHERE id = ? AND profile_id = ? AND ${column} <= 0`
+        ).run(row.id, profileId);
+      }
+    }
+
     // Convention-owned children (practice sessions and their suppression row) have
     // no cascade FK. Delete exactly the rows captured above, under profile scope,
     // before removing the root so capture + delete remain one atomic operation.
@@ -306,6 +328,33 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       const map = new Map<number, number>();
       idMaps[entity.entity] = map;
       const captured = payload.rows[entity.entity] ?? [];
+      // A day COUNTER (#2038): give back the one tick the delete took, rather than
+      // re-inserting the captured row whole — the day may have gained or lost other
+      // servings in the meantime and they are none of this undo's business. Only when
+      // the delete emptied the day and dropped the row is the snapshot re-inserted,
+      // with the count back at one, which is also what restores its notes.
+      if (entity.counter) {
+        const { column, key } = entity.counter;
+        const where = `profile_id = ?${key.map((k) => ` AND ${k} = ?`).join("")}`;
+        for (const row of captured) {
+          const binds = [profileId, ...key.map((k) => row[k])];
+          const info = db
+            .prepare(
+              `UPDATE ${entity.table} SET ${column} = ${column} + 1 WHERE ${where}`
+            )
+            .run(...(binds as (string | number)[]));
+          if (info.changes > 0) continue;
+          const toInsert = remapRow(row, idMaps, entity.fks, entity.keyRefs);
+          toInsert[column] = 1;
+          const cols = Object.keys(toInsert);
+          db.prepare(
+            `INSERT INTO ${entity.table} (${cols.join(", ")}) VALUES (${cols
+              .map(() => "?")
+              .join(", ")})`
+          ).run(...cols.map((c) => toInsert[c]));
+        }
+        continue;
+      }
       for (const row of captured) {
         const oldId = row.id;
         if (isRoot && typeof oldId === "number") {

@@ -18,6 +18,7 @@ import { foodSlotForProfileEvent } from "./profile-food-slot";
 import { getTimezone } from "./settings";
 import { isProteinNudgeKey } from "./protein-nudge";
 import { burstFrom, type TapEvent } from "./correction-time";
+import { captureDelete } from "./undo-delete-db";
 
 // Where an event's eating instant came from (issue #2019, migration 154). `tap` is the
 // button's own contract — "I'm eating now" — which is a measurement with known error,
@@ -438,7 +439,15 @@ export function updateFoodLogEventCore(
 //                   remove the ranking participant while the grams it stands for
 //                   silently survived. Protein is removed from the protein total.
 export type FoodEventDeleteOutcome =
-  | { kind: "deleted"; id: number; vacated: FoodEventPlacement }
+  | {
+      kind: "deleted";
+      id: number;
+      vacated: FoodEventPlacement;
+      // The undo token (#2038). Every other "remove one logged event" path offers one;
+      // this one used to be permanent, which made the PRECISE control the unforgiving
+      // one next to a group "−" you could just tap again.
+      undoId: number;
+    }
   | { kind: "not-found" }
   | { kind: "not-deletable" };
 
@@ -455,10 +464,14 @@ export type FoodEventDeleteOutcome =
 // The ledger row and the food_log day counter are ONE fact in two shapes, so the counter
 // moves with the row in the SAME IMMEDIATE transaction and the counter row is dropped at
 // zero — the updateFoodLogEventCore/undoFoodServingCore discipline, not a second pattern.
-// `food_log_events` is registered in neither `deleted_rows` (lib/undo-delete.ts holds no
-// food root) nor `STATEFUL_WRITE_TABLES` (lib/stateful-writes.ts, whose own criterion
-// names a food serving as the additive case), so there is no capture payload or gated
-// core to keep consistent here.
+//
+// UNDOABLE since #2038. The removal goes through `captureDelete("food-serving")`, which
+// holds the capture, the event delete and the counter decrement in that one transaction;
+// its registry entry declares `food_log.servings` as the day COUNTER this row is one tick
+// of, so undo increments it back — re-creating the counter row from the captured snapshot
+// only when this serving was the day's last. `food_log_events` remains outside
+// STATEFUL_WRITE_TABLES: logging a serving is still the ADDITIVE case that registry's own
+// criterion names, and undo coverage is a different question from a gated transition.
 export function deleteFoodLogEventCore(
   profileId: number,
   eventId: number
@@ -492,24 +505,17 @@ export function deleteFoodLogEventCore(
       row.eaten_at
     );
 
-    // The stored key is used verbatim (never canonicalized) for the decrement: a retired
-    // slug must still be able to give its serving back, which is exactly the repair
-    // someone reaches for.
-    db.prepare(
-      `UPDATE food_log SET servings = servings - 1
-        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
-    ).run(profileId, row.date, row.group_key);
-    db.prepare(
-      `DELETE FROM food_log
-        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-    ).run(profileId, row.date, row.group_key);
-    db.prepare(
-      `DELETE FROM food_log_events WHERE id = ? AND profile_id = ?`
-    ).run(eventId, profileId);
+    // The captured event's own stored key drives the counter decrement (never a
+    // canonicalized one): a retired slug must still be able to give its serving back,
+    // which is exactly the repair someone reaches for. The registry's counter spec keys
+    // on (date, group_key) read off the captured row, so that holds through undo too.
+    const undoId = captureDelete("food-serving", profileId, eventId);
+    if (undoId == null) return { kind: "not-found" as const };
 
     return {
       kind: "deleted" as const,
       id: eventId,
+      undoId,
       vacated: placementOf(profileId, row.date, row.group_key, slot),
     };
   });

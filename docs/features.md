@@ -1044,7 +1044,8 @@ is ROW-scoped and is the removal that honours that per-row identity: the group
 row's "−" is the quick group-level control and pops the newest tap in the meal,
 which — since a correction deliberately preserves the tap instant — need not be
 the serving you just moved there. Both write the ledger row and the day counter
-in one transaction, dropping the counter row at zero.
+in one transaction, dropping the counter row at zero — and the row-scoped removal
+offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
@@ -2134,9 +2135,15 @@ better than naming its category.
 
 ## Undo delete
 
-Deleting an activity, body-metrics entry, biomarker record, or
-supplement/medication offers a one-tap **Undo** toast; the row (and its
-children) is held for 24 hours and restored intact if you undo, then purged.
+Deleting an activity, body-metrics entry, biomarker record,
+supplement/medication, wellness practice, substance-use history row, **practice
+session**, or **logged food serving** offers a one-tap **Undo** toast; the row
+(and its children) is held for 24 hours and restored intact if you undo, then
+purged. Every "remove one logged event" path behaves the same way — removing one
+session of a practice is as recoverable as removing the whole practice, and
+undoing a serving gives back both the ledger row and the day counter it
+decremented, with its meal window and stated eating time intact (which a re-tap
+could not reproduce).
 
 ## AI activity log
 

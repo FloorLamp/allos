@@ -17,6 +17,8 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
@@ -411,13 +413,17 @@ export default function FoodLogBar({
   // and pops the newest tap in the window, which since #1934 need not be the row the user
   // is looking at; this addresses the ledger id.
   //
-  // Deliberately NOT optimistic and deliberately WITHOUT an undo affordance, both for the
-  // same reason: parity with the group-level control this sits beside, which also removes
-  // on one tap with no undo and no confirm. Adding an undo here would make the PRECISE
-  // control the hedged one, and it would need a restore path for a table that has no
-  // capture (`food_log_events` is in neither `deleted_rows` nor STATEFUL_WRITE_TABLES).
-  // The cost of a mistap is one tap to log the serving again — and unlike "−", this can
-  // only ever take the row that was named.
+  // Deliberately NOT optimistic — the server's `vacated` counts are what the bar adopts,
+  // so a refused write can never leave a phantom count. It IS undoable since #2038: every
+  // "remove one logged event" path in the app now offers the same Undo, and a named
+  // serving carries meal-slot and eaten-at facts a re-tap would silently invent.
+  //
+  // The Undo is wired here rather than through `useUndoableDelete` for the one reason
+  // that hook can't carry: this surface reconciles by SETTING the coordinate's
+  // authoritative counts, both when the serving leaves and when it comes back, and the
+  // shared hook consumes the action's result itself. Same toast, same token, same
+  // undoDelete call — the bespoke seam is the count reconciliation, exactly as
+  // UnitMislabelReview's is its token shape.
   async function removeServing(event: FoodLogEvent) {
     if (removingId !== null) return;
     // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
@@ -452,8 +458,33 @@ export default function FoodLogBar({
     // The authoritative post-write counts for the coordinate the serving vacated. A SET,
     // not a delta — the same reconciliation a correction does, so a dropped or refused
     // write can never leave a phantom count behind.
-    applyPlacement(outcome.vacated);
-    toast("Serving removed.");
+    const vacated = outcome.vacated;
+    applyPlacement(vacated);
+    const undoId = outcome.undoId;
+    toast("Serving removed.", {
+      duration: UNDO_TOAST_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          void (async () => {
+            const restored = await undoDelete(undoId);
+            if (!restored.ok) {
+              toast("Couldn’t undo — it may have expired.", { tone: "error" });
+              return;
+            }
+            // The restore puts back exactly the one serving this delete took, at the
+            // coordinate the server already named — so the counts move by exactly one
+            // from the authoritative figures above, not from a locally guessed total.
+            applyPlacement({
+              ...vacated,
+              servings: vacated.servings + 1,
+              mealServings: vacated.mealServings + 1,
+            });
+            toast("Restored.");
+          })();
+        },
+      },
+    });
   }
 
   async function bump(slug: string, delta: 1 | -1) {
