@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 
 // #158: VO2 Max (and the functional fitness markers) gain an age/sex PERCENTILE +
 // FITNESS AGE context, computed from the baked FRIEND/Dodds/etc. norms in
@@ -67,7 +67,11 @@ test("the Fitness check reaches the surface that judges a measured test (#2086)"
 
   const modal = page.getByTestId("fitness-entry-vo2max");
   await expect(modal).toBeVisible();
-  await settledClick(page, modal.getByTestId("fitness-history-vo2max"));
+  await followLink(
+    page,
+    modal.getByTestId("fitness-history-vo2max"),
+    /\/biomarkers\/view/
+  );
 
   // The destination is the declared surface, with the age/sex percentile on it.
   const main = page.getByRole("main");
