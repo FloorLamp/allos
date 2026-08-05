@@ -964,6 +964,58 @@ A safety kind may never be declared a member: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
 is the one policy that must not move.
 
+## The tick has a memo of its own (#2118, #2111)
+
+**A tick is not a request, so `cache()` does nothing in it.**
+`lib/request-cache.ts` degrades React's `cache()` to identity outside a Next
+server request — deliberately: the plain `react` package a tsx entrypoint
+resolves has no `cache` export, and a memo with no request to bound it has no
+honest lifetime. The consequence is that the hourly tick had **no** memoization
+anywhere, and the same profile's heaviest reads ran several times per tick.
+
+Two were measured. `assessProfilePreventive` — which merges manual and inferred
+satisfactions, overrides, smoking history and the whole `getRiskFactors` gather
+— ran from the nudge planner, from the digest's `collectUpcoming`, and again
+inside the reconcile sweep **once per live preventive-carrying pointer**.
+`getMedicationFamilyStates` — the #1027 cross-item PRN safety state — ran from
+the redose notice, the digest's over-max finding and the quick-log gather.
+
+**`lib/tick-cache.ts` supplies the missing lifetime.** `runInTickScope` opens a
+scope, `tickCached(name, keyOf, fn)` memoizes inside it, and outside a scope the
+wrapper is a plain passthrough — so a DB test, a `manual` send and the `poll`
+loop all compute every call, exactly as before. `scripts/notify.ts` opens one
+scope per profile, around `tickProfile`. Both gathers are wrapped in `cache()`
+**and** `tickCached`, so a render and a tick each get the memo whose lifetime it
+can justify.
+
+**Why not a TTL memo**, the `tzMemo` / schedule-history (#2066) shape. That
+shape is right for a value whose miss "degrades to the documented fallback,
+never a wrong answer". A medication-family state is not such a value: stale, it
+reads LOW, and a low count is the "you may redose" false GO the family gather
+exists to prevent. So the lifetime here is not a duration but a **scope**, held
+by the one caller that can promise nothing inside it writes what it reads —
+`tick()` sends messages and writes `notify_*` markers, while dose confirms,
+preventive satisfactions and overrides arrive through Server Actions and
+Telegram taps, i.e. the webhook route or the sidecar's separate `poll` mode.
+A scope closes with its profile, throw included, and the next one re-reads.
+
+**The teeth** (`lib/__db_tests__/tick-scoped-gathers.test.ts`): a realistic
+profile tick is driven with the statement counts of each gather's own signature
+recorded — 5 preventive assessments and 3 family gathers unscoped, exactly 1
+each scoped, with the verdicts asserted equal either way. The lifetime is pinned
+in the same file: a sibling scope re-reads, a throwing tick still closes its
+scope, and the within-scope snapshot is asserted outright, so a future tick step
+that DOES write one of these inputs fails there rather than silently reading its
+own stale answer.
+
+Migration 156 belongs to the same fix: the family's arming-administration read
+carries no date bound (the interval clock is armed whenever the last dose was),
+and on the baseline indexes it scanned the whole append-only dose ledger and
+sorted the survivors. `intake_item_logs(item_id, given_at)` turns that into a
+seek. The `(item_id, date)` alternative was measured and deliberately not
+shipped: the date-shaped reads all pin one day, so `idx_intake_log_date` already
+bounds them to a set that stays flat as history grows.
+
 ## Overdue safety-follow-up escalation (#1866)
 
 **The overdue finding follow-up (#700) pushes — with zero settings and a
