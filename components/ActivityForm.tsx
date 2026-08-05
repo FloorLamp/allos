@@ -41,6 +41,7 @@ import {
   resolveFormSessionDuration,
 } from "@/lib/activity-form-validate";
 import LiveWorkoutPanel from "./activity-form/LiveWorkoutPanel";
+import { Notice } from "./Notice";
 import { useActivityAutosave } from "./activity-form/useActivityAutosave";
 import { useActivityParts } from "./activity-form/useActivityParts";
 import ActivityPartsList from "./activity-form/ActivityPartsList";
@@ -103,7 +104,7 @@ export default function ActivityForm({
   prefill = null,
   live = false,
   deloadContext,
-  recoveringContext = { temperedRegions: [] },
+  recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   onClose,
   stickyFooter = false,
@@ -668,7 +669,8 @@ export default function ActivityForm({
       return true;
     },
   });
-  const { status, savedAt, createdId, savableId, hasRow, dirty } = autosave;
+  const { status, savedAt, staleBuild, createdId, savableId, hasRow, dirty } =
+    autosave;
 
   // --- Local draft: the net under everything the server auto-save can't hold. ---
   //
@@ -681,10 +683,17 @@ export default function ActivityForm({
   // eviction lands in. The draft covers those and nothing else: it is written on
   // change, and dropped the moment the server copy is provably current.
   //
-  // A LIVE session is server-persisted by design (#451: the dock rehydrates it from
-  // getActivityEditData after a reload), so the hook is INERT there — a second,
-  // local copy of a session that already survives reloads would be a competing
-  // source of truth, not a safety net.
+  // A LIVE session is server-persisted (#451: the dock rehydrates it from
+  // getActivityEditData after a reload), and this hook used to be INERT there on
+  // that basis. But "server-backed" is only as true as the auto-save's POSTs: a
+  // deploy under the open tab invalidates every Server Action id this build holds
+  // (deployment skew's Server Action half — see docs/internals/deploy-skew.md),
+  // so mid-set edits fail until the tab reloads. That is window (b) held open
+  // indefinitely, with no local copy at all — the reported loss was a live workout
+  // edited straight through a deploy. The draft therefore runs in live mode too;
+  // the clear-on-success effect below keeps #451's concern answered: while saves
+  // land, the draft is dropped the moment the server copy is current, so it only
+  // ever outlives a save that failed.
   const draftExtra = useMemo(
     () => ({
       date,
@@ -723,7 +732,6 @@ export default function ActivityForm({
     // reopening the row still offers the edits that never reached the server.
     recordId: editData?.id ?? createdId,
     extra: draftExtra,
-    enabled: !liveMode,
     onRestore: (d) => {
       setDate(d.date);
       setStartTime(d.startTime);
@@ -1015,6 +1023,33 @@ export default function ActivityForm({
           {/* An unsaved entry this device kept from an interrupted session
               (#1699). Never applied on its own — the user chooses. */}
           <DraftRestoreBanner draft={draft} noun="workout" />
+
+          {/* Deployment skew: the deploy invalidated this build's action ids, so
+              every save fails until the tab reloads. Unlike an ordinary failed
+              save, retrying cannot help — say so, name the remedy, and make it
+              one tap. "Kept on this device" is the draft's promise (#1699), which
+              runs in live mode too for exactly this state. */}
+          {staleBuild && (
+            <Notice
+              tone="rose"
+              icon
+              testid="stale-save-banner"
+              title="The app has updated — changes here can’t be saved"
+              action={
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="font-medium underline-offset-2 hover:underline"
+                  data-testid="stale-save-reload"
+                >
+                  Reload
+                </button>
+              }
+            >
+              Your entry is kept on this device. Reload to keep saving — you can
+              restore it right after.
+            </Notice>
+          )}
 
           {/* Live workout mode (issue #340): the in-gym control strip pinned above
           the normal form — rest timer + Finish. The form below is unchanged, so

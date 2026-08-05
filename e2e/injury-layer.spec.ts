@@ -72,3 +72,47 @@ test("log an injury → recommendation avoids the region and names why → resol
   ).toHaveCount(0);
   await expect(page.getByTestId("injury-exclusion-note")).toHaveCount(0);
 });
+
+// Issue #2024 — the constraint can be declared at the level the user means. A
+// MOVEMENT-scoped constraint takes out the affected pattern and DISCLOSES it per
+// exercise, while the coarse region it falls under stays available: the whole point is
+// that one sore press no longer costs every chest recommendation. Same create-and-clean
+// discipline as the spec above (the beforeAll/afterAll wipe covers this test too).
+test("a movement-scoped constraint narrows the exclusion and says so (#2024)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=overview");
+
+  const bar = page.getByRole("main").getByTestId("injury-bar");
+  await expect(bar).toBeVisible();
+  await bar.getByTestId("injury-add-toggle").click();
+  const form = bar.getByTestId("injury-form");
+  await expect(form).toBeVisible();
+
+  // "Pressing hurts" — the region is Chest, but only the PUSH pattern is affected.
+  await form.getByTestId("injury-label-input").fill("pressing pain");
+  await form.getByTestId("injury-region-Chest").check();
+  await form.getByTestId("injury-movement-push").check();
+  await form.getByTestId("injury-laterality").selectOption("right");
+  await settledClick(page, form.getByTestId("injury-submit"));
+
+  // The chip names what the user actually declared — the pattern and the side — rather
+  // than only the coarse region it falls back to.
+  const chip = bar
+    .getByTestId("injury-chip")
+    .filter({ hasText: "pressing pain" });
+  await expect(chip).toBeVisible();
+  const scope = chip.getByTestId("injury-scope");
+  await expect(scope).toContainText("Pushing");
+  await expect(scope).toContainText("right side");
+
+  // The WHOLE-REGION exclusion note is absent: a movement constraint does not take the
+  // region off the table, which is the regression #2024 exists to fix.
+  await expect(page.getByTestId("injury-exclusion-note")).toHaveCount(0);
+
+  // Clean up so the file's other test (and a --repeat-each rerun) starts from zero.
+  await settledClick(page, chip.getByTestId("injury-set-resolved"));
+  await expect(
+    bar.getByTestId("injury-chip").filter({ hasText: "pressing pain" })
+  ).toHaveCount(0);
+});

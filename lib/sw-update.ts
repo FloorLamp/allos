@@ -316,6 +316,42 @@ export function isDeploymentSkewError(
 }
 
 /**
+ * Error signatures that mean "this tab's build can no longer CALL the server" —
+ * the Server Action half of deployment skew.
+ *
+ * A Server Action reference is compiled into the client bundle as a build-keyed
+ * id. The moment a deploy lands, an open tab POSTs ids the new server has never
+ * heard of; Next answers with its action-not-found marker
+ * (`x-nextjs-action-not-found`) and the client throws `UnrecognizedActionError`
+ * ("Server Action \"<id>\" was not found on the server"). Every write from that
+ * tab fails the same way until it reloads — RETRYING IN PLACE CANNOT SUCCEED,
+ * which is what distinguishes this from every other failed request and is why its
+ * consumers (the offline queue's capture predicate, the activity editor's reload
+ * banner) treat it as a state, not an error.
+ *
+ * Matched by error name and by both message variants (the server-thrown wording
+ * says "older or newer deployment"; the client-thrown one carries the
+ * failed-to-find-server-action docs slug), case-insensitively. Deliberately
+ * narrow, like SKEW_SIGNATURES above: an ordinary server error or a dropped
+ * connection must NOT match — each of those has a different remedy.
+ */
+const STALE_ACTION_SIGNATURES = [
+  "unrecognizedactionerror",
+  "failed to find server action",
+  "failed-to-find-server-action",
+  "older or newer deployment",
+];
+
+export function isStaleActionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  const haystack = `${typeof name === "string" ? name : ""} ${
+    typeof message === "string" ? message : ""
+  }`.toLowerCase();
+  return STALE_ACTION_SIGNATURES.some((s) => haystack.includes(s));
+}
+
+/**
  * THE LOOP GUARD, which is the load-bearing part of this fix.
  *
  * Recovering skew means a hard load, and a hard load that fails the same way is an

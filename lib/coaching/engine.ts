@@ -17,6 +17,9 @@ import {
 } from "../workout-recommendation";
 import {
   excludedRegionLabel,
+  excludedExerciseLabel,
+  temperedExerciseLabel,
+  exerciseInjuryVerdict,
   RECOVERING_LOAD_FACTOR,
   type InjuryConstraint,
 } from "../injury-model";
@@ -887,19 +890,19 @@ function strengthExerciseRec(
   reason: string,
   focus: MuscleRegion[] = [],
   exercises: string[] = [],
-  // Recovering-injury tempering (#838): when the lead exercise's region is returning from
-  // a recovering injury, back the next-set target off to RECOVERING_LOAD_FACTOR (a
-  // suggestion, never a lockout) so the compact card agrees with the model everywhere.
-  tempered = false
+  // Recovering-injury tempering (#838/#2024): the resolved {applies, factor} for THIS
+  // lift — a suggestion, never a lockout — so the compact card agrees with the model
+  // everywhere. Default: no tempering.
+  tempering: { recoveringRegion: boolean; recoveringFactor: number } = {
+    recoveringRegion: false,
+    recoveringFactor: RECOVERING_LOAD_FACTOR,
+  }
 ): Recommendation {
   const base = suggestNextSet(exercise, wu);
   // Route through the ONE shared modifier composition (#1115 Fix B) so this card and
   // every other next-set surface can't disagree. This path carries only the injury
   // temper (routine-gap/habit strength isn't deload-gated).
-  const nextSet = contextualNextSet(base, exercise.exercise, {
-    recoveringRegion: tempered,
-    recoveringFactor: RECOVERING_LOAD_FACTOR,
-  });
+  const nextSet = contextualNextSet(base, exercise.exercise, tempering);
   return {
     id: `strength-${exercise.exercise}`,
     kind: "strength",
@@ -1097,6 +1100,18 @@ export function contextNotes(
     notes.push(recoveryOverrideLine(nw.recovery.override));
   for (const d of nw.excludedRegions)
     notes.push(`Avoiding ${excludedRegionLabel(d)}`);
+  // The finer #2024 disclosures: a constraint declared at exercise or movement level took
+  // out THOSE lifts (and left the rest of the region alone), or tempers them at a stated
+  // fraction. Never silent — the same always-disclose rule as the region lines above, at
+  // the level the user actually declared.
+  for (const d of nw.excludedExercises) {
+    notes.push(`Avoiding ${excludedExerciseLabel(d)}`);
+    for (const limitation of d.limitations) notes.push(limitation);
+  }
+  for (const d of nw.temperedExercises) {
+    notes.push(temperedExerciseLabel(d));
+    for (const limitation of d.limitations) notes.push(limitation);
+  }
   for (const c of nw.considerations) notes.push(c.note);
   // Weather parking (#1724) — ALWAYS disclosed, never a silent disappearance (#838).
   // The note explains why the outdoor activity isn't in today's pick and names the
@@ -1113,11 +1128,21 @@ export function contextNotes(
   return notes;
 }
 
-// Whether an exercise's region is returning from a RECOVERING injury (#838), so its target
-// is tempered. Pure over the model's temperedRegions.
-function regionTempered(exerciseName: string, nw: NextWorkout): boolean {
-  const r = regionForExercise(exerciseName);
-  return r != null && nw.temperedRegions.includes(r);
+// The tempering ONE exercise's next-set target carries (#838, made movement-aware by
+// #2024). Resolved through the SHARED `exerciseInjuryVerdict` over the model's own
+// constraints, so a region-scoped constraint still tempers by region, an exercise- or
+// movement-scoped one tempers exactly the lifts it names, and a user-declared load
+// preference wins over the app's RECOVERING_LOAD_FACTOR fallback. One resolution, so this
+// card, the Training overview, the live logger and the Telegram nudge cannot disagree.
+function injuryTempering(
+  exerciseName: string,
+  nw: NextWorkout
+): { recoveringRegion: boolean; recoveringFactor: number } {
+  const v = exerciseInjuryVerdict(nw.injuryConstraints, exerciseName);
+  return {
+    recoveringRegion: v.kind === "tempered",
+    recoveringFactor: v.kind === "tempered" ? v.factor : RECOVERING_LOAD_FACTOR,
+  };
 }
 
 // Map one core NextWorkoutItem to its Recommendation card, preserving the exact
@@ -1207,8 +1232,7 @@ function formatWorkoutItem(
       // session card, the live logger, the detail panel, and the Telegram nudge.
       const nextSet = item.exercise
         ? contextualNextSet(rawNext, item.exercise.exercise, {
-            recoveringRegion: regionTempered(item.exercise.exercise, nw),
-            recoveringFactor: RECOVERING_LOAD_FACTOR,
+            ...injuryTempering(item.exercise.exercise, nw),
             deloadWeek: deload,
           })
         : rawNext;
@@ -1243,7 +1267,7 @@ function formatWorkoutItem(
             reason,
             nw.focus,
             nw.exercises,
-            regionTempered(item.exercise.exercise, nw)
+            injuryTempering(item.exercise.exercise, nw)
           )
         : {
             id: `strength-${label}`,
@@ -1262,7 +1286,7 @@ function formatWorkoutItem(
       `Last trained ${formatRelativeDate(item.exercise!.lastDate, today)}.`,
       nw.focus,
       nw.exercises,
-      regionTempered(item.exercise!.exercise, nw)
+      injuryTempering(item.exercise!.exercise, nw)
     );
   }
 

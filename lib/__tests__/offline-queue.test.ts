@@ -181,6 +181,17 @@ describe("shouldQueueOffline", () => {
     );
     expect(shouldQueueOffline(true, undefined)).toBe(false);
   });
+
+  it("queues a stale-build action failure — retrying in place cannot succeed", () => {
+    // Deployment skew's Server Action half: a deploy invalidated this tab's
+    // action ids, so the tap would otherwise error forever while the replay
+    // route — which no deploy re-keys — could land it. The queue keeps the tap.
+    const stale = Object.assign(
+      new Error('Server Action "7f9a" was not found on the server.'),
+      { name: "UnrecognizedActionError" }
+    );
+    expect(shouldQueueOffline(true, stale)).toBe(true);
+  });
 });
 
 describe("FLOW_KINDS", () => {

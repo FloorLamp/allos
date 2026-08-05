@@ -204,3 +204,13 @@ export const REPORTS_SOURCE_PROFILE = "Reports Source (e2e)";
 export const REPORTS_SOURCE_NAME = "Cytopathology Report (e2e)";
 export const REPORTS_SOURCE_PROVIDER = "E2E Reference Cytology Lab";
 export const REPORTS_SOURCE_DOCUMENT = "e2e-cytology-ccd.xml";
+
+// ── Longevity › optimal-biomarker freshness (#2023) ──────────────────────────
+// The OLD-ONLY presentation the shared seed cannot show: profile 1's labs are
+// recent, so its optimal pillar always judges a current panel. This dedicated adult
+// profile owns two FAVORABLE lab readings drawn well past their retest window, so
+// the pillar must render NEUTRAL with "all based on older results" instead of the
+// green share the same ratio would earn today. Read-only in its spec (no mutations),
+// so it stays repeat-safe with no reset.
+export const E2E_LOGIN_LONGEVITY_STALE = "e2e_longevity_stale";
+export const LONGEVITY_STALE_PROFILE = "Longevity Stale Panel (e2e)";

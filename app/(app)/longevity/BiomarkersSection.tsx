@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getOptimalShareRows } from "@/lib/queries";
+import { getOptimalShareRows, getOptimalHitRate } from "@/lib/queries";
 import { readingDetailHref } from "@/lib/hrefs";
-import type { OptimalShareRow } from "@/lib/longevity-pillars";
+import {
+  optimalPillarDetail,
+  type OptimalShareRow,
+} from "@/lib/longevity-pillars";
 import type { LongevitySection } from "@/lib/longevity";
 import { MedicalValue } from "@/components/ui";
 import PillarStat from "./PillarStat";
@@ -53,6 +56,23 @@ function BiomarkerRow({ row: r }: { row: OptimalShareRow }) {
             opt {r.optimalText}
           </span>
         )}
+        {/* Freshness (#2023): the reading's own date, and — when its retest clock has
+            run out — that it is an older result. The verdict is the row's `freshness`,
+            which the pillar tallied from the same judgment, so the count in the header
+            and the rows marked here are always the same set. */}
+        {r.date && (
+          <span
+            data-testid="longevity-biomarker-date"
+            className={`ml-2 text-xs ${
+              r.freshness === "due"
+                ? "text-amber-600 dark:text-amber-400"
+                : "text-slate-500 dark:text-slate-400"
+            }`}
+          >
+            {r.date}
+            {r.freshness === "due" ? " · older" : ""}
+          </span>
+        )}
       </span>
     </li>
   );
@@ -64,6 +84,10 @@ export default async function BiomarkersSection({
 }) {
   const { profile } = await requireSession();
   const rows = getOptimalShareRows(profile.id);
+  // The SAME model the pillar consumed (#2023) — one gather, one judgment, so this
+  // header's coverage/freshness sentence and the pillar's detail line cannot disagree,
+  // and the "older" rows below are exactly the ones counted here.
+  const rate = getOptimalHitRate(profile.id);
   const nonOptimal = rows.filter((r) => r.badge !== "optimal");
   const optimal = rows.filter((r) => r.badge === "optimal");
 
@@ -90,6 +114,18 @@ export default async function BiomarkersSection({
           <PillarStat key={p.key} pillar={p} />
         ))}
       </div>
+
+      {rate.total > 0 && (
+        <p
+          data-testid="longevity-biomarker-coverage"
+          className="mt-3 text-sm text-slate-600 dark:text-slate-300"
+        >
+          {optimalPillarDetail(rate)}
+          {rate.unjudged > 0
+            ? ` · ${rate.unjudged} without a curated optimal band`
+            : ""}
+        </p>
+      )}
 
       {nonOptimal.length > 0 && (
         <div className="mt-4">

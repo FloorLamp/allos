@@ -53,7 +53,13 @@ import {
   sameSituation,
   BUILTIN_POOR_SLEEP_SITUATION,
 } from "@/lib/situations";
-import { excludedRegionLabel } from "@/lib/injury-model";
+import {
+  excludedRegionLabel,
+  excludedExerciseLabel,
+  temperedExerciseLabel,
+  exerciseInjuryVerdict,
+  injuryReviewDue,
+} from "@/lib/injury-model";
 import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
@@ -210,6 +216,15 @@ export default async function OverviewSection() {
     status: i.status,
     since: i.since,
     notes: i.notes,
+    // #2024 — the declared precision, so the chip shows the constraint the user actually
+    // wrote instead of only its fallback region. `reviewDue` is a SUGGEST-only prompt:
+    // reaching the date changes nothing until the user taps.
+    laterality: i.laterality,
+    movements: i.movements,
+    exercises: i.exercises,
+    loadFactor: i.loadFactor,
+    reviewDate: i.reviewDate,
+    reviewDue: i.status !== "resolved" && injuryReviewDue(i, todayStr),
   }));
   const hasInjurySituation = getActiveSituations(profile.id).some(
     isBuiltInInjurySituation
@@ -270,12 +285,17 @@ export default async function OverviewSection() {
             // this closes the today's-session card's injury-temper gap (#923 closed it
             // for deload, left it open for injury). The SET COUNT still reduces on a
             // deload week via the same deloadAdjust math (shared, #741).
-            const slotRegion = regionForExercise(s.exercise);
+            // #2024: the injury axis resolves through the SHARED per-exercise verdict,
+            // so an exercise- or movement-scoped constraint tempers exactly this lift and
+            // a user-declared load preference beats the app's fallback fraction.
+            const slotInjury = exerciseInjuryVerdict(
+              nw.injuryConstraints,
+              s.exercise
+            );
             const nextSet = contextualNextSet(base, s.exercise, {
               deloadWeek: session.deloadWeek,
-              recoveringRegion:
-                slotRegion != null && nw.temperedRegions.includes(slotRegion),
-              recoveringFactor: RECOVERING_LOAD_FACTOR,
+              recoveringRegion: slotInjury.kind === "tempered",
+              recoveringFactor: slotInjury.factor,
             });
             const sets = session.deloadWeek
               ? deloadAdjust({
@@ -328,6 +348,8 @@ export default async function OverviewSection() {
             regions are named so the user sees WHY a region is set aside. */}
         {(nw.excludedRegions.length > 0 ||
           nw.temperedRegions.length > 0 ||
+          nw.excludedExercises.length > 0 ||
+          nw.temperedExercises.length > 0 ||
           nw.considerations.length > 0 ||
           nw.substitutionSuggested) && (
           <div
@@ -358,6 +380,44 @@ export default async function OverviewSection() {
                 while you recover.
               </p>
             )}
+            {/* The finer #2024 disclosures: a constraint declared at exercise or
+                movement level takes out (or eases) THOSE lifts and leaves the rest of
+                the region alone — and says which, at the level it was declared. A
+                limitation the engine could not honor (a one-sided constraint on a
+                bilateral lift) is stated rather than implied away. */}
+            {nw.excludedExercises.length > 0 && (
+              <p
+                className="mt-1 text-sm text-slate-700 dark:text-slate-200"
+                data-testid="injury-exercise-exclusion-note"
+              >
+                Avoiding{" "}
+                {nw.excludedExercises
+                  .map((d) => excludedExerciseLabel(d))
+                  .join(", ")}
+                .
+              </p>
+            )}
+            {nw.temperedExercises.map((d) => (
+              <p
+                key={d.exercise}
+                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="injury-exercise-temper-note"
+              >
+                {temperedExerciseLabel(d)}.
+              </p>
+            ))}
+            {[
+              ...nw.excludedExercises.flatMap((d) => d.limitations),
+              ...nw.temperedExercises.flatMap((d) => d.limitations),
+            ].map((limitation) => (
+              <p
+                key={limitation}
+                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="injury-laterality-note"
+              >
+                {limitation}
+              </p>
+            ))}
             {nw.considerations.map((c) => (
               <p
                 key={c.key}

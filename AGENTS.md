@@ -206,6 +206,24 @@ calendar, with the payload and level function supplied by the caller; `lensWindo
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
 only the per-lens week caps supplied.
 
+### Freshness
+
+"Is this dated reading still current?" is ONE question too. `lib/freshness.ts`
+owns the decision (`FreshnessState` = `current` / `due` / `not-applicable`, stale
+strictly after the interval) and the counting shape (`FreshnessTally`). A domain
+supplies only what is genuinely its own: WHICH interval applies and WHICH readings
+are exempt from carrying a clock at all. `biomarkerRetestStatus` is the biomarker
+adapter (its category grammar and #516/#548/#687 exemptions stay there);
+`lib/fitness-freshness.ts` is the fitness-battery adapter, where every test
+DECLARES its policy and a completeness test fails an undeclared one. Never
+re-derive staleness in a component, and never fold `not-applicable` into `due`.
+
+An aggregate with nothing current may not render current-shaped copy
+(`hasNoCurrentReading`) — the Longevity optimal pillar goes neutral, the Fitness
+check counts fresh rather than measured. Both keep the stale values visible with
+their provenance: the fix is what the aggregate CLAIMS, never what it hides.
+Phrasing stays per surface. See `docs/internals/freshness.md`.
+
 ### Settings and units
 
 Settings have three storage tiers:
@@ -349,7 +367,12 @@ waiting worker for the build the page already runs — found waiting at load, or
 installed by the page's own registration just after it — is consumed silently
 instead of re-offered. A tab that navigates while still stale hits a deleted chunk; the
 top-level error boundary recognises that signature and hard-reloads **once**,
-under a rationed `sessionStorage` guard, before rendering any card.
+under a rationed `sessionStorage` guard, before rendering any card. A tab that
+keeps SAVING while stale fails every Server Action (the ids are build-keyed);
+`isStaleActionError` classifies that signature, `shouldQueueOffline` treats it
+like a dead connection so quick-log taps queue and replay through the
+build-stable replay route, and the activity editor keeps its local draft (live
+mode included) and banners the reload instead of erroring in place.
 
 Every one of those decisions is pure and lives in `lib/sw-update.ts` (with the
 theme half in `lib/theme.ts`, which `app/global-error.tsx` needs because it

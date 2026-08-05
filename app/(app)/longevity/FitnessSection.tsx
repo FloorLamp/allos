@@ -1,18 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { today } from "@/lib/db";
-import {
-  getUserSex,
-  getUserAge,
-  getFitnessRetestCadenceDays,
-} from "@/lib/settings";
-import { getLatestBodyMetric } from "@/lib/queries";
-import { batteryForAge } from "@/lib/fitness-battery";
-import {
-  getFitnessAssessments,
-  getAmbientFitnessReadings,
-} from "@/lib/fitness-assessment";
-import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
+import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
 import type { LongevitySection } from "@/lib/longevity";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
 import PillarStat from "./PillarStat";
@@ -26,29 +14,18 @@ import PillarStat from "./PillarStat";
 // Pillar objects the dashboard widget renders. The per-domain bars are the SHARED
 // FitnessDomainBars component (the training grid renders the same one) so the color/label
 // language can't drift between the two surfaces (#1132 / #221 formatter parity).
+//
+// The gather itself is `assembleFitnessCheckModel` (#2025) — the ONE DB-side assembler the
+// Training section and the save action already used. This section hand-rolled the same six
+// reads, which is exactly how a freshness policy ends up applied on one surface and not
+// the other.
 export default async function FitnessSection({
   section,
 }: {
   section: LongevitySection;
 }) {
   const { profile } = await requireSession();
-  const sex = getUserSex(profile.id);
-  const age = getUserAge(profile.id);
-  const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
-
-  const battery = batteryForAge(age);
-  const sessions = getFitnessAssessments(profile.id, 12);
-  const ambient = getAmbientFitnessReadings(profile.id, battery);
-  const model = buildFitnessCheckModel(
-    battery,
-    sessions,
-    ambient,
-    sex,
-    age,
-    bodyweightKg,
-    today(profile.id),
-    getFitnessRetestCadenceDays(profile.id)
-  );
+  const { model } = assembleFitnessCheckModel(profile.id);
 
   return (
     <section
@@ -77,11 +54,20 @@ export default async function FitnessSection({
 
       {model.latestDate ? (
         <div className="mt-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Last guided check {model.latestDate} — {model.measuredCount} of{" "}
-            {model.totalCount} tests measured.
+          {/* #2025 — the same fresh/stale/unmeasured split the Training header states,
+              off the same model: "measured" alone let a years-old value read as coverage. */}
+          <p
+            className="text-sm text-slate-600 dark:text-slate-300"
+            data-testid="longevity-fitness-coverage"
+          >
+            Last guided check {model.latestDate} — {model.coverage.fresh} of{" "}
+            {model.coverage.total} tests with a current value
+            {model.coverage.stale > 0
+              ? `, ${model.coverage.stale} past a re-check window`
+              : ""}
+            .
           </p>
-          {model.domains.some((d) => d.percentile != null) && (
+          {model.domains.some((d) => d.bestPercentile != null) && (
             <div className="mt-3">
               <FitnessDomainBars
                 domains={model.domains}

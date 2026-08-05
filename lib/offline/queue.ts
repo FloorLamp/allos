@@ -38,6 +38,10 @@
 // the dose write cores' typed answer and the activity save core's typed answer,
 // which the replay dispositions below map onto the queue's own vocabulary.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
+// The one runtime import, and it keeps the contract: lib/sw-update.ts is itself
+// pure and dependency-free (client-safe, DB-free), and the stale-action signature
+// is ITS knowledge — deployment skew's Server Action half — not this module's.
+import { isStaleActionError } from "@/lib/sw-update";
 
 export type FlowKind =
   "dose" | "skip-dose" | "body-metric" | "vitals" | "mood" | "set" | "food";
@@ -540,13 +544,21 @@ export function isAuthFailure(httpStatus: number): boolean {
 }
 
 // Should a failed submit be queued for later rather than surfaced as an error?
-// True only when the browser reports itself offline OR the write threw a network
-// error (fetch/action rejects with a TypeError when the connection is down). A
-// genuine server-side rejection while ONLINE is a real error the form should show.
+// True when the browser reports itself offline, when the write threw a network
+// error (fetch/action rejects with a TypeError when the connection is down) — or
+// when the action failed because THIS TAB'S BUILD is stale: a deploy invalidates
+// every Server Action id an open tab holds, so each action POST fails until the
+// tab reloads, and retrying in place cannot succeed. Surfacing that as an error
+// loses the tap; queueing keeps it, because the replay route
+// (app/api/offline-replay) is an ordinary route handler no deploy re-keys — the
+// queued intent lands from this same stale tab (the sync/flush machinery) or from
+// the reloaded one. A genuine server-side rejection while ONLINE remains a real
+// error the form should show.
 export function shouldQueueOffline(online: boolean, err: unknown): boolean {
   if (!online) return true;
   // A dropped connection surfaces as a TypeError ("Failed to fetch") from fetch and
   // from a Server Action's underlying fetch; treat that as offline too, since
   // navigator.onLine can lag the actual link state.
-  return err instanceof TypeError;
+  if (err instanceof TypeError) return true;
+  return isStaleActionError(err);
 }

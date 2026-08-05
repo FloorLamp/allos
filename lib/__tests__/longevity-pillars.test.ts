@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  bareOptimalHitRate,
   buildPillars,
   optimalRangeHitRate,
   PILLAR_TONE_LABEL,
@@ -41,7 +42,10 @@ describe("optimalRangeHitRate", () => {
       { value_num: 175, unit: "mg/dL", cb: totalChol }, // optimal
       { value_num: 195, unit: "mg/dL", cb: totalChol }, // above optimal (still in ref)
     ];
-    expect(optimalRangeHitRate(readings)).toEqual({ optimal: 2, total: 3 });
+    expect(optimalRangeHitRate(readings)).toMatchObject({
+      optimal: 2,
+      total: 3,
+    });
   });
 
   it("excludes markers we can't judge (no canonical row, or unconvertible)", () => {
@@ -50,11 +54,15 @@ describe("optimalRangeHitRate", () => {
       { value_num: 5, unit: "mg/dL", cb: null }, // no canonical → excluded
       { value_num: null, unit: "mg/dL", cb: totalChol }, // no value → excluded
     ];
-    expect(optimalRangeHitRate(readings)).toEqual({ optimal: 1, total: 1 });
+    expect(optimalRangeHitRate(readings)).toMatchObject({
+      optimal: 1,
+      total: 1,
+      unjudged: 2,
+    });
   });
 
   it("empty input yields a zero denominator (pillar hides)", () => {
-    expect(optimalRangeHitRate([])).toEqual({ optimal: 0, total: 0 });
+    expect(optimalRangeHitRate([])).toMatchObject({ optimal: 0, total: 0 });
   });
 });
 
@@ -88,14 +96,14 @@ describe("buildPillars availability", () => {
   });
 
   it("omits the optimal pillar when the denominator is zero", () => {
-    const pillars = buildPillars({ optimal: { optimal: 0, total: 0 } });
+    const pillars = buildPillars({ optimal: bareOptimalHitRate(0, 0) });
     expect(pillars).toEqual([]);
   });
 
   it("renders only the pillars whose data exists", () => {
     const pillars = buildPillars({
       sleep: { sri: 84 },
-      optimal: { optimal: 31, total: 38 },
+      optimal: bareOptimalHitRate(31, 38),
     });
     expect(pillars.map((p) => p.key)).toEqual([
       "sleep-regularity",
@@ -128,7 +136,7 @@ describe("buildPillars value equals its source computation (#224)", () => {
   });
 
   it("optimal pillar value is the raw N-of-M hit rate", () => {
-    const [pillar] = buildPillars({ optimal: { optimal: 31, total: 38 } });
+    const [pillar] = buildPillars({ optimal: bareOptimalHitRate(31, 38) });
     expect(pillar.value).toBe("31 of 38");
     expect(pillar.tone).toBe("good"); // 31/38 ≥ 0.8
   });

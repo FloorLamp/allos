@@ -4,8 +4,17 @@ import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
-import { REGION_SCOPES, type MuscleRegion } from "@/lib/lifts";
-import type { InjuryStatus } from "@/lib/injury-model";
+import DateField from "@/components/DateField";
+import {
+  REGION_SCOPES,
+  type MovementPattern,
+  type MuscleRegion,
+} from "@/lib/lifts";
+import {
+  INJURY_MOVEMENT_PATTERNS,
+  type InjuryLaterality,
+  type InjuryStatus,
+} from "@/lib/injury-model";
 import {
   logInjury,
   setInjuryStatus,
@@ -28,6 +37,38 @@ export interface InjuryView {
   status: InjuryStatus;
   since: string | null;
   notes: string | null;
+  // #2024 — the precision the user declared, so the chip names the constraint they wrote
+  // rather than only the coarse region it falls back to.
+  laterality: InjuryLaterality | null;
+  movements: MovementPattern[];
+  exercises: string[];
+  loadFactor: number | null;
+  reviewDate: string | null;
+  // Whether the user's own review date has arrived. SUGGEST-ONLY: nothing about the
+  // constraint changes until they act on it.
+  reviewDue: boolean;
+}
+
+const MOVEMENT_LABEL: Record<MovementPattern, string> = {
+  push: "Pushing",
+  pull: "Pulling",
+  legs: "Legs",
+  core: "Core",
+};
+
+// The one-line "what does this constraint actually cover?" summary, at the level the user
+// declared it (#2024's exercise → movement → region precedence). A constraint that named
+// lifts says those lifts; one that named a pattern says the pattern; one that named
+// neither still reads as its regions, exactly as before.
+function scopeSummary(inj: InjuryView): string {
+  const side =
+    inj.laterality && inj.laterality !== "bilateral"
+      ? `${inj.laterality} side · `
+      : "";
+  if (inj.exercises.length > 0) return `${side}${inj.exercises.join(", ")}`;
+  if (inj.movements.length > 0)
+    return `${side}${inj.movements.map((m) => MOVEMENT_LABEL[m]).join(", ")}`;
+  return `${side}${inj.regions.join(", ")}`;
 }
 
 const STATUS_BADGE: Record<InjuryStatus, string> = {
@@ -99,9 +140,18 @@ export default function InjuryBar({
               <span className="font-medium text-slate-800 dark:text-slate-100">
                 {inj.label}
               </span>
-              {inj.regions.length > 0 && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {inj.regions.join(", ")}
+              <span
+                className="text-xs text-slate-500 dark:text-slate-400"
+                data-testid="injury-scope"
+              >
+                {scopeSummary(inj)}
+              </span>
+              {inj.status === "recovering" && inj.loadFactor != null && (
+                <span
+                  className="text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="injury-load-factor"
+                >
+                  easing to {Math.round(inj.loadFactor * 100)}% (your setting)
                 </span>
               )}
               <div className="ml-auto flex items-center gap-1">
@@ -135,6 +185,18 @@ export default function InjuryBar({
                   notes={inj.notes}
                   className="w-full text-xs text-slate-500 dark:text-slate-400"
                 />
+              )}
+              {/* The review-date affordance (#2024): SUGGEST-ONLY. Reaching the date the
+                  user set changes nothing — no status transition, no relaxed load, no
+                  expiry. It asks; the buttons above are the only writes. */}
+              {inj.reviewDue && (
+                <p
+                  className="w-full text-xs text-slate-600 dark:text-slate-300"
+                  data-testid="injury-review-prompt"
+                >
+                  You set {inj.reviewDate} to revisit this — still current?
+                  Nothing has changed on its own.
+                </p>
               )}
             </li>
           ))}
@@ -189,6 +251,59 @@ export default function InjuryBar({
               ))}
             </div>
           </fieldset>
+          {/* The #2024 precision — all OPTIONAL. Leaving every field alone records
+              exactly the region-scoped constraint this form always recorded; filling one
+              in narrows the constraint to what the user actually means, so one sore
+              movement stops deleting a whole region of suggestions. Nothing here is a
+              diagnosis, a severity, or a prohibition: it is the user saying what they
+              want left alone. */}
+          <fieldset>
+            <legend className="section-label">
+              Narrow it (optional) — movements
+            </legend>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Pick patterns if only some movements are affected. Naming
+              movements keeps the rest of the region in your suggestions.
+            </p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {INJURY_MOVEMENT_PATTERNS.map((m) => (
+                <label
+                  key={m}
+                  className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+                >
+                  <input
+                    type="checkbox"
+                    name="movements"
+                    value={m}
+                    data-testid={`injury-movement-${m}`}
+                  />
+                  {MOVEMENT_LABEL[m]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div>
+            <label className="section-label" htmlFor="injury-laterality">
+              Side (optional)
+            </label>
+            <select
+              id="injury-laterality"
+              name="laterality"
+              defaultValue=""
+              className="input mt-1 w-full"
+              data-testid="injury-laterality"
+            >
+              <option value="">Not specified</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="bilateral">Both sides</option>
+            </select>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Recorded and shown. Suggestions are picked per exercise, not per
+              side, so on a two-sided lift we say the constraint applies to the
+              whole lift rather than pretending we worked around it.
+            </p>
+          </div>
           <div>
             <label className="section-label" htmlFor="injury-status">
               Status
@@ -199,11 +314,50 @@ export default function InjuryBar({
               defaultValue="active"
               className="input mt-1 w-full"
             >
-              <option value="active">Active — set the region aside</option>
+              <option value="active">
+                Active — set the affected work aside
+              </option>
               <option value="recovering">
                 Recovering — ease back at lighter loads
               </option>
             </select>
+          </div>
+          <div>
+            <label className="section-label" htmlFor="injury-load-factor">
+              While recovering, ease to (optional)
+            </label>
+            <select
+              id="injury-load-factor"
+              name="loadFactor"
+              defaultValue=""
+              className="input mt-1 w-full"
+              data-testid="injury-load-factor-input"
+            >
+              <option value="">Use our default (60%)</option>
+              <option value="0.4">40% of your usual target</option>
+              <option value="0.5">50%</option>
+              <option value="0.7">70%</option>
+              <option value="0.8">80%</option>
+              <option value="0.9">90%</option>
+            </select>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Our 60% is a conservative default, not a recommendation about your
+              recovery. Your setting always wins.
+            </p>
+          </div>
+          <div>
+            <label className="section-label" htmlFor="injury-review-date">
+              Remind me to revisit (optional)
+            </label>
+            <DateField
+              id="injury-review-date"
+              name="reviewDate"
+              data-testid="injury-review-date"
+            />
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              We&apos;ll ask whether it&apos;s still current. We never change it
+              for you.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <SubmitButton pendingLabel="Saving…" data-testid="injury-submit">

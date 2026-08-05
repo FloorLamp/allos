@@ -34,6 +34,11 @@ import {
   excludedRegions as computeExcludedRegions,
   temperedRegions as computeTemperedRegions,
   excludedRegionDisclosures,
+  exerciseDisclosures,
+  exerciseInjuryVerdict,
+  constraintCoversExercise,
+  type ExcludedExerciseDisclosure,
+  type TemperedExerciseDisclosure,
   type InjuryConstraint,
   type ExcludedRegionDisclosure,
 } from "./injury-model";
@@ -443,6 +448,17 @@ export interface NextWorkout {
   // A surface backs off the next-set target (RECOVERING_LOAD_FACTOR) and phrases "easing
   // back". Empty when no recovering injury.
   temperedRegions: MuscleRegion[];
+  // Individual LIFTS an active exercise- or movement-scoped constraint removed (#2024) —
+  // the finer twin of `excludedRegions`, so a precise constraint's effect is disclosed at
+  // the level it was declared at instead of taking a whole region off the card.
+  excludedExercises: ExcludedExerciseDisclosure[];
+  // Individual LIFTS a recovering finer constraint tempers, each carrying the load
+  // fraction that applies and whether it came from the user or from the app's default.
+  temperedExercises: TemperedExerciseDisclosure[];
+  // The resolved constraints themselves, so a surface that asks about an exercise the
+  // recommendation did not list (the live logger's picked lift, the detail panel) resolves
+  // it through the SAME pure verdict rather than re-deriving one (#2024 / #221).
+  injuryConstraints: InjuryConstraint[];
   // Whether today's routine day's focus is ENTIRELY within excluded regions (#838): the
   // day can't be trained around the injury, so a surface offers a SUBSTITUTION day rather
   // than marking it missed. Always false when there's no routine session.
@@ -793,7 +809,11 @@ function computeStrengthWorkout(
   paceReleased: ReadonlyMap<
     MuscleRegion,
     { target: BehindTarget; daysLeftInWindow: number }
-  >
+  >,
+  // Exercises an ACTIVE exercise- or movement-scoped constraint removes (#2024). Applied
+  // per lift so a precise constraint takes out the lift the user named and NOT its whole
+  // region — the coarse region exclusion above is unchanged for region-scoped constraints.
+  blockedExercise: (name: string) => boolean = () => false
 ): {
   focus: MuscleRegion[];
   exercises: string[];
@@ -826,7 +846,9 @@ function computeStrengthWorkout(
       inScope,
       paceReleased
     );
-    const exercises = rankExercises(dated, focusRegions);
+    const exercises = rankExercises(dated, focusRegions).filter(
+      (e) => !blockedExercise(e)
+    );
     return {
       ...withEquipmentPreference(focusRegions, exercises, input),
       recovery,
@@ -840,6 +862,7 @@ function computeStrengthWorkout(
     .filter((s) => {
       const r = regionForExercise(s.exercise);
       if (r != null && excluded.has(r)) return false; // injury-excluded region (#838)
+      if (blockedExercise(s.exercise)) return false; // injury-excluded lift (#2024)
       return candidate == null ? true : r != null && candidate.has(r);
     })
     .sort((a, b) =>
@@ -1307,6 +1330,22 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   // (#666) ride ALONGSIDE unchanged. Computed once so every branch's result agrees.
   const constraints = input.injuries ?? [];
   const excluded = computeExcludedRegions(constraints);
+  // #2024 — a constraint declared at exercise or movement level acts on THOSE lifts, not
+  // on the whole coarse region. `blocked` is the per-lift gate; `excluded` above now
+  // covers region-scoped constraints only, so the two are complementary and a precise
+  // constraint no longer deletes every recommendation in its region.
+  const blocked = (name: string) =>
+    exerciseInjuryVerdict(constraints, name).kind === "excluded" &&
+    constraints.some(
+      (c) => c.scope !== "region" && constraintCoversExercise(c, name)
+    );
+  // The candidate lifts this recommendation could have drawn from, so the disclosure names
+  // only exercises a constraint actually removed or tempered — never an unrelated lift.
+  const candidateLifts = [
+    ...input.strength.map((s) => s.exercise),
+    ...(input.datedExercises ?? []).map((d) => d.exercise),
+  ];
+  const finerDisclosures = exerciseDisclosures(constraints, candidateLifts);
   // Weather parking (#1724), resolved ONCE so every branch's result agrees — and so
   // the Telegram nudge, dashboard card and Training overview inherit the same answer
   // (#221). The candidate set is the profile's own recent cardio: an activity it has
@@ -1319,6 +1358,9 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   const trainingContext = {
     excludedRegions: excludedRegionDisclosures(constraints),
     temperedRegions: [...computeTemperedRegions(constraints)],
+    excludedExercises: finerDisclosures.excluded,
+    temperedExercises: finerDisclosures.tempered,
+    injuryConstraints: constraints,
     considerations: input.considerations ?? [],
     endurancePlanArm: input.endurancePlanArm ?? null,
     parked,
@@ -1409,7 +1451,8 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     input,
     behindStrength ?? null,
     excluded,
-    paceReleased
+    paceReleased,
+    blocked
   );
 
   const base = {
