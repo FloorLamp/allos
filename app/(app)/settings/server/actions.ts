@@ -12,6 +12,7 @@ import {
   getBackupSettings,
   setBackupSettings,
   setAuditRetentionMonths,
+  setTrashRetentionDays,
   getTelegramBotConfig,
   setTelegramBotConfig,
   getPublicUrl,
@@ -192,6 +193,20 @@ export async function saveAuditRetention(formData: FormData) {
   const raw = String(formData.get("audit_retention_months") ?? "").trim();
   setAuditRetentionMonths(Number(raw));
   revalidatePath("/settings/server");
+}
+
+// ---- Trash retention (global, admin-only) — issue #2013 ----
+// The window (whole days) a deleted row stays restorable under Data → Trash before
+// the hourly notify tick purges it and unlinks any video clips it captured.
+// setTrashRetentionDays clamps to the allowed range. Instance POLICY, so admin-only
+// and global — /data is revalidated because the Trash tab prints the window.
+
+export async function saveTrashRetention(formData: FormData) {
+  await requireAdmin();
+  const raw = String(formData.get("trash_retention_days") ?? "").trim();
+  setTrashRetentionDays(Number(raw));
+  revalidatePath("/settings/server");
+  revalidatePath("/data");
 }
 
 // ---- Fitness age gate (global, admin-only) ----

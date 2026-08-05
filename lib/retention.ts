@@ -1,8 +1,8 @@
 // Pure retention-window math (issue #98). No DB/network here — safe to import from
 // the unit suite (lib/__tests__) and from client code.
 //
-// Two append-mostly maintenance tables are pruned by age on the hourly notify tick,
-// alongside the existing deleted_rows undo sweep:
+// Append-mostly maintenance tables pruned by age on the hourly notify tick,
+// alongside the deleted_rows undo/Trash sweep (whose window now lives here too):
 //   • replayed_keys — the offline-replay idempotency ledger. A key only has to
 //     outlive the replay-race window (an online event, the on-load flush, and a
 //     Background Sync all racing to re-POST the same queued write), so a week is
@@ -48,6 +48,35 @@ export function clampAuditRetentionMonths(months: number): number {
   const n = Math.round(months);
   if (n < MIN_AUDIT_RETENTION_MONTHS) return MIN_AUDIT_RETENTION_MONTHS;
   if (n > MAX_AUDIT_RETENTION_MONTHS) return MAX_AUDIT_RETENTION_MONTHS;
+  return n;
+}
+
+// deleted_rows (the Trash, #2013): keep a month by default. The undo CAPTURE has
+// existed since #30, but for its first years the only affordance over it was a 15s
+// toast, so 24h was the honest window for something nobody could look at. With a
+// rendered Trash under Data the window becomes a real product promise, and 30 days
+// is the span in which someone notices "I deleted the wrong walk".
+//
+// The cost is stated where an admin can read it (Settings → Server): the captured
+// payload AND any captured video clips persist for the whole window, so raising it
+// keeps deleted health data around longer. `Delete permanently` on the row is what
+// keeps that acceptable rather than merely longer.
+export const DEFAULT_TRASH_RETENTION_DAYS = 30;
+
+// The admin-configurable range (whole days). The floor is a single day — the old
+// hardcoded window, i.e. "behave like it used to"; the ceiling is a year, past which
+// a trash is an archive nobody asked for.
+export const MIN_TRASH_RETENTION_DAYS = 1;
+export const MAX_TRASH_RETENTION_DAYS = 365;
+
+// Coerce an admin-entered day count to a valid whole-day window. Mirrors
+// clampAuditRetentionMonths exactly: garbage / non-finite falls back to the default;
+// in-range values are rounded and clamped to [MIN, MAX].
+export function clampTrashRetentionDays(days: number): number {
+  if (!Number.isFinite(days)) return DEFAULT_TRASH_RETENTION_DAYS;
+  const n = Math.round(days);
+  if (n < MIN_TRASH_RETENTION_DAYS) return MIN_TRASH_RETENTION_DAYS;
+  if (n > MAX_TRASH_RETENTION_DAYS) return MAX_TRASH_RETENTION_DAYS;
   return n;
 }
 

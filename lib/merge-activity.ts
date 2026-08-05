@@ -207,7 +207,7 @@ export function dropSetIds(dropId: number): number[] {
 //
 // Merge identity is the payload-level `mergeId` every drop of one merge shares. A
 // payload captured before #1884 has none; it yields no siblings, which is exactly the
-// pre-#1884 whole-snapshot behaviour, and those payloads age out within the 24h undo
+// pre-#1884 whole-snapshot behaviour, and those payloads age out within the retention
 // window. A sibling that was already restored has had its holding row deleted, so it
 // correctly stops counting as folded-in. Profile-scoped; a malformed payload is
 // skipped rather than aborting the undo.

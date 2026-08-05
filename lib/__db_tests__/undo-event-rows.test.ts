@@ -189,12 +189,12 @@ describe("the import tombstone and undo coexist (#2038)", () => {
     const id = seedImportedSession(profileId, date);
 
     expect(deletePracticeSession(profileId, id).kind).toBe("deleted");
-    // Age the holding row past the buffer, then sweep — the 24h expiry.
+    // Age the holding row past the buffer, then sweep — the retention expiry.
     db.prepare(
       `UPDATE deleted_rows SET deleted_at = datetime('now', '-2 days')
         WHERE profile_id = ?`
     ).run(profileId);
-    expect(sweepDeletedRows(24)).toBeGreaterThan(0);
+    expect(sweepDeletedRows(1)).toBeGreaterThan(0);
     expect(loadImportTombstones(profileId, "practice_logs").size).toBe(1);
     expect(
       countRows(

@@ -158,7 +158,7 @@ export interface MergeUndoContext {
   // un-fold only THIS drop's contribution instead of resetting the keeper wholesale to
   // `keeperBefore`, which is correct only when every drop leaves at once. Optional:
   // payloads captured before #1884 carry none and keep the old whole-snapshot reset
-  // (harmless for the single-drop case, and they age out inside the 24h undo window).
+  // (harmless for the single-drop case, and they age out inside the retention window).
   mergeId?: string;
   // The per-field member choices the fold applied (#1431) — the same map for every
   // drop of one merge. Undo replays the fold over the still-folded drops with these,

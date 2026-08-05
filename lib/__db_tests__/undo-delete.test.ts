@@ -3,7 +3,7 @@
 // The pure suite (lib/__tests__/undo-delete.test.ts) covers the registry + remap
 // transforms. This file opens a real (temp) SQLite handle, deletes a row through
 // captureDelete, and proves restoreDeletedRow puts the row AND its cascade children
-// back, with parent↔child FKs intact (new ids). It also checks the 24h sweep and
+// back, with parent↔child FKs intact (new ids). It also checks the retention sweep and
 // cross-profile isolation.
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -526,8 +526,8 @@ describe("guards", () => {
       .prepare("SELECT id FROM body_metrics WHERE profile_id = ?")
       .get(other.profileId) as { id: number };
     const undoId = captureDelete("body-metric", other.profileId, bm.id)!;
-    // Fresh row survives a 24h sweep.
-    expect(sweepDeletedRows(24)).toBe(0);
+    // Fresh row survives a one-day sweep (the window is DAYS since #2013).
+    expect(sweepDeletedRows(1)).toBe(0);
     expect(
       count("SELECT COUNT(*) c FROM deleted_rows WHERE id = ?", undoId)
     ).toBe(1);
@@ -535,7 +535,7 @@ describe("guards", () => {
     db.prepare(
       "UPDATE deleted_rows SET deleted_at = datetime('now', '-2 days') WHERE id = ?"
     ).run(undoId);
-    expect(sweepDeletedRows(24)).toBeGreaterThanOrEqual(1);
+    expect(sweepDeletedRows(1)).toBeGreaterThanOrEqual(1);
     expect(
       count("SELECT COUNT(*) c FROM deleted_rows WHERE id = ?", undoId)
     ).toBe(0);

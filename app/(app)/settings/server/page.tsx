@@ -3,6 +3,7 @@ import {
   getInstanceTimezone,
   getBackupSettings,
   getAuditRetentionMonths,
+  getTrashRetentionDays,
   getSetting,
   getSmtpConfigView,
   getGlobalCrisisResources,
@@ -33,6 +34,7 @@ import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
 import AuditRetentionSettings from "./AuditRetentionSettings";
+import TrashRetentionSettings from "./TrashRetentionSettings";
 import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
 import { saveCrisisResources } from "./actions";
 import { getTelegramBotConfig } from "@/lib/settings";
@@ -125,10 +127,13 @@ export default async function ServerSettingsPage() {
             the cards an admin actually revisits stay above it. */}
         <SettingsAdvanced
           testId="server-advanced"
-          hint="age gate, audit retention"
+          hint="age gate, audit + trash retention"
         >
           <AgeGateSettings minTrainingAge={minTrainingAge()} />
           <AuditRetentionSettings months={getAuditRetentionMonths()} />
+          {/* How long a deleted row (and any clip captured with it) stays
+              restorable under Data → Trash (#2013). */}
+          <TrashRetentionSettings days={getTrashRetentionDays()} />
         </SettingsAdvanced>
         <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
           Version <AppVersion />

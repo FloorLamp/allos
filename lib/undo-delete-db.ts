@@ -1,13 +1,18 @@
 // Undo / soft-delete for destructive row deletes (issue #30) — the IMPURE half.
 //
 // Wires the pure kind registry (lib/undo-delete.ts) to SQLite: capture-on-delete,
-// restore-on-undo, and the 24h purge sweep. Server-only (uses the sync `db`).
+// restore-on-undo, the retention purge sweep, and the two by-hand purges the Trash
+// surface adds (#2013). Server-only (uses the sync `db`).
 //
 // PHI note: the serialized payload holds the deleted row's content (PHI-adjacent),
 // but it never leaves this same SQLite file — the same trust boundary as the row it
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
 import { db, writeTx } from "./db";
+import {
+  DEFAULT_TRASH_RETENTION_DAYS,
+  daysAgoModifier,
+} from "./retention";
 import { dayCounterSpecFor } from "./day-counter-ledger";
 import { dayCounterLedger } from "./day-counter-ledger-db";
 import {
@@ -33,6 +38,7 @@ import {
   liveRowIdForCapturedRoot,
 } from "./integrations/tombstones";
 import { practiceIdentity } from "./practice";
+import { TRASH_EXCLUDED_KIND } from "./trash";
 
 // A captured counter row's identity values BESIDE profile_id and date, positional to the
 // ledger's `keyColumns` (i.e. the `CounterSpec.key` order minus `date`). Read straight
@@ -45,8 +51,12 @@ function counterKeyValues(
   return key.filter((c) => c !== "date").map((c) => row[c] as string | number);
 }
 
-// Human-readable, NON-PHI descriptors stored in deleted_rows.label (for a possible
-// future trash view). Never the user's title/name — that stays in `payload`.
+// Human-readable, NON-PHI descriptors stored in deleted_rows.label. The "possible
+// future trash view" this column was written for is now Data → Trash (#2013,
+// app/(app)/data/TrashSection.tsx), which renders this label as the row's kind.
+// Never the user's title/name — that stays in `payload`, and the Trash reads it from
+// there through the pure lib/trash.ts derivation, behind the same gates as every
+// other (app) surface.
 const KIND_LABELS: Record<string, string> = {
   activity: "activity",
   "body-metric": "body metric",
@@ -517,10 +527,18 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
   return true;
 }
 
-// Purge holding rows older than `maxAgeHours` (default 24h). GLOBAL by design — one
-// call per hourly notify tick clears every profile's expired undo records (purged
-// means purged), so it is intentionally NOT profile-scoped (allowlisted in the
-// profile-scoping test). Returns the number of rows removed. Never throws.
+// Purge holding rows older than `maxAgeDays` (default: the 30-day Trash window,
+// #2013). GLOBAL by design — one call per hourly notify tick clears every profile's
+// expired undo records (purged means purged), so it is intentionally NOT
+// profile-scoped (allowlisted in the profile-scoping test). Returns the number of
+// rows removed. Never throws.
+//
+// THE UNIT IS DAYS, and it is the only unit in this function (#2013). It used to be
+// `maxAgeHours = 24`, which read as "one day" at every call site anyway; now that the
+// window is an admin-configured DAY count, converting once here rather than carrying
+// hours internally keeps the signature honest about what the caller passes. The tick
+// supplies `getTrashRetentionDays()`; the default exists so a stray argless call in a
+// test still means the shipped policy.
 //
 // Purge-time file cleanup (#1290): a captured delete's clip FILES (activity_videos /
 // symptom_videos stored_path + poster_path) survive the delete+undo window on disk so
@@ -529,26 +547,20 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
 // clips sit in can't tolerate. So BEFORE the delete we read the expiring payloads and
 // collect their captured clip files, and AFTER the delete we unlink each one that no
 // LIVE row still references (content-hash dedup means a re-upload can share the file).
-export function sweepDeletedRows(maxAgeHours = 24): number {
+export function sweepDeletedRows(
+  maxAgeDays = DEFAULT_TRASH_RETENTION_DAYS
+): number {
   try {
-    const cutoff = `-${maxAgeHours} hours`;
+    const cutoff = daysAgoModifier(maxAgeDays);
 
-    // Collect the captured clip/poster files of the rows about to be purged. A
-    // malformed/legacy payload (e.g. the bespoke `administration` kind) never blocks
-    // the sweep — its parse is caught and skipped.
-    const expiring = db
-      .prepare(
-        `SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
-      )
-      .all(cutoff) as { payload: string }[];
-    const videoFiles: CapturedVideoFile[] = [];
-    for (const r of expiring) {
-      try {
-        videoFiles.push(...capturedVideoFiles(parsePayload(r.payload)));
-      } catch {
-        // an unparseable / non-registry payload carries no reclaimable video files
-      }
-    }
+    // Collect the captured clip/poster files of the rows about to be purged.
+    const videoFiles = capturedVideoFilesOf(
+      db
+        .prepare(
+          `SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
+        )
+        .all(cutoff) as { payload: string }[]
+    );
 
     const changes = db
       .prepare(`DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)`)
@@ -561,6 +573,86 @@ export function sweepDeletedRows(maxAgeHours = 24): number {
   } catch {
     return 0;
   }
+}
+
+// Delete ONE capture for good, before its window runs out (#2013). The affordance a
+// 30-day trash needs and a 15s toast didn't: "I deleted this and I meant it."
+//
+// Routes through the SAME file-unlinking path as the expiry sweep — a permanent
+// delete that removed only the deleted_rows row would leak the captured clips onto
+// disk with nothing left pointing at them, which is the #1290 leak re-opened by hand.
+// Profile-scoped: a token from another profile is simply not found.
+//
+// Typed outcome rather than a boolean (#2013): "gone" is a real, unsurprising state —
+// another tab purged it, the tick swept it, or it was already restored — and the
+// surface renders that differently from a purge it actually performed.
+export type PurgeOutcome = { kind: "purged" } | { kind: "gone" };
+
+export function purgeDeletedRow(
+  profileId: number,
+  undoId: number
+): PurgeOutcome {
+  const videoFiles = writeTx((): CapturedVideoFile[] | null => {
+    const row = db
+      .prepare(
+        `SELECT payload FROM deleted_rows
+          WHERE id = ? AND profile_id = ? AND kind <> ?`
+      )
+      .get(undoId, profileId, TRASH_EXCLUDED_KIND) as
+      | { payload: string }
+      | undefined;
+    if (!row) return null;
+    const files = capturedVideoFilesOf([row]);
+    db.prepare(
+      `DELETE FROM deleted_rows WHERE id = ? AND profile_id = ? AND kind <> ?`
+    ).run(undoId, profileId, TRASH_EXCLUDED_KIND);
+    return files;
+  });
+  if (videoFiles === null) return { kind: "gone" };
+  // Outside the transaction: the row delete is committed and authoritative, and the
+  // unlink is best-effort filesystem work that must never hold the write lock.
+  unlinkPurgedVideoFiles(videoFiles);
+  return { kind: "purged" };
+}
+
+// Empty the acting profile's whole trash (#2013). PROFILE-SCOPED, deliberately and
+// unlike sweepDeletedRows: the sweep is instance maintenance over an expired window,
+// this is one person saying "clear mine" — emptying a household member's captures
+// from your own Trash button would be someone else's data disappearing on your tap.
+// Same file-unlinking path again. Returns how many captures were purged.
+export function emptyTrash(profileId: number): number {
+  const { purged, videoFiles } = writeTx(() => {
+    const files = capturedVideoFilesOf(
+      db
+        .prepare(
+          `SELECT payload FROM deleted_rows WHERE profile_id = ? AND kind <> ?`
+        )
+        .all(profileId, TRASH_EXCLUDED_KIND) as { payload: string }[]
+    );
+    const changes = db
+      .prepare(`DELETE FROM deleted_rows WHERE profile_id = ? AND kind <> ?`)
+      .run(profileId, TRASH_EXCLUDED_KIND).changes;
+    return { purged: changes, videoFiles: files };
+  });
+  unlinkPurgedVideoFiles(videoFiles);
+  return purged;
+}
+
+// The captured clip/poster files of a set of holding rows. A malformed / legacy /
+// non-registry payload (the bespoke `administration` kind) never blocks a purge — its
+// parse is caught and skipped, because such a payload carries no reclaimable files.
+function capturedVideoFilesOf(
+  rows: readonly { payload: string }[]
+): CapturedVideoFile[] {
+  const out: CapturedVideoFile[] = [];
+  for (const r of rows) {
+    try {
+      out.push(...capturedVideoFiles(parsePayload(r.payload)));
+    } catch {
+      // an unparseable / non-registry payload carries no reclaimable video files
+    }
+  }
+  return out;
 }
 
 // Unlink the clip/poster files of purged captures, SKIPPING any path a live

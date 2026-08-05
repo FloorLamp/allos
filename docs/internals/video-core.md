@@ -149,6 +149,16 @@ their domain's actions:
   merge never loses a clip. (Merge-undo leaves re-parented clips on the keeper —
   a documented, clip-preserving deviation; the clip is never lost, only
   re-homed.)
+- **Purge-time file cleanup** (#1290): the clip files deliberately survive the
+  delete→undo window on disk so a restore re-points at them, but a capture that
+  EXPIRES without being restored has its files unlinked — the sweep collects the
+  captured paths before the holding rows are deleted and unlinks each one no
+  live row still references (content-hash dedup means a re-upload can share the
+  file). Since #2013 the two by-hand purges — "Delete permanently" on one Trash
+  row and "Empty trash" — route through the same collect-then-unlink path, so a
+  clip can never outlive the last row pointing at it. The window those files
+  live for is the admin-configured Trash retention (30 days by default), which
+  is why the setting's help text names clips explicitly.
 
 ## Deliberately out (phase 2 / follow-ups)
 
@@ -156,8 +166,5 @@ their domain's actions:
   warning steers toward (bitrate/resolution caps, a poster-ghost onion-skin for
   form checks, offline-queue integration). Native upload stays the fallback.
 - **Opt-in export** of clips (the strictest-tier default is exclude).
-- **File cleanup on undo-buffer purge** — a deleted-then-not-undone activity's
-  clip files linger until the profile is deleted (content-named, small);
-  explicit purge-time unlink is a follow-up.
 - No AI (matches #1119): no form scoring, pose estimation, or episode
   classification — factual capture, tagging, and playback only.

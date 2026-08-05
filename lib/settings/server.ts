@@ -1,5 +1,8 @@
 import { DEFAULT_TIMEZONE, isValidTimezone } from "../timezone";
-import { clampAuditRetentionMonths } from "../retention";
+import {
+  clampAuditRetentionMonths,
+  clampTrashRetentionDays,
+} from "../retention";
 import { DEFAULT_BACKUP_STALENESS_HOURS } from "../health-status";
 import { db, writeTx } from "../db";
 import { getSetting, setSetting } from "./kv";
@@ -125,6 +128,22 @@ export function setAuditRetentionMonths(months: number): void {
     "audit_retention_months",
     String(clampAuditRetentionMonths(months))
   );
+}
+
+// Trash retention window (issue #2013), stored app-globally as a whole-day count.
+// How long a captured delete (deleted_rows — the undo holding row AND its captured
+// video clips) stays restorable under Data → Trash before the hourly notify tick
+// purges it. GLOBAL rather than per-profile because it is instance POLICY: how long
+// this box keeps deleted health data, which is an operator's question, not a data
+// subject's preference — the audit-retention precedent one function up.
+// Absent/garbage → the 30-day default.
+export function getTrashRetentionDays(): number {
+  const raw = getSetting("trash_retention_days");
+  return clampTrashRetentionDays(Number(raw));
+}
+
+export function setTrashRetentionDays(days: number): void {
+  setSetting("trash_retention_days", String(clampTrashRetentionDays(days)));
 }
 
 // AI automation knobs, stored app-globally in the settings table.

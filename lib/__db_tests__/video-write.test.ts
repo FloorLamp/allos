@@ -322,12 +322,12 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       expect(fs.existsSync(abs(row.poster_path))).toBe(true);
 
       // A fresh sweep leaves the buffered entry (and its files) alone.
-      sweepDeletedRows(24);
+      sweepDeletedRows(1);
       expect(fs.existsSync(abs(row.stored_path))).toBe(true);
 
       // Backdate past the window → purge unlinks the now-unreferenced files.
       backdate(undoId);
-      sweepDeletedRows(24);
+      sweepDeletedRows(1);
       expect(fs.existsSync(abs(row.stored_path))).toBe(false);
       expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });
@@ -379,7 +379,7 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
 
       // Purge the stale capture — the file must SURVIVE (a live row references it).
       backdate(undoId);
-      sweepDeletedRows(24);
+      sweepDeletedRows(1);
       expect(fs.existsSync(abs(storedPath))).toBe(true);
       expect(getActivityVideos(profileId, keeper)).toHaveLength(1);
     });

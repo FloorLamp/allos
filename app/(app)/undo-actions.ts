@@ -5,10 +5,13 @@ import { revalidatePath } from "next/cache";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 
 // Restore a previously-deleted row from its undo token (a deleted_rows id), issued
-// by the delete actions and offered as an "Undo" toast (issue #30). Scoped to the
+// by the delete actions and offered as an "Undo" toast (issue #30) — and, since
+// #2013, as the Restore button on Data → Trash, which calls THIS action rather than
+// growing a second restore path. Scoped to the
 // acting profile: restoreDeletedRow only touches a holding row whose profile_id
 // matches, so a token can't be replayed across profiles. Returns ok=false when the
-// token is gone (already restored, swept after 24h, or another profile's). The
+// token is gone (already restored, swept past the retention window, or another
+// profile's). The
 // restore re-inserts with NEW ids, so a broad layout revalidate refreshes wherever
 // the row now belongs.
 export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
