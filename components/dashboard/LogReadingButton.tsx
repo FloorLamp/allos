@@ -25,7 +25,9 @@ export default function LogReadingButton({
       type="button"
       className="btn btn-sm"
       data-testid="vitals-log-reading"
-      onClick={() => open("measurements")}
+      // Opens the VITALS group (#2014) — this button is on the latest-vitals card,
+      // so the reading being logged is a vitals one.
+      onClick={() => open("measurements", { measurementGroup: "vitals" })}
     >
       <IconPlus className="h-4 w-4" stroke={1.75} aria-hidden="true" />
       {label}

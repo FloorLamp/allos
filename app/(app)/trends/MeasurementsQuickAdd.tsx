@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { IconChevronDown } from "@tabler/icons-react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -10,7 +11,15 @@ import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDete
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { validateVitalsInput } from "@/lib/vitals-input";
 import { validateGrowthInput } from "@/lib/growth-input";
-import { deepLinkFieldId } from "@/lib/measurements-deeplink";
+import {
+  deepLinkFieldId,
+  deepLinkGroup,
+  measurementGroupSummary,
+  DEFAULT_MEASUREMENT_GROUP,
+  MEASUREMENT_GROUPS,
+  MEASUREMENT_GROUP_LABEL,
+  type MeasurementGroup,
+} from "@/lib/measurements-deeplink";
 import {
   isMeasurementEntryAllowed,
   type MeasurementEntryMetric,
@@ -38,14 +47,49 @@ export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 // `onSaved` is the only behavioural difference between them — the overlay closes
 // itself after a save; the page mounts simply reset and stay put.
 //
-// ── Field order is STATIC, with exactly two life-stage variants ──────────────
-// Never live-ranked (a form whose fields move between visits is unusable):
-//   Adult: weight → body fat → BP (sys/dia adjacent) → glucose → SpO2 →
-//          temperature → sleep → HRV → resting HR → notes.
-//   Minor: weight → height → head circ (age-gated) → temperature → SpO2 → BP →
-//          glucose → sleep → resting HR → notes; body fat + HRV gated OFF (the
-//          existing showBodyFat / growth gates, #493).
-// Tab order follows visual order because the fields are rendered in that order.
+// ── The layout is INTRINSIC, never a viewport breakpoint (issue #2014) ───────
+// Those three hosts are ~400px (the quick-entry BottomSheet, `sm:max-w-md` less its
+// padding), ~912px (the Trends modal, `max-w-5xl`) and a page column. The grid used
+// `sm:grid-cols-2 lg:grid-cols-4` — VIEWPORT queries, which read the window and know
+// nothing about the box the form is in. At a 1024px window the sheet therefore laid
+// four columns into 400px: 91px each, three-line label wraps, inputs at four
+// different heights, and `flex` unit rows whose min-content simply painted past the
+// panel edge (grid items don't clip). It looked right on a phone and broke as the
+// screen got BIGGER, which is why it survived.
+//
+// `repeat(auto-fit, minmax(10.5rem, 1fr))` asks the CONTAINER instead, so it is
+// right in all three hosts and in any host nobody has thought of yet. Two things
+// follow from the same reasoning and are part of the same fix:
+//   • a unit is not a peer control — it is a suffix INSIDE the field (`bpm`, `%`)
+//     or a two-state toggle on the field's trailing edge (°F/°C, mg/dL) — because
+//     the `input` + `select` flex row is precisely what overflowed;
+//   • a blood pressure is ONE field with two inputs and a slash. Adjacency used to
+//     be enforced by array order against a grid that reflows freely, so in a 4-up
+//     flow systolic ended row one and diastolic began row two. Temperature and its
+//     time are one field for the same reason.
+//
+// ── Progressive disclosure: three groups, one open ───────────────────────────
+// Thirteen always-empty boxes to collect the one or two readings someone actually
+// took is what the copy already argues against. Exactly one group is open on mount,
+// chosen by where the person came from: the vitals card opens Vitals, Trends → Body
+// opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
+// the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
+// The field→group table lives in lib/measurements-deeplink.ts beside the deep-link
+// table, so the two can never disagree.
+//
+// COLLAPSED IS HIDDEN, NEVER UNMOUNTED. Three things depend on that and all three
+// fail silently under conditional rendering: the form still POSTS every field (a
+// value typed and then collapsed still saves, and the Server Action's shape does not
+// change at all); a deep link's `querySelector('#…')` in LogMeasurementsPanel still
+// resolves; and the offline queue (lib/offline/writes.ts) reads the same field names
+// off the same form. A group holding a value also ANNOUNCES it in its header, so a
+// value is never invisible behind a chevron.
+//
+// ── Field membership has exactly two life-stage variants ─────────────────────
+// Order is static within a group (a form whose fields move between visits is
+// unusable). Body fat and HRV are gated OFF for a growth-tracked profile (the
+// existing showBodyFat / showHrv gates, #493); height and head circumference are
+// gated ON. Tab order follows visual order because the fields render in that order.
 //
 // ── What is NOT here ─────────────────────────────────────────────────────────
 // The three #158 functional-fitness markers (grip strength, 30-second chair stand,
@@ -69,9 +113,8 @@ export interface MeasurementsQuickAddProps {
   // #493: body fat isn't tracked for a growth-tracked profile — the ONE showBodyFat
   // predicate, applied here exactly as it is to the charts and the history column.
   showBodyFat?: boolean;
-  // The minor variant: height (+ head circ) appear, HRV is gated off, and the field
-  // order switches. Derived server-side from the same lib/growth-metrics gates the
-  // Body charts read.
+  // The minor variant: height (+ head circ) appear and HRV is gated off. Derived
+  // server-side from the same lib/growth-metrics gates the Body charts read.
   showGrowth?: boolean;
   showHeadCirc?: boolean;
   // Fired after a successful save so a MOUNTING CONTEXT can react — the quick-entry
@@ -81,11 +124,55 @@ export interface MeasurementsQuickAddProps {
   headerSlot?: ReactNode;
   // A metric detail page narrows this shared form to the observation currently
   // being viewed. Omitted on the Body tab and quick-entry overlay, which keep the
-  // combined morning-measurements workflow.
+  // combined morning-measurements workflow. Single-metric mode has one field and no
+  // disclosure at all — there is nothing to progressively reveal.
   metric?: { key: MeasurementEntryMetric; label: string };
   // A surrounding modal already owns the dialog surface and title, so this form
   // drops its standalone card chrome and duplicate heading in that mount.
   presentation?: "card" | "modal";
+  // Which group this ENTRY POINT opens (#2014). A deep link still wins over it.
+  // Every SERVER-RENDERED mount passes one, so the last-written memory below (a
+  // browser-local read) only ever runs in a client-only mount and cannot produce a
+  // hydration mismatch.
+  defaultGroup?: MeasurementGroup;
+  // Scopes that memory to the data subject, so switching profiles doesn't inherit
+  // the other one's open group. Omitted where no memory is wanted.
+  profileId?: number;
+}
+
+// The last-written group, per profile. A device-local UI preference — which
+// disclosure opens first — so it belongs in localStorage rather than in a settings
+// tier: it holds no reading and no health fact.
+function memoryKey(profileId: number | undefined): string | null {
+  return profileId == null ? null : `allos:measurements-group:${profileId}`;
+}
+
+function rememberedGroup(
+  profileId: number | undefined
+): MeasurementGroup | null {
+  const key = memoryKey(profileId);
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return MEASUREMENT_GROUPS.includes(stored as MeasurementGroup)
+      ? (stored as MeasurementGroup)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberGroup(
+  profileId: number | undefined,
+  group: MeasurementGroup
+): void {
+  const key = memoryKey(profileId);
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, group);
+  } catch {
+    // A blocked or full localStorage costs the memory, never the save.
+  }
 }
 
 export default function MeasurementsQuickAdd({
@@ -99,6 +186,8 @@ export default function MeasurementsQuickAdd({
   headerSlot,
   metric,
   presentation = "card",
+  defaultGroup,
+  profileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
@@ -117,6 +206,25 @@ export default function MeasurementsQuickAdd({
   const params = useSearchParams();
   const focusParam = params.get("focus");
   const newParam = params.get("new");
+
+  // The open groups, resolved at FIRST RENDER rather than in an effect:
+  // LogMeasurementsPanel hands ModalShell an initial-focus node it finds with
+  // `querySelector` during the same commit, and a group opened one render later
+  // would leave that field display:none at focus time — the deep link would land
+  // nowhere, silently, which is exactly the failure mode this disclosure could
+  // introduce.
+  const [openGroups, setOpenGroups] = useState<MeasurementGroup[]>(() => [
+    deepLinkGroup(focusParam, newParam) ??
+      defaultGroup ??
+      rememberedGroup(profileId) ??
+      DEFAULT_MEASUREMENT_GROUP,
+  ]);
+  // What each group is holding, for its header. Recomputed from the form itself on
+  // every input, so a COLLAPSED group still reports what is in it.
+  const [summaries, setSummaries] = useState<
+    Partial<Record<MeasurementGroup, string>>
+  >({});
+
   useEffect(() => {
     const id = deepLinkFieldId(focusParam, newParam);
     if (!id) return;
@@ -124,6 +232,28 @@ export default function MeasurementsQuickAdd({
     document.getElementById(id)?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function refreshSummaries() {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    const read = (name: string): string | null => {
+      const v = data.get(name);
+      return v == null ? null : String(v);
+    };
+    const next: Partial<Record<MeasurementGroup, string>> = {};
+    for (const group of MEASUREMENT_GROUPS) {
+      const text = measurementGroupSummary(group, read);
+      if (text) next[group] = text;
+    }
+    setSummaries(next);
+  }
+
+  function toggleGroup(group: MeasurementGroup) {
+    setOpenGroups((open) =>
+      open.includes(group) ? open.filter((g) => g !== group) : [...open, group]
+    );
+  }
 
   // The detail page applies this before rendering its Log Manually trigger. Keep
   // the form guarded too so a future mounting context cannot bypass the gates.
@@ -218,6 +348,16 @@ export default function MeasurementsQuickAdd({
       return;
     }
 
+    // Which group this save WENT to, for the no-context mount's memory. The first
+    // group holding something wins, so a morning that logs a weight and a blood
+    // pressure reopens on the one the person reached for first.
+    const written = MEASUREMENT_GROUPS.find((group) =>
+      measurementGroupSummary(group, (name) => {
+        const v = formData.get(name);
+        return v == null ? null : String(v);
+      })
+    );
+
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
     // kind. (Growth has no queue flow; a growth-only entry offline is reported as a
@@ -237,6 +377,7 @@ export default function MeasurementsQuickAdd({
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
       tempUnitDetection.reset();
+      refreshSummaries();
       return true;
     };
 
@@ -254,45 +395,54 @@ export default function MeasurementsQuickAdd({
       setError("Couldn't save these measurements. Try again.");
       return;
     }
+    if (written) rememberGroup(profileId, written);
     toast(metric ? `${metric.label} saved` : "Measurements saved");
     formRef.current?.reset();
     tempUnitDetection.reset();
+    refreshSummaries();
     onSaved?.();
   }
 
-  // ── The fields, authored once and ORDERED by life stage below ───────────────
+  // ── The fields, authored once and GROUPED below ─────────────────────────────
+  // A label names the measure, the field carries its unit, and the group heading
+  // carries the domain — so no label appends a second parenthetical to a title that
+  // already has one ("BLOOD PRESSURE (SYSTOLIC) (MMHG)", uppercased by `.label`).
   const field = {
     weight: (
       <Field
         key="weight"
-        label={`${BODY_METRIC_META.weight.title} (${weightUnit})`}
+        label={BODY_METRIC_META.weight.title}
         htmlFor="m-weight"
       >
-        <input
-          id="m-weight"
-          type="number"
-          step="0.1"
-          min="0"
-          name="weight"
-          className="input"
-        />
+        <UnitSuffix suffix={weightUnit}>
+          <input
+            id="m-weight"
+            type="number"
+            step="0.1"
+            min="0"
+            name="weight"
+            className="input pr-12"
+          />
+        </UnitSuffix>
       </Field>
     ),
     bodyFat: (
       <Field
         key="body-fat"
-        label={`${BODY_METRIC_META["body-fat"].title} (${BODY_METRIC_META["body-fat"].unit})`}
+        label={BODY_METRIC_META["body-fat"].title}
         htmlFor="m-body-fat"
       >
-        <input
-          id="m-body-fat"
-          type="number"
-          step="0.1"
-          min="0"
-          max="100"
-          name="body_fat_pct"
-          className="input"
-        />
+        <UnitSuffix suffix={BODY_METRIC_META["body-fat"].unit}>
+          <input
+            id="m-body-fat"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            name="body_fat_pct"
+            className="input pr-9"
+          />
+        </UnitSuffix>
       </Field>
     ),
     height: (
@@ -301,25 +451,20 @@ export default function MeasurementsQuickAdd({
         label={BODY_METRIC_META.height.title}
         htmlFor="m-height"
       >
-        <div className="flex gap-2">
+        <UnitToggle
+          name="height_unit"
+          label={`${BODY_METRIC_META.height.title} unit`}
+          options={["cm", "in"]}
+        >
           <input
             id="m-height"
             type="number"
             step="0.1"
             min="0"
             name="height"
-            className="input"
+            className="input pr-16"
           />
-          <select
-            name="height_unit"
-            aria-label={`${BODY_METRIC_META.height.title} unit`}
-            defaultValue="cm"
-            className="input w-auto"
-          >
-            <option value="cm">cm</option>
-            <option value="in">in</option>
-          </select>
-        </div>
+        </UnitToggle>
       </Field>
     ),
     headCirc: (
@@ -328,108 +473,106 @@ export default function MeasurementsQuickAdd({
         label={BODY_METRIC_META["head-circ"].title}
         htmlFor="m-head-circ"
       >
-        <div className="flex gap-2">
+        <UnitToggle
+          name="head_circ_unit"
+          label={`${BODY_METRIC_META["head-circ"].title} unit`}
+          options={["cm", "in"]}
+        >
           <input
             id="m-head-circ"
             type="number"
             step="0.1"
             min="0"
             name="head_circ"
-            className="input"
+            className="input pr-16"
           />
-          <select
-            name="head_circ_unit"
-            aria-label={`${BODY_METRIC_META["head-circ"].title} unit`}
-            defaultValue="cm"
-            className="input w-auto"
-          >
-            <option value="cm">cm</option>
-            <option value="in">in</option>
-          </select>
+        </UnitToggle>
+      </Field>
+    ),
+    // A blood pressure is ONE reading typed as two numbers — one field, two inputs
+    // and a slash. Adjacency used to be an ordering convention against a grid that
+    // reflows freely; here it is structural.
+    bloodPressure: (
+      <Field key="blood-pressure" label="Blood Pressure" htmlFor="m-systolic">
+        <div className="flex items-center gap-1.5">
+          <input
+            id="m-systolic"
+            type="number"
+            step="1"
+            min="0"
+            name="systolic"
+            aria-label="Systolic"
+            placeholder="Sys"
+            className="input min-w-0 flex-1"
+          />
+          <span aria-hidden className="text-slate-400">
+            /
+          </span>
+          <input
+            id="m-diastolic"
+            type="number"
+            step="1"
+            min="0"
+            name="diastolic"
+            aria-label="Diastolic"
+            placeholder="Dia"
+            className="input min-w-0 flex-1"
+          />
+          <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {BODY_METRIC_META.systolic.unit.trim()}
+          </span>
         </div>
-      </Field>
-    ),
-    // Systolic + diastolic are ADJACENT in both variants — a blood pressure is one
-    // reading typed as two numbers, never separated by another measure.
-    systolic: (
-      <Field
-        key="systolic"
-        label={`${BODY_METRIC_META.systolic.title} (${BODY_METRIC_META.systolic.unit.trim()})`}
-        htmlFor="m-systolic"
-      >
-        <input
-          id="m-systolic"
-          type="number"
-          step="1"
-          min="0"
-          name="systolic"
-          className="input"
-        />
-      </Field>
-    ),
-    diastolic: (
-      <Field
-        key="diastolic"
-        label={`${BODY_METRIC_META.diastolic.title} (${BODY_METRIC_META.diastolic.unit.trim()})`}
-        htmlFor="m-diastolic"
-      >
-        <input
-          id="m-diastolic"
-          type="number"
-          step="1"
-          min="0"
-          name="diastolic"
-          className="input"
-        />
       </Field>
     ),
     glucose: (
       <Field key="glucose" label="Glucose" htmlFor="m-glucose">
-        <div className="flex gap-2">
+        <UnitToggle
+          name="glucose_unit"
+          label="Glucose unit"
+          options={["mg/dL", "mmol/L"]}
+        >
           <input
             id="m-glucose"
             type="number"
             step="0.1"
             min="0"
             name="glucose"
-            className="input"
+            className="input pr-24"
           />
-          <select
-            name="glucose_unit"
-            aria-label="Glucose unit"
-            defaultValue="mg/dL"
-            className="input w-auto"
-          >
-            <option value="mg/dL">mg/dL</option>
-            <option value="mmol/L">mmol/L</option>
-          </select>
-        </div>
+        </UnitToggle>
       </Field>
     ),
     spo2: (
-      <Field
-        key="spo2"
-        label={`${BODY_METRIC_META.spo2.title} (${BODY_METRIC_META.spo2.unit})`}
-        htmlFor="m-spo2"
-      >
-        <input
-          id="m-spo2"
-          type="number"
-          step="0.1"
-          min="0"
-          max="100"
-          name="spo2"
-          className="input"
-        />
+      <Field key="spo2" label={BODY_METRIC_META.spo2.title} htmlFor="m-spo2">
+        <UnitSuffix suffix={BODY_METRIC_META.spo2.unit}>
+          <input
+            id="m-spo2"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            name="spo2"
+            className="input pr-9"
+          />
+        </UnitSuffix>
       </Field>
     ),
+    // The #800/#843 fever-curve time field rides WITH temperature — inside the same
+    // field, so no reflow can separate a temperature from when it was taken.
     temperature: (
       <Field
         key="temperature"
         label={BODY_METRIC_META.temperature.title}
         htmlFor="m-temperature"
       >
-        <div className="flex gap-2">
+        <UnitToggle
+          name="temp_unit"
+          label={`${BODY_METRIC_META.temperature.title} unit`}
+          options={["F", "C"]}
+          optionLabels={{ F: "°F", C: "°C" }}
+          value={tempUnitDetection.unit}
+          onChange={(v) => tempUnitDetection.chooseUnit(v === "C" ? "C" : "F")}
+        >
           <input
             id="m-temperature"
             type="number"
@@ -438,145 +581,124 @@ export default function MeasurementsQuickAdd({
             onChange={(event) =>
               tempUnitDetection.readValue(event.target.value)
             }
-            className="input"
+            className="input pr-16"
           />
-          <select
-            name="temp_unit"
-            aria-label={`${BODY_METRIC_META.temperature.title} unit`}
-            value={tempUnitDetection.unit}
-            onChange={(event) =>
-              tempUnitDetection.chooseUnit(
-                event.target.value === "C" ? "C" : "F"
-              )
-            }
-            className="input w-auto"
-          >
-            <option value="F">°F</option>
-            <option value="C">°C</option>
-          </select>
-        </div>
+        </UnitToggle>
         {tempUnitDetection.detectedUnit && (
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Detected °{tempUnitDetection.detectedUnit} from the reading.
           </p>
         )}
-      </Field>
-    ),
-    // The #800/#843 fever-curve time field rides WITH temperature in both variants.
-    tempTime: (
-      <Field
-        key="temp-time"
-        label="Temp. time (optional)"
-        htmlFor="m-temp-time"
-      >
+        <label
+          className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
+          htmlFor="m-temp-time"
+        >
+          Time taken (optional)
+        </label>
         <input
           id="m-temp-time"
           data-testid="measurements-temp-time"
           type="time"
           name="temp_time"
-          className="input"
+          className="input mt-1"
         />
       </Field>
     ),
     sleep: (
-      <Field key="sleep" label="Sleep (hours)" htmlFor="m-sleep">
-        <input
-          id="m-sleep"
-          type="number"
-          step="0.1"
-          min="0"
-          max="24"
-          name="sleep_hours"
-          className="input"
-        />
+      <Field key="sleep" label="Sleep" htmlFor="m-sleep">
+        <UnitSuffix suffix="hrs">
+          <input
+            id="m-sleep"
+            type="number"
+            step="0.1"
+            min="0"
+            max="24"
+            name="sleep_hours"
+            className="input pr-12"
+          />
+        </UnitSuffix>
       </Field>
     ),
     hrv: (
-      <Field
-        key="hrv"
-        label={`${BODY_METRIC_META.hrv.title} (${BODY_METRIC_META.hrv.unit.trim()})`}
-        htmlFor="m-hrv"
-      >
-        <input
-          id="m-hrv"
-          type="number"
-          step="1"
-          min="0"
-          name="hrv"
-          className="input"
-        />
+      <Field key="hrv" label={BODY_METRIC_META.hrv.title} htmlFor="m-hrv">
+        <UnitSuffix suffix={BODY_METRIC_META.hrv.unit.trim()}>
+          <input
+            id="m-hrv"
+            type="number"
+            step="1"
+            min="0"
+            name="hrv"
+            className="input pr-10"
+          />
+        </UnitSuffix>
       </Field>
     ),
     restingHr: (
       <Field
         key="resting-hr"
-        label={`${BODY_METRIC_META["resting-hr"].title} (${BODY_METRIC_META["resting-hr"].unit.trim()})`}
+        label={BODY_METRIC_META["resting-hr"].title}
         htmlFor="m-resting-hr"
       >
-        <input
-          id="m-resting-hr"
-          type="number"
-          min="0"
-          name="resting_hr"
-          className="input"
-        />
-      </Field>
-    ),
-    notes: (
-      <Field key="notes" label="Notes" htmlFor="m-notes">
-        <input id="m-notes" name="notes" className="input" />
+        <UnitSuffix suffix={BODY_METRIC_META["resting-hr"].unit.trim()}>
+          <input
+            id="m-resting-hr"
+            type="number"
+            min="0"
+            name="resting_hr"
+            className="input pr-12"
+          />
+        </UnitSuffix>
       </Field>
     ),
   };
+
+  // Notes is the ONE full-width field: a narrow cell with three columns of dead
+  // space beside it, holding free text in an `<input>`, was the grid winning an
+  // argument it should not have been in.
+  const notesField = (
+    <div>
+      <label className="label" htmlFor="m-notes">
+        Notes
+      </label>
+      <textarea id="m-notes" name="notes" rows={2} className="input" />
+    </div>
+  );
 
   const scopedFields: Record<MeasurementEntryMetric, ReactNode[]> = {
     weight: [field.weight],
     "body-fat": [field.bodyFat],
     "resting-hr": [field.restingHr],
-    "blood-pressure": [field.systolic, field.diastolic],
+    "blood-pressure": [field.bloodPressure],
     spo2: [field.spo2],
-    temperature: [field.temperature, field.tempTime],
+    temperature: [field.temperature],
     hrv: [field.hrv],
     height: [field.height],
     "head-circ": [field.headCirc],
   };
-  const ordered: ReactNode[] = metric
-    ? scopedFields[metric.key]
-    : showGrowth
-      ? [
-          field.weight,
-          field.height,
-          ...(showHeadCirc ? [field.headCirc] : []),
-          field.temperature,
-          field.tempTime,
-          field.spo2,
-          field.systolic,
-          field.diastolic,
-          field.glucose,
-          field.sleep,
-          field.restingHr,
-          field.notes,
-        ]
-      : [
-          field.weight,
-          ...(showBodyFat ? [field.bodyFat] : []),
-          field.systolic,
-          field.diastolic,
-          field.glucose,
-          field.spo2,
-          field.temperature,
-          field.tempTime,
-          field.sleep,
-          ...(showHrv ? [field.hrv] : []),
-          field.restingHr,
-          field.notes,
-        ];
+
+  const groupFields: Record<MeasurementGroup, ReactNode[]> = {
+    vitals: [
+      field.bloodPressure,
+      field.restingHr,
+      field.spo2,
+      field.temperature,
+      field.glucose,
+    ],
+    body: [
+      field.weight,
+      ...(showBodyFat ? [field.bodyFat] : []),
+      ...(showGrowth ? [field.height] : []),
+      ...(showGrowth && showHeadCirc ? [field.headCirc] : []),
+    ],
+    sleep: [field.sleep, ...(showHrv ? [field.hrv] : [])],
+  };
 
   return (
     <form
       id="measurements-quick-add"
       ref={formRef}
       action={handle}
+      onInput={refreshSummaries}
       className={`${presentation === "card" ? "card" : ""} space-y-3 ${
         metric ? "max-w-2xl" : ""
       }`}
@@ -606,11 +728,7 @@ export default function MeasurementsQuickAdd({
         </p>
       )}
 
-      <div
-        className={`grid gap-3 sm:grid-cols-2 ${
-          metric ? "" : "lg:grid-cols-4"
-        }`}
-      >
+      <div className={GRID_CLASS}>
         <Field label="Date" htmlFor="m-date">
           <DateField
             id="m-date"
@@ -619,8 +737,70 @@ export default function MeasurementsQuickAdd({
             required
           />
         </Field>
-        {ordered}
+        {metric ? scopedFields[metric.key] : null}
       </div>
+
+      {!metric && (
+        <div className="space-y-2">
+          {MEASUREMENT_GROUPS.filter(
+            (group) => groupFields[group].length > 0
+          ).map((group) => {
+            const open = openGroups.includes(group);
+            const summary = summaries[group];
+            return (
+              <section
+                key={group}
+                data-testid={`measurements-group-${group}`}
+                className="rounded-lg border border-black/5 dark:border-white/10"
+              >
+                <h3>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group)}
+                    aria-expanded={open}
+                    aria-controls={`measurements-group-${group}-fields`}
+                    data-testid={`measurements-group-${group}-toggle`}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-black/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-white/[0.04]"
+                  >
+                    <span className="shrink-0">
+                      {MEASUREMENT_GROUP_LABEL[group]}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {summary && (
+                        <span
+                          data-testid={`measurements-group-${group}-summary`}
+                          className="truncate text-xs font-normal tabular-nums text-slate-500 dark:text-slate-400"
+                        >
+                          {summary}
+                        </span>
+                      )}
+                      <IconChevronDown
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition ${
+                          open ? "rotate-180" : ""
+                        }`}
+                        stroke={1.75}
+                        aria-hidden
+                      />
+                    </span>
+                  </button>
+                </h3>
+                {/* HIDDEN, not unmounted: a collapsed value still posts, a deep
+                    link still resolves, and the offline queue still finds it. */}
+                <div
+                  id={`measurements-group-${group}-fields`}
+                  // `hidden` REPLACES the grid class rather than joining it: two
+                  // display utilities on one element are resolved by Tailwind's
+                  // output order, not by the order they are written here.
+                  className={open ? `${GRID_CLASS} px-3 pb-3` : "hidden"}
+                >
+                  {groupFields[group]}
+                </div>
+              </section>
+            );
+          })}
+          {notesField}
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
@@ -634,6 +814,11 @@ export default function MeasurementsQuickAdd({
   );
 }
 
+// INTRINSIC columns (#2014): sized by the CONTAINER, not by the window, because
+// this one form is mounted in hosts ~400px, ~912px and a page column wide. Picking
+// a better breakpoint value only moves which host is wrong.
+const GRID_CLASS = "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+
 function Field({
   label,
   htmlFor,
@@ -644,11 +829,76 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+// A unit the user does NOT choose, printed inside the field's trailing edge. The
+// input carries matching right padding, so a value can never run under it.
+function UnitSuffix({
+  suffix,
+  children,
+}: {
+  suffix: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      {children}
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-slate-500 dark:text-slate-400">
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
+// A unit the user DOES choose: a two-state control on the field's trailing edge
+// instead of a peer `select` in a flex row (which is what overflowed a 91px cell).
+// Still a real `<select>` under the same `name`, so the posted FormData — and the
+// offline queue reading the same names off the same form — are unchanged.
+function UnitToggle({
+  name,
+  label,
+  options,
+  optionLabels,
+  value,
+  onChange,
+  children,
+}: {
+  name: string;
+  label: string;
+  options: string[];
+  optionLabels?: Record<string, string>;
+  value?: string;
+  onChange?: (value: string) => void;
+  children: ReactNode;
+}) {
+  const controlled = value !== undefined && onChange !== undefined;
+  return (
+    <div className="relative">
+      {children}
+      <select
+        name={name}
+        aria-label={label}
+        {...(controlled
+          ? { value, onChange: (e) => onChange(e.target.value) }
+          : { defaultValue: options[0] })}
+        // The existing borderless in-field select primitive — it already pins the
+        // OPEN option list's colors in dark mode, which a hand-rolled transparent
+        // select gets wrong (light text on a white popup).
+        className="select-bare absolute inset-y-1 right-1 py-0 pl-1.5 text-xs"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {optionLabels?.[option] ?? option}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
