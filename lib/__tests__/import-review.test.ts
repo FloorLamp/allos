@@ -682,19 +682,13 @@ describe("findActivityDuplicates — wrong-offset clock rescue (#2011)", () => {
 
   it("does NOT pair on one comparable measure alone", () => {
     expect(
-      findActivityDuplicates([
-        { ...hc, distance_km: null },
-        stravaOffset,
-      ])
+      findActivityDuplicates([{ ...hc, distance_km: null }, stravaOffset])
     ).toHaveLength(0);
   });
 
   it("does NOT pair when duration or distance actually disagree", () => {
     expect(
-      findActivityDuplicates([
-        hc,
-        { ...stravaOffset, distance_km: 4.2 },
-      ])
+      findActivityDuplicates([hc, { ...stravaOffset, distance_km: 4.2 }])
     ).toHaveLength(0);
   });
 
