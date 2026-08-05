@@ -509,8 +509,10 @@ See `docs/internals/e2e-hygiene.md`.
   scan runs `gitleaks git --log-opts="--all"`, i.e. over every ref in the
   checkout, so one such value in one commit on one branch fails the gate on
   every open PR in the repo until that commit leaves the remote.
-- When adding a domain, update seed data and the relevant registries, import
-  cleanup lists, navigation, and tests together.
+- When adding a domain, start from the default shapes in
+  `docs/internals/design-doctrine.md` — new data is an instance of an existing
+  substrate before it is a new table — and update seed data and the relevant
+  registries, import cleanup lists, navigation, and tests together.
 
 ## Deploy
 
