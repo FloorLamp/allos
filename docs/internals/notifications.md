@@ -916,6 +916,19 @@ replies; `handleIncomingMessage` is still the single router, now a switch over t
 parsed verb, and a DB-tier completeness pin fails the build if a verb in the
 registry has no route.
 
+**One authority for "which text triggers this handler" (#2004).** The dispatcher
+resolved the verb through `parseCommand`/the alias table, and then each logging
+handler re-validated the raw text against a hand-written regex of its own
+(`/^\/dose(@\w+)?(\s|$)/i` and friends) — two independent answers, kept in step by
+hand. An alias added to the registry without the matching regex edit reproduces the
+silence this feature exists to remove: the dispatcher routes, the gate says the verb
+exists, the handler's private regex declines, and the user gets nothing. The guard is
+now DERIVED — `isCommandText(name, text)` asks the same parser the dispatcher asks —
+so aliases, `@botname` addressing, case and trailing args have one definition. A pure
+test pins agreement across the whole command table and scans `lib/notifications` for
+any reintroduced slash-command regex literal, so a second authority cannot be written
+rather than merely being wrong once it is.
+
 **Three different answers, deliberately.** An unknown verb echoes what was typed
 (so a typo reads as a typo) and points at `/help`. A REAL verb gated off for this
 chat says so instead — "not set up here" and "not a thing" send you looking in two
@@ -976,7 +989,12 @@ confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
 has no "read my message" API — that blob is the only record of what a chat is
 showing. Retention is a named cleanup class (#203): pointers past Telegram's
-~48h edit horizon are pruned on every sweep.
+~48h edit horizon are pruned on every sweep. Two indexes serve it: 135's
+`(profile_id, sent_at)` for the sweep and the pruner, and 152's
+`(profile_id, chat_id, kind, sent_at)` for the supersede lookup (#2003), which runs
+on the DELIVERY PATH of every `/dose`, `/symptom` and `/mood` and until then matched
+only the profile prefix and filtered the rest in memory — the full read its own
+comment claimed it avoided.
 
 **The sweep** (`reconcileProfileMessages`, one pass per profile per tick) applies
 one pure decision (`lib/notifications/reconcile-core.ts`):
@@ -1157,6 +1175,32 @@ is what makes it self-healing: a close that fails is retried by the next send of
 that kind AND by the next sweep, instead of leaving one extra live keyboard until
 day-rollover the way #947's bespoke strip did.
 
+**A chat-addressed send names its own SUBJECT (#1995).** `sendTelegramMessage`
+addresses a CHAT; a pointer is owned by a PROFILE, so every explicit-chat send has to
+answer "whose message is this?". It used to answer by guessing — the lowest profile
+the chat could act as, whatever the message said. Harmless while every such send
+covered the whole chat (`/dose` and `/symptom` render ONE keyboard with per-profile
+prefixed buttons), and wrong the moment a command sends one message PER profile: all N
+pointers land on the same borrowed owner, so in a family chat Basil's send rotates
+Ada's pointer, her live keyboard is stripped because HE logged something, and the two
+trade one (chat, kind) slot back and forth forever. Nothing lands on the wrong person
+— callback tokens carry their own profile id and `resolveTapProfile` re-checks it on
+tap (#797) — the damage is to the AFFORDANCE, and it is exactly the invariant #1898
+had just bought.
+
+The subject is now **declared, never inferred**: a required third argument whose two
+values are the two honest answers — a **profile id** ("this message is about that
+person") or **`CHAT_WIDE`** ("this covers the chat, or has no data subject at all,
+like `/help`"), which resolves to the chat's stable representative so a re-issuable
+chat-wide verb keeps landing on one slot. An unmapped chat resolves to nothing and
+records NO pointer rather than inventing an owner. All three delivery paths — a
+fan-out copy, an explicit-chat override, a chat-addressed send — now share one
+`trackDelivered` tail and differ in nothing but the subject they were handed.
+
+The supersede key stays **per profile** rather than widening to (chat, kind) across
+profiles: with trustworthy subjects that is the correct key, because a per-profile
+message must close its own predecessor and never a housemate's.
+
 **Re-issuability is DECLARED, per kind** (`KIND_REISSUE` in
 `lib/notifications/reconcile-registry.ts`), and the completeness guard fails the
 build for a kind that never answered. "No" is the right answer for every
@@ -1166,9 +1210,12 @@ prompt nobody answered. The `false` entries therefore carry reasons too, so
 "decided against" stays distinguishable from "nobody looked". Two entries are worth
 naming:
 
-- **`temp` is not re-issuable** because a `/temp` call in a multi-profile chat
-  sends one prompt PER profile in a single invocation — superseding on (chat, kind)
-  would close the sibling prompt the same command just sent.
+- **`temp` is not re-issuable.** The sibling-closing hazard that first justified
+  the entry is gone since #1995 (a `/temp` call's per-profile prompts now declare
+  their own subjects, so the supersede lookup is per profile and cannot reach a
+  sibling's copy), but the entry stands on its own footing: a prompt asks for a typed
+  REPLY and carries no keyboard, so it records no pointer and supersedes nothing
+  either way.
 - **`food` is not re-issuable** because the nudge already holds the invariant
   through its own #947/#1945 rotation, whose strip is conditioned on the NEW message
   carrying a `food:` quick-log token. The generic rule cannot express that

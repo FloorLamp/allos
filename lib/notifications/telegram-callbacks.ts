@@ -125,7 +125,6 @@ import {
   answerCallbackQuery,
   closeMessage,
   rebuildMessage,
-  sendTelegramMessage,
   updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";

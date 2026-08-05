@@ -319,7 +319,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "temp",
     reissuable: false,
-    why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. Superseding on (chat, kind) would close the sibling prompt the same command just sent — the invariant's own mechanism destroying the message it was meant to protect.",
+    why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. The sibling-closing hazard that first justified this entry is gone since #1995 — those prompts now declare their own subjects, so the supersede lookup is per profile and cannot reach a sibling's copy — but the entry stands on its own footing: a `/temp` prompt asks for a typed REPLY and carries no keyboard, so it records no pointer and supersedes nothing either way. If a prompt ever gains buttons, re-issue becomes a real question and gets answered then, per profile.",
   },
   {
     kind: "food",
