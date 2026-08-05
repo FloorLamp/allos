@@ -90,6 +90,7 @@ import {
   seedPanelGroups,
   seedPanelIndex,
   seedReportPanes,
+  seedLongevityStalePanel,
 } from "./seed/medical";
 import { seedCoverageGaps } from "./seed/coverage-gaps";
 import {
@@ -205,6 +206,7 @@ seedTimelineEmpty();
 // exactly where they were.
 seedSymptomVideoEpisode();
 seedReportPanes();
+seedLongevityStalePanel();
 // Appended after those for the same reason (#1504): a new profile plus its own intake
 // rows, so every existing fixture's row ids stay exactly where they were.
 seedUpcomingAggregate();

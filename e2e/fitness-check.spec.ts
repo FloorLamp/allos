@@ -503,3 +503,56 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await page.close();
   });
 });
+
+// Issue #2025 — the check's summaries are honest about stale and best-of data. Read-only
+// against the FITNESS fixture profile (which owns a ~100-day-old grip check plus seeded
+// natural-store readings), so it is repeat-safe and never perturbs a neighbour.
+test.describe("Fitness check honesty: freshness + domain rollup (#2025)", () => {
+  test("completion counts CURRENT values and names the stale remainder", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // "has a current value" — not "has any value", which is what the old copy called
+    // "recent" while counting readings of any age.
+    const completion = page.getByTestId("fitness-completion");
+    await expect(completion).toContainText("with a current value");
+
+    // A stale reading is still MEASURED and still shows its provenance — the fix is what
+    // the aggregate claims, never what it hides. The seeded grip check is ~100 days old,
+    // past the fixture profile's cadence, so it is present and marked rather than gone.
+    await expect(page.getByTestId("fitness-tile-grip")).toContainText("Grip");
+
+    await page.close();
+  });
+
+  test("the domain strip says it is the BEST norms result, not the domain", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // The seeded synced VO2 gives the endurance domain a norms-backed result.
+    const endurance = page.getByTestId("fitness-domain-endurance");
+    await expect(endurance).toBeVisible();
+    await expect(endurance).toContainText("best");
+
+    // The shared component captions what the bar is — so both consuming surfaces say it.
+    const caption = page.getByTestId("fitness-domain-caption");
+    await expect(caption).toContainText("best result against published norms");
+    await expect(caption).toContainText("not");
+
+    await page.close();
+  });
+});
