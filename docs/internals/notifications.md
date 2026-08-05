@@ -971,6 +971,52 @@ key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
 
+**When the digest sends, and the one hour it will wait (#2102).** Two separate
+decisions, both pure in `lib/notifications/digest-schedule.ts`:
+
+- **`auto` resolves past the ARRIVAL, not the wake.** An `auto` digest hour used
+  to resolve through `wakeMinuteToHour(typicalWakeTime(profileId))` — the hour the
+  person WAKES — while the sleep row lands a measured ~70 minutes behind waking
+  (real Health Connect profile, 11 nights, wake 05:40, arrivals 06:02–07:49). The
+  rounding compounded it: `round(340/60)` is 6, so the digest fired at 06:00,
+  before all eleven arrivals and an hour worse than the manual 07:00 it was meant
+  to improve on. `digestAutoHour` now resolves to the first whole hour strictly
+  after wake + a p90 arrival lag, measured at read time by joining
+  `integration_sync_rows` → `metric_samples` (`getSleepArrivalLagsMin`). Below the
+  sample gate it returns null and the caller falls back to the wake hour, where the
+  deferral below is the safety net. The **`auto` Morning intake hour deliberately
+  keeps `wakeMinuteToHour`**: it needs you awake, not your tracker synced, so do
+  not fold the lag into that shared helper.
+- **One deferral, into the retry hour that already exists.** `slotDue` is a
+  two-hour window paired with the hard per-day marker, so the FIRST of those hours
+  is free to decline: `deferDigestForSleep` skips the send when last night's sleep
+  is pending but expected, and the hour+1 tick sends it. It is bounded by
+  construction — the decision requires `currentHour === slotHour`, so the retry
+  hour never defers and the digest goes out at hour+1 whether or not the night
+  landed. **Auto only**: a manually set hour is user-owned timing, and silently
+  sliding someone's 07:00 would make their own setting untrue. Hour 23 never
+  defers, because `slotDue` does not wrap past midnight and there would be no hour
+  to defer into.
+
+**No new stored state, and no new send marker.** "Have I already deferred today?"
+is answered by the clock, not a flag, which is why nothing here appears in
+`SEND_MARKER_REGISTRY`. A decline writes nothing at all, so a deferred-then-sent
+digest records its `notify_last_digest` marker, its `notify_digest_last_at`
+watermark, its tail pointer and its #2081 dependency stamp exactly as an on-time
+one does.
+
+**When to send vs what to print stay separate.** This decides only WHEN. #2099
+decides what: a night that is not last night is omitted rather than printed as
+last night's, so a digest that reaches the end of its window with nothing in hand
+simply has no Sleep section. `digestSleepPending` asks the freshness question with
+the SAME rule the section prints by (`isLastNight` over `mainSleepNights`), so
+"wait for it" and "print it" can never disagree about which night that is — and it
+is gated on `isSleepTracking` (`lib/sleep-summary.ts`: at least 2 of the 3 nights
+before last night recorded). Without that gate an abandoned tracker would defer the
+digest every morning forever: the connection-side staleness signal is structurally
+unable to see a device that stopped recording sleep while the phone kept syncing
+steps (`lib/integrations/staleness.ts` tracks the CONNECTION's liveness by design).
+
 **What CHANGED, not just what is due (#1713).** The **New** section is no longer
 just "flagged biomarkers + documents". It also renders the lines the shared
 **recent-changes collector** produces at a **24-hour** window:

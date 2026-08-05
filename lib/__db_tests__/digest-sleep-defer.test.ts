@@ -21,8 +21,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
-import { hourInTz } from "@/lib/date";
+import { hourInTz, shiftDateStr } from "@/lib/date";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -65,9 +64,8 @@ let seq = 0;
 
 function newProfile(name: string): number {
   const id = Number(
-    db
-      .prepare("INSERT INTO profiles (name) VALUES (?)")
-      .run(`${name}${++seq}`).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`${name}${++seq}`)
+      .lastInsertRowid
   );
   setTimezone(id, "UTC"); // profile-local hour == the frozen UTC hour
   return id;
@@ -131,7 +129,8 @@ function seedNight(profileId: number, wakeDay: string): void {
 function seedMeasuredProfile(name: string): number {
   const p = newProfile(name);
   const eventId = syncEventId(p);
-  for (let back = 1; back <= 20; back++) seedNight(p, shiftDateStr(FROZEN_DAY, -back));
+  for (let back = 1; back <= 20; back++)
+    seedNight(p, shiftDateStr(FROZEN_DAY, -back));
   MEASURED_LAGS.forEach((lag, i) =>
     recordArrival(p, eventId, shiftDateStr(FROZEN_DAY, -(i + 1)), lag)
   );

@@ -142,7 +142,11 @@ describe("shouldDeferDigest — once, and only into an hour that exists", () => 
     // declining there would DROP the digest for the day rather than delay it.
     expect(
       shouldDeferDigest(
-        { slotHour: LAST_DEFERRABLE_HOUR, currentHour: LAST_DEFERRABLE_HOUR, auto: true },
+        {
+          slotHour: LAST_DEFERRABLE_HOUR,
+          currentHour: LAST_DEFERRABLE_HOUR,
+          auto: true,
+        },
         pending
       )
     ).toBe(true);
@@ -160,7 +164,9 @@ describe("shouldDeferDigest — once, and only into an hour that exists", () => 
     for (let hour = 0; hour < 24; hour++) {
       const due = hour === slotHour || hour === slotHour + 1; // slotDue
       if (!due) continue;
-      if (shouldDeferDigest({ slotHour, currentHour: hour, auto: true }, pending))
+      if (
+        shouldDeferDigest({ slotHour, currentHour: hour, auto: true }, pending)
+      )
         declined.push(hour);
       else eligible.push(hour);
     }
