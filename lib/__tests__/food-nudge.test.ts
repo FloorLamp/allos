@@ -46,7 +46,6 @@ describe("renderFoodNudge", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map()
     );
     const logButtons = (msg.actions ?? []).filter((a) =>
@@ -68,36 +67,32 @@ describe("renderFoodNudge", () => {
     expect(msg.title).toContain("Morning");
   });
 
-  it("button counts are SLOT-scoped while the tally is the DAY total, labeled Today (#1016)", () => {
+  it("the button suffix is the DAY total, matching the tally (#2019 retired the slot count)", () => {
     const top = RANKED_GROUPS[0];
-    // Slot: 1 this slot. Day: 3 total (2 from an earlier slot). The button shows the SLOT
-    // count; the tally shows the DAY total.
-    const slot = new Map<string, number>([[top.slug, 1]]);
     const day = new Map<string, number>([[top.slug, 3]]);
-    const msg = renderFoodNudge(1, "Midday", DATE, RANKED, slot, day);
+    const msg = renderFoodNudge(1, "Midday", DATE, RANKED, day);
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (1)`); // slot count, not the day's 3
+    // #1016's "n this slot" is gone with the read-time window derivation it depended on:
+    // a Telegram tap no longer asserts a meal, so "this slot" would have to be re-derived
+    // and a tap minutes past a boundary would tick nobody's button.
+    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (3)`);
     expect(plainBody(msg.body)).toContain(
       `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
-    ); // day total, labeled
+    );
   });
 
-  it("a morning-tapped group shows an UNMARKED button on the midday nudge + a day tally (#1016)", () => {
+  it("shows a bare button for a group with nothing logged today", () => {
     const top = RANKED_GROUPS[0];
-    // Logged in the morning → 0 this midday slot, 2 on the day.
+    const other = RANKED_GROUPS[1];
     const msg = renderFoodNudge(
       1,
       "Midday",
       DATE,
       RANKED,
-      new Map(), // slot count 0
-      new Map([[top.slug, 2]]) // day total 2
+      new Map([[other.slug, 2]])
     );
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name}`); // no "(n)" — clean at midday
-    expect(plainBody(msg.body)).toContain(
-      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×2`
-    );
+    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name}`);
   });
 
   it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
@@ -124,7 +119,6 @@ describe("renderFoodNudge", () => {
       DATE,
       RANKED,
       new Map(),
-      new Map(),
       { proteinLine: proteinTodayNudgeParts(t) }
     );
     // The nudge renders the SAME line lib/protein composes for any other surface —
@@ -144,7 +138,6 @@ describe("renderFoodNudge", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map()
     );
     expect(plainBody(msg.body)).not.toMatch(/Protein/);
@@ -156,7 +149,6 @@ describe("renderFoodNudge", () => {
       "Evening",
       DATE,
       RANKED,
-      new Map(),
       new Map()
     );
     expect(msg.body).toContain("Tap what you've eaten");
@@ -173,7 +165,6 @@ describe("renderFoodNudge", () => {
         "Morning",
         DATE,
         RANKED,
-        new Map(),
         new Map(),
         { visibleCount }
       );
@@ -199,7 +190,6 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
       DATE,
       withProtein,
       new Map(),
-      new Map(),
       {
         proteinPresetGrams: 30,
       }
@@ -213,35 +203,32 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     );
   });
 
-  it("carries the SLOT-scoped (n) suffix like its siblings (#1379), never the day tally", () => {
-    // #1379 reverses the original #1073 no-suffix decision: the button now shows the SLOT
-    // count (2 this slot) exactly like a food group — not the day total (3), which stays on
-    // the protein line. The reserved key is STILL filtered out of the food-serving tally.
+  it("carries the (n) suffix like its siblings (#1379), on the day's protein taps", () => {
+    // #1379's sibling-consistency decision survives #2019; only the count's MEANING
+    // changed with every other button's — 3 protein taps today, not "this slot".
     const msg = renderFoodNudge(
       1,
       "Evening",
       DATE,
       withProtein,
-      new Map([[PROTEIN_NUDGE_KEY, 2]]), // slot: 2 protein logs this evening slot
-      new Map([[PROTEIN_NUDGE_KEY, 3]]), // day map would say 3 — must NOT drive the button
+      new Map([[PROTEIN_NUDGE_KEY, 3]]),
       { proteinPresetGrams: 25 }
     );
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("💪 ＋25g protein (2)"); // slot count, not the day's 3
+    expect(proteinBtn?.label).toBe("💪 ＋25g protein (3)");
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
     expect(msg.body).not.toContain("✓ Today:");
     expect(msg.body).not.toContain("__protein__");
   });
 
-  it("shows a bare button (no suffix) when nothing's been logged this slot (#1379)", () => {
+  it("shows a bare button (no suffix) when no protein has been logged today", () => {
     const msg = renderFoodNudge(
       1,
       "Evening",
       DATE,
       withProtein,
-      new Map(), // no slot logs
       new Map(),
       { proteinPresetGrams: 25 }
     );
@@ -259,7 +246,6 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
       "Evening",
       DATE,
       withProtein,
-      new Map(),
       new Map(),
       { proteinPresetGrams: 25 }
     );
@@ -286,7 +272,6 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
       "Evening",
       DATE,
       withProtein,
-      new Map(),
       new Map()
     );
     const proteinBtn = (msg.actions ?? []).find((a) =>
@@ -305,7 +290,6 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
         "Morning",
         DATE,
         RANKED,
-        new Map(),
         new Map(),
         {
           visibleCount: vc,
@@ -330,7 +314,6 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
       DATE,
       RANKED,
       new Map(),
-      new Map(),
       { visibleCount: RANKED.length }
     );
     const logButtons = (msg.actions ?? []).filter((a) =>
@@ -348,7 +331,6 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map(),
       { visibleCount: RANKED.length + 6 }
     );
@@ -372,7 +354,6 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map()
     );
     expect(
@@ -386,7 +367,6 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map(),
       { visibleCount: FOOD_NUDGE_BUTTON_COUNT * 2 }
     );
@@ -408,7 +388,6 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
       DATE,
       RANKED,
       new Map(),
-      new Map(),
       { visibleCount: RANKED.length }
     );
     expect(expandControls(msg).map((a) => a.label)).toEqual(["➖ Show less"]);
@@ -423,7 +402,6 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
       "Morning",
       DATE,
       short,
-      new Map(),
       new Map(),
       { visibleCount: 12 }
     );
@@ -475,7 +453,6 @@ describe("countVisibleFoodButtons (#1075)", () => {
       "Morning",
       DATE,
       RANKED,
-      new Map(),
       new Map(),
       {
         visibleCount: 12,
