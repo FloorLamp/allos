@@ -145,7 +145,11 @@ export function setLoginEmailNotify(
   cfg: LoginEmailNotify
 ): LoginEmailNotify {
   writeTx(() => {
-    setLoginSetting(loginId, "email_notify_enabled", cfg.emailEnabled ? "1" : "0");
+    setLoginSetting(
+      loginId,
+      "email_notify_enabled",
+      cfg.emailEnabled ? "1" : "0"
+    );
     setLoginSetting(
       loginId,
       "email_notify_full_content",

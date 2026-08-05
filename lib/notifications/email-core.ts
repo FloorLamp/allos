@@ -61,7 +61,9 @@ export function contentFreeEmail(publicUrl: string): ComposedEmail {
 // A deep-link action rendered as a plain "Label: url" line. Callback actions
 // (inline buttons) are DROPPED: email has no tap channel, and a callback token
 // must never ride a mail (it is an opaque capability string).
-function actionLines(actions: readonly NotificationAction[] | undefined): string[] {
+function actionLines(
+  actions: readonly NotificationAction[] | undefined
+): string[] {
   return (actions ?? [])
     .filter((a): a is NotificationAction & { url: string } => !!a.url)
     .map((a) => `${a.label}: ${a.url}`);

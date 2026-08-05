@@ -114,7 +114,11 @@ async function sendToRecipients(
       publicUrl
     );
     try {
-      await sendEmail({ to: r.address, subject: mail.subject, text: mail.text });
+      await sendEmail({
+        to: r.address,
+        subject: mail.subject,
+        text: mail.text,
+      });
       ok++;
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));

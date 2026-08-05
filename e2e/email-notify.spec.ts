@@ -3,10 +3,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import { settledCheck, settledClick } from "./helpers";
 import { loginAs } from "./nav";
-import {
-  E2E_LOGIN_EMAIL_NOTIFY,
-  E2E_MEMBER_PASSWORD,
-} from "./fixture-logins";
+import { E2E_LOGIN_EMAIL_NOTIFY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath, workerMailboxPath } from "./worker-env";
 
 // The email notification channel (issue #1855): the Channels card's graceful
@@ -96,9 +93,7 @@ test.describe("email notification channel (#1855)", () => {
       await expect(member.getByTestId("login-email-no-address")).toBeVisible();
       // Unconfigured channel ⇒ the matrix column header says "not set up", and
       // there is no email recipient — but the column itself renders.
-      await expect(
-        member.getByTestId("matrix-column-all-email")
-      ).toBeVisible();
+      await expect(member.getByTestId("matrix-column-all-email")).toBeVisible();
 
       // ── Configure SMTP + the login address; the notes clear ────────────────
       setSmtpConfigured(true);
@@ -112,7 +107,11 @@ test.describe("email notification channel (#1855)", () => {
       );
 
       // ── Enable: content-free is the pre-selected default ───────────────────
-      await settledCheck(member, member.getByTestId("login-email-enabled"), true);
+      await settledCheck(
+        member,
+        member.getByTestId("login-email-enabled"),
+        true
+      );
       await expect(member.getByTestId("email-content-free")).toBeChecked();
       await expect(member.getByTestId("email-full-content")).not.toBeChecked();
       await settledClick(member, card.getByRole("button", { name: "Save" }));
@@ -142,7 +141,9 @@ test.describe("email notification channel (#1855)", () => {
       };
       await toggleCell(false);
       await member.reload();
-      await expect(member.getByTestId("matrix-cell-email-refill")).not.toBeChecked();
+      await expect(
+        member.getByTestId("matrix-cell-email-refill")
+      ).not.toBeChecked();
       await toggleCell(true);
 
       // ── Send test, content-free: the mail carries no message content ───────

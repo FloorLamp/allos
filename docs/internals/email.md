@@ -84,8 +84,8 @@ The three questions the issue existed to decide:
   title, a body line, or a profile name into it. `full` sends channel parity —
   the same `plainBody` words every other channel renders, plus deep-link
   actions as plain links (callback tokens are always dropped). The ruling's
-  load-bearing sentence — *the default must never be widened by anything but
-  the user's own tap on that setting* — is enforced three ways: the only
+  load-bearing sentence — _the default must never be widened by anything but
+  the user's own tap on that setting_ — is enforced three ways: the only
   writer is `saveLoginEmailNotify` (the Settings control), an absent form
   field reads as content-free, and a shared inbox collapses to the more
   restrictive mode (`dedupeEmailRecipients`).
