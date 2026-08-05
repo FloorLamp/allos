@@ -406,11 +406,31 @@ test("temporary appointment absence never becomes a saved hidden preference", as
     // Customize still knows about the temporarily-unavailable widget, but labels
     // it as empty instead of folding that state into the user's hidden choices.
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Edit dashboard" }).click();
+    // "Edit dashboard" is `onClick={enterEdit}` — a pure client state flip with no
+    // POST — but the dashboard is the heaviest page in the app, so a tap landing in
+    // the pre-hydration window (#500/#830) is swallowed with nothing to await and
+    // the next assertion just times out. hydratedClick, not a retry loop: this
+    // TOGGLES editing, so a second tap would undo the first.
+    await hydratedClick(
+      page,
+      main.getByRole("button", { name: "Edit dashboard" })
+    );
     const unavailable = main.getByTestId("dashboard-widget-next-appointment");
     await expect(unavailable).toBeVisible();
     await expect(unavailable).toContainText("Nothing to show right now");
-    await main.getByRole("button", { name: "Save", exact: true }).click();
+    // #1947: this was a bare `.click()`, and it raced the Server Action against the
+    // next 5s expect — the failure snapshot showed the page still in customize mode
+    // with "Saving" up and Save disabled. Save is `onClick={save}` →
+    // `startTransition(() => saveAction(...))`, so it posts a correlated action;
+    // settledClick awaits it, matching what line ~393 of this same spec already does
+    // for the household chip. `setEditing(false)` then runs client-side on the next
+    // tick, which the assertion's own retry absorbs — so this is settledClick, not
+    // settledClickApplied: "Edit dashboard" is client state, not a server render, and
+    // would prove nothing about an applied tree.
+    await settledClick(
+      page,
+      main.getByRole("button", { name: "Save", exact: true })
+    );
     await expect(
       main.getByRole("button", { name: "Edit dashboard" })
     ).toBeVisible();
@@ -420,10 +440,18 @@ test("temporary appointment absence never becomes a saved hidden preference", as
     await page.goto("/records/history/visits");
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const visitDialog = page.getByRole("dialog", { name: "Add visit" });
+    // Uncontrolled (`defaultValue`), so a raw fill is correct here — #1941 is about
+    // controlled inputs, and settledFill on an uncontrolled field buys nothing.
     await visitDialog
       .getByLabel("Reason / title")
       .fill(AVAILABILITY_APPOINTMENT);
-    await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
+    // Same #1947 shape as Save above: `<form action={handle}>` posts a Server Action
+    // and the "Appointment saved" toast is only raised after it resolves, so a bare
+    // click left that toast racing a 5s expect.
+    await settledClick(
+      page,
+      visitDialog.getByRole("button", { name: "Add", exact: true })
+    );
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
     await page.goto("/");
@@ -452,7 +480,12 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
 }) => {
   await page.goto("/");
   const main = page.getByRole("main");
-  await main.getByRole("button", { name: "Edit dashboard" }).click();
+  // Client toggle on the app's heaviest page — hydratedClick for the same reason as
+  // the sibling test above (a pre-hydration tap is swallowed; a retry would undo it).
+  await hydratedClick(
+    page,
+    main.getByRole("button", { name: "Edit dashboard" })
+  );
 
   // At `lg`+ the editor keeps the IN-PLACE cards (#1891). Spans and adjacency are
   // visible on a six-column canvas and are part of what is being edited there, so
@@ -536,7 +569,10 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
     .toBe(idsBefore[1]);
 
   // Cancel restores the pre-edit order — and leaves the saved layout untouched.
-  await main.getByRole("button", { name: "Cancel" }).click();
+  // `onClick={cancel}` writes nothing: it is a client toggle, and the button is
+  // already hydrated by now (the drag above went through React), so hydratedClick
+  // is a no-cost statement of which kind of click this is.
+  await hydratedClick(page, main.getByRole("button", { name: "Cancel" }));
   await expect(
     main.getByRole("button", { name: "Edit dashboard" })
   ).toBeVisible();
