@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, openMeasurementGroup } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -76,12 +76,9 @@ test.describe("View-only access (issue #33)", () => {
     // (see the write-member test below). We assert the redirect on pathname, not
     // the toast: the form optimistically toasts once the action call resolves, so
     // the toast is not a reliable "it wrote" signal on a redirect.
-    await readOnlyForm
-      .getByLabel("Blood Pressure (Systolic) (mmHg)")
-      .fill("118");
-    await readOnlyForm
-      .getByLabel("Blood Pressure (Diastolic) (mmHg)")
-      .fill("76");
+    await openMeasurementGroup(memberPage, readOnlyForm, "vitals");
+    await readOnlyForm.getByLabel("Systolic", { exact: true }).fill("118");
+    await readOnlyForm.getByLabel("Diastolic", { exact: true }).fill("76");
     await readOnlyForm
       .getByRole("button", { name: "Save measurements" })
       .click();
@@ -115,8 +112,9 @@ test.describe("View-only access (issue #33)", () => {
     );
     const form = memberPage.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
-    await form.getByLabel("Blood Pressure (Systolic) (mmHg)").fill("120");
-    await form.getByLabel("Blood Pressure (Diastolic) (mmHg)").fill("78");
+    await openMeasurementGroup(memberPage, form, "vitals");
+    await form.getByLabel("Systolic", { exact: true }).fill("120");
+    await form.getByLabel("Diastolic", { exact: true }).fill("78");
     await form.getByRole("button", { name: "Save measurements" }).click();
 
     // The write path completes: the success toast appears and we STAY on the

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { expandTrendsContext } from "./trends-chrome";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, openMeasurementGroup } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -159,17 +159,25 @@ test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", 
     ).toBeVisible();
     await expect(form).not.toHaveClass(/card/);
 
-    // The adult field set, in the issue's static order.
-    await expect(form.getByLabel("Weight (kg)")).toBeVisible();
-    await expect(form.getByLabel("Body Fat (%)")).toBeVisible();
+    // The adult field set, disclosed in groups (#2014). This entry point is Trends →
+    // Body, so BODY is the open one; the others are collapsed but still MOUNTED,
+    // which is what keeps a collapsed value postable and a deep link focusable.
+    await expect(form.locator("#measurements-group-body-fields")).toBeVisible();
+    await expect(form.getByLabel("Weight", { exact: true })).toBeVisible();
+    await expect(form.getByLabel("Body Fat", { exact: true })).toBeVisible();
+    await expect(form.locator("#measurements-group-vitals-fields")).toBeHidden();
+    await expect(form.getByLabel("Systolic", { exact: true })).toHaveCount(1);
+
+    await openMeasurementGroup(page, form, "vitals");
+    await expect(form.getByLabel("Systolic", { exact: true })).toBeVisible();
+    await expect(form.getByLabel("Diastolic", { exact: true })).toBeVisible();
     await expect(
-      form.getByLabel("Blood Pressure (Systolic) (mmHg)")
+      form.getByLabel("Oxygen Saturation", { exact: true })
     ).toBeVisible();
+    await openMeasurementGroup(page, form, "sleep");
     await expect(
-      form.getByLabel("Blood Pressure (Diastolic) (mmHg)")
+      form.getByLabel("Heart Rate Variability", { exact: true })
     ).toBeVisible();
-    await expect(form.getByLabel("Oxygen Saturation (%)")).toBeVisible();
-    await expect(form.getByLabel("Heart Rate Variability (ms)")).toBeVisible();
     // Adults never see the growth fields.
     await expect(form.getByLabel("Height")).toHaveCount(0);
     expect(await form.getAttribute("data-life-stage")).toBe("adult");
@@ -245,10 +253,10 @@ test.describe("the form is life-stage gated (#1486)", () => {
       expect(await form.getAttribute("data-life-stage")).toBe("minor");
       await expect(form.getByLabel("Height", { exact: true })).toBeVisible();
       // Body fat + HRV are gated OFF for a growth-tracked profile (#493).
-      await expect(form.getByLabel("Body Fat (%)")).toHaveCount(0);
-      await expect(form.getByLabel("Heart Rate Variability (ms)")).toHaveCount(
-        0
-      );
+      await expect(form.getByLabel("Body Fat", { exact: true })).toHaveCount(0);
+      await expect(
+        form.getByLabel("Heart Rate Variability", { exact: true })
+      ).toHaveCount(0);
 
       // ── The same ONE component in the #1468 overlay ─────────────────────
       await child.setViewportSize(PHONE);
@@ -261,7 +269,9 @@ test.describe("the form is life-stage gated (#1486)", () => {
       await expect(
         sheetForm.getByLabel("Height", { exact: true })
       ).toBeVisible();
-      await expect(sheetForm.getByLabel("Body Fat (%)")).toHaveCount(0);
+      await expect(
+        sheetForm.getByLabel("Body Fat", { exact: true })
+      ).toHaveCount(0);
     } finally {
       await child.context().close();
     }

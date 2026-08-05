@@ -126,6 +126,13 @@ test.describe("preventive deep-links per class (#1083)", () => {
     // the phone opens the same form in the #1468 overlay — see
     // e2e/trends-body-merge.mobile.spec.ts.)
     await expect(page.getByTestId("measurements-quick-add")).toBeVisible();
+    // The form discloses one group at a time (#2014), so a deep link has to open
+    // the group HOLDING its field — a focus() into a display:none input lands
+    // nowhere, silently. Vitals is open; Body (the entry point's own default) is not.
+    await expect(
+      page.locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
+    await expect(page.locator("#measurements-group-body-fields")).toBeHidden();
     await expect(page.locator("#m-systolic")).toBeFocused();
   });
 

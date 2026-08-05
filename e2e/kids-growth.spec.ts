@@ -98,7 +98,7 @@ test.describe.serial("kids growth trends", () => {
     await expect(page.getByRole("heading", { name: "Body Fat" })).toHaveCount(
       0
     );
-    await expect(page.getByLabel("Body Fat (%)")).toHaveCount(0);
+    await expect(page.getByLabel("Body Fat", { exact: true })).toHaveCount(0);
 
     // Adding a height persists without error and closes the desktop logging modal.
     await heightInput.fill("82.5");
@@ -229,7 +229,7 @@ test.describe.serial("kids growth trends", () => {
     // Body fat % is still charted AND enterable for an adult (#493); height/head-circ
     // are not surfaced as tiles.
     await expect(page.getByRole("heading", { name: "Body Fat" })).toBeVisible();
-    await expect(form.getByLabel("Body Fat (%)")).toBeVisible();
+    await expect(form.getByLabel("Body Fat", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Head Circumference" })
     ).toHaveCount(0);

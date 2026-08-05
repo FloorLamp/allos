@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, openMeasurementGroup } from "./helpers";
 
 // #16: manual vitals entry — the measures that previously could ONLY arrive via the
 // Health Connect exporter (blood pressure, glucose, SpO2, temperature, sleep, HRV)
@@ -26,10 +26,16 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
 
   // A distinctive-but-synthetic set: BP pair + SpO2 + sleep. The date defaults to
   // today (the seeded fixture's clock), so a wide biomarkers window includes it.
-  await form.getByLabel("Blood Pressure (Systolic) (mmHg)").fill("118");
-  await form.getByLabel("Blood Pressure (Diastolic) (mmHg)").fill("76");
-  await form.getByLabel("Oxygen Saturation (%)").fill("97");
-  await form.getByLabel("Sleep (hours)").fill("7.5");
+  // This entry point (Trends → Body) opens the BODY group, so Vitals and Sleep are
+  // opened explicitly — and a blood pressure is now ONE field with two inputs
+  // (#2014), each named by the number it takes rather than by a title carrying two
+  // parentheticals.
+  await openMeasurementGroup(page, form, "vitals");
+  await form.getByLabel("Systolic", { exact: true }).fill("118");
+  await form.getByLabel("Diastolic", { exact: true }).fill("76");
+  await form.getByLabel("Oxygen Saturation", { exact: true }).fill("97");
+  await openMeasurementGroup(page, form, "sleep");
+  await form.getByLabel("Sleep", { exact: true }).fill("7.5");
 
   await form.getByRole("button", { name: "Save measurements" }).click();
 
@@ -73,6 +79,7 @@ test("the measurements form logs a temperature with an optional reading time (#8
 
   // Pin °F explicitly — the entry unit now defaults to the login's temperature
   // preference (#857); this reading is entered in Fahrenheit.
+  await openMeasurementGroup(page, form, "vitals");
   await form.getByLabel("Body Temperature unit").selectOption("F");
   await form.getByLabel("Body Temperature", { exact: true }).fill("101.2");
   const timeField = form.getByTestId("measurements-temp-time");
