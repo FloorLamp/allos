@@ -352,7 +352,16 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   );
   await expect(finalCard.getByTestId("practice-session-empty")).toBeVisible();
   await expect(finalCard.getByText("No sessions logged yet.")).toHaveCount(1);
-  await expect(finalCard.getByText("No sessions yet")).toHaveCount(0);
+  // The log button's own today line follows the SERVER, not the count it mounted
+  // with (#2041): deleting the day's only session leaves nothing to log "another"
+  // of, so the control offers a first tap again instead of labelling a day that no
+  // longer has a session in it.
+  await expect(finalCard.getByTestId("practice-today-count")).toHaveText(
+    "No sessions yet"
+  );
+  await expect(finalCard.getByTestId("practice-log-button")).toHaveText(
+    "Log now"
+  );
 
   // Removing ONE session is undoable since #2038 — the same offer the whole-practice
   // delete below has always made, and the same one the structurally identical substance

@@ -282,11 +282,10 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
   // Tap a low-ranked, zero-weight group. The server re-ranks by recency-decayed
   // frequency, so WITHOUT the client-side order freeze this tap would push the row
   // up its tier on the refresh; with the freeze it stays put until the user
-  // navigates away. (The second tap of the pair is absorbed by the post-success
-  // cooldown (#2007) and the second undo with it — the pair nets out either way,
-  // and one serving is all the re-ranking pressure this asserts.)
+  // navigates away. ONE tap: a second one here would land inside the post-success
+  // cooldown (#2007) and be absorbed, and one serving is all the re-ranking
+  // pressure this assertion needs.
   await revealFoodGroup(page, "other_vegetables");
-  await page.getByTestId("log-other_vegetables").click();
   await page.getByTestId("log-other_vegetables").click();
   // The weekly rollup is server-rendered, so its row appearing proves the
   // router.refresh() (which carries the re-ranked order) has landed.
@@ -295,7 +294,6 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
   expect(await rowIds()).toEqual(before);
 
   // Restore the fixture.
-  await page.getByTestId("undo-other_vegetables").click();
   await page.getByTestId("undo-other_vegetables").click();
 });
 

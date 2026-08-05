@@ -66,6 +66,17 @@ export default function LogPracticeButton({
   // action answers with the day's count, not with a local clock reading, and a stale
   // time on a fresh session would be the informational half telling a small lie.
   const [lastTime, setLastTime] = useState(lastLoggedTime);
+  // Follow the SERVER whenever it disagrees. The local count exists so a tap answers
+  // instantly, but every write here revalidates, and sessions can also be deleted or
+  // corrected from the history table beside this button — after which a local count
+  // frozen at mount would both label the button wrongly and ask the re-log question
+  // about a day that no longer has a session in it.
+  const [serverCount, setServerCount] = useState(todayCount);
+  if (serverCount !== todayCount) {
+    setServerCount(todayCount);
+    setCount(todayCount);
+    setLastTime(lastLoggedTime);
+  }
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
