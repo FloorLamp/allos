@@ -38,7 +38,10 @@
 // unit-testable and can be reused by any layer.
 
 import { biomarkerFamily } from "./canonical-name";
-import type { BodyMetricColumn } from "./metric-readings";
+import {
+  STREAM_READING_SOURCES,
+  type StreamReadingSource,
+} from "./reading-identity-map";
 
 // The three physical stores a Reading can be presented from. `medical_records` is
 // the OBSERVATION store (provenance-carrying); the other two are STREAMS.
@@ -102,45 +105,18 @@ export interface Reading {
   provenance?: ReadingProvenance;
 }
 
-// A STREAM store's column/metric and the canonical biomarker name it measures —
-// the missing half of the identity map (#1996). `CONTINUOUS_READING_METRIC` in
-// lib/reading-cadence.ts is the other half (canonical name → metric slug); this is
-// the one that lets a wearable row resolve the clinical knowledge that is filed
-// under a canonical NAME.
+// The stream ↔ canonical half of the identity map (#1996) — DERIVED, since #2086, from
+// the one declaration in lib/reading-identity-map.ts that also carries the other half
+// (`CONTINUOUS_READING_METRIC`, re-exported by lib/reading-cadence.ts). Re-exported here
+// because this module is where every reader of it already looks, and because the shape
+// belongs to the reading model; what moved is the LITERAL, so an entry cannot be added
+// to one half and forgotten in the other.
 //
 // DISCIPLINE, same as the family table's: only register a stream key that measures
 // the SAME quantity as the canonical entry. Weight, height, HRV, steps and the rest
 // are absent because the canonical vocabulary has no entry for them — an invented
 // mapping would grant a reading a band that was never curated for it.
-export interface StreamReadingSource {
-  store: "body_metrics" | "metric_samples";
-  /** The `body_metrics` column, or the `metric_samples` metric key. */
-  key: BodyMetricColumn | string;
-  /** The canonical biomarker name this stream measures. */
-  canonical: string;
-  /** The unit the stream stores in (canonical for that quantity). */
-  unit: string;
-}
-
-export const STREAM_READING_SOURCES: readonly StreamReadingSource[] = [
-  // The reported instance (#1996): a wearable resting heart rate streams here
-  // while "Resting Heart Rate" observations — and the age bands that judge a
-  // child's 120 bpm — live in medical_records under that canonical name.
-  {
-    store: "body_metrics",
-    key: "resting_hr",
-    canonical: "Resting Heart Rate",
-    unit: "bpm",
-  },
-  // The same shape, found by the #1996 audit: body fat streams from a smart scale
-  // and has a curated "Body Fat Percentage" entry.
-  {
-    store: "body_metrics",
-    key: "body_fat_pct",
-    canonical: "Body Fat Percentage",
-    unit: "%",
-  },
-];
+export { STREAM_READING_SOURCES, type StreamReadingSource };
 
 /** The #482 identity a canonical biomarker name resolves to. */
 export function readingIdentity(name: string | null | undefined): string {
