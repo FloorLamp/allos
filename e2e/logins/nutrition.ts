@@ -92,3 +92,20 @@ export const FOOD_SLOT_PROFILE = "Food Slot (e2e)";
 // read) — and the preferences spec resets the set in afterAll so it's repeat-safe.
 export const E2E_LOGIN_NUTRITION = "e2e_nutrition";
 export const NUTRITION_PROFILE = "Nutrition Trio (e2e)";
+
+// A dedicated ADULT profile for the deep-linked food quick-log's protein split (#2061).
+// It carries a protein quick-add preset — which is what makes a profile a protein
+// TRACKER, so the reserved protein entry joins the ranking mid-list and the quick-entry
+// overlay renders the grams control — plus one ongoing protocol whose practice is a
+// weekly `red_meat` floor. `red_meat` ranks BELOW protein, so the protocol's "Log
+// servings" deep link pins a low-ranked group to the FRONT of the quick rows and the
+// control's slice point has to be read off that rendered order rather than the ranked
+// one. The profile logs no food at all, so the order is the curated catalog order and
+// the pin's rank is deterministic. Isolated on purpose: a protein preset or a food-scope
+// protocol on a shared profile would change its bar and race the neighbouring nutrition
+// specs.
+export const E2E_LOGIN_FOODPIN = "e2e_foodpin";
+export const FOOD_PIN_PROFILE = "Food Pin Split (e2e)";
+// The protocol's food-group scope — the group the deep link pins, and (deliberately) one
+// that sits after the protein entry in the curated order.
+export const FOOD_PIN_GROUP = "red_meat";

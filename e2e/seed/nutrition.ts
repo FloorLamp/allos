@@ -34,6 +34,9 @@ import {
   RECAP_PROFILE,
   E2E_LOGIN_FOODSLOT,
   FOOD_SLOT_PROFILE,
+  E2E_LOGIN_FOODPIN,
+  FOOD_PIN_PROFILE,
+  FOOD_PIN_GROUP,
 } from "../fixture-logins";
 import { getTimezone, setTimezone } from "../../lib/settings";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
@@ -427,5 +430,51 @@ export function seedFoodSlots(): void {
   seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
   console.log(
     `e2e: seeded food-slot ranking + habit-trend fixture — profile ${foodSlotId} (${FOOD_SLOT_PROFILE}) (#950/#954)`
+  );
+}
+
+// ── Deep-linked food quick-log: the protein control's slice point ──
+export function seedFoodPinSplit(): void {
+  // ── The pinned deep link vs the ranked protein entry (#2061) ─────────────────
+  // A dedicated adult profile with NO food log — so the one ranking is the curated
+  // catalog order and every rank here is deterministic — carrying two things: a protein
+  // quick-add preset (what makes a profile a protein TRACKER, so the reserved protein
+  // entry is ranked mid-list and the quick-entry overlay renders the grams control) and
+  // an ongoing protocol whose practice is a weekly FOOD_PIN_GROUP floor. That protocol's
+  // "Log servings" button opens the food bar with the group pinned to the front of the
+  // quick rows, which is the only way the rendered order stops matching the ranked one.
+  // Idempotent: every fixture-owned row is cleared first, so a reused server re-seeds
+  // into exactly this state.
+  const pinId = fixtureProfileId(FOOD_PIN_PROFILE);
+  const pinAnchor = today(pinId);
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM protocols WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(pinId);
+  // The preset the bar re-offers, and the tracker bit the ranking reads.
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value)
+     VALUES (?, 'protein_quickadd_last', '25')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(pinId);
+  const pinTargetId = Number(
+    db
+      .prepare(
+        `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+         VALUES (?, 'food_group', ?, 2, ?)`
+      )
+      .run(pinId, FOOD_PIN_GROUP, `${shiftDateStr(pinAnchor, -28)} 09:00:00`)
+      .lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO protocols
+       (profile_id, name, start_date, end_date, notes, outcome_keys,
+        frequency_target_id, owns_frequency_target)
+     VALUES (?, 'Red meat 2×/week (e2e)', ?, NULL, NULL, ?, ?, 1)`
+  ).run(pinId, shiftDateStr(pinAnchor, -28), JSON.stringify([]), pinTargetId);
+  seedMemberLogin(E2E_LOGIN_FOODPIN, pinId, "write");
+  console.log(
+    `e2e: seeded deep-linked food pin fixture — profile ${pinId} (${FOOD_PIN_PROFILE}) (#2061)`
   );
 }

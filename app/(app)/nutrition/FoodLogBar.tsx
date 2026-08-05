@@ -9,6 +9,7 @@ import {
   IconChevronDown,
 } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
+import { proteinSplitIndex } from "@/lib/food-rank";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
@@ -297,16 +298,23 @@ export default function FoodLogBar({
     ) as Record<FoodSlot, number | null>;
   }
   const proteinRank = frozenProteinRank.current[activeSlot];
-  // Translate "N groups ranked ahead of protein" into an index in the QUICK set, which
-  // is a tier-balanced subset of the same order: count the quick rows that outrank it.
-  // An unranked (untracked) profile splits after every quick row, so the control renders
-  // last instead of vanishing.
-  const proteinSplit =
-    proteinRank == null
-      ? quickGroups.length
-      : quickGroups.filter(
-          (group) => orderedGroups.indexOf(group) < proteinRank
-        ).length;
+  // Translate "N groups ranked ahead of protein" into a slice point in the QUICK set —
+  // against the order the quick rows are ACTUALLY rendered in, not the ranked order they
+  // are drawn from (#2061). A deep-linked group is pinned to the front of `quickGroups`
+  // regardless of its rank, so the two orders differ exactly when that pin is out of
+  // rank order, and a COUNT of outranking rows would then split in the wrong place.
+  const rankBySlug = useMemo(
+    () => new Map(orderedGroups.map((group, rank) => [group.slug, rank])),
+    [orderedGroups]
+  );
+  const proteinSplit = proteinSplitIndex(
+    // Every quick row comes from `orderedGroups`, so the fallback is unreachable; it
+    // exists because Map.get is typed as possibly-missing.
+    quickGroups.map(
+      (group) => rankBySlug.get(group.slug) ?? orderedGroups.length
+    ),
+    proteinRank
+  );
 
   // Set one slug's daily count, leaving every other day untouched.
   function setCount(slug: string, next: (prev: number) => number) {

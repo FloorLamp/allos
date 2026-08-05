@@ -253,25 +253,58 @@ describe("quick-log time semantics (#2019 §7)", () => {
     }
   });
 
-  it("an `instant` entry names its correction unit; a `day-only` one has none", () => {
+  it("an `instant` entry names how it is corrected; a `day-only` one has nothing to correct", () => {
     for (const item of QUICK_LOG_ITEMS) {
       if (item.time.semantic === "instant") {
-        expect(["hour", "day"], item.id).toContain(item.time.chipUnit);
+        expect(["hour", "day", "none"], item.id).toContain(
+          item.time.correctionUnit
+        );
       } else {
-        expect(item.time.chipUnit, item.id).toBeUndefined();
+        expect(item.time.correctionUnit, item.id).toBeUndefined();
       }
     }
+  });
+
+  // #2062: "some value is declared" was all the guard above ever checked, so the
+  // activity and measurements entries shipped `chipUnit: "hour"` while their own `why`
+  // said no chip exists for them. The declaration is documentation either way, and
+  // documentation that contradicts itself is worse than none — so every entry's unit is
+  // pinned here BY NAME. A new entry fails this list until someone decides its answer,
+  // which is the same completeness posture as the semantic guard itself.
+  it("every entry's correction unit is the one its surface actually offers", () => {
+    // `?? null` rather than leaving it undefined: `toEqual` ignores undefined-valued
+    // properties, so an omitted unit on a NEW entry would slip through the comparison
+    // that is supposed to catch exactly that.
+    const units = Object.fromEntries(
+      QUICK_LOG_ITEMS.map((i) => [i.id, i.time.correctionUnit ?? null])
+    );
+    expect(units).toEqual({
+      // Hour chips (lib/correction-time.ts) — the two one-tap ledgers #2019/#2020
+      // built the capture and the correction for.
+      "log-food": "hour",
+      "log-dose": "hour",
+      // A period start is corrected a DAY at a time, through the dated form on
+      // /medical/cycles that owns the exceptions.
+      "log-period": "day",
+      // Forms that ASK for the time on entry: nothing to correct afterwards, and no
+      // chip-based correction UI has ever existed for either.
+      "log-activity": "none",
+      "log-measurements": "none",
+      // `day-only` entries have no instant, so no unit at all.
+      "log-practice": null,
+      "add-document": null,
+    });
   });
 
   it("food and dose are the two `instant` logs #2019/#2020 built the capture for", () => {
     const byId = new Map(QUICK_LOG_ITEMS.map((i) => [i.id, i]));
     expect(byId.get("log-food")!.time).toMatchObject({
       semantic: "instant",
-      chipUnit: "hour",
+      correctionUnit: "hour",
     });
     expect(byId.get("log-dose")!.time).toMatchObject({
       semantic: "instant",
-      chipUnit: "hour",
+      correctionUnit: "hour",
     });
     // Practice is the DELIBERATE non-extension: day-granular by design, and nothing
     // reads an instant, so capturing one would invite a consumer to invent a meaning.

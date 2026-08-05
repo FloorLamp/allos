@@ -120,3 +120,32 @@ export function slotProximityOccurrences(
   }
   return out;
 }
+
+// ---- Where the protein control sits among RENDERED rows (#1980, fixed in #2061) ----
+
+// The bar renders the reserved protein entry as its own control, at the position the one
+// ranking gave it: `proteinRank` groups sit ahead of it. Turning that rank into a slice
+// point is only trivial while the rendered rows ARE the ranked order — and the quick set
+// is not. A deep link (a protocol's "Log servings") pins its own group to the FRONT of
+// the quick rows whatever that group's rank is, so the rendered order can start with a
+// low-ranked row.
+//
+// The old count — "how many quick rows outrank protein" — assumed the rendered order was
+// still monotone in rank, and a pinned group broke it: the split landed past the pin,
+// which pushed a HIGHER-ranked row below the control while the pinned lower-ranked one
+// stayed above it. Scanning the rendered order for the first row protein outranks gives
+// the same answer whenever the order is monotone (every earlier row outranks protein by
+// construction) and the RIGHT one when it isn't.
+//
+// `ranks` are the true ranks of the rows in the order they are rendered; a null
+// `proteinRank` means the profile does not track protein yet and the entry was never
+// ranked, so the control renders after every row rather than vanishing (#559 — a cold
+// start must not be a dead end).
+export function proteinSplitIndex(
+  ranks: readonly number[],
+  proteinRank: number | null
+): number {
+  if (proteinRank == null) return ranks.length;
+  const first = ranks.findIndex((rank) => rank >= proteinRank);
+  return first === -1 ? ranks.length : first;
+}
