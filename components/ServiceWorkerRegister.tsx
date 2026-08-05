@@ -91,6 +91,10 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   // ServiceWorker object from offer time: the browser can replace or discard a
   // waiting worker in between, and a message to that stale object goes nowhere.
   const regRef = useRef<ServiceWorkerRegistration | null>(null);
+  // The worker from the just-fired `installed` event. Chromium can raise that event
+  // one task before registration.waiting reflects the same worker; silent activation
+  // must retain this exact generation across that narrow platform handoff.
+  const installedRef = useRef<ServiceWorker | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
   // This tab asked for the update; only it may reload on controllerchange.
@@ -157,6 +161,7 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
         return;
       }
       silentlyActivatedRef.current = false;
+      installedRef.current = sw;
       setSwWaiting(true);
       setUpdateGen((generation) => generation + 1);
     };
@@ -298,7 +303,9 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     // doomed — the deploy removed them from the server — so this widens no failure
     // window; it only makes an existing one arrive sooner. #1906 is what that tab
     // hits, and how it recovers.
-    regRef.current?.waiting?.postMessage({ type: SW_SKIP_WAITING });
+    const waiting = regRef.current?.waiting ?? installedRef.current;
+    waiting?.postMessage({ type: SW_SKIP_WAITING });
+    installedRef.current = null;
     setSwWaiting(false);
   }, [plan]);
 
