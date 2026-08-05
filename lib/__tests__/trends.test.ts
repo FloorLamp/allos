@@ -4,7 +4,6 @@ import {
   outOfWindowAgeLabel,
   outOfWindowLatest,
   rangeSummaryLabel,
-  summarizeSeries,
 } from "../trends";
 import {
   ALL_TIME_RANGE_VALUE,
@@ -57,41 +56,12 @@ describe("filterSeriesByRange", () => {
   });
 });
 
-describe("summarizeSeries", () => {
-  it("returns null for an empty or all-null series", () => {
-    expect(summarizeSeries([])).toBeNull();
-    expect(summarizeSeries([{ value: null }, { value: null }])).toBeNull();
-  });
-
-  it("summarizes first/last/delta and an upward direction", () => {
-    expect(
-      summarizeSeries([{ value: 10 }, { value: 12 }, { value: 15 }])
-    ).toEqual({
-      count: 3,
-      first: 10,
-      last: 15,
-      delta: 5,
-      direction: "up",
-    });
-  });
-
-  it("reports a downward direction for a net decrease", () => {
-    expect(summarizeSeries([{ value: 20 }, { value: 8 }])?.direction).toBe(
-      "down"
-    );
-  });
-
-  it("reports flat when first equals last and skips null gaps", () => {
-    const s = summarizeSeries([{ value: 5 }, { value: null }, { value: 5 }]);
-    expect(s).toEqual({
-      count: 2,
-      first: 5,
-      last: 5,
-      delta: 0,
-      direction: "flat",
-    });
-  });
-});
+// The `summarizeSeries` suite that used to live here is gone with the function
+// (#2044): it read direction off the LITERAL first/last points, had zero non-test
+// callers, and documented a second — unsafe — semantics for the one question
+// `robustSeriesSummary` answers. Its surviving behavior (null for an
+// empty/insufficient series, null gaps skipped, up/down/flat direction) is covered by
+// the robustSeriesSummary suite in trends-digest.test.ts.
 
 describe("rangeSummaryLabel", () => {
   const today = "2026-07-08";

@@ -73,38 +73,17 @@ export function outOfWindowAgeLabel(date: string, todayStr: string): string {
   return compact === "Today" ? "today" : `${compact} ago`;
 }
 
-export interface SeriesSummary {
-  count: number;
-  first: number;
-  last: number;
-  // last − first, so a positive delta means the metric rose over the window.
-  delta: number;
-  direction: "up" | "down" | "flat";
-}
-
-// Summarize a windowed value series for a sparkline caption: how many points, the
-// first and last values, and the net change. Assumes the series is already in
-// chronological (oldest → newest) order — the order every body-metric/volume
-// series is shaped into before charting. Returns null for an empty series so the
-// caller can omit the caption.
-export function summarizeSeries(
-  series: { value: number | null }[]
-): SeriesSummary | null {
-  const values = series
-    .map((p) => p.value)
-    .filter((v): v is number => v != null);
-  if (values.length === 0) return null;
-  const first = values[0];
-  const last = values[values.length - 1];
-  const delta = last - first;
-  return {
-    count: values.length,
-    first,
-    last,
-    delta,
-    direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
-  };
-}
+// Summarizing a windowed series — how many points, the endpoint values, the net
+// change and its direction — is `robustSeriesSummary` in lib/trends-digest.ts, NOT a
+// helper here (#2044). This module used to also carry a `summarizeSeries` that read
+// the LITERAL first and last points; it had zero non-test callers, because measuring
+// direction off raw endpoints lets a single noisy edge reading invent a trend (#37) —
+// which is exactly why `robustSeriesSummary` measures between MEDIAN endpoints and is
+// the one every surface consumes (the Overview TrendMiniCard badge and the trending
+// digest, so a tile arrow and a digest chip can never disagree on one screen).
+// Pointer kept here rather than a re-export, so "series summary" greps to the single
+// survivor instead of finding the noisy semantics first in the more general-sounding
+// module.
 
 // A human label for the active window, shown next to the range control on the
 // hub. Mirrors the Timeline's "Through …" phrasing but covers both bounds.
