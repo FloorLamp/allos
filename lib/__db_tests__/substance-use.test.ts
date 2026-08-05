@@ -34,6 +34,10 @@ import {
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
 import {
+  addSubstanceHistoryEntryCore,
+  updateSubstanceHistoryEntryCore,
+} from "@/lib/substance-history-write";
+import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
   getFrequencyTargetProgress,
@@ -512,5 +516,123 @@ describe("no gamification for the new substances (#1078) — structural exemptio
         );
       }
     }
+  });
+});
+
+// #2073 — a historical correction that LOWERS a day's drink count has to decide
+// which per-tap `food_log_events` rows survive. They are not interchangeable: each
+// carries its own `logged_at`, so the choice is what any timing surface over the
+// alcohol group (a "last drink at HH:MM", mirroring the food-log timing work in
+// lib/correction-time.ts) will read. The rule is drop the EARLIEST taps and keep
+// the latest, so the day's last-drink instant survives a correction.
+describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
+  // Give the day's taps distinct instants. addSubstanceHistoryEntryCore stamps a
+  // whole batch with one clock read, so a fixture that wants tap ORDER must say so.
+  function stampTapHours(profileId: number, date: string, hours: number[]) {
+    const ids = db
+      .prepare(
+        `SELECT id FROM food_log_events
+         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?
+         ORDER BY id`
+      )
+      .all(profileId, date) as { id: number }[];
+    expect(ids.length).toBe(hours.length);
+    const stamp = db.prepare(
+      "UPDATE food_log_events SET logged_at = ? WHERE id = ?"
+    );
+    ids.forEach((row, i) => {
+      stamp.run(`${date}T${String(hours[i]).padStart(2, "0")}:00:00Z`, row.id);
+    });
+  }
+
+  function tapHours(profileId: number, date: string): string[] {
+    return (
+      db
+        .prepare(
+          `SELECT logged_at FROM food_log_events
+           WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?
+           ORDER BY logged_at`
+        )
+        .all(profileId, date) as { logged_at: string }[]
+    ).map((row) => row.logged_at);
+  }
+
+  it("keeps the latest taps when an edit shrinks the day", () => {
+    const p = newProfile("SU trim oldest");
+    const date = "2026-03-14";
+    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+      date,
+      amount: 4,
+    });
+    if (added.kind !== "added") throw new Error("history entry was not added");
+    stampTapHours(p, date, [18, 19, 20, 21]);
+
+    expect(
+      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+        date,
+        amount: 2,
+      })
+    ).toEqual({ kind: "updated", id: added.id });
+
+    // The two EARLIEST taps are gone; the 20:00/21:00 pair — including the day's
+    // last drink — is intact and untouched.
+    expect(tapHours(p, date)).toEqual([
+      `${date}T20:00:00Z`,
+      `${date}T21:00:00Z`,
+    ]);
+    const servings = db
+      .prepare(
+        `SELECT servings FROM food_log
+         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+      )
+      .get(p, date) as { servings: number };
+    expect(servings.servings).toBe(2);
+  });
+
+  it("keeps the surviving taps when the corrected day also MOVES", () => {
+    const p = newProfile("SU trim oldest moved");
+    const from = "2026-03-14";
+    const to = "2026-03-15";
+    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+      date: from,
+      amount: 3,
+    });
+    if (added.kind !== "added") throw new Error("history entry was not added");
+    stampTapHours(p, from, [17, 18, 19]);
+
+    expect(
+      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+        date: to,
+        amount: 1,
+      })
+    ).toEqual({ kind: "updated", id: added.id });
+
+    expect(tapHours(p, from)).toEqual([]);
+    expect(tapHours(p, to)).toEqual([`${from}T19:00:00Z`]);
+  });
+
+  it("still APPENDS when a correction raises the day, leaving the existing taps alone", () => {
+    const p = newProfile("SU trim grow");
+    const date = "2026-03-14";
+    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+      date,
+      amount: 2,
+    });
+    if (added.kind !== "added") throw new Error("history entry was not added");
+    stampTapHours(p, date, [18, 19]);
+
+    expect(
+      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+        date,
+        amount: 4,
+      })
+    ).toEqual({ kind: "updated", id: added.id });
+
+    const hours = tapHours(p, date);
+    expect(hours.length).toBe(4);
+    expect(hours.slice(0, 2)).toEqual([
+      `${date}T18:00:00Z`,
+      `${date}T19:00:00Z`,
+    ]);
   });
 });

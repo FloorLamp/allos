@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./lib/session-cookie";
+import {
+  SESSION_COOKIE,
+  SESSION_SLIDE_MARK_COOKIE,
+  SESSION_SLIDE_MARK_TTL_SEC,
+  SESSION_SLIDE_MARK_VALUE,
+  SESSION_TTL_SEC,
+  sessionCookieOptions,
+  shouldSlideSessionCookie,
+} from "./lib/session-cookie";
 import { buildCsp, generateNonce } from "./lib/csp";
 import { isPublicPath } from "./lib/public-paths";
 
@@ -12,11 +20,10 @@ import { isPublicPath } from "./lib/public-paths";
 // auth-bypass in CVE-2025-29927 (the app is separately patched to Next ≥14.2.25),
 // since bypassing middleware only skips a redirect, never the authoritative check.
 //
-// NOTE: the cookie NAME + Secure flag come from lib/session-cookie.ts, a
-// dependency-free module that both this Edge middleware and the Node auth layer
-// (lib/auth.ts) import, so the `__Host-` prefix decision can never drift between
-// the two. Only the TTL is duplicated here (a trivial constant).
-const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
+// NOTE: the cookie NAME, Secure flag, TTL, attributes and the slide POLICY all
+// come from lib/session-cookie.ts, a dependency-free module that both this Edge
+// middleware and the Node auth layer (lib/auth.ts) import, so the `__Host-`
+// prefix decision and the browser lifetime can never drift between the two.
 
 // Content-Security-Policy (issue #595, step 3). The full CSP is built and set
 // HERE, per-request, because script-src carries a per-request nonce — next.config
@@ -42,40 +49,48 @@ function withShareHeaders(res: NextResponse): NextResponse {
   return res;
 }
 
-// Re-set the session cookie with a fresh 30-day max-age (sliding refresh).
-// Server Components can't set cookies, so this is where the browser
-// lifetime is extended on each navigation.
+// Re-set the session cookie with a fresh 30-day max-age (sliding refresh), plus
+// the slide MARK that records when that last happened. Server Components can't
+// set cookies, so this is where the browser lifetime is extended.
 //
-// NAVIGATIONS ONLY (GET/HEAD) — never on a Server Action POST. Next merges a
-// middleware Set-Cookie into the action's mutable cookie jar, and a cookie
-// modified during an action marks the whole response "revalidated": the action
-// reply then carries a full page re-render and invalidates the client router
-// cache. That turned EVERY action — including pure reads like the Journal's
-// loadJournalPage — into an implicit refresh, which both contradicted the
-// documented contract (an action that skips revalidation must not refresh the
-// page, docs/internals/server-action-refresh.md) and fed a client fetch loop:
+// NAVIGATIONS (GET/HEAD) ALWAYS; a Server Action POST only once the mark has
+// expired. Next merges a middleware Set-Cookie into the action's mutable cookie
+// jar, and a cookie modified during an action marks the whole response
+// "revalidated": the action reply then carries a full page re-render and
+// invalidates the client router cache. Doing that on EVERY action — including
+// pure reads like the Journal's loadJournalPage — contradicted the documented
+// contract (an action that skips revalidation must not refresh the page,
+// docs/internals/server-action-refresh.md) and fed a client fetch loop:
 // JournalView re-fetches the filtered feed when the server refreshes its first
 // page, so each fetch's cookie-stamped reply triggered the next fetch and
-// clobbered "Load more" pages. GET navigations happen constantly, so the
-// browser-lifetime slide loses nothing; the DB-side expiry slide
-// (SESSION_TOUCH in lib/auth.ts) still runs on every request.
+// clobbered "Load more" pages.
+//
+// Once per mark TTL is not that: a session that navigates at all never reaches
+// it, and one that never navigates gets a single stamped action response a week
+// — which is what keeps the browser lifetime from silently falling behind the
+// DB-side expiry slide (SESSION_TOUCH in lib/auth.ts, which runs on every
+// request, POST included). See shouldSlideSessionCookie in lib/session-cookie.ts
+// for the bound this buys.
 function withSlidingCookie(res: NextResponse, token: string): NextResponse {
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: SESSION_COOKIE_SECURE,
-    path: "/",
-    maxAge: SESSION_TTL_SEC,
-  });
+  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(SESSION_TTL_SEC));
+  res.cookies.set(
+    SESSION_SLIDE_MARK_COOKIE,
+    SESSION_SLIDE_MARK_VALUE,
+    sessionCookieOptions(SESSION_SLIDE_MARK_TTL_SEC)
+  );
   return res;
 }
 
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  // See withSlidingCookie: sliding the cookie on a POST makes every Server
-  // Action response a page-refreshing one.
-  const isNavigation = req.method === "GET" || req.method === "HEAD";
+  // See withSlidingCookie: sliding the cookie on a POST makes that Server Action
+  // response a page-refreshing one, so a non-navigation only slides once the
+  // mark has aged out (issue #2058).
+  const slides = shouldSlideSessionCookie(
+    req.method,
+    req.cookies.has(SESSION_SLIDE_MARK_COOKIE)
+  );
 
   // Build the per-request nonce + CSP once, then stamp it onto EVERY response we
   // return below (share, redirect, 401, normal) so no route escapes the policy.
@@ -107,7 +122,7 @@ export function middleware(req: NextRequest) {
     }
     // Keep sliding an authenticated user's cookie even on public paths.
     return withCsp(
-      token && isNavigation
+      token && slides
         ? withSlidingCookie(NextResponse.next(passNonce), token)
         : NextResponse.next(passNonce)
     );
@@ -127,7 +142,7 @@ export function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next(passNonce);
-  return withCsp(isNavigation ? withSlidingCookie(res, token) : res);
+  return withCsp(slides ? withSlidingCookie(res, token) : res);
 }
 
 export const config = {

@@ -153,13 +153,27 @@ action response therefore carried a full page render — a property of the app,
 not of the action, which is why the fix could not be "make the action not
 revalidate".
 
-That property is now gone: the middleware slides the cookie on **GET/HEAD
-navigations only**, precisely because the accidental every-action revalidation
-also fed a client fetch loop (the Journal's filtered feed re-fetched page one on
-every self-triggered refresh, clobbering its "Load more" pages — pinned by
+That property is now gone: the middleware slides the cookie on **every GET/HEAD
+navigation, and on nothing else until the slide mark expires**, precisely because
+the accidental every-action revalidation also fed a client fetch loop (the
+Journal's filtered feed re-fetched page one on every self-triggered refresh,
+clobbering its "Load more" pages — pinned by
 `lib/__tests__/middleware-sliding-cookie.test.ts` and the filtered-paging test
 in `e2e/journal-search-depth.spec.ts`). A read action that doesn't revalidate
-now behaves as documented: no page render in its response. The #1878 rule below
+now behaves as documented: no page render in its response.
+
+The mark is the #2058 correction to that rule and does not weaken it. Slide the
+cookie on navigations _only_ and the browser half of the 30-day window stops
+tracking the DB half, which keeps sliding on every request: a session driven
+purely by action POSTs signs the user out while the server still considers it
+live. So a non-navigation re-issues the cookie too — but only once the mark (a
+valueless companion cookie carrying a 7-day Max-Age, re-set whenever the session
+cookie is) has stopped arriving. That is at most one stamped action response per
+week for a tab that never navigates, and none at all for one that does; the
+policy itself is the pure `shouldSlideSessionCookie` in `lib/session-cookie.ts`,
+and `lib/__db_tests__/auth.test.ts` pins the cookie and `expires_at` landing on
+the same instant. Anything that widens this — a shorter mark, a second cookie
+written per action — is back to feeding the loop. The #1878 rule below
 stands regardless — a route-handler `fetch` is the _structural_ guarantee that
 observation can't repaint, not an accident of middleware behavior.
 

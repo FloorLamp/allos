@@ -65,6 +65,12 @@ function reconcileAlcoholEvents(
        WHERE profile_id = ? AND group_key = ? AND date = ?`
     ).run(toDate, profileId, ALCOHOL_FOOD_GROUP, fromDate);
   }
+  // Newest tap first. When a correction SHRINKS the day, the taps that survive are
+  // the LATEST ones and the earliest are dropped (#2073): a per-tap row carries a
+  // `logged_at`, so which rows survive decides what a "last drink at HH:MM" surface
+  // reads. Keeping the head of this list keeps the most recent drink instant, which
+  // is the datum such a surface is about; slicing the head off instead deleted
+  // exactly that row and left the day's timing reading backwards.
   const ids = db
     .prepare(
       `SELECT id FROM food_log_events
@@ -76,7 +82,7 @@ function reconcileAlcoholEvents(
     const remove = db.prepare(
       `DELETE FROM food_log_events WHERE id = ? AND profile_id = ?`
     );
-    for (const row of ids.slice(0, ids.length - amount)) {
+    for (const row of ids.slice(amount)) {
       remove.run(row.id, profileId);
     }
   } else if (ids.length < amount) {

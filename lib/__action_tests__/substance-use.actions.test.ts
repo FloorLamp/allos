@@ -516,6 +516,119 @@ describe("substance consumption history actions (#2009)", () => {
   });
 });
 
+// #2072 — the edit/delete pair takes a ROW ID from the client, so "this id belongs
+// to the acting profile" is the whole boundary between a correction and reading or
+// destroying someone else's substance-use history. Every statement in the write
+// core carries `AND profile_id = ?`, but a profile filter is one WHERE clause away
+// from being dropped by a later refactor, so it is pinned behaviorally here rather
+// than by inspection: one ledger each, asserting the typed `not-found` AND that the
+// victim's row (and, for alcohol, its per-tap events) is byte-identical afterwards.
+describe("substance history actions refuse another profile's row (#2072)", () => {
+  it("alcohol (food-log ledger): update and delete are not-found, the row and its taps survive", async () => {
+    const owner = createLogin();
+    const ownerProfile = createProfile("su-history-owner-alcohol", owner.id);
+    actAs(owner, ownerProfile);
+    const td = today(ownerProfile.id);
+    const added = await addSubstanceHistoryEntryAction(
+      fd({ substance: "alcohol", date: td, amount: "2", notes: "Owner note" })
+    );
+    if (added.kind !== "added") throw new Error("entry was not added");
+
+    const intruder = createLogin();
+    const intruderProfile = createProfile(
+      "su-history-intruder-alcohol",
+      intruder.id
+    );
+    actAs(intruder, intruderProfile);
+
+    expect(
+      await updateSubstanceHistoryEntryAction(
+        fd({
+          id: String(added.id),
+          substance: "alcohol",
+          date: td,
+          amount: "9",
+          notes: "Rewritten by another profile",
+        })
+      )
+    ).toEqual({ kind: "not-found" });
+    expect(
+      await deleteSubstanceHistoryEntryAction(
+        fd({ id: String(added.id), substance: "alcohol" })
+      )
+    ).toMatchObject({ kind: "not-found", undoId: null });
+
+    // The owner's day is untouched: same amount, same notes, same per-tap events
+    // (a reconcile that ran on the wrong profile would have rewritten them).
+    expect(getSubstanceHistory(ownerProfile.id, "alcohol")).toEqual([
+      {
+        id: added.id,
+        substance: "alcohol",
+        date: td,
+        amount: 2,
+        notes: "Owner note",
+      },
+    ]);
+    const ownerEvents = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM food_log_events
+         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+      )
+      .get(ownerProfile.id, td) as { n: number };
+    expect(ownerEvents.n).toBe(2);
+    // …and nothing was created under the acting profile as a consolation write.
+    expect(getSubstanceHistory(intruderProfile.id, "alcohol")).toEqual([]);
+    expect(getSubstanceWeekState(intruderProfile.id, "alcohol").count).toBe(0);
+  });
+
+  it("nicotine (substance-log ledger): update and delete are not-found, the row survives", async () => {
+    const owner = createLogin();
+    const ownerProfile = createProfile("su-history-owner-nicotine", owner.id);
+    actAs(owner, ownerProfile);
+    const td = today(ownerProfile.id);
+    const added = await addSubstanceHistoryEntryAction(
+      fd({ substance: "nicotine", date: td, amount: "3", notes: "Owner note" })
+    );
+    if (added.kind !== "added") throw new Error("entry was not added");
+
+    const intruder = createLogin();
+    const intruderProfile = createProfile(
+      "su-history-intruder-nicotine",
+      intruder.id
+    );
+    actAs(intruder, intruderProfile);
+
+    expect(
+      await updateSubstanceHistoryEntryAction(
+        fd({
+          id: String(added.id),
+          substance: "nicotine",
+          date: td,
+          amount: "9",
+          notes: "Rewritten by another profile",
+        })
+      )
+    ).toEqual({ kind: "not-found" });
+    expect(
+      await deleteSubstanceHistoryEntryAction(
+        fd({ id: String(added.id), substance: "nicotine" })
+      )
+    ).toMatchObject({ kind: "not-found", undoId: null });
+
+    expect(getSubstanceHistory(ownerProfile.id, "nicotine")).toEqual([
+      {
+        id: added.id,
+        substance: "nicotine",
+        date: td,
+        amount: 3,
+        notes: "Owner note",
+      },
+    ]);
+    expect(getSubstanceHistory(intruderProfile.id, "nicotine")).toEqual([]);
+    expect(getSubstanceWeekState(intruderProfile.id, "nicotine").count).toBe(0);
+  });
+});
+
 // #1279 — the life-stage (minor) gate lives on the SURFACE (hidden nav + page
 // redirect, #1174), but Server Actions are independently POST-callable, so each
 // write path must re-check age at the auth boundary. These drive every action

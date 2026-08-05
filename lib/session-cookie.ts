@@ -57,3 +57,48 @@ export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
     maxAge: maxAgeSec,
   };
 }
+
+// ── THE SLIDE MARK (issue #2058) ─────────────────────────────────────────────
+//
+// The session's 30 days are sliding on BOTH sides — the DB's `expires_at`
+// (SESSION_TOUCH in lib/auth.ts, every request) and the browser cookie's Max-Age
+// (middleware). Since #2027 the cookie half only slides on GET/HEAD, because a
+// middleware Set-Cookie during a Server Action POST marks the whole action
+// response "revalidated" (see middleware.ts / middleware-sliding-cookie.test.ts).
+//
+// A session used ONLY through action POSTs — a tab left open on one page, logging
+// doses or workouts through forms, never navigating — therefore kept its DB row
+// alive out toward the 90-day ceiling while its cookie quietly aged out ~30 days
+// after the last navigation. The user is signed out with no warning while the
+// server still considers the session live.
+//
+// The fix is the cheap half of the issue's prescription: re-issue on a POST, but
+// RARELY. The server can't read a cookie's remaining Max-Age, so the elapsed time
+// since the last slide is carried by a second cookie whose own, shorter Max-Age
+// IS the clock — while the browser still sends the mark, the session cookie was
+// re-issued within the mark's TTL; once the mark is gone, the session cookie has
+// less than (30 − 7) days left and any request, POST included, re-issues both.
+//
+// The mark holds no secret (a constant), so it is never a second copy of the
+// token; it exists only to be present or absent.
+export const SESSION_SLIDE_MARK_COOKIE = SESSION_COOKIE_SECURE
+  ? "__Host-ht_slid"
+  : "ht_slid";
+export const SESSION_SLIDE_MARK_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
+export const SESSION_SLIDE_MARK_VALUE = "1";
+
+// The whole policy, pure: when does a request re-issue the session cookie?
+//
+// Navigations always do (they cost nothing — no action response to mark
+// revalidated). Anything else does only once the mark has expired, which bounds
+// how far the cookie's Max-Age can lag the DB's expires_at at ONE mark TTL: a
+// pure-POST session is signed out at most 7 days before its server-side session
+// would have died, instead of up to 60. The price is at most one Set-Cookie per
+// mark TTL on an action response, i.e. rare rather than every POST — and a
+// session that ever navigates never reaches it at all.
+export function shouldSlideSessionCookie(
+  method: string,
+  hasSlideMark: boolean
+): boolean {
+  return method === "GET" || method === "HEAD" || !hasSlideMark;
+}
