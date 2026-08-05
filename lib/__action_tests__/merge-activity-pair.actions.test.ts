@@ -95,4 +95,52 @@ describe("mergeActivityPair (Review resolver)", () => {
       ["merged"]
     );
   });
+
+  // #2011: the rescued pair is exactly the case where the two rows' clocks
+  // DISAGREE, and the merge is what settles which one the day keeps. The fold's
+  // rule answers it — the keeper's own start/end win outright, and the discarded
+  // row only ever fills a GAP — so keeping the correctly-offset copy leaves the
+  // offset provider's hour behind rather than folding the defect back in. The
+  // system never guesses which clock lied; the person picks the keeper (Review
+  // shows both windows and now names the discrepancy) and the fold obeys.
+  it("keeps the keeper's clock when merging a wrong-offset duplicate, never the discarded row's (#2011)", async () => {
+    const login = createLogin();
+    const profile = createProfile("review-merge-clock", login.id);
+    actAs(login, profile);
+
+    const keepId = insertActivity(profile.id, {
+      title: "Walk",
+      source: "health-connect",
+      external_id: "health-connect:walk-1",
+    });
+    const dropId = insertActivity(profile.id, {
+      title: "Afternoon Walk",
+      source: "strava",
+      external_id: "strava:walk-1",
+    });
+    // The keeper's honest window; the discarded Strava copy an hour early, plus a
+    // distance the keeper lacks so the fold demonstrably still gap-fills.
+    db.prepare(
+      "UPDATE activities SET start_time = ?, end_time = ?, duration_min = ? WHERE id = ?"
+    ).run("09:05", "09:30", 25, keepId);
+    db.prepare(
+      "UPDATE activities SET start_time = ?, end_time = ?, duration_min = ?, distance_km = ? WHERE id = ?"
+    ).run("08:05", "08:30", 25, 2.11, dropId);
+
+    await mergeActivityPair(
+      fd({
+        keep_id: keepId,
+        drop_id: dropId,
+        signature: "ext:health-connect:walk-1|ext:strava:walk-1",
+      })
+    );
+
+    expect(
+      db
+        .prepare(
+          "SELECT start_time, end_time, distance_km FROM activities WHERE id = ?"
+        )
+        .get(keepId)
+    ).toEqual({ start_time: "09:05", end_time: "09:30", distance_km: 2.11 });
+  });
 });

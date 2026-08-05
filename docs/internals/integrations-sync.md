@@ -42,6 +42,48 @@ nav entry** (`reviewCount` threaded layout → `SidebarContent` → `Nav`) — i
 Data → Review's own count, so since #1801 it badges that entry rather than a
 profile menu that no longer exists.
 
+**A second clock is a second chance to be wrong (#2011).** Natural-key dedup only
+catches a row a provider sends twice; the duplicate that survives it is one
+SESSION reported by two providers under two `external_id`s, which is what
+`lib/import-review/detect.ts` looks for and Data → Review offers. Overlapping
+clock windows are the HIGH signal there, and non-overlap used to be the end of the
+story on the cross-source path — "two timed sessions at different times of day are
+genuinely distinct". That is true of one person's day and false of two providers'
+claims ABOUT that day: a source sending the right instant against the wrong UTC
+offset (a non-DST `utc_offset`, a DST boundary, a third-party push into the
+provider) lands its copy a whole hour off, the windows miss by minutes, and the
+duplicate splits into two activities that double the day's distance, cardio
+minutes, and effort. The duration/distance proximity check could not save it: it
+is the fallback for MISSING times, unreachable once both rows have one.
+
+So the cross-source path carries a narrow rescue below the overlap check —
+non-overlapping windows, a WHOLE-hour start gap of 1–2 hours
+(`wholeHourClockOffset`, capped by `MAX_CLOCK_OFFSET_HOURS`), and proximity
+agreement on BOTH duration and distance (`proximityComparisons === 2`; one measure
+is too weak to carry a pair whose clocks already disagree). The whole-hour
+requirement is the entire safety margin: two genuinely distinct back-to-back
+sessions do not begin at the same minute past the hour, an offset copy of one
+session does exactly. The result is MEDIUM and says so — "clocks differ by 1h" —
+because `autoMergeCluster` still demands genuinely overlapping windows, so nothing
+merges itself on this evidence; the pair waits for a person. Nothing about this is
+Strava-specific and none of it belongs in a parser: any provider can report a bad
+offset, and the parser is right to read the local time it was handed. The
+SAME-source path gets no rescue at all — one source is one clock, so its two rows
+cannot disagree about the offset, and an hour between them is an hour of the
+person's actual day.
+
+**Which clock survives the merge is the person's call, not a guess (#2011).** The
+fold rule already settles it mechanically: the keeper's own `start_time`/`end_time`
+win outright and the discarded row only ever fills a GAP, so keeping the
+correctly-offset copy leaves the bad hour behind. Deliberately NOT added: a rule
+inferring which provider lied. Nothing in the pair says which of two assertions is
+false, a heuristic there would be the system asserting knowledge it does not have,
+and it would fight `preferActivityKeeper`'s documented order. What the pair DOES
+know — that the clocks disagree, and by how much — is named in the reason string,
+and the Review card renders both windows, so the choice is informed rather than
+automated. `start_time`/`end_time` stay out of `CONFLICT_FIELDS` (the picker is for
+numeric magnitudes); the keeper radio is the seam.
+
 An uploaded document's row in the "Imports" feed also carries the **extraction
 confidence** badge (`· N to check`, #1601): the count of extracted rows the
 extractor itself hedged on. The number is the `scrutiny` total
