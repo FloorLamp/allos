@@ -21,9 +21,10 @@
 // callers hand this module the ALREADY-detected records and it only merges/ranks.
 
 import type { CardioPR, PR } from "./coaching";
-import { daysBetweenDateStr, shiftDateStr } from "./date";
+import { shiftDateStr } from "./date";
 import { loadContextLabel } from "./lifts";
 import type { DateRange } from "./timeline-format";
+import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
 
 // ---------------------------------------------------------------------------
 // Sections
@@ -57,28 +58,6 @@ export interface FitnessWindow {
   allTime: boolean;
 }
 
-// Resolve the hub's DateRange into the concrete window every Fitness builder reads.
-// A half-open range is honored as given: `from` with no `to` runs to today, `to`
-// with no `from` is open at the start (all-time up to that day) — the same
-// semantics the other tabs' series filters use.
-export function fitnessWindow(
-  range: DateRange,
-  todayStr: string
-): FitnessWindow {
-  const from = range.from ?? null;
-  const to = range.to ?? todayStr;
-  const spanned = from ? daysBetweenDateStr(from, to) : null;
-  // An unparseable date (never produced by the hub, which validates its params)
-  // degrades to all time rather than a NaN-length window.
-  const days = spanned == null ? null : Math.max(1, spanned + 1);
-  return {
-    from: days == null ? null : from,
-    to,
-    days,
-    allTime: !range.from && !range.to,
-  };
-}
-
 // The widest heatmap a window may draw: ~12 months (53 columns is a hair over a
 // year, so a trailing 12 months is always fully visible). All time CAPS here —
 // unchanged from the pre-#1492 grid — rather than growing without bound.
@@ -87,12 +66,36 @@ export const MAX_FITNESS_WEEKS = 53;
 // bars to read as a trend, so a very short window still draws a month of context.
 export const MIN_FITNESS_WEEKS = 4;
 
+// This lens's week-column caps. Only the CAPS are the lens's own decision; the
+// anchor rule that turns a DateRange into a window belongs to `lensWindow` and is
+// shared with every other lens on the hub (#2043).
+export const FITNESS_WEEK_CAPS: LensWeekCaps = {
+  minWeeks: MIN_FITNESS_WEEKS,
+  maxWeeks: MAX_FITNESS_WEEKS,
+};
+
+// Resolve the hub's DateRange into the concrete window every Fitness builder reads.
+// A half-open range is honored as given: `from` with no `to` runs to today, `to`
+// with no `from` is open at the start (all-time up to that day) — the same
+// semantics the other tabs' series filters use. The end never runs past today: an
+// analytics window cannot describe days that have not happened, and before #2043
+// this lens was the only one on the hub that let it.
+export function fitnessWindow(
+  range: DateRange,
+  todayStr: string
+): FitnessWindow {
+  const { from, to, days, allTime } = lensWindow(
+    range,
+    todayStr,
+    FITNESS_WEEK_CAPS
+  );
+  return { from, to, days, allTime };
+}
+
 // How many week columns a window is worth. 90D → 13 weeks (the default window's
 // heatmap is a quarter, not a year); all time → the 12-month cap.
 export function fitnessWindowWeeks(days: number | null): number {
-  if (days == null) return MAX_FITNESS_WEEKS;
-  const weeks = Math.ceil(days / 7);
-  return Math.min(MAX_FITNESS_WEEKS, Math.max(MIN_FITNESS_WEEKS, weeks));
+  return clampLensWeeks(days, FITNESS_WEEK_CAPS);
 }
 
 // The `withinDays` a PR engine needs to mean "set inside this window". The engines

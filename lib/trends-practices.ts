@@ -18,8 +18,8 @@
 // at-ceiling state is a SUCCESS ("that's plenty", #1259), never a red flag, and an
 // under-floor week is a fact, not a nag.
 
-import { daysBetweenDateStr } from "./date";
 import { frequencyRangeState } from "./practice";
+import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
 
 // ---------------------------------------------------------------------------
 // The weekly verdict
@@ -120,14 +120,17 @@ export const MIN_PRACTICE_TREND_WEEKS = 4;
 // bounds an "All time" window; the full ledger lives on /wellness.
 export const MAX_PRACTICE_TREND_WEEKS = 26;
 
+// This lens's week-column caps. Only the CAPS are the lens's own decision; the
+// anchor rule that turns a DateRange into a window is `lensWindow`, shared with
+// Fitness (#2043).
+export const PRACTICE_WEEK_CAPS: LensWeekCaps = {
+  minWeeks: MIN_PRACTICE_TREND_WEEKS,
+  maxWeeks: MAX_PRACTICE_TREND_WEEKS,
+};
+
 // How many COMPLETED weeks a window is worth. 90D (the hub default) → 13.
 export function practiceTrendWeeks(days: number | null): number {
-  if (days == null) return MAX_PRACTICE_TREND_WEEKS;
-  const weeks = Math.ceil(days / 7);
-  return Math.min(
-    MAX_PRACTICE_TREND_WEEKS,
-    Math.max(MIN_PRACTICE_TREND_WEEKS, weeks)
-  );
+  return clampLensWeeks(days, PRACTICE_WEEK_CAPS);
 }
 
 export interface PracticeTrendWindow {
@@ -144,14 +147,15 @@ export interface PracticeTrendWindow {
 //     month should show the weeks that ended then, not the weeks that ended now.
 //   • The LENGTH is the window's span in weeks, clamped. An open-ended ("All
 //     time") range takes the cap.
+//
+// Both now come from the hub-wide `lensWindow` (#2043); this is the projection
+// onto the two fields the completed-week ledger reads.
 export function practiceTrendWindow(
   range: { from?: string; to?: string },
   todayStr: string
 ): PracticeTrendWindow {
-  const asOf = range.to && range.to < todayStr ? range.to : todayStr;
-  const spanned = range.from ? daysBetweenDateStr(range.from, asOf) : null;
-  const days = spanned == null ? null : Math.max(1, spanned + 1);
-  return { asOf, weeks: practiceTrendWeeks(days) };
+  const window = lensWindow(range, todayStr, PRACTICE_WEEK_CAPS);
+  return { asOf: window.to, weeks: window.weeks };
 }
 
 // How many practice cards the lens renders before deferring to /wellness. The
