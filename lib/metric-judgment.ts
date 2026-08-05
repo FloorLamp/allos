@@ -20,6 +20,14 @@
 // manual sweep — the sweep that would have caught body fat before #1996 was
 // written.
 //
+// AND ITS DOMAIN IS NO LONGER ONE ENUM (#2086). A guard total over `BodyMetricSlug`
+// leaves every judged quantity WITHOUT a slug outside the discipline — which is how
+// VO₂ max ended up with a canonical entry, curated fitness norms, and nothing in the
+// build able to notice whether either reached its readings. `QUANTITY_KNOWLEDGE` and
+// `quantityKnowledge()` below widen the domain from "metric slugs" to JUDGED
+// QUANTITIES keyed by #482 identity, with the membership boundary written down where
+// the declaration is.
+//
 // ONE COMPUTATION. The bands themselves are resolved by the SAME
 // `referenceRange`/`optimalBand`/`rangeBadge` the flag reconcile and the biomarker
 // surfaces use, so a metric page's band can never disagree with the flag stored on
@@ -51,6 +59,12 @@ import type { BiomarkerDirection, ReproductiveStatus, Sex } from "./types";
 //   • "growth-percentile"— a WHO/CDC percentile-for-age, which is not a band and
 //                          is rendered by the growth card that owns it. Naming it
 //                          here says the knowledge EXISTS and where it lives.
+//   • "fitness-norms"    — an age/sex PERCENTILE against the baked population norms
+//                          (lib/fitness-norms.ts, #158). Also not a band: a 42
+//                          mL/kg/min VO2 max is not "in range", it is a percentile
+//                          for a 55-year-old man. Naming it here is what brought the
+//                          functional-fitness markers inside the completeness guard
+//                          (#2086) instead of leaving them one enum out.
 //   • "none"             — no clinical band exists for the quantity. The reason is
 //                          mandatory: saying so out loud is the point, and it is
 //                          what stops a future metric from silently inheriting
@@ -58,6 +72,7 @@ import type { BiomarkerDirection, ReproductiveStatus, Sex } from "./types";
 export type MetricKnowledge =
   | { source: "canonical"; canonical: string }
   | { source: "growth-percentile"; renderedBy: string }
+  | { source: "fitness-norms"; marker: string; renderedBy: string }
   | { source: "none"; reason: string };
 
 // The registry. EVERY BodyMetricSlug appears — that is the completeness guard.
@@ -159,6 +174,149 @@ export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
     reason: "A 1–5 self-rating; there is no normal range for how you feel.",
   },
 };
+
+// ── THE WIDENED COMPLETENESS DOMAIN (issue #2086) ───────────────────────────
+//
+// The registry above is total over `BodyMetricSlug` — ONE enum. A judged quantity
+// outside it escaped the discipline entirely, and the recorded escapee is the whole
+// argument: VO₂ max has a curated canonical entry AND age/sex fitness norms, but no
+// metric slug, so nothing in the build could notice whether anything judged it. That
+// is the pre-#1996 shape (knowledge existing, readings unjudged) recurring one layer
+// out — an enum boundary is not a domain boundary.
+//
+// So the domain is JUDGED QUANTITIES, keyed by #482 identity, and the second half of
+// it is declared here: the quantities the app renders a judgement for that have no
+// metric slug to hang a declaration on.
+//
+// THE MEMBERSHIP BOUNDARY, written down (the doctrine question #2085 §2 asks). This is
+// NOT a second copy of the canonical vocabulary. An ordinary lab analyte is judged BY
+// its canonical row on the surface that reads that row — knowledge and reading arrive
+// together, and nothing can go missing. A quantity needs a declaration here exactly
+// when its READINGS and its KNOWLEDGE are reached through different keys, so one can
+// exist without the other:
+//
+//   • the metric slugs above — readings keyed by slug, knowledge keyed by canonical
+//     name (the #1996 defect);
+//   • the functional-fitness markers below — readings keyed by canonical name,
+//     knowledge keyed by a separate norms dataset (the #2086 defect).
+//
+// The enumeration source is the REGISTRIES, never a hand-list:
+// `lib/__tests__/judged-quantities.test.ts` derives the domain from
+// `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a marker
+// added to the norms dataset with no declaration here is a build failure.
+//
+// WIDENING THE GUARD MUST NOT WIDEN THE VOCABULARY (#482). Nothing below invents a
+// mapping or borrows a band: every entry names the norms marker that was already
+// curated for exactly that quantity, and the surface that already renders it.
+export const QUANTITY_KNOWLEDGE: Record<string, MetricKnowledge> = {
+  // VO₂ MAX — the acceptance case (#2086, owner ruling 2026-08-05). Its knowledge is
+  // the FRIEND registry percentile for the subject's age and sex, and the surface that
+  // renders it is the reading detail page's fitness-percentile card (#158) — which is
+  // where the #1932 cadence audit puts it and keeps it: an annual-at-best physical test
+  // is read against its population curve, not charted as a daily trend.
+  //
+  // Its curated canonical entry states a single adult optimal FLOOR (≥45 mL/kg/min)
+  // with no age or sex banding, which is why the percentile is named here as the
+  // knowledge that answers: judging a 70-year-old against an adult-athlete floor is the
+  // borrowed-band failure this registry exists to prevent, while the FRIEND curve says
+  // what 32 mL/kg/min actually means for her.
+  "VO2 Max": {
+    source: "fitness-norms",
+    marker: "VO2 Max",
+    renderedBy:
+      "the fitness-percentile card on the reading detail page (components/FitnessPercentile.tsx) and the Longevity fitness pillar",
+  },
+  // Its three siblings from the same #158 battery. Each has a canonical entry that
+  // curates NO band at all — the entry's own note says "interpreted by age/sex
+  // percentile, not a fixed cutoff" — so the percentile is not merely the better
+  // answer here, it is the only one.
+  "Grip Strength": {
+    source: "fitness-norms",
+    marker: "Grip Strength",
+    renderedBy:
+      "the fitness-percentile card on the reading detail page (components/FitnessPercentile.tsx)",
+  },
+  "30-Second Chair Stand": {
+    source: "fitness-norms",
+    marker: "30-Second Chair Stand",
+    renderedBy:
+      "the fitness-percentile card on the reading detail page (components/FitnessPercentile.tsx)",
+  },
+  "Single-Leg Balance": {
+    source: "fitness-norms",
+    marker: "Single-Leg Balance",
+    renderedBy:
+      "the fitness-percentile card on the reading detail page (components/FitnessPercentile.tsx)",
+  },
+  // The Fitness-check battery's remaining norms-tier tests (#834). They carry norms
+  // and are scored in the check's own outcome card; they have no canonical entry, so
+  // their readings live on the assessment rather than in the clinical record — which
+  // is precisely why they need a declaration rather than inheriting one.
+  "Max Push-Ups": {
+    source: "fitness-norms",
+    marker: "Max Push-Ups",
+    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+  },
+  "Sit-and-Reach": {
+    source: "fitness-norms",
+    marker: "Sit-and-Reach",
+    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+  },
+  "30-Second Arm Curl": {
+    source: "fitness-norms",
+    marker: "30-Second Arm Curl",
+    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+  },
+  "2-Minute Step": {
+    source: "fitness-norms",
+    marker: "2-Minute Step",
+    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+  },
+  "Timed Up-and-Go": {
+    source: "fitness-norms",
+    marker: "Timed Up-and-Go",
+    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+  },
+};
+
+// Every judged quantity's knowledge, keyed by #482 IDENTITY — the two halves folded
+// into the one lookup a surface makes whatever key its readings arrived under.
+//
+// A slug whose knowledge is `none` or `growth-percentile` contributes nothing: it has
+// no canonical identity by construction (that is what `none` MEANS here, and the growth
+// charts are keyed by measurement, not by a biomarker name).
+const KNOWLEDGE_BY_IDENTITY = new Map<string, MetricKnowledge>([
+  ...Object.values(METRIC_KNOWLEDGE).flatMap((k) =>
+    k.source === "canonical"
+      ? ([[readingIdentity(k.canonical).toLowerCase(), k]] as const)
+      : []
+  ),
+  ...Object.entries(QUANTITY_KNOWLEDGE).map(
+    ([name, k]) => [readingIdentity(name).toLowerCase(), k] as const
+  ),
+]);
+
+/**
+ * The knowledge system that answers for an identity, or null when no registered
+ * quantity claims it.
+ *
+ * Null is NOT "unjudged": most identities are ordinary lab analytes judged by their
+ * own canonical row on the surface that reads it (see the membership boundary above).
+ * This answers the narrower question the completeness guard is about — which of the
+ * quantities whose readings and knowledge are reached through DIFFERENT keys is this,
+ * and which system was declared for it.
+ */
+export function quantityKnowledge(
+  identity: string | null | undefined
+): MetricKnowledge | null {
+  const key = readingIdentity(identity ?? "").toLowerCase();
+  return key ? (KNOWLEDGE_BY_IDENTITY.get(key) ?? null) : null;
+}
+
+/** Every identity the widened completeness domain covers, for the guards. */
+export const JUDGED_QUANTITY_IDENTITIES: readonly string[] = [
+  ...KNOWLEDGE_BY_IDENTITY.keys(),
+];
 
 /** The metric slugs that resolve to a canonical identity, for the sweeps. */
 export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(

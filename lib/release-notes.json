@@ -4,6 +4,27 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2101,
+          "title": "Provider clock errors, fixed once at the door",
+          "body": "A workout arriving with a wrong time-zone offset used to be repaired symptom by symptom. Now one rule at import decides: when the true time is known, the session is filed correctly on arrival — even across midnight, even in half-hour zones like India's or Newfoundland's — and when only two disagreeing clocks exist, the pair is surfaced in Data → Review with the difference named, never guessed. The trends chart and the table beneath it also now always agree on how many readings a day has.",
+          "kind": "fix",
+          "issues": [2088, 2056, 2029]
+        },
+        {
+          "pr": 2100,
+          "title": "\"Take with food\" now knows about the food",
+          "body": "A reminder for a with-food dose now says whether food has been logged — \"food logged 20 minutes ago\" or \"no food logged yet\" — as information beside the reminder, never a gate on it. And on the web food bar, new Now / Earlier… chips let you state when you actually ate as you log it, working offline too.",
+          "kind": "feature",
+          "issues": [2022, 2053]
+        },
+        {
+          "pr": 2099,
+          "title": "\"Last night\" now means last night",
+          "body": "The sleep tile's freshness label was permanently one night late: the night you just woke from could never be called \"Last night\", and a two-night-old session wore that label every morning before your tracker synced. The naming is fixed everywhere — and sleep coaching no longer describes a stale night as last night.",
+          "kind": "fix",
+          "issues": [1186]
+        },
+        {
           "pr": 2093,
           "title": "Deleted items get a home",
           "body": "Everything you delete now lands in a Trash section under Data, listed with what it was and when it went — and Restore is one click, performing exactly the same restore the 15-second Undo toast always did. Items can be purged individually or all at once, and admins choose how long the Trash keeps things (30 days by default).",

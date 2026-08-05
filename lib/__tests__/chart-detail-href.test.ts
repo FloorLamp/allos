@@ -209,9 +209,11 @@ describe("chart tap-through guard (issue #1488)", () => {
     const pageSrc = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
     const seriesSrc = fs.readFileSync(path.join(REPO, METRIC_SERIES), "utf8");
     expect(
-      pageSrc.includes("fullBodyMetricSeries("),
+      pageSrc.includes("bodyMetricSeriesFold("),
       `${METRIC_PAGE} must read through ${METRIC_SERIES}, so Overview and metric ` +
-        `details cannot drift into two implementations of the same series.`
+        `details cannot drift into two implementations of the same series — and it ` +
+        `must take the FOLD, whose second half is the observation set its readings ` +
+        `table lists, so chart and table cannot disagree about a day (#2029).`
     ).toBe(true);
     const missing = BODY_METRIC_SLUGS.filter(
       (slug) => !seriesSrc.includes(`case "${slug}":`)
@@ -220,7 +222,7 @@ describe("chart tap-through guard (issue #1488)", () => {
       missing,
       `/trends/metric/[kind] is the tap-through destination for every registered ` +
         `metric, so a slug in BODY_METRIC_SLUGS with no case in the page's ` +
-        `shared fullBodyMetricSeries() renders a detail page that charts nothing. ` +
+        `shared streamMetricSeries() renders a detail page that charts nothing. ` +
         `Add the series read for:\n${missing.join("\n")}`
     ).toEqual([]);
   });

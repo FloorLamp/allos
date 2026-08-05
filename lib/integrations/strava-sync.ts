@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { getTimezone } from "@/lib/settings";
 import {
   STRAVA_ID,
   getStravaAccessToken,
@@ -107,7 +108,13 @@ const stravaSpec: PullSpec<
     }
   },
 
-  async gather(_profileId, token, cursor): Promise<PullOutcome<number>> {
+  async gather(profileId, token, cursor): Promise<PullOutcome<number>> {
+    // The PROFILE's timezone, read once per run. It is what turns Strava's true
+    // `start_date` instant into the local day and clock the activity belongs on
+    // (#2088) — the ingest-side close of the wrong-`utc_offset` family, instead of
+    // trusting the `start_date_local` Strava computed from an offset it may have
+    // had stale.
+    const tz = getTimezone(profileId);
     // Page from a trailing window before the cursor so late-uploaded activities
     // (older start, recent upload) aren't skipped.
     const after = Math.max(0, cursor - RESCAN_MARGIN_SEC);
@@ -169,7 +176,7 @@ const stravaSpec: PullSpec<
         // Keep the raw provider JSON for the raw viewer, whether or not it maps.
         raw.push(detail ?? summary);
 
-        const mapped = mapStravaActivity(summary, detail);
+        const mapped = mapStravaActivity(summary, detail, tz);
         if (!mapped) {
           skipped++;
           continue;

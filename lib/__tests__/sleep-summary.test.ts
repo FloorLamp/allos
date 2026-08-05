@@ -3,6 +3,7 @@ import {
   lastNightSummary,
   latestDailySleepSummary,
   isLastNight,
+  isSleepTracking,
   sleepRecordPresentation,
   baselineDeltaPhrase,
   formatHm,
@@ -246,6 +247,48 @@ describe("isLastNight — the shared relative-night rule", () => {
 
   it("is false for a future wake-day", () => {
     expect(isLastNight("2026-07-23", "2026-07-22")).toBe(false);
+  });
+});
+
+describe("isSleepTracking — is a night even coming? (#2102)", () => {
+  const TODAY = "2026-07-22";
+  // The three nights BEFORE last night, newest first.
+  const N1 = "2026-07-21";
+  const N2 = "2026-07-20";
+  const N3 = "2026-07-19";
+
+  it("is true when all three prior nights were recorded", () => {
+    expect(isSleepTracking([N3, N2, N1], TODAY)).toBe(true);
+  });
+
+  it("tolerates ONE skipped night — a forgotten charge is not abandonment", () => {
+    expect(isSleepTracking([N3, N1], TODAY)).toBe(true);
+    expect(isSleepTracking([N3, N2], TODAY)).toBe(true);
+    expect(isSleepTracking([N2, N1], TODAY)).toBe(true);
+  });
+
+  it("turns off after two consecutive missed nights", () => {
+    expect(isSleepTracking([N3], TODAY)).toBe(false);
+    expect(isSleepTracking([], TODAY)).toBe(false);
+  });
+
+  it("ignores nights outside the window, however many there are", () => {
+    // An abandoned tracker keeps a long history; the question is about NOW.
+    const oldHistory = [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+    ];
+    expect(isSleepTracking(oldHistory, TODAY)).toBe(false);
+  });
+
+  it("does not count last night itself", () => {
+    // The predicate exists to be asked DURING the window where last night has not
+    // landed; letting last night vote would make it circular.
+    expect(isSleepTracking([TODAY], TODAY)).toBe(false);
+    expect(isSleepTracking([TODAY, N1], TODAY)).toBe(false);
   });
 });
 

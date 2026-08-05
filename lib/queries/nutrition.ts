@@ -31,6 +31,7 @@ import {
   type HabitWeekCell,
 } from "../food-habit-trend";
 import { foodSlotAnchors, type FoodSlot } from "../food-slot";
+import { FOOD_CHECK_LOOKBACK_MIN } from "../food-timing-check";
 import {
   foodSlotForProfileInstant,
   profileFoodSlotAnchors,
@@ -568,6 +569,44 @@ export function getProteinTapsOnDate(profileId: number, date: string): number {
     )
     .get(profileId, date, PROTEIN_NUDGE_KEY) as { n: number };
   return row.n;
+}
+
+// ---- The live food-ledger check behind a dose's declared timing (issue #2022) ----
+
+// Minutes since the profile's most recent logged serving, or null when the ledger holds
+// none within the lookback window. The ONE ledger read behind the dose reminder's
+// food-timing clause (lib/food-timing-check.ts owns what to say about it).
+//
+// THE EATING INSTANT WINS OVER THE TAP STAMP. `eaten_at` is a stated or tap-contracted
+// measurement of when the food actually went in (#2019); `logged_at` is when the button
+// was pressed. COALESCE puts the better fact first and falls back to the tap for the
+// rows — historical, and every un-stated web log — that genuinely have no eating time.
+// That is the whole of #2019 slotting in "transparently": no branch, no second read.
+//
+// The window is bounded by the check's own lookback, so this is a handful of rows on the
+// busiest day, and a serving older than any window the clause consults costs nothing to
+// ignore. The reserved `__protein__` row COUNTS: a protein shake is eating, and a check
+// about whether anything went in recently that excluded it would be wrong in the one
+// direction that matters (claiming nothing is logged when something is). Profile-scoped
+// via the food_log_events filter.
+export function getMinutesSinceLastFoodLog(
+  profileId: number,
+  now: Date = clockNow()
+): number | null {
+  const since = new Date(
+    now.getTime() - FOOD_CHECK_LOOKBACK_MIN * 60_000
+  ).toISOString();
+  const row = db
+    .prepare(
+      `SELECT MAX(COALESCE(eaten_at, logged_at)) AS ate
+         FROM food_log_events
+        WHERE profile_id = ? AND COALESCE(eaten_at, logged_at) >= ?`
+    )
+    .get(profileId, since) as { ate: string | null };
+  if (!row.ate) return null;
+  const at = new Date(row.ate).getTime();
+  if (!Number.isFinite(at)) return null;
+  return (now.getTime() - at) / 60_000;
 }
 
 // ---- Eating-time correction rows (issue #2019) ----

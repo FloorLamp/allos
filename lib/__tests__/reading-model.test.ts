@@ -13,6 +13,7 @@ import { biomarkerFamily } from "@/lib/canonical-name";
 import {
   STREAM_READING_SOURCES,
   dedupeReadings,
+  foldObservations,
   foldObservationPoints,
   identityForStreamKey,
   readingFromBodyMetric,
@@ -376,6 +377,62 @@ describe("series assembly", () => {
       },
     ];
     expect(foldObservationPoints(stream, observations)).toEqual(stream);
+  });
+
+  // #2029. The chart's fold and the readings table under it are two views of ONE
+  // day; the table used to concatenate every observation back in, so a clinic value
+  // equal to the wearable's plotted once and listed twice. The decision is now a
+  // function both read, and this is what it says.
+  it("hands both consumers the SAME surviving observations", () => {
+    const stream = [
+      { date: "2026-07-01", value: 62 },
+      { date: "2026-07-03", value: 60 },
+    ];
+    const covered: Reading = {
+      ...base,
+      value: 62,
+      date: "2026-07-01",
+      source: "manual",
+      store: "medical_records",
+      rowId: 5,
+      sourceKey: "manual",
+    };
+    const addition: Reading = {
+      ...base,
+      value: 71,
+      date: "2026-07-02",
+      source: "lab",
+      store: "medical_records",
+      rowId: 6,
+      sourceKey: "document:4",
+      provenance: { documentId: 4 },
+    };
+    const survivors = foldObservations(stream, [covered, addition]);
+    expect(survivors.map((r) => r.rowId)).toEqual([6]);
+    // The chart projection plots the stream plus exactly those survivors — so a
+    // table listing `survivors` and the plot can no longer disagree about a day.
+    const points = foldObservationPoints(stream, [covered, addition]);
+    expect(points).toHaveLength(stream.length + survivors.length);
+    expect(points.filter((p) => p.observed)).toEqual(
+      survivors.map((r) => ({ date: r.date, value: r.value, observed: true }))
+    );
+  });
+
+  it("collapses two spellings of one observation before folding", () => {
+    // The observation side goes through dedupeReadings first (#2005), so a reading
+    // the stores spell twice cannot survive the fold as two rows either.
+    const twice: Reading[] = [null, "manual"].map((sourceKey, i) => ({
+      ...base,
+      value: 71,
+      date: "2026-07-02",
+      source: readingSourceFor({ sourceKey }),
+      store: "medical_records" as const,
+      rowId: i + 1,
+      sourceKey,
+    }));
+    expect(
+      foldObservations([{ date: "2026-07-01", value: 62 }], twice)
+    ).toHaveLength(1);
   });
 
   it("orders oldest first, by day then instant then row", () => {

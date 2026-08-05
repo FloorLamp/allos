@@ -424,6 +424,43 @@ come from the `food_log` day counter — the reserved key never lands there — 
 counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
 which keeps ONE suffix rule for every button on the keyboard.
 
+### The declared food timing becomes a live check (#2022)
+
+Every dose declares a `food_timing`, and the reminder used to render it as a STATIC
+LABEL: an 08:00 `with_food` reminder said "with food" into a morning where nothing had
+been logged, even though the app holds both the declaration and the food ledger. It now
+compares them, and adds ONE optional informational clause to the dose line's tail,
+immediately after the label it remarks on:
+
+| declared timing                 | ledger check (trailing window) | clause                              |
+| ------------------------------- | ------------------------------ | ----------------------------------- |
+| `with_food` / `with_fat`        | no serving within ~90 min      | `no food logged in the last 90 min` |
+| `empty_stomach` / `before_meal` | a serving within ~60 min       | `food logged ~20 min ago`           |
+| `any`                           | —                              | never                               |
+
+**It rides the send; it is never the send.** No new message, no gate, no delay, no
+escalation, no suppression — a dose reminder is a safety signal, so the ledger may
+inform its text and nothing else. The dose stays due either way and `markDoseTaken` is
+untouched: the same informational posture as the weather-med notes (#1727) and the
+food–drug note beside it.
+
+**It is phrased about the LOG, never the person.** Absence of a food log is weak
+evidence — somebody may have eaten and logged none of it — so "no food logged" is what
+the app knows and "you haven't eaten" is a claim it cannot support. The first clause
+also names its own horizon, because "nothing logged" without one reads as a statement
+about the whole day.
+
+`lib/food-timing-check.ts` is the whole model (pure: the two windows, the truth table,
+the wording), `getMinutesSinceLastFoodLog` is the single bounded ledger read, and
+`gatherWindowDoses` joins them once per gather onto each `WindowDose`. Because the check
+rides the GATHER rather than a renderer parameter, every surface built from those entries
+— the dedicated window reminder, a merged multi-slot send, every tap rebuild — words the
+same fact identically (#221). A gather for a PAST date carries no check at all: "in the
+last 90 min" is a statement about right now, and pinning it to a day that has ended would
+be a confident falsehood. `COALESCE(eaten_at, logged_at)` is where #2019 slots in
+transparently — a stated eating instant beats a tap stamp, with no branch and no second
+read.
+
 ### Time correction: `foodtime` / `dosetime` (#2019, #2020)
 
 A one-tap button in a chat carries a contract — "I'm eating NOW", "I'm taking this
@@ -435,7 +472,14 @@ the contract is false because the tap was late.
 `time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
 stamp migration 056 froze, and stays the ranking input. A write with nothing to
 state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
-reintroduce the guess under a more authoritative name. On the dose side there is no
+reintroduce the guess under a more authoritative name. The web bar's own **Now /
+Earlier…** chips (#2053, `lib/food-eating-time.ts`) are how that silence is broken
+deliberately: they write `'stated'` for either shape, because the web "+" declares no
+contract of its own, so the source of the instant is the person who said so. Online the
+form carries the CHOICE and the server resolves it — a tab open for an hour cannot stamp
+a stale "now"; offline the capture carries a resolved instant and the replay validates it
+through the same `acceptEatenAt` gate, which is `resolveQueuedTakenAt`'s untrusted-client-
+clock posture applied to eating time. On the dose side there is no
 schema at all: `intake_item_logs.given_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
 
@@ -848,6 +892,49 @@ route through the cadence planner and never did — they are safety signals an
 Upcoming dismissal may never silence, and registering their bookkeeping changes
 only the census.
 
+### The cadence boundary is declared (#2089)
+
+The extraction above says what the shared engine decides. It did not say where
+its jurisdiction **ends**, so every family outside it carried private cadence
+code with no way to tell "this was decided" from "nobody looked" — the state
+#2033 billed us for, when the workout nudge decided its driver privately and got
+it wrong.
+
+`lib/notifications/cadence-registry.ts` closes that: `KIND_CADENCE` declares,
+for **every** `NotificationKind`, what owns its cadence — either
+`nudge-cadence` (naming the adapter module) or one of the exemption owners, each
+with a written reason:
+
+| Owner               | What decides the send                                                                    | Families                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes | refill, preventive, illness-care, followup                |
+| `user-schedule`     | a schedule the user configured; a per-day marker only stops a double send within the day | dose, digest, weekly-recap, workout, food, mood, practice |
+| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder          | escalation, redose                                        |
+| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                          | workout-recap, workout-stale, ease-back, milestone        |
+| `on-demand`         | the user's own request, one second earlier                                               | prn-list, symptom, temp, test                             |
+| `not-dispatched`    | nothing mints the kind                                                                   | upcoming, other                                           |
+
+The exemptions are the point, not an admission. `planNudgeCadence` answers one
+question — when does an **episode** nudge repeat, and when is its marker stale?
+Most families have no episode: a digest is a scheduled composition, a dose
+reminder is a slot the user wrote, a milestone is an announcement of something
+that happened once. The two the #2089 survey flagged as candidates —
+**mood check-ins** and **practice nudges** — are declared `user-schedule` for
+that reason: their cadence is one profile-local day, their marker re-arms at
+midnight whatever the subject does, and nothing is ever spaced off a first send
+or swept. Mood's auto-pause is a contact-consent mechanism (#992/#1668), not an
+episode lifecycle.
+
+**The teeth** (`lib/__tests__/cadence-registry.test.ts`): membership is total
+over `ALL_NOTIFICATION_KINDS` and no entry is stale; every reason is real in
+both directions; a member's declared `planner` must be a module that genuinely
+calls `planNudgeCadence`, and the set of such modules must be **exactly** the
+declared set — so a fifth domain adopting the engine cannot ship without joining
+the declaration, and a declaration cannot claim an adapter that does not exist.
+A safety kind may never be declared a member: the planner's freeze rule is a
+suppression-bus lookup, and putting that between a person and their medication
+is the one policy that must not move.
+
 ## Overdue safety-follow-up escalation (#1866)
 
 **The overdue finding follow-up (#700) pushes — with zero settings and a
@@ -926,6 +1013,52 @@ declared ∪ derived). The separate "what's due" upcoming digest and its
 key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
+
+**When the digest sends, and the one hour it will wait (#2102).** Two separate
+decisions, both pure in `lib/notifications/digest-schedule.ts`:
+
+- **`auto` resolves past the ARRIVAL, not the wake.** An `auto` digest hour used
+  to resolve through `wakeMinuteToHour(typicalWakeTime(profileId))` — the hour the
+  person WAKES — while the sleep row lands a measured ~70 minutes behind waking
+  (real Health Connect profile, 11 nights, wake 05:40, arrivals 06:02–07:49). The
+  rounding compounded it: `round(340/60)` is 6, so the digest fired at 06:00,
+  before all eleven arrivals and an hour worse than the manual 07:00 it was meant
+  to improve on. `digestAutoHour` now resolves to the first whole hour strictly
+  after wake + a p90 arrival lag, measured at read time by joining
+  `integration_sync_rows` → `metric_samples` (`getSleepArrivalLagsMin`). Below the
+  sample gate it returns null and the caller falls back to the wake hour, where the
+  deferral below is the safety net. The **`auto` Morning intake hour deliberately
+  keeps `wakeMinuteToHour`**: it needs you awake, not your tracker synced, so do
+  not fold the lag into that shared helper.
+- **One deferral, into the retry hour that already exists.** `slotDue` is a
+  two-hour window paired with the hard per-day marker, so the FIRST of those hours
+  is free to decline: `deferDigestForSleep` skips the send when last night's sleep
+  is pending but expected, and the hour+1 tick sends it. It is bounded by
+  construction — the decision requires `currentHour === slotHour`, so the retry
+  hour never defers and the digest goes out at hour+1 whether or not the night
+  landed. **Auto only**: a manually set hour is user-owned timing, and silently
+  sliding someone's 07:00 would make their own setting untrue. Hour 23 never
+  defers, because `slotDue` does not wrap past midnight and there would be no hour
+  to defer into.
+
+**No new stored state, and no new send marker.** "Have I already deferred today?"
+is answered by the clock, not a flag, which is why nothing here appears in
+`SEND_MARKER_REGISTRY`. A decline writes nothing at all, so a deferred-then-sent
+digest records its `notify_last_digest` marker, its `notify_digest_last_at`
+watermark, its tail pointer and its #2081 dependency stamp exactly as an on-time
+one does.
+
+**When to send vs what to print stay separate.** This decides only WHEN. #2099
+decides what: a night that is not last night is omitted rather than printed as
+last night's, so a digest that reaches the end of its window with nothing in hand
+simply has no Sleep section. `digestSleepPending` asks the freshness question with
+the SAME rule the section prints by (`isLastNight` over `mainSleepNights`), so
+"wait for it" and "print it" can never disagree about which night that is — and it
+is gated on `isSleepTracking` (`lib/sleep-summary.ts`: at least 2 of the 3 nights
+before last night recorded). Without that gate an abandoned tracker would defer the
+digest every morning forever: the connection-side staleness signal is structurally
+unable to see a device that stopped recording sleep while the phone kept syncing
+steps (`lib/integrations/staleness.ts` tracks the CONNECTION's liveness by design).
 
 **What CHANGED, not just what is due (#1713).** The **New** section is no longer
 just "flagged biomarkers + documents". It also renders the lines the shared

@@ -185,12 +185,20 @@ export function chipInstant(tapAt: string, hoursBack: number): Date {
   return new Date(ms(tapAt) - hoursBack * 60 * MIN_MS);
 }
 
-// The absolute hours the picker offers, newest first, as local "HH:00" strings. Bounded
-// by construction: it starts one hour past the last chip and stops at the ceiling, so it
-// can never offer the future and never offers what a chip already covers.
-export function pickerHourOptions(now: Date, tz: string): string[] {
+// The local "HH:00" hours between `firstBack` and `lastBack` hours ago, newest first and
+// de-duplicated (a DST fall-back repeats an hour). The shared spelling of "the recent
+// hours, as absolute local wall times" — the correction picker below takes a slice that
+// starts past its chips, and the web food bar's own eating-time statement
+// (lib/food-eating-time.ts, #2053) starts at one hour back because it has no chips beside
+// it. One computation, so the two vocabularies cannot drift.
+export function hourOptionsBack(
+  now: Date,
+  tz: string,
+  firstBack: number,
+  lastBack: number
+): string[] {
   const out: string[] = [];
-  for (let k = PICKER_FIRST_HOURS_BACK; k <= PICKER_LAST_HOURS_BACK; k++) {
+  for (let k = firstBack; k <= lastBack; k++) {
     const { hhmm } = zonedDateParts(
       tz,
       new Date(now.getTime() - k * 60 * MIN_MS)
@@ -199,6 +207,18 @@ export function pickerHourOptions(now: Date, tz: string): string[] {
     if (!out.includes(hour)) out.push(hour);
   }
   return out;
+}
+
+// The absolute hours the picker offers, newest first, as local "HH:00" strings. Bounded
+// by construction: it starts one hour past the last chip and stops at the ceiling, so it
+// can never offer the future and never offers what a chip already covers.
+export function pickerHourOptions(now: Date, tz: string): string[] {
+  return hourOptionsBack(
+    now,
+    tz,
+    PICKER_FIRST_HOURS_BACK,
+    PICKER_LAST_HOURS_BACK
+  );
 }
 
 // Resolve a picked absolute local hour to an instant.

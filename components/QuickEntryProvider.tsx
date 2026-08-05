@@ -257,6 +257,7 @@ function QuickEntryBody({
             proteinRankBySlot={data.proteinRankBySlot}
             excludedGroups={data.excludedGroups}
             slot={data.slot}
+            eatingTimeOptions={data.eatingTimeOptions}
             initialFoodGroup={prefill?.foodGroup}
             proteinQuickAdd={
               // Ranked in for a protein-tracking profile (#1980), rendered at the

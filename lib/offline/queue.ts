@@ -157,6 +157,20 @@ export interface FoodPayload {
   groupKey: string | null;
   mealSlot: string | null;
   grams: number | null;
+  // The EATING instant the user stated at tap time (#2053), ISO — a different fact from
+  // `capturedAt`, which stays the tap stamp the frecency ledger ranks on. Carried as a
+  // resolved instant rather than as the choice because there is no server to resolve
+  // against while offline: "now" is the client's own clock, and an "earlier…" hour is the
+  // instant the SERVER computed when it rendered that option, so a profile-local hour is
+  // never converted in the browser.
+  //
+  // The replay VALIDATES it (acceptEatenAt) exactly as `resolveQueuedTakenAt` validates a
+  // queued dose's tap instant, and for the same reason: it came off an untrusted client
+  // wall clock, and an instant whose profile-local date isn't the row's own `date` would
+  // make the serving contradict itself. An unusable value costs the statement, never the
+  // serving. OPTIONAL: absent on an intent queued before this shipped, and absent —
+  // overwhelmingly — whenever the user simply didn't state a time.
+  eatenAt?: string | null;
 }
 
 export type IntentPayload =

@@ -17,6 +17,10 @@ import {
   isPushedIntake,
   type TimeBucket,
 } from "../supplement-schedule";
+import {
+  foodTimingCheckNote,
+  type FoodTimingCheck,
+} from "../food-timing-check";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type {
   Supplement,
@@ -146,6 +150,12 @@ export interface WindowDose {
   // rule. It is also why the escape hatch reaches a tap-only user at all — the person
   // most likely to be ignoring the item is the one who never opens the app.
   demotable?: boolean;
+  // The declared food timing checked against the FOOD LEDGER, as of the gather (#2022).
+  // Informational only — it decides nothing about whether this dose is due, reminded or
+  // escalated; a dose reminder is a safety signal, so the ledger may inform its text and
+  // may not gate it. Absent (or `none`) on every path that has nothing to compare: an
+  // `any` timing, a past-day reminder, a gather that never read the ledger.
+  foodCheck?: FoodTimingCheck;
   adherence: AdherenceSummary;
 }
 
@@ -199,6 +209,19 @@ function doseLine(
   if (showFood) {
     const food = foodNote(e.dose);
     if (food) tail.push(food);
+    // The declared timing turned into a LIVE CHECK (issue #2022): the static label above
+    // says what this dose wants; this says what the ledger currently holds. Immediately
+    // after the label because it is a remark ABOUT the label, and pending-only for the
+    // same reason the label is — it is context for taking the dose now.
+    //
+    // Informational and never blocking, exactly like the food-drug note below it: the
+    // dose is due either way, no send is added, delayed or withheld, and nothing here
+    // reaches `markDoseTaken`. It also names the LOG rather than the person, because an
+    // unlogged breakfast is still a breakfast.
+    if (e.foodCheck) {
+      const checkNote = foodTimingCheckNote(e.foodCheck);
+      if (checkNote) tail.push(checkNote);
+    }
     // Food–drug guidance (issue #154): a per-item food note for a matching
     // medication/supplement (e.g. "⚠️ Avoid grapefruit juice …"). Same pure
     // matcher the /medicine row + item-form notice format over. Pending doses

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   logFoodServing,
   undoFoodServing,
@@ -20,6 +20,8 @@ import {
   getFrequencyTargets,
 } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { getTimezone } from "@/lib/settings";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 
 const revalidate = vi.mocked(revalidatePath);
 const DATE = "2026-07-08";
@@ -81,6 +83,119 @@ describe("logFoodServing", () => {
       fd({ group_key: "berries", date: DATE })
     );
     expect(second).toEqual({ ok: true, servings: 2 });
+  });
+});
+
+// ── #2053: the web bar's eating-time statement ──────────────────────────────────
+//
+// The action takes the user's CHOICE ("now" / an absolute local hour) and resolves it
+// server-side, so a tab open for an hour cannot stamp a stale "now" and no browser has
+// to convert a profile-local hour. What is pinned here is the whole contract: a stated
+// choice writes `time_source = 'stated'`, silence writes NULL, and an unusable choice
+// costs the STATEMENT and never the serving.
+describe("logFoodServing — eating-time statement (#2053)", () => {
+  function events(profileId: number) {
+    return db
+      .prepare(
+        `SELECT date, group_key, eaten_at, time_source FROM food_log_events
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      date: string;
+      group_key: string;
+      eaten_at: string | null;
+      time_source: string | null;
+    }[];
+  }
+
+  it("records no eating time when the user states none", async () => {
+    const login = createLogin();
+    const profile = createProfile("unstated", login.id);
+    actAs(login, profile);
+
+    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
+
+    expect(events(profile.id)[0]).toMatchObject({
+      eaten_at: null,
+      time_source: null,
+    });
+  });
+
+  it("`now` stamps the server's own clock as a STATED instant", async () => {
+    const login = createLogin();
+    const profile = createProfile("stated-now", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    await logFoodServing(
+      fd({ group_key: "fatty_fish", date, eaten_at: "now" })
+    );
+
+    const [event] = events(profile.id);
+    expect(event.time_source).toBe("stated");
+    // A real instant, close to now — the action resolved it rather than trusting a
+    // client timestamp. 'stated', not 'tap': the web "+" declares no "I'm eating now"
+    // contract of its own, so the SOURCE of the instant is the person who said so.
+    expect(
+      Math.abs(Date.now() - new Date(event.eaten_at!).getTime())
+    ).toBeLessThan(60_000);
+  });
+
+  it("an absolute local hour resolves in the PROFILE's timezone", async () => {
+    const login = createLogin();
+    const profile = createProfile("stated-hour", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    // Local midnight is always today-local and always already past, whatever hour CI
+    // runs at — so it is an offered hour by construction.
+    await logFoodServing(
+      fd({ group_key: "fatty_fish", date, eaten_at: "00:00" })
+    );
+
+    const [event] = events(profile.id);
+    expect(event.time_source).toBe("stated");
+    expect(event.eaten_at).toBe(
+      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00").toISOString()
+    );
+  });
+
+  it("an unparseable choice costs the statement, never the serving", async () => {
+    const login = createLogin();
+    const profile = createProfile("garbage-choice", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    const res = await logFoodServing(
+      fd({ group_key: "fatty_fish", date, eaten_at: "whenever" })
+    );
+
+    expect(res.ok).toBe(true);
+    expect(events(profile.id)[0]).toMatchObject({
+      eaten_at: null,
+      time_source: null,
+    });
+  });
+
+  it("refuses a statement that would sit outside the row's own day", async () => {
+    const login = createLogin();
+    const profile = createProfile("wrong-day", login.id);
+    actAs(login, profile);
+    // Backfilling YESTERDAY while stating "now" — the instant's profile-local date isn't
+    // the day the serving lands on, and `eaten_at` is what the window derivation and the
+    // cross-midnight re-date read, so a row carrying it would contradict itself.
+    const date = shiftDateStr(today(profile.id), -1);
+
+    const res = await logFoodServing(
+      fd({ group_key: "fatty_fish", date, eaten_at: "now" })
+    );
+
+    expect(res.ok).toBe(true);
+    expect(events(profile.id)[0]).toMatchObject({
+      date,
+      eaten_at: null,
+      time_source: null,
+    });
   });
 });
 

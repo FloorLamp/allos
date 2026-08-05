@@ -1,6 +1,9 @@
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
+import { getTimezone } from "@/lib/settings";
+import { eatingTimeOptions as eatingTimeOptionsFor } from "@/lib/food-eating-time";
 import { shiftDateStr } from "@/lib/date";
 import {
   getFoodMealDays,
@@ -213,6 +216,19 @@ export default async function FoodTab() {
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
   // derivation, so the label and the order can never disagree.
   const slot = currentFoodSlot(profile.id);
+  // The "earlier…" hours the bar may state an eating time as (#2053), resolved SERVER-side
+  // from the profile's timezone: each option carries both the local wall time the chip
+  // shows and the instant it means, so the browser never converts a profile-local hour
+  // with its own locale and an offline capture has a real instant to carry into replay.
+  // Filtered to hours that still land on today, so a chip the write would refuse is never
+  // on screen — and the bar only offers the affordance while today is the selected day,
+  // because "now" is meaningless on a backfill and an unstated log correctly records no
+  // eating time at all.
+  const eatingTimeOptions = eatingTimeOptionsFor(
+    clockNow(),
+    getTimezone(profile.id),
+    date
+  );
   // One learned order per meal, from THE ranking both surfaces read (#1980). Switching
   // the selected slot on the client changes both the button counts and the ordering
   // without a round-trip. `proteinRank` is where the reserved protein pseudo-entry placed
@@ -338,6 +354,7 @@ export default async function FoodTab() {
               proteinRankBySlot={proteinRankBySlot}
               excludedGroups={excludedGroups}
               slot={slot}
+              eatingTimeOptions={eatingTimeOptions}
               nutrientSummaryByDate={mobileNutrients}
               proteinQuickAdd={
                 <ProteinQuickAdd

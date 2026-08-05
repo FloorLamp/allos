@@ -54,6 +54,7 @@
 import { biomarkerFamily } from "./canonical-name";
 import type { MedicalCategory } from "./types";
 import type { BodyMetricSlug } from "./trends-body-metrics";
+import { CONTINUOUS_READING_METRIC } from "./reading-identity-map";
 
 export type ReadingCadence = "continuous" | "episodic";
 
@@ -108,17 +109,13 @@ export const CATEGORY_CADENCE = {
 // in `medical_records` under the same canonical name, it has to hold readings of the same
 // #482 IDENTITY — which for a streaming quantity means its registered stream source. See
 // lib/__db_tests__/vitals-reading-surface.test.ts.
-export const CONTINUOUS_READING_METRIC: Record<string, BodyMetricSlug> = {
-  "Blood Pressure Systolic": "systolic",
-  "Blood Pressure Diastolic": "diastolic",
-  "Oxygen Saturation": "spo2",
-  "Respiratory Rate": "respiratory-rate",
-  "Body Temperature": "temperature",
-  // Streams into `body_metrics.resting_hr` rather than storing as an observation — the
-  // first entry whose destination is a STREAM store, which is exactly the generalization
-  // #2032 makes safe.
-  "Resting Heart Rate": "resting-hr",
-};
+//
+// DERIVED since #2086 from the one declaration in lib/reading-identity-map.ts, which
+// carries this half and the stream half (`STREAM_READING_SOURCES`) together. The
+// membership and the discipline are unchanged; what moved is the literal, so a name can
+// no longer be routed to a metric surface without also answering which store its rows
+// land in — the half-added entry this pair made possible.
+export { CONTINUOUS_READING_METRIC };
 
 const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(
   Object.entries(CONTINUOUS_READING_METRIC).map(([name, slug]) => [
