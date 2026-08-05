@@ -31,7 +31,7 @@ export function seedIntegrationSyncEvents(): void {
 
   // Durable provider-neutral backfill progress: the connected Strava page and
   // Data → Review render this same paused checkpoint, including provider wait + ETA.
-  const backfillNow = new Date();
+  const backfillNow = clockNow();
   const retryAfter = new Date(backfillNow.getTime() + 30 * 60 * 1000);
   db.prepare(
     `INSERT INTO integration_backfill_jobs

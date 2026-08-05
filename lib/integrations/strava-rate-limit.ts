@@ -145,10 +145,19 @@ export function createStravaRequestBudget(
     markRateLimited() {
       exhausted = true;
       const at = clock();
-      const nextWindow = new Date(
-        (Math.floor(at / FIFTEEN_MINUTES_MS) + 1) * FIFTEEN_MINUTES_MS
-      ).toISOString();
-      if (!retryAfterAt || retryAfterAt < nextWindow) retryAfterAt = nextWindow;
+      const state = stateFor(clientId, at);
+      const dailyBlocked =
+        state.dailyUsed >= Math.max(0, state.dailyLimit - DAILY_RESERVE);
+      const retryAt = new Date(at);
+      if (dailyBlocked) {
+        retryAt.setUTCHours(24, 0, 0, 0);
+      } else {
+        retryAt.setTime(
+          (Math.floor(at / FIFTEEN_MINUTES_MS) + 1) * FIFTEEN_MINUTES_MS
+        );
+      }
+      const nextRetry = retryAt.toISOString();
+      if (!retryAfterAt || retryAfterAt < nextRetry) retryAfterAt = nextRetry;
     },
   };
 }

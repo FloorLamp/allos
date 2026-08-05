@@ -53,4 +53,21 @@ describe("Strava read-request budget", () => {
     );
     expect(nextWindow.reserve()).toBe(true);
   });
+
+  it("waits for the UTC day reset after a daily-quota 429", () => {
+    const at = Date.parse("2026-08-05T12:01:00Z");
+    const budget = createStravaRequestBudget("daily-client", 300, () => at);
+    expect(budget.reserve()).toBe(true);
+    budget.observe(
+      new Headers({
+        "X-ReadRateLimit-Limit": "100,1000",
+        "X-ReadRateLimit-Usage": "10,1000",
+      })
+    );
+
+    budget.markRateLimited();
+
+    expect(budget.exhausted).toBe(true);
+    expect(budget.retryAfterAt).toBe("2026-08-06T00:00:00.000Z");
+  });
 });

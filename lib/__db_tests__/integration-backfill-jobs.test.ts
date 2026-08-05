@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   getIntegrationBackfillJob,
   queueIntegrationBackfill,
+  resumeDueIntegrationBackfills,
   runIntegrationBackfillJob,
 } from "@/lib/integrations/backfill-jobs";
 import {
@@ -104,6 +105,59 @@ describe("integration backfill jobs", () => {
       status: "completed",
       total_items: 0,
     });
+  });
+
+  it("lets the scheduled pass claim a queued job", async () => {
+    const queued = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in queued && queued.job.status).toBe("queued");
+
+    await resumeDueIntegrationBackfills(profileId, new Date());
+
+    expect(
+      getIntegrationBackfillJob(profileId, "strava", "ride-details")
+    ).toMatchObject({ status: "completed", completed_items: 1 });
+  });
+
+  it("stops automatic retries after a non-quota item failure", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const path = String(url);
+      if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+      if (path.endsWith("/athlete/zones")) return Response.json({});
+      if (path.endsWith("/activities/901")) {
+        return new Response(null, { status: 404 });
+      }
+      throw new Error(`Unexpected URL ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const queued = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in queued && queued.job.status).toBe("queued");
+
+    const failed = await runIntegrationBackfillJob(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect(failed).toMatchObject({
+      status: "failed",
+      failed_items: 1,
+      retry_after_at: null,
+    });
+    expect(failed?.error).toContain("1 ride could not be completed");
+
+    const requests = fetchMock.mock.calls.length;
+    await resumeDueIntegrationBackfills(
+      profileId,
+      new Date(Date.now() + 24 * 60 * 60 * 1000)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(requests);
   });
 
   it("pauses only crash-stranded jobs for automatic recovery", () => {

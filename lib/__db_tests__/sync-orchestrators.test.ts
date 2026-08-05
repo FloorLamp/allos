@@ -436,6 +436,7 @@ interface StravaOpts {
   athlete500?: boolean;
   zones500?: boolean;
   ftp?: number;
+  summaries?: Record<string, unknown>[];
   // Capture the `after` query param seen on each list request.
   afters?: number[];
 }
@@ -453,7 +454,9 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       const page = Number(new URL(u).searchParams.get("page"));
       // Page 1 returns both summaries (a short page < per_page ends paging); later
       // pages are empty.
-      return jsonResponse(page === 1 ? [STRAVA_ACT_1, STRAVA_ACT_2] : []);
+      return jsonResponse(
+        page === 1 ? (opts.summaries ?? [STRAVA_ACT_1, STRAVA_ACT_2]) : []
+      );
     }
     if (u.endsWith("/athlete/zones")) {
       if (opts.zones500) return new Response(null, { status: 500 });
@@ -572,7 +575,7 @@ describe("runStravaSync orchestrator", () => {
     expect(afters[afters.length - 1]).toBe(startSec(STRAVA_ACT_2) - RESCAN);
     const ev2 = getLatestSyncEvent(p, "strava")!;
     expect(ev2.inserted).toBe(0);
-    expect(ev2.unchanged).toBe(0);
+    expect(ev2.unchanged).toBe(2);
     const secondRunUrls = fetchMock.mock.calls
       .slice(firstRunRequests)
       .map(([url]) => String(url));
@@ -596,6 +599,32 @@ describe("runStravaSync orchestrator", () => {
         )
         .get(p)
     ).toEqual({ id: artifactIds.segment });
+  });
+
+  it("applies late summary edits without refetching complete artifacts", async () => {
+    stubStrava();
+    await runStravaSync(p);
+
+    const fetchMock = stubStrava({
+      summaries: [
+        { ...STRAVA_ACT_1, name: "Morning Ride — edited", distance: 25000 },
+        STRAVA_ACT_2,
+      ],
+    });
+    await runStravaSync(p);
+
+    expect(
+      db
+        .prepare(
+          "SELECT title, distance_km FROM activities WHERE profile_id = ? AND external_id = 'strava:111'"
+        )
+        .get(p)
+    ).toEqual({ title: "Morning Ride — edited", distance_km: 25 });
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("/athlete/activities");
+    expect(urls.some((url) => url.includes("/streams"))).toBe(false);
+    expect(urls.some((url) => /\/activities\/111$/.test(url))).toBe(false);
   });
 
   it("rate limit (429) on a mid-run detail fetch: the run truncates, and the cursor stops at the last fully-imported activity", async () => {

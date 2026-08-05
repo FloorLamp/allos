@@ -237,6 +237,17 @@ const stravaSpec: PullSpec<
         // unless it is a cycling activity whose telemetry is still absent/empty.
         if (imported && (!cycling || hasStreams)) {
           raw.push(summary);
+          // The trailing rescan must still carry late Strava edits through the
+          // ordinary edit-lock-aware upsert. Only skip the expensive detail and
+          // stream calls for a row whose supplemental artifacts are complete.
+          const mapped = mapStravaActivity(summary, undefined, tz);
+          if (!mapped) {
+            skipped++;
+            continue;
+          }
+          activities.push(mapped.activity);
+          samples.push(...mapped.samples);
+          if (mapped.route) routes.push(mapped.route);
           if (Number.isFinite(startSec) && startSec > newestStart) {
             newestStart = startSec;
           }
