@@ -1,6 +1,72 @@
 {
   "days": [
     {
+      "date": "2026-08-05",
+      "entries": [
+        {
+          "pr": 2048,
+          "title": "The morning digest fixes itself",
+          "body": "The digest is a report, and reports can go stale: “8/9 taken — missed Glycine” used to sit in your chat all day after you logged that Glycine in the app. Now the delivered message quietly updates to match what actually happened, and only when something really changed. The digest’s workout preview also names the same workout the workout reminder suggests, sync problems explain why they matter to you, new-document lines say what was found and where, and lines that need a person to act are marked apart from the purely informational ones.",
+          "kind": "fix",
+          "issues": [2012, 1913]
+        },
+        {
+          "pr": 2047,
+          "title": "Setting up a portal is not “overdue”",
+          "body": "A household that had added a patient portal but never run the companion tool used to be nagged that a routine check was overdue — contradicting the setup checklist on the very page the nudge linked to. Sync reminders now stay silent until the tool has actually reported in once. A new portal card also explains when a second login is worth adding, and warns that the choice is best made before the first run, which writes each login’s name into the tool’s configuration for good.",
+          "kind": "fix",
+          "issues": [2010, 1930]
+        },
+        {
+          "pr": 2046,
+          "title": "Family chats stop trading buttons",
+          "body": "In a chat shared by a family, one person’s Telegram command could strip another person’s live buttons — the app guessed whose message each reply was and guessed the same way every time. Every message now declares who it is about, so your reminder’s buttons are yours until you use them. Command replies also got faster in busy households.",
+          "kind": "fix",
+          "issues": [1995, 2003, 2004]
+        },
+        {
+          "pr": 2045,
+          "title": "Log measurements, on any screen, in three calm groups",
+          "body": "The measurements form used to decide its layout from the window instead of the space it actually had, cramming four columns into a narrow sheet. It now lays out by the room available and gathers fields into three groups — Vitals, Body, Sleep & recovery — with units shown inside each field. The Active-protocols dashboard widget now reads “On pace” exactly when every other surface does, instead of shouting “Behind” mid-week. And photographing a paper document is a proper button next to file upload on a phone, not a stray form row.",
+          "kind": "fix",
+          "issues": [2008, 2014, 1993]
+        },
+        {
+          "pr": 2000,
+          "title": "Editing a dose stops erasing its history",
+          "body": "Changing a dose’s time or days used to quietly void all the adherence history from before the edit — the record was protected by throwing it away. The schedule now keeps a dated history, so each past day is judged by the rule that was actually in force then. A dose moved into the bedtime slot no longer claims earlier nights it was really an evening dose. Operator note: a schema migration applies automatically on next start.",
+          "kind": "fix",
+          "issues": [1973]
+        },
+        {
+          "pr": 2033,
+          "title": "The workout nudge names every session it owes you",
+          "body": "On a day you were behind on both strength and cardio, the reminder used to suggest only the strength half while pointing its “← today” marker at the cardio target it never mentioned. Both sessions are named now, and the marker points at what the message actually suggests. Wellness practices and food targets no longer appear in the workout list as deficits a workout cannot close — practices keep their own reminder. And when weather parks an outdoor activity, the nudge says so and names the indoor stand-in, as the dashboard always did.",
+          "kind": "fix",
+          "issues": [2015, 2016, 2017, 2002]
+        },
+        {
+          "pr": 2030,
+          "title": "Last night’s supplements can still be confirmed this morning",
+          "body": "The buttons under a bedtime reminder in Telegram used to vanish at midnight, though the app itself was happy to accept the confirmation for two more days. A dose’s buttons now live exactly as long as the app would honor the tap, missed-dose escalations keep theirs overnight, and only genuinely day-bound messages — like the food nudge — still close at the day boundary. A message whose window has truly run out now says where to log instead of just calling itself yesterday’s.",
+          "kind": "fix",
+          "issues": [2018]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-04",
+      "entries": [
+        {
+          "pr": 2028,
+          "title": "A reading entered twice counts once",
+          "body": "A measurement recorded by hand in two places — as a body measurement and inside a medical record — used to appear twice in trend series, skewing every average drawn over it. The two stores spelled “you typed it” differently, and the chart believed both. Series now recognize one reading however it was filed. Two devices agreeing on the same value for the same day also chart once; which device said what remains visible where sources are compared.",
+          "kind": "fix",
+          "issues": [1997, 2005]
+        }
+      ]
+    },
+    {
       "date": "2026-08-03",
       "entries": [
         {
