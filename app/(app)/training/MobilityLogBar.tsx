@@ -6,6 +6,7 @@ import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   logMobilityMove,
   unlogMobilityMove,
@@ -15,7 +16,10 @@ import {
 // One-tap mobility logger (issue #840), the movement analog of the FoodLogBar. A move is
 // a TOGGLE — present or absent in today's session, never a count (no per-move sets/weights,
 // the habit-tier "one move = one tap" model). Toggling reconciles its optimistic selection
-// with the server's authoritative session move list (the food-log #748 item 2 pattern).
+// with the server's authoritative session move list (the food-log #748 item 2 pattern),
+// through the shared `useOptimisticLedger` (#2041) — which also absorbs the second half of
+// a double-tap (#2007 layer 1). The toggle is IDEMPOTENT (set semantics), so it never
+// confirms: the worst a genuine repeat can do is put the move back where it already was.
 // Moves are grouped head-to-toe by their primary region so the bar reads like a routine.
 
 const REGION_ORDER: MuscleRegion[] = [
@@ -52,6 +56,7 @@ export default function MobilityLogBar({
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
   const toast = useToast();
+  const ledger = useOptimisticLedger<Set<string>>("mobility-move");
 
   const sections = useMemo(() => {
     const byRegion = new Map<MuscleRegion, MobilityMove[]>();
@@ -69,32 +74,37 @@ export default function MobilityLogBar({
 
   async function toggle(slug: string) {
     const wasOn = selected.has(slug);
-    // Optimistic flip.
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (wasOn) next.delete(slug);
-      else next.add(slug);
-      return next;
+    const optimistic = new Set(selected);
+    if (wasOn) optimistic.delete(slug);
+    else optimistic.add(slug);
+    await ledger.tap({
+      // Per MOVE and per direction: tapping a second move immediately is an ordinary
+      // routine, and un-tapping a move you just tapped is a correction — neither is
+      // the double-tap the cooldown exists to absorb.
+      key: `${slug}:${wasOn ? "off" : "on"}`,
+      from: selected,
+      optimistic,
+      commit: setSelected,
+      write: () => {
+        const fd = new FormData();
+        fd.set("move", slug);
+        fd.set("date", today);
+        return wasOn ? unlogMobilityMove(fd) : logMobilityMove(fd);
+      },
+      settle: (res) => {
+        // Reconcile with the server's authoritative move list.
+        if (res.ok)
+          return { kind: "adopt", value: new Set<string>(res.session.moves) };
+        toast(res.error || "Couldn't save that move — try again.", {
+          tone: "error",
+        });
+        return { kind: "rollback" };
+      },
+      onError: () => {
+        toast("Couldn't save that move — try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
     });
-    const fd = new FormData();
-    fd.set("move", slug);
-    fd.set("date", today);
-    const res = wasOn ? await unlogMobilityMove(fd) : await logMobilityMove(fd);
-    if (res.ok) {
-      // Reconcile with the server's authoritative move list.
-      setSelected(new Set(res.session.moves));
-    } else {
-      // Roll back and warn.
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (wasOn) next.add(slug);
-        else next.delete(slug);
-        return next;
-      });
-      toast(res.error || "Couldn't save that move — try again.", {
-        tone: "error",
-      });
-    }
   }
 
   async function saveDuration(raw: string) {

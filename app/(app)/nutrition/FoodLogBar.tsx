@@ -17,6 +17,7 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -171,6 +172,14 @@ export default function FoodLogBar({
   const toast = useToast();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
+  // The shared one-tap ledger (#2041): the optimistic bump, the rollback and the
+  // adoption of the server's authoritative counts, plus the post-success cooldown that
+  // absorbs a double-tap (#2007 layer 1). A serving is ADDITIVE and declares no expected
+  // interval, so a deliberate second serving a moment later still lands and — the rule
+  // this classification exists for — never raises a confirm.
+  const ledger = useOptimisticLedger<{ day: number; meal: number }>(
+    "food-serving"
+  );
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const nutrientSummary = nutrientSummaryByDate.find(
@@ -487,13 +496,20 @@ export default function FoodLogBar({
     });
   }
 
+  // The pair of counts one tap moves: the day's total for the group, and the group's
+  // total inside the meal window under the user's finger. They travel together — the
+  // optimistic bump, the rollback and the server's authoritative figures all name both
+  // — so the ledger carries them as one slice.
+  type ServingCounts = { day: number; meal: number };
+
   async function bump(slug: string, delta: 1 | -1) {
-    // Optimistic: reflect the tap immediately.
-    setCount(slug, (n) => n + delta);
-    setSlotCount(activeSlot, slug, (n) => n + delta);
-    const rollback = () => {
-      setCount(slug, (n) => n - delta);
-      setSlotCount(activeSlot, slug, (n) => n - delta);
+    const before: ServingCounts = {
+      day: counts[slug] ?? 0,
+      meal: slotCounts[slug] ?? 0,
+    };
+    const commit = (next: ServingCounts) => {
+      setCount(slug, () => next.day);
+      setSlotCount(activeSlot, slug, () => next.meal);
     };
     // Queue an ADD tap while offline (#1596): the captured slug + the meal window
     // and day under the user's finger replay through the same write core on
@@ -511,52 +527,84 @@ export default function FoodLogBar({
       toast("Saved offline — will sync when you reconnect.");
     };
     const undoNeedsConnection = () => {
-      rollback();
       toast("You're offline — removing a serving needs a connection.", {
         tone: "error",
       });
     };
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      if (delta === 1) await queueOffline();
-      else undoNeedsConnection();
-      return;
-    }
-    const fd = new FormData();
-    fd.set("group_key", slug);
-    fd.set("date", activeDate);
-    fd.set("meal_slot", activeSlot);
-    let outcome: FoodLogResult;
-    try {
-      outcome =
-        delta === 1 ? await logFoodServing(fd) : await undoFoodServing(fd);
-    } catch (err) {
-      // Connection dropped mid-tap — queue an add instead of a false failure.
-      if (delta === 1 && shouldQueueOffline(navigator.onLine !== false, err)) {
-        await queueOffline();
-        return;
-      }
-      if (delta === -1 && shouldQueueOffline(navigator.onLine !== false, err)) {
-        undoNeedsConnection();
-        return;
-      }
-      rollback();
-      toast("Couldn't save that serving — try again.", { tone: "error" });
-      return;
-    }
-    if (outcome.ok) {
-      // Reconcile with the server's authoritative daily total (#748 item 2) so a
-      // dropped/failed write can never leave a phantom count.
-      const { servings, mealServings } = outcome;
-      setCount(slug, () => servings);
-      if (mealServings != null)
-        setSlotCount(activeSlot, slug, () => mealServings);
-    } else {
-      // Roll back this tap and tell the user it didn't stick.
-      rollback();
-      toast(outcome.error || "Couldn't save that serving — try again.", {
-        tone: "error",
-      });
-    }
+    // Whether the tap reached a write at all, and what the write said — modeled so
+    // the ledger sees exactly one settlement per tap.
+    type ServingTap =
+      | { kind: "queued" }
+      | { kind: "offline-undo" }
+      | { kind: "wrote"; outcome: FoodLogResult };
+    await ledger.tap<ServingTap>({
+      // The key names the WRITE, not the row: a "−" correction straight after a "+"
+      // is a different write and must not be absorbed by its cooldown. Two taps of
+      // the same row's "+" — the accidental double — share this key and are.
+      key: `${activeDate}:${activeSlot}:${slug}:${delta}`,
+      from: before,
+      // Optimistic: reflect the tap immediately.
+      optimistic: {
+        day: Math.max(0, before.day + delta),
+        meal: Math.max(0, before.meal + delta),
+      },
+      commit,
+      write: async () => {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          if (delta === -1) return { kind: "offline-undo" };
+          await queueOffline();
+          return { kind: "queued" };
+        }
+        const fd = new FormData();
+        fd.set("group_key", slug);
+        fd.set("date", activeDate);
+        fd.set("meal_slot", activeSlot);
+        return {
+          kind: "wrote",
+          outcome:
+            delta === 1 ? await logFoodServing(fd) : await undoFoodServing(fd),
+        };
+      },
+      settle: (tap) => {
+        if (tap.kind === "queued") return { kind: "keep" };
+        if (tap.kind === "offline-undo") {
+          undoNeedsConnection();
+          return { kind: "rollback" };
+        }
+        const outcome = tap.outcome;
+        if (outcome.ok) {
+          // Reconcile with the server's authoritative daily total (#748 item 2) so a
+          // dropped/failed write can never leave a phantom count.
+          return {
+            kind: "adopt",
+            value: {
+              day: outcome.servings,
+              // A write that reports no meal figure (an undo that emptied the
+              // window) leaves the optimistic one standing rather than inventing one.
+              meal: outcome.mealServings ?? Math.max(0, before.meal + delta),
+            },
+          };
+        }
+        // Roll back this tap and tell the user it didn't stick.
+        toast(outcome.error || "Couldn't save that serving — try again.", {
+          tone: "error",
+        });
+        return { kind: "rollback" };
+      },
+      onError: async (err) => {
+        // Connection dropped mid-tap — queue an add instead of a false failure.
+        if (shouldQueueOffline(navigator.onLine !== false, err)) {
+          if (delta === 1) {
+            await queueOffline();
+            return { kind: "keep" };
+          }
+          undoNeedsConnection();
+          return { kind: "rollback" };
+        }
+        toast("Couldn't save that serving — try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   function toggleDetail(slug: string) {

@@ -78,7 +78,8 @@ export interface LedgerTap<V, R> {
   // optimistic count stands in for the queued write until replay.)
   readonly onError?: (
     error: unknown
-  ) => LedgerSettlement<V> | undefined | Promise<LedgerSettlement<V> | undefined>;
+  ) =>
+    LedgerSettlement<V> | undefined | Promise<LedgerSettlement<V> | undefined>;
 }
 
 export interface OptimisticLedger<V> {
@@ -91,9 +92,13 @@ export interface OptimisticLedger<V> {
   // that dims during its request.
   pending: (key?: string) => boolean;
   // True while a tap on this key would be ABSORBED (in flight or inside the
-  // post-success cooldown). Buttons deliberately stay enabled through the cooldown
-  // (the #798 posture: informational, never permissive) — the tap is swallowed, the
-  // control does not flicker, and a deliberate repeat a moment later still lands.
+  // post-success cooldown). Whether that DIMS the control is the surface's call, and
+  // it follows the feedback design the registry records: a surface with an optimistic
+  // count beside the tap absorbs silently, because the count already answered "did
+  // that land?", and dimming it would only make a legitimate repeat feel broken. A
+  // surface with no count to move (the substance card, whose week figure arrives with
+  // the revalidation) disables for the window instead, so the swallowed tap is
+  // visible rather than silently ignored.
   blocked: (key?: string) => boolean;
   phase: (key?: string) => LedgerPhase;
   tap: <R>(spec: LedgerTap<V, R>) => Promise<LedgerTapResult<R>>;
@@ -151,7 +156,10 @@ export function useOptimisticLedger<V = void>(
       const optimistic =
         spec.optimistic !== undefined ? spec.optimistic : (before.value as V);
       const tapped = ledgerReducer(
-        { ...before, value: spec.from !== undefined ? spec.from : before.value },
+        {
+          ...before,
+          value: spec.from !== undefined ? spec.from : before.value,
+        },
         { kind: "tap", optimistic }
       );
       states.current.set(key, tapped);

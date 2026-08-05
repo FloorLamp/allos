@@ -43,10 +43,7 @@
 // These compose: EVERY affordance also gets the post-success cooldown (#2007 layer
 // 1), which is why `cooldown` here means "the cooldown is the ONLY feedback".
 export type OneTapFeedback =
-  | "optimistic-count"
-  | "cooldown"
-  | "outcome-toast"
-  | "recency-line";
+  "optimistic-count" | "cooldown" | "outcome-toast" | "recency-line";
 
 // What a SECOND tap means for this affordance — the classification that decides
 // whether a confirm may ever appear (#2007's audited table).
@@ -261,7 +258,10 @@ export function refillConfirmWindowDays(
     supplyCycleDays > 0
       ? supplyCycleDays
       : DEFAULT_SUPPLY_CYCLE_DAYS;
-  return Math.min(REFILL_CONFIRM_MAX_DAYS, cycle * REFILL_CONFIRM_CYCLE_FRACTION);
+  return Math.min(
+    REFILL_CONFIRM_MAX_DAYS,
+    cycle * REFILL_CONFIRM_CYCLE_FRACTION
+  );
 }
 
 export interface RelogCheck {

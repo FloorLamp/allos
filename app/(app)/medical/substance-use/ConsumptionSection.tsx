@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import NotesText from "@/components/NotesText";
@@ -12,6 +12,7 @@ import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { EmptyState } from "@/components/ui";
 import {
   formatDateWithYear,
@@ -36,7 +37,6 @@ import {
 } from "./actions";
 
 const COLLAPSED_HISTORY_COUNT = 5;
-const POST_SUCCESS_COOLDOWN_MS = 2000;
 
 function mutationError(kind: string): string {
   if (kind === "invalid-date") return "Enter a valid date.";
@@ -74,9 +74,11 @@ export default function ConsumptionSection({
   const confirm = useConfirm();
   const toast = useToast();
   const undoable = useUndoableDelete();
-  const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The shared one-tap ledger (#2041): this surface has no optimistic count to move —
+  // the week figure re-renders from the action's revalidation — so the cooldown IS its
+  // feedback design (#2007 layer 1), which is exactly what the registry records.
+  const ledger = useOptimisticLedger("substance-unit");
   const [pending, setPending] = useState(false);
-  const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
   const [rowMenuOpen, setRowMenuOpen] = useState<number | null>(null);
@@ -86,13 +88,6 @@ export default function ConsumptionSection({
   const [expanded, setExpanded] = useState(false);
   const [capInput, setCapInput] = useState(cap != null ? String(cap) : "");
 
-  useEffect(
-    () => () => {
-      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-    },
-    []
-  );
-
   function withSubstance(extra?: Record<string, string>): FormData {
     const fd = new FormData();
     fd.set("substance", substance);
@@ -101,30 +96,31 @@ export default function ConsumptionSection({
   }
 
   async function runOneTap(kind: "log" | "undo") {
-    if (pending || cooldown) return;
+    if (pending) return;
     setError(null);
-    setPending(true);
-    try {
-      const result =
+    // #2007: additive substance taps never confirm — several a day is the use case.
+    // The ledger's short inert window after success absorbs an accidental queued or
+    // double click and then silently clears; an undo carries its own key, so a
+    // correction straight after a log is not absorbed by it.
+    await ledger.tap({
+      key: kind,
+      write: () =>
         kind === "log"
-          ? await logSubstanceUnitAction(withSubstance())
-          : await undoSubstanceUnitAction(withSubstance());
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      // #2007: additive substance taps never confirm. A short inert window after
-      // success absorbs an accidental queued/double click and then silently clears.
-      setCooldown(true);
-      cooldownTimer.current = setTimeout(
-        () => setCooldown(false),
-        POST_SUCCESS_COOLDOWN_MS
-      );
-    } catch {
-      setError("Couldn't update that entry.");
-    } finally {
-      setPending(false);
-    }
+          ? logSubstanceUnitAction(withSubstance())
+          : undoSubstanceUnitAction(withSubstance()),
+      settle: (result) => {
+        if (!result.ok) {
+          setError(result.error);
+          // Nothing was written, so the tap stays immediately retryable.
+          return { kind: "rollback" };
+        }
+        return { kind: "keep" };
+      },
+      onError: () => {
+        setError("Couldn't update that entry.");
+        return { kind: "rollback" };
+      },
+    });
   }
 
   async function saveCap(event: FormEvent<HTMLFormElement>) {
@@ -288,16 +284,16 @@ export default function ConsumptionSection({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={pending || cooldown}
+          disabled={pending || ledger.blocked("log")}
           onClick={() => void runOneTap("log")}
           data-testid={`substance-log-${substance}`}
           className="btn"
         >
-          {pending ? "Logging…" : def.logLabel}
+          {ledger.pending("log") ? "Logging…" : def.logLabel}
         </button>
         <button
           type="button"
-          disabled={pending || cooldown || weekCount === 0}
+          disabled={pending || ledger.blocked("undo") || weekCount === 0}
           onClick={() => void runOneTap("undo")}
           data-testid={`substance-undo-${substance}`}
           className="btn-ghost"

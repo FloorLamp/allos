@@ -111,14 +111,18 @@ describe("the ledger state machine (#2041 finding 1)", () => {
   it("absorbs a second tap while writing and inside the cooldown (#2007 layer 1)", () => {
     const writing = ledgerReducer(start, { kind: "tap", optimistic: 4 });
     expect(acceptsTap(writing.phase)).toBe(false);
-    expect(ledgerReducer(writing, { kind: "tap", optimistic: 5 })).toBe(writing);
+    expect(ledgerReducer(writing, { kind: "tap", optimistic: 5 })).toBe(
+      writing
+    );
 
     const cooling = ledgerReducer(writing, {
       kind: "settled",
       settlement: { kind: "adopt", value: 4 },
     });
     expect(acceptsTap(cooling.phase)).toBe(false);
-    expect(ledgerReducer(cooling, { kind: "tap", optimistic: 5 })).toBe(cooling);
+    expect(ledgerReducer(cooling, { kind: "tap", optimistic: 5 })).toBe(
+      cooling
+    );
 
     const cooled = ledgerReducer(cooling, { kind: "cooled" });
     expect(acceptsTap(cooled.phase)).toBe(true);
