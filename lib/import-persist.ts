@@ -63,6 +63,7 @@ export interface PersistOutcome {
 import {
   IMPORT_FOOTPRINT_TABLES,
   IMPORT_SIDE_EFFECTS,
+  footprintKindLabel,
   type ImportFootprintTable,
   type ImportSideEffect,
 } from "./import-footprint";
@@ -488,6 +489,34 @@ export function countImportedDocumentRows(
     total += row.n;
   }
   return total;
+}
+
+// The SAME tally, SPLIT BY KIND (#1913 item 3) — "12 labs, 2 meds" for the morning
+// digest's new-document line. Biggest first, then registry order for a tie; empty tables
+// are dropped, so a document that stored nothing returns an empty list rather than a row
+// of zeroes.
+//
+// It shares the registry, the predicates and the profile scope with the total above, so
+// the split can never add up to a different number than `extracted_count`. Two entries
+// name the same TABLE with different `extra` filters (the height and head-circumference
+// metric samples), which is exactly why this counts per REGISTRY ENTRY rather than per
+// table name.
+export function documentFootprintByKind(
+  profileId: number,
+  docId: number
+): { noun: string; count: number }[] {
+  const source = documentSource(docId);
+  const out: { noun: string; count: number }[] = [];
+  for (const t of IMPORT_FOOTPRINT_TABLES) {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
+      )
+      .get(footprintKeyValue(t, docId, source), profileId) as { n: number };
+    if (row.n > 0)
+      out.push({ noun: footprintKindLabel(t, row.n), count: row.n });
+  }
+  return out.sort((a, b) => b.count - a.count);
 }
 
 // Write one document's parsed contents, replacing any rows it previously

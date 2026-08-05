@@ -21,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  KIND_PROSE,
   KIND_REISSUE,
   RECONCILE_DATE_GUARD,
   RECONCILE_PREFIXES,
@@ -28,6 +29,7 @@ import {
   isReissuableKind,
   messageExpiry,
   owningFamily,
+  proseReconcilerFor,
   reconcileEntryFor,
   type ReconcileFamily,
 } from "@/lib/notifications/reconcile-registry";
@@ -375,5 +377,70 @@ describe("the date-guard completeness guard (#2018)", () => {
 
   it("an unreasoned or claim-less keyboard never expires — the same fail-safe `dead` takes", () => {
     expect(messageExpiry(null, D, shiftDateStr(D, 9))).toBeNull();
+  });
+});
+
+// ── The PROSE-CLAIM completeness guard (issue #1913 item 4) ──────────────────
+//
+// #1779 asked, per BUTTON, "what happens when this is still in the chat tomorrow?" and
+// #1898 asked, per KIND, "does sending this again replace the last one?". Both are
+// keyboard-shaped, and the digest slipped between them: its every token is (correctly)
+// inert, so `owningFamily` returned null and the sweep concluded there was nothing to
+// reconcile — while its CLAIMS sat in its prose, stating a missed dose the user had
+// already logged. This guard asks the third question of every kind, so the next
+// report-shaped message has to answer it rather than inherit the same silence.
+describe("the prose-claim completeness guard (#1913)", () => {
+  it("every notification kind declares whether its PROSE reconciles", () => {
+    const declared = new Set(KIND_PROSE.map((e) => e.kind as string));
+    const undeclared = ALL_NOTIFICATION_KINDS.filter((k) => !declared.has(k));
+    expect(
+      undeclared,
+      `kinds with no prose declaration: ${undeclared.join(", ")} — add a ` +
+        `KIND_PROSE entry saying whether this message's SENTENCES make a claim an ` +
+        `in-app write can resolve, and why`
+    ).toEqual([]);
+  });
+
+  it("no STALE declaration — every declared kind is still a real kind", () => {
+    const known = new Set<string>(ALL_NOTIFICATION_KINDS);
+    const stale = KIND_PROSE.filter((e) => !known.has(e.kind)).map(
+      (e) => e.kind
+    );
+    expect(stale, `retired kinds still declared: ${stale.join(", ")}`).toEqual(
+      []
+    );
+  });
+
+  it("both answers carry a real reason — including every 'no'", () => {
+    for (const e of KIND_PROSE) {
+      expect(e.why.length, `${e.kind} needs a real reason`).toBeGreaterThan(40);
+    }
+  });
+
+  it("no duplicate kinds", () => {
+    const seen = new Set<string>();
+    for (const e of KIND_PROSE) {
+      expect(seen.has(e.kind), `duplicate declaration for "${e.kind}"`).toBe(
+        false
+      );
+      seen.add(e.kind);
+    }
+  });
+
+  it("the digest reconciles; the catch-all and an unknown kind never do", () => {
+    expect(proseReconcilerFor("digest")).toBe("digest");
+    // A reconciler on "other" would re-render arbitrary unrelated messages through
+    // somebody else's builder.
+    expect(proseReconcilerFor("other")).toBeNull();
+    expect(proseReconcilerFor(undefined)).toBeNull();
+    expect(proseReconcilerFor("not-a-kind")).toBeNull();
+  });
+
+  it("the weekly recap has answered — the next report-shaped message must too", () => {
+    // Named explicitly by the issue: a recap describes seven days that are already over,
+    // so its claims are history the moment they are made.
+    const recap = KIND_PROSE.find((e) => e.kind === "weekly-recap");
+    expect(recap?.prose).toBeNull();
+    expect(recap?.why).toContain("history");
   });
 });

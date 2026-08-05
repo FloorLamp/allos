@@ -24,6 +24,13 @@ import {
   type IntakeDeltas,
 } from "../intake-deltas";
 import { isTrainingSignalKey } from "../workout-nudge";
+import { importHref } from "../hrefs";
+import { monthNames } from "../date";
+import {
+  activityProvenanceKey,
+  activityProvenanceLabel,
+  JOURNAL_SOURCE_MANUAL,
+} from "../journal-format";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -36,6 +43,15 @@ export interface DigestActivity {
   type: ActivityType;
   durationMin: number | null;
   distanceKm: number | null;
+  // The activity row's raw `source` (#1913 item 1) — the provenance the import already
+  // stores, not a new join invented for the digest. It rides the CONTENT line as a
+  // trailing clause, which is what lets the arrival narration ("📥 Strava: workouts")
+  // fold away: the arrival's only value was provenance, and the line it described was
+  // already in the message.
+  //
+  // Optional so a caller with nothing to say stores nothing; a manual row renders no
+  // clause at all, because "Manual" beside a session you logged yourself is noise.
+  source?: string | null;
 }
 
 export interface DigestFlaggedBiomarker {
@@ -163,7 +179,11 @@ export interface DigestInput {
   stepsLine?: string | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
-  newDocumentLabels: string[];
+  // The documents that finished extracting since the send cursor (#1913 item 3), each
+  // carrying which it is and what it produced. Already ordered newest-first and already
+  // bounded by the gather; buildDigest applies MAX_NAMED_DOCUMENTS and the "+N more"
+  // tail. Empty on an ordinary morning.
+  newDocuments: DigestDocument[];
   // The RECENT-CHANGES lines (#1713), already ranked, floored and capped by the ONE
   // shared collector (lib/recent-changes.ts + lib/queries/recent-changes.ts) that the
   // Household member card reads at 7 days and this reads at 24 hours. They join the
@@ -206,6 +226,86 @@ export interface DigestInput {
   tuneTail?: NotificationAction | null;
 }
 
+// ---- New documents: WHICH one, and WHAT it produced (#1913 item 3) ---------
+//
+// The old line was `📄 1 new document: ccda` — the raw `doc_type`, which answers neither
+// "which?" nor "what came out of it?". Every fact an honest line needs already sits on
+// the document row and the accounting the import already wrote, so nothing new is
+// computed: the title/type and `document_date`, the acquired-by portal (#1748), and the
+// per-domain split of the SAME footprint tally that stamps `extracted_count` (#1827).
+
+export interface DigestDocumentKind {
+  // The reader's word for a footprint table ("labs", "meds", "vaccines"). Plural already
+  // — the split is a list of quantities, never a sentence.
+  noun: string;
+  count: number;
+}
+
+export interface DigestDocument {
+  // Row id, for the deep link. Rendered only when a public URL is configured.
+  id: number;
+  // The document's own name: its title/source, else its type, else its filename.
+  title: string;
+  // The date the DOCUMENT is about, as YYYY-MM-DD. Null when the document carries none
+  // — a digest never stands in the upload time for a clinical date it was not given.
+  date: string | null;
+  // The portal it was acquired from (#1748), or null for a hand-uploaded file.
+  acquiredVia: string | null;
+  // What it produced, biggest first. Empty for a document that stored no rows, which is
+  // itself worth saying plainly rather than dressing up.
+  extracted: DigestDocumentKind[];
+}
+
+// "12 labs, 2 meds" — the split, or null when the import stored nothing.
+export function documentSplitPhrase(
+  kinds: readonly DigestDocumentKind[]
+): string | null {
+  const named = kinds.filter((k) => k.count > 0);
+  if (named.length === 0) return null;
+  return named.map((k) => `${k.count} ${k.noun}`).join(", ");
+}
+
+// "2026-07-28" → "Jul 28". The digest states a clinical date in words because the line
+// already carries a count and a provenance clause; a second numeric run would read as
+// part of them. A malformed or partial stored date falls through unchanged rather than
+// being reformatted into a wrong one.
+export function shortDocumentDate(date: string | null): string | null {
+  if (!date) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return date;
+  const month = monthNames("short")[Number(m[2]) - 1];
+  if (!month) return date;
+  return `${month} ${Number(m[3])}`;
+}
+
+// "📄 New: Ochsner visit summary (Jul 28, via Ochsner MyChart) — 12 labs, 2 meds".
+//
+// Each parenthetical half is omitted when the document does not carry it, so a
+// hand-uploaded file with no document date reads "📄 New: Bloodwork — 8 labs" rather
+// than carrying empty punctuation.
+export function digestDocumentLine(
+  doc: DigestDocument,
+  deepLinkBase = ""
+): string {
+  const context = [
+    shortDocumentDate(doc.date),
+    doc.acquiredVia ? `via ${doc.acquiredVia}` : null,
+  ]
+    .filter((s): s is string => !!s)
+    .join(", ");
+  const where = context ? ` (${context})` : "";
+  const split = documentSplitPhrase(doc.extracted);
+  const what = split ? ` — ${split}` : "";
+  const base = deepLinkBase.replace(/\/$/, "");
+  const link = base ? ` ${base}${importHref(doc.id)}` : "";
+  return `📄 New: ${doc.title}${where}${what}${link}`;
+}
+
+// How many documents a morning names before it collapses to a count. A multi-document
+// morning summarizes PER DOCUMENT up to this cap, then "+N more documents" — the same
+// name-then-count shape the band summaries and the recent-changes collector use.
+export const MAX_NAMED_DOCUMENTS = 3;
+
 export interface DigestSection {
   heading: string;
   lines: string[];
@@ -246,6 +346,23 @@ function activityStat(a: DigestActivity): string {
   }
   if (a.durationMin != null) return ` — ${a.durationMin} min`;
   return "";
+}
+
+// The activity line's PROVENANCE clause (#1913 item 1): " · Strava".
+//
+// The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
+// and nothing else, stated about a session the message already listed one section down.
+// Folding it here says the same thing in the place the reader is already looking, and
+// the label is the SAME `activityProvenanceLabel` the Journal and the timeline render,
+// never a second name for one source.
+//
+// A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
+// provenance, it is noise — the clause exists to answer "where did this come from?",
+// which only has an answer when something else put it there.
+function activitySource(a: DigestActivity): string {
+  const source = a.source ?? null;
+  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return "";
+  return ` · ${activityProvenanceLabel(source)}`;
 }
 
 // Doses are summarized by the Today dose-count headline, so they're dropped from
@@ -368,16 +485,26 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     for (const h of due.highlights) {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
     }
-    // Broken syncs, named (#1685). The band count above says how many; these say which,
-    // and link where the fix lives. Present for as long as the connection is broken and
-    // gone the morning after a healthy sync — the signal self-clears because the item
-    // behind it does (currentlyFailingProviders / the staleness threshold), so nothing
-    // here needs its own lifecycle.
+    // Data-plumbing asks, named (#1685/#1757) — and since #1913 item 5 these are the
+    // ONLY entry each one gets: the band above no longer counts them, so a single broken
+    // sync is one line rather than a count and a name saying the same thing twice.
+    //
+    // The grammar is title — cause · deadline:
+    //
+    //   🔌 Weather & UV sync needs attention — weather fetch failed (503)
+    //   🙋 Run the portal tool for tbh — never checked · expires in 6 days
+    //
+    // The glyph says WHO ACTS (item 8) and comes from the domain's declaration, not from
+    // a branch here. The cause is the producer's own `because` fragment (item 6), never
+    // the card's supporting sentence. The deadline is carried only by the domains that
+    // have one (item 7) — a broken integration does not expire; a sync request does, and
+    // it is the only deadline that ask has.
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     for (const s of due.syncIssues) {
-      const detail = s.detail ? ` — ${s.detail}` : "";
+      const because = s.because ? ` — ${s.because}` : "";
+      const when = s.dueText ? ` · ${s.dueText}` : "";
       const link = base ? ` ${base}${s.href}` : "";
-      todayLines.push(`🔌 ${s.title}${detail}${link}`);
+      todayLines.push(`${s.glyph} ${s.title}${because}${when}${link}`);
     }
   }
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
@@ -385,7 +512,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // Yesterday: what happened.
   const yLines: string[] = [];
   for (const a of input.activities) {
-    yLines.push(`🏋️ ${a.title}${activityStat(a)}`);
+    yLines.push(`🏋️ ${a.title}${activityStat(a)}${activitySource(a)}`);
   }
   // The delta headline LEADS the intake report (#1505 part 3): "which of the things
   // that push me changed state" is the news; the fraction below is the supporting
@@ -485,10 +612,17 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     const val = b.value ? ` ${b.value}` : "";
     newLines.push(`🚩 ${b.name}${val} (${b.flag})`);
   }
-  if (input.newDocumentLabels.length) {
-    newLines.push(
-      `📄 ${input.newDocumentLabels.length} new document${input.newDocumentLabels.length === 1 ? "" : "s"}: ${input.newDocumentLabels.join(", ")}`
-    );
+  // New documents, one line each (#1913 item 3). "1 new document: ccda" answered neither
+  // "which?" nor "what was produced?" — it printed the raw doc_type. A multi-document
+  // morning names up to MAX_NAMED_DOCUMENTS and then counts the rest, so a bulk import
+  // cannot flood the section.
+  const namedDocs = input.newDocuments.slice(0, MAX_NAMED_DOCUMENTS);
+  for (const doc of namedDocs) {
+    newLines.push(digestDocumentLine(doc, input.deepLinkBase ?? ""));
+  }
+  const moreDocs = input.newDocuments.length - namedDocs.length;
+  if (moreDocs > 0) {
+    newLines.push(`📄 +${moreDocs} more document${moreDocs === 1 ? "" : "s"}`);
   }
   // The recent-changes lines (#1713) join the SAME section, below the flagged results
   // and new documents the digest's own send-cursor window already reported. That order

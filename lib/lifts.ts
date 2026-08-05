@@ -1143,7 +1143,15 @@ export function loadContextLabel(
   return equipmentLabel ? `${exercise} (${equipmentLabel})` : exercise;
 }
 
-/** Look up a lift by name (case-insensitive, with a loose contains fallback). */
+/**
+ * Look up a lift by name (case-insensitive, with a loose contains fallback).
+ *
+ * THE ARGUMENT IS AN EXERCISE NAME. The contains fallback exists to match logged
+ * free-text variants ("incline bench" → Incline Bench Press), and it will happily
+ * match a string that is not an exercise at all: "Back" is contained in "back squat",
+ * so a MUSCLE REGION passed in here returns a confidently wrong lift rather than a
+ * visible miss (#2012 — `suggestTitle(rec.focus)` titled a back day "Legs workout").
+ */
 export function liftInfo(name: string): LiftDef | undefined {
   const key = name.trim().toLowerCase();
   if (!key) return undefined;

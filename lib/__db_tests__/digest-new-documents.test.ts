@@ -91,8 +91,11 @@ function minimalInput(source: string): PersistInput {
   };
 }
 
+// The document TITLES this morning's digest would announce — the window assertions
+// below are about WHICH documents are in it, so they read the titles the same way the
+// old `newDocumentLabels` list did (source || doc_type || filename).
 function digestDocs(profileId: number, name: string): string[] {
-  return gatherDigestInput(profileId, name).newDocumentLabels;
+  return gatherDigestInput(profileId, name).newDocuments.map((d) => d.title);
 }
 
 describe("digest new-documents window keys on extraction completion (#1022)", () => {
@@ -178,5 +181,101 @@ describe("digest new-documents window keys on extraction completion (#1022)", ()
     // (5 days ago) is behind the cursor, so nothing is dumped as "new".
     setProfileSetting(p, "notify_digest_last_at", at("-1 day"));
     expect(digestDocs(p, "Digest Backfill")).toEqual([]);
+  });
+});
+
+// ---- The line says WHICH document and WHAT it produced (#1913 item 3) ------
+//
+// The old line printed the raw doc_type. The split is read off the SAME footprint
+// registry that stamps `extracted_count`, so the two accountings cannot disagree — and
+// a domain added to that registry appears in this line for free.
+
+describe("the new-document line names the document and its split (#1913)", () => {
+  const labRecord = (
+    name: string,
+    date: string
+  ): PersistInput["records"][number] => ({
+    category: "lab",
+    name,
+    canonical: name,
+    value: "1",
+    value_num: 1,
+    unit: null,
+    date,
+    reference_range: null,
+    flag: null,
+    panel: null,
+    notes: null,
+    source: null,
+    external_id: `${name}-${date}`,
+    loinc: null,
+    provider: null,
+  });
+
+  it("carries the title, the document date, the acquirer and the per-kind split", () => {
+    const p = newProfile("Digest Split");
+    const doc = newDocument(p, "visit.xml", "processing", at("-2 hours"));
+    setProfileSetting(p, "notify_digest_last_at", at("-1 hour"));
+
+    const portalId = Number(
+      db
+        .prepare(
+          "INSERT INTO portals (name, slug, software) VALUES (?, ?, 'mychart')"
+        )
+        .run("Example Health Portal", "example-health").lastInsertRowid
+    );
+    db.prepare(
+      "UPDATE medical_documents SET acquired_portal_id = ? WHERE id = ?"
+    ).run(portalId, doc);
+
+    persistDocumentImport(p, doc, {
+      ...minimalInput("Example visit summary"),
+      records: [
+        labRecord("Hemoglobin", "2020-05-01"),
+        labRecord("Ferritin", "2020-05-01"),
+        labRecord("Sodium", "2020-05-01"),
+      ],
+      immunizations: [
+        {
+          date: "2020-05-01",
+          vaccine: "influenza",
+          dose_label: null,
+          notes: null,
+          external_id: "flu-2020",
+          provider: null,
+        },
+      ],
+    });
+
+    const [entry] = gatherDigestInput(p, "Digest Split").newDocuments;
+    expect(entry.title).toBe("Example visit summary");
+    // `document_date`, not the upload time.
+    expect(entry.date).toBe("2020-05-01");
+    expect(entry.acquiredVia).toBe("Example Health Portal");
+    // Biggest kind first; every entry off the ONE footprint registry.
+    expect(entry.extracted).toEqual([
+      { noun: "labs", count: 3 },
+      { noun: "vaccine", count: 1 },
+    ]);
+
+    // The split adds up to the number the import already stamped (#1827).
+    const stored = db
+      .prepare("SELECT extracted_count FROM medical_documents WHERE id = ?")
+      .get(doc) as { extracted_count: number };
+    expect(entry.extracted.reduce((n, k) => n + k.count, 0)).toBe(
+      stored.extracted_count
+    );
+  });
+
+  it("says nothing about an acquirer a hand-uploaded document never had", () => {
+    const p = newProfile("Digest Manual");
+    const doc = newDocument(p, "scan.pdf", "processing", at("-2 hours"));
+    setProfileSetting(p, "notify_digest_last_at", at("-1 hour"));
+    persistDocumentImport(p, doc, minimalInput("Home scan"));
+
+    const [entry] = gatherDigestInput(p, "Digest Manual").newDocuments;
+    expect(entry.acquiredVia).toBeNull();
+    // A document that stored no rows says so by omission, never with a "0 records".
+    expect(entry.extracted).toEqual([]);
   });
 });

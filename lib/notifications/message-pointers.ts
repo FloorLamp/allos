@@ -1,5 +1,6 @@
-// The live-message pointer STORE (issue #1779) — one row per delivered
-// keyboard-bearing Telegram message (migration 135's `notify_messages`).
+// The live-message pointer STORE (issue #1779) — one row per delivered Telegram message
+// that can go stale (migration 135's `notify_messages`): every keyboard-bearing one, and
+// since #1913 item 4 every message of a kind whose PROSE makes a claim.
 //
 // Auth-blind and profileId-first, like every other lib/ write core. Every statement
 // filters on `profile_id`, so the new owned table needs no scoping exemption.
@@ -47,6 +48,11 @@ export interface MessagePointer {
   // which closes with the subjectless line rather than a guessed one.
   title: string | null;
   sentAt: string;
+  // A HASH of the delivered BODY, for the prose-claim class (#1913 item 4) — what lets
+  // a re-render be compared against what the chat is showing, so an unchanged tick makes
+  // no Telegram call. Null for a pointer recorded before migration 153 and for every kind
+  // that declares no prose reconciler.
+  bodyHash: string | null;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
   //
   // It is the raw column text and never a re-serialization of `keyboard`, because the
@@ -108,18 +114,22 @@ export function recordMessagePointer(p: {
   // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
   // caller with nothing to record stores NULL rather than an empty subject.
   title?: string | null;
+  // The delivered BODY's hash (#1913 item 4), for the prose-claim class. Optional: a kind
+  // with no prose reconciler stores NULL, and nothing reads it.
+  bodyHash?: string | null;
 }): void {
   try {
     db.prepare(
       `INSERT INTO notify_messages
-         (profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         (profile_id, chat_id, message_id, kind, date, keyboard, title, body_hash, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
          date       = excluded.date,
          keyboard   = excluded.keyboard,
          title      = excluded.title,
+         body_hash  = excluded.body_hash,
          sent_at    = excluded.sent_at`
     ).run(
       p.profileId,
@@ -129,6 +139,7 @@ export function recordMessagePointer(p: {
       p.date,
       JSON.stringify(p.keyboard),
       p.title?.trim() || null,
+      p.bodyHash ?? null,
       sqlNow()
     );
   } catch (e) {
@@ -148,6 +159,7 @@ interface PointerRow {
   date: string;
   keyboard: string;
   title: string | null;
+  body_hash: string | null;
   sent_at: string;
 }
 
@@ -157,7 +169,8 @@ interface PointerRow {
 export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title,
+              body_hash, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -176,6 +189,7 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
       date: r.date,
       keyboard,
       title: r.title,
+      bodyHash: r.body_hash,
       sentAt: r.sent_at,
       version: r.keyboard,
     });
@@ -207,7 +221,8 @@ export function liveMessagePointersForKind(
 ): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title,
+              body_hash, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND kind = ?
         ORDER BY sent_at, id`
@@ -226,6 +241,7 @@ export function liveMessagePointersForKind(
       date: r.date,
       keyboard,
       title: r.title,
+      bodyHash: r.body_hash,
       sentAt: r.sent_at,
       version: r.keyboard,
     });
@@ -333,8 +349,9 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
     const res = db
       .prepare(
         `INSERT INTO notify_messages
-           (id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (id, profile_id, chat_id, message_id, kind, date, keyboard, title,
+            body_hash, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING`
       )
       .run(
@@ -348,6 +365,7 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
         // next pass will read and claim against.
         p.version,
         p.title,
+        p.bodyHash,
         p.sentAt
       );
     return res.changes === 1;
@@ -375,4 +393,48 @@ export function pruneMessagePointers(profileId: number): number {
     )
     .run(profileId, sqlNow(), `-${MESSAGE_POINTER_RETENTION_DAYS} days`);
   return res.changes;
+}
+
+// ---- Claiming a PROSE edit (issue #1913 item 4) ----------------------------
+//
+// The keyboard claim above cannot serve the prose class: a digest whose keyboard is
+// empty (or unchanged by the edit) has the same witness before and after, so two
+// overlapping ticks would both win and both call the Bot API — the exact cost #1788
+// exists to avoid. The BODY HASH is the witness that actually moves, so the prose edit
+// claims on it, in the same claim-first / release-on-transient shape.
+export function claimMessagePointerBody(
+  profileId: number,
+  id: number,
+  previous: string | null,
+  next: string
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `UPDATE notify_messages SET body_hash = ?
+          WHERE profile_id = ? AND id = ? AND body_hash IS ?`
+      )
+      .run(next, profileId, id, previous);
+    return res.changes === 1;
+  });
+}
+
+// Undo a prose claim after a TRANSIENT failure (#1885): swap the hash back, so the next
+// tick recomputes the same plan, re-claims and retries. A pass that lost the row to
+// another writer restores nothing rather than clobbering it.
+export function releaseMessagePointerBody(
+  profileId: number,
+  id: number,
+  claimed: string,
+  previous: string | null
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `UPDATE notify_messages SET body_hash = ?
+          WHERE profile_id = ? AND id = ? AND body_hash = ?`
+      )
+      .run(previous, profileId, id, claimed);
+    return res.changes === 1;
+  });
 }

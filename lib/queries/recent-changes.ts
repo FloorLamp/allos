@@ -122,6 +122,14 @@ function weekdayLabel(dateStr: string): string {
 // `syncVocabularyForKind`, so any future cache-kind provider is excluded for free;
 // its sync accounting lives in Data → Review.
 //
+// ARRIVALS FOLD INTO THE CONTENT LINES THEY DESCRIBE (#1913 item 1). "kinds, not
+// counts" was done literally and still narrated every routine overnight sync — raw
+// substrate vocabulary about records the message was already listing. An arrival's only
+// value is PROVENANCE, and the content lines carry that themselves now (an imported
+// session reads "· Strava"; the digest's Sleep section IS the Health Connect arrival).
+// So this category reports only the arrivals with NO content line to ride: a provider's
+// first sync, and a kind this profile has never received before. See the fold below.
+//
 // STALENESS IS NOT RE-DERIVED HERE. #1685 already owns "a source has gone quiet"
 // end to end (staleSyncIssues → getIntegrationAttention → the digest's Today lines,
 // the Upcoming page and the Data → Review badge). Computing a second staleness
@@ -133,34 +141,62 @@ function weekdayLabel(dateStr: string): string {
 // `integration_sync_rows` has no own profile_id), and the metric_samples join carries
 // `s.profile_id = e.profile_id` so a target can never resolve across profiles.
 function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
+  // ONE pass over the profile's whole arrival history, split at the window edge. The
+  // fold below needs BOTH halves — what arrived in the window, and whether that kind (or
+  // that provider) has ever arrived before — and asking twice would be two answers to
+  // one question over a table that is only ever appended to.
   const rows = db
     .prepare(
       `SELECT e.provider AS provider,
               r.target_table AS target_table,
               s.metric AS metric,
-              COUNT(*) AS n
+              SUM(CASE WHEN e.at > ? THEN 1 ELSE 0 END) AS n_new,
+              SUM(CASE WHEN e.at <= ? THEN 1 ELSE 0 END) AS n_prior
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
          LEFT JOIN metric_samples s
                 ON r.target_table = 'metric_samples'
                AND s.id = r.target_id
                AND s.profile_id = e.profile_id
-        WHERE e.profile_id = ? AND e.ok = 1 AND e.at > ?
+        WHERE e.profile_id = ? AND e.ok = 1
           AND r.disposition = 'inserted'
         GROUP BY e.provider, r.target_table, s.metric
-        ORDER BY n DESC, e.provider, r.target_table`
+        ORDER BY n_new DESC, e.provider, r.target_table`
     )
-    .all(profileId, sinceTs) as {
+    .all(sinceTs, sinceTs, profileId) as {
     provider: string;
     target_table: string;
     metric: string | null;
-    n: number;
+    n_new: number;
+    n_prior: number;
   }[];
 
-  // Provider → the kinds it wrote, in descending row-count order (the biggest news
-  // first), insertion-ordered so the providers themselves keep that order too.
+  // Which providers had ALREADY synced successfully before the window — so a provider's
+  // FIRST sync can be told from its thousandth.
+  const syncedBefore = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT provider FROM integration_sync_events
+            WHERE profile_id = ? AND ok = 1 AND at <= ?`
+        )
+        .all(profileId, sinceTs) as { provider: string }[]
+    ).map((r) => r.provider)
+  );
+
+  // Which KINDS this profile has ever received before, across every provider — the
+  // identity is the reader's word, not the storage tuple, so "steps from Health Connect"
+  // and "steps from Fitbit" are one kind and only the first is news.
+  const kindsBefore = new Set<string>();
+  for (const r of rows) {
+    if (r.n_prior > 0) kindsBefore.add(arrivalKind(r.target_table, r.metric));
+  }
+
+  // Provider → the kinds it wrote IN THE WINDOW, in descending row-count order (the
+  // biggest news first), insertion-ordered so the providers keep that order too.
   const byProvider = new Map<string, string[]>();
   for (const r of rows) {
+    if (r.n_new === 0) continue;
     const def = getIntegration(r.provider as IntegrationId);
     if (syncVocabularyForKind(def?.kind ?? "") === "forecast") continue;
     const kinds = byProvider.get(r.provider) ?? [];
@@ -170,7 +206,20 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
 
   const out: RecentChange[] = [];
   for (const [provider, kinds] of byProvider) {
-    const phrase = arrivalKindsPhrase(kinds);
+    const firstSync = !syncedBefore.has(provider);
+    // THE FOLD (#1913 item 1). A routine overnight arrival is no longer narrated: its
+    // only value was PROVENANCE, and the content lines the digest already renders carry
+    // that themselves — an imported session reads "🏋️ Morning Ride — 18.85 km · Strava",
+    // and the Sleep section IS the Health Connect arrival rather than something a 📥 line
+    // needs to announce beside it.
+    //
+    // What survives is exactly what has no content line to ride: a provider's FIRST sync
+    // (a new source starting to flow is news about the setup, not about a record), and a
+    // kind this profile has never received before (nothing in the message establishes
+    // that the app now knows this about you). Both are once-ever events by construction,
+    // so neither can become the permanent line the attention doctrine forbids.
+    const shown = firstSync ? kinds : kinds.filter((k) => !kindsBefore.has(k));
+    const phrase = arrivalKindsPhrase(shown);
     if (!phrase) continue;
     const name = getIntegration(provider as IntegrationId)?.name ?? provider;
     out.push({
@@ -178,7 +227,9 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
       category: "data",
       // Dateless: arrival is about NOW, not about a logged day.
       date: null,
-      text: `📥 ${name}: ${phrase}`,
+      text: firstSync
+        ? `📥 First data from ${name}: ${phrase}`
+        : `📥 New from ${name}: ${phrase}`,
     });
   }
   return out;

@@ -344,6 +344,75 @@ describe("copy — one formatter, so every surface phrases it identically", () =
     );
   });
 
+  // ── THE DIGEST'S CAUSE FRAGMENT (#1913 item 6, owner ruling) ──
+  //
+  // `detail` is written for the CARD, where the title is a heading and this is its
+  // supporting line — so it is a complete sentence that restates the portal and repeats
+  // the ask. The digest CONCATENATES title and cause into one bullet, so it gets a
+  // fragment from the SAME formatter. A field, not a second set of words.
+
+  it("states the cause alone, with the subject the title already named left out", () => {
+    const never = syncRequestCopy({ ...ochsner, reason: "staleness" });
+    expect(never.because).toBe("never checked");
+    const stale = syncRequestCopy({
+      ...ochsner,
+      reason: "staleness",
+      daysSinceChecked: 35,
+    });
+    expect(stale.because).toBe("not checked in 5 weeks");
+    expect(syncRequestCopy({ ...ochsner, reason: "manual" }).because).toBe(
+      "a sync was requested"
+    );
+    expect(
+      syncRequestCopy({
+        ...ochsner,
+        reason: "post-visit",
+        visitSubject: "Riley",
+      }).because
+    ).toBe("Riley's visit just happened");
+  });
+
+  it("never re-contains the title, for any reason", () => {
+    for (const reason of SYNC_REQUEST_REASONS) {
+      const c = syncRequestCopy({
+        ...ochsner,
+        reason,
+        daysSinceChecked: 12,
+        visitSubject: "Riley",
+      });
+      // The joined line would otherwise read: imperative → em dash → subject restated →
+      // em dash → the same imperative.
+      expect(c.because).not.toContain("Ochsner MyChart");
+      expect(c.because.toLowerCase()).not.toContain("run the portal tool");
+      expect(c.because).not.toMatch(/[.]$/);
+    }
+  });
+
+  it("prefers #1889's clause as the cause once the machine has tried", () => {
+    const c = syncRequestCopy({
+      ...ochsner,
+      reason: "staleness",
+      daysSinceChecked: 35,
+      unattendedFailure: { message: "the portal asked for a code" },
+    });
+    // THAT is why it is the person's turn — it outranks the staleness the request was
+    // originally opened on.
+    expect(c.because).toBe(
+      "the scheduled run couldn't finish (the portal asked for a code)"
+    );
+    // …and the card's sentence is untouched, so the two surfaces still share one voice.
+    expect(c.detail).toContain("someone needs to go to the machine");
+  });
+
+  it("does not invent a cause for the digest either when the run gave none", () => {
+    const c = syncRequestCopy({
+      ...ochsner,
+      reason: "manual",
+      unattendedFailure: { message: null },
+    });
+    expect(c.because).toBe("the scheduled run couldn't finish");
+  });
+
   it("never names a login a single-login household has not met", () => {
     const c = syncRequestCopy({
       portalName: "Baptist Health",

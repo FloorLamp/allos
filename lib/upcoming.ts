@@ -241,6 +241,16 @@ export interface UpcomingItem {
   title: string;
   // Optional secondary context line (dosage, last-tested date, progress…).
   detail?: string | null;
+  // A SHORT CAUSE FRAGMENT for the digest's named line (#1913 item 6). Only the
+  // named-line domains (`integration`, `portal-sync`) carry one, and only they read it.
+  //
+  // It exists because `detail` is written for a CARD, where the title is a heading and
+  // the detail is its supporting line — so a producer is free to write a complete
+  // sentence that restates the subject. The digest is the surface that CONCATENATES the
+  // two ("${title} — ${detail}"), so it needs a fragment written for that grammar, and
+  // asking for it in the type is what stops the next producer from having to infer the
+  // convention from a renderer it never reads.
+  because?: string | null;
   // Structured, first-class reasons (issue #656) — the "why" the deciding engine
   // knows, carried as DATA ALONGSIDE `detail` (which stays the flattened display
   // string for back-compat). A compact surface (the Telegram digest) renders the

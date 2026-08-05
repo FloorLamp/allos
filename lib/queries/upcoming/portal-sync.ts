@@ -60,6 +60,10 @@ export function syncRequestItems(
       domain: "portal-sync",
       title: copy.title,
       detail: copy.detail,
+      // The digest's named line concatenates title and cause, so it gets the fragment
+      // the SAME formatter wrote for it (#1913 item 6) rather than the card's complete
+      // sentence, which restates the portal and repeats the imperative.
+      because: copy.because,
       href: "/integrations/patient-portals",
       // Clamped forward: an open request whose expiry day has already passed in the
       // profile's timezone must still read as a live ask, never as "overdue" work.

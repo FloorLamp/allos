@@ -431,6 +431,87 @@ describe("digestWorkoutLine (#1712)", () => {
       expect(digestWorkoutLine(rec(), bare)).toBeNull();
     });
   });
+
+  // ---- The head is named from the EXERCISES (#2012) ----
+  //
+  // Every case above sets `sessionLabel`, which short-circuits the head through `??`,
+  // and the one case without a label has an empty focus AND an empty exercise list. So
+  // the no-label branch — the one every profile without an active routine takes — had
+  // no coverage at all, and it was passing `rec.focus` (a `MuscleRegion[]`) into
+  // `suggestTitle`, which takes exercise names.
+  describe("the no-sessionLabel branch names the session from the exercises", () => {
+    it("titles a back day from its lifts, never 'Legs'", () => {
+      // The exact reported regression: "Back" is a substring of "back squat", so
+      // liftInfo("Back") returned Back Squat (region Legs) and the preview read
+      // "🏋️ Legs workout — Lat Pulldown, Cable Row, Deadlift" over a pull session.
+      const line = digestWorkoutLine(
+        rec({
+          focus: ["Back"],
+          exercises: ["Lat Pulldown", "Cable Row", "Deadlift"],
+        })
+      );
+      expect(line).not.toContain("Legs");
+      expect(line).toBe(
+        "🏋️ Today: Back workout — Lat Pulldown, Cable Row, Deadlift"
+      );
+    });
+
+    it("does not fall into the generic 'Strength session' the guard was written to avoid", () => {
+      // Passing region names guaranteed NOTHING resolved, so every focus that did not
+      // contain "Back" produced the generic string — the contentless line the comment
+      // above the guard promised the preview would never carry.
+      for (const focus of [
+        ["Chest"],
+        ["Legs"],
+        ["Core"],
+        ["Arms", "Shoulders"],
+      ] as const) {
+        const line = digestWorkoutLine(
+          rec({ focus: [...focus], exercises: ["Barbell Bench Press"] })
+        );
+        expect(line).not.toContain("Strength session");
+      }
+    });
+
+    it("yields no contentless line for a focus with no exercises behind it", () => {
+      // No routine day, no slate: there is nothing to name, so the digest omits the
+      // line rather than printing a title with no content under it.
+      expect(digestWorkoutLine(rec({ focus: ["Back", "Chest"] }))).toBeNull();
+      expect(
+        digestWorkoutLine(rec({ focus: ["Back"] }), { standalone: false })
+      ).toBeNull();
+    });
+
+    it("composes with the cardio suffix (#2016) and the deload note", () => {
+      expect(
+        digestWorkoutLine(
+          rec({
+            focus: ["Back"],
+            exercises: ["Lat Pulldown"],
+            cardio: { activity: "Run", count: 1, perWeek: 2 },
+            deloadWeek: true,
+          })
+        )
+      ).toBe("🏋️ Today: Back workout — Lat Pulldown + cardio (deload week)");
+    });
+  });
+
+  // THE DURABLE GUARD (#2012): the nudge and the preview name the SAME session for one
+  // recommendation. This file's own header states they format one computation (#221);
+  // before this they could not, by construction — the nudge read `rec.exercises` and
+  // the preview read `rec.focus`.
+  it("names the same session the dedicated nudge titles", () => {
+    const r = rec({
+      focus: ["Back"],
+      exercises: ["Lat Pulldown", "Cable Row", "Deadlift"],
+    });
+    const nudgeTitle = formatWorkoutReminder(r)!.title;
+    const preview = digestWorkoutLine(r)!;
+    // "🏋️ Today's workout — Back workout" and "🏋️ Today: Back workout — …".
+    expect(nudgeTitle).toContain("Back workout");
+    expect(preview).toContain("Back workout");
+    expect(nudgeTitle).not.toContain("Legs");
+  });
 });
 
 // ---- The core names its own drivers (#2015) ----
