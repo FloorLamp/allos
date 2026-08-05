@@ -115,6 +115,10 @@ describe("native browser dialogs", () => {
     expect(offenses).toEqual([]);
   }, 15_000);
 
+  // Same CPU-bound AST walk as the scan above, over the e2e suite instead — and it
+  // grows with every spec the repo adds, so it gets the same explicit budget rather
+  // than Vitest's 5 s default (measured past it under `test:coverage`, where the
+  // instrumentation is what makes the parse slow).
   it("does not allow Playwright to silently accept native dialogs", () => {
     expect(
       playwrightDialogHandlerLines(`page.once("dialog", accept);`)
@@ -127,5 +131,5 @@ describe("native browser dialogs", () => {
     );
 
     expect(offenses).toEqual([]);
-  });
+  }, 15_000);
 });
