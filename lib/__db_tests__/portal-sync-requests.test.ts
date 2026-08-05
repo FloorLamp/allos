@@ -96,6 +96,21 @@ function backdateReport(accountId: number, at: string): void {
   ).run(at, at, at, accountId);
 }
 
+// ONE REPORTED RUN on this login, backdated so it predates anything raised afterwards
+// (a report at-or-after a request ANSWERS it). This is what ends the SETUP CARVE-OUT
+// (#2010): every automatic creator assumes the tool exists and is pointed at this login,
+// and a report row is the only proof of that. Most fixtures below need it purely as
+// scaffolding — the run they are actually about is the backdated one.
+function reportedRun(account: PortalAccount, at: string): void {
+  recordPortalRunReport(account, {
+    ok: true,
+    status: "nothing-new",
+    message: null,
+    discovered: 0,
+  });
+  backdateReport(account.id, at);
+}
+
 interface Fixture {
   momProfile: number;
   dadProfile: number;
@@ -169,6 +184,16 @@ describe("requestSync — the manual creator", () => {
     });
   });
 
+  it("still raises for a login the tool has never run on — the person asked (#2010)", () => {
+    // The automatic creators go quiet before the first run; a MANUAL ask never does. The
+    // attention doctrine lets the system reduce contact unilaterally and never overrule a
+    // user's own action, and this is the same carve-out read from the other side.
+    const f = fixture("man-prerun");
+    const out = requestSync(f.mom.id, "manual");
+    expect(out.ok && out.created).toBe(true);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(true);
+  });
+
   it("lets a manual ask supersede an open staleness one, but not the reverse", () => {
     const f = fixture("sup");
     expect(requestSync(f.mom.id, "staleness").ok).toBe(true);
@@ -220,6 +245,47 @@ describe("staleness — the cadence creator", () => {
     );
   });
 
+  it("stays silent for a hand pre-bound login the tool has NEVER run on (#2010)", () => {
+    // The reachable state the bug lived in: portal added, one label pre-bound by hand —
+    // a supported and encouraged pre-run step, so the first run files records straight
+    // away instead of dumping them into pending — and the tool never installed. Zero rows
+    // in portal_run_reports. `mapped = 1` with a null clock used to read as "overdue for
+    // a routine check" while the page's own checklist said "First run".
+    const f = fixture("prerun-stale");
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM portal_run_reports WHERE account_id = ?"
+        )
+        .get(f.mom.id)
+    ).toEqual({ n: 0 });
+
+    evaluateStalenessRequests(todayFor);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
+
+    // ONE REPORTED RUN, and the rule is exactly what it always was. A DELIVERY-ONLY push
+    // is the sharpest case: it stamps no check clock (#1888), so the login is still
+    // "never checked" — but it proves the tool is installed and pointed here, which ends
+    // the carve-out and hands the login straight back to the never-checked clause.
+    recordPortalRunReport(f.mom, {
+      ok: true,
+      status: "downloaded",
+      message: null,
+      discovered: 0,
+      contacted: false,
+    });
+    backdateReport(f.mom.id, stamp(shiftDateStr(f.anchor, -2)));
+    const req = listSyncRequests().find((r) => r.accountId === f.mom.id);
+    expect(req).toBeUndefined();
+
+    expect(evaluateStalenessRequests(todayFor)).toBeGreaterThanOrEqual(1);
+    const raised = openSyncRequests().find((r) => r.accountId === f.mom.id);
+    expect(raised?.reason).toBe("staleness");
+    expect(raised?.lastOkAt).toBeNull();
+  });
+
   it("does not let a FAILED run reset the staleness clock", () => {
     const f = fixture("failclock");
     // A successful run long ago, then a failure yesterday. The portal has not actually
@@ -246,6 +312,7 @@ describe("staleness — the cadence creator", () => {
 describe("post-visit — mapped profiles only", () => {
   it("raises a request when a MAPPED profile's visit just happened", () => {
     const f = fixture("visit");
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
       "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
     ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
@@ -268,8 +335,30 @@ describe("post-visit — mapped profiles only", () => {
     );
   });
 
+  it("raises NOTHING for a visit on a login the tool has never run on (#2010)", () => {
+    // The same carve-out, in the other creator. The visit is real and the records
+    // probably exist — but nothing can fetch them yet, so the ask a person actually owes
+    // is "install the tool", which the card already makes in its own words.
+    const f = fixture("prerun-visit");
+    db.prepare(
+      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+
+    evaluatePostVisitRequests(todayFor);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
+
+    // After one reported run the same visit raises the ask as it always did.
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
+    expect(evaluatePostVisitRequests(todayFor)).toBeGreaterThanOrEqual(1);
+    const req = openSyncRequests().find((r) => r.accountId === f.mom.id);
+    expect(req?.reason).toBe("post-visit");
+  });
+
   it("ignores a cancelled appointment — nothing happened, so nothing was published", () => {
     const f = fixture("visit-cancelled");
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
       "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'cancelled')"
     ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
@@ -281,6 +370,7 @@ describe("post-visit — mapped profiles only", () => {
 
   it("ignores a visit outside the window and a future one", () => {
     const f = fixture("visit-window");
+    reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
       "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Old', 'completed')"
     ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -30)));

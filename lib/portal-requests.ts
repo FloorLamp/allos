@@ -4,6 +4,7 @@ import { shiftDateStr } from "./date";
 import {
   POST_VISIT_WINDOW_DAYS,
   isStalenessDue,
+  mayAutoRequestSync,
   isSyncRequestOpen,
   shouldWriteSyncRequest,
   syncRequestExpiresAt,
@@ -208,6 +209,25 @@ const ALL_ACCOUNT_IDS_STMT = db.prepare(
   "SELECT id AS accountId FROM portal_accounts ORDER BY id"
 );
 
+const EVER_RAN_STMT = db.prepare(
+  "SELECT 1 AS ran FROM portal_run_reports WHERE account_id = ?"
+);
+
+// ── THE TOOL-HAS-EVER-RUN FACT (#2010), which is NOT the check clock ─────────
+//
+// Row existence, nothing else. `portal_run_reports` holds ONE ROW PER LOGIN (migration
+// 132), so a row exists exactly when the tool has reported at least once for this login —
+// including a delivery-only push, which stamps neither clock column but does prove the
+// tool is installed and pointed here. That is why this reads the PK and not
+// CHECK_CLOCK_COLS: "has the tool ever run" and "when was the portal last checked" are
+// different questions, and the constant above exists so they can never be confused.
+//
+// Spelled once, and read by BOTH automatic creators, so the setup carve-out cannot come
+// to mean two things. The pure rule that consumes it is `mayAutoRequestSync`.
+function accountEverRan(accountId: number): boolean {
+  return EVER_RAN_STMT.get(accountId) !== undefined;
+}
+
 const MAPPED_PROFILES_STMT = db.prepare(
   `SELECT DISTINCT profile_id AS profileId FROM portal_identities
     WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL
@@ -317,6 +337,7 @@ export function evaluateStalenessRequests(
     if (today === null) continue; // no mapped patients — silent, by the pure rule below
     if (
       !isStalenessDue({
+        everRan: accountEverRan(row.accountId),
         mappedPatients: row.mapped,
         lastCheckedAt: row.lastOkAt,
         today,
@@ -378,6 +399,12 @@ export function evaluatePostVisitRequests(
   for (const row of ALL_ACCOUNT_IDS_STMT.all() as { accountId: number }[]) {
     const today = accountToday(row.accountId, todayFor);
     if (today === null) continue;
+    // THE SETUP CARVE-OUT (#2010), the same one the staleness rule applies. A visit did
+    // happen and records probably exist — but nothing can fetch them yet, so the ask is
+    // "install the tool", which the card already makes in its own words.
+    if (!mayAutoRequestSync({ everRan: accountEverRan(row.accountId) })) {
+      continue;
+    }
     const from = shiftDateStr(today, -POST_VISIT_WINDOW_DAYS);
     for (const hit of POST_VISIT_ACCOUNTS_STMT.all(today, from) as {
       accountId: number;

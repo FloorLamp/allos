@@ -438,6 +438,20 @@ safety signal. A login with no mapped patients raises nothing at all — there
 would be nobody to reach, and finishing setup is what the page itself is asking
 for.
 
+**Nothing is asked of a household still in setup.** Neither automatic reason —
+staleness or after-a-visit — fires until the companion tool has reported a run on
+that login at least once. Mapped patients are not proof that it has: pre-binding
+a label by hand is a supported step _before_ the first run, so that a household
+can add a portal, bind the names it already knows, and have the first run file
+records straight away. Until a run reports, the page's own checklist owns first
+contact — telling somebody they are "overdue for a routine check" when what they
+owe is installing the tool is the page and the push contradicting each other. A
+run that keeps _failing_ is a different thing and still nudges: doing the first
+run is the setup step, failing it is a hygiene problem. Even a delivery-only
+push counts as having run — it moves no clock, but it proves the tool exists and
+is pointed at that login. **Request sync**, being a person's own decision, is
+never held back by any of this.
+
 ## Weather & UV (Open-Meteo)
 
 Unlike the device integrations, this one has **no account and no API key** — it
