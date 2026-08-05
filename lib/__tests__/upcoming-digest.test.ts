@@ -270,3 +270,110 @@ describe("summarizeBand — a per-domain phrase replaces its count", () => {
     expect(seen).toEqual([2]);
   });
 });
+
+// ---- One entry per named-line item (#1913 items 2, 5, 6, 7, 8) -------------
+//
+// The reported message carried the SAME 503 twice: "📝 Today: Weather & UV sync needs
+// attention" (the band count, which #1819 item 5 had already turned into a name) over
+// "🔌 Weather & UV sync needs attention — weather fetch failed (503)". The merge is keyed
+// on the named-line DOMAINS rather than on the weather standing, because both members of
+// that set were counted and named — a weather-shaped fix would have left the portal
+// double-mentioning the moment it closed.
+
+describe("named-line domains merge their band entry into the named line (#1913)", () => {
+  const namedLineItem = (
+    domain: UpcomingDomain,
+    over: Partial<UpcomingItem> = {}
+  ): UpcomingItem => ({ ...mk(domain), ...over });
+
+  const groupOf = (items: UpcomingItem[]): BandGroup[] => [
+    { band: "today", label: "Today", items },
+  ];
+
+  // DOMAIN-PARAMETRIZED on purpose: proven for both members rather than for weather with
+  // the portal assumed to follow.
+  for (const domain of ["integration", "portal-sync"] as const) {
+    it(`gives a ${domain} item exactly ONE entry`, () => {
+      const model = buildUpcomingDigest(
+        "Sam",
+        groupOf([
+          namedLineItem(domain, {
+            title: "Weather & UV sync needs attention",
+            because: "weather fetch failed (503)",
+          }),
+        ])
+      )!;
+      expect(model.syncIssues).toHaveLength(1);
+      // No band line at all: the named line IS the band item.
+      expect(model.lines).toEqual([]);
+      // …but the item is still counted in the total.
+      expect(model.total).toBe(1);
+    });
+
+    it(`keeps a ${domain} item out of a band that also holds real work`, () => {
+      const model = buildUpcomingDigest(
+        "Sam",
+        groupOf([namedLineItem(domain), mk("appointment")])
+      )!;
+      expect(model.lines).toEqual(["Today: 1 appointment"]);
+      expect(model.syncIssues).toHaveLength(1);
+    });
+  }
+
+  it("still returns a model when a named line is the day's only content", () => {
+    // #1685's load-bearing case: returning null here would drop the named line along
+    // with the count and leave the dead integration reaching nothing again.
+    const model = buildUpcomingDigest(
+      "Sam",
+      groupOf([namedLineItem("integration")])
+    );
+    expect(model).not.toBeNull();
+    expect(model!.syncIssues).toHaveLength(1);
+  });
+
+  it("carries the glyph that says WHO ACTS (item 8)", () => {
+    const model = buildUpcomingDigest(
+      "Sam",
+      groupOf([
+        namedLineItem("integration"),
+        namedLineItem("portal-sync", { dueText: "expires in 6 days" }),
+      ])
+    )!;
+    // 🔌 keeps its meaning — a connection broke and allos will keep retrying. A line only
+    // a person can close, away from the device reading it, gets 🙋.
+    expect(model.syncIssues.map((s) => s.glyph)).toEqual(["🔌", "🙋"]);
+  });
+
+  it("carries the producer's cause fragment, never the card's sentence (item 6)", () => {
+    const model = buildUpcomingDigest(
+      "Sam",
+      groupOf([
+        namedLineItem("portal-sync", {
+          title: "Run the portal tool for tbh",
+          // What the CARD renders under its heading — a complete sentence that
+          // re-contains the title.
+          detail:
+            "tbh has never been checked — run the portal tool on your computer.",
+          because: "never checked",
+        }),
+      ])
+    )!;
+    expect(model.syncIssues[0].because).toBe("never checked");
+  });
+
+  it("carries the expiry only for the domain that HAS one (item 7)", () => {
+    const model = buildUpcomingDigest(
+      "Sam",
+      groupOf([
+        // A broken integration's dueText is a CTA label, not a deadline — nothing
+        // expires, and printing "Reconnect" after a middle dot would invent one.
+        namedLineItem("integration", { dueText: "Reconnect" }),
+        namedLineItem("portal-sync", { dueText: "expires in 6 days" }),
+      ])
+    )!;
+    expect(model.syncIssues.map((s) => s.dueText)).toEqual([
+      null,
+      "expires in 6 days",
+    ]);
+  });
+});

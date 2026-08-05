@@ -110,12 +110,12 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const body = sentBody(fetchMock);
-    // In the band line — NAMED there too since #1819 item 5, which is a small band
-    // getting exactly what the #1685 detail line was added to guarantee …
-    expect(body).toContain("🗓️ Today: Strava sync needs attention");
-    // … and named again with its cause and its link, which is the point of #1685.
+    // ONE ENTRY (#1913 items 2/5). It used to appear twice — once in the band line and
+    // again as the named 🔌 line — which is the same 503 restated in one message.
     expect(body).toContain("🔌 Strava sync needs attention");
     expect(body).toContain("401");
+    expect(body).not.toContain("🗓️ Today: Strava sync needs attention");
+    expect(body.match(/Strava sync needs attention/g)).toHaveLength(1);
   });
 
   it("names a silently-stopped provider with the staleness copy instead", async () => {
@@ -179,5 +179,50 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     syncEvent(p, "strava", 0); // the connection comes back
     const healed = buildDigest(gatherDigestInput(p, "DigestSelfClear"));
     expect(JSON.stringify(healed ?? {})).not.toContain("sync has stopped");
+  });
+});
+
+// ---- The digest's sync lines consume the #1880 standing (#1913 item 2) ------
+//
+// The reported screenshot's exact state: a Weather & UV 503 with a successful run an
+// hour earlier. That is `intermittent`, and by #1880 only `failing` and `needs-reauth`
+// escalate — an intermittent source is a calm amber fact on the pull surfaces and must
+// never reach a push channel. The gate is `getImportIssues`, which every one of the four
+// broken-sync surfaces reads, so the digest inherits it rather than re-deriving one.
+describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)", () => {
+  const digestText = (profileId: number, name: string): string => {
+    const model = buildDigest(gatherDigestInput(profileId, name));
+    return (model?.sections ?? [])
+      .flatMap((s) => [s.heading, ...s.lines])
+      .join("\n");
+  };
+
+  it("says nothing about an INTERMITTENT source — a failure with a success beside it", () => {
+    const p = newProfile("DigestFlap");
+    connect(p, "weather");
+    syncEvent(p, "weather", 1); // yesterday's run was fine
+    syncEvent(p, "weather", 0, 0, "weather fetch failed (503)");
+    seedActivityYesterday(p);
+
+    const text = digestText(p, "DigestFlap");
+    expect(text).not.toContain("503");
+    expect(text).not.toContain("🔌");
+    expect(text).not.toContain("sync issue");
+  });
+
+  it("renders a FAILING source as exactly one entry", () => {
+    const p = newProfile("DigestFailing");
+    connect(p, "weather");
+    // Three consecutive failures — the escalation threshold.
+    for (const d of [2, 1, 0])
+      syncEvent(p, "weather", d, 0, "weather fetch failed (503)");
+    seedActivityYesterday(p);
+
+    const text = digestText(p, "DigestFailing");
+    expect(text).toContain("🔌");
+    expect(text).toContain("503");
+    // ONE entry, not a band count and a named line saying the same thing (item 5).
+    expect(text.match(/sync needs attention/g)).toHaveLength(1);
+    expect(text).not.toContain("sync issue");
   });
 });

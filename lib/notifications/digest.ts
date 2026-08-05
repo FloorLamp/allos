@@ -368,16 +368,26 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     for (const h of due.highlights) {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
     }
-    // Broken syncs, named (#1685). The band count above says how many; these say which,
-    // and link where the fix lives. Present for as long as the connection is broken and
-    // gone the morning after a healthy sync — the signal self-clears because the item
-    // behind it does (currentlyFailingProviders / the staleness threshold), so nothing
-    // here needs its own lifecycle.
+    // Data-plumbing asks, named (#1685/#1757) — and since #1913 item 5 these are the
+    // ONLY entry each one gets: the band above no longer counts them, so a single broken
+    // sync is one line rather than a count and a name saying the same thing twice.
+    //
+    // The grammar is title — cause · deadline:
+    //
+    //   🔌 Weather & UV sync needs attention — weather fetch failed (503)
+    //   🙋 Run the portal tool for tbh — never checked · expires in 6 days
+    //
+    // The glyph says WHO ACTS (item 8) and comes from the domain's declaration, not from
+    // a branch here. The cause is the producer's own `because` fragment (item 6), never
+    // the card's supporting sentence. The deadline is carried only by the domains that
+    // have one (item 7) — a broken integration does not expire; a sync request does, and
+    // it is the only deadline that ask has.
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     for (const s of due.syncIssues) {
-      const detail = s.detail ? ` — ${s.detail}` : "";
+      const because = s.because ? ` — ${s.because}` : "";
+      const when = s.dueText ? ` · ${s.dueText}` : "";
       const link = base ? ` ${base}${s.href}` : "";
-      todayLines.push(`🔌 ${s.title}${detail}${link}`);
+      todayLines.push(`${s.glyph} ${s.title}${because}${when}${link}`);
     }
   }
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });

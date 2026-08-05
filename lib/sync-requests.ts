@@ -298,6 +298,16 @@ export interface SyncRequestCopyInput {
 export interface SyncRequestCopy {
   title: string;
   detail: string;
+  // WHY THE REQUEST IS OPEN, as a short fragment (#1913 item 6 — owner ruling): "never
+  // checked", "not checked in 5 weeks", "a visit just happened".
+  //
+  // `detail` above is written for the CARD, where the title is a heading and this is its
+  // supporting line, so it is a complete sentence that restates the portal and repeats
+  // the ask. The digest CONCATENATES title and cause into one bullet, so it needs the
+  // cause alone — otherwise the line says the imperative twice with two em dashes at
+  // different grammatical levels. Same words, same switch, one formatter: this is a
+  // second FIELD, not a second set of copy.
+  because: string;
   // The card's compact state line ("Sync requested · expires in 6 days").
   cardLine: string;
 }
@@ -323,28 +333,41 @@ export function syncRequestCopy(input: SyncRequestCopyInput): SyncRequestCopy {
   const where = machinePhrase(input.accountName, input.accountImplicit);
   const title = `Run the portal tool for ${input.portalName}`;
   let detail: string;
+  // The same reason, as the fragment the digest's named line concatenates (#1913 item 6).
+  // Subject-less by construction: the title has already named the portal.
+  let because: string;
   switch (input.reason) {
     case "staleness":
-      detail =
-        input.daysSinceChecked == null
-          ? `${input.portalName} has never been checked — run the portal tool on ${where}.`
-          : `${input.portalName} hasn't been checked in ${intervalPhrase(
-              input.daysSinceChecked
-            )} — run the portal tool on ${where}.`;
+      if (input.daysSinceChecked == null) {
+        detail = `${input.portalName} has never been checked — run the portal tool on ${where}.`;
+        because = "never checked";
+      } else {
+        const ago = intervalPhrase(input.daysSinceChecked);
+        detail = `${input.portalName} hasn't been checked in ${ago} — run the portal tool on ${where}.`;
+        because = `not checked in ${ago}`;
+      }
       break;
     case "post-visit":
       detail = input.visitSubject
         ? `${input.visitSubject}'s visit just happened — the portal likely has new results. Run the portal tool on ${where}.`
         : `A visit just happened — the portal likely has new results. Run the portal tool on ${where}.`;
+      because = input.visitSubject
+        ? `${input.visitSubject}'s visit just happened`
+        : "a visit just happened";
       break;
     case "manual":
       detail = `A sync was requested for ${input.portalName} — run the portal tool on ${where}.`;
+      because = "a sync was requested";
       break;
   }
   const escalation = unattendedFailureClause(input.unattendedFailure);
   return {
     title,
     detail: escalation ? `${detail} ${escalation}` : detail,
+    // #1889's clause rides the fragment too, in its fragment form: when the machine
+    // already tried, THAT is why it is the person's turn, and it outranks the staleness
+    // the request was originally opened on.
+    because: unattendedFailureFragment(input.unattendedFailure) ?? because,
     cardLine: "Sync requested",
   };
 }
@@ -363,6 +386,20 @@ function unattendedFailureClause(
   return why
     ? `The scheduled run couldn't finish (${why}) — someone needs to go to the machine.`
     : "The scheduled run couldn't finish — someone needs to go to the machine.";
+}
+
+// The same clause as a CAUSE FRAGMENT for the digest's named line (#1913 item 6): "the
+// scheduled run couldn't finish (the portal asked for a code)". No trailing sentence
+// about going to the machine — the title already said that, and the fragment is joined
+// after it. Null when nothing has attempted the request, which is the ordinary case.
+function unattendedFailureFragment(
+  failure: { message: string | null } | null | undefined
+): string | null {
+  if (!failure) return null;
+  const why = failure.message?.trim();
+  return why
+    ? `the scheduled run couldn't finish (${why})`
+    : "the scheduled run couldn't finish";
 }
 
 // The expiry half of the card line and the item's due text, from the SAME words:

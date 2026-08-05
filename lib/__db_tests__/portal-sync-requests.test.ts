@@ -472,7 +472,10 @@ describe("reach — an Upcoming item and a digest line sharing one key", () => {
     expect(
       model!.syncIssues.some((s) => s.title.includes("Run the portal tool"))
     ).toBe(true);
-    expect(model!.lines.join(" ")).toContain("portal check");
+    // …and named ONCE (#1913 item 5). The named line IS the band item now, so the
+    // "1 portal check" count is gone rather than sitting beside it — which also retires
+    // the noun that read as a completed event (item 8).
+    expect(model!.lines.join(" ")).not.toContain("portal check");
   });
 
   it("stays OFF the non-hideable Needs-attention hero", () => {

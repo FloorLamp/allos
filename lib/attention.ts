@@ -152,6 +152,11 @@ export function buildFlaggedItem(
 export function integrationToItem(i: AttentionIntegration): UpcomingItem {
   const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
   const stale = i.kind === "stale";
+  const detail =
+    i.detail ??
+    (stale
+      ? "No recent data from this source."
+      : "Reconnect to resume syncing.");
   return {
     key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
@@ -159,11 +164,12 @@ export function integrationToItem(i: AttentionIntegration): UpcomingItem {
     title: stale
       ? `${i.provider} sync has stopped`
       : `${i.provider} sync needs attention`,
-    detail:
-      i.detail ??
-      (stale
-        ? "No recent data from this source."
-        : "Reconnect to resume syncing."),
+    detail,
+    // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6). This producer's
+    // detail already IS one — the recorded error text ("weather fetch failed (503)"), or
+    // the observation behind a quiet stop — so the field is declared rather than derived,
+    // and the rendered line is unchanged from what it printed before.
+    because: detail,
     // Match the CTA's promise: known, connectable providers go straight to their
     // setup page. Unknown/planned providers safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),

@@ -648,3 +648,93 @@ describe("digest offer tail per channel (#1712)", () => {
     );
   });
 });
+
+// ---- The data-plumbing named line (#1913 items 2, 5, 6, 7, 8) --------------
+//
+// The reported line: "🔌 Run the portal tool for tbh — tbh has never been checked — run
+// the portal tool on your computer." — imperative, em dash, subject restated, em dash,
+// the same imperative, with the portal named three times counting the band entry above
+// it, and no mention of the expiry that is the only deadline the ask has.
+
+describe("buildDigest — the named data-plumbing line", () => {
+  const todayLines = (input: DigestInput): string[] =>
+    buildDigest(input)?.sections.find((s) => s.heading === "Today")?.lines ??
+    [];
+
+  it("renders a broken integration exactly as it did, and only once", () => {
+    const lines = todayLines({
+      ...empty,
+      todayGroups: [
+        band("today", "Today", [
+          item("integration", {
+            title: "Weather & UV sync needs attention",
+            detail: "weather fetch failed (503)",
+            because: "weather fetch failed (503)",
+            dueText: "Reconnect",
+          }),
+        ]),
+      ],
+    });
+    expect(lines).toEqual([
+      "🔌 Weather & UV sync needs attention — weather fetch failed (503)",
+    ]);
+  });
+
+  it("renders a portal request as the owner's ruling spells it", () => {
+    const lines = todayLines({
+      ...empty,
+      deepLinkBase: "https://allos.example/",
+      todayGroups: [
+        band("week", "This week", [
+          item("portal-sync", {
+            title: "Run the portal tool for tbh",
+            detail:
+              "tbh has never been checked — run the portal tool on your computer.",
+            because: "never checked",
+            dueText: "expires in 6 days",
+            href: "/integrations/patient-portals",
+          }),
+        ]),
+      ],
+    });
+    expect(lines).toEqual([
+      "🙋 Run the portal tool for tbh — never checked · expires in 6 days " +
+        "https://allos.example/integrations/patient-portals",
+    ]);
+    // The portal is named ONCE in the whole bullet, and the card's sentence does not
+    // ride along behind the title.
+    expect(lines[0].match(/tbh/g)).toHaveLength(1);
+    expect(lines[0]).not.toContain("run the portal tool on your computer");
+  });
+
+  it("does not print a deadline the ask does not have", () => {
+    const lines = todayLines({
+      ...empty,
+      todayGroups: [
+        band("today", "Today", [
+          item("integration", {
+            title: "Withings sync has stopped",
+            because: "no data since Jun 20",
+            dueText: "No recent data",
+          }),
+        ]),
+      ],
+    });
+    expect(lines[0]).toBe(
+      "🔌 Withings sync has stopped — no data since Jun 20"
+    );
+    expect(lines[0]).not.toContain("·");
+  });
+
+  it("degrades to a bare title when a producer wrote no cause", () => {
+    const lines = todayLines({
+      ...empty,
+      todayGroups: [
+        band("today", "Today", [
+          item("integration", { title: "Oura sync needs attention" }),
+        ]),
+      ],
+    });
+    expect(lines).toEqual(["🔌 Oura sync needs attention"]);
+  });
+});
