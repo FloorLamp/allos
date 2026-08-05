@@ -22,6 +22,7 @@ import {
 } from "@/lib/reading-writes";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
+import type { BodyMetricColumn } from "@/lib/reading-identity-map";
 
 export type { ReadingDeleteOutcome, ReadingWriteOutcome };
 
@@ -65,7 +66,11 @@ export type { ReadingDeleteOutcome, ReadingWriteOutcome };
 // chart alone — with the honest reason, never an empty table implying data is
 // missing. Fixing a BMI means fixing the weight or height it came from.
 
-export type BodyMetricColumn = "weight_kg" | "body_fat_pct" | "resting_hr";
+// The `body_metrics` measure columns. DECLARED in lib/reading-identity-map.ts (#2086)
+// and re-exported here, where every reader already looks: it is identity vocabulary —
+// the stream keys the identity map registers — and the map must stay import-light, so
+// the declaration cannot live in this module, which opens the database.
+export type { BodyMetricColumn };
 
 export type MetricReadingStore =
   | { table: "body_metrics"; column: BodyMetricColumn }

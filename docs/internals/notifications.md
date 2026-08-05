@@ -892,6 +892,49 @@ route through the cadence planner and never did — they are safety signals an
 Upcoming dismissal may never silence, and registering their bookkeeping changes
 only the census.
 
+### The cadence boundary is declared (#2089)
+
+The extraction above says what the shared engine decides. It did not say where
+its jurisdiction **ends**, so every family outside it carried private cadence
+code with no way to tell "this was decided" from "nobody looked" — the state
+#2033 billed us for, when the workout nudge decided its driver privately and got
+it wrong.
+
+`lib/notifications/cadence-registry.ts` closes that: `KIND_CADENCE` declares,
+for **every** `NotificationKind`, what owns its cadence — either
+`nudge-cadence` (naming the adapter module) or one of the exemption owners, each
+with a written reason:
+
+| Owner               | What decides the send                                                                    | Families                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes | refill, preventive, illness-care, followup                |
+| `user-schedule`     | a schedule the user configured; a per-day marker only stops a double send within the day | dose, digest, weekly-recap, workout, food, mood, practice |
+| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder          | escalation, redose                                        |
+| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                          | workout-recap, workout-stale, ease-back, milestone        |
+| `on-demand`         | the user's own request, one second earlier                                               | prn-list, symptom, temp, test                             |
+| `not-dispatched`    | nothing mints the kind                                                                   | upcoming, other                                           |
+
+The exemptions are the point, not an admission. `planNudgeCadence` answers one
+question — when does an **episode** nudge repeat, and when is its marker stale?
+Most families have no episode: a digest is a scheduled composition, a dose
+reminder is a slot the user wrote, a milestone is an announcement of something
+that happened once. The two the #2089 survey flagged as candidates —
+**mood check-ins** and **practice nudges** — are declared `user-schedule` for
+that reason: their cadence is one profile-local day, their marker re-arms at
+midnight whatever the subject does, and nothing is ever spaced off a first send
+or swept. Mood's auto-pause is a contact-consent mechanism (#992/#1668), not an
+episode lifecycle.
+
+**The teeth** (`lib/__tests__/cadence-registry.test.ts`): membership is total
+over `ALL_NOTIFICATION_KINDS` and no entry is stale; every reason is real in
+both directions; a member's declared `planner` must be a module that genuinely
+calls `planNudgeCadence`, and the set of such modules must be **exactly** the
+declared set — so a fifth domain adopting the engine cannot ship without joining
+the declaration, and a declaration cannot claim an adapter that does not exist.
+A safety kind may never be declared a member: the planner's freeze rule is a
+suppression-bus lookup, and putting that between a person and their medication
+is the one policy that must not move.
+
 ## Overdue safety-follow-up escalation (#1866)
 
 **The overdue finding follow-up (#700) pushes — with zero settings and a
