@@ -398,10 +398,12 @@ export default function SymptomLogBar({
   async function tap(key: string, severity: number) {
     const prev = severities[key] ?? 0;
     await ledger.tap({
-      // Per symptom AND per severity: the chips of one row are different writes, so
-      // moving from "mild" to "severe" is never absorbed by the previous chip's
-      // cooldown. Two taps of the SAME chip are the double-tap this closes.
-      key: `${key}:${severity}`,
+      // Keyed on the TRANSITION, like the dose control's: a row's chips all write the
+      // same day's severity, so "the same write twice" is prev→next, not the chip.
+      // Two taps of one chip share a key and the second is absorbed; every deliberate
+      // move — raise, then lower back to where it started — is a different transition
+      // and always lands.
+      key: `${key}:${prev}->${severity}`,
       from: prev,
       optimistic: Math.max(prev, severity),
       commit: (value) => setSeverity(key, value),
@@ -432,7 +434,7 @@ export default function SymptomLogBar({
     const prev = severities[key] ?? 0;
     if (severity >= prev) return;
     await ledger.tap({
-      key: `${key}:${severity}`,
+      key: `${key}:${prev}->${severity}`,
       from: prev,
       optimistic: severity,
       commit: (value) => setSeverity(key, value),
@@ -479,7 +481,7 @@ export default function SymptomLogBar({
       if (prevNote) setNote(key, prevNote);
     };
     await ledger.tap({
-      key: `${key}:clear`,
+      key: `${key}:${prev}->clear`,
       from: prev,
       optimistic: 0,
       commit: (value) => setSeverity(key, value),
