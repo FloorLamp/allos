@@ -9,7 +9,10 @@ import {
   type StrengthRecent,
   type RoutineTargetProgress,
 } from "@/lib/coaching";
-import type { InjuryConstraint } from "@/lib/injury-model";
+import {
+  regionInjuryConstraint,
+  type InjuryConstraint,
+} from "@/lib/injury-model";
 import type { ConditionConsideration } from "@/lib/condition-training-considerations";
 
 const TODAY = "2026-07-08";
@@ -39,12 +42,12 @@ function input(over: Partial<NextWorkoutInput> = {}): NextWorkoutInput {
   };
 }
 
-const shoulderInjury: InjuryConstraint = {
+const shoulderInjury: InjuryConstraint = regionInjuryConstraint({
   id: 1,
   label: "right shoulder",
   status: "active",
   regions: ["Chest", "Shoulders"],
-};
+});
 
 describe("recommendNextWorkout — active-injury exclusion (#838)", () => {
   it("excludes an active injury's region from focus/exercises and NAMES why", () => {
@@ -182,12 +185,12 @@ describe("recommendCoaching — context notes on the card (#666/#838, one comput
     const tempered = recommendCoaching(
       ci({
         injuries: [
-          {
+          regionInjuryConstraint({
             id: 1,
             label: "chest strain",
             status: "recovering",
             regions: ["Chest"],
-          },
+          }),
         ],
       })
     )[0];

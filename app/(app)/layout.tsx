@@ -149,7 +149,7 @@ export default async function AppLayout({
   // the Analyze/detail panel uses so the live logger and its deep-link target agree on
   // the injury axis (#221/#1115). Skipped (empty) for a restricted profile.
   const recoveringContext = restricted
-    ? { temperedRegions: [] }
+    ? { temperedRegions: [], constraints: [] }
     : getFormRecoveringContext(profile.id);
   const plateauHints = restricted
     ? []

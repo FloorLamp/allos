@@ -12,8 +12,12 @@ import {
 import {
   isValidRegion,
   isValidMuscleId,
+  isValidLaterality,
+  isValidMovementPattern,
   isDateStr,
+  parseLoadFactor,
   INJURY_STATUSES,
+  type InjuryLaterality,
   type InjuryStatus,
 } from "@/lib/injury-model";
 import {
@@ -22,7 +26,8 @@ import {
 } from "@/lib/settings/profile-attrs";
 import { BUILTIN_INJURY_SITUATION } from "@/lib/situations";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import type { MuscleId, MuscleRegion } from "@/lib/lifts";
+import { exerciseHistoryKey } from "@/lib/lifts";
+import type { MovementPattern, MuscleId, MuscleRegion } from "@/lib/lifts";
 
 // Server write-path for the injury layer (issue #838). The Training-overview injury bar
 // posts here; each action owns the auth gate (requireWriteAccess — the write-access scanner
@@ -61,6 +66,58 @@ function parseSince(formData: FormData): string | null {
   return isDateStr(raw) ? raw : null;
 }
 
+// The #2024 precision, validated HERE at the request boundary (the write core stays
+// auth-blind and re-sanitizes, but an action must never hand it an unvalidated enum or a
+// raw exercise label). Every field is optional: absent ⇒ the region-scoped constraint the
+// form always submitted.
+function parseMovementList(formData: FormData): MovementPattern[] {
+  return [...new Set(formData.getAll("movements").map(String))].filter(
+    isValidMovementPattern
+  );
+}
+
+function parseLaterality(formData: FormData): InjuryLaterality | null {
+  const raw = String(formData.get("laterality") ?? "").trim();
+  return isValidLaterality(raw) ? raw : null;
+}
+
+// Exercise identities arrive as user-facing lift NAMES from the picker; they are
+// normalized to the canonical identity (exerciseHistoryKey) before the write, never
+// stored as raw labels (#2024).
+function parseExerciseList(formData: FormData): string[] {
+  return [
+    ...new Set(
+      formData
+        .getAll("exercises")
+        .map((e) => exerciseHistoryKey(String(e)))
+        .filter((k) => k.length > 0)
+    ),
+  ];
+}
+
+// Refused outside the documented fraction range rather than clamped — an out-of-range
+// preference is a typo, and silently rewriting it would be the app deciding for the user.
+function parseInjuryLoadFactor(formData: FormData): number | null {
+  const raw = String(formData.get("loadFactor") ?? "").trim();
+  return raw === "" ? null : parseLoadFactor(raw);
+}
+
+function parseReviewDate(formData: FormData): string | null {
+  const raw = String(formData.get("reviewDate") ?? "").trim();
+  return isDateStr(raw) ? raw : null;
+}
+
+// The shared optional-precision slice both writes bind.
+function parseScopeFields(formData: FormData) {
+  return {
+    laterality: parseLaterality(formData),
+    movements: parseMovementList(formData),
+    exercises: parseExerciseList(formData),
+    loadFactor: parseInjuryLoadFactor(formData),
+    reviewDate: parseReviewDate(formData),
+  };
+}
+
 // Log a new injury (the one-tap quick-log form). Regions (coarse) and/or muscles (fine)
 // name what's off the table; the engine excludes/tempers by them.
 export async function logInjury(formData: FormData): Promise<FormResult> {
@@ -73,6 +130,7 @@ export async function logInjury(formData: FormData): Promise<FormResult> {
     status: parseStatus(formData) ?? "active",
     since: parseSince(formData) ?? today(profile.id),
     notes: String(formData.get("notes") ?? ""),
+    ...parseScopeFields(formData),
   });
   if (out.kind !== "ok")
     return formError("Add a label and at least one affected region.");
@@ -92,6 +150,7 @@ export async function updateInjury(formData: FormData): Promise<FormResult> {
     status: parseStatus(formData) ?? "active",
     since: parseSince(formData),
     notes: String(formData.get("notes") ?? ""),
+    ...parseScopeFields(formData),
   });
   if (out.kind !== "ok")
     return formError("Add a label and at least one affected region.");

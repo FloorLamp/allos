@@ -152,5 +152,6 @@
   "151-dose-schedule-versions.ts": "44438ba5f4ab29dd2310391887f8983adbcfb9997135b6c9c3d3b66def26d4f4",
   "152-notify-message-kind-index.ts": "5e95032741ad867efef1c0be711e0282def6fc6779e06997f8ecddb2f22e7be7",
   "153-notify-message-prose.ts": "bb3d1209542c98cff1b1b4419d27a9e5fbca4ff05a6c85e8b8e82e4e9e1ed335",
-  "154-food-eating-time.ts": "7fc45d52736185b0552f196000d96f71babccdceb50f1b32b05b49f9c9844f9f"
+  "154-food-eating-time.ts": "7fc45d52736185b0552f196000d96f71babccdceb50f1b32b05b49f9c9844f9f",
+  "155-injury-scope.ts": "e1ad9b628af17f91b61f3ebf69ee5eb216578842bb04785b750f0f08b2f97c80"
 }

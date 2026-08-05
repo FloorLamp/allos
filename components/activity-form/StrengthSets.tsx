@@ -17,7 +17,10 @@ import {
   exerciseHistoryKey,
   regionForExercise,
 } from "@/lib/lifts";
-import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
+import {
+  exerciseInjuryVerdict,
+  RECOVERING_LOAD_FACTOR,
+} from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -327,10 +330,16 @@ export default function StrengthSets({
   // shared contextualNextSet below alongside the deload flag, so the form composes deload
   // AND the injury temper identically to the server-resolved surfaces (#221/#1115). Off a
   // recovering injury temperedRegions is empty, so a normal lift is byte-for-byte prior.
-  const injuryRegion = p.name.trim() !== "" ? regionForExercise(p.name) : null;
-  const recovering =
-    injuryRegion != null &&
-    recoveringContext.temperedRegions.includes(injuryRegion);
+  // #2024: resolved through the SHARED per-exercise verdict over the constraints the
+  // layout serialized, so a constraint declared at exercise or movement level tempers
+  // exactly the lift the user named — and their own declared load preference wins over
+  // the app's fallback fraction. Off any recovering constraint the verdict is "clear",
+  // so a normal lift is byte-for-byte prior.
+  const injuryVerdict =
+    p.name.trim() !== ""
+      ? exerciseInjuryVerdict(recoveringContext.constraints, p.name)
+      : null;
+  const recovering = injuryVerdict?.kind === "tempered";
   // Build a next-set suggestion from a set list (one shared computation, so a
   // per-side left/right suggestion progresses each side by the SAME rule as the
   // bilateral one — #335). A weighted lift whose newest session carries only
@@ -362,7 +371,7 @@ export default function StrengthSets({
     return contextualNextSet(base, p.name, {
       deloadWeek: deload,
       recoveringRegion: recovering,
-      recoveringFactor: RECOVERING_LOAD_FACTOR,
+      recoveringFactor: injuryVerdict?.factor ?? RECOVERING_LOAD_FACTOR,
     });
   };
   // Bilateral parts get one suggestion; per-side parts get an independent
