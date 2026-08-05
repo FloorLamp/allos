@@ -174,9 +174,17 @@ Reading a dated reading is a question about a QUANTITY, not about a table. One
 `medical_records` (`lib/reading-model.ts`, presented by `lib/queries/readings.ts`),
 and one lookup — `metricJudgment(identity, subject)` — resolves the clinical
 knowledge for it whatever store it came from. Every registered metric declares its
-knowledge source, or an explicit `none` with a reason, in `METRIC_KNOWLEDGE`. This
-is a read model: it changes no schema and no write path. See
-`docs/internals/reading-model.md`.
+knowledge source, or an explicit `none` with a reason, in `METRIC_KNOWLEDGE`.
+
+WRITING one is the same question. `placeReading()` (`lib/reading-placement.ts`)
+decides the physical store from the identity plus whether the reading carries
+clinical provenance — provenance forces `medical_records`, otherwise a registered
+stream, otherwise `medical_records`, and no identity is refused rather than
+defaulted. `lib/reading-writes.ts` executes it and owns the ONE editability
+contract: edit and delete route by a `ReadingTarget` taken from the row, not by
+the surface's own key. A surface names a quantity or a row; it does not name a
+table. Neither phase changes schema — the physical merge is a separate, later
+decision. See `docs/internals/reading-model.md`.
 
 ### Settings and units
 

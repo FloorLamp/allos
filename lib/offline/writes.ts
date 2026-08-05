@@ -18,12 +18,7 @@ import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import { normalizeVitalsInput, type VitalsRawInput } from "@/lib/vitals-input";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
-import {
-  addCanonicalNames,
-  markDoseSkipped,
-  markDoseTaken,
-  reconcileFlags,
-} from "@/lib/queries";
+import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import {
   MOOD_MAX,
@@ -36,6 +31,7 @@ import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
+import { recordReading } from "@/lib/reading-writes";
 import {
   classifyDoseReplay,
   classifySetReplay,
@@ -167,10 +163,21 @@ function upsertManualSample(
 
 // Persist a manual vitals entry. Runs the SAME pure normalizeVitalsInput guard the
 // online action and client form use, so a crafted/replayed request can never store a
-// partial/out-of-range set. Writes medical_records (external_id NULL, so a
-// same-window Health Connect push never matches it) + the sleep/HRV samples, then
-// registers canonical names and re-derives reference-range flags. Returns false on a
-// rejected/empty input, true on a successful write.
+// partial/out-of-range set. Returns false on a rejected/empty input, true on a
+// successful write.
+//
+// The observation half no longer names a table (#2032): each normalized vital is offered
+// to `recordReading` by its CANONICAL NAME, and the placement policy decides where it
+// lands. For every vital in the vitals vocabulary that decision is `medical_records`
+// (none of them has a registered stream), so the rows are byte-for-byte the ones this
+// function wrote before — pinned in lib/__db_tests__/reading-writes.test.ts. What
+// changes is that the destination is now a POLICY rather than a constant here: the day a
+// manual vital gains a stream source, this path follows it instead of quietly splitting
+// the quantity across two stores.
+//
+// Sleep and HRV stay on the sample writer: neither has a canonical reading identity, so
+// the policy refuses them by design rather than inventing a placement (the #482
+// exclusion discipline, applied to the write side).
 export function insertVitals(
   profileId: number,
   date: string,
@@ -182,34 +189,24 @@ export function insertVitals(
   const { medical, samples } = normalized;
   if (medical.length === 0 && samples.length === 0) return false;
 
-  const insertMedical = db.prepare(
-    `INSERT INTO medical_records
-       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, ?)`
-  );
-  const ids: number[] = [];
   for (const m of medical) {
     // Only a timed temperature carries a `note` (its "HH:MM" clock time, #800/#843);
-    // every other vital passes null, so the row is exactly as before.
-    const info = insertMedical.run(
-      profileId,
+    // every other vital passes null, so the row is exactly as before. `source` is
+    // 'manual' and `external_id` stays NULL, so a same-window Health Connect push never
+    // matches it. The core registers the canonical name and re-derives the
+    // reference-range flag, exactly as this function used to do in a batch.
+    recordReading(profileId, {
+      name: m.canonical,
+      value: m.value_num,
+      unit: m.unit,
       date,
-      m.category,
-      m.canonical,
-      String(m.value_num),
-      m.value_num,
-      m.unit,
-      m.canonical,
-      m.note ?? null
-    );
-    ids.push(Number(info.lastInsertRowid));
+      source: "manual",
+      category: m.category,
+      notes: m.note ?? null,
+    });
   }
   for (const s of samples) {
     upsertManualSample(profileId, s.metric, date, s.value);
-  }
-  if (ids.length) {
-    addCanonicalNames(medical.map((m) => m.canonical));
-    reconcileFlags(profileId, ids);
   }
   return true;
 }

@@ -1,8 +1,6 @@
-import { db, writeTx } from "@/lib/db";
+import { db } from "@/lib/db";
 import { isEditLocked } from "@/lib/integrations/sync-log";
-import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
-import { captureDelete } from "@/lib/undo-delete-db";
-import { getMoodReadings, reconcileFlags } from "@/lib/queries";
+import { getMoodReadings } from "@/lib/queries";
 import {
   clearMoodRating,
   deleteMoodLog,
@@ -14,8 +12,18 @@ import {
   moodRatingColumn,
   type MoodChartSeries,
 } from "@/lib/mood";
+import { readingIdentity } from "@/lib/reading-model";
+import type { MetricRowTarget } from "@/lib/reading-placement";
+import {
+  deleteReadingAt,
+  updateReadingAt,
+  type ReadingDeleteOutcome,
+  type ReadingWriteOutcome,
+} from "@/lib/reading-writes";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
+
+export type { ReadingDeleteOutcome, ReadingWriteOutcome };
 
 // The per-READING layer under a metric detail page (issue #1488, absorbing #1397).
 //
@@ -25,14 +33,24 @@ import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
 // so a mis-typed manual HRV or sleep-hours value was a TRUE dead end (there was not
 // even a production `DELETE FROM metric_samples`).
 //
-// This module is the auth-blind write/read core: `profileId` first, no `lib/auth`
-// import (the Server Actions in app/(app)/trends/reading-actions.ts own the gate).
+// This module is the auth-blind READ core plus the metric registry: `profileId` first,
+// no `lib/auth` import (the Server Actions in app/(app)/trends/reading-actions.ts own
+// the gate).
+//
+// THE WRITES MOVED (#2032, phase 2 of #1997). Correcting and deleting a reading is no
+// longer a question about a metric slug — it is a question about the ROW, so it lives in
+// `lib/reading-writes.ts` behind ONE contract keyed by `ReadingTarget`. What is left
+// here is `metricReadingTarget()`, the slug → row adapter, and the two named wrappers
+// the slug-speaking callers still use. The reason is concrete: this page folds in
+// same-identity clinical observations (#1996), and while the write path resolved a store
+// from the slug, every one of those rows had to be rendered read-only.
 //
 // THREE STORES, ONE SHAPE. A metric's readings live in whichever observation store
 // its domain uses — `body_metrics` (weight / body fat / resting HR), `metric_samples`
 // (the synced daily measures + HRV), `medical_records` (the vitals that store as lab
-// rows), or the mood store. #860 deliberately left those tables UN-merged; what is
-// shared is BEHAVIOR, via the substrate helpers every path here calls:
+// rows), or the mood store. #860 deliberately left those tables UN-merged, and phase 3
+// (the physical merge) is still a separate, later decision; what is shared is BEHAVIOR,
+// via the substrate helpers the read path and the write core both call:
 //
 //   • the #133 EDIT LOCK — an edit stamps `edited = 1` so the next rolling-window
 //     re-push skips the hand-corrected row instead of silently restoring the wrong
@@ -60,7 +78,7 @@ export type MetricReadingStore =
   //
   // `series` says WHICH of the check-in's three 1–5 ratings the metric is (#1408) —
   // one row, three readings, the same one-row-many-measures shape `body_metrics`
-  // already has (see the delete case for how each is removed without taking the
+  // already has (see `deleteReadingAt` for how each is removed without taking the
   // others). The value crossing this boundary is in STORED semantics; `calm`'s
   // display relabel belongs to the page, beside weight's unit conversion.
   | { table: "mood"; series: MoodChartSeries };
@@ -144,53 +162,6 @@ function bodyMetricSelect(column: BodyMetricColumn) {
         `SELECT id, date, resting_hr AS value, source, edited, notes FROM body_metrics
           WHERE profile_id = ? AND resting_hr IS NOT NULL
           ORDER BY date DESC, id DESC LIMIT ?`
-      );
-  }
-}
-
-// The #133 lock is only meaningful on a SOURCE-OWNED row (the keyed upsert dedups on
-// (date, source)); a manual row has no source to be re-pushed from, so its flag is
-// left alone — the same CASE the medical record editor uses.
-function bodyMetricUpdate(column: BodyMetricColumn) {
-  switch (column) {
-    case "weight_kg":
-      return db.prepare(
-        `UPDATE body_metrics
-            SET weight_kg = ?, edited = CASE WHEN source IS NOT NULL THEN 1 ELSE edited END
-          WHERE id = ? AND profile_id = ? AND weight_kg IS NOT NULL`
-      );
-    case "body_fat_pct":
-      return db.prepare(
-        `UPDATE body_metrics
-            SET body_fat_pct = ?, edited = CASE WHEN source IS NOT NULL THEN 1 ELSE edited END
-          WHERE id = ? AND profile_id = ? AND body_fat_pct IS NOT NULL`
-      );
-    case "resting_hr":
-      return db.prepare(
-        `UPDATE body_metrics
-            SET resting_hr = ?, edited = CASE WHEN source IS NOT NULL THEN 1 ELSE edited END
-          WHERE id = ? AND profile_id = ? AND resting_hr IS NOT NULL`
-      );
-  }
-}
-
-// Clear ONE measure off a shared row (see deleteMetricReading).
-function bodyMetricClear(column: BodyMetricColumn) {
-  switch (column) {
-    case "weight_kg":
-      return db.prepare(
-        `UPDATE body_metrics SET weight_kg = NULL, edited = 1
-          WHERE id = ? AND profile_id = ?`
-      );
-    case "body_fat_pct":
-      return db.prepare(
-        `UPDATE body_metrics SET body_fat_pct = NULL, edited = 1
-          WHERE id = ? AND profile_id = ?`
-      );
-    case "resting_hr":
-      return db.prepare(
-        `UPDATE body_metrics SET resting_hr = NULL, edited = 1
-          WHERE id = ? AND profile_id = ?`
       );
   }
 }
@@ -321,15 +292,99 @@ export function getMetricReadings(
   }
 }
 
-export type ReadingWriteOutcome =
-  { ok: true } | { ok: false; error: "not-found" | "derived" | "invalid" };
+/**
+ * The physical row a metric's reading id names — the metric registry's answer to the
+ * ONE editability contract (#2032).
+ *
+ * This is the slug ADAPTER, not a second routing table: it turns "the page I am on" into
+ * "the row you are editing" once, so `lib/reading-writes.ts` can execute the write
+ * without ever hearing about a metric slug. A surface holding real readings should
+ * prefer `readingTarget(reading)` — the row already knows where it lives, which is what
+ * makes a folded clinical observation editable on a stream metric's page.
+ *
+ * Null for a DERIVED metric: there is no row.
+ */
+export function metricReadingTarget(
+  slug: BodyMetricSlug,
+  id: number
+): MetricRowTarget | null {
+  const store = METRIC_READING_STORE[slug];
+  if (!store) return null;
+  switch (store.table) {
+    case "body_metrics":
+      return { store: "body_metrics", id, column: store.column };
+    case "metric_samples":
+      return { store: "metric_samples", id, metric: store.metric };
+    case "medical_records":
+      return {
+        store: "medical_records",
+        id,
+        identity: readingIdentity(store.canonical),
+      };
+    case "mood":
+      return { store: "mood", id, series: store.series };
+  }
+}
 
 /**
- * Correct one reading's value, in STORED units. Sets the #133 `edited` lock so a
- * later re-push of an imported row can't silently restore the wrong number.
+ * Correct one row of a metric detail page's readings table, in STORED units.
  *
- * Profile-scoped by the WHERE clause, so an id belonging to another profile is a
- * `not-found` no-op rather than a cross-profile write.
+ * The SPLIT this module owns, and the only one left: a READING goes to the one write
+ * core, which decides nothing about the surface it came from; a MOOD check-in rating goes
+ * to the mood store's own write core, because a 1–5 self-rating is not a reading of a
+ * quantity and mood is store-private (#992).
+ */
+export function updateMetricRow(
+  profileId: number,
+  target: MetricRowTarget,
+  value: number
+): ReadingWriteOutcome {
+  if (target.store !== "mood") return updateReadingAt(profileId, target, value);
+  // Every check-in rating is a whole 1–5 self-rating; the store's write core re-checks
+  // the scale, so an off-scale correction is refused there too.
+  const rating = Math.round(value);
+  if (rating < MOOD_MIN || rating > MOOD_MAX)
+    return { ok: false, error: "invalid" };
+  return updateMoodRating(
+    profileId,
+    target.id,
+    moodRatingColumn(target.series),
+    rating
+  )
+    ? { ok: true }
+    : { ok: false, error: "not-found" };
+}
+
+/** Delete one row of that table — the same split, with the same two destinations. */
+export function deleteMetricRow(
+  profileId: number,
+  target: MetricRowTarget
+): ReadingDeleteOutcome {
+  if (target.store !== "mood") return deleteReadingAt(profileId, target);
+  // No tombstone: there is no mood importer to resurrect a deleted check-in.
+  //
+  // The body_metrics rule one store over (#1408): a check-in ROW carries up to three
+  // ratings plus a note and factors, so removing a mis-tapped energy must NOT take that
+  // day's mood with it — the optional rating is nulled and the row stays. Valence is the
+  // check-in itself (NOT NULL), so removing it removes the day, exactly as it always has.
+  if (target.series === "valence") {
+    return { ok: deleteMoodLog(profileId, target.id), undoId: null };
+  }
+  return {
+    ok: clearMoodRating(
+      profileId,
+      target.id,
+      target.series === "energy" ? "energy" : "anxiety"
+    ),
+    undoId: null,
+  };
+}
+
+/**
+ * Correct one reading addressed by metric SLUG — the adapter for the callers that still
+ * speak in slugs (bulk correction, the quick-fix paths, the action tests). "This metric
+ * is derived, there is no row" is a slug-level answer the target vocabulary cannot
+ * express, which is why this wrapper survives rather than being inlined.
  */
 export function updateMetricReading(
   profileId: number,
@@ -337,164 +392,18 @@ export function updateMetricReading(
   id: number,
   value: number
 ): ReadingWriteOutcome {
-  const store = METRIC_READING_STORE[slug];
-  if (!store) return { ok: false, error: "derived" };
-  if (!Number.isFinite(value)) return { ok: false, error: "invalid" };
-
-  return writeTx(() => {
-    switch (store.table) {
-      case "body_metrics": {
-        const info = bodyMetricUpdate(store.column).run(value, id, profileId);
-        return info.changes > 0
-          ? ({ ok: true } as const)
-          : ({ ok: false, error: "not-found" } as const);
-      }
-      case "metric_samples": {
-        const info = db
-          .prepare(
-            `UPDATE metric_samples SET value = ?, edited = 1
-              WHERE id = ? AND profile_id = ? AND metric = ?`
-          )
-          .run(value, id, profileId, store.metric);
-        return info.changes > 0
-          ? ({ ok: true } as const)
-          : ({ ok: false, error: "not-found" } as const);
-      }
-      case "medical_records": {
-        const info = db
-          .prepare(
-            `UPDATE medical_records
-                SET value = ?, value_num = ?,
-                    -- Same #133 lock the record editor applies: an imported vital
-                    -- corrected here must survive the next rolling window.
-                    edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
-              WHERE id = ? AND profile_id = ? AND canonical_name = ?`
-          )
-          .run(String(value), value, id, profileId, store.canonical);
-        if (info.changes === 0)
-          return { ok: false, error: "not-found" } as const;
-        // A vital's out-of-range flag is a FUNCTION of its value, so a corrected
-        // value re-derives it through the SAME reconcileFlags the record editor
-        // calls (#221) — otherwise an edited-down blood pressure keeps its old
-        // "high". One computation, not a second flag engine here.
-        reconcileFlags(profileId, [id]);
-        return { ok: true } as const;
-      }
-      case "mood": {
-        // Every check-in rating is a whole 1–5 self-rating; the store's write core
-        // re-checks the scale, so an off-scale correction is refused there too.
-        const rating = Math.round(value);
-        if (rating < MOOD_MIN || rating > MOOD_MAX)
-          return { ok: false, error: "invalid" } as const;
-        return updateMoodRating(
-          profileId,
-          id,
-          moodRatingColumn(store.series),
-          rating
-        )
-          ? ({ ok: true } as const)
-          : ({ ok: false, error: "not-found" } as const);
-      }
-    }
-  });
+  const target = metricReadingTarget(slug, id);
+  if (!target) return { ok: false, error: "derived" };
+  return updateMetricRow(profileId, target, value);
 }
 
-export interface ReadingDeleteOutcome {
-  ok: boolean;
-  /** Present when the delete went through the undo holding store. */
-  undoId: number | null;
-}
-
-/**
- * Delete one reading. Where an undoable capture already exists for the store's root
- * (body_metrics, medical_records) it goes through `captureDelete`, which writes the
- * re-import tombstone and makes the delete restorable from the toast. The two stores
- * with no undoable root delete directly, capturing their tombstone pre-image FIRST —
- * the #653 pattern from the Data → Manage bulk delete, without which the next
- * rolling-window sync would simply re-insert the row the user just removed.
- */
+/** Delete one reading addressed by metric slug — the same adapter over the contract. */
 export function deleteMetricReading(
   profileId: number,
   slug: BodyMetricSlug,
   id: number
 ): ReadingDeleteOutcome {
-  const store = METRIC_READING_STORE[slug];
-  if (!store) return { ok: false, undoId: null };
-
-  switch (store.table) {
-    case "body_metrics": {
-      // A body_metrics ROW carries up to three measures; deleting the row for a
-      // body-fat correction would take that day's weight with it. Null the ONE
-      // column instead, and only drop the row when nothing is left on it.
-      return writeTx(() => {
-        const row = db
-          .prepare(
-            `SELECT weight_kg, body_fat_pct, resting_hr FROM body_metrics
-              WHERE id = ? AND profile_id = ?`
-          )
-          .get(id, profileId) as
-          | {
-              weight_kg: number | null;
-              body_fat_pct: number | null;
-              resting_hr: number | null;
-            }
-          | undefined;
-        if (!row) return { ok: false, undoId: null };
-        const others = (
-          ["weight_kg", "body_fat_pct", "resting_hr"] as const
-        ).filter((c) => c !== store.column && row[c] != null);
-        if (others.length === 0) {
-          // The row exists only for this measure — capture it whole so the toast's
-          // undo restores it (and its tombstone is written/removed with it).
-          const undoId = captureDelete("body-metric", profileId, id);
-          return { ok: undoId != null, undoId };
-        }
-        const info = bodyMetricClear(store.column).run(id, profileId);
-        return { ok: info.changes > 0, undoId: null };
-      });
-    }
-    case "medical_records": {
-      const undoId = captureDelete("biomarker-record", profileId, id);
-      return { ok: undoId != null, undoId };
-    }
-    case "metric_samples": {
-      return writeTx(() => {
-        const row = db
-          .prepare(
-            `SELECT metric, source, origin, start_time FROM metric_samples
-              WHERE id = ? AND profile_id = ? AND metric = ?`
-          )
-          .get(id, profileId, store.metric) as
-          Record<string, unknown> | undefined;
-        if (!row) return { ok: false, undoId: null };
-        const info = db
-          .prepare(`DELETE FROM metric_samples WHERE id = ? AND profile_id = ?`)
-          .run(id, profileId);
-        // The pre-image was read BEFORE the delete — the row is gone now, and the
-        // tombstone is what stops the next sync from re-inserting it (#508/#653).
-        writeImportTombstoneForRow(profileId, "metric_samples", row);
-        return { ok: info.changes > 0, undoId: null };
-      });
-    }
-    case "mood": {
-      // No tombstone: there is no mood importer to resurrect a deleted check-in.
-      //
-      // The body_metrics rule one store down (#1408): a check-in ROW carries up to
-      // three ratings plus a note and factors, so removing a mis-tapped energy must
-      // NOT take that day's mood with it — the optional rating is nulled and the row
-      // stays. Valence is the check-in itself (NOT NULL), so removing it removes the
-      // day, exactly as it always has.
-      if (store.series === "valence") {
-        return { ok: deleteMoodLog(profileId, id), undoId: null };
-      }
-      return {
-        ok: clearMoodRating(
-          profileId,
-          id,
-          store.series === "energy" ? "energy" : "anxiety"
-        ),
-        undoId: null,
-      };
-    }
-  }
+  const target = metricReadingTarget(slug, id);
+  if (!target) return { ok: false, undoId: null };
+  return deleteMetricRow(profileId, target);
 }

@@ -23,6 +23,8 @@ import {
   bodyMetricPeriodStats,
 } from "@/lib/trends-body-metrics";
 import { METRIC_READING_STORE, getMetricReadings } from "@/lib/metric-readings";
+import { placeReading } from "@/lib/reading-placement";
+import { metricObservationFoldIdentity } from "@/lib/metric-judgment";
 import { fullBodyMetricSeries } from "@/lib/body-metric-series";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -61,12 +63,22 @@ describe("every continuous reading has a real metric-detail destination", () => 
     (canonical, slug) => {
       // A registered kind…
       expect(BODY_METRIC_SLUGS).toContain(slug);
-      // …whose readings store is THIS canonical name in medical_records, which is
-      // what makes the destination's chart and readings table non-empty.
-      expect(METRIC_READING_STORE[slug]).toEqual({
-        table: "medical_records",
-        canonical,
-      });
+      // …whose readings store holds readings of THIS IDENTITY. Generalized in #2032
+      // from "this canonical name in medical_records": with the write path routing by
+      // row rather than by slug, a destination whose own store is the identity's
+      // registered STREAM (resting heart rate → body_metrics.resting_hr) both charts
+      // the identity's clinical observations, through the #1996 fold, and corrects
+      // them. What must still hold is that the page's store is a store OF THE SAME
+      // QUANTITY — one identity per destination, never a dead end.
+      expect(METRIC_READING_STORE[slug]).toEqual(
+        placeReading({ name: canonical }).placed
+      );
+      // …and the fold is what supplies the other store's rows on a stream destination,
+      // so no reading of the identity is stranded off the page it routes to.
+      const observationsFold =
+        metricObservationFoldIdentity(slug) != null ||
+        METRIC_READING_STORE[slug]?.table === "medical_records";
+      expect(observationsFold).toBe(true);
     }
   );
 });

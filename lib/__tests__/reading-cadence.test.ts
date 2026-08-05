@@ -38,10 +38,11 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   "Oxygen Saturation": "continuous",
   "Respiratory Rate": "continuous",
   "Body Temperature": "continuous",
-  // Streams too, but its metric-detail kind reads `body_metrics.resting_hr`, not the
-  // `medical_records` row an imported observation lands in — routing it there would
-  // show an empty page, so it stays on the surface that does chart it.
-  "Resting Heart Rate": "episodic",
+  // Streams into `body_metrics.resting_hr`. It joined the continuous set in #2032: the
+  // metric surface folds in same-identity observations (#1996) AND, since the write core
+  // routes by row rather than by slug, corrects them in place — so the destination both
+  // charts and edits every reading of the identity.
+  "Resting Heart Rate": "continuous",
   // Functional-fitness markers (#158) — an annual-at-best physical test, read by an
   // age/sex percentile card the reading detail page renders.
   "VO2 Max": "episodic",
@@ -90,16 +91,17 @@ describe("reading cadence — the vitals audit", () => {
     expect(readingCadence(name)).toBe(expected);
   });
 
-  it("declares a metric kind for exactly the continuous five", () => {
-    // Named out loud so the one deliberate omission (Resting Heart Rate, whose
-    // metric kind reads a different store) can't be quietly filled in without a
-    // matching change to that store.
+  it("declares a metric kind for exactly the continuous six", () => {
+    // Named out loud so the set can't grow or shrink without a deliberate edit here —
+    // and so the one entry whose destination is a STREAM store (Resting Heart Rate,
+    // #2032) is visible rather than folded into a count.
     expect(Object.keys(CONTINUOUS_READING_METRIC).sort()).toEqual([
       "Blood Pressure Diastolic",
       "Blood Pressure Systolic",
       "Body Temperature",
       "Oxygen Saturation",
       "Respiratory Rate",
+      "Resting Heart Rate",
     ]);
   });
 });

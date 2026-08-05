@@ -5,9 +5,11 @@
 //
 // A fitness check is a dated SESSION grouping the battery's measured tests. Values write
 // through their NATURAL stores — a `set` on the assessment activity (exercise_sets, so
-// exerciseHistoryKey + every training surface sees it), a `vital` medical_records row
-// (the canonical names the fitness-norms engine reads → healthspan pillars pick them up
-// with zero changes), or a body_metrics column. The fitness_assessment_entries row is the
+// exerciseHistoryKey + every training surface sees it), or, for a measured READING, the
+// store the placement policy chooses (#2032): this module no longer names a table for a
+// `vital` or a `body` test, it names the QUANTITY and lets `recordReading` decide. The
+// canonical names the fitness-norms engine reads are unchanged, so healthspan pillars
+// pick them up exactly as before. The fitness_assessment_entries row is the
 // session's COVERAGE LEDGER: which test, its tier/store, a canonical `value` SNAPSHOT (for
 // completion % + check-over-check deltas), and the raw field-test input JSON. The
 // authoritative value lives in the natural store; the snapshot never competes with it.
@@ -20,11 +22,9 @@ import {
   type FitnessTier,
   type FitnessTestDef,
 } from "@/lib/fitness-battery";
-import {
-  addCanonicalNames,
-  reconcileFlags,
-  getBiomarkerSeries,
-} from "@/lib/queries/medical";
+import { getBiomarkerSeries } from "@/lib/queries/medical";
+import { canonicalForStreamKey } from "@/lib/reading-placement";
+import { recordReading } from "@/lib/reading-writes";
 import { exerciseHistoryNames } from "@/lib/lifts";
 import { estimate1RM } from "@/lib/strength";
 import type { AmbientReading } from "@/lib/fitness-check-model";
@@ -124,44 +124,30 @@ export function saveFitnessEntry(
     const store = def.store;
     let canonicalUnit = def.unit;
 
-    if (store.kind === "vital") {
+    if (store.kind === "vital" || store.kind === "body") {
       canonicalUnit = def.unit;
-      const info = db
-        .prepare(
-          `INSERT INTO medical_records
-             (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, NULL)`
-        )
-        .run(
-          profileId,
-          input.date,
-          store.category,
-          store.canonical,
-          String(input.value),
-          input.value,
-          def.unit,
-          store.canonical
-        );
-      addCanonicalNames([store.canonical]);
-      reconcileFlags(profileId, [Number(info.lastInsertRowid)]);
-    } else if (store.kind === "body") {
-      // A body_metrics row carrying only this metric (weight_kg NULL — the column is
-      // nullable; readers reconcile per-metric newest). body_metrics is UNIQUE on
-      // (profile_id, date, source), so a second body test on the SAME date (body fat +
-      // resting HR in one session) must UPSERT into the same manual row — COALESCE keeps
-      // the other metric already written, and never clobbers a same-date weight.
-      db.prepare(
-        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id)
-         VALUES (?, NULL, ?, ?, 'manual', ?)
-         ON CONFLICT(profile_id, date, source) DO UPDATE SET
-           body_fat_pct = COALESCE(excluded.body_fat_pct, body_metrics.body_fat_pct),
-           resting_hr = COALESCE(excluded.resting_hr, body_metrics.resting_hr)`
-      ).run(
-        input.date,
-        store.column === "body_fat_pct" ? input.value : null,
-        store.column === "resting_hr" ? input.value : null,
-        profileId
-      );
+      // The battery declares WHAT a test measures; the placement policy decides where
+      // that lands (#2032). A `vital` test names its canonical directly; a `body` test
+      // names a column, which resolves to the canonical name the stream measures — and
+      // both then go through the ONE write core, which reproduces exactly the rows this
+      // function used to write by hand (a manual medical_records row with external_id
+      // NULL so a same-window Health Connect push never matches it, or the day's
+      // source='manual' body_metrics row with the other measures left alone, so a body
+      // fat and a resting HR entered in one session share it).
+      const canonical =
+        store.kind === "vital"
+          ? store.canonical
+          : canonicalForStreamKey("body_metrics", store.column);
+      if (!canonical) return { ok: false, error: "unknown test" };
+      const outcome = recordReading(profileId, {
+        name: canonical,
+        value: input.value,
+        unit: def.unit,
+        date: input.date,
+        source: "manual",
+        ...(store.kind === "vital" ? { category: store.category } : {}),
+      });
+      if (!outcome.ok) return { ok: false, error: "unknown test" };
     } else {
       // set store — a rep/timed/loaded set on the assessment activity.
       const lift = store.lift || (input.liftName ?? "").trim();

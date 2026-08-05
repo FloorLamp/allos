@@ -25,6 +25,7 @@ import {
   metricSampleTombstoneKey,
 } from "./tombstone-keys";
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
+import { streamKeysPlacedIn } from "@/lib/reading-placement";
 
 // Provider-agnostic record shapes. Every integration parses its own payload into
 // these, then calls the shared upserts below — so a new provider (Strava, Garmin)
@@ -411,16 +412,18 @@ const BODY_METRIC_COMPARE_COLS: string[] = [
   "resting_hr",
 ];
 
-// Body-metric measures that live in body_metrics (weight_kg/body_fat_pct/
-// resting_hr), NOT in metric_samples. A one-time fold moved body fat / resting
-// HR out of metric_samples into body_metrics so every source of them shares one
-// home; parsers route these to upsertBodyMetrics. This set is the guard (below)
-// that keeps a future path from re-splitting them back into metric_samples, whose
-// `metric` is free text. Kept as a plain array so callers/tests can reuse it.
-export const BODY_METRIC_SAMPLE_MEASURES = [
-  "body_fat_pct",
-  "resting_hr",
-] as const;
+// Body-metric measures that live in body_metrics (body_fat_pct/resting_hr), NOT in
+// metric_samples. A one-time fold moved body fat / resting HR out of metric_samples into
+// body_metrics so every source of them shares one home; parsers route these to
+// upsertBodyMetrics. This set is the guard (below) that keeps a future path from
+// re-splitting them back into metric_samples, whose `metric` is free text.
+//
+// DERIVED FROM THE PLACEMENT POLICY (#2032), not hand-kept beside it. These are exactly
+// the stream keys a registered reading identity places in `body_metrics`, so the guard
+// and the write core cannot come to disagree about where a quantity belongs — which is
+// the whole failure this sweep exists to catch, one layer up.
+export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
+  streamKeysPlacedIn("body_metrics");
 
 // Idempotent on (profile_id, metric, source, origin, start_time): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
@@ -465,7 +468,7 @@ export function upsertMetricSamples(
   const tombstoned = loadImportTombstones(profileId, "metric_samples");
   const counts = emptyCounts();
   for (const r of rows) {
-    if ((BODY_METRIC_SAMPLE_MEASURES as readonly string[]).includes(r.metric)) {
+    if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
       // These belong in body_metrics (via upsertBodyMetrics); never let them land
       // in metric_samples and re-split the measure across two tables.
       continue;
