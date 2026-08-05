@@ -1208,12 +1208,12 @@ export default async function RideDetailPage(props: {
                   <ResponsiveTable className="w-full border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-                        <th className="pb-2 pr-3">Split</th>
-                        <th className="px-3 pb-2 text-right">Distance</th>
-                        <th className="px-3 pb-2 text-right">Time</th>
-                        <th className="px-3 pb-2 text-right">Speed</th>
-                        <th className="px-3 pb-2 text-right">Power</th>
-                        <th className="pb-2 pl-3 text-right">Heart rate</th>
+                        <th className="th">Split</th>
+                        <th className="th text-right">Distance</th>
+                        <th className="th text-right">Time</th>
+                        <th className="th text-right">Speed</th>
+                        <th className="th text-right">Power</th>
+                        <th className="th text-right">Heart rate</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1281,11 +1281,11 @@ export default async function RideDetailPage(props: {
                   <ResponsiveTable className="w-full border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-                        <th className="pb-2 pr-3">Lap</th>
-                        <th className="px-3 pb-2 text-right">Distance</th>
-                        <th className="px-3 pb-2 text-right">Time</th>
-                        <th className="px-3 pb-2 text-right">Speed</th>
-                        <th className="pb-2 pl-3 text-right">Power</th>
+                        <th className="th">Lap</th>
+                        <th className="th text-right">Distance</th>
+                        <th className="th text-right">Time</th>
+                        <th className="th text-right">Speed</th>
+                        <th className="th text-right">Power</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1355,11 +1355,11 @@ export default async function RideDetailPage(props: {
                   <ResponsiveTable className="w-full border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-                        <th className="pb-2 pr-3">Segment</th>
-                        <th className="px-3 pb-2 text-right">Distance</th>
-                        <th className="px-3 pb-2 text-right">Time</th>
-                        <th className="px-3 pb-2 text-right">Power</th>
-                        <th className="pb-2 pl-3 text-right">Result</th>
+                        <th className="th">Segment</th>
+                        <th className="th text-right">Distance</th>
+                        <th className="th text-right">Time</th>
+                        <th className="th text-right">Power</th>
+                        <th className="th text-right">Result</th>
                       </tr>
                     </thead>
                     <tbody>
