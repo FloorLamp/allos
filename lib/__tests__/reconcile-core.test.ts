@@ -13,6 +13,12 @@ import {
   stripTokens,
   tokenPrefix,
 } from "@/lib/notifications/reconcile-core";
+import {
+  messageExpiry,
+  owningFamily,
+} from "@/lib/notifications/reconcile-registry";
+import { shiftDateStr } from "@/lib/date";
+import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import type { InlineKeyboard } from "@/lib/notifications/telegram-render";
 
 const DATE = "2020-03-04";
@@ -89,7 +95,7 @@ describe("decideReconcile — the steady state", () => {
         keyboard: kb([TAKE_A, TAKE_B]),
         dead: new Set(),
         inert: new Set(),
-        rolledOver: false,
+        expired: null,
       })
     ).toEqual({ action: "none" });
   });
@@ -100,7 +106,7 @@ describe("decideReconcile — the steady state", () => {
         keyboard: kb([TUNE]),
         dead: new Set(),
         inert: new Set([TUNE]),
-        rolledOver: false,
+        expired: null,
       })
     ).toEqual({ action: "none" });
   });
@@ -113,7 +119,7 @@ describe("decideReconcile — the steady state", () => {
         keyboard: kb(["mystery:1:2"]),
         dead: new Set(),
         inert: new Set(),
-        rolledOver: false,
+        expired: null,
       })
     ).toEqual({ action: "none" });
   });
@@ -125,7 +131,7 @@ describe("decideReconcile — partial and full resolution", () => {
       keyboard: kb([TAKE_A, SKIP_A], [TAKE_B]),
       dead: new Set([TAKE_A, SKIP_A]),
       inert: new Set(),
-      rolledOver: false,
+      expired: null,
     });
     expect(d.action).toBe("strip");
     if (d.action !== "strip") throw new Error("unreachable");
@@ -138,7 +144,7 @@ describe("decideReconcile — partial and full resolution", () => {
         keyboard: kb([TAKE_A], [TAKE_B]),
         dead: new Set([TAKE_A, TAKE_B]),
         inert: new Set(),
-        rolledOver: false,
+        expired: null,
       })
     ).toEqual({ action: "close", reason: "resolved" });
   });
@@ -151,7 +157,7 @@ describe("decideReconcile — partial and full resolution", () => {
         keyboard: kb([TAKE_A], [TUNE]),
         dead: new Set([TAKE_A]),
         inert: new Set([TUNE]),
-        rolledOver: false,
+        expired: null,
       })
     ).toEqual({ action: "close", reason: "resolved" });
   });
@@ -161,7 +167,7 @@ describe("decideReconcile — partial and full resolution", () => {
       keyboard: kb([TAKE_A, TUNE], [TAKE_B]),
       dead: new Set([TAKE_A, TUNE]),
       inert: new Set([TUNE]),
-      rolledOver: false,
+      expired: null,
     });
     expect(d.action).toBe("strip");
     if (d.action !== "strip") throw new Error("unreachable");
@@ -169,50 +175,63 @@ describe("decideReconcile — partial and full resolution", () => {
   });
 });
 
-describe("decideReconcile — day rollover", () => {
-  it("closes yesterday's message outright when every button is a claim", () => {
+describe("decideReconcile — an EXPIRED message", () => {
+  it("closes it outright when every button is a claim", () => {
     expect(
       decideReconcile({
         keyboard: kb([TAKE_A, TAKE_B]),
         dead: new Set(),
         inert: new Set(),
-        rolledOver: true,
+        expired: "rollover",
       })
     ).toEqual({ action: "close", reason: "rollover" });
   });
 
-  it("rollover wins over per-token state — an unresolved claim still goes", () => {
-    // Yesterday's tokens carry yesterday's date and the handlers refuse them anyway;
-    // leaving them tappable is worse than removing them. This is also the residual
-    // #947 gap: the last nudge of an evening used to stay live until the NEXT send.
+  it("expiry wins over per-token state — an unresolved claim still goes", () => {
+    // Its tokens WOULD be refused now (that is what the verdict means), so leaving them
+    // tappable is worse than removing them. This is also the residual #947 gap: the last
+    // nudge of an evening used to stay live until the NEXT send.
     const d = decideReconcile({
       keyboard: kb([TAKE_A]),
       dead: new Set(),
       inert: new Set(),
-      rolledOver: true,
+      expired: "rollover",
     });
     expect(d).toEqual({ action: "close", reason: "rollover" });
   });
 
-  it("keeps inert controls when rolling over a mixed keyboard", () => {
+  it("closes with the reason it was GIVEN — a run-out window is not 'yesterday'", () => {
+    // The two date closes are different sentences to the reader (#2018), so the pure
+    // decision must carry the verdict through rather than flattening it to one word.
+    expect(
+      decideReconcile({
+        keyboard: kb([TAKE_A]),
+        dead: new Set(),
+        inert: new Set(),
+        expired: "expired",
+      })
+    ).toEqual({ action: "close", reason: "expired" });
+  });
+
+  it("keeps inert controls when expiring a mixed keyboard", () => {
     const d = decideReconcile({
       keyboard: kb([TAKE_A], [TUNE]),
       dead: new Set(),
       inert: new Set([TUNE]),
-      rolledOver: true,
+      expired: "rollover",
     });
     expect(d.action).toBe("strip-all");
     if (d.action !== "strip-all") throw new Error("unreachable");
     expect(keyboardTokens(d.keyboard)).toEqual([TUNE]);
   });
 
-  it("a rolled-over keyboard with nothing but inert controls needs no call", () => {
+  it("an expired keyboard with nothing but inert controls needs no call", () => {
     expect(
       decideReconcile({
         keyboard: kb([TUNE]),
         dead: new Set(),
         inert: new Set([TUNE]),
-        rolledOver: true,
+        expired: "rollover",
       })
     ).toEqual({ action: "none" });
   });
@@ -222,6 +241,18 @@ describe("the closing lines", () => {
   it("say WHY the buttons are gone, without celebrating or judging", () => {
     expect(RECONCILE_CLOSING.resolved).toContain("app");
     expect(RECONCILE_CLOSING.rollover).toContain("yesterday");
+  });
+
+  it("a run-out dose window names the CONSEQUENCE, not the calendar (#2018)", () => {
+    // "This is yesterday's message." is both wrong (it is older than that) and
+    // unhelpful for a dose closed at the end of its ±2-day window: what the reader
+    // needs to know is that the confirm can no longer land here and where it can.
+    expect(RECONCILE_CLOSING.expired).not.toContain("yesterday");
+    expect(RECONCILE_CLOSING.expired).toContain("app");
+    expect(RECONCILE_CLOSING.expired).not.toBe(RECONCILE_CLOSING.rollover);
+    expect(RECONCILE_CLOSING.expired.toLowerCase()).not.toMatch(
+      /great|well done|nice|missed|you /
+    );
   });
 });
 
@@ -248,12 +279,19 @@ describe("reconcileClosingText (#1822 item 7)", () => {
     );
   });
 
-  it("keeps the two closes distinguishable — a rollover is not 'handled'", () => {
-    const resolved = reconcileClosingText("resolved", TITLE);
-    const rollover = reconcileClosingText("rollover", TITLE);
-    expect(resolved).not.toBe(rollover);
-    // Neither celebrates or judges (#992/#716) — this corrects the app's own display.
-    for (const text of [resolved, rollover]) {
+  it("names the subject on an EXPIRED close too", () => {
+    expect(reconcileClosingText("expired", TITLE)).toBe(
+      "[Norton] 🍽️ Morning food log — too late to confirm here, log it in the app."
+    );
+  });
+
+  it("keeps the closes distinguishable — a rollover is not 'handled'", () => {
+    const texts = (["resolved", "rollover", "expired"] as const).map((r) =>
+      reconcileClosingText(r, TITLE)
+    );
+    expect(new Set(texts).size).toBe(texts.length);
+    // None celebrates or judges (#992/#716) — this corrects the app's own display.
+    for (const text of texts) {
       expect(text.toLowerCase()).not.toMatch(
         /great|well done|nice|missed|you /
       );
@@ -281,6 +319,118 @@ describe("reconcileClosingText (#1822 item 7)", () => {
       expect(reconcileClosingText("rollover", missing)).toBe(
         RECONCILE_CLOSING.rollover
       );
+    }
+  });
+});
+
+// ---- WHOSE ANSWER "too late" IS (issue #2018) ----
+//
+// The sweep composes two things: `messageExpiry` (the FAMILY's own date guard, the one
+// its tap handler consults) and `decideReconcile` (the mechanics). #1784 shipped only the
+// mechanics, with the day boundary hard-coded into them, so a bedtime dose reminder lost
+// its buttons at the first tick after local midnight while `markDoseTaken` was still
+// built to honor the tap for two more days (#614).
+//
+// These cases run the same composition the sweep runs, on the SAME fixture shape for two
+// families, and get opposite verdicts. That pairing is the whole ruling.
+
+const D = "2020-03-04";
+
+// What the sweep would do with a message dated D, seen on `todayDate` — family resolved
+// from the keyboard exactly as the sweep resolves it.
+function sweepVerdict(keyboard: InlineKeyboard, todayDate: string) {
+  const tokens = keyboardTokens(keyboard);
+  return decideReconcile({
+    keyboard,
+    dead: new Set(),
+    inert: new Set(),
+    expired: messageExpiry(owningFamily(tokens, tokenPrefix), D, todayDate),
+  });
+}
+
+describe("a dose keyboard lives exactly as long as the write core honors the tap", () => {
+  // A bedtime reminder: sent at 22:00 on D, still unconfirmed.
+  const DOSE = kb([`take:7:11:3:${D}`, `skip:7:11:3:${D}`]);
+
+  it("survives the first tick after local midnight — the reported regression", () => {
+    expect(sweepVerdict(DOSE, shiftDateStr(D, 1))).toEqual({ action: "none" });
+  });
+
+  it("survives every day inside DOSE_LOG_DATE_WINDOW_DAYS", () => {
+    for (let d = 0; d <= DOSE_LOG_DATE_WINDOW_DAYS; d++) {
+      expect(
+        sweepVerdict(DOSE, shiftDateStr(D, d)),
+        `a dose message should still be tappable on D+${d}`
+      ).toEqual({ action: "none" });
+    }
+  });
+
+  it("closes the day AFTER the window runs out, naming the consequence", () => {
+    expect(
+      sweepVerdict(DOSE, shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1))
+    ).toEqual({ action: "close", reason: "expired" });
+  });
+
+  it("the ESCALATION tier gets the same window — it runs the same write cores", () => {
+    const esc = kb([`esctake:7:11:3:${D}`, `escack:7:11:3:${D}`]);
+    expect(sweepVerdict(esc, shiftDateStr(D, 1))).toEqual({ action: "none" });
+    expect(
+      sweepVerdict(esc, shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1))
+    ).toEqual({ action: "close", reason: "expired" });
+  });
+});
+
+describe("a food keyboard still dies at the day boundary", () => {
+  // Same fixture shape, opposite verdict: the food token's date is the system's GUESS at
+  // when the user ate, and the guess expires at midnight (#947).
+  const FOOD = kb([`food:7:Morning:${D}:leafy_greens`]);
+
+  it("is closed on D+1", () => {
+    expect(sweepVerdict(FOOD, shiftDateStr(D, 1))).toEqual({
+      action: "close",
+      reason: "rollover",
+    });
+  });
+
+  it("is untouched on D itself", () => {
+    expect(sweepVerdict(FOOD, D)).toEqual({ action: "none" });
+  });
+
+  it("the household round follows food, not the dose — its handler is exact-day", () => {
+    const hh = kb([`hh:7:8:11:3:${D}`]);
+    expect(sweepVerdict(hh, shiftDateStr(D, 1))).toEqual({
+      action: "close",
+      reason: "rollover",
+    });
+  });
+});
+
+describe("a family with no date axis is governed by `dead` alone", () => {
+  const DRAFT = kb([`wofinish:7:99`, `wodiscard:7:99`]);
+
+  it("a live draft's keyboard survives midnight — date is not an axis it has", () => {
+    for (let d = 0; d <= 3; d++) {
+      expect(sweepVerdict(DRAFT, shiftDateStr(D, d))).toEqual({
+        action: "none",
+      });
+    }
+  });
+
+  it("and is closed whenever the draft stops being the live session, whatever the date", () => {
+    // `dead` from getWorkoutPresence — the ONLY thing that ends this message.
+    for (const day of [D, shiftDateStr(D, 5)]) {
+      expect(
+        decideReconcile({
+          keyboard: DRAFT,
+          dead: new Set(keyboardTokens(DRAFT)),
+          inert: new Set(),
+          expired: messageExpiry(
+            owningFamily(keyboardTokens(DRAFT), tokenPrefix),
+            D,
+            day
+          ),
+        })
+      ).toEqual({ action: "close", reason: "resolved" });
     }
   });
 });

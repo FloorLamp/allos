@@ -488,7 +488,7 @@ then the chokepoint **records first and strips second**, so a settings-write
 throw takes the strip down with it and a failed strip lands on a pointer that is
 already right. Residual, unchanged: a rotation is still best-effort against
 Telegram, so a strip that fails leaves one extra live keyboard until the #1779
-sweep's day-rollover close reaches it.
+sweep's date close reaches it (for the food nudge, the day boundary — #2018).
 
 **Pointers read the DELIVERED keyboard.** Both extractors
 (`foodNudgePointerFromMessage`, `isHouseholdRoundMessage`) scanned the uncapped
@@ -954,12 +954,63 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
   runs);
 - fully resolved → `closeMessage` with an honest closing line that **names its
   subject**;
-- **day rolled over** in the profile's timezone → strip or close regardless of
-  state, since yesterday's tokens carry yesterday's date. This also closes the
-  residual #947 gap: the last nudge of an evening used to keep a live keyboard
-  until the next send, which may never come;
+- **past what its family's own tap guard honors** → strip or close regardless of
+  state, since every button on it would now be refused (see the date-guard
+  declaration below);
 - a dead pointer (message deleted, chat gone, past the edit horizon) → the
   best-effort edit fails, the pointer is dropped, nothing is retried forever.
+
+**How late a keyboard may still be tapped is the FAMILY's answer (#2018).** That
+fourth arm shipped as one global comparison — `pointer.date < today` ⇒ close — which
+is `tapDateGuard`'s equality rule lifted out of the food handler and applied to every
+family. It is right for one family and wrong for another, because the two mean
+different things by a token's date. A **food** token's date is the system's GUESS at
+a user-owned fact (a tap says "I'm eating now", and the button carries nothing that
+settles which day that was), so `handleFoodTap` writes only where its two candidate
+answers agree and refuses where they diverge — the guess expires at midnight, and
+rollover-close is correct. A **dose** token's date is a fact the system itself
+established: the schedule's day, assigned before the message was sent. The tap
+confirms that a scheduled thing happened rather than reporting when, so there is no
+second candidate answer to reconcile, and `markDoseTaken` honors it for
+`DOSE_LOG_DATE_WINDOW_DAYS` (#614) — including the after-midnight tap its own comment
+names. The sweep was deleting the button on the grounds that the handler would refuse
+the tap, and the handler had been built to accept it: last night's bedtime supplements
+could not be confirmed from the chat in the morning, and an overnight missed-dose
+escalation lost its buttons while the dose was still unconfirmed.
+
+So the sweep closes a button **exactly when the handler would refuse it, by asking
+the same guard the handler asks**. `RECONCILE_DATE_GUARD` (in
+`reconcile-registry.ts`) declares per family WHICH existing guard that is —
+`exact-day` → `tapDateGuard`, `dose-window` → `isDoseDateAccepted`, or `none` for a
+family with no date axis at all — with a written reason in every direction, and
+`messageExpiry` resolves it. There is deliberately **no per-family rollover-policy
+constant**: any button-specific number would be a second answer to "how late may this
+be logged", which is the drift being fixed. If ±2 days is too generous,
+`DOSE_LOG_DATE_WINDOW_DAYS` moves the button, the Telegram tap, the web path and the
+offline replay together. The resulting lifetimes:
+
+| family                                                                       | button lives                                            | bounded by                                   |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
+| `intake-dose`, `escalation`                                                  | through the end of D+2                                  | `isDoseDateAccepted`                         |
+| `food`, `household-round`, `mood`                                            | until the next nudge, or local midnight                 | the #947/#1945 rotation, then `tapDateGuard` |
+| `workout-draft`, `preventive`, `refill`, `symptom`, `practice`, `food-optin` | while the family's own `dead` predicate says it is live | that predicate alone                         |
+
+Two couplings this creates. `DOSE_LOG_DATE_WINDOW_DAYS` (2) must stay strictly below
+`MESSAGE_POINTER_RETENTION_DAYS` (3): past retention the pointer is pruned and the
+sweep can no longer close the message, so the keyboard would become immortal — both
+constants carry a comment naming the other. And the two date closes are separate
+words, because "This is yesterday's message." is a lie for a dose whose window has
+run out; `RECONCILE_CLOSING.expired` names the consequence instead ("Too late to
+confirm here — log it in the app."), pointing at the historical-dose backfill (#1950)
+where a later correction belongs. The `mood` family is the one declaration STRICTER
+than its handler: `handleMoodTap` writes the token's date without consulting a guard,
+and since reconciliation may only ever REDUCE what a chat claims, closing at the
+boundary is the safe direction — should that handler ever gain a date check it must be
+`tapDateGuard`, not a third rule.
+
+Rollover also closed the residual #947 gap — the last food nudge of an evening used
+to keep a live keyboard until the next send, which may never come — and it still
+does, because food is an `exact-day` family.
 
 **A failed edit is CLASSIFIED, never assumed dead (#1885).** The transport used to
 throw a bare `Error` for every Bot API failure alike, so the sweep's catch dropped
@@ -1016,7 +1067,8 @@ rest of the text, leaving two members' identical reminders indistinguishable onc
 resolved. The tap path solved this for #377 with `replacementWithTitle`; the sweep
 now follows the same convention through `reconcileClosingText`, which composes
 "[Norton] 🍽️ Morning food log — handled in the app." (and, for a rollover,
-"… — this was yesterday's message."). The subject comes from the pointer's stored
+"… — this was yesterday's message."; for a dose past its log window,
+"… — too late to confirm here, log it in the app."). The subject comes from the pointer's stored
 `title`, recorded AS DELIVERED in the same chokepoint write as the keyboard —
 migration 139 — because the tick edits by pointer and never holds the text it is
 replacing; re-deriving it would run a whole builder and would produce TODAY's

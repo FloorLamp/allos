@@ -10,7 +10,7 @@
 // Every case here goes through a REAL send (so the pointer is recorded exactly as
 // production records it) and then through the REAL sweep.
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, afterEach, beforeEach } from "vitest";
 
 vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   const actual =
@@ -256,7 +256,10 @@ describe("idempotence — the rate-limit pin", () => {
 });
 
 describe("day rollover", () => {
-  it("closes yesterday's still-live keyboard with no next send required", async () => {
+  it("closes yesterday's still-live FOOD keyboard with no next send required", async () => {
+    // A food token's date is the system's guess at when the user ate, and the guess
+    // expires at midnight (#947) — so this family, and only a family like it, is the
+    // one the day boundary ends.
     const pid = newProfile("Rollover Rae");
     seedLoginTelegram(pid, "5551788");
     const yd = shiftDateStr(today(pid), -1);
@@ -265,16 +268,144 @@ describe("day rollover", () => {
       profileId: pid,
       chatId: "5551788",
       messageId: 4242,
-      kind: "dose",
+      kind: "food",
       date: yd,
       keyboard: [
-        [{ text: "✅ Taken", callback_data: `take:${pid}:9001:9001:${yd}` }],
+        [
+          {
+            text: "🥬 Leafy greens",
+            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
+          },
+        ],
       ],
     });
 
     const out = await reconcileProfileMessages(pid);
     expect(out.closed).toBe(1);
     expect(liveMessagePointers(pid)).toEqual([]);
+  });
+});
+
+// ── HOW LATE A KEYBOARD MAY STILL BE TAPPED (issue #2018) ────────────────────
+//
+// The sweep used to close EVERY live keyboard at the first tick after local midnight, so
+// last night's bedtime supplements could not be confirmed from the chat in the morning —
+// while `markDoseTaken` was, and still is, built to honor that tap for ±2 days (#614).
+// The two unit tiers cannot see the two halves disagreeing; this is where the sweep and
+// the write core meet.
+//
+// The clock is MOVED rather than the rows hand-edited: the reminder is really SENT on D
+// through the real chokepoint, and the sweep is then run on D+1, D+2 and D+3 exactly as
+// the hourly tick would run it.
+describe("a dose keyboard lives as long as the write core honors the tap (#2018)", () => {
+  const D = "2020-03-04";
+  const EVENING = `${D}T22:00:00Z`;
+  let priorNow: string | undefined;
+
+  function at(instant: string): void {
+    process.env.ALLOS_TEST_NOW = instant;
+  }
+
+  beforeEach(() => {
+    priorNow = process.env.ALLOS_TEST_NOW;
+    at(EVENING);
+  });
+
+  afterEach(() => {
+    if (priorNow === undefined) delete process.env.ALLOS_TEST_NOW;
+    else process.env.ALLOS_TEST_NOW = priorNow;
+  });
+
+  it("survives local midnight, and the tap it offers still logs to its own day", async () => {
+    const pid = newProfile("Bedtime Bea");
+    const { itemId, doseId } = seedDose(pid, "Bea D3");
+    seedLoginTelegram(pid, "5552018");
+    await sendMorningReminder(pid);
+    expect(today(pid)).toBe(D);
+
+    // The first tick after local midnight — the reported regression. Still the
+    // steady state: an unresolved reminder costs ZERO Telegram calls on the far side
+    // of the boundary, exactly as it did on the near side.
+    at(`${shiftDateStr(D, 1)}T00:30:00Z`);
+    const overnight = await reconcileProfileMessages(pid);
+    expect(overnight.closed).toBe(0);
+    expect(overnight.edited).toBe(0);
+    expect(editText).not.toHaveBeenCalled();
+    expect(editKeyboard).not.toHaveBeenCalled();
+    expect(
+      liveTokens(pid).some((t) => t.startsWith(`take:${pid}:${doseId}:`))
+    ).toBe(true);
+
+    // Still inside DOSE_LOG_DATE_WINDOW_DAYS on D+2.
+    at(`${shiftDateStr(D, 2)}T09:00:00Z`);
+    expect((await reconcileProfileMessages(pid)).closed).toBe(0);
+
+    // And the button is not decorative: the write core honors the tap, on D's ledger.
+    expect(markDoseTaken(pid, doseId, itemId, D)).toBe("logged");
+
+    // Resolved for real now, so the message closes as HANDLED — not as out of date.
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      "handled in the app"
+    );
+  });
+
+  it("closes past the window, naming the consequence rather than the calendar", async () => {
+    const pid = newProfile("Late Lena");
+    seedDose(pid, "Lena D3");
+    seedLoginTelegram(pid, "5552019");
+    await sendMorningReminder(pid);
+
+    at(`${shiftDateStr(D, 3)}T09:00:00Z`);
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    const text = String(editText.mock.calls.at(-1)![2]);
+    expect(text).toContain("too late to confirm here");
+    // "This is yesterday's message" would be both wrong and unhelpful here.
+    expect(text).not.toContain("yesterday");
+    expect(liveMessagePointers(pid)).toEqual([]);
+  });
+
+  it("leaves a live workout draft's finish/discard alone across midnight", async () => {
+    // `wofinish`/`wodiscard` carry no date because a draft is not a day's claim — it is
+    // the live session, and getWorkoutPresence is the only thing that ends the message.
+    const pid = newProfile("Nightowl Nia");
+    seedLoginTelegram(pid, "5552020");
+    at(`${shiftDateStr(D, 1)}T00:30:00Z`);
+    const stamp = `${shiftDateStr(D, 1)} 00:20:00`;
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, start_time, source, created_at, updated_at)
+           VALUES (?, ?, 'strength', 'Live session', '23:40', NULL, ?, ?)`
+        )
+        .run(pid, shiftDateStr(D, 1), stamp, stamp).lastInsertRowid
+    );
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5552020",
+      messageId: 4545,
+      kind: "workout-stale",
+      // Sent before midnight, on the day the session started.
+      date: D,
+      keyboard: [
+        [
+          {
+            text: "🏁 Finish workout",
+            callback_data: `wofinish:${pid}:${activityId}`,
+          },
+          {
+            text: "🗑 Discard",
+            callback_data: `wodiscard:${pid}:${activityId}`,
+          },
+        ],
+      ],
+    });
+
+    const out = await reconcileProfileMessages(pid);
+    expect(out.closed).toBe(0);
+    expect(out.edited).toBe(0);
+    expect(liveTokens(pid)).toContain(`wofinish:${pid}:${activityId}`);
   });
 });
 
@@ -937,10 +1068,15 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
       profileId: pid,
       chatId: "5551993",
       messageId: 4444,
-      kind: "dose",
+      kind: "food",
       date: yd,
       keyboard: [
-        [{ text: "✅ Taken", callback_data: `take:${pid}:9002:9002:${yd}` }],
+        [
+          {
+            text: "🥬 Leafy greens",
+            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
+          },
+        ],
       ],
     });
 

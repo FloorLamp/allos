@@ -30,10 +30,20 @@
 //                              limiter);
 //   • some tokens died       → strip exactly those buttons;
 //   • every claim died       → close the message with an honest closing line;
-//   • the profile-local day
-//     rolled over            → strip the keyboard regardless of state — yesterday's
-//                              tokens carry yesterday's date, so leaving them tappable
-//                              is worse than removing them.
+//   • the message's date is
+//     past what its family's
+//     handler would honor    → strip the keyboard regardless of state, because every
+//                              button on it would now be refused.
+//
+// That last arm is the SAME rule as the first, one axis over, and it was the one place
+// this module got it wrong (#2018). It used to read "the profile-local day rolled over",
+// which is `tapDateGuard`'s equality rule — true for the food nudge, whose token date is
+// a guess at when the user ate, and false for a dose reminder, whose token date is a fact
+// the schedule established and whose write core honors a tap for ±DOSE_LOG_DATE_WINDOW_DAYS
+// (#614). A bedtime reminder therefore lost its buttons at the first tick after midnight
+// while `markDoseTaken` was still built to accept them. The verdict is now computed by
+// `messageExpiry` in ./reconcile-registry, which asks each family's own guard; this module
+// stays mechanical and is handed the answer.
 //
 // ── INERT BUTTONS ────────────────────────────────────────────────────────────
 //
@@ -94,18 +104,23 @@ export type ReconcileDecision =
   | { action: "none" }
   // Some claims resolved, others remain: strip exactly the dead buttons.
   | { action: "strip"; keyboard: InlineKeyboard }
-  // Every claim this message made is resolved (or the day rolled over): replace the
-  // body with a closing line and drop the keyboard.
+  // Every claim this message made is resolved (or its date is past what the family's
+  // handler honors): replace the body with a closing line and drop the keyboard.
   | { action: "close"; reason: CloseReason }
-  // The day rolled over but the message still has inert/deep-link controls worth
-  // keeping: remove only the tappable state claims.
+  // The message's date expired but it still has inert/deep-link controls worth keeping:
+  // remove only the tappable state claims.
   | { action: "strip-all"; keyboard: InlineKeyboard };
 
 // `superseded` is NEVER produced by decideReconcile below — a sweep cannot know that a
 // newer message exists. It is the send path's close reason (#1898): re-issuing a
 // keyboard closes the one it replaces, and it does so through this same vocabulary so
 // the chat only ever sees one closing convention.
-export type CloseReason = "resolved" | "rollover" | "superseded";
+//
+// `rollover` and `expired` are the two date closes and are deliberately separate WORDS,
+// not one word with two meanings: "this is yesterday's message" is the honest line for a
+// nudge whose day is simply over, and a lie for a dose whose ±2-day window has now run
+// out — the reader needs to be told the confirm can no longer land here.
+export type CloseReason = "resolved" | "rollover" | "expired" | "superseded";
 
 export interface ReconcileInput {
   keyboard: InlineKeyboard;
@@ -113,26 +128,28 @@ export interface ReconcileInput {
   dead: ReadonlySet<string>;
   // Tokens that make no state claim (view controls). Never dead, never counted.
   inert: ReadonlySet<string>;
-  // The subject's local day has moved past the message's send date.
-  rolledOver: boolean;
+  // The close reason if the message's date is past what its family's own tap guard
+  // still honors (`messageExpiry`), or null while a tap would still be accepted.
+  expired: Extract<CloseReason, "rollover" | "expired"> | null;
 }
 
 // THE decision. Deterministic and total; the DB tier adds no branching of its own.
 //
-// Rollover is evaluated FIRST and unconditionally: a message from yesterday is not
-// "partially outstanding", it is out of date as a whole, and its tokens would be
-// refused anyway (every dated token carries its send date and the handlers check it).
-// This also closes the residual #947 gap — today the last food nudge of an evening
-// keeps a live keyboard until the NEXT send, which may never come.
+// Expiry is evaluated FIRST: a message whose buttons would all be refused is not
+// "partially outstanding", it is out of date as a whole. What it is NOT is a global
+// pre-empt (#2018) — the verdict comes from the family's own guard, so a food nudge
+// still goes at the day boundary (closing the residual #947 gap, where the last nudge of
+// an evening kept a live keyboard until the NEXT send, which may never come) while an
+// unconfirmed dose keeps its buttons for as long as the write core would honor them.
 export function decideReconcile(input: ReconcileInput): ReconcileDecision {
   const tokens = keyboardTokens(input.keyboard);
   const claims = tokens.filter((t) => !input.inert.has(t));
 
-  if (input.rolledOver) {
+  if (input.expired) {
     if (claims.length === 0) return { action: "none" };
     const stripped = stripTokens(input.keyboard, new Set(claims));
     return stripped.length === 0
-      ? { action: "close", reason: "rollover" }
+      ? { action: "close", reason: input.expired }
       : { action: "strip-all", keyboard: stripped };
   }
 
@@ -162,6 +179,11 @@ export function decideReconcile(input: ReconcileInput): ReconcileDecision {
 export const RECONCILE_CLOSING: Record<CloseReason, string> = {
   resolved: "Handled in the app — nothing left here.",
   rollover: "This is yesterday's message.",
+  // The end of a dose's log window (#2018), where "yesterday's message" would be both
+  // wrong (it is older than that) and unhelpful. It names the CONSEQUENCE instead —
+  // the confirm can no longer land here — and where a later correction belongs, which
+  // is the historical-dose backfill in the app (#1950).
+  expired: "Too late to confirm here — log it in the app.",
   // Points DOWN the chat rather than merely stating a fact: the replacement is the very
   // next thing the user will scroll past, and a closed message that doesn't say where
   // the buttons went reads as a failure.
@@ -173,6 +195,7 @@ export const RECONCILE_CLOSING: Record<CloseReason, string> = {
 const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
   resolved: "handled in the app.",
   rollover: "this was yesterday's message.",
+  expired: "too late to confirm here, log it in the app.",
   superseded: "superseded, use the message below.",
 };
 

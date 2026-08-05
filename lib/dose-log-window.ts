@@ -8,6 +8,12 @@ import { daysBetweenDateStr, dateStrInTz } from "./date";
 // A late/retro dose-log DATE is accepted only within a small window of the profile's
 // today (#614): a forged/far-off date can't land a misdated row, but a legitimate
 // late/after-midnight tap within the window still logs to the reminder's own day.
+//
+// COUPLED TO `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts,
+// currently 3). Since #2018 a Telegram dose keyboard stays live for exactly this window,
+// and the reconcile sweep can only close it while its pointer still exists. Raising this
+// past retention would strand live keyboards permanently — nothing left to close them
+// with — so the two move together, window < retention.
 export const DOSE_LOG_DATE_WINDOW_DAYS = 2;
 
 // Is `date` (YYYY-MM-DD) inside the accepted window around the profile's today? The

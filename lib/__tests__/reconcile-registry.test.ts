@@ -22,13 +22,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   KIND_REISSUE,
+  RECONCILE_DATE_GUARD,
   RECONCILE_PREFIXES,
   inertTokens,
   isReissuableKind,
+  messageExpiry,
   owningFamily,
   reconcileEntryFor,
+  type ReconcileFamily,
 } from "@/lib/notifications/reconcile-registry";
 import { tokenPrefix } from "@/lib/notifications/reconcile-core";
+import { tapDateGuard } from "@/lib/notifications/callback-data";
+import {
+  DOSE_LOG_DATE_WINDOW_DAYS,
+  isDoseDateAccepted,
+} from "@/lib/dose-log-window";
+import { shiftDateStr } from "@/lib/date";
 import { ALL_NOTIFICATION_KINDS } from "@/lib/notifications/kinds";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -276,5 +285,95 @@ describe("owningFamily / inertTokens", () => {
     expect([
       ...inertTokens([`tune:7:${DATE}`, `take:7:1:1:${DATE}`], tokenPrefix),
     ]).toEqual([`tune:7:${DATE}`]);
+  });
+});
+
+// THE THIRD COMPLETENESS GUARD (issue #2018). The prefix table asks "what happens when
+// this BUTTON is still in the chat tomorrow?"; KIND_REISSUE asks "does sending this again
+// replace the last one?". This one asks, per FAMILY, "HOW LATE may this message still be
+// acted on?" — the question #1784 answered once, globally, with the day boundary, which
+// is `tapDateGuard`'s rule applied to families whose handlers never agreed to it.
+//
+// The pin that matters is the AGREEMENT property: for every family that has a date guard,
+// the sweep's verdict must equal the guard the family declares, over the whole range of
+// (message date, today) pairs. That is what stops a fourth opinion about how late a tap
+// may land from appearing later.
+describe("the date-guard completeness guard (#2018)", () => {
+  const D = "2020-03-04";
+  const FAMILIES = Object.keys(RECONCILE_DATE_GUARD) as ReconcileFamily[];
+  // −4 … +4 days around the message's own date: wide enough to cross both boundaries.
+  const OFFSETS = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+
+  it("every family declares which guard decides how late its message may be tapped", () => {
+    // The Record type makes a MISSING family a compile error; this catches the other
+    // half — an entry that answers with a placeholder instead of a reason.
+    for (const family of FAMILIES) {
+      const entry = RECONCILE_DATE_GUARD[family];
+      expect(["exact-day", "dose-window", "none"]).toContain(entry.guard);
+      expect(entry.why.length, `${family} needs a real reason`).toBeGreaterThan(
+        40
+      );
+    }
+  });
+
+  it("the declaration covers exactly the families that exist — no stale entry", () => {
+    const owning = new Set(
+      RECONCILE_PREFIXES.map((e) => e.family).filter((f) => f != null)
+    );
+    expect([...FAMILIES].sort()).toEqual([...owning].sort());
+  });
+
+  it("an EXACT-DAY family's verdict is tapDateGuard's, on every date pair", () => {
+    for (const family of FAMILIES) {
+      if (RECONCILE_DATE_GUARD[family].guard !== "exact-day") continue;
+      for (const offset of OFFSETS) {
+        const todayStr = shiftDateStr(D, offset);
+        const handlerRefuses = tapDateGuard(D, todayStr).kind === "stale-date";
+        expect(
+          messageExpiry(family, D, todayStr) != null,
+          `${family} at D${offset >= 0 ? "+" : ""}${offset}`
+        ).toBe(handlerRefuses);
+      }
+    }
+  });
+
+  it("a DOSE-WINDOW family's verdict is isDoseDateAccepted's, on every date pair", () => {
+    for (const family of FAMILIES) {
+      if (RECONCILE_DATE_GUARD[family].guard !== "dose-window") continue;
+      for (const offset of OFFSETS) {
+        const todayStr = shiftDateStr(D, offset);
+        const handlerRefuses = !isDoseDateAccepted(todayStr, D);
+        expect(
+          messageExpiry(family, D, todayStr) != null,
+          `${family} at D${offset >= 0 ? "+" : ""}${offset}`
+        ).toBe(handlerRefuses);
+      }
+    }
+  });
+
+  it("a family with NO date axis never expires — only its `dead` predicate ends it", () => {
+    for (const family of FAMILIES) {
+      if (RECONCILE_DATE_GUARD[family].guard !== "none") continue;
+      for (const offset of OFFSETS) {
+        expect(messageExpiry(family, D, shiftDateStr(D, offset))).toBeNull();
+      }
+    }
+  });
+
+  it("the two date closes stay distinguishable — a run-out window is not 'yesterday'", () => {
+    // A rollover close says "this is yesterday's message"; a dose past its window needs
+    // to be told the confirm can no longer land here. Same branch, different sentence.
+    expect(messageExpiry("food", D, shiftDateStr(D, 1))).toBe("rollover");
+    expect(
+      messageExpiry(
+        "intake-dose",
+        D,
+        shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1)
+      )
+    ).toBe("expired");
+  });
+
+  it("an unreasoned or claim-less keyboard never expires — the same fail-safe `dead` takes", () => {
+    expect(messageExpiry(null, D, shiftDateStr(D, 9))).toBeNull();
   });
 });

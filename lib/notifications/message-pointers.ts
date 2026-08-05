@@ -25,6 +25,11 @@ const log = createLogger("notify");
 
 // Telegram's documented edit horizon is ~48h. The extra day costs nothing (a handful
 // of rows) and keeps a pointer alive across a clock skew or a paused tick.
+//
+// COUPLED TO `DOSE_LOG_DATE_WINDOW_DAYS` (lib/dose-log-window.ts, currently 2). Since
+// #2018 a dose keyboard stays live for that window, and the sweep can only close it
+// while this pointer still exists — so retention must stay STRICTLY GREATER than the
+// window, otherwise the row is pruned first and the keyboard becomes immortal.
 export const MESSAGE_POINTER_RETENTION_DAYS = 3;
 
 export interface MessagePointer {
