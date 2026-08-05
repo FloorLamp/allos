@@ -371,7 +371,7 @@ const insertDoseStmt = () =>
   );
 
 // Record ONE version of a dose's schedule, effective from a profile-local calendar day
-// (#1973, migration 149). UPSERT on (dose_id, effective_from): several schedule edits on
+// (#1973, migration 151). UPSERT on (dose_id, effective_from): several schedule edits on
 // one day collapse to that day's final state, which is the right grain because dueness is
 // evaluated per DAY. Append-only in every other respect — an earlier version is never
 // rewritten, which is what makes a past day judgeable by the rule that applied then.
