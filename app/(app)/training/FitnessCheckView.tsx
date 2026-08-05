@@ -100,7 +100,15 @@ export default function FitnessCheckView({
               data-testid="fitness-completion"
               className="text-sm text-slate-500 dark:text-slate-400"
             >
-              {model.measuredCount} of {model.totalCount} with a recent value
+              {/* #2025 — "has a CURRENT value" and "has any value at all" are different
+                  claims, and this line used to make the first out of the second. Fresh is
+                  the completion number; the stale remainder is named rather than folded
+                  into it. Freshness is per test (lib/fitness-freshness), not one cadence. */}
+              {model.coverage.fresh} of {model.coverage.total} with a current
+              value
+              {model.coverage.stale > 0
+                ? ` · ${model.coverage.stale} want a re-check`
+                : ""}
               {model.latestDate ? ` · last check ${model.latestDate}` : ""}
             </span>
           </div>
@@ -130,9 +138,9 @@ export default function FitnessCheckView({
           <CompletionCard finale={finale} onDismiss={() => setFinale(null)} />
         )}
 
-        {model.domains.some((d) => d.percentile != null) && (
+        {model.domains.some((d) => d.bestPercentile != null) && (
           <section className="rounded-xl border border-black/10 p-4 dark:border-white/10">
-            <h3 className="mb-2 text-sm font-semibold">By domain</h3>
+            <h3 className="mb-2 text-sm font-semibold">By domain — best result</h3>
             <FitnessDomainBars domains={model.domains} />
           </section>
         )}

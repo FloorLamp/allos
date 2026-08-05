@@ -44,6 +44,8 @@ import {
 } from "@/lib/fitness-favorability";
 import { holdBand, type HoldBand } from "@/lib/fitness-hold-norms";
 import { daysBetweenDateStr } from "@/lib/date";
+import { freshnessState, type FreshnessState } from "@/lib/freshness";
+import { fitnessFreshnessDays } from "@/lib/fitness-freshness";
 import type { Sex } from "@/lib/types";
 import {
   type FitnessTestDef,
@@ -79,14 +81,35 @@ export interface AmbientReading {
 export type ProvenanceKind = "check" | "synced" | "logged";
 
 // Where the current value came from + how fresh it is — the #1129 honesty disclosure every
-// surface renders. `stale` = older than the profile's retest-cadence window.
+// surface renders.
+//
+// #2025: freshness is resolved against the test's OWN declared policy
+// (lib/fitness-freshness), not one global cadence. `freshnessDays` is the interval that
+// applied, so a surface can say which clock it used; `freshness` is the shared verdict
+// (lib/freshness) and `stale` is its boolean twin, kept because every existing tile reads
+// it and it means exactly `freshness === "due"`.
 export interface FitnessProvenance {
   kind: ProvenanceKind;
   label: string; // "from your check" / "from Oura" / "from a logged set"
   sourceName: string | null; // "Oura" / "Withings" / "your journal" / null
   date: string;
   ageDays: number | null;
+  freshness: FreshnessState;
+  freshnessDays: number;
   stale: boolean;
+}
+
+// Coverage at whole-check and per-domain level (#2025). The four counts are separate
+// facts and are never collapsed: `measured` answers "is there any historical value" and
+// `fresh` answers "is there a CURRENT value", which is the distinction the old
+// `measuredCount` flattened into one number that completion copy then called "recent".
+//   measured = fresh + stale, and measured + unmeasured = total.
+export interface FitnessCoverage {
+  total: number;
+  measured: number;
+  fresh: number;
+  stale: number;
+  unmeasured: number;
 }
 
 // The rough-band result (#1135) for a self-norm test — a coarse band + a favorability
@@ -123,6 +146,10 @@ export interface FitnessTestResult {
   favorability: number | null;
   // provenance / freshness (#1129)
   provenance: FitnessProvenance | null;
+  // The test's freshness verdict (#2025), lifted off the provenance so coverage counting
+  // and any surface read it without unwrapping. "not-applicable" for an unmeasured test —
+  // an unmeasured test is not stale — and for a measured one the model could not date.
+  freshness: FreshnessState;
   // check-over-check
   delta: number | null; // signed value change vs the prior check (canonical unit)
   improved: boolean | null; // whether the delta is an improvement (direction-aware)
@@ -131,16 +158,34 @@ export interface FitnessTestResult {
 
 export interface FitnessDomainSummary {
   domain: FitnessDomain;
-  percentile: number | null; // best measured norms percentile in the domain
+  // #2025 — RENAMED from `percentile`. This is the BEST norms-backed result in the domain,
+  // not a domain percentile: a domain with one excellent and one weak test used to be
+  // summarized by the excellent one under an undifferentiated name, and every surface
+  // repeated that. The field, the bar label and the docs now all say "best".
+  bestPercentile: number | null;
+  // The LOWEST norms-backed percentile in the domain, so a surface can show the spread
+  // instead of implying the best result represents the whole domain. Equal to
+  // `bestPercentile` when only one norms test is measured; null when none is.
+  lowestPercentile: number | null;
+  // How many measured tests in the domain carry a norms percentile at all — the honest
+  // denominator behind "best of". Rough self-norm bands and non-norm tiers are excluded
+  // (#1135): they never enter a percentile aggregate.
+  normsCount: number;
   measuredCount: number;
   totalCount: number;
+  // Fresh/stale/unmeasured split for the domain (#2025).
+  coverage: FitnessCoverage;
 }
 
 export interface FitnessCheckModel {
   latestDate: string | null;
   priorDate: string | null;
+  // Tests with ANY value, however old — the historical-coverage count. Kept under its old
+  // name and meaning; `coverage.fresh` is the one a "current" claim may rest on.
   measuredCount: number;
   totalCount: number;
+  // Whole-check fresh / stale / unmeasured split (#2025).
+  coverage: FitnessCoverage;
   results: FitnessTestResult[];
   domains: FitnessDomainSummary[];
   headlineFitnessAge: FitnessAgeResult | null; // from the endurance VO2 test, when measured
@@ -208,6 +253,29 @@ function classifyAmbient(
     kind: "logged",
     sourceName: "your journal",
     label: "from your data",
+  };
+}
+
+// The fresh / stale / unmeasured split over a set of results (#2025) — the ONE counting
+// rule the whole check and every domain share, so a domain's numbers always sum to the
+// check's. A measured test the model could not date counts as measured but not fresh:
+// it has a value and no evidence that value is current.
+function coverageOf(results: readonly FitnessTestResult[]): FitnessCoverage {
+  let measured = 0;
+  let fresh = 0;
+  let stale = 0;
+  for (const r of results) {
+    if (!r.measured) continue;
+    measured++;
+    if (r.freshness === "current") fresh++;
+    else if (r.freshness === "due") stale++;
+  }
+  return {
+    total: results.length,
+    measured,
+    fresh,
+    stale,
+    unmeasured: results.length - measured,
   };
 }
 
@@ -288,12 +356,18 @@ export function buildFitnessCheckModel(
     const value = current ? current.value : null;
     const measured = current != null;
 
-    // Provenance + staleness.
+    // Provenance + freshness. The interval is the TEST'S OWN declared policy (#2025), not
+    // one global cadence: a continuously-measured body value and a performed protocol do
+    // not have the same useful freshness, and the exception is declared in the registry
+    // rather than inferred here or in a component.
+    const freshnessDays = fitnessFreshnessDays(def.key, cadenceDays);
     let provenance: FitnessProvenance | null = null;
+    let freshness: FreshnessState = "not-applicable";
     if (current) {
       const ageDays =
         todayISO != null ? daysBetweenDateStr(current.date, todayISO) : null;
-      const stale = ageDays != null && ageDays > cadenceDays;
+      freshness = freshnessState(ageDays, freshnessDays);
+      const stale = freshness === "due";
       if (current.from === "check") {
         provenance = {
           kind: "check",
@@ -301,6 +375,8 @@ export function buildFitnessCheckModel(
           sourceName: "your check",
           date: current.date,
           ageDays,
+          freshness,
+          freshnessDays,
           stale,
         };
       } else {
@@ -311,6 +387,8 @@ export function buildFitnessCheckModel(
           sourceName: c.sourceName,
           date: current.date,
           ageDays,
+          freshness,
+          freshnessDays,
           stale,
         };
       }
@@ -415,6 +493,7 @@ export function buildFitnessCheckModel(
       selfNorm,
       favorability,
       provenance,
+      freshness,
       delta,
       improved,
       interpretation: def.interpretation,
@@ -428,15 +507,20 @@ export function buildFitnessCheckModel(
   ).map((domain) => {
     const inDomain = results.filter((r) => r.domain === domain);
     // Percentile rollup stays NORMS-only (#1135): a rough self-norm band never blends into
-    // a percentile aggregate.
+    // a percentile aggregate. #2025 keeps the max but stops calling it "the domain
+    // percentile": it is the BEST norms result, carried alongside the lowest and the
+    // count so no surface can present it as the whole domain.
     const pcts = inDomain
       .map((r) => r.percentile?.percentile)
       .filter((p): p is number => p != null);
     return {
       domain,
-      percentile: pcts.length ? Math.max(...pcts) : null,
+      bestPercentile: pcts.length ? Math.max(...pcts) : null,
+      lowestPercentile: pcts.length ? Math.min(...pcts) : null,
+      normsCount: pcts.length,
       measuredCount: inDomain.filter((r) => r.measured).length,
       totalCount: inDomain.length,
+      coverage: coverageOf(inDomain),
     };
   });
 
@@ -473,6 +557,7 @@ export function buildFitnessCheckModel(
     priorDate: priorSessionDate,
     measuredCount,
     totalCount: battery.length,
+    coverage: coverageOf(results),
     results,
     domains,
     // Headline fitness age stays VO2-only — a rough self-norm band never moves it (#1135).
