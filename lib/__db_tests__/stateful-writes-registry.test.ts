@@ -35,6 +35,9 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
     expect(tables).toEqual([
       "cycles",
       "illness_episodes",
+      // The dose LEDGER, added by #2039 — the row that drives the supply counter two
+      // entries down, and the table whose second core this registry now forbids.
+      "intake_item_logs",
       "intake_items",
       "shared_supplies",
     ]);

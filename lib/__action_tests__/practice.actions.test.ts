@@ -159,16 +159,19 @@ describe("logPractice action (#1259)", () => {
     await logPractice(fd({ practice: "Sauna" }));
     const id = sessionId(owner.id);
 
+    // Since #2038 the action answers in the `{ undoId }` shape the shared Undo toast
+    // consumes: a refused delete carries the message and no token, a real one carries
+    // the token that puts the session back.
     actAs(admin, other);
     expect(await removePracticeSession(fd({ id }))).toEqual({
-      kind: "not-found",
+      undoId: null,
+      error: "Couldn't find that session.",
     });
     expect(rows(owner.id)).toHaveLength(1);
 
     actAs(admin, owner);
     expect(await removePracticeSession(fd({ id }))).toEqual({
-      kind: "deleted",
-      id,
+      undoId: expect.any(Number),
     });
     expect(rows(owner.id)).toHaveLength(0);
   });
