@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { ErrorEvent } from "@/lib/error-log-format";
 import { countLabel } from "@/lib/plural";
-import ScrollFade from "@/components/ScrollFade";
+import LogTable from "@/components/LogTable";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 
@@ -67,75 +67,61 @@ export default function ErrorLogTable({
           ))}
       </div>
 
-      {events.length === 0 ? (
-        <div
-          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
-          data-testid="error-log-empty"
-        >
-          No server errors recorded. Unexpected exceptions and 500s will appear
-          here when they happen.
-        </div>
-      ) : (
-        <div className="card overflow-hidden p-0">
-          <ScrollFade>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th whitespace-nowrap">Time (UTC)</th>
-                  <th className="th">Level</th>
-                  <th className="th">Scope</th>
-                  <th className="th">Profile</th>
-                  <th className="th">Message / detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr
-                    key={e.id}
-                    className="border-b border-black/5 align-top dark:border-white/10"
-                  >
-                    <td
-                      className="td whitespace-nowrap text-slate-500 dark:text-slate-400"
-                      suppressHydrationWarning
-                    >
-                      {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
-                    </td>
-                    <td className="td">
-                      <span
-                        className={`badge ${
-                          e.level === "warn"
-                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                            : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                        }`}
-                      >
-                        {e.level}
-                      </span>
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {e.scope ?? "—"}
-                    </td>
-                    <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {e.profileId != null
-                        ? (profileNames[e.profileId] ?? `#${e.profileId}`)
-                        : "—"}
-                    </td>
-                    <td className="td">
-                      <div className="font-medium text-rose-700 dark:text-rose-300">
-                        {e.message}
-                      </div>
-                      {e.detail && (
-                        <div className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-slate-500 dark:text-slate-400">
-                          {e.detail}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollFade>
-        </div>
-      )}
+      <LogTable
+        columns={[
+          { label: "Time (UTC)", className: "whitespace-nowrap" },
+          { label: "Level" },
+          { label: "Scope" },
+          { label: "Profile" },
+          { label: "Message / detail" },
+        ]}
+        isEmpty={events.length === 0}
+        emptyMessage="No server errors recorded. Unexpected exceptions and 500s will appear here when they happen."
+        emptyTestId="error-log-empty"
+      >
+        {events.map((e) => (
+          <tr
+            key={e.id}
+            className="border-b border-black/5 align-top dark:border-white/10"
+          >
+            <td
+              className="td whitespace-nowrap text-slate-500 dark:text-slate-400"
+              suppressHydrationWarning
+            >
+              {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
+            </td>
+            <td className="td">
+              <span
+                className={`badge ${
+                  e.level === "warn"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                }`}
+              >
+                {e.level}
+              </span>
+            </td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {e.scope ?? "—"}
+            </td>
+            <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
+              {e.profileId != null
+                ? (profileNames[e.profileId] ?? `#${e.profileId}`)
+                : "—"}
+            </td>
+            <td className="td">
+              <div className="font-medium text-rose-700 dark:text-rose-300">
+                {e.message}
+              </div>
+              {e.detail && (
+                <div className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {e.detail}
+                </div>
+              )}
+            </td>
+          </tr>
+        ))}
+      </LogTable>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { AiEvent, AiStatus } from "@/lib/ai-log";
-import ScrollFade from "@/components/ScrollFade";
+import LogTable from "@/components/LogTable";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 
@@ -103,81 +103,69 @@ export default function LogsStream({
           ))}
       </div>
 
-      {events.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
-          No AI activity yet. Trigger an AI feature (e.g. supplement suggestions
-          or a document upload) and it will appear here live.
-        </div>
-      ) : (
-        <div className="card overflow-hidden p-0">
-          <ScrollFade>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th whitespace-nowrap">Time (UTC)</th>
-                  <th className="th">Feature</th>
-                  <th className="th">Status</th>
-                  <th className="th">Tier</th>
-                  <th className="th">Model</th>
-                  <th className="th">Duration</th>
-                  <th className="th">Tokens</th>
-                  <th className="th">Detail / error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr
-                    key={e.id}
-                    className="border-b border-black/5 align-top dark:border-white/10"
-                  >
-                    {/* Read as UTC through the shared formatter (#1448), so the
+      <LogTable
+        columns={[
+          { label: "Time (UTC)", className: "whitespace-nowrap" },
+          { label: "Feature" },
+          { label: "Status" },
+          { label: "Tier" },
+          { label: "Model" },
+          { label: "Duration" },
+          { label: "Tokens" },
+          { label: "Detail / error" },
+        ]}
+        isEmpty={events.length === 0}
+        emptyMessage="No AI activity yet. Trigger an AI feature (e.g. supplement suggestions or a document upload) and it will appear here live."
+      >
+        {events.map((e) => (
+          <tr
+            key={e.id}
+            className="border-b border-black/5 align-top dark:border-white/10"
+          >
+            {/* Read as UTC through the shared formatter (#1448), so the
                         server render and the first client render are byte-identical
                         — the toLocaleString() this replaced rendered the server's
                         zone on the server and the browser's on the client, which is
                         why this cell needed suppressHydrationWarning. */}
-                    <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
-                    </td>
-                    <td className="td">{e.feature}</td>
-                    <td className="td">
-                      <span className={`badge ${STATUS_BADGE[e.status]}`}>
-                        {e.status}
-                      </span>
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {e.tier ?? "—"}
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {e.model ?? "—"}
-                    </td>
-                    <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {e.durationMs != null
-                        ? `${(e.durationMs / 1000).toFixed(1)}s`
-                        : "—"}
-                    </td>
-                    <td className="td whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
-                      {e.usage
-                        ? `${e.usage.in.toLocaleString("en-US")} / ${e.usage.out.toLocaleString("en-US")}`
-                        : "—"}
-                    </td>
-                    <td className="td">
-                      {e.error ? (
-                        <span className="text-rose-600 dark:text-rose-400">
-                          {e.error}
-                        </span>
-                      ) : (
-                        <span className="whitespace-pre-wrap break-words text-slate-500 dark:text-slate-400">
-                          {e.detail ?? ""}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollFade>
-        </div>
-      )}
+            <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
+              {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
+            </td>
+            <td className="td">{e.feature}</td>
+            <td className="td">
+              <span className={`badge ${STATUS_BADGE[e.status]}`}>
+                {e.status}
+              </span>
+            </td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {e.tier ?? "—"}
+            </td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {e.model ?? "—"}
+            </td>
+            <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
+              {e.durationMs != null
+                ? `${(e.durationMs / 1000).toFixed(1)}s`
+                : "—"}
+            </td>
+            <td className="td whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
+              {e.usage
+                ? `${e.usage.in.toLocaleString("en-US")} / ${e.usage.out.toLocaleString("en-US")}`
+                : "—"}
+            </td>
+            <td className="td">
+              {e.error ? (
+                <span className="text-rose-600 dark:text-rose-400">
+                  {e.error}
+                </span>
+              ) : (
+                <span className="whitespace-pre-wrap break-words text-slate-500 dark:text-slate-400">
+                  {e.detail ?? ""}
+                </span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </LogTable>
     </div>
   );
 }

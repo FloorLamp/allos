@@ -1,6 +1,6 @@
 import type { UsageRollupRow, UsageStat } from "@/lib/ai-usage-rollup";
 import { totalStat } from "@/lib/ai-usage-rollup";
-import ScrollFade from "@/components/ScrollFade";
+import LogTable from "@/components/LogTable";
 
 // The AI token-usage rollup (issue #410): calls + tokens by feature × profile over
 // today and the trailing 7 days, so the admin whose API key every member spends can
@@ -49,46 +49,34 @@ export default function UsageRollup({
         </span>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
-          No AI usage recorded in the last 7 days.
-        </div>
-      ) : (
-        <div className="card overflow-hidden p-0">
-          <ScrollFade>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Feature</th>
-                  <th className="th">Profile</th>
-                  <th className="th text-right">Today calls</th>
-                  <th className="th text-right">Today tokens (in / out)</th>
-                  <th className="th text-right">7-day calls</th>
-                  <th className="th text-right">7-day tokens (in / out)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={`${r.feature}-${r.profileId ?? "null"}`}
-                    className="border-b border-black/5 dark:border-white/10"
-                  >
-                    <td className="td">{r.feature}</td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {r.profileId == null
-                        ? "— (background)"
-                        : (profileNames[r.profileId] ??
-                          `Profile ${r.profileId}`)}
-                    </td>
-                    {statCells(r.today)}
-                    {statCells(r.week)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollFade>
-        </div>
-      )}
+      <LogTable
+        columns={[
+          { label: "Feature" },
+          { label: "Profile" },
+          { label: "Today calls", className: "text-right" },
+          { label: "Today tokens (in / out)", className: "text-right" },
+          { label: "7-day calls", className: "text-right" },
+          { label: "7-day tokens (in / out)", className: "text-right" },
+        ]}
+        isEmpty={rows.length === 0}
+        emptyMessage="No AI usage recorded in the last 7 days."
+      >
+        {rows.map((r) => (
+          <tr
+            key={`${r.feature}-${r.profileId ?? "null"}`}
+            className="border-b border-black/5 dark:border-white/10"
+          >
+            <td className="td">{r.feature}</td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {r.profileId == null
+                ? "— (background)"
+                : (profileNames[r.profileId] ?? `Profile ${r.profileId}`)}
+            </td>
+            {statCells(r.today)}
+            {statCells(r.week)}
+          </tr>
+        ))}
+      </LogTable>
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         Tokens as reported by the model API (input / output). No dollar figures
         — the model is recorded per event; compute cost from your provider’s
