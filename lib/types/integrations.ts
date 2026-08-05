@@ -81,6 +81,19 @@ export interface IntegrationPullFacet {
   // credential, no cursor, and no pagination — Weather's keyless fixed rolling
   // window — because declaring numbers that govern nothing would be a fiction.
   paging?: IntegrationPagingTunables;
+  // HOW OFTEN THIS PROVIDER MAY BE POLLED, in whole minutes (#2121 step 1). The tick
+  // used to conflate two cadences: "how often do we evaluate what is due to send"
+  // (bounded only by process boot) and "how often do we call someone else's API"
+  // (bounded by their quota). Splitting them is what lets the tick go finer without
+  // multiplying provider calls, and this is the quota-bounded half — declared here,
+  // beside the provider's other delivery metadata, because the right number is a
+  // property of the provider's quota, not of the scheduler.
+  //
+  // Absent = the safe default (DEFAULT_PULL_CADENCE_MINUTES, hourly), which is what
+  // every provider was polled at before the split. Read ONLY through
+  // pullCadenceMinutes (lib/integrations/pull-cadence.ts) so the guard, any future
+  // operator surface, and the docs share one derivation.
+  cadenceMinutes?: number;
   // The surfaces a completed run's data feeds. The one generic sync action
   // revalidates exactly these; lib/__tests__/nav-routes.test.ts sweeps them, since
   // `revalidatePath` takes a plain string that typedRoutes cannot check.
