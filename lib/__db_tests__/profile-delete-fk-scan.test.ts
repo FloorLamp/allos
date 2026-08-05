@@ -20,10 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { OWNED_TABLES } from "@/lib/owned-tables";
-import {
-  ownedChildTables,
-  profileChildDeletePlan,
-} from "@/lib/profile-delete";
+import { ownedChildTables, profileChildDeletePlan } from "@/lib/profile-delete";
 
 interface FkRow {
   table: string;
@@ -51,7 +48,7 @@ function fksOf(table: string): FkRow[] {
 function independentSubtree(): Set<string> {
   const subtree = new Set<string>(OWNED_TABLES);
   const tables = allTables();
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const t of tables) {
       if (subtree.has(t)) continue;
@@ -83,7 +80,10 @@ describe("profile-delete sweep completeness (#2126)", () => {
 
   it("the plan deletes only non-owned subtree tables (never an owned table twice, never a global)", () => {
     for (const t of planTables) {
-      expect(owned.has(t), `${t} is owned — deleted by profile_id, not the child plan`).toBe(false);
+      expect(
+        owned.has(t),
+        `${t} is owned — deleted by profile_id, not the child plan`
+      ).toBe(false);
       expect(subtree.has(t), `${t} is not in the profile subtree`).toBe(true);
     }
   });
@@ -127,17 +127,47 @@ describe("profile-delete sweep completeness (#2126)", () => {
   // another profile's view of shared rows.
   const DECLARED_CHILD_TABLES: { table: string; why: string }[] = [
     { table: "activity_routes", why: "GPS route of one activity (#569)" },
-    { table: "exercise_sets", why: "sets of one activity; equipment link is same-profile" },
-    { table: "allergy_reactions", why: "graded manifestations of one allergy (#2126 orphan)" },
-    { table: "fitness_assessment_entries", why: "entries of one fitness-check session (#834)" },
-    { table: "intake_item_doses", why: "dose schedule of one supplement/medication" },
-    { table: "intake_dose_schedule_versions", why: "schedule history of one dose (#1973)" },
+    {
+      table: "exercise_sets",
+      why: "sets of one activity; equipment link is same-profile",
+    },
+    {
+      table: "allergy_reactions",
+      why: "graded manifestations of one allergy (#2126 orphan)",
+    },
+    {
+      table: "fitness_assessment_entries",
+      why: "entries of one fitness-check session (#834)",
+    },
+    {
+      table: "intake_item_doses",
+      why: "dose schedule of one supplement/medication",
+    },
+    {
+      table: "intake_dose_schedule_versions",
+      why: "schedule history of one dose (#1973)",
+    },
     { table: "intake_item_logs", why: "adherence log of one item" },
-    { table: "intake_item_pairs", why: "take-together/apart pair of two same-profile items" },
-    { table: "intake_item_side_effects", why: "recorded side effects of one item (#2126 orphan)" },
-    { table: "medication_courses", why: "start/stop history of one medication (#2126 orphan)" },
-    { table: "integration_sync_rows", why: "per-row provenance of one sync event (#1333)" },
-    { table: "medical_record_revisions", why: "correction lineage of one record (#1404)" },
+    {
+      table: "intake_item_pairs",
+      why: "take-together/apart pair of two same-profile items",
+    },
+    {
+      table: "intake_item_side_effects",
+      why: "recorded side effects of one item (#2126 orphan)",
+    },
+    {
+      table: "medication_courses",
+      why: "start/stop history of one medication (#2126 orphan)",
+    },
+    {
+      table: "integration_sync_rows",
+      why: "per-row provenance of one sync event (#1333)",
+    },
+    {
+      table: "medical_record_revisions",
+      why: "correction lineage of one record (#1404)",
+    },
     { table: "routine_days", why: "days of one routine (#738)" },
     { table: "routine_slots", why: "slots of one routine day (#738)" },
   ];
@@ -158,8 +188,14 @@ describe("profile-delete sweep completeness (#2126)", () => {
 
     // No stale declarations, and every declaration carries a reason.
     for (const d of DECLARED_CHILD_TABLES) {
-      expect(subtree.has(d.table), `${d.table} is no longer in the subtree`).toBe(true);
-      expect(owned.has(d.table), `${d.table} became owned — remove it here`).toBe(false);
+      expect(
+        subtree.has(d.table),
+        `${d.table} is no longer in the subtree`
+      ).toBe(true);
+      expect(
+        owned.has(d.table),
+        `${d.table} became owned — remove it here`
+      ).toBe(false);
       expect(d.why.trim().length).toBeGreaterThan(0);
     }
   });

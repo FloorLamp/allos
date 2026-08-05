@@ -66,9 +66,7 @@ function userTables(db: Database.Database): string[] {
 
 // Every FK each table declares, grouped by the pragma's constraint id so a
 // composite (multi-column) FK is visible as one unit.
-function tableForeignKeys(
-  db: Database.Database
-): Map<string, PragmaFkRow[][]> {
+function tableForeignKeys(db: Database.Database): Map<string, PragmaFkRow[][]> {
   const out = new Map<string, PragmaFkRow[][]>();
   for (const t of userTables(db)) {
     const rows = db
@@ -98,7 +96,7 @@ export function ownedChildTables(
 
   // Fixpoint: the subtree is the owned tables plus everything referencing it.
   const subtree = new Set(owned);
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const [table, groups] of fks) {
       if (subtree.has(table)) continue;

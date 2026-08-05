@@ -32,8 +32,10 @@ describe("dataset table → undo kind mapping", () => {
           entity.deleteExplicitly ?? false,
           `${kind} (${table}) child ${entity.entity}`
         ).toBe(false);
-        expect(entity.counter, `${kind} (${table}) child ${entity.entity}`)
-          .toBeUndefined();
+        expect(
+          entity.counter,
+          `${kind} (${table}) child ${entity.entity}`
+        ).toBeUndefined();
       }
     }
   });

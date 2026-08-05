@@ -30,8 +30,7 @@ type UndoRootTable = UndoKindRegistry[UndoKind]["ownedTable"];
 // `supplements`, whose table is intake_items — pinned at runtime by the db-tier
 // test beside this module).
 type DeletableDatasetTable =
-  | Exclude<DeletableDatasetKey, "supplements">
-  | "intake_items";
+  Exclude<DeletableDatasetKey, "supplements"> | "intake_items";
 
 // Undo-kind root tables whose rows are bulk-deletable on Data → Manage — the set
 // the mapping below must decide about.
