@@ -116,7 +116,7 @@ never a run maintained.
 
 ### 7. Notifications are user-facing copy
 
-Telegram, Web Push, and Home Assistant messages follow every rule above — one
+Telegram, Web Push, Home Assistant, and email messages follow every rule above — one
 message, one register. All Telegram writes already route through the one
 chokepoint (`lib/notifications/telegram.ts`); the copy inside them is held to
 this standard (`"…hasn't been confirmed yet. Check in."`, not "Please check

@@ -31,7 +31,7 @@ bundled datasets, and AI is optional.
   cross-profile views
 - **Connected data:** Health Connect, Strava, Oura, Fitbit exports, Withings,
   calendar feeds, and FHIR/CCD-based imports (eg. MyChart)
-- **Reminders:** Telegram, Web Push, and Home Assistant
+- **Reminders:** Telegram, Web Push, Home Assistant, and email
 - **Portability:** JSON, CSV, FHIR, and uploaded-file exports
 
 See the [full feature tour](docs/features.md) when you need the detailed behavior
@@ -168,11 +168,18 @@ contains protected health information.
 
 ### Outbound email
 
-SMTP is used only for login invitations and password resets; health
-notifications are not sent by email. Configure it under **Settings → Server →
-Outbound email** and set the instance's public URL so Allos can build working
-links. On a new instance, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-`SMTP_PASSWORD`, and `SMTP_FROM` can seed the same settings from the environment.
+SMTP carries login invitations, password resets, and — per login, opt-in —
+notification email. Configure it under **Settings → Server → Outbound email**
+and set the instance's public URL so Allos can build working links. On a new
+instance, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and
+`SMTP_FROM` can seed the same settings from the environment.
+
+Each person turns notification email on for themselves under **Settings →
+Notifications → Email**; reminders go to their account's email address. By
+default those emails are content-free ("something needs your attention — open
+Allos") so no health details reach the inbox; a person can opt their own
+account into full-content emails there, with the trade-off stated on the
+control.
 
 ## Run from source
 

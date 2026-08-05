@@ -1,18 +1,19 @@
-# Outbound email — SMTP foundation + login-lifecycle flows
+# Outbound email — SMTP foundation + login-lifecycle flows + notification channel
 
 Status: **shipped** (phase 1 — SMTP config + invite-on-create + self-service
-reset; issue #985). The **notification email channel is phase 2** (not built).
+reset, issue #985; phase 2 — the notification email channel, issue #1855).
 
 The internals + load-bearing invariants for outbound email. User-facing setup
 lives in the README "Email" section; this is the design record.
 
 ## Scope
 
-Phase 1 is **auth email only** — invite links and password-reset links. These
+Phase 1 is **auth email** — invite links and password-reset links. These
 carry **no PHI** (they name the app and the action, nothing about anyone's
-health data), which is why the main use case sidesteps email's leakiest-channel
-problem entirely. A fourth `NotificationChannel` (per-profile address, kind
-gating) is deliberately out of scope and gets its own issue.
+health data), which is why that use case sidesteps email's leakiest-channel
+problem entirely. Phase 2 (#1855) made email the fourth `NotificationChannel`
+— see "The notification channel" below for its three decided questions
+(address tier, PHI-in-body, retry posture).
 
 ## The pieces
 
@@ -50,6 +51,64 @@ gating) is deliberately out of scope and gets its own issue.
 - **Migration 064** (`064-login-email.ts`): `logins.email` (unique-if-set NOCASE
   via a partial index) + `login_auth_tokens`. Both are login-scoped **global**
   tables (no `profile_id`, not in `lib/owned-tables.ts`).
+
+## The notification channel (phase 2, #1855)
+
+Email is the fourth `NotificationChannel` beside Telegram, Web Push, and Home
+Assistant: `lib/notifications/email.ts` (DB reads + the send loop) over the pure
+`lib/notifications/email-core.ts` (composition, content modes, recipient dedup),
+registered in `getChannels()` and therefore inheriting `dispatch()`'s
+delivery-health accounting for free. Every send still goes through the ONE
+`lib/email.ts` chokepoint — the channel module never imports nodemailer.
+
+The three questions the issue existed to decide:
+
+- **Address tier — LOGIN, not profile.** The doc's phase-1 sketch said
+  "per-profile address"; the issue's own reasoning (and #1072's channel law —
+  channels belong to logins, a toddler has no inbox) concluded login. The
+  address is **`logins.email`** — the SAME address auth mail uses (migration
+  064), so "where do this person's emails go" has exactly one answer and no
+  second store. The channel enable, the content mode, and the per-kind matrix
+  column live in `login_settings` (`email_notify_enabled`,
+  `email_notify_full_content`, `email_notify_disabled_kinds`), beside the
+  Telegram/push channel keys. Fan-out is the Telegram shape exactly: managing
+  logins (explicit grants + own profile, **never** admin-bypass-all), minus the
+  per-(login, profile) mute, deduped by address. The channel is **off by
+  default** — a new contact channel is opt-in (the attention doctrine: the
+  system may never increase contact unilaterally).
+- **PHI in the body — per-login content mode, defaulting content-free** (owner
+  ruling, 2026-08-01). Two modes, both built from the start:
+  `content-free` (default) sends a fixed nudge — "something needs your
+  attention, open Allos" — and is **structurally** message-blind:
+  `contentFreeEmail()` does not accept the message, so no code path can leak a
+  title, a body line, or a profile name into it. `full` sends channel parity —
+  the same `plainBody` words every other channel renders, plus deep-link
+  actions as plain links (callback tokens are always dropped). The ruling's
+  load-bearing sentence — *the default must never be widened by anything but
+  the user's own tap on that setting* — is enforced three ways: the only
+  writer is `saveLoginEmailNotify` (the Settings control), an absent form
+  field reads as content-free, and a shared inbox collapses to the more
+  restrictive mode (`dedupeEmailRecipients`).
+- **Retry posture — the shared budget, nothing email-specific.** The
+  #2145-era note ("email wants more retries — SMTP greylisting") was resolved
+  by #2121/#2157's attempt bands: two attempts an hour apart at every tick
+  rate, and an hour outlives a greylist. A failed send throws, `dispatch()`
+  folds it into the `notify_lifecycle` delivery-health marker (set/clear/freeze
+  via `decideMarker`, channel-aware clear #192), and the slot's second band
+  retries. No attempt counter, no new `notify_*` marker, nothing added to
+  `SEND_MARKER_REGISTRY`.
+
+The rest is inherited, not re-decided: suppression (the findings bus, quiet
+hours, per-kind gating) happens **upstream** of `dispatch()`, so email can never
+deliver a message another channel would have suppressed; safety kinds
+(dose/escalation/redose) ride it like any channel, gated only by the per-login
+matrix column with the existing warn-never-block all-off notice; the
+button-only kinds (food nudge, mood check-in) are a no-op success under the
+same predicate Web Push uses (`isEmailDeliverableKind` aliases
+`isPushDeliverableKind` — one rule, two channels). A fully kind-filtered or
+empty audience is a healthy no-op, never a delivery failure. The send-test on
+Settings → Notifications mails the login's OWN address in its STORED content
+mode, so what arrives is the shape real reminders will take.
 
 ## Security posture (decided up front)
 

@@ -288,7 +288,8 @@ See `docs/internals/integrations-sync.md`.
 
 The notification tick (every 15 minutes in the Docker sidecar; any steady rhythm
 up to hourly works — it observes its own cadence) can deliver through Telegram,
-Web Push, and Home Assistant. It evaluates dates and slots in each profile's
+Web Push, Home Assistant, and email (login-scoped, content-free by default —
+see `docs/internals/email.md`). It evaluates dates and slots in each profile's
 stored timezone; slot times are minutes of day, stored as `"HH:MM"`, and a slot
 gets exactly two due attempts a day, an hour apart, at every tick rate
 (`slotAttempt`, `lib/notifications/schedule.ts`).
