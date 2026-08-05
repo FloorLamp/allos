@@ -268,13 +268,14 @@ function applyDoseStatusCore(
           WHERE dose_id = ? AND date = ?`
       )
       .get(doseId, date) as
-      | { status: DoseStatus; supply_adjusted: number }
-      | undefined;
+      { status: DoseStatus; supply_adjusted: number } | undefined;
     // An existing log resolves the day for a one-way tap; report its ACTUAL status
     // (#280) so a ✅ on a dose meanwhile marked skipped is never answered "Logged",
     // and never re-decrement supply.
     if (existing && opts.resolveOnly) {
-      return existing.status === "skipped" ? "already-skipped" : "already-taken";
+      return existing.status === "skipped"
+        ? "already-skipped"
+        : "already-taken";
     }
     const current: DoseStatusTarget = existing ? existing.status : "clear";
     if (current === target) return "unchanged";

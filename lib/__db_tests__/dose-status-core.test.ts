@@ -172,9 +172,9 @@ describe("the tri-state walks through the lib core (#2039)", () => {
     expect(onHand(itemId)).toBe(10);
 
     const other = seedTracked();
-    expect(setDoseStatusCore(profileId, other.doseId, other.date, "taken")).toBe(
-      "stale-dose"
-    );
+    expect(
+      setDoseStatusCore(profileId, other.doseId, other.date, "taken")
+    ).toBe("stale-dose");
     expect(logRows(other.doseId, other.date)).toEqual([]);
   });
 });
@@ -185,11 +185,15 @@ describe("the paused-item divergence is gone (#2039)", () => {
 
     // The twin in the Server Action module never read `active`, so this wrote a taken
     // row and burned a unit of supply for an item the user had deliberately paused.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("inactive");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe(
+      "inactive"
+    );
     expect(setDoseStatusCore(profileId, doseId, date, "skipped")).toBe(
       "inactive"
     );
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("inactive");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe(
+      "inactive"
+    );
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
 
@@ -216,7 +220,9 @@ describe("the one-way resolvers keep the #232/#280 contract through the core", (
     const { profileId, itemId, doseId, date } = seedTracked();
     expect(markDoseSkipped(profileId, doseId, null, date)).toBe("skipped");
     // ✅ on a dose meanwhile marked skipped: the skip stands and is reported.
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("already-skipped");
+    expect(markDoseTaken(profileId, doseId, null, date)).toBe(
+      "already-skipped"
+    );
     expect(logRows(doseId, date)[0].status).toBe("skipped");
     expect(onHand(itemId)).toBe(10);
 

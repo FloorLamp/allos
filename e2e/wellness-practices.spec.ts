@@ -349,6 +349,38 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   await expect(finalCard.getByText("No sessions logged yet.")).toHaveCount(1);
   await expect(finalCard.getByText("No sessions yet")).toHaveCount(0);
 
+  // Removing ONE session is undoable since #2038 — the same offer the whole-practice
+  // delete below has always made, and the same one the structurally identical substance
+  // history row makes. The session comes back with its facts, and the weekly progress
+  // recomputes from the restored row.
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  await expect(page.getByText("Restored.")).toBeVisible();
+  await expect(finalCard.getByTestId("practice-session-history")).toContainText(
+    "Corrected session"
+  );
+
+  // Then take it away again, so the family delete below still sees exactly one session.
+  const restoredRow = finalCard
+    .getByTestId("practice-session-history")
+    .locator("tbody tr");
+  await chooseSessionAction(page, restoredRow, "practice-session-delete");
+  const secondDialog = page.getByTestId("confirm-dialog");
+  await expect(secondDialog).toBeVisible();
+  await settledClick(
+    page,
+    secondDialog.getByRole("button", { name: "Delete session" })
+  );
+  await expect(finalCard.getByTestId("practice-session-empty")).toBeVisible();
+  // Dismiss that delete's own Undo toast: toasts stack, and the family delete below
+  // reaches for "Undo" by role.
+  await settledClick(
+    page,
+    page
+      .getByTestId("toast")
+      .filter({ hasText: "Session deleted" })
+      .getByRole("button", { name: "Dismiss" })
+  );
+
   // Re-add one session, then exercise the explicitly destructive family delete:
   // target + history disappear under one Undo token, and Undo restores both.
   await settledClick(page, finalCard.getByTestId("practice-log-button"));
