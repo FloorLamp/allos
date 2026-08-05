@@ -18,6 +18,7 @@ import {
 } from "./parsing";
 import { isNormalFlag, isOutOfRange } from "./flags";
 import { daysBetween, retestIntervalDays } from "./retest";
+import { freshnessState, type FreshnessState } from "../freshness";
 // --- Durable-immunity antibody titers (issue #516) --------------------------
 //
 // A documented POSITIVE/immune antibody titer for a vaccine-preventable disease is
@@ -441,7 +442,13 @@ export function qualitativeFlagResolution(
 // metric like fetal fraction (#687, `qc`). All use the optional `immunity` context
 // (the reading's name/flag/value/notes/reference).
 // Boundary: stale strictly AFTER the window (age > interval), matching the original.
-export type BiomarkerRetestStatus = "not-applicable" | "current" | "due";
+//
+// #2023/#2025 — this is now the BIOMARKER ADAPTER over the shared freshness vocabulary
+// (lib/freshness): the domain grammar below (which categories carry a retest clock at all,
+// which results are exempt) stays here, and the age-vs-interval verdict is the one shared
+// `freshnessState`. `BiomarkerRetestStatus` is an alias of `FreshnessState`, so a caller
+// can tally biomarker readings and fitness tests with the same counter.
+export type BiomarkerRetestStatus = FreshnessState;
 
 // The complete retest-clock verdict. `isBiomarkerStale` remains the boolean
 // compatibility wrapper; relevance pickers consume `current` to form a due-soon
@@ -484,9 +491,13 @@ export function biomarkerRetestStatus(
     if (c?.immutable) return "not-applicable"; // immutable attribute — never stale (#548 §2)
     if (c?.qc) return "not-applicable"; // QC metric (fetal fraction) — never nudged (#687)
   }
-  return daysBetween(latestDate, today) > retestIntervalDays(retestDays)
-    ? "due"
-    : "current";
+  // The shared decision (#2023/#2025). `daysBetween` keeps this domain's long-standing
+  // unparseable-date behavior (0 days ⇒ current), so the verdict is byte-for-byte the
+  // prior one; only the age > interval comparison moved.
+  return freshnessState(
+    daysBetween(latestDate, today),
+    retestIntervalDays(retestDays)
+  );
 }
 
 export function isBiomarkerStale(
