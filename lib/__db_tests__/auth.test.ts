@@ -14,6 +14,14 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import crypto from "node:crypto";
+import { NextRequest } from "next/server";
+import { middleware } from "@/middleware";
+import {
+  SESSION_COOKIE,
+  SESSION_SLIDE_MARK_COOKIE,
+  SESSION_SLIDE_MARK_TTL_SEC,
+  SESSION_TTL_SEC,
+} from "@/lib/session-cookie";
 
 // This DB tier's shared setup (vitest.db.config.ts) mocks @/lib/auth for the
 // server-action suite. THIS suite is about lib/auth itself, so restore the real
@@ -260,6 +268,83 @@ describe("session lifecycle", () => {
     expect(sessionRow(sha256hex(expired.token))).toBeUndefined();
     expect(sessionRow(sha256hex(overCeiling.token))).toBeUndefined();
     expect(countSessions(id)).toBe(1);
+  });
+});
+
+// #2058 — THE TWO HALVES OF ONE 30-DAY WINDOW.
+//
+// A session expires when EITHER half runs out: the DB's `expires_at` (slid here,
+// on every request including a Server Action POST) or the browser cookie's
+// Max-Age (slid by the middleware). #2027 narrowed the cookie half to GET/HEAD to
+// stop every action response reading as revalidated, which let the two halves
+// come apart: a tab used only through action POSTs kept the DB row sliding toward
+// the 90-day ceiling while its cookie aged out 30 days after the last navigation,
+// signing the user out with a live session on the server.
+//
+// Only this tier can see the desync, because it is a disagreement BETWEEN the DB
+// write and the Edge response — so both are driven here, against one token.
+describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
+  // The instant the DB says the session dies, from the stored UTC timestamp.
+  function dbExpiryMs(tokenHash: string): number {
+    return Date.parse(sessionRow(tokenHash)!.expiresAt.replace(" ", "T") + "Z");
+  }
+
+  function postRequest(token: string, marked: boolean): NextRequest {
+    const jar = [`${SESSION_COOKIE}=${token}`];
+    if (marked) jar.push(`${SESSION_SLIDE_MARK_COOKIE}=1`);
+    return new NextRequest("http://localhost:3000/training", {
+      method: "POST",
+      headers: { cookie: jar.join("; ") },
+    });
+  }
+
+  it("a POST-only session re-issues the cookie, landing on the same expiry the DB just wrote", () => {
+    const { id } = mkLogin();
+    grant(id, mkProfile("Ada POST-only"));
+    const { token } = createSession(id);
+    const tokenHash = sha256hex(token);
+    // Eight days of forms-only use: the last navigation was at day 0, so the
+    // cookie is eight days into its 30 and the mark (7 days) has just lapsed.
+    ageSession(tokenHash, "-8 days", "+22 days", "-8 days");
+
+    // The POST's own auth resolution slides the DB half back out to +30 days…
+    expect(resolveSessionToken(token)).not.toBeNull();
+    const dbExpiry = dbExpiryMs(tokenHash);
+    expect(dbExpiry - Date.now()).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+
+    // …and the same POST re-issues the cookie, because the mark is gone.
+    const res = middleware(postRequest(token, false));
+    const slid = res.cookies.get(SESSION_COOKIE);
+    expect(slid?.value).toBe(token);
+    expect(slid?.maxAge).toBe(SESSION_TTL_SEC);
+
+    // The two halves now name the same instant: the browser stops trusting the
+    // cookie at the second the server stops honoring the session, not 22 days
+    // earlier. One second of slack for the clock ticking between the two writes.
+    const cookieExpiry = Date.now() + SESSION_TTL_SEC * 1000;
+    expect(Math.abs(cookieExpiry - dbExpiry)).toBeLessThanOrEqual(1000);
+  });
+
+  it("bounds the lag at one mark TTL while the mark is still fresh", () => {
+    const { id } = mkLogin();
+    grant(id, mkProfile("Grace still-marked"));
+    const { token } = createSession(id);
+    const tokenHash = sha256hex(token);
+    // Two days of POST-only use — inside the mark's 7, so the cookie is
+    // deliberately NOT re-issued (that is what keeps action responses from
+    // reading as revalidated, #2027).
+    ageSession(tokenHash, "-2 days", "+28 days", "-2 days");
+    expect(resolveSessionToken(token)).not.toBeNull();
+
+    const res = middleware(postRequest(token, true));
+    expect(res.cookies.get(SESSION_COOKIE)).toBeUndefined();
+
+    // The cookie is therefore behind the DB — but by at most one mark TTL, since
+    // the very next POST after the mark lapses re-issues it. That bound is the
+    // fix: before it, this gap grew without limit toward the 90-day ceiling.
+    const lagMs = dbExpiryMs(tokenHash) - (Date.now() + 28 * 86400 * 1000);
+    expect(lagMs).toBeLessThanOrEqual(SESSION_SLIDE_MARK_TTL_SEC * 1000);
+    expect(lagMs).toBeGreaterThan(0);
   });
 });
 

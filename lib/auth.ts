@@ -7,6 +7,7 @@ import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
 import {
   SESSION_COOKIE,
+  SESSION_SLIDE_MARK_COOKIE,
   SESSION_TTL_SEC,
   sessionCookieOptions,
 } from "./session-cookie";
@@ -179,6 +180,10 @@ export async function destroySession(): Promise<void> {
     );
   }
   store.delete(SESSION_COOKIE);
+  // The slide mark (#2058) dates the session cookie, so it dies with it. Leaving
+  // it behind would tell the middleware that the NEXT session's cookie was
+  // already refreshed recently when it wasn't.
+  store.delete(SESSION_SLIDE_MARK_COOKIE);
 }
 
 // The absolute-max modifier is a trusted internal constant (never user input), so

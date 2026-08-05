@@ -17,7 +17,12 @@ import {
   safeNextPath,
   truncateUserAgent,
 } from "@/lib/login-security";
-import { TWO_FACTOR_COOKIE } from "@/lib/session-cookie";
+import {
+  TWO_FACTOR_COOKIE,
+  SESSION_SLIDE_MARK_COOKIE,
+  SESSION_SLIDE_MARK_TTL_SEC,
+  SESSION_SLIDE_MARK_VALUE,
+} from "@/lib/session-cookie";
 import {
   evaluateLockout,
   USERNAME_LOCKOUT,
@@ -169,6 +174,25 @@ function pruneOldAttempts(): void {
   ).run();
 }
 
+// Stamp a freshly minted session onto the browser: the session cookie plus the
+// slide mark that dates it (#2058). The mark's meaning is "the session cookie was
+// (re-)issued within the last SESSION_SLIDE_MARK_TTL_SEC", and the middleware
+// re-issues both the moment it stops arriving — so minting one here without the
+// mark would leave a brand-new session looking a week stale. Both sign-in paths
+// (password, second factor) go through this one place.
+async function issueSessionCookies(
+  token: string,
+  maxAgeSec: number
+): Promise<void> {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  store.set(
+    SESSION_SLIDE_MARK_COOKIE,
+    SESSION_SLIDE_MARK_VALUE,
+    sessionCookieOptions(SESSION_SLIDE_MARK_TTL_SEC)
+  );
+}
+
 export async function login(
   _prev: LoginState,
   formData: FormData
@@ -278,7 +302,7 @@ export async function login(
   purgeExpiredSessions();
   const userAgent = truncateUserAgent((await headers()).get("user-agent"));
   const { token, maxAgeSec } = createSession(loginRow.id, userAgent);
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  await issueSessionCookies(token, maxAgeSec);
   recordAudit({
     loginId: loginRow.id,
     action: AUDIT_ACTIONS.loginSuccess,
@@ -357,7 +381,7 @@ export async function verifyLoginTotp(
   purgeExpiredSessions();
   const userAgent = truncateUserAgent((await headers()).get("user-agent"));
   const { token, maxAgeSec } = createSession(challenge.loginId, userAgent);
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  await issueSessionCookies(token, maxAgeSec);
   if (outcome.viaRecovery) {
     recordAudit({
       loginId: challenge.loginId,

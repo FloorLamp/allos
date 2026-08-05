@@ -13,6 +13,8 @@ import {
   SESSION_COOKIE,
   TWO_FACTOR_COOKIE,
   SESSION_COOKIE_SECURE,
+  SESSION_SLIDE_MARK_COOKIE,
+  SESSION_SLIDE_MARK_VALUE,
   SESSION_TTL_SEC,
   sessionCookieOptions,
 } from "@/lib/session-cookie";
@@ -28,6 +30,7 @@ describe("session cookie attributes (dev / non-production)", () => {
     expect(SESSION_COOKIE_SECURE).toBe(false);
     expect(SESSION_COOKIE).toBe("ht_session");
     expect(TWO_FACTOR_COOKIE).toBe("ht_2fa");
+    expect(SESSION_SLIDE_MARK_COOKIE).toBe("ht_slid");
   });
 
   it("pins httpOnly / sameSite / secure / path / maxAge", () => {
@@ -63,10 +66,22 @@ describe("session cookie attributes (production)", () => {
     // The __Host- prefix a browser only accepts when Secure + Path=/ + no Domain.
     expect(mod.SESSION_COOKIE).toBe("__Host-ht_session");
     expect(mod.TWO_FACTOR_COOKIE).toBe("__Host-ht_2fa");
+    // The slide mark (#2058) is hardened identically — it rides beside the
+    // session cookie on every refresh, so a mark a sibling subdomain could
+    // inject would be a lever on when the real cookie gets re-issued.
+    expect(mod.SESSION_SLIDE_MARK_COOKIE).toBe("__Host-ht_slid");
     const opts = mod.sessionCookieOptions();
     expect(opts.secure).toBe(true);
     expect(opts.path).toBe("/"); // __Host- mandates Path=/
     expect(opts.httpOnly).toBe(true);
     expect(opts.sameSite).toBe("lax");
+  });
+});
+
+describe("the slide mark carries no secret (#2058)", () => {
+  it("is a constant, never the session token", () => {
+    // The mark exists to be present or absent; its value is never read. Deriving
+    // it from the token would put a second copy of the credential in the jar.
+    expect(SESSION_SLIDE_MARK_VALUE).toBe("1");
   });
 });
