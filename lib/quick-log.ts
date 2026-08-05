@@ -72,6 +72,36 @@ export type QuickLogTarget =
   // NO sheet item uses it (#1468).
   | { kind: "navigate"; href: AppRoute };
 
+// ---- THE TIME-SEMANTIC DECLARATION (issue #2019 §7) ----
+//
+// Two features needed eating time and both routed around the food ledger, because
+// nothing in the app said what a one-tap log's TIME means. Every entry now answers that
+// question up front, and `lib/__tests__/quick-log.test.ts` fails a new entry that does
+// not — the same completeness discipline `RECONCILE_PREFIXES` applies to buttons and
+// `KIND_REISSUE` to message kinds.
+//
+//   • `instant`  — the log carries a real moment, some consumer reads it, and there is a
+//                  correction affordance whose UNIT matches that consumer's tolerance.
+//   • `day-only` — the log is about a DAY. This is not a gap and it is not laziness:
+//                  capturing precision nothing consumes is how a later reader comes to
+//                  invent a meaning for it.
+//
+// ADMISSION TEST FOR `instant`, all three required: (1) some consumer reads the instant;
+// (2) the tap contract is "this is happening now"; (3) the correction unit matches the
+// consumer's tolerance. Failing any one of them means `day-only` with the reason written
+// down, so "we decided against it" and "nobody looked" stay distinguishable.
+export type QuickLogTimeSemantic = "instant" | "day-only";
+
+export interface QuickLogTime {
+  semantic: QuickLogTimeSemantic;
+  // Required in BOTH directions. For `instant`, WHICH consumer reads it and at what
+  // grain; for `day-only`, why an instant would be precision nothing consumes.
+  why: string;
+  // The correction chips' unit, for an `instant` entry — hours where a late tap is
+  // hours late, days where a missed start is days late.
+  chipUnit?: "hour" | "day";
+}
+
 export interface QuickLogItem {
   id: string;
   // The bar button's accessible name AND the sheet row's label — one string, so
@@ -81,6 +111,8 @@ export interface QuickLogItem {
   hint: string;
   icon: QuickLogIcon;
   target: QuickLogTarget;
+  // What this entry's TIME means (#2019 §7). Required — see QuickLogTime.
+  time: QuickLogTime;
   // True for the entries only a training-capable profile should see. An
   // age-restricted profile (lib/age-gate.ts) has no training surface at all, so
   // the bar hides its create actions entirely there — same posture as today.
@@ -103,6 +135,11 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     hint: "Strength, cardio, or sport",
     icon: "barbell",
     target: { kind: "activity" },
+    time: {
+      semantic: "instant",
+      why: "A session already carries start and end instants, and the whole training model reads them — duration, the live-session presence, the post-workout dose window. It is not a one-TAP log at all: the editor asks for the times, so there is nothing for a chip to correct.",
+      chipUnit: "hour",
+    },
     training: true,
   },
   {
@@ -113,6 +150,11 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // The SAME FoodLogBar the Nutrition → Food tab renders, mounted in the
     // overlay — one component, two mounting contexts.
     target: { kind: "overlay", form: "food" },
+    time: {
+      semantic: "instant",
+      why: "#2019: `eaten_at` is read by eating-window length and protein distribution, both of which tolerate about half an hour, and the Telegram button's contract is 'I am eating now'. Corrected in hour chips. The WEB bar states a time or leaves it null — it never defaults to now, because a backfill has no instant to offer.",
+      chipUnit: "hour",
+    },
   },
   {
     id: "log-dose",
@@ -123,6 +165,11 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // typed DoseTakenOutcome the buttons answer from) — reached, never
     // re-implemented.
     target: { kind: "overlay", form: "dose" },
+    time: {
+      semantic: "instant",
+      why: "#2020: `given_at` arms the PRN redose window and keys the phantom-dose proximity guard — the safety-relevant instant in the app. Hour chips, because redose intervals are measured in hours.",
+      chipUnit: "hour",
+    },
   },
   {
     id: "log-measurements",
@@ -136,6 +183,11 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // shared-content rule exists to prevent. Same MeasurementsQuickAdd component
     // the Body tab's desktop expander mounts; only the mount changes.
     target: { kind: "overlay", form: "measurements" },
+    time: {
+      semantic: "instant",
+      why: "A reading time is part of the reading and the form ASKS for it — body temperature has carried one since #800/#843, and morning-vs-evening weight is a real difference. Stated on entry rather than corrected afterwards, so no chips.",
+      chipUnit: "hour",
+    },
   },
   {
     id: "log-practice",
@@ -147,6 +199,10 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // LogPracticeButton the Wellness card renders over the same logPractice action — no
     // second write path, and the sheet lists exactly the practices you track.
     target: { kind: "overlay", form: "practice" },
+    time: {
+      semantic: "day-only",
+      why: "Deliberately not extended (#2019). A practice session counts against a WEEKLY floor; nothing reads when in the day it happened, so capturing an instant would be precision with no consumer — which is exactly how a later reader comes to invent a meaning for it.",
+    },
   },
   {
     id: "log-period",
@@ -164,6 +220,11 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // LAYOUT-TIME snapshot of the state on every one of ~60 routes, and a snapshot is
     // exactly as stale as the page (the #1468 reason the overlay gathers on open).
     target: { kind: "overlay", form: "cycle" },
+    time: {
+      semantic: "instant",
+      why: "A period start is DAY-granular but genuinely correctable — 'it started yesterday' is the common case, and the #1892 duration sanity checks judge the corrected date. So the semantic is instant with a DAY unit, and the correction flows through the stateful write core rather than around it.",
+      chipUnit: "day",
+    },
     cycle: true,
   },
   {
@@ -176,6 +237,10 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // same ingest engine, size/type gates, per-profile storage and dedup apply, and the
     // camera input (`capture="environment"`) comes along for free.
     target: { kind: "overlay", form: "document" },
+    time: {
+      semantic: "day-only",
+      why: "A document's meaningful date is the one PRINTED ON IT, which extraction reads from the document itself; when you happened to upload it is filing metadata that nothing clinical consumes.",
+    },
   },
 ];
 

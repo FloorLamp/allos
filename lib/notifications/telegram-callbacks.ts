@@ -15,6 +15,18 @@ import {
   logAdministration,
 } from "../queries";
 import { today } from "../db";
+import { now as clockNow } from "../clock";
+import {
+  parseCorrectionAtToken,
+  parseCorrectionChipToken,
+} from "../correction-time";
+import { DOSE_TIME_PREFIXES, FOOD_TIME_PREFIXES } from "./correction-rows";
+import {
+  handleDoseTimeAt,
+  handleDoseTimeChip,
+  handleFoodTimeAt,
+  handleFoodTimeChip,
+} from "./telegram-time-correction";
 import { shiftDateStr } from "../date";
 import {
   getProfilesByTelegramChatId,
@@ -111,7 +123,11 @@ import {
   buildPostWorkoutFinishReminder,
   postWorkoutFinishMarkerKey,
 } from "./workout-presence";
-import { collectWindowDoses, slotSessionForKeyboard } from "./supplements";
+import {
+  collectWindowDoses,
+  slotSessionForKeyboard,
+  withDoseCorrections,
+} from "./supplements";
 import {
   notifiableWindowDoses,
   renderMergedIntakeMessage,
@@ -260,6 +276,36 @@ export async function handleCallbackQuery(
   const foodOptIn = parseFoodOptInCallback(cq.data);
   if (foodOptIn) {
     await handleFoodOptIn(cq, foodOptIn);
+    return;
+  }
+  // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
+  // Both ride the food nudge's own keyboard and re-stamp `eaten_at` for a whole burst.
+  const foodTimeChip = parseCorrectionChipToken(
+    cq.data,
+    FOOD_TIME_PREFIXES.chip
+  );
+  if (foodTimeChip) {
+    await handleFoodTimeChip(cq, foodTimeChip);
+    return;
+  }
+  const foodTimeAt = parseCorrectionAtToken(cq.data, FOOD_TIME_PREFIXES.at);
+  if (foodTimeAt) {
+    await handleFoodTimeAt(cq, foodTimeAt);
+    return;
+  }
+  // The dose twin (#2020), over `given_at` — the safety-relevant one, because the PRN
+  // redose window arms off exactly the instant these buttons correct.
+  const doseTimeChip = parseCorrectionChipToken(
+    cq.data,
+    DOSE_TIME_PREFIXES.chip
+  );
+  if (doseTimeChip) {
+    await handleDoseTimeChip(cq, doseTimeChip);
+    return;
+  }
+  const doseTimeAt = parseCorrectionAtToken(cq.data, DOSE_TIME_PREFIXES.at);
+  if (doseTimeAt) {
+    await handleDoseTimeAt(cq, doseTimeAt);
     return;
   }
 
@@ -716,11 +762,14 @@ async function handleDoseTap(
       profileId,
       chatId,
       messageId,
-      renderMergedIntakeMessage(
+      withDoseCorrections(
         profileId,
-        parts,
-        tap.date,
-        getUserAge(profileId)
+        renderMergedIntakeMessage(
+          profileId,
+          parts,
+          tap.date,
+          getUserAge(profileId)
+        )
       )
     );
     return;
@@ -917,7 +966,15 @@ async function handleAllTaken(
     profileId,
     chatId,
     messageId,
-    renderMergedIntakeMessage(profileId, parts, all.date, getUserAge(profileId))
+    withDoseCorrections(
+      profileId,
+      renderMergedIntakeMessage(
+        profileId,
+        parts,
+        all.date,
+        getUserAge(profileId)
+      )
+    )
   );
 }
 
@@ -950,22 +1007,25 @@ async function handleFoodLog(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
-  // Pass the NUDGE'S OWN window as the explicit meal slot (#1704). The callback token
-  // asserts the window the user is logging for — it was baked in at send time — so the
-  // explicit slot is MORE honest than one derived from the tap instant: a 21:30 tap on
-  // the dinner nudge really was dinner. Omitting it stored meal_slot = null, so
-  // foodEventWindow re-derived the window from WHEN the tap landed; a tap past the
-  // nudge's slot boundary then bucketed into the later window while the rebuild asked
-  // for `food.window`, and the button's "(n)" suffix rendered 0 even though the serving
-  // logged correctly (it still showed in the day tally). With the slot carried
-  // explicitly the count matches the button pressed, and the #950 ranking + #1016
-  // counts stay consistent because both read the same foodEventWindow derivation.
+  // THE TAP IS THE EATING-TIME CAPTURE (#2019). This button's declared contract is "I'm
+  // eating NOW" — it has been documented as that since #947 — so the tap instant is a
+  // measurement of when the serving was eaten, with a known error, not a guess. It is
+  // recorded as such (`time_source = 'tap'`) and the correction chips on this same
+  // keyboard are how the error gets fixed when the contract was false.
+  //
+  // NO EXPLICIT `meal_slot` IS WRITTEN, reversing #1704. The nudge's window is the NUDGE
+  // naming itself, not the user declaring a meal; it stays on the token for message
+  // identity and rebuild only. With a real eating instant on the row, the window the
+  // serving belongs to is DERIVED from when it was eaten — so a correction moves the
+  // meal along with the time, which an asserted slot would have frozen in place.
+  const tapAt = clockNow().toISOString();
   const outcome = logFoodServingCore(
     profileId,
     food.group,
     food.date,
+    tapAt,
     undefined,
-    food.window
+    { eatenAt: tapAt, source: "tap" }
   );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
 
@@ -1012,16 +1072,18 @@ async function handleFoodProtein(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
     return;
   }
-  // The protein sibling of the #1704 omission. Its button carries the SAME #1016
-  // slot-scoped "(n)" suffix (#1379), read from the __protein__ ledger row, so a tap
-  // outside the nudge's window derived a later slot and lost the count exactly like a
-  // food-group tap. The token's window is the asserted one, so pass it explicitly.
+  // The protein sibling of the food tap's #2019 capture: the same "I'm having this now"
+  // contract, the same recorded instant, and the same reason no explicit `meal_slot` is
+  // written. The __protein__ ledger row rides the identical columns, which is what makes
+  // protein DISTRIBUTION — the actual recommendation — computable from this ledger.
+  const tapAt = clockNow().toISOString();
   const outcome = addProteinGramsCore(
     profileId,
     token.date,
     token.grams,
+    tapAt,
     undefined,
-    token.window
+    { eatenAt: tapAt, source: "tap" }
   );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
 

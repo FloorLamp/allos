@@ -380,7 +380,11 @@ describe("'Show less' collapse (#1807)", () => {
       )
     );
     const before = labelsAt(lastRebuiltKeyboard());
-    expect(before.some((l) => l.includes("(1)"))).toBe(true);
+    // At least one visible button carries a count, so a collapse that LOST one would
+    // show up as a different label rather than only a different length. (The count is
+    // the DAY total since #2019, so its exact value depends on what this file has
+    // logged; what matters here is that a suffix survives the round trip.)
+    expect(before.some((l) => /\(\d+\)$/.test(l))).toBe(true);
 
     await handleCallbackQuery(
       cqWithFoodButtons(

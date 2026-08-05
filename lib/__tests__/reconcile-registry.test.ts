@@ -115,6 +115,13 @@ function mintedPrefixes(): Map<string, string[]> {
       const value = consts.get(m[1]);
       if (value) note(value, rel);
     }
+    // 6. `{ chip: "xxx", at: "yyy" }` — the time-correction families (#2019/#2020).
+    // Their tokens are minted by ONE shared builder parameterised by the domain's
+    // prefix pair, so the mint site carries no literal; the DECLARATION is where the
+    // vocabulary is stated, and that is what this reads.
+    for (const m of src.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g)) {
+      note(m[1], rel);
+    }
   }
   return found;
 }
@@ -125,7 +132,16 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
   it("the scan actually finds the vocabulary (it would pass vacuously otherwise)", () => {
     // A sample from three different modules and all three mint styles, so a regex that
     // silently stops matching fails here rather than turning the guard into a no-op.
-    for (const known of ["take", "hh", "pvdone", "food", "offer", "tunet"]) {
+    for (const known of [
+      "take",
+      "hh",
+      "pvdone",
+      "food",
+      "offer",
+      "tunet",
+      "foodtime",
+      "dosetimeat",
+    ]) {
       expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
         true
       );

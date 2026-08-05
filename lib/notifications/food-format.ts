@@ -15,6 +15,13 @@ import {
   isProteinNudgeKey,
   proteinNudgeButtonLabel,
 } from "../protein-nudge";
+import type { CorrectionBurst } from "../correction-time";
+import {
+  correctionActions,
+  correctionPickerActions,
+  correctionPickerTitle,
+  FOOD_TIME_PREFIXES,
+} from "./correction-rows";
 import type { NotificationAction, NotificationMessage } from "./types";
 
 // The food nudge rides the morning/midday/evening supplement slots (issue #682) —
@@ -206,6 +213,21 @@ export interface FoodNudgeRenderOpts {
   // Grams for the "+Xg protein" button label (#1073) — the profile's last-used scoop
   // preset. Only used when the reserved __protein__ key falls within the visible window.
   proteinPresetGrams?: number;
+  // The eating-time correction rows (#2019), already derived from ledger state by the
+  // gather. A RIDE-ALONG: no nudge is ever sent because a burst is correctable, and the
+  // rows simply appear on whichever food keyboard is live while the taps are fresh.
+  corrections?: readonly CorrectionBurst[];
+  // The profile's timezone, for the correction rows' wall-clock labels. Only read when
+  // there are corrections to render.
+  tz?: string;
+  // An OPEN eating-time picker (#2019): the burst whose 🕐 was tapped, plus the instant
+  // its offered hours are computed from. The picker replaces the correction ROWS and
+  // leaves the quick-log buttons standing — deliberately unlike the `symp:`→`symsev:`
+  // drill-down it otherwise copies, because food logging is this message's whole job and
+  // hiding it behind a time question would be a worse trade than the extra keyboard rows.
+  // Keeping them also means the `food:` tokens survive, so `↩︎ Back` can rebuild the exact
+  // nudge from the live keyboard rather than guessing at a window.
+  picker?: { burst: CorrectionBurst; now: Date };
 }
 
 // Build the food-log nudge for a window from the profile's RANKED keys (all of them,
@@ -223,9 +245,15 @@ export function renderFoodNudge(
   // Ranked keys: catalog food-group slugs, possibly with the reserved __protein__ pseudo-
   // group at its ranked position (#1073).
   rankedKeys: string[],
-  // Slot-scoped per-group serving counts (#1016) — the button "(n)" suffix, "n this slot".
-  slotServings: Map<string, number>,
-  // Day-total per-group counts (#1016) — the "✓ Today:" tally line.
+  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✓ Today:" tally.
+  //
+  // THE SUFFIX USED TO BE SLOT-SCOPED (#1016) and #2019 retired that meaning. The slot it
+  // counted was derived at read time from the tap instant, which is precisely the guess
+  // #2019 removes: with the nudge's window no longer written onto the event as a declared
+  // meal, a "this slot" count would have to re-derive one, and a tap landing minutes past
+  // a boundary would tick nobody's button. The DAY total is a number the ledger can always
+  // answer, it is the number the tally line already states, and it is what "(2)" most
+  // naturally reads as on a button you have pressed twice today.
   dayServings: Map<string, number>,
   opts: FoodNudgeRenderOpts = {}
 ): NotificationMessage {
@@ -249,7 +277,7 @@ export function renderFoodNudge(
     // a tap ticks its own button immediately.
     if (isProteinNudgeKey(key)) {
       const base = proteinNudgeButtonLabel(presetGrams);
-      const n = slotServings.get(key) ?? 0;
+      const n = dayServings.get(key) ?? 0;
       actions.push({
         label: n > 0 ? `${base} (${n})` : base,
         data: foodProteinCallbackData(profileId, window, date, presetGrams),
@@ -259,7 +287,7 @@ export function renderFoodNudge(
     }
     const g = foodGroupBySlug(key);
     if (!g) return; // a retired/unknown slug can't render a button (belt; rankedKeys are catalog)
-    const n = slotServings.get(key) ?? 0;
+    const n = dayServings.get(key) ?? 0;
     // The catalog glyph leads the label (#1710) — the same vocabulary the tally and the
     // web food bar use, which is what makes the 3×2 grid readable at a glance.
     const emoji = foodGroupEmoji(key);
@@ -301,6 +329,26 @@ export function renderFoodNudge(
     });
   }
 
+  // The correction ride-along goes LAST, below the view controls: the nudge's own
+  // buttons are its subject, and `owningFamily` reads the keyboard in order, so the
+  // message stays owned by the food quick-log tokens that lead it.
+  const corrections = opts.corrections ?? [];
+  if (opts.picker && opts.tz) {
+    actions.push(
+      ...correctionPickerActions(
+        FOOD_TIME_PREFIXES,
+        profileId,
+        opts.picker.burst,
+        opts.picker.now,
+        opts.tz
+      )
+    );
+  } else if (corrections.length > 0 && opts.tz) {
+    actions.push(
+      ...correctionActions(FOOD_TIME_PREFIXES, profileId, corrections, opts.tz)
+    );
+  }
+
   const tally = tallyLine(dayServings);
   // The prompt falls away once anything is logged (#1710): with a tally present, "Tap
   // what you've eaten to log a serving" is redundant chrome on a small screen — the
@@ -310,6 +358,14 @@ export function renderFoodNudge(
       tally ? null : "Tap what you've eaten to log a serving.",
       tally,
       proteinBody(opts.proteinLine),
+      // Stated once, above the rows, rather than repeated on every chip: the row already
+      // names WHAT it is about and WHEN it was tapped, so the sentence only has to say
+      // what the numbers do.
+      opts.picker && opts.tz
+        ? correctionPickerTitle("when did you eat", opts.picker.burst, opts.tz)
+        : corrections.length > 0
+          ? "🕐 Ate earlier than you tapped? Nudge it back, or tap the row for an exact time."
+          : null,
     ],
     "\n"
   );

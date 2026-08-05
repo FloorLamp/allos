@@ -27,6 +27,12 @@ import {
   isHistoricalDoseTimeAccepted,
   resolveQueuedTakenAt,
 } from "../../dose-log-window";
+import {
+  burstFrom,
+  correctionBursts,
+  CORRECTION_FRESH_MIN,
+  type CorrectionBurst,
+} from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { getMedicationFamilyStates } from "./prn-family";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
@@ -502,7 +508,9 @@ export function logHistoricalDose(
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+  // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
+  // so is the stored given_at this may be re-validating, so all three must agree.
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, givenAt);
@@ -648,7 +656,9 @@ export function updateHistoricalDose(
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+  // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
+  // so is the stored given_at this may be re-validating, so all three must agree.
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, givenAt);
@@ -1663,4 +1673,177 @@ export function getOfferedIntakeForSlot(
           : r.amount,
       countToday: r.countToday,
     }));
+}
+
+// ---- Administration-time correction (issue #2020) ----
+
+// One recent dose confirmation as the correction offer reads it. `tapAt` is `taken_at`,
+// the IMMUTABLE audit stamp — burst identity, freshness and every chip offset key on it,
+// never on `given_at`, which is the thing being corrected. That separation is what makes
+// a chip idempotent: tapping −2h twice lands on the same instant instead of walking a
+// dose four hours into the past.
+export interface DoseTapRow {
+  id: number;
+  tapAt: string;
+  label: string;
+  doseId: number;
+  date: string;
+}
+
+// The profile's dose confirmations tapped within the correction window, oldest first.
+// Bounded by that window, so the read is a handful of rows. Profile-scoped through the
+// dose → item JOIN.
+//
+// SCHEDULED CONFIRMS ONLY IS NOT THE RULE — a PRN administration is exactly the case
+// #2020 is about (the redose window arms off `given_at`), so both are here. What IS
+// excluded is a row with no `given_at` at all: there is no administration instant to
+// correct, and inventing one would be the guess this feature exists to end.
+export function getRecentDoseTaps(
+  profileId: number,
+  now: Date = clockNow()
+): DoseTapRow[] {
+  const since = utcSqlString(
+    new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
+  );
+  const rows = db
+    .prepare(
+      `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
+              l.taken_at AS takenAt, s.name AS name
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ? AND l.status = 'taken'
+          AND l.given_at IS NOT NULL AND l.taken_at >= ?
+        ORDER BY l.taken_at, l.id
+        LIMIT 100`
+    )
+    .all(profileId, since) as {
+    id: number;
+    doseId: number;
+    date: string;
+    takenAt: string;
+    name: string;
+  }[];
+  const out: DoseTapRow[] = [];
+  for (const r of rows) {
+    // Stored datetimes carry no zone, so they are parsed as UTC rather than handed to
+    // `new Date`, which would read them in the process-local zone.
+    const tap = parseUtcSql(r.takenAt);
+    if (!tap) continue;
+    out.push({
+      id: r.id,
+      tapAt: tap.toISOString(),
+      label: r.name,
+      doseId: r.doseId,
+      date: r.date,
+    });
+  }
+  return out;
+}
+
+// The correction rows a dose keyboard should carry right now. Same computation as the
+// food side (#221), over the ledger the dose reminder itself writes to.
+export function getDoseCorrectionBursts(
+  profileId: number,
+  now: Date = clockNow()
+): CorrectionBurst[] {
+  return correctionBursts(getRecentDoseTaps(profileId, now), now);
+}
+
+// The typed result of a dose-time correction:
+//   restamped — `count` log rows now carry a corrected `given_at`; `crossedMidnight`
+//               says whether any of them landed on a different calendar day, which the
+//               toast has to mention because the row's DAY deliberately does not move.
+//               `anchor` names the dose + day the message can be rebuilt from once the
+//               session's own buttons are gone.
+//   no-burst  — the anchor row is gone or belongs to another profile. Nothing written.
+export type DoseRestampOutcome =
+  | {
+      kind: "restamped";
+      count: number;
+      crossedMidnight: boolean;
+      anchor: { doseId: number; date: string };
+    }
+  | { kind: "no-burst" };
+
+// Correct a burst of administration instants (issue #2020).
+//
+// THE ROW'S `date` DOES NOT MOVE, and this is the deliberate contrast with the food
+// side. A serving's day is a fact about the serving, so #2019's correction re-dates it;
+// a dose's day is SCHEDULE-OWNED (#614 — the token's date is the day the reminder was
+// asking about), so a correction that crosses midnight moves only `given_at` and leaves
+// the adherence day where the schedule put it. A bedtime dose confirmed at 07:00 and
+// corrected to 22:00 was still last night's bedtime dose.
+//
+// WHAT IT DELIBERATELY DOES NOT DO:
+//
+//   • It does not re-evaluate the phantom-dose PROXIMITY GUARD (see logAdministration).
+//     That guard runs at INSERT time and decides whether a new row is the same intent as
+//     an existing one. A correction can legitimately move two administrations within its
+//     window, and merging or deleting a row on that basis would destroy a real record of
+//     something that was taken. The instant is adjusted; the rows stay.
+//   • It does not RE-ARM anything (#1933). A corrected instant is a correction of
+//     history, not a new event, so no escalation reopens and no reminder returns.
+//   • It only ever moves an instant EARLIER (chips are −Nh, picker hours are all past),
+//     so the PRN redose window can only become MORE conservative — the safe direction
+//     for the one consumer that is safety-relevant.
+export function restampDoseLogsCore(
+  profileId: number,
+  fromLogId: number,
+  resolve: (tapAt: string) => Date
+): DoseRestampOutcome {
+  return writeTx(() => {
+    const rows = db
+      .prepare(
+        `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
+                l.taken_at AS takenAt, s.name AS name
+           FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.profile_id = ? AND l.id >= ? AND l.status = 'taken'
+            AND l.given_at IS NOT NULL
+          ORDER BY l.taken_at, l.id
+          LIMIT 200`
+      )
+      .all(profileId, fromLogId) as {
+      id: number;
+      doseId: number;
+      date: string;
+      takenAt: string;
+      name: string;
+    }[];
+    const taps: { row: (typeof rows)[number]; tapAt: string }[] = [];
+    for (const r of rows) {
+      const tap = parseUtcSql(r.takenAt);
+      if (tap) taps.push({ row: r, tapAt: tap.toISOString() });
+    }
+    const byId = new Map(taps.map((t) => [t.row.id, t]));
+    const burst = burstFrom(
+      taps.map((t) => ({ id: t.row.id, tapAt: t.tapAt, label: t.row.name })),
+      fromLogId
+    );
+    if (!burst) return { kind: "no-burst" as const };
+
+    const tz = getTimezone(profileId);
+    let crossedMidnight = false;
+    for (const id of burst.ids) {
+      const t = byId.get(id);
+      if (!t) continue;
+      const instant = resolve(t.tapAt);
+      if (dateStrInTz(tz, instant) !== t.row.date) crossedMidnight = true;
+      db.prepare(`UPDATE intake_item_logs SET given_at = ? WHERE id = ?`).run(
+        utcSqlString(instant),
+        id
+      );
+    }
+    const anchorRow = byId.get(burst.fromId)?.row;
+    return {
+      kind: "restamped" as const,
+      count: burst.ids.length,
+      crossedMidnight,
+      anchor: anchorRow
+        ? { doseId: anchorRow.doseId, date: anchorRow.date }
+        : { doseId: 0, date: today(profileId) },
+    };
+  });
 }

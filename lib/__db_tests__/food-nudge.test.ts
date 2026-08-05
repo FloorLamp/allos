@@ -1,8 +1,9 @@
 // DB INTEGRATION TIER — the food-log nudge GATHER (issues #682, #1016) over a realistic
 // fixture. buildFoodNudge is the gather half (DB reads → the pure renderer): it must lead
 // with the profile's most-eaten groups (the SAME recency-decayed ranking the web log bar
-// uses — one computation, #591), carry SLOT-scoped button counts (#1016) with a DAY-total
-// tally labeled "Today:", and hide entirely for an infant profile (the life-stage gate). The
+// uses — one computation, #591), carry DAY-total button counts (#1016's slot scoping was
+// retired with the read-time window derivation it depended on, #2019) beside the "Today:"
+// tally, and hide entirely for an infant profile (the life-stage gate). The
 // pure render/token half is covered in lib/__tests__/food-nudge.test.ts.
 
 import { plainBody } from "@/lib/notifications/rich-text";
@@ -29,13 +30,13 @@ beforeAll(() => {
 });
 
 describe("buildFoodNudge", () => {
-  it("leads with the most-eaten group and carries SLOT counts + a DAY tally (#1016)", () => {
+  it("leads with the most-eaten group and carries DAY counts + the DAY tally", () => {
     const msg = buildFoodNudge(p.profileId, "Morning", t);
     expect(msg).not.toBeNull();
     const logButtons = (msg!.actions ?? []).filter((a) =>
       a.data?.startsWith("food:")
     );
-    // First button is the heavily-logged group, carrying its MORNING-slot count (4).
+    // First button is the heavily-logged group, carrying its day count (4).
     expect(logButtons[0].label).toBe("🥬 Leafy greens (4)");
     expect(logButtons[0].data).toBe(
       `food:${p.profileId}:Morning:${t}:leafy_greens`
@@ -46,16 +47,26 @@ describe("buildFoodNudge", () => {
     expect(msg!.kind).toBe("food");
   });
 
-  it("shows a CLEAN button (no slot count) on a different slot's nudge (#1016)", () => {
-    // Everything was logged in the morning, so the Midday nudge's buttons carry no slot
-    // count — but the DAY tally still shows the morning's servings.
+  it("carries the SAME count on every window's nudge — the count is the day (#2019)", () => {
+    // The suffix no longer means "in this window", so a morning habit reads 4 on the
+    // midday nudge too. That is the point: the count agrees with the tally beside it and
+    // never depends on re-deriving which meal a serving belonged to.
     const msg = buildFoodNudge(p.profileId, "Midday", t);
     const leafy = (msg!.actions ?? []).find((a) =>
       a.data?.endsWith(":leafy_greens")
     );
     // Labels lead with the group's catalog glyph since #1710.
-    expect(leafy?.label).toBe("🥬 Leafy greens"); // clean at midday — no "(4)"
-    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4"); // day total persists
+    expect(leafy?.label).toBe("🥬 Leafy greens (4)");
+    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+  });
+
+  it("still leads with the group eaten NEAR this window (#2019 proximity ranking)", () => {
+    // The ORDER is what stayed slot-aware, and it did so without a bucket: the morning
+    // habit leads the morning nudge because 08:00 sits on that window's anchor.
+    const morning = (buildFoodNudge(p.profileId, "Morning", t)!.actions ?? [])
+      .filter((a) => a.data?.startsWith("food:"))
+      .map((a) => a.data!.split(":").at(-1));
+    expect(morning[0]).toBe("leafy_greens");
   });
 
   it("hides for an infant profile (life-stage gate)", () => {

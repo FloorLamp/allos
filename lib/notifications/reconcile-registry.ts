@@ -61,6 +61,13 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // ⤓ May rides the dose reminder (#1505 part 2) and dies with the same message —
   // and separately once the item is already `may`, when the suggestion is moot.
   { prefix: "demote", family: "intake-dose" },
+  // ⤓ The dose-time correction chips + picker (#2020) ride the dose reminder and inherit
+  // its family, the same ride-along shape `demote` has. They die on their OWN clock — a
+  // burst older than an hour — rather than on the doses': a confirmed session keeps its
+  // chips for the hour in which the instant can still be wrong, and a still-pending one
+  // is not kept alive by them, because the family's `dead` set covers both prefixes.
+  { prefix: "dosetime", family: "intake-dose" },
+  { prefix: "dosetimeat", family: "intake-dose" },
 
   // Missed-dose escalation (#233 phase 2) — safety tier. A confirmed-taken dose must
   // not keep a caregiver's chat claiming it was missed.
@@ -107,6 +114,13 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // editing only when the render actually differs.
   { prefix: "food", family: "food" },
   { prefix: "foodprotein", family: "food" },
+  // The eating-time correction chips + picker (#2019). NOT inert: unlike "Show more",
+  // these DO make a state claim — "these servings are still correctable here" — which
+  // stops being true one hour after the burst was tapped. That is what the sweep strips,
+  // in one trailing edit per logging burst, and it is also what closes an abandoned open
+  // picker instead of leaving a modal keyboard stranded in the chat.
+  { prefix: "foodtime", family: "food" },
+  { prefix: "foodtimeat", family: "food" },
 
   // ── Class 3: decision buttons ──────────────────────────────────────────────
   // A choice made in the app leaves the message offering a choice that no longer exists.
