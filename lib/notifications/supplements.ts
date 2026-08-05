@@ -17,7 +17,9 @@ import {
   inferWorkoutSchedule,
   getIntakeLogsInRange,
   getEffectiveActiveSituations,
+  getMinutesSinceLastFoodLog,
 } from "../queries";
+import { foodTimingCheck } from "../food-timing-check";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -220,6 +222,23 @@ function gatherWindowDoses(
     today(profileId)
   );
 
+  // The food ledger's answer to "has anything gone in lately", read ONCE per gather
+  // (#2022) — it is one number for the profile, not a per-dose fact, and the loop below
+  // only turns it into a per-dose clause through the pure predicate.
+  //
+  // TODAY ONLY. A reminder gathered for a PAST date (a late tap rebuilding yesterday's
+  // message) must not carry a clause about the present: "no food logged in the last 90
+  // min" is a statement about right now, and pinning it to a day that has ended would be
+  // a confident falsehood. Those gathers pass null and every dose's check resolves to
+  // `none` — note that is the WHOLE gate, because `null` minutes on a with_food dose
+  // legitimately means "nothing logged" and would otherwise render. It is deliberately
+  // NOT lazy behind "does any dose declare a timing": one bounded index read per gather
+  // is cheaper than the branch is worth, and a lazy read would make the reminder's text
+  // depend on evaluation order.
+  const minutesSinceFood = isForToday
+    ? getMinutesSinceLastFoodLog(profileId)
+    : null;
+
   const entries: WindowDose[] = [];
   for (const dose of doses) {
     const supp = suppById.get(dose.item_id);
@@ -267,6 +286,10 @@ function gatherWindowDoses(
       // it — an in-app dismissal deliberately does NOT remove it, because for a
       // tap-only user this is the only escape hatch that ever reaches them.
       demotable: demotableItemIds.has(supp.id),
+      // The declared timing as a live check (#2022). Today only — see the read above.
+      ...(isForToday
+        ? { foodCheck: foodTimingCheck(dose.food_timing, minutesSinceFood) }
+        : {}),
     });
   }
   return entries;

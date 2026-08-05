@@ -424,6 +424,43 @@ come from the `food_log` day counter — the reserved key never lands there — 
 counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
 which keeps ONE suffix rule for every button on the keyboard.
 
+### The declared food timing becomes a live check (#2022)
+
+Every dose declares a `food_timing`, and the reminder used to render it as a STATIC
+LABEL: an 08:00 `with_food` reminder said "with food" into a morning where nothing had
+been logged, even though the app holds both the declaration and the food ledger. It now
+compares them, and adds ONE optional informational clause to the dose line's tail,
+immediately after the label it remarks on:
+
+| declared timing                 | ledger check (trailing window) | clause                              |
+| ------------------------------- | ------------------------------ | ----------------------------------- |
+| `with_food` / `with_fat`        | no serving within ~90 min      | `no food logged in the last 90 min` |
+| `empty_stomach` / `before_meal` | a serving within ~60 min       | `food logged ~20 min ago`           |
+| `any`                           | —                              | never                               |
+
+**It rides the send; it is never the send.** No new message, no gate, no delay, no
+escalation, no suppression — a dose reminder is a safety signal, so the ledger may
+inform its text and nothing else. The dose stays due either way and `markDoseTaken` is
+untouched: the same informational posture as the weather-med notes (#1727) and the
+food–drug note beside it.
+
+**It is phrased about the LOG, never the person.** Absence of a food log is weak
+evidence — somebody may have eaten and logged none of it — so "no food logged" is what
+the app knows and "you haven't eaten" is a claim it cannot support. The first clause
+also names its own horizon, because "nothing logged" without one reads as a statement
+about the whole day.
+
+`lib/food-timing-check.ts` is the whole model (pure: the two windows, the truth table,
+the wording), `getMinutesSinceLastFoodLog` is the single bounded ledger read, and
+`gatherWindowDoses` joins them once per gather onto each `WindowDose`. Because the check
+rides the GATHER rather than a renderer parameter, every surface built from those entries
+— the dedicated window reminder, a merged multi-slot send, every tap rebuild — words the
+same fact identically (#221). A gather for a PAST date carries no check at all: "in the
+last 90 min" is a statement about right now, and pinning it to a day that has ended would
+be a confident falsehood. `COALESCE(eaten_at, logged_at)` is where #2019 slots in
+transparently — a stated eating instant beats a tap stamp, with no branch and no second
+read.
+
 ### Time correction: `foodtime` / `dosetime` (#2019, #2020)
 
 A one-tap button in a chat carries a contract — "I'm eating NOW", "I'm taking this
