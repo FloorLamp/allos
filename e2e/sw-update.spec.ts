@@ -23,6 +23,23 @@ const NEXT_VERSION = "sw-update-spec";
 // with no server round-trip to key off. Named ceiling per the e2e-hygiene census.
 const SW_SETTLE_MS = 20_000;
 
+// A real deploy moves the SERVER's sha together with the worker's URL; the harness
+// can only move the second. So the specs move the first themselves: intercepting
+// /api/version to name a build this page is not on makes the simulated deploy read
+// as a real one. Without it, the update would (rightly) never be offered — a
+// waiting worker for the build the page already runs is consumed silently (#1905).
+const DEPLOYED = { sha: "1700abc", commitMessage: "e2e worker deploy" };
+
+async function interceptVersion(page: Page) {
+  await page.route("**/api/version", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(DEPLOYED),
+    })
+  );
+}
+
 async function waitForController(page: Page) {
   await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
     timeout: SW_SETTLE_MS,
@@ -46,6 +63,7 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
+  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
   const before = await controllerScript(page);
@@ -94,6 +112,7 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
+  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
 
@@ -104,6 +123,10 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   const bar = page.getByTestId("update-ready-bar");
   await expect(bar).toBeVisible({ timeout: SW_SETTLE_MS });
 
+  // The deploy is over from here on: drop the interception so the reloaded page
+  // reads the sha it was actually served with, the way a tab that took a real
+  // update does.
+  await page.unroute("**/api/version");
   await bar.getByTestId("update-ready-reload").click();
 
   // Assert the OUTCOME (the page loaded a second time) rather than catching the
@@ -134,17 +157,28 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   expect(await controllerScript(page)).toContain("/sw.js?v=");
 
   // The fresh load re-registers the app's OWN version, which becomes the next
-  // WAITING worker — the bar returning is proof that the deferred posture still
-  // holds after an update, and a real settle point to re-check the counter against
-  // (no sleep involved): still exactly two loads, so nothing looped.
-  //
-  // Which of the two generations ends up active afterwards is deliberately NOT
-  // asserted: the spec creates a version ping-pong (spec build ⇄ app build) that a
-  // real deploy never has, and the winner of that is browser bookkeeping rather
-  // than anything this app decides.
-  await expect(page.getByTestId("update-ready-bar")).toBeVisible({
-    timeout: SW_SETTLE_MS,
-  });
+  // WAITING worker — for the build this page is already running, because the page's
+  // own registration is what discovered it. That is the #1905 refresh shape, and
+  // the fixed contract is that it is consumed SILENTLY: the worker generation
+  // activates on its own (the settle point below — no sleep involved), no bar
+  // returns, and nothing reloads. The bar re-offering here was the ping-pong this
+  // spec used to institutionalise.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (specVersion) => {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (!reg || !reg.active || reg.waiting || reg.installing)
+            return false;
+          return !reg.active.scriptURL.includes(specVersion);
+        }, NEXT_VERSION),
+      {
+        timeout: SW_SETTLE_MS,
+        message: "the app's own worker generation to be silently activated",
+      }
+    )
+    .toBe(true);
+  await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem("swSpecLoads"))).toBe(
     "2"
   );

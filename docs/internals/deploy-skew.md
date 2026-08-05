@@ -31,18 +31,25 @@ under a half-filled form.
 
 A manual refresh (F5, pull-to-refresh) fetches the new build's HTML and assets, but
 it **never activates a waiting worker** — only the skip-waiting handshake or closing
-every tab of the origin does. So a refreshed page used to find `registration.waiting`
-still there and re-offer: a bar advertising an update to the build the page was
-already running, which no refresh could clear.
+every tab of the origin does. And on the first load after a deploy the new worker is
+usually not waiting **yet**: the page's own `register("/sw.js?v=<new sha>")` call is
+what tells the browser a deploy happened at all (the update tick refetches the old
+versioned URL, whose bytes a deploy does not change), so the worker installs seconds
+after load, through `updatefound`. Both shapes used to re-offer — the second one
+even after the first was fixed, because the fix keyed on "waiting at load" — a bar
+advertising an update to the build the page was already running, coming back on the
+very refresh that was supposed to clear it.
 
-`loadTimeUpdatePlan()` decides load-time waiting workers instead of offering them:
+`waitingWorkerPlan()` decides every waiting worker instead of offering it, however
+it arrived, on one discriminator — the sha this document was served with against the
+sha the server reports:
 
-| waiting at load | page sha vs deployed sha | plan                |
-| --------------- | ------------------------ | ------------------- |
-| no              | —                        | `offer` (#1700)     |
-| yes             | not yet known            | `wait`              |
-| yes             | equal                    | `activate-silently` |
-| yes             | differ or unknown        | `offer`             |
+| page sha vs deployed sha             | plan                |
+| ------------------------------------ | ------------------- |
+| no page sha to compare               | `offer`             |
+| not yet known                        | `wait`              |
+| equal                                | `activate-silently` |
+| differ, or read settled with nothing | `offer` (#1700)     |
 
 `activate-silently` posts `SKIP_WAITING` and raises nothing. There is no reload
 because the page already **has** the new assets; the worker just takes over
@@ -54,6 +61,13 @@ holds for the single `/api/version` read the comparison turns on, and resolves t
 moment that read settles either way (`useDeployedVersion` reports `settled`
 separately from `sha`, because the endpoint is session-gated and an anonymous tab
 settles knowing nothing).
+
+The read is **re-armed per waiting worker**: `useDeployedVersion` takes a
+`generation` the registrar bumps for each newly-waiting worker, which un-settles a
+finished read. A second deploy under the same open page is therefore never judged
+against the answer read for the first — a stale "you are current" would silently
+consume a genuine update, and strip the #1906 pending marker from a tab that is in
+fact stale.
 
 **The multi-tab tradeoff, recorded not hidden.** Activation is registration-wide, so
 a second still-open tab on the old build loses the old asset cache when the new
@@ -136,7 +150,7 @@ Tailwind `dark:` variants already work.
 ## Testing
 
 Pure (`lib/__tests__/sw-update.test.ts`, `lib/__tests__/theme.test.ts`): the
-load-time decision matrix, the skew classifier's positives and its deliberate
+waiting-worker decision matrix, the skew classifier's positives and its deliberate
 negatives, the guard's state machine including a 25-pass broken-deploy simulation
 that must produce exactly one reload, the marker contract, and that the two error-card
 palettes genuinely invert rather than merely differ.
@@ -145,13 +159,16 @@ Browser: `e2e/sw-update.spec.ts` drives the real deferred-activation posture;
 `e2e/update-notice.spec.ts` drives the no-worker fallback detector and pins the
 pending marker being written, and kept across a dismissal.
 
-**What is not driven end to end, honestly.** Two things.
+**What is not driven end to end, honestly.**
 
-The #1905 refresh path cannot be simulated in one `next start`: the harness "deploys"
-by registering a worker at a second URL, so on the next load the page re-registers
-its _own_ URL and the two generations ping-pong — an artifact a real deploy (where
-the page's sha moves with the worker's) never has. The e2e suite would be asserting
-the harness, not the fix.
+A real deploy moves the server's sha together with the worker's URL; the harness can
+only move the second, so `e2e/sw-update.spec.ts` moves the first itself by
+intercepting `/api/version` — without that, the fix would (rightly) consume the
+simulated update silently instead of offering it. The reload test then drops the
+interception and pins the other half of #1905: the page's own re-registered worker
+generation is consumed silently instead of ping-ponging back as a fresh offer. What
+remains undriven is a genuine F5 against a server whose build actually changed
+underneath the harness.
 
 `app/global-error.tsx` is not reachable from Playwright at all. It renders only when
 something throws above the route group, and nothing in the app can be made to do that
