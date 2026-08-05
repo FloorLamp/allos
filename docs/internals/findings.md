@@ -1309,7 +1309,7 @@ The rule the copy obeys, and the reason it is here rather than in a UI doc:
 > **Say what the DATA is doing, never what the reader should be doing.**
 
 That is what rules the adjacent idea OUT. A "sleep mode" saying something like
-*"you are usually asleep now"* must not be built:
+_"you are usually asleep now"_ must not be built:
 
 - Sleep is an **observation domain** in §3 — an observation cannot be missed, so
   nobody promised the app a bedtime, and the line carries meaning only as an

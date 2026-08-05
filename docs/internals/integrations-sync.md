@@ -842,7 +842,7 @@ The Data → Review row makes the same distinction — "sync has stopped" instea
 paragraph above states it outright — staleness measures the SYNC, not the DATA,
 so a rest week is not a broken connection. That is right for the attention
 surface and makes the signal structurally unable to answer a different question:
-*has this person stopped tracking sleep?* Someone wears a tracker for months and
+_has this person stopped tracking sleep?_ Someone wears a tracker for months and
 then stops, but the phone keeps syncing steps: `ok=1` events with non-zero
 inserted counts, green badge, nothing stale. Only the sleep rows end.
 

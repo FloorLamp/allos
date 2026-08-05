@@ -208,7 +208,10 @@ export function sleepWaitingState(
 // remark about the hour, which is the one thing this state must not make.
 export function sleepWaitingDetail(
   state: SleepWaitingState,
-  fmt: { clock: (minutesOfDay: number) => string; when: (iso: string) => string }
+  fmt: {
+    clock: (minutesOfDay: number) => string;
+    when: (iso: string) => string;
+  }
 ): string | null {
   switch (state.kind) {
     case "in-progress":

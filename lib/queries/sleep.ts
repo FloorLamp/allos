@@ -607,15 +607,12 @@ export function getSleepArrivalLagMinutes(
     .all(profileId, profileId, limit * 4) as { lag: number | null }[];
   const lags = rows
     .map((r) => r.lag)
-    .filter(
-      (v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN
-    )
+    .filter((v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN)
     .slice(0, limit)
     .sort((a, b) => a - b);
   if (lags.length < MIN_ARRIVAL_SAMPLES) return null;
   const mid = Math.floor(lags.length / 2);
-  const median =
-    lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
+  const median = lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
   return Math.round(median);
 }
 

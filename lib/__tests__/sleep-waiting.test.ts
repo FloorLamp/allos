@@ -90,9 +90,7 @@ describe("sleepWaitingState — precedence", () => {
 
   it("checks tracking even when the clock is deep in the waiting window", () => {
     expect(
-      sleepWaitingState(
-        signals({ minutesOfDay: MIN(6, 5), tracking: false })
-      )
+      sleepWaitingState(signals({ minutesOfDay: MIN(6, 5), tracking: false }))
     ).toBeNull();
   });
 });
@@ -183,14 +181,18 @@ describe("sleepWaitingDetail", () => {
 
     // Under the sample gate the query hands over null, and the copy degrades to the
     // plain wording rather than quoting a median built on three mornings.
-    const unmeasured = sleepWaitingState(signals({ minutesOfDay: MIN(6, 30) }))!;
+    const unmeasured = sleepWaitingState(
+      signals({ minutesOfDay: MIN(6, 30) })
+    )!;
     expect(unmeasured.etaMinutes).toBeNull();
     expect(sleepWaitingDetail(unmeasured, fmt)).toBeNull();
   });
 
   it("names the last check on the not-synced state", () => {
     const s = sleepWaitingState(signals({ minutesOfDay: MIN(16) }))!;
-    expect(sleepWaitingDetail(s, fmt)).toBe("Last checked at 2026-08-05 06:33:00");
+    expect(sleepWaitingDetail(s, fmt)).toBe(
+      "Last checked at 2026-08-05 06:33:00"
+    );
   });
 
   it("says NOTHING extra while the night is in progress", () => {

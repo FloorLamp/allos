@@ -73,7 +73,9 @@ test("before the wake anchor, it names the night in progress and says nothing ab
     // about when they are "usually asleep" would only mean anything as an implied
     // should.
     const card = page.getByTestId("sleep-waiting");
-    await expect(card).not.toContainText("usually asleep", { ignoreCase: true });
+    await expect(card).not.toContainText("usually asleep", {
+      ignoreCase: true,
+    });
     await expect(card).not.toContainText("you're", { ignoreCase: true });
     await expect(page.getByTestId("sleep-hero")).toHaveCount(0);
   } finally {
