@@ -46,7 +46,12 @@ import {
   AUTO_HOUR,
   parseNotifyHour,
 } from "../notifications/schedule";
+import {
+  arrivalLagAllowance,
+  digestAutoHour,
+} from "../notifications/digest-schedule";
 import { typicalWakeTime } from "../queries/sleep";
+import { getSleepArrivalLagsMin } from "../queries/metrics";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -690,7 +695,9 @@ export interface NotifySchedule {
   morningAuto: boolean;
   // Morning digest: the hour (0-23, this profile's timezone) to send
   // the once-a-day summary, or null = off. Off by default. When `digestAuto` is
-  // true this holds the resolved wake hour and the digest is ON at that hour.
+  // true this holds the resolved auto hour and the digest is ON at that hour —
+  // which since #2102 is the wake time plus the measured sleep-ARRIVAL lag, not the
+  // wake hour itself (see digestAutoHour).
   digestHour: number | null;
   // Whether the morning digest follows the wake time (issue #1117). Unlike the
   // Morning slot, an ABSENT digest stays off (opt-in) — only an explicit "auto"
@@ -730,6 +737,11 @@ const SUPP_HOUR_KEYS = {
 // Convert a typical-wake clock MINUTE (0..1439) to the notify HOUR (0-23),
 // rounding to the nearest hour so a 6:50 wake seeds 7:00, not 6:00. Clamped so a
 // late-evening median can't wrap to hour 0. Null minute → null (no sleep data).
+//
+// This is the WAKE hour, and it stays the answer for the Morning intake slot: that
+// slot needs you awake and has no dependency on sleep data having synced. The
+// morning DIGEST does depend on it, and resolves through digestAutoHour instead
+// (#2102) — do not fold the arrival lag into this shared helper.
 function wakeMinuteToHour(min: number | null): number | null {
   if (min == null) return null;
   return Math.min(23, Math.round(min / 60));
@@ -746,12 +758,26 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     morningRaw === undefined ||
     morningRaw === AUTO_HOUR ||
     digestRaw === AUTO_HOUR;
-  const wakeHour = needsWake
-    ? wakeMinuteToHour(typicalWakeTime(profileId))
-    : null;
+  const wakeMinute = needsWake ? typicalWakeTime(profileId) : null;
+  const wakeHour = wakeMinuteToHour(wakeMinute);
   // Auto/absent Morning resolves to the wake hour, or the hardcoded default when no
   // sleep data yet — graceful degradation.
   const morningAutoValue = wakeHour ?? DEFAULT_INTAKE_REMINDER_HOURS.Morning;
+
+  // The DIGEST's auto value (#2102). It resolves past the hour last night's sleep
+  // typically ARRIVES, not the hour the profile wakes: the digest prints a Sleep
+  // section, and the row lands a measured ~70 minutes behind waking, so the wake
+  // hour scheduled the digest — deliberately — for a time the data has never
+  // arrived by. Only paid for on an explicitly `auto` digest; a thin arrival sample
+  // returns null and falls back to today's wake-hour behavior, where the one-hour
+  // deferral in the tick is the safety net instead.
+  const digestAutoValue =
+    digestRaw === AUTO_HOUR
+      ? (digestAutoHour(
+          wakeMinute,
+          arrivalLagAllowance(getSleepArrivalLagsMin(profileId))
+        ) ?? morningAutoValue)
+      : morningAutoValue;
 
   return {
     supplementHours: {
@@ -777,8 +803,8 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     workoutEnabled:
       (getProfileSetting(profileId, "notify_workout_enabled") ?? "1") === "1",
     // Digest is opt-in: absent → off (null). Only an explicit "auto" turns it on at
-    // the wake hour; "N" → manual.
-    digestHour: parseNotifyHour(digestRaw, null, morningAutoValue),
+    // the resolved auto hour; "N" → manual.
+    digestHour: parseNotifyHour(digestRaw, null, digestAutoValue),
     digestAuto: digestRaw === AUTO_HOUR,
     // Weekly recap — off by default (opt-in). Weekday 0-6, else null.
     weeklyRecapDay: parseWeekday(

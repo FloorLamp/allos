@@ -531,6 +531,54 @@ export function getSleepSessionsInRange(
   });
 }
 
+// A night is an overnight (rather than a nap) for arrival-lag purposes at this
+// duration. The provenance ledger carries no session label, so the lag sample is
+// bounded by duration instead: a three-hour window is short for a night and long
+// for a nap, and an afternoon nap's sync latency is not the quantity being asked
+// about ("how long after WAKING does last night normally land?").
+const ARRIVAL_LAG_MIN_OVERNIGHT_MIN = 180;
+
+// How long after each recent night ENDED its row actually landed in the database,
+// in minutes — the measured arrival lag behind the `auto` digest hour (#2102).
+//
+// Both sides are absolute UTC instants (`end_time` from the provider, `created_at`
+// stamped by the sync that wrote the row), so the difference is timezone-free and
+// no profile-local conversion is needed. `MIN(created_at)` per sample is the FIRST
+// time the row appeared: a later re-sync updates the same row and must not be
+// mistaken for a slower arrival.
+//
+// Rows with no provenance are silently absent, which is the correct answer — a
+// manually logged night has no arrival lag to measure, and the resolution's sample
+// gate turns "too few measurable nights" into a fallback rather than a guess.
+export function getSleepArrivalLagsMin(
+  profileId: number,
+  limitNights = 30
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT MIN((julianday(r.created_at) - julianday(ms.end_time)) * 1440.0) AS lagMin
+         FROM metric_samples ms
+         JOIN integration_sync_rows r
+           ON r.target_table = 'metric_samples' AND r.target_id = ms.id
+        WHERE ms.profile_id = ?
+          AND ms.metric = 'sleep_min'
+          AND ms.start_time IS NOT NULL
+          AND ms.end_time IS NOT NULL
+          AND julianday(ms.end_time) > julianday(ms.start_time)
+          AND ms.value >= ?
+        GROUP BY ms.id
+        ORDER BY ms.date DESC
+        LIMIT ?`
+    )
+    .all(profileId, ARRIVAL_LAG_MIN_OVERNIGHT_MIN, limitNights) as {
+    lagMin: number | null;
+  }[];
+  return rows
+    .map((r) => r.lagMin)
+    .filter((v): v is number => v != null && Number.isFinite(v))
+    .map((v) => Math.round(v));
+}
+
 // Duration-only manual sleep entries written by the measurements quick-add. Their equal
 // start/end midnight timestamps are the stable natural key upsertManualSample
 // uses, so these (and only these) are safe for the Sleep log's inline editor to
