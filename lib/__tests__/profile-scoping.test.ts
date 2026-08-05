@@ -505,6 +505,13 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     expr: "profileSql",
     why: "getProviderMergeImpact profiles-touched aggregate (#275): a GLOBAL, deliberately profile-AGNOSTIC count across every profile (the admin-only merge shows 'N across M profiles'). `profileSql` is one of two hand-authored strings over the bound PROVIDER_LINK_COLUMNS — the plain SELECT DISTINCT profile_id, or, for the child medication_courses (no own profile_id, #1204), a JOIN to intake_items resolving the parent's profile_id. Neither reads one profile's data into another's — it is the count itself that spans profiles by design.",
   },
+  ...(
+    ["upsert", "decrement", "drop", "select", "incrementExisting"] as const
+  ).map((expr) => ({
+    file: "lib/day-counter-ledger-db.ts",
+    expr: `sql.${expr}`,
+    why: "the day-counter ledger (#2037): all five statements are compiled by the pure `dayCounterSql` from CONSTANT table/column names, and every one of them is born or filtered profile-scoped — the upsert names profile_id in its column list, the other four open their WHERE with `profile_id = ?`. lib/__tests__/day-counter-ledger.test.ts asserts exactly that, per declared counter, which is a stronger guarantee than this scan's per-literal read.",
+  })),
 ];
 
 // POSITIONAL profile_id check (issue #1208 fix 1). The old guard passed any

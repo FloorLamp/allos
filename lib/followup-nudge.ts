@@ -28,7 +28,7 @@
 // never reaches this planner) is held out of `toSend` with its marker untouched, so
 // the cadence resumes exactly where it stood when the snooze expires.
 
-import { shiftDateStr } from "./date";
+import { planNudgeCadence } from "./nudge-cadence";
 
 export const FOLLOWUP_NUDGE_MARKER_PREFIX = "notify_last_followup_";
 
@@ -85,6 +85,13 @@ export interface FollowUpNudgePlan {
 // Decide the plan. Pure. `markedIds` is the FULL live-marker id set (self-healing
 // sweep, #325); `suppressedIds` are candidates currently hidden by a live snooze —
 // frozen: neither sent nor cleared.
+//
+// Since #2036 this is the shared planNudgeCadence decision (lib/nudge-cadence.ts) with
+// the ONE cadence policy that is not once-per-episode: `maxSends: 2` with a repeat
+// spaced `repeatDays` off the FIRST send. That policy IS the #1866 owner ruling, and it
+// is the reason the engine carries a stage and a date at all — the other four planners
+// are the same engine with `maxSends: 1`. Everything else here is follow-up vocabulary:
+// the comma-joined marker value, the care_plan_items id space, the numeric ordering.
 export function planFollowUpNudges(
   candidates: readonly FollowUpNudgeCandidate[],
   markedIds: Iterable<number>,
@@ -92,26 +99,30 @@ export function planFollowUpNudges(
   today: string,
   repeatDays: number = FOLLOWUP_REPEAT_DAYS
 ): FollowUpNudgePlan {
-  const marked = new Set(markedIds);
-  const suppressed = new Set(suppressedIds);
-  const candidateIds = new Set(candidates.map((c) => c.id));
-  const toSend: FollowUpNudgePlan["toSend"] = [];
-  for (const c of candidates) {
-    if (suppressed.has(c.id)) continue; // frozen — resume after the snooze expires
-    if (c.sentDates.length === 0) {
-      toSend.push({ id: c.id, stage: "first" });
-    } else if (
-      c.sentDates.length < FOLLOWUP_MAX_SENDS &&
-      shiftDateStr(c.sentDates[0], repeatDays) <= today
-    ) {
-      toSend.push({ id: c.id, stage: "repeat" });
-    }
-    // FOLLOWUP_MAX_SENDS dates → the cadence is spent; silence, forever.
-  }
-  // Self-healing sweep: a marker whose follow-up is no longer an overdue candidate.
-  // An absent follow-up carries no live finding, so suppression cannot freeze it.
-  const toClear = [...marked]
-    .filter((id) => !candidateIds.has(id))
-    .sort((a, b) => a - b);
-  return { toSend, toClear };
+  const plan = planNudgeCadence<number, null>({
+    // The caller passes exactly the currently-OVERDUE set, so every candidate is live;
+    // a follow-up that settled, resolved or was re-dated is simply absent, and its
+    // marker reaches the sweep through `markedIds`.
+    candidates: candidates.map((c) => ({
+      key: c.id,
+      item: null,
+      actionable: true,
+      sends: c.sentDates.length,
+      firstSentDate: c.sentDates[0] ?? null,
+    })),
+    marked: markedIds,
+    frozen: suppressedIds,
+    today,
+    // An absent follow-up carries no live finding, so suppression cannot freeze its
+    // clear — the same posture the refill nudge states.
+    policy: {
+      maxSends: FOLLOWUP_MAX_SENDS,
+      repeatDays,
+      frozenBlocksClear: false,
+    },
+  });
+  return {
+    toSend: plan.toSend.map((s) => ({ id: s.key, stage: s.stage })),
+    toClear: plan.toClear.sort((a, b) => a - b),
+  };
 }

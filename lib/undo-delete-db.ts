@@ -8,6 +8,8 @@
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
 import { db, writeTx } from "./db";
+import { dayCounterSpecFor } from "./day-counter-ledger";
+import { dayCounterLedger } from "./day-counter-ledger-db";
 import {
   capturedVideoFiles,
   getKindSpec,
@@ -30,6 +32,17 @@ import {
   liveRowIdForCapturedRoot,
 } from "./integrations/tombstones";
 import { practiceIdentity } from "./practice";
+
+// A captured counter row's identity values BESIDE profile_id and date, positional to the
+// ledger's `keyColumns` (i.e. the `CounterSpec.key` order minus `date`). Read straight
+// off the snapshot, which is why the delete arm and the restore arm address the same row
+// without either of them re-deriving the coordinate.
+function counterKeyValues(
+  key: readonly string[],
+  row: Row
+): (string | number)[] {
+  return key.filter((c) => c !== "date").map((c) => row[c] as string | number);
+}
 
 // Human-readable, NON-PHI descriptors stored in deleted_rows.label (for a possible
 // future trash view). Never the user's title/name — that stays in `payload`.
@@ -251,18 +264,25 @@ export function captureDelete(
     // happens in the SAME transaction as the capture and the delete — the ledger row and
     // its day counter are one fact in two shapes and must never be observable apart.
     // Table/column names come from the constant registry, never from user input.
+    //
+    // The arithmetic is the shared day-counter ledger since #2037: the guarded clamped
+    // decrement and the drop-at-zero here are the SAME two rules `undoFoodServingCore`
+    // applies, so the delete path and the write path cannot drift about what taking one
+    // tick back means. The captured row carries the counter's whole natural key (its
+    // `childWhere` selected on exactly that), so keying the unbump naturally rather than
+    // by id addresses the identical row under the table's UNIQUE index.
     for (const child of spec.entities.slice(1)) {
       if (!child.counter) continue;
+      const ledger = dayCounterLedger(
+        dayCounterSpecFor(child.table, child.counter.column, child.counter.key)
+      );
       for (const row of rows[child.entity] ?? []) {
-        const { column } = child.counter;
-        db.prepare(
-          `UPDATE ${child.table} SET ${column} = ${column} - 1
-            WHERE id = ? AND profile_id = ? AND ${column} > 0`
-        ).run(row.id, profileId);
-        db.prepare(
-          `DELETE FROM ${child.table}
-            WHERE id = ? AND profile_id = ? AND ${column} <= 0`
-        ).run(row.id, profileId);
+        ledger.unbump(
+          profileId,
+          String(row.date),
+          counterKeyValues(child.counter.key, row),
+          1
+        );
       }
     }
 
@@ -335,15 +355,24 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       // with the count back at one, which is also what restores its notes.
       if (entity.counter) {
         const { column, key } = entity.counter;
-        const where = `profile_id = ?${key.map((k) => ` AND ${k} = ?`).join("")}`;
+        const ledger = dayCounterLedger(
+          dayCounterSpecFor(entity.table, column, key)
+        );
         for (const row of captured) {
-          const binds = [profileId, ...key.map((k) => row[k])];
-          const info = db
-            .prepare(
-              `UPDATE ${entity.table} SET ${column} = ${column} + 1 WHERE ${where}`
+          // Give the one tick back through the shared ledger. `bumpExisting` is the
+          // arm a plain bump cannot serve: when the delete emptied the day and dropped
+          // the row, the SNAPSHOT (notes and all) is what has to come back, not a bare
+          // counter row — so the ledger reports whether the row is still there and this
+          // branch owns the re-insert.
+          if (
+            ledger.bumpExisting(
+              profileId,
+              String(row.date),
+              counterKeyValues(key, row),
+              1
             )
-            .run(...(binds as (string | number)[]));
-          if (info.changes > 0) continue;
+          )
+            continue;
           const toInsert = remapRow(row, idMaps, entity.fks, entity.keyRefs);
           toInsert[column] = 1;
           const cols = Object.keys(toInsert);

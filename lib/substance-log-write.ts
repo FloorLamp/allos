@@ -9,11 +9,17 @@
 // incremented; the keyed upsert is idempotent-friendly. `substance` is validated
 // against the substance catalog (only 'substance-log'-ledger substances land here)
 // so a forged/stale key writes nothing and is answered honestly by the caller.
+//
+// The counter arithmetic itself — additive upsert, guarded clamped decrement,
+// drop-at-zero, authoritative re-select — is the shared day-counter ledger since #2037
+// (lib/day-counter-ledger.ts). This file no longer re-instantiates it; it owns the
+// catalog validation, the typed outcomes, and the #468 transaction the ledger runs in.
 // NEVER GAMIFIED (#998/#1078 law): these writes never touch `activities`, so the
 // milestone/streak machinery stays structurally blind to the domain.
 
-import { db, writeTx } from "./db";
+import { writeTx } from "./db";
 import { now as clockNow } from "./clock";
+import { substanceDayCounter } from "./day-counter-ledger-db";
 import { isSubstanceLogged, type Substance } from "./substance-use";
 
 // The typed result of a unit write (the markDoseTaken contract, #232): the caller
@@ -44,19 +50,10 @@ export function logSubstanceUnitCore(
 ): SubstanceLogOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
   return writeTx(() => {
-    db.prepare(
-      `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
-       VALUES (?, ?, ?, 1, ?)
-       ON CONFLICT (profile_id, date, substance)
-       DO UPDATE SET units = units + 1, logged_at = excluded.logged_at`
-    ).run(profileId, date, substance, loggedAt);
-    const row = db
-      .prepare(
-        `SELECT units FROM substance_log
-          WHERE profile_id = ? AND date = ? AND substance = ?`
-      )
-      .get(profileId, date, substance) as { units: number } | undefined;
-    return { kind: "logged", units: row?.units ?? 1, substance };
+    const units = substanceDayCounter.bump(profileId, date, [substance], 1, [
+      loggedAt,
+    ]);
+    return { kind: "logged", units, substance };
   });
 }
 
@@ -70,20 +67,7 @@ export function undoSubstanceUnitCore(
 ): SubstanceUndoOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
   return writeTx(() => {
-    db.prepare(
-      `UPDATE substance_log SET units = units - 1
-        WHERE profile_id = ? AND date = ? AND substance = ? AND units > 0`
-    ).run(profileId, date, substance);
-    db.prepare(
-      `DELETE FROM substance_log
-        WHERE profile_id = ? AND date = ? AND substance = ? AND units <= 0`
-    ).run(profileId, date, substance);
-    const row = db
-      .prepare(
-        `SELECT units FROM substance_log
-          WHERE profile_id = ? AND date = ? AND substance = ?`
-      )
-      .get(profileId, date, substance) as { units: number } | undefined;
-    return { kind: "undone", units: row?.units ?? 0, substance };
+    const units = substanceDayCounter.unbump(profileId, date, [substance], 1);
+    return { kind: "undone", units, substance };
   });
 }

@@ -57,6 +57,7 @@ import { getIntakeDeltas } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
+import { DIGEST_MARKER_KEY } from "./send-markers";
 import {
   activitiesSurviveDemotion,
   collapsedTuneAction,
@@ -647,7 +648,7 @@ export async function runDigest(
   date: string,
   gathered?: CoachingInput
 ): Promise<{ failed: boolean }> {
-  const dedupKey = "notify_last_digest";
+  const dedupKey = DIGEST_MARKER_KEY;
   const model = buildDigest(
     gatherDigestInput(profileId, profileName, gathered)
   );

@@ -21,6 +21,9 @@
 //     clear eagerly (leftRefillTrackedSet, below) so a same-session re-entry re-fires
 //     without waiting for a tick.
 //
+// The three rules this file used to spell out by hand — send, freeze, self-healing
+// sweep — are lib/nudge-cadence.ts since #2036; only the refill vocabulary lives here.
+//
 // Page suppression (issue #227) — a dismissed/snoozed refill finding (keyed by the
 // item's `refill:<id>` signal, the identical dedupeKey the Upcoming item carries)
 // FREEZES the episode exactly like the preventive nudge's covered/suppressed rules:
@@ -28,6 +31,8 @@
 // untouched, so un-dismissing later (or a snooze expiring) resumes the normal
 // lifecycle. Suppression only bears on the low/would-send branch — a NOT-low item
 // has no refill finding to suppress, so its recovered-marker clear runs regardless.
+
+import { ONCE_PER_EPISODE, planNudgeCadence } from "./nudge-cadence";
 
 // One low item the nudge can announce.
 export interface RefillNudgeItem {
@@ -62,33 +67,39 @@ export interface RefillNudgePlan {
 // is the set whose `refill:<id>` finding the user has dismissed/snoozed — held out of
 // `toSend` and never cleared here, so its episode marker stays frozen while the
 // suppression stands. `toClear` is sorted for deterministic output.
+//
+// Since #2036 the three rules (send / freeze / self-healing sweep) are the shared
+// planNudgeCadence decision; this adapter owns the refill vocabulary — what "low" means
+// (low AND estimable), the announced item shape, the numeric ordering — and nothing
+// about the cadence. `frozenBlocksClear: false` is the documented refill posture: a
+// not-low item carries no refill finding, so suppression is irrelevant to its clear.
 export function planRefillNudges(
   candidates: readonly RefillCandidate[],
   markedIds: Iterable<number>,
   suppressedIds: Iterable<number> = []
 ): RefillNudgePlan {
   const marked = new Set(markedIds);
-  const suppressed = new Set(suppressedIds);
-  const candidateIds = new Set(candidates.map((c) => c.id));
-  const toSend: RefillNudgeItem[] = [];
-  const toClear: number[] = [];
-  for (const c of candidates) {
-    if (c.low && c.daysLeft != null) {
-      if (!marked.has(c.id) && !suppressed.has(c.id))
-        toSend.push({ id: c.id, name: c.name, daysLeft: c.daysLeft });
-    } else if (marked.has(c.id)) {
-      // Recovered (refilled / no longer estimable) → end the episode. A not-low item
-      // carries no refill finding, so suppression is irrelevant to this clear.
-      toClear.push(c.id);
-    }
-  }
-  // Self-healing sweep (issue #325): a marker whose item is no longer even a tracked
-  // candidate — paused, or quantity tracking turned off — never reaches the per-
-  // candidate branch above, so clear it here. The item isn't a candidate, so it can
-  // carry no live refill finding: suppression cannot freeze it.
-  for (const id of marked) if (!candidateIds.has(id)) toClear.push(id);
-  toClear.sort((a, b) => a - b);
-  return { toSend, toClear };
+  const plan = planNudgeCadence<number, RefillNudgeItem | null>({
+    candidates: candidates.map((c) => ({
+      key: c.id,
+      item:
+        c.daysLeft != null
+          ? { id: c.id, name: c.name, daysLeft: c.daysLeft }
+          : null,
+      actionable: c.low && c.daysLeft != null,
+      sends: marked.has(c.id) ? 1 : 0,
+      firstSentDate: null,
+    })),
+    marked: markedIds,
+    frozen: suppressedIds,
+    policy: ONCE_PER_EPISODE,
+  });
+  return {
+    // An actionable candidate always carries an item (actionable requires an estimable
+    // daysLeft), so this drops nothing the planner asked to send.
+    toSend: plan.toSend.flatMap((s) => (s.item ? [s.item] : [])),
+    toClear: plan.toClear.sort((a, b) => a - b),
+  };
 }
 
 // The per-item episode-marker key + prefix. The SINGLE source of truth for the

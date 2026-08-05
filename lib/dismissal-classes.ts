@@ -506,6 +506,13 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
 // here — so a new signal-key prefix cannot ship without someone deciding which it is.
 // Each entry states what the prefix actually keys, because "not a dismissal" is a
 // claim that has to be checkable.
+//
+// Since #2036 the `notify_` entries below are more than an excuse: each of them is a
+// declared entry in SEND_MARKER_REGISTRY (lib/notifications/send-markers.ts), and
+// lib/__tests__/send-markers.test.ts asserts that agreement in both directions — every
+// `notify_` prefix excused here must be a real send marker there, and no key may be
+// both. The two registries describe two different stores, and neither is allowed to be
+// the reason nobody looked at the other.
 export const NON_DISMISSAL_PREFIXES: readonly {
   prefix: string;
   what: string;
@@ -533,6 +540,14 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   {
     prefix: "notify_ease_back_",
     what: "profile_settings one-shot send marker (lib/notifications/ease-back)",
+  },
+  {
+    prefix: "notify_last_food_",
+    what: "profile_settings per-day send marker for the food nudge's window (lib/notifications/send-markers)",
+  },
+  {
+    prefix: "notify_last_supp_",
+    what: "profile_settings per-day send marker for an intake reminder slot (lib/notifications/send-markers)",
   },
   {
     prefix: "metric:",

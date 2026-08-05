@@ -256,6 +256,14 @@ use the same `dedupeKey` as their visible finding. Dose reminders and missed-dos
 escalations are safety signals and must never be silenced by an Upcoming
 dismissal. Suppression policy flows through `isHiddenUnderPolicy`.
 
+Every `notify_*` send marker is declared in `SEND_MARKER_REGISTRY`
+(`lib/notifications/send-markers.ts`) with its class, cadence, settings tier and
+the sweep that clears it; a source scan fails any undeclared `notify_` key, and a
+key whose tail is interpolated must mint through a builder there. The send /
+freeze / self-healing-sweep decision is `planNudgeCadence`
+(`lib/nudge-cadence.ts`) — the refill, preventive, illness-care and follow-up
+planners are adapters over it, not four copies.
+
 Delivery health is stored in `notify_lifecycle` and follows the shared
 set/clear/freeze decision in `lib/notifications/delivery-status.ts`. Clear an
 error only after a healthy dispatch actually attempted the affected channel.
@@ -431,6 +439,15 @@ See `docs/internals/e2e-hygiene.md`.
   filesystem artifacts.
 - Every table written by document import must stay represented in imported-row
   cleanup, document reassignment, and extracted-count accounting.
+- A **day counter** — one row per (profile, date, identity) holding a running
+  amount — goes through `dayCounterLedger` (`lib/day-counter-ledger.ts` +
+  `-db.ts`), never a hand-written copy. The ledger owns the additive upsert, the
+  guarded clamped decrement, the drop-at-zero, and the authoritative re-select as
+  one thing; the call site keeps catalog validation, typed outcomes, its event
+  rows, and its `writeTx`. `DAY_COUNTERS` declares the tables (`food_log`,
+  `substance_log`, `protein_log`); the undo path builds its ledger from the same
+  `CounterSpec` the undo registry declares, so the write side and the undo side
+  cannot drift.
 - Identity families use one canonical pure function everywhere (movement facts
   key on `exerciseHistoryKey`; load-sensitive strength facts on
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,

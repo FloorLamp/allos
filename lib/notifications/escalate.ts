@@ -21,6 +21,7 @@
 
 import { collectWindowDoses, getPreWorkoutSlotHour } from "./supplements";
 import { escalationMarkerKey } from "./escalation-keys";
+import { intakeSlotMarkerKey } from "./send-markers";
 import {
   escalationsDue,
   renderEscalationMessage,
@@ -86,8 +87,7 @@ export async function runEscalations(
   ];
   for (const { w, slotHour } of slots) {
     if (slotHour == null) continue;
-    if (getProfileSetting(profileId, `notify_last_supp_${w}`) !== date)
-      continue;
+    if (getProfileSetting(profileId, intakeSlotMarkerKey(w)) !== date) continue;
     sentWindows.push(w);
     for (const e of collectWindowDoses(profileId, w, date)) {
       // TWO gates, both required and neither redundant: `must` is the obligation
