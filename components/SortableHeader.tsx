@@ -6,6 +6,40 @@ import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import { nextSortState, parseSortDir } from "@/lib/table-sort";
 import { currentPathHref } from "@/lib/hrefs";
 
+// The ONE sortable-header presentation (issue #1491, drift D4): label + caret,
+// with the active column tinted brand and the inactive caret ghosted. Both
+// sorting mechanisms render through it — the URL-param `SortableHeader` below
+// and `RecordTable`'s client-state header — so there is a single visual
+// vocabulary for "this column sorts", not two hand-drawn caret sets.
+export function SortHeaderLabel({
+  label,
+  active,
+  dir,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+}) {
+  return (
+    <>
+      {label}
+      <span
+        className={
+          active
+            ? "text-brand-700 dark:text-brand-400"
+            : "text-slate-300 dark:text-slate-600"
+        }
+      >
+        {active && dir === "desc" ? (
+          <IconCaretDownFilled className="h-3.5 w-3.5" />
+        ) : (
+          <IconCaretUpFilled className="h-3.5 w-3.5" />
+        )}
+      </span>
+    </>
+  );
+}
+
 // A sticky table header whose label is a link that toggles sorting on `column`.
 // Clicking cycles asc → desc (and switches column when a different one is
 // active), encoding the choice in the `sort`/`dir` query params while
@@ -55,20 +89,7 @@ export default function SortableHeader({
           active ? (dir === "asc" ? "ascending" : "descending") : "none"
         }
       >
-        {label}
-        <span
-          className={
-            active
-              ? "text-brand-700 dark:text-brand-400"
-              : "text-slate-300 dark:text-slate-600"
-          }
-        >
-          {active && dir === "desc" ? (
-            <IconCaretDownFilled className="h-3.5 w-3.5" />
-          ) : (
-            <IconCaretUpFilled className="h-3.5 w-3.5" />
-          )}
-        </span>
+        <SortHeaderLabel label={label} active={active} dir={dir} />
       </Link>
     </th>
   );

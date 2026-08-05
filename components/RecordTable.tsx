@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/ui";
 import SubjectChip from "@/components/SubjectChip";
@@ -9,15 +8,19 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import ScrollFade from "@/components/ScrollFade";
+import { SortHeaderLabel } from "@/components/SortableHeader";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import type { AppRoute } from "@/lib/hrefs";
 import type { SubjectInfo } from "@/lib/scope";
 
-// A column of the shared records table. `cell` renders the row's value; the base
-// `px-3 py-2` padding is always applied, `cellClassName` (and `headerClassName`)
-// add the per-column styling / responsive-hide breakpoints. Give a column `sort`
-// to make its header clickable — `value` is the comparison key and `initialDir`
-// the direction chosen when it first becomes the active sort.
+// A column of the shared records table. `cell` renders the row's value; the
+// shared `.td` base styling is always applied, `cellClassName` (and
+// `headerClassName`) add the per-column styling / responsive-hide breakpoints.
+// Give a column `sort` to make its header clickable — `value` is the comparison
+// key and `initialDir` the direction chosen when it first becomes the active
+// sort.
 export interface RecordColumn<T> {
   header: string;
   headerClassName?: string;
@@ -48,12 +51,20 @@ export interface RecordTableMultiView<T> {
   subjectOf: (item: T) => SubjectInfo;
 }
 
-// The shared Records list surface: a `card` table whose rows
-// each swap in place for an inline edit form (a `colSpan` cell rendering the
-// page's shared <XForm>), with record CRUD in the shared overflow menu and the
-// shared EmptyState. Columns and the edit form are supplied by
-// the caller so each page keeps its own field set; RecordTable owns the shell, the
-// edit toggle, the (optional) header sorting, and the delete confirmation.
+// The shared Records list surface: a table whose rows each swap in place for an
+// inline edit form (a `colSpan` cell rendering the page's shared <XForm>), with
+// record CRUD in the shared overflow menu and the shared EmptyState. Columns and
+// the edit form are supplied by the caller so each page keeps its own field set;
+// RecordTable owns the shell, the edit toggle, the (optional) header sorting,
+// and the delete confirmation.
+//
+// The shell IS the house primitive set (#1491 item 1): `ResponsiveTable`/`Td`
+// stack the rows as cards below `sm` from the SAME DOM (the first column is the
+// card title, later columns flow into the labeled meta line — including columns
+// the desktop grid hides responsively, which the phone gets back), `ScrollFade`
+// carries any horizontal overflow at `sm` and up, headers wear the shared `.th`,
+// and a sortable header renders the same `SortHeaderLabel` carets the URL-param
+// `SortableHeader` draws. No second content tree, no private header styling.
 export default function RecordTable<T extends { id: number }>({
   items,
   columns,
@@ -134,168 +145,142 @@ export default function RecordTable<T extends { id: number }>({
   const colSpan = columns.length + 1 + (multiView ? 1 : 0);
 
   return (
-    <div className="card overflow-visible p-0 sm:overflow-x-auto">
-      <table className="block w-full border-collapse text-sm sm:table">
-        <thead className="hidden sm:table-header-group">
-          <tr className="border-b border-black/5 dark:border-white/5">
-            {multiView && (
-              <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">
-                Profile
-              </th>
-            )}
-            {columns.map((col, i) =>
-              col.sort ? (
-                <th
-                  key={i}
-                  className={`cursor-pointer select-none px-3 py-2 text-left font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 ${
-                    col.headerClassName ?? ""
-                  }`}
-                  onClick={() => toggleSort(i)}
-                  aria-sort={
-                    sortIndex === i
-                      ? dir === "asc"
-                        ? "ascending"
-                        : "descending"
-                      : "none"
-                  }
-                >
-                  <span className="inline-flex items-center gap-1">
+    <div className="card overflow-hidden p-0">
+      <ScrollFade>
+        <ResponsiveTable className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-black/5 dark:border-white/5">
+              {multiView && <th className="th">Profile</th>}
+              {columns.map((col, i) =>
+                col.sort ? (
+                  <th
+                    key={i}
+                    className={`th ${col.headerClassName ?? ""}`}
+                    aria-sort={
+                      sortIndex === i
+                        ? dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(i)}
+                      className="inline-flex items-center gap-1 hover:text-brand-700 dark:hover:text-brand-400"
+                    >
+                      <SortHeaderLabel
+                        label={col.header}
+                        active={sortIndex === i}
+                        dir={dir}
+                      />
+                    </button>
+                  </th>
+                ) : (
+                  <th key={i} className={`th ${col.headerClassName ?? ""}`}>
                     {col.header}
-                    {sortIndex === i &&
-                      (dir === "asc" ? (
-                        <IconCaretUpFilled className="h-3 w-3" />
-                      ) : (
-                        <IconCaretDownFilled className="h-3 w-3" />
-                      ))}
-                  </span>
-                </th>
+                  </th>
+                )
+              )}
+              <th className="th" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((item) =>
+              editingId === item.id ? (
+                <tr key={item.id}>
+                  <Td slot="full" colSpan={colSpan} className="p-3">
+                    {renderEditForm(item, () => setEditingId(null))}
+                  </Td>
+                </tr>
               ) : (
-                <th
-                  key={i}
-                  className={`px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300 ${
-                    col.headerClassName ?? ""
-                  }`}
+                <tr
+                  key={item.id}
+                  className="border-b border-black/5 transition last:border-b-0 hover:bg-slate-50 dark:border-white/5 dark:hover:bg-ink-850"
                 >
-                  {col.header}
-                </th>
+                  {multiView &&
+                    (() => {
+                      const subject = multiView.subjectOf(item);
+                      const isActing =
+                        subject.profileId === multiView.actingProfileId;
+                      const visible = subjectChipVisible({
+                        multi: true,
+                        isActing,
+                      });
+                      return (
+                        <Td slot="meta" empty={!visible} className="align-top">
+                          {visible ? <SubjectChip subject={subject} /> : null}
+                        </Td>
+                      );
+                    })()}
+                  {columns.map((col, i) => (
+                    <Td
+                      key={i}
+                      slot={i === 0 ? "title" : "meta"}
+                      label={i > 0 ? col.header : undefined}
+                      className={col.cellClassName ?? ""}
+                    >
+                      {col.cell(item)}
+                    </Td>
+                  ))}
+                  <Td slot="actions" className="text-right">
+                    {(() => {
+                      // Per-item write gate (#858/#1328): in multi-view a row whose
+                      // SUBJECT is read-only-granted shows no edit/delete; single-view
+                      // rows are the acting profile and always show them.
+                      const canWrite = multiView
+                        ? itemAffordanceVisible("item", {
+                            isActing:
+                              multiView.subjectOf(item).profileId ===
+                              multiView.actingProfileId,
+                            subjectCanWrite:
+                              multiView.subjectOf(item).access === "write",
+                          })
+                        : true;
+                      if (!canWrite) return null;
+                      return (
+                        <div className="flex items-center justify-end">
+                          <OverflowMenu
+                            label="Record actions"
+                            open={menuOpenId === item.id}
+                            onOpenChange={(open) =>
+                              setMenuOpenId(open ? item.id : null)
+                            }
+                          >
+                            {({ close }) => (
+                              <>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setEditingId(item.id);
+                                    close();
+                                  }}
+                                  className={MENU_ITEM}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => handleDelete(item, close)}
+                                  className={MENU_ITEM_DANGER}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </OverflowMenu>
+                        </div>
+                      );
+                    })()}
+                  </Td>
+                </tr>
               )
             )}
-            <th className="px-3 py-2" />
-          </tr>
-        </thead>
-        <tbody className="block sm:table-row-group">
-          {rows.map((item) =>
-            editingId === item.id ? (
-              <tr key={item.id} className="block sm:table-row">
-                <td colSpan={colSpan} className="block p-3 sm:table-cell">
-                  {renderEditForm(item, () => setEditingId(null))}
-                </td>
-              </tr>
-            ) : (
-              <tr
-                key={item.id}
-                className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-black/5 px-3 py-3 transition last:border-b-0 hover:bg-slate-50 sm:table-row sm:p-0 dark:border-white/5 dark:hover:bg-ink-850"
-              >
-                {multiView &&
-                  (() => {
-                    const subject = multiView.subjectOf(item);
-                    const isActing =
-                      subject.profileId === multiView.actingProfileId;
-                    return (
-                      <td className="col-span-2 row-start-1 mb-1 block p-0 align-top sm:table-cell sm:px-3 sm:py-2">
-                        {subjectChipVisible({ multi: true, isActing }) ? (
-                          <SubjectChip subject={subject} />
-                        ) : null}
-                      </td>
-                    );
-                  })()}
-                {columns.map((col, i) => (
-                  <td
-                    key={i}
-                    className={`min-w-0 ${
-                      i === 0
-                        ? `col-start-1 ${
-                            multiView ? "row-start-2" : "row-start-1"
-                          } block pr-2 sm:table-cell sm:px-3 sm:py-2`
-                        : `col-span-2 mt-1 flex items-start gap-2 p-0 text-sm sm:px-3 sm:py-2 ${
-                            // A caller that declares `hidden` also owns the
-                            // breakpoint that reveals this column (often md).
-                            // Adding sm:table-cell here would override it early.
-                            col.cellClassName?.split(/\s+/).includes("hidden")
-                              ? ""
-                              : "sm:table-cell"
-                          }`
-                    } ${col.cellClassName ?? ""}`}
-                  >
-                    {i > 0 ? (
-                      <span className="w-24 shrink-0 text-xs font-medium text-slate-400 sm:hidden">
-                        {col.header}
-                      </span>
-                    ) : null}
-                    {col.cell(item)}
-                  </td>
-                ))}
-                <td
-                  className={`col-start-2 ${
-                    multiView ? "row-start-2" : "row-start-1"
-                  } block p-0 sm:table-cell sm:px-3 sm:py-2`}
-                >
-                  {(() => {
-                    // Per-item write gate (#858/#1328): in multi-view a row whose
-                    // SUBJECT is read-only-granted shows no edit/delete; single-view
-                    // rows are the acting profile and always show them.
-                    const canWrite = multiView
-                      ? itemAffordanceVisible("item", {
-                          isActing:
-                            multiView.subjectOf(item).profileId ===
-                            multiView.actingProfileId,
-                          subjectCanWrite:
-                            multiView.subjectOf(item).access === "write",
-                        })
-                      : true;
-                    if (!canWrite) return null;
-                    return (
-                      <div className="flex items-center justify-end">
-                        <OverflowMenu
-                          label="Record actions"
-                          open={menuOpenId === item.id}
-                          onOpenChange={(open) =>
-                            setMenuOpenId(open ? item.id : null)
-                          }
-                        >
-                          {({ close }) => (
-                            <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setEditingId(item.id);
-                                  close();
-                                }}
-                                className={MENU_ITEM}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => handleDelete(item, close)}
-                                className={MENU_ITEM_DANGER}
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </OverflowMenu>
-                      </div>
-                    );
-                  })()}
-                </td>
-              </tr>
-            )
-          )}
-        </tbody>
-      </table>
+          </tbody>
+        </ResponsiveTable>
+      </ScrollFade>
     </div>
   );
 }
