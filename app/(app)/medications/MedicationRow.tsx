@@ -253,6 +253,14 @@ export default function MedicationRow({
                 itemId={med.id}
                 hasLastFill={med.last_fill_size != null}
                 lastFillSize={med.last_fill_size}
+                // How long a FULL fill lasts (not how much is left) — the same
+                // computation the low-supply badge runs, applied to the fill size.
+                supplyCycleDays={daysOfSupplyForItem(
+                  med.last_fill_size,
+                  med.qty_per_dose,
+                  refillRate,
+                  doses.length
+                )}
               />
             )}
             <OverflowMenu

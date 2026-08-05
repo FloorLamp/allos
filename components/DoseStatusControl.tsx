@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { setDoseStatus } from "@/app/(app)/nutrition/supplement-actions";
 import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
 import {
@@ -28,6 +29,12 @@ import {
 // intents the replay route applies once — but CHANGING an already-resolved dose
 // needs a connection (the queue models resolutions, not un-resolving), so it's
 // refused with a hint rather than silently dropped.
+//
+// A dose check-off is IDEMPOTENT per (dose, date), so it never asks anything (#2007's
+// classification) — but it still gets layer 1, the shared ledger's post-success
+// cooldown, keyed per CONTROL rather than per target: the second half of a double-tap
+// on ✅ arrives as the OPPOSITE target ("clear", because the first tap already flipped
+// the state), which is exactly the accidental un-take this closes.
 export type DoseVariant = "circle" | "pill";
 
 export default function DoseStatusControl({
@@ -58,7 +65,8 @@ export default function DoseStatusControl({
   const [optimistic, setOptimistic] = useState<
     "taken" | "skipped" | "clear" | null
   >(null);
-  const [busy, setBusy] = useState(false);
+  const ledger = useOptimisticLedger("dose-status");
+  const busy = ledger.pending("take") || ledger.pending("skip");
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   const isTaken = state === "taken";
   const isSkipped = state === "skipped";
@@ -95,7 +103,6 @@ export default function DoseStatusControl({
   async function submit(
     target: "taken" | "skipped" | "clear"
   ): Promise<"ok" | "refused" | "failed"> {
-    setBusy(true);
     const fd = new FormData();
     fd.set("dose_id", String(doseId));
     fd.set("status", target);
@@ -112,24 +119,49 @@ export default function DoseStatusControl({
       return "ok";
     } catch {
       return "failed";
-    } finally {
-      setBusy(false);
     }
   }
 
-  async function apply(target: "taken" | "skipped" | "clear") {
-    if (busy) return;
+  // What one tap ended up doing — modeled so the ledger sees exactly one settlement.
+  // "nothing" covers every arm that wrote nothing (a refusal, an offline change to an
+  // already-resolved dose, a failure): those stay immediately retryable, with no
+  // cooldown standing between the user and a second attempt.
+  type DoseTap = "wrote" | "nothing";
+
+  async function apply(
+    target: "taken" | "skipped" | "clear",
+    control: "take" | "skip"
+  ) {
+    // The double-tap gate, per control (see the header note on why not per target).
+    if (ledger.blocked(control)) return;
     // Stamp the tap moment up front: everything below (the online round-trip, its
     // failure, the queue write) happens after the dose was actually taken.
     const tappedAt = new Date();
+    await ledger.tap<DoseTap>({
+      key: control,
+      write: () => runTap(target, tappedAt),
+      settle: (outcome) =>
+        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
+      onError: () => {
+        toast("Couldn't update this dose. Try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
+  }
+
+  async function runTap(
+    target: "taken" | "skipped" | "clear",
+    tappedAt: Date
+  ): Promise<DoseTap> {
     // Cross-profile writes (#1373) are never queued — the offline replay route carries
     // no target profileId, so it would replay against the acting profile. Go straight
     // online; if the network drops, surface a retry toast rather than mis-target.
     if (profileId != null) {
+      const outcome = await submit(target);
       // A refusal already said what happened, in the server's words.
-      if ((await submit(target)) === "failed")
+      if (outcome === "failed")
         toast("Couldn't update this dose. Try again.", { tone: "error" });
-      return;
+      return outcome === "ok" ? "wrote" : "nothing";
     }
     const online =
       typeof navigator === "undefined" || navigator.onLine !== false;
@@ -142,13 +174,12 @@ export default function DoseStatusControl({
         toast("You're offline — reconnect to change a logged dose.", {
           tone: "error",
         });
-        return;
+        return "nothing";
       }
       await queue(target === "taken" ? "dose" : "skip-dose", target, tappedAt);
-      return;
+      return "wrote";
     }
 
-    setBusy(true);
     const fd = new FormData();
     fd.set("dose_id", String(doseId));
     fd.set("status", target);
@@ -158,9 +189,10 @@ export default function DoseStatusControl({
       // written, so say so rather than clearing the optimistic state as if it had been.
       if (!result.ok) {
         toast(result.error, { tone: "error" });
-        return;
+        return "nothing";
       }
       setOptimistic(null);
+      return "wrote";
     } catch (err) {
       const stillOnline = navigator.onLine !== false;
       // A dropped connection mid-submit: queue a fresh take/skip; otherwise
@@ -175,13 +207,12 @@ export default function DoseStatusControl({
           target,
           tappedAt
         );
-      } else {
-        toast("Couldn't update this dose. Try again.", {
-          tone: "error",
-        });
+        return "wrote";
       }
-    } finally {
-      setBusy(false);
+      toast("Couldn't update this dose. Try again.", {
+        tone: "error",
+      });
+      return "nothing";
     }
   }
 
@@ -232,7 +263,7 @@ export default function DoseStatusControl({
     >
       <button
         type="button"
-        onClick={() => apply(isTaken ? "clear" : "taken")}
+        onClick={() => apply(isTaken ? "clear" : "taken", "take")}
         disabled={busy}
         className={takeClass}
         aria-pressed={isTaken}
@@ -250,7 +281,7 @@ export default function DoseStatusControl({
       </button>
       <button
         type="button"
-        onClick={() => apply(isSkipped ? "clear" : "skipped")}
+        onClick={() => apply(isSkipped ? "clear" : "skipped", "skip")}
         disabled={busy}
         className={skipClass}
         aria-pressed={isSkipped}

@@ -974,7 +974,7 @@ export default async function Dashboard() {
         ) : null;
       case "active-protocols":
         return activeProtocols.length ? (
-          <ActiveProtocolWidget protocols={activeProtocols} />
+          <ActiveProtocolWidget protocols={activeProtocols} today={on} />
         ) : null;
       case "symptom-log":
         // The unified daily check-in (#992): mood tap always; the illness branch is

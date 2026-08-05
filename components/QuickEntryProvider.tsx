@@ -288,7 +288,9 @@ function QuickEntryBody({
       // moment — multi-session days are the point and a morning check may log two
       // different practices. The user dismisses when they're done; the taps already
       // refresh the page behind, so "stay put" still holds.
-      return <QuickPracticeList practices={data.practices} />;
+      return (
+        <QuickPracticeList practices={data.practices} today={data.today} />
+      );
     case "document":
       // The SAME UploadForm Data → File upload renders — same ingest engine, same
       // gates, same per-profile storage and dedup, and the #1423 camera input rides

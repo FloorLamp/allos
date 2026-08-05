@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import {
   DOSE_ACTION_BRAND,
@@ -20,6 +21,12 @@ import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 // ("gave it at 4pm, logging it now"). Each successful log is a real administration
 // (the ledger allows multiples/day), and the action's own revalidate brings back the
 // updated "N today · last …" subtitle with its response.
+//
+// A PRN dose is ADDITIVE and declares no expected interval (#2007): several
+// administrations a day are legitimate and #798's redose line already advises without
+// blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
+// post-success cooldown, keyed per offset so "taken now" and a retro entry are separate
+// writes — which absorbs the queued second click on the same button.
 export default function QuickLogPrnControl({
   itemId,
   name,
@@ -57,23 +64,34 @@ export default function QuickLogPrnControl({
   layout?: "row" | "detail";
   compactActions?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [time, setTime] = useState("");
   const toast = useToast();
+  const ledger = useOptimisticLedger("prn-dose");
+  const busy =
+    ledger.pending("now") ||
+    ledger.pending("30m") ||
+    ledger.pending("1h") ||
+    ledger.pending("custom");
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
 
   async function log(offset: string, customTime?: string) {
-    if (busy) return;
-    setBusy(true);
-    const fd = new FormData();
-    fd.set("id", String(itemId));
-    fd.set("offset", offset);
-    if (customTime) fd.set("time", customTime);
-    if (profileId != null) fd.set("profileId", String(profileId));
-    try {
-      const res = await logMedicationAdministration(fd);
-      if (res.ok) {
+    await ledger.tap({
+      key: offset,
+      write: () => {
+        const fd = new FormData();
+        fd.set("id", String(itemId));
+        fd.set("offset", offset);
+        if (customTime) fd.set("time", customTime);
+        if (profileId != null) fd.set("profileId", String(profileId));
+        return logMedicationAdministration(fd);
+      },
+      settle: (res) => {
+        if (!res.ok) {
+          toast(res.error, { tone: "error" });
+          // Nothing was administered, so a retry needs no cooldown.
+          return { kind: "rollback" };
+        }
         toast(
           res.outcome === "duplicate"
             ? offset === "now"
@@ -83,14 +101,13 @@ export default function QuickLogPrnControl({
         );
         setOpen(false);
         setTime("");
-      } else {
-        toast(res.error, { tone: "error" });
-      }
-    } catch {
-      toast("Couldn't log that dose. Try again.", { tone: "error" });
-    } finally {
-      setBusy(false);
-    }
+        return { kind: "keep" };
+      },
+      onError: () => {
+        toast("Couldn't log that dose. Try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   const control = (

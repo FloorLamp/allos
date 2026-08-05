@@ -37,8 +37,13 @@ const VERDICT: Record<string, string> = {
 
 export default function ActiveProtocolWidget({
   protocols,
+  today,
 }: {
   protocols: ActiveProtocolSummary[];
+  // The acting profile's today (YYYY-MM-DD). The practice log button asks a
+  // day-scoped question before a second session (#2007 layer 3), so the day it is
+  // counting has to travel with the count.
+  today: string;
 }) {
   // Standard list-widget cap + overflow link (#1219): this was the one list widget
   // mapping ALL its rows; the rest beyond the cap stay one click away on the
@@ -91,6 +96,7 @@ export default function ActiveProtocolWidget({
                 ongoing
                 todayCount={p.practiceTodayCount}
                 atCeiling={p.adherence?.atCeiling ?? false}
+                today={today}
               />
             )}
 

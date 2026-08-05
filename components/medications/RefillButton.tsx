@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { IconPackage } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { refillMedication } from "@/app/(app)/medications/actions";
 import {
   refillRecencyExpiryMs,
   refillRecencyLine,
   type RecentRefill,
 } from "@/lib/refill-recency";
+import { refillRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 
 // One-tap "Refilled" (issue #852 item 3), shown on a low-supply medication row / detail.
 // It adds the LAST fill size back to the on-hand supply through the CAS write core
@@ -22,17 +25,31 @@ import {
 // affordance shows an informational "Refilled just now (+90)" line — the #798 treatment.
 // It is deliberately NOT a gate: two bottles is a legitimate restock, so the button stays
 // enabled throughout and the line only tells the user what the previous tap did.
+//
+// CADENCE (#2007): a refill is the second affordance with a real expected interval — a
+// fill lasts a supply cycle, weeks — and the worst failure mode in the app (two bottles
+// of stock nobody has). So on top of the shared ledger's post-success cooldown, a second
+// refill inside that window ASKS, naming the previous fill and the one this tap would
+// add. Still a confirm and never a block: a pharmacy that filled 180 as two bottles is a
+// real pair of taps, and the dialog's default is to proceed. The question is asked from
+// what THIS affordance did — no refill timestamp is persisted, so a refill from another
+// session or device is answered by the ledger's cooldown alone.
 export default function RefillButton({
   itemId,
   hasLastFill,
   lastFillSize = null,
+  supplyCycleDays = null,
 }: {
   itemId: number;
   // Whether a fill size is remembered — true ⇒ one-tap; false ⇒ ask on first tap.
   hasLastFill: boolean;
   lastFillSize?: number | null;
+  // How many days a full fill of this item lasts at its consumption rate
+  // (daysOfSupplyForItem over `last_fill_size`), when the surface can compute it. It
+  // sizes the re-log question: a 4-day supply stops asking after a day, a 90-day
+  // bottle after the fixed ceiling. Null ⇒ the shared default cycle.
+  supplyCycleDays?: number | null;
 }) {
-  const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [size, setSize] = useState(
     lastFillSize != null ? String(lastFillSize) : ""
@@ -43,6 +60,9 @@ export default function RefillButton({
   const [recent, setRecent] = useState<RecentRefill | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const toast = useToast();
+  const confirm = useConfirm();
+  const ledger = useOptimisticLedger("medication-refill");
+  const busy = ledger.pending();
 
   useEffect(() => {
     const delay = refillRecencyExpiryMs(recent, now);
@@ -52,30 +72,55 @@ export default function RefillButton({
   }, [recent, now]);
 
   async function submit(fillSize?: string) {
-    if (busy) return;
-    setBusy(true);
-    const fd = new FormData();
-    fd.set("id", String(itemId));
-    if (fillSize) fd.set("fill_size", fillSize);
-    try {
-      const res = await refillMedication(fd);
-      if (res.ok) {
+    // Inside the post-success window this is the second half of a double-tap:
+    // absorbed here rather than escalated into a dialog nobody asked for.
+    if (ledger.blocked()) return;
+    const at = Date.now();
+    if (
+      recent &&
+      shouldConfirmRelog({
+        affordance: ledger.affordance,
+        lastLoggedAtMs: recent.atMs,
+        nowMs: at,
+        supplyCycleDays,
+      })
+    ) {
+      const next = fillSize
+        ? Number(fillSize)
+        : (lastFillSize ?? recent.fillSize);
+      const ok = await confirm({
+        title: "Add another refill?",
+        message: refillRelogMessage(recent.fillSize, next, at - recent.atMs),
+        confirmLabel: "Add refill",
+      });
+      if (!ok) return;
+    }
+    await ledger.tap({
+      write: () => {
+        const fd = new FormData();
+        fd.set("id", String(itemId));
+        if (fillSize) fd.set("fill_size", fillSize);
+        return refillMedication(fd);
+      },
+      settle: (res) => {
+        if (!res.ok) {
+          toast(res.error, { tone: "error" });
+          // Nothing was added, so the tap stays immediately retryable.
+          return { kind: "rollback" };
+        }
         toast("Refill recorded.");
         setAsking(false);
         // The core's own number, not the form's — the one-tap path reuses a remembered
         // size the client may not hold, and a pooled item's fill lands on the bottle.
         setRecent({ fillSize: res.fillSize, atMs: Date.now() });
         setNow(Date.now());
-      } else {
-        toast(res.error, { tone: "error" });
-      }
-    } catch {
-      toast("Couldn't record that refill. Try again.", {
-        tone: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
+        return { kind: "keep" };
+      },
+      onError: () => {
+        toast("Couldn't record that refill. Try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
   }
 
   const recency = refillRecencyLine(recent, now);
