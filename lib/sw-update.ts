@@ -71,24 +71,32 @@ export function shouldOfferUpdate({
 /**
  * Whether THIS tab should reload when the controller changes.
  *
- * Two guards, each closing a real failure:
+ * ONE guard: `requestedByThisTab`. Activation is registration-wide, so the tab that
+ * tapped Reload activates the new worker for EVERY open tab, and they all get
+ * `controllerchange`. Only the tab that asked may reload; a second tab sitting on a
+ * half-filled form must not be reloaded because someone tapped in the first. That is
+ * precisely the "never auto-reload mid-form" rule, and it is the case the naive
+ * `controllerchange → location.reload()` recipe gets wrong.
  *
- *   - `requestedByThisTab` — activation is registration-wide, so the tab that tapped
- *     Reload activates the new worker for EVERY open tab, and they all get
- *     `controllerchange`. Only the tab that asked may reload; a second tab sitting on
- *     a half-filled form must not be reloaded because someone tapped in the first.
- *     That is precisely the "never auto-reload mid-form" rule, and it is the case
- *     the naive `controllerchange → location.reload()` recipe gets wrong.
- *   - `alreadyReloaded` — the classic loop guard. Reload at most once per activation.
+ * DELIBERATELY NOT GUARDED on "already reloaded" (#2155). The fallback timer can
+ * beat the handshake: Chrome may hold a skip-waiting activation until the outgoing
+ * active worker is idle, so the controller swap sometimes lands only AFTER
+ * `SW_RELOAD_FALLBACK_MS` has already called `location.reload()`. That fallback
+ * navigation was dispatched under the OLD worker, and a swap landing mid-flight can
+ * strand it — the navigation never commits and the tab hangs on a page that will
+ * never change (observed repeatedly under the e2e harness). Answering the
+ * controllerchange again replaces the possibly-stranded navigation with one
+ * dispatched under the NEW controller: same URL, idempotent, and it cannot loop —
+ * `controllerchange` fires once per activation, a commit destroys this document and
+ * the fresh one starts with `requestedByThisTab` false, and the fallback timer
+ * itself stays guarded by the reloaded-once flag.
  */
 export function shouldReloadOnControllerChange({
   requestedByThisTab,
-  alreadyReloaded,
 }: {
   requestedByThisTab: boolean;
-  alreadyReloaded: boolean;
 }): boolean {
-  return requestedByThisTab && !alreadyReloaded;
+  return requestedByThisTab;
 }
 
 /**

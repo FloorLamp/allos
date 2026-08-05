@@ -27,6 +27,16 @@ activation is registration-wide, so every open tab sees `controllerchange`, and 
 the tab that tapped may reload. A tab that did not ask is never reloaded out from
 under a half-filled form.
 
+The asking tab answers the swap **even when the fallback timer already reloaded**
+(#2155). Chrome may hold a skip-waiting activation until the outgoing worker is
+idle, so the swap can land only after `SW_RELOAD_FALLBACK_MS` — and the fallback's
+navigation went out under the OLD worker, which a swap landing mid-flight can
+strand: the navigation never commits and the tab hangs. Re-answering replaces that
+possibly-stranded navigation with one dispatched under the new controller; it
+cannot loop, because `controllerchange` fires once per activation and a committed
+reload destroys the document that asked. The reloaded-once flag still guards the
+fallback timer itself.
+
 ## A refresh consumes the update (#1905)
 
 A manual refresh (F5, pull-to-refresh) fetches the new build's HTML and assets, but
@@ -210,9 +220,13 @@ only move the second, so `e2e/sw-update.spec.ts` moves the first itself by
 intercepting `/api/version` — without that, the fix would (rightly) consume the
 simulated update silently instead of offering it. The reload test then drops the
 interception and pins the other half of #1905: the page's own re-registered worker
-generation is consumed silently instead of ping-ponging back as a fresh offer. What
-remains undriven is a genuine F5 against a server whose build actually changed
-underneath the harness.
+generation is consumed silently instead of ping-ponging back as a fresh offer. Its
+settle point is the pending marker's raise-then-clear, **not** the generation
+reaching `active` (#2155): Chrome may hold a skip-waiting activation until the
+outgoing worker goes idle, indefinitely on an idle page, and the next navigation
+consumes it then — so the activation instant belongs to the platform, while the
+raise-and-consume belongs to the app. What remains undriven is a genuine F5 against
+a server whose build actually changed underneath the harness.
 
 `app/global-error.tsx` is not reachable from Playwright at all. It renders only when
 something throws above the route group, and nothing in the app can be made to do that
