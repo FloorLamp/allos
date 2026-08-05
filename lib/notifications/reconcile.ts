@@ -705,7 +705,7 @@ async function reconcileProse(
   const hash = messageBodyHash(rebuilt);
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter. A
-  // pointer with no recorded hash (pre-migration-152) never matches, so it is left
+  // pointer with no recorded hash (pre-migration-153) never matches, so it is left
   // exactly as delivered rather than edited on a guess.
   if (pointer.bodyHash == null || pointer.bodyHash === hash) return;
 

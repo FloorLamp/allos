@@ -1,5 +1,6 @@
-// The live-message pointer STORE (issue #1779) — one row per delivered
-// keyboard-bearing Telegram message (migration 135's `notify_messages`).
+// The live-message pointer STORE (issue #1779) — one row per delivered Telegram message
+// that can go stale (migration 135's `notify_messages`): every keyboard-bearing one, and
+// since #1913 item 4 every message of a kind whose PROSE makes a claim.
 //
 // Auth-blind and profileId-first, like every other lib/ write core. Every statement
 // filters on `profile_id`, so the new owned table needs no scoping exemption.
@@ -49,7 +50,7 @@ export interface MessagePointer {
   sentAt: string;
   // A HASH of the delivered BODY, for the prose-claim class (#1913 item 4) — what lets
   // a re-render be compared against what the chat is showing, so an unchanged tick makes
-  // no Telegram call. Null for a pointer recorded before migration 152 and for every kind
+  // no Telegram call. Null for a pointer recorded before migration 153 and for every kind
   // that declares no prose reconciler.
   bodyHash: string | null;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
@@ -204,6 +205,15 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
 // Deliberately a narrow query rather than a filter over `liveMessagePointers`: a send is
 // on the delivery path, and the common case (a kind with no prior live keyboard) must
 // cost one indexed lookup, not a full read of the profile's pointer table.
+//
+// THE INDEX THAT MAKES THAT TRUE is `idx_notify_messages_profile_chat_kind`
+// (profile_id, chat_id, kind, sent_at), added by migration 152. Until then the claim
+// above was false: 135 indexed only (profile_id, sent_at), so SQLite matched the
+// profile prefix and then tested chat and kind in memory over every pointer row the
+// profile held — the full read this function exists to avoid (#2003). The plan is
+// pinned in lib/__db_tests__/migration-152-message-pointer-index.test.ts, so a widened
+// filter that falls back off the index fails there rather than quietly on the delivery
+// path of every `/dose`.
 export function liveMessagePointersForKind(
   profileId: number,
   chatId: string | number,

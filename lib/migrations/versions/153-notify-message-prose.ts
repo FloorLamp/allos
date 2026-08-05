@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 152 (issue #1913 item 4): the PROSE witness on a live-message pointer.
+// Migration 153 (issue #1913 item 4): the PROSE witness on a live-message pointer.
 //
 // #1779's pointer stores the delivered KEYBOARD, because a reconciler that removes
 // exactly the resolved buttons has to know what the chat is showing and Telegram has no
@@ -35,7 +35,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 152,
-  name: "152-notify-message-prose",
+  id: 153,
+  name: "153-notify-message-prose",
   up,
 };

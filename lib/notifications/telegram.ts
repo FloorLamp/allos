@@ -130,9 +130,9 @@ export const telegramChannel: NotificationChannel = {
         const messageId = await sendMessageRaw(chatId, msg);
         // An override chat is not a login, but the MESSAGE still goes stale exactly
         // like a fan-out copy — a caregiver's escalation chat is the last place a
-        // false "still outstanding" belongs (#1779).
-        recordPointer(profileId, chatId, messageId, msg);
-        await supersedePriorKeyboards(profileId, chatId, messageId, msg);
+        // false "still outstanding" belongs (#1779). The subject is the profile the
+        // message is ABOUT, which this path has always had and never had to guess.
+        await trackDelivered(profileId, chatId, messageId, msg);
       }
       return;
     }
@@ -173,17 +173,37 @@ export const telegramChannel: NotificationChannel = {
       // only place that has both the delivered message id and the message it was
       // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
       // group's copy can correct the copies in every other subscriber's chat.
-      recordPointer(profileId, chatId, messageId, msg);
-      // ONE LIVE KEYBOARD PER (chat, kind) (#1898): a re-issuable kind closes the copy
-      // it replaces. AFTER the record, so the chat never briefly holds none.
-      await supersedePriorKeyboards(profileId, chatId, messageId, msg);
+      // ONE LIVE KEYBOARD PER (chat, kind) (#1898) rides with it: a re-issuable kind
+      // closes the copy it replaces, AFTER the record, so the chat never briefly
+      // holds none.
+      await trackDelivered(profileId, chatId, messageId, msg);
     }
   },
 };
 
+// The bookkeeping every delivered message gets, whichever send path delivered it:
+// record the pointer, then close what this send superseded. ONE function because the
+// three paths (fan-out copy, explicit-chat override, chat-addressed send) had three
+// copies of the same two calls and differed only in how they named the subject —
+// which is exactly where #1995's defect lived. Now they differ in nothing: the
+// subject arrives as an argument, already decided.
+//
+// Strictly best-effort, like both halves it composes: the message is already
+// delivered, so nothing here may turn a successful send into a failed one.
+async function trackDelivered(
+  profileId: number,
+  chatId: string | number,
+  messageId: number | undefined,
+  msg: NotificationMessage
+): Promise<void> {
+  recordPointer(profileId, chatId, messageId, msg);
+  await supersedePriorKeyboards(profileId, chatId, messageId, msg);
+}
+
 // Store the pointer for one delivered message, or do nothing when there is nothing to
-// reconcile later (no message id, or no keyboard — a button-less message can never
-// display a stale claim).
+// reconcile later: no message id, or neither of the two things that CAN go stale — a
+// keyboard (a button whose tap would now be refused, #1779) and a prose claim (a
+// sentence an in-app write has since answered, #1913 item 4).
 //
 // THE KEYBOARD IS RE-DERIVED, NOT PASSED BACK. sendMessageRaw applies the pure
 // `capTelegramKeyboard(messageKeyboard(msg))` pair internally to decide what rides the
@@ -445,29 +465,64 @@ function recordDigestTailPointer(
   }
 }
 
+// WHO A CHAT-ADDRESSED SEND IS ABOUT — issue #1995.
+//
+// `sendTelegramMessage` names a CHAT, but a pointer is owned by a PROFILE, so every
+// such send has to answer "whose message is this?". It used to answer by guessing: the
+// lowest profile the chat could act as, whatever the message actually said. That is
+// defensible for a message that covers the whole chat — `/dose` and `/symptom` render
+// ONE keyboard with per-profile prefixed buttons, so the chat really is the subject and
+// the lowest profile is a STABLE representative for it, which is what the (chat, kind)
+// supersede invariant (#1898) needs to keep re-issuing onto the same slot.
+//
+// It stops being defensible the moment a command sends one message PER PROFILE. Every
+// one of those messages would record its pointer under the same borrowed owner, so in a
+// family chat Basil's send rotates Ada's pointer: her live keyboard is stripped because
+// he logged something, the pointer then names his message but belongs to her, and the
+// two profiles trade one slot back and forth, each closing the other's buttons. No dose
+// or reading lands on the wrong person — callback tokens carry their own profile id and
+// `resolveTapProfile` re-checks it on tap (#797) — but the AFFORDANCE is taken from the
+// wrong person, which is precisely the invariant #1898 bought.
+//
+// So the subject is now DECLARED, never inferred. The argument is required, and its two
+// values are the two honest answers:
+//
+//   • a profile id — this message is ABOUT that person, and its pointer is theirs;
+//   • CHAT_WIDE — this message covers the chat (or has no data subject at all, like
+//     `/help`), and its pointer takes the chat's stable representative.
+//
+// A caller cannot forget to say which, and cannot say "whoever comes first" by accident.
+export const CHAT_WIDE = "chat-wide";
+export type TelegramSendSubject = number | typeof CHAT_WIDE;
+
 // Send a message to an EXPLICIT chat id, bypassing the profile's configured
-// delivery target. Used by missed-dose escalation, which may route to a
-// second chat (a caregiver) via escalate_chat_id. Reads the bot token internally
-// like the channel send, so callers never pass creds.
+// delivery target. Used by the on-demand commands (#797/#859/#1895) and by the
+// login-scoped test send. Reads the bot token internally like the channel send, so
+// callers never pass creds.
+//
+// Re-issue matters most here: typing `/dose` twice must re-issue the list, not stack a
+// second live keyboard beside it — which is why the send/record/supersede tail is the
+// SAME `trackDelivered` the channel's explicit-chat branch runs, rather than a second
+// copy of it that could drift about what a delivery means.
 export async function sendTelegramMessage(
   chatId: string | number,
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  subject: TelegramSendSubject
 ): Promise<void> {
   const messageId = await sendMessageRaw(chatId, msg);
-  // The chat-addressed send is what the on-demand COMMANDS use (#797/#859/#1895), which
-  // is where re-issue matters most: typing `/dose` twice must re-issue the list, not
-  // stack a second live keyboard beside it.
-  const profileId = profileIdForExplicitSend(chatId);
-  recordPointer(profileId, chatId, messageId, msg);
-  await supersedePriorKeyboards(profileId, chatId, messageId, msg);
+  await trackDelivered(resolveSubject(chatId, subject), chatId, messageId, msg);
 }
 
-// The subject a chat-addressed send is ABOUT, for the pointer's profile scope. An
-// explicit-chat send names a CHAT, not a profile, so the subject is resolved the same
-// way an inbound tap from that chat resolves one — the lowest profile the chat can act
-// as. Zero when the chat maps to nothing, which suppresses the pointer entirely rather
+// Resolve a declared subject to the profile the pointer is scoped by. A CHAT_WIDE send
+// takes the chat's stable representative — the lowest profile the chat can act as, the
+// same one an inbound tap from that chat resolves to. Zero when the chat maps to
+// nothing, which suppresses the pointer entirely (recordPointer refuses on 0) rather
 // than inventing a subject for it.
-function profileIdForExplicitSend(chatId: string | number): number {
+function resolveSubject(
+  chatId: string | number,
+  subject: TelegramSendSubject
+): number {
+  if (typeof subject === "number") return subject;
   return getProfilesByTelegramChatId(String(chatId))[0] ?? 0;
 }
 

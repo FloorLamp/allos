@@ -28,7 +28,7 @@ import {
   unknownCommandBody,
   type ChatCommandContext,
 } from "./telegram-commands";
-import { sendTelegramMessage } from "./telegram";
+import { CHAT_WIDE, sendTelegramMessage } from "./telegram";
 
 // The chat's facts. A relevance bit is TRUE when it holds for AT LEAST ONE of the
 // chat's profiles: a family chat where one member runs the check-in and another does
@@ -50,10 +50,14 @@ export async function sendHelp(
   chatId: string | number,
   ctx: ChatCommandContext
 ): Promise<void> {
-  await sendTelegramMessage(chatId, {
-    title: HELP_TITLE,
-    body: helpBody(ctx),
-  });
+  await sendTelegramMessage(
+    chatId,
+    { title: HELP_TITLE, body: helpBody(ctx) },
+    // Every reply in this module is ABOUT THE CHAT (#1995) — what it can do, what it
+    // isn't wired up for, what it just typed. None of them has a data subject, and
+    // none of them carries a keyboard, so none records a pointer at all.
+    CHAT_WIDE
+  );
 }
 
 // `/start` — the first thing Telegram shows a new user, before they have typed
@@ -63,10 +67,11 @@ export async function sendStart(
   chatId: string | number,
   ctx: ChatCommandContext
 ): Promise<void> {
-  await sendTelegramMessage(chatId, {
-    title: START_TITLE,
-    body: startBody(ctx),
-  });
+  await sendTelegramMessage(
+    chatId,
+    { title: START_TITLE, body: startBody(ctx) },
+    CHAT_WIDE
+  );
 }
 
 // A command this build ships but this chat cannot use. Answered DIFFERENTLY from an
@@ -77,10 +82,11 @@ export async function sendUnavailable(
   chatId: string | number,
   name: string
 ): Promise<void> {
-  await sendTelegramMessage(chatId, {
-    title: HELP_TITLE,
-    body: unavailableCommandBody(name),
-  });
+  await sendTelegramMessage(
+    chatId,
+    { title: HELP_TITLE, body: unavailableCommandBody(name) },
+    CHAT_WIDE
+  );
 }
 
 // The unknown-command fallback. THE rule this issue exists for: a slash command in a
@@ -90,10 +96,11 @@ export async function sendUnknownCommand(
   chatId: string | number,
   typed: string
 ): Promise<void> {
-  await sendTelegramMessage(chatId, {
-    title: HELP_TITLE,
-    body: unknownCommandBody(typed),
-  });
+  await sendTelegramMessage(
+    chatId,
+    { title: HELP_TITLE, body: unknownCommandBody(typed) },
+    CHAT_WIDE
+  );
 }
 
 // Re-exported so the dispatcher reads one import for the whole vocabulary.

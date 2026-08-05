@@ -57,7 +57,7 @@ import {
   deletePushSubscription,
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
-import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
 import { sendFoodOptInPrompt } from "@/lib/notifications/food";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { canAccessProfile } from "@/lib/auth";
@@ -429,11 +429,17 @@ export async function sendTestNotification(): Promise<{
         "No Telegram channel — enable Telegram, fill in your chat id, and ask an admin to set the bot token on Settings → Server.",
     };
   try {
-    await sendTelegramMessage(telegramChatId, {
-      title: "🔔 Test notification",
-      body: "Notifications are working ✅",
-      kind: "test",
-    });
+    await sendTelegramMessage(
+      telegramChatId,
+      {
+        title: "🔔 Test notification",
+        body: "Notifications are working ✅",
+        kind: "test",
+      },
+      // A channel check addressed to the LOGIN's own chat (#1995): it is about the
+      // wiring, not about any data subject, and it carries no keyboard.
+      CHAT_WIDE
+    );
     return { ok: true, message: "Sent ✅ — check your Telegram." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
