@@ -65,8 +65,8 @@ import {
   restoreMessagePointer,
   type MessagePointer,
 } from "./message-pointers";
-import { isReissuableKind } from "./reconcile-registry";
-import { reconcileClosingText } from "./reconcile-core";
+import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
+import { messageBodyHash, reconcileClosingText } from "./reconcile-core";
 import { classifyTelegramFailure } from "./telegram-error";
 
 const log = createLogger("telegram");
@@ -198,13 +198,19 @@ function recordPointer(
   messageId: number | undefined,
   msg: NotificationMessage
 ): void {
-  if (messageId == null || !msg.actions?.length) return;
+  if (messageId == null) return;
   // No resolvable subject (an explicit-chat send to a chat that maps to no profile):
   // there is nobody for the sweep to reconcile on behalf of, so store nothing rather
   // than invent an owner.
   if (!profileId) return;
-  const keyboard = deliveredKeyboard(msg);
-  if (keyboard.length === 0) return;
+  const keyboard = msg.actions?.length ? deliveredKeyboard(msg) : [];
+  // A PROSE-CLAIM KIND registers by KIND, not by keyboard token (#1913 item 4). The
+  // digest's every button is declared inert — an offer tail and a ⚙️ Tune control claim
+  // nothing — so the keyboard test that gates every other pointer would have skipped the
+  // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
+  // is worth storing: nothing else reads one.
+  const prose = proseReconcilerFor(msg.kind);
+  if (keyboard.length === 0 && !prose) return;
   recordMessagePointer({
     profileId,
     chatId,
@@ -212,6 +218,7 @@ function recordPointer(
     kind: msg.kind ?? "other",
     date: today(profileId),
     keyboard,
+    bodyHash: prose ? messageBodyHash(msg) : null,
     // The TITLE AS DELIVERED, attribution prefix and all (#1822 item 7). Recorded for
     // exactly the reason the keyboard is: this is the only moment anyone holds it, and
     // a reconcile close that replaces the whole text must be able to say what it closed

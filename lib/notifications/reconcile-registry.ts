@@ -418,6 +418,177 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   },
 ];
 
+// ── THE PROSE-CLAIM DECLARATION (issue #1913 item 4) ─────────────────────────
+//
+// The two tables above are KEYBOARD-shaped. #1779 made the buttons honest and #1898 made
+// them singular, and both key on what a message can be TAPPED to do. That left a whole
+// class of lie untouched: a message whose claims live in its PROSE.
+//
+// The morning digest is the app's most-read message and the sharpest instance. It states
+// "Supplements: 8/9 taken — missed Glycine (2 days)", and the owner's question exposed
+// the gap: "if I mark yesterday's Glycine now, will this message fix itself?" It did not.
+// Every digest keyboard token is INERT by the table above (an offer tail, a ⚙️ Tune
+// control — correctly, they claim nothing), so `owningFamily` returns null and the sweep
+// concluded there was nothing to reconcile. The reconciler was keyboard-claim-driven and
+// the digest's claims are sentences.
+//
+// A PROSE-CLAIM KIND therefore declares its own reconciler, and the rule is the one
+// every other class already obeys: NO SECOND RENDERER. The reconciler re-runs the SAME
+// builder the send ran, for the SAME date, and edits only when the render actually
+// differs — so an unchanged tick performs zero Telegram calls, exactly like the food
+// nudge's additive class.
+//
+// DAY ROLLOVER CLOSES THE POINTER, NOT THE MESSAGE. A dated report is honest AS HISTORY:
+// yesterday's digest described yesterday, and replacing its text with "this is
+// yesterday's message" would destroy a report the reader may legitimately scroll back
+// to. Only the LIVE day's claims have to track the ledger, so the sweep simply stops
+// tracking at the boundary.
+//
+// The declaration is exhaustive over kinds so the completeness scan covers this class
+// too: the next report-shaped message (a weekly recap) has to say whether its prose
+// reconciles rather than inheriting silence.
+
+export type ProseReconciler = "digest";
+
+export interface KindProseEntry {
+  kind: NotificationKind;
+  // The prose reconciler that owns this kind's claims, or null when its text makes no
+  // claim that an in-app write can resolve.
+  prose: ProseReconciler | null;
+  // Why. Required in BOTH directions, like every other table here — "we decided this
+  // message states no outstanding claim" and "nobody looked" must stay distinguishable.
+  why: string;
+}
+
+export const KIND_PROSE: readonly KindProseEntry[] = [
+  {
+    kind: "digest",
+    prose: "digest",
+    why: "The digest's claims ARE its prose — an adherence fraction, a named missed item, a count of what is due — and every one of them can be resolved in the app while the message sits in the chat. Its keyboard is entirely inert, so nothing else in this registry could ever have covered it. Reconciled by re-running buildDigest for the pointer's date and rebuilding on change.",
+  },
+  {
+    kind: "weekly-recap",
+    prose: null,
+    why: "A recap is about the seven days it names, and it is sent AFTER they are over — its claims are history the moment they are made, so there is no live day whose ledger they could drift from. (A recap that ever starts reporting the CURRENT week would have to move to a reconciler.)",
+  },
+  {
+    kind: "workout-recap",
+    prose: null,
+    why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false.",
+  },
+  {
+    kind: "milestone",
+    prose: null,
+    why: "An event announcement about a threshold that was crossed. It reports the past, and a later reading does not un-cross it.",
+  },
+  {
+    kind: "dose",
+    prose: null,
+    why: "Its claims are carried by the KEYBOARD, which the intake-dose family already reconciles token by token — and that reconciler REBUILDS the whole message through renderMergedIntakeMessage, so the text follows the buttons. A prose reconciler here would be a second answer to the same question.",
+  },
+  {
+    kind: "escalation",
+    prose: null,
+    why: "Same as the dose reminder, on the safety tier: the escalation family owns its tokens and the resolved dose closes the message outright.",
+  },
+  {
+    kind: "food",
+    prose: null,
+    why: "The food nudge's counts live in its button labels and its tally line, and the `food` family already re-renders the whole message from buildFoodNudge on change. Covered, by a keyboard family that happens to rebuild text.",
+  },
+  {
+    kind: "redose",
+    prose: null,
+    why: "A notice that one PRN window is open. The window closes on its own clock rather than on a ledger write, and the message is a heads-up about that moment, not a standing claim.",
+  },
+  {
+    kind: "followup",
+    prose: null,
+    why: "Two sends per tracked item (#1866), each about its own overdue date at the moment it was sent. The Upcoming item is where the live state is read; the message is the notice that it existed.",
+  },
+  {
+    kind: "refill",
+    prose: null,
+    why: "Its one claim — this item is running low — is carried by the rfsnooze token the `refill` family already reconciles, and the message closes when the shortage ends.",
+  },
+  {
+    kind: "preventive",
+    prose: null,
+    why: "The `preventive` family owns its done / not-applicable / remind-later tokens against the same actionable slice the nudge was composed from; the whole message closes when the rule stops being due.",
+  },
+  {
+    kind: "illness-care",
+    prose: null,
+    why: "A care finding derived from logged symptoms at the moment it fired. It describes a trajectory the bus decided to surface, not a due item a later write settles.",
+  },
+  {
+    kind: "practice",
+    prose: null,
+    why: "The `practice` family reconciles its pdone token against live weekly progress, closing the message once the shortfall is gone.",
+  },
+  {
+    kind: "workout",
+    prose: null,
+    why: "A recommendation for today, not a claim about state. Training the suggested session does not make the sentence false — it makes it answered, and the day's own rollover ends it.",
+  },
+  {
+    kind: "workout-stale",
+    prose: null,
+    why: "Its claim — this draft is still running — is the `workout-draft` family's token, reconciled against getWorkoutPresence.",
+  },
+  {
+    kind: "ease-back",
+    prose: null,
+    why: "One-shot guidance at the end of an illness episode (#837). It offers a way to resume, and no in-app write contradicts it.",
+  },
+  {
+    kind: "mood",
+    prose: null,
+    why: "A question, not a claim. The `mood` family closes it the moment the day's check-in exists, whichever surface logged it.",
+  },
+  {
+    kind: "symptom",
+    prose: null,
+    why: "The `/symptom` grid is a picker; the `symptom` family removes each entry the day's log answers.",
+  },
+  {
+    kind: "prn-list",
+    prose: null,
+    why: "A user-initiated listing of what is available right now. Its buttons are declared inert because an as-needed dose stays loggable all day, and its text is that same offer — it asserts nothing outstanding.",
+  },
+  {
+    kind: "temp",
+    prose: null,
+    why: "A prompt asking for a reading. Like the check-in, it poses a question rather than claiming an answer.",
+  },
+  {
+    kind: "upcoming",
+    prose: null,
+    why: "Folded into the digest by #1108 — nothing dispatches it. Were it ever revived it would be a report-shaped message and would have to answer this question for real.",
+  },
+  {
+    kind: "test",
+    prose: null,
+    why: "A send-test exists to prove a message ARRIVED. Editing it afterwards would corrupt the very evidence the user pressed the button to get.",
+  },
+  {
+    kind: "other",
+    prose: null,
+    why: "The unclassified catch-all. Everything with no kind lands here, so a reconciler on it would re-render arbitrary unrelated messages through the digest builder — the one bucket where this must never apply.",
+  },
+];
+
+const BY_KIND_PROSE = new Map(KIND_PROSE.map((e) => [e.kind as string, e]));
+
+// The prose reconciler that owns a delivered message's claims, or null. An UNKNOWN kind
+// answers null and fails safe — a kind that slipped past the completeness scan is left
+// exactly as it was delivered rather than re-rendered through somebody else's builder.
+export function proseReconcilerFor(
+  kind: string | null | undefined
+): ProseReconciler | null {
+  return kind == null ? null : (BY_KIND_PROSE.get(kind)?.prose ?? null);
+}
+
 const BY_KIND = new Map(KIND_REISSUE.map((e) => [e.kind as string, e]));
 
 // Does a new send of `kind` supersede the chat's previous live keyboard of that kind?

@@ -59,6 +59,8 @@ import { countVisibleFoodButtons } from "@/lib/notifications/food-format";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { canonicalFoodGroup } from "@/lib/food-groups";
+import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
+import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { seedLoginTelegram } from "./fixtures";
 
 const editKeyboard = vi.mocked(editMessageReplyMarkupRaw);
@@ -1082,5 +1084,121 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(editText.mock.calls.at(-1)![2]).toBe(RECONCILE_CLOSING.rollover);
+  });
+});
+
+// ---- The digest's PROSE reconciles (#1913 item 4) --------------------------
+//
+// The owner's question that exposed the gap: "if I mark yesterday's Glycine now, will
+// this message fix itself?" — it did not. Every digest keyboard token is declared inert
+// (an offer tail, a ⚙️ Tune control — correctly, they claim nothing), so `owningFamily`
+// returned null and the sweep concluded a fully-collapsed digest had nothing to
+// reconcile. The claims were in the sentences: "Supplements: 8/9 taken — missed Glycine
+// (2 days)" stood until the next morning after the user had already resolved it.
+
+describe("the morning digest's prose reconciles (#1913 item 4)", () => {
+  // Yesterday's dose, due and unconfirmed — the adherence fraction the digest states.
+  function seedYesterdayDose(profileId: number): {
+    doseId: number;
+    itemId: number;
+  } {
+    return seedDose(profileId, "Glycine");
+  }
+
+  async function sendDigest(profileId: number, name: string): Promise<void> {
+    const model = buildDigest(gatherDigestInput(profileId, name));
+    expect(model, "the fixture should have something to say").not.toBeNull();
+    await dispatch(profileId, renderDigestMessage(model!));
+  }
+
+  it("registers a pointer by KIND, even with no state-claiming button on it", async () => {
+    const p = newProfile("Prose Pat");
+    seedLoginTelegram(p, "9100");
+    seedYesterdayDose(p);
+    await sendDigest(p, "Prose Pat");
+
+    const [pointer] = liveMessagePointers(p);
+    expect(pointer.kind).toBe("digest");
+    expect(pointer.date).toBe(today(p));
+    // The witness the comparison runs against — not the message text itself.
+    expect(pointer.bodyHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("rebuilds the message when a backdated dose log changes the adherence line", async () => {
+    const p = newProfile("Prose Perry");
+    seedLoginTelegram(p, "9101");
+    const { doseId, itemId } = seedYesterdayDose(p);
+    await sendDigest(p, "Prose Perry");
+    editText.mockClear();
+
+    // The user marks yesterday's dose in the app, hours after the digest landed.
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+
+    const res = await reconcileProfileMessages(p);
+    expect(res.edited).toBe(1);
+    // The edit carries the CURRENT fraction — one computation, the same builder the send
+    // ran, never a second renderer.
+    const edited = String(editText.mock.calls[0][2]);
+    expect(edited).toContain("1/1 taken");
+    expect(edited).not.toContain("0/1 taken");
+  });
+
+  it("makes NO Telegram call when nothing changed — the idempotence pin", async () => {
+    const p = newProfile("Prose Quinn");
+    seedLoginTelegram(p, "9102");
+    seedYesterdayDose(p);
+    await sendDigest(p, "Prose Quinn");
+    editText.mockClear();
+    editKeyboard.mockClear();
+
+    for (let tick = 0; tick < 3; tick++) {
+      const res = await reconcileProfileMessages(p);
+      expect(res.edited).toBe(0);
+    }
+    expect(editText).not.toHaveBeenCalled();
+    expect(editKeyboard).not.toHaveBeenCalled();
+  });
+
+  it("stops tracking at the day boundary and leaves the report standing", async () => {
+    const p = newProfile("Prose Robin");
+    seedLoginTelegram(p, "9103");
+    const { doseId, itemId } = seedYesterdayDose(p);
+    await sendDigest(p, "Prose Robin");
+    editText.mockClear();
+
+    // Roll the pointer back a day: a dated report is honest AS HISTORY.
+    db.prepare("UPDATE notify_messages SET date = ? WHERE profile_id = ?").run(
+      shiftDateStr(today(p), -1),
+      p
+    );
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+
+    const res = await reconcileProfileMessages(p);
+    // The pointer is forgotten…
+    expect(liveMessagePointers(p)).toEqual([]);
+    // …and the message itself is untouched. Replacing yesterday's digest would destroy
+    // a report the reader may legitimately scroll back to.
+    expect(editText).not.toHaveBeenCalled();
+    expect(res.edited).toBe(0);
+  });
+
+  it("edits once when two overlapping ticks race — the claim is on the witness", async () => {
+    const p = newProfile("Prose Sam");
+    seedLoginTelegram(p, "9104");
+    const { doseId, itemId } = seedYesterdayDose(p);
+    await sendDigest(p, "Prose Sam");
+    editText.mockClear();
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+
+    const [a, b] = await Promise.all([
+      reconcileProfileMessages(p),
+      reconcileProfileMessages(p),
+    ]);
+    // ONE Bot API call between them, however the two passes interleave: the loser
+    // either loses the compare-and-swap on the hash, or reads the already-claimed one
+    // and finds nothing to do. Both are the same outcome — the rate-limit budget this
+    // sweep's zero-call steady state protects is spent once.
+    expect(a.edited + b.edited).toBe(1);
+    expect(editText).toHaveBeenCalledTimes(1);
   });
 });
