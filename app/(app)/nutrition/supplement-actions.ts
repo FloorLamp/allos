@@ -27,6 +27,9 @@ import {
   setMedicationEndDate,
   isLinkableSupply,
   deleteAdministrationLog,
+  // The ONE intake_item_logs resolution core (#2039) — this action module holds no
+  // dose-ledger SQL of its own.
+  setDoseStatusCore,
   // The historical-dose cores keep the shared, kind-neutral names; the aliases only
   // keep them apart from the Server Actions of the same name defined below.
   logHistoricalDose as logHistoricalDoseCore,
@@ -67,7 +70,13 @@ import {
   type DoseSchedule,
 } from "@/lib/intake-cadence";
 import { getDoseScheduleVersions } from "@/lib/queries";
-import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  formError,
+  formOk,
+  type DoseStatusOutcome,
+  type DoseStatusTarget,
+  type FormResult,
+} from "@/lib/types";
 import type { HistoricalDoseOutcome } from "@/lib/types";
 import type {
   FoodTiming,
@@ -1035,91 +1044,23 @@ export async function updateSupplement(
   return formOk();
 }
 
-// The three states one dose can be in for a day: taken, deliberately skipped
-// (issue #232), or clear (no log row). The web check-off is a tri-state over
-// these; the Telegram buttons are one-way resolves.
-type DoseStatusTarget = "taken" | "skipped" | "clear";
-
-// Set one dose to an explicit target status for `date`, keeping on-hand supply in
-// lock-step. ONLY a taken row consumes supply, so crossing the taken boundary is
-// the sole thing that moves the count: clear/skipped → taken decrements, taken →
-// clear/skipped re-increments (the symmetric restore #232 calls for), and a
-// skipped ↔ clear flip never touches supply. The amount is snapshotted on a taken
-// row (history must survive a later dosage edit) and NULL on a skipped one
-// (nothing was consumed). Verifies the dose belongs to a supplement this profile
-// owns and uses the row's own item_id, never trusting the caller; a retired
-// dose is refused (the UI never renders a control for one). Idempotent per target.
-function applyDoseStatus(
-  profileId: number,
-  doseId: number,
-  date: string,
-  target: DoseStatusTarget
-): void {
-  // One IMMEDIATE transaction (#468). Since #797 dropped UNIQUE(dose_id, date) — the
-  // constraint that used to make a concurrent second INSERT a caught no-op — this
-  // SELECT-then-write must be atomic itself, or two concurrent web replicas (or the
-  // notify sidecar) could each insert a taken row for one scheduled (dose,date) and
-  // double-decrement supply. BEGIN IMMEDIATE serializes writers, so the exists-check
-  // is accurate and one-taken-row-per-(dose,date) holds for a scheduled dose. (The
-  // PRN multiples path is logAdministration, a different core.)
-  writeTx(() => {
-    const dose = db
-      .prepare(
-        `SELECT item_id, amount FROM intake_item_doses
-       WHERE id = ? AND retired = 0
-         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-      )
-      .get(doseId, profileId) as
-      { item_id: number; amount: string | null } | undefined;
-    if (!dose) return;
-    const existing = db
-      .prepare(
-        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-      )
-      .get(doseId, date) as { status: DoseStatusTarget } | undefined;
-    const current: DoseStatusTarget = existing ? existing.status : "clear";
-    if (current === target) return;
-
-    if (target === "clear") {
-      db.prepare(
-        "DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-      ).run(doseId, date);
-      if (current === "taken") incrementSupply(profileId, dose.item_id);
-      return;
-    }
-
-    if (!existing) {
-      // A taken check-off stamps given_at = now (the tap moment ≈ intake time), so
-      // the med card's "last …" line has a time; a skip records no intake. The stamp
-      // is the CLOCK SEAM's (sqlNow, #1534), not SQL's real clock: `date` above came
-      // from `today()`, and a row whose given_at lands on a different calendar day
-      // than its own `date` column is self-contradicting (the #1460 window's premise).
-      db.prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
-         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN ? ELSE NULL END)`
-      ).run(
-        doseId,
-        dose.item_id,
-        date,
-        target === "taken" ? dose.amount : null,
-        target,
-        target,
-        sqlNow()
-      );
-      if (target === "taken") decrementSupply(profileId, dose.item_id);
-      return;
-    }
-
-    db.prepare(
-      "UPDATE intake_item_logs SET status = ?, amount = ? WHERE dose_id = ? AND date = ?"
-    ).run(target, target === "taken" ? dose.amount : null, doseId, date);
-    // Cross the taken boundary in supply.
-    if (current !== "taken" && target === "taken") {
-      decrementSupply(profileId, dose.item_id);
-    } else if (current === "taken" && target !== "taken") {
-      incrementSupply(profileId, dose.item_id);
-    }
-  });
+// What the web tri-state check-off says per setDoseStatusCore outcome (#2039).
+//
+// Until the two dose-resolution cores were unified this action returned formOk()
+// unconditionally, which is precisely the thing the repo's write rules forbid: the write
+// can legitimately refuse (a forged/stale dose id, a paused item) and a silent "ok" tells
+// the control the dose is resolved when nothing was written. Every reachable tap still
+// answers ok — the control is only rendered for an active, non-retired dose — so this
+// changes what a FORGED post is told, not what a real one sees.
+function doseStatusResult(outcome: DoseStatusOutcome): FormResult {
+  switch (outcome) {
+    case "stale-dose":
+      return formError("That dose is no longer scheduled.");
+    case "inactive":
+      return formError("That item is paused.");
+    default:
+      return formOk();
+  }
 }
 
 // Set a single dose's status for today to an explicit target — the web
@@ -1130,8 +1071,13 @@ function applyDoseStatus(
 // explicit `profileId`, and the write gates on the TARGET via requireProfileWriteAccess
 // (the #31 cross-profile gate) instead of the active-profile requireWriteAccess. Absent
 // (the acting board / single-view / Supplements row), the active profile is used, so
-// those callers are byte-identical. applyDoseStatus scopes the dose to that profile, so
-// a dose the target doesn't own is a safe no-op.
+// those callers are byte-identical. setDoseStatusCore scopes the dose to that profile,
+// so a dose the target doesn't own writes nothing and answers "stale-dose".
+//
+// This is a thin authorization + validation boundary (#2039): the ledger transition, its
+// refusals and every supply movement belong to the auth-blind core in
+// lib/queries/intake/adherence.ts, which the Telegram, offline and household paths use
+// too.
 export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   const targetProfile = Number(formData.get("profileId"));
   let profileId: number;
@@ -1149,9 +1095,9 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   ) {
     return formError("Couldn't update this dose.");
   }
-  applyDoseStatus(profileId, doseId, today(profileId), target);
+  const outcome = setDoseStatusCore(profileId, doseId, today(profileId), target);
   revalidateIntake();
-  return formOk();
+  return doseStatusResult(outcome);
 }
 
 // ── Historical dose correction (#1933) ──────────────────────────────────────────
@@ -1321,14 +1267,14 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
       "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
     )
     .get(doseId, date) as { status: DoseStatusTarget } | undefined;
-  applyDoseStatus(
+  const outcome = setDoseStatusCore(
     profile.id,
     doseId,
     date,
     existing?.status === "taken" ? "clear" : "taken"
   );
   revalidateIntake();
-  return formOk();
+  return doseStatusResult(outcome);
 }
 
 export async function toggleActive(formData: FormData): Promise<FormResult> {
