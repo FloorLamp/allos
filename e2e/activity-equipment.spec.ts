@@ -240,7 +240,10 @@ test("the strength picker creates and selects a travel machine without losing th
   await page.goto("/equipment");
   const row = page.getByTestId("equipment-row").filter({ hasText: gearName });
   await expect(row).toBeVisible();
-  await row.getByRole("button", { name: "Delete" }).click();
+  // Delete moved into the shared ⋯ menu (#1491): open the row's menu, then click
+  // the (portaled) Delete item.
+  await row.getByRole("button", { name: "Equipment actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,
     page.getByRole("dialog").getByRole("button", { name: "Delete" })
