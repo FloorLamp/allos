@@ -29,10 +29,16 @@ import {
   getSleepRegularity,
   gatherCoachingInput,
 } from "@/lib/queries";
-import { recommendCoaching } from "@/lib/coaching";
+import { recommendCoaching, DEFAULT_COACHING_THRESHOLDS } from "@/lib/coaching";
+import { measureRoughNight } from "@/lib/derived-situations";
 import { setTimezone } from "@/lib/settings";
 
 let profileId: number;
+// getSleepSignal answers only for a night actually just woken from (isLastNight),
+// and this tier does not freeze the clock — so a wake-day-sensitive fixture is
+// anchored on today() rather than a frozen literal. Night 2 IS last night.
+let night1Day: string;
+let night2Day: string;
 
 // A sleep session as UTC ("Z") instants, so with the profile timezone pinned to
 // UTC the wall clock equals the stored instant (hand-checkable wake-days).
@@ -56,40 +62,42 @@ beforeAll(() => {
       .lastInsertRowid
   );
   setTimezone(profileId, "UTC");
+  night2Day = today(profileId);
+  night1Day = shiftDateStr(night2Day, -1);
 
-  // Night 1 (wake 2026-02-02): a plain 7h overnight, no nap.
+  // Night 1 (wake night1Day): a plain 7h overnight, no nap.
   upsertMetricSamples(
     profileId,
     [
       session(
         "sleep_min",
-        "2026-02-02",
+        night1Day,
         420,
-        "2026-02-01T23:00:00Z",
-        "2026-02-02T06:00:00Z"
+        `${shiftDateStr(night1Day, -1)}T23:00:00Z`,
+        `${night1Day}T06:00:00Z`
       ),
     ],
     "health-connect"
   );
-  // Night 2 (wake 2026-02-03, the LATEST night): a deficient 5h overnight PLUS a
-  // 90-min afternoon nap the same wake-day. Raw sleep_min SUMS to 390; the main
-  // overnight session is 300.
+  // Night 2 (wake night2Day — LAST night): a deficient 5h overnight PLUS a 90-min
+  // afternoon nap the same wake-day. Raw sleep_min SUMS to 390; the main overnight
+  // session is 300.
   upsertMetricSamples(
     profileId,
     [
       session(
         "sleep_min",
-        "2026-02-03",
+        night2Day,
         300,
-        "2026-02-02T23:30:00Z",
-        "2026-02-03T04:30:00Z"
+        `${night1Day}T23:30:00Z`,
+        `${night2Day}T04:30:00Z`
       ),
       session(
         "sleep_min",
-        "2026-02-03",
+        night2Day,
         90,
-        "2026-02-03T14:00:00Z",
-        "2026-02-03T15:30:00Z"
+        `${night2Day}T14:00:00Z`,
+        `${night2Day}T15:30:00Z`
       ),
     ],
     "health-connect"
@@ -101,9 +109,9 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     // Establishes the hazard getSleepSignal must avoid: the additive daily total
     // for the latest wake-day is overnight(300) + nap(90) = 390.
     const totals = getMetricDailyTotals(profileId, "sleep_min").filter(
-      (r) => r.date === "2026-02-03"
+      (r) => r.date === night2Day
     );
-    expect(totals).toEqual([{ date: "2026-02-03", value: 390 }]);
+    expect(totals).toEqual([{ date: night2Day, value: 390 }]);
   });
 
   it("lastNightMin is the overnight session (300), not the nap-summed 390", () => {
@@ -117,8 +125,8 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
 
   it("getMainSleepNightlyMinutes drops the nap and keeps one overnight per night", () => {
     expect(getMainSleepNightlyMinutes(profileId)).toEqual([
-      { date: "2026-02-02", value: 420 },
-      { date: "2026-02-03", value: 300 },
+      { date: night1Day, value: 420 },
+      { date: night2Day, value: 300 },
     ]);
   });
 
@@ -129,7 +137,7 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
   it("getLastNightSummary returns the main overnight (300), with the nap counted separately (#1066)", () => {
     const summary = getLastNightSummary(profileId);
     expect(summary).not.toBeNull();
-    expect(summary!.wakeDay).toBe("2026-02-03");
+    expect(summary!.wakeDay).toBe(night2Day);
     // The 5h overnight — NOT the 90-min nap that ends later the same wake-day.
     expect(summary!.durationMin).toBe(300);
     // The nap is a separate figure, never folded into durationMin.
@@ -147,29 +155,110 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     expect(
       sessions.some(
         (s) =>
-          s.start === "2026-02-03T14:00:00Z" && s.end === "2026-02-03T15:30:00Z"
+          s.start === `${night2Day}T14:00:00Z` &&
+          s.end === `${night2Day}T15:30:00Z`
       )
     ).toBe(true);
   });
 
+  // Owns its fixture rather than appending a LATER night to the shared one: the
+  // shared fixture's newest night is now last night, so extending it would have
+  // had to plant a session in the future.
   it("uses reported asleep minutes when they are shorter than the bedtime window", () => {
+    const shortId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SleepAsleepMin')").run()
+        .lastInsertRowid
+    );
+    setTimezone(shortId, "UTC");
+    const wakeDay = today(shortId);
     upsertMetricSamples(
-      profileId,
+      shortId,
       [
         session(
           "sleep_min",
-          "2026-02-04",
+          wakeDay,
           270,
-          "2026-02-03T23:00:00Z",
-          "2026-02-04T04:00:00Z"
+          `${shiftDateStr(wakeDay, -1)}T23:00:00Z`,
+          `${wakeDay}T04:00:00Z`
         ),
       ],
       "health-connect"
     );
-    const summary = getLastNightSummary(profileId)!;
+    const summary = getLastNightSummary(shortId)!;
     expect(summary.durationMin).toBe(270); // 4h30 asleep, not the 5h window
     expect(summary.bedMinutes).toBe(23 * 60);
     expect(summary.wakeMinutes).toBe(4 * 60);
+  });
+});
+
+// The newest recorded night is not automatically LAST night. Every morning before
+// the tracker pushes, the newest night is the one before it — and getSleepSignal
+// used to hand that over under the name `lastNightMin`, so the rest-sleep nudge
+// and the derived poor-sleep situation described the wrong night's sleep as this
+// morning's. The signal now refuses instead of substituting.
+describe("getSleepSignal freshness — the night must BE last night", () => {
+  // A profile whose sleep stopped two nights ago: a rough 3h night that WOULD trip
+  // the rest-sleep floor if it were mistaken for last night.
+  const staleProfile = (name: string, newestOffset: number): number => {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    setTimezone(id, "UTC");
+    const samples: NormMetricSample[] = [];
+    for (let offset = newestOffset + 6; offset >= newestOffset; offset--) {
+      const wakeDay = shiftDateStr(today(id), -offset);
+      const bedDay = shiftDateStr(wakeDay, -1);
+      // The newest night is the deficient one (bed 23:00 → wake 02:00, 3h); the
+      // rest are healthy 8h nights (23:00 → 07:00).
+      const rough = offset === newestOffset;
+      samples.push(
+        session(
+          "sleep_min",
+          wakeDay,
+          rough ? 180 : 480,
+          `${bedDay}T23:00:00Z`,
+          `${wakeDay}T${rough ? "02" : "07"}:00:00Z`
+        )
+      );
+    }
+    upsertMetricSamples(id, samples, "health-connect");
+    return id;
+  };
+
+  it("answers when the newest night IS last night", () => {
+    const id = staleProfile("SleepFreshToday", 0);
+    const signal = getSleepSignal(id);
+    expect(signal).not.toBeNull();
+    expect(signal!.lastNightMin).toBe(180);
+  });
+
+  it("refuses when the newest night is the night BEFORE last night", () => {
+    const id = staleProfile("SleepStaleOneNight", 1);
+    expect(getSleepSignal(id)).toBeNull();
+  });
+
+  it("refuses when sleep has not synced for days", () => {
+    const id = staleProfile("SleepStaleDays", 4);
+    expect(getSleepSignal(id)).toBeNull();
+  });
+
+  // The rough-night evaluation the rest-sleep nudge and the derived poor-sleep
+  // situation BOTH read. Asserted as a pair so the suppression is provably the
+  // freshness gate and not a fixture that could never have fired: the identical
+  // 3h night fires when it is last night and cannot even be evaluated when it
+  // isn't, because there is no signal to evaluate.
+  it("a stale rough night cannot reach the rough-night evaluation at all", () => {
+    const id = staleProfile("SleepStaleNoNudge", 1);
+    expect(getSleepSignal(id)).toBeNull();
+  });
+
+  it("but the identical night dated last night reads as rough", () => {
+    const id = staleProfile("SleepFreshNudge", 0);
+    const signal = getSleepSignal(id)!;
+    expect(measureRoughNight(signal, DEFAULT_COACHING_THRESHOLDS).fired).toBe(
+      true
+    );
   });
 });
 
@@ -236,11 +325,12 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
     );
     setTimezone(segId, "UTC");
 
-    // 15 consecutive segmented nights: 23:00–03:00 (4h) + 04:00–08:00 (4h), a 1h
-    // awake gap between the co-equal blocks. Both sessions END on the wake-day.
+    // 15 consecutive segmented nights ending with LAST night (getSleepSignal only
+    // answers for a night just woken from): 23:00–03:00 (4h) + 04:00–08:00 (4h),
+    // a 1h awake gap between the co-equal blocks. Both sessions END on the wake-day.
     const samples: NormMetricSample[] = [];
-    for (let offset = 15; offset >= 1; offset--) {
-      const wakeDay = shiftDateStr("2026-03-16", -offset);
+    for (let offset = 14; offset >= 0; offset--) {
+      const wakeDay = shiftDateStr(today(segId), -offset);
       const bedDay = shiftDateStr(wakeDay, -1);
       samples.push(
         session(
@@ -325,24 +415,26 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
         .lastInsertRowid
     );
     setTimezone(napId, "UTC");
-    // 3h overnight (deficient) + a 1h afternoon nap 11h later. The nap must NOT
-    // merge, so the deficit is still seen.
+    // 3h overnight (deficient) + a 1h afternoon nap 11h later, on LAST night's
+    // wake-day so getSleepSignal answers at all. The nap must NOT merge, so the
+    // deficit is still seen.
+    const napDay = today(napId);
     upsertMetricSamples(
       napId,
       [
         session(
           "sleep_min",
-          "2026-03-25",
+          napDay,
           180,
-          "2026-03-25T01:00:00Z",
-          "2026-03-25T04:00:00Z"
+          `${napDay}T01:00:00Z`,
+          `${napDay}T04:00:00Z`
         ),
         session(
           "sleep_min",
-          "2026-03-25",
+          napDay,
           60,
-          "2026-03-25T15:00:00Z",
-          "2026-03-25T16:00:00Z"
+          `${napDay}T15:00:00Z`,
+          `${napDay}T16:00:00Z`
         ),
       ],
       "health-connect"

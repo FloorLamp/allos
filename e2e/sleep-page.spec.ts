@@ -183,11 +183,11 @@ test.describe("Sleep page (#1066)", () => {
     // Hero: duration + the SEPARATE nap line (never summed into the night, #1118).
     const hero = main.getByTestId("sleep-hero");
     await expect(hero).toBeVisible();
-    // The fixture's latest wake-day is TODAY. Issue #1186 makes "Last night" a
-    await expect(hero.getByTestId("sleep-hero-label")).toContainText("Today");
-    await expect(hero.getByTestId("sleep-hero-label")).not.toContainText(
-      "Last night"
-    );
+    // The fixture's latest wake-day is TODAY, and a wake-day is the date the
+    // session ENDED — so this IS last night. Issue #1186 keeps "Last night" a
+    // strict relative-night claim; the day-anchored count it first shipped with
+    // was one night late and named the night before this one.
+    await expect(hero.getByTestId("sleep-hero-label")).toHaveText("Last night");
     const duration = hero.getByTestId("sleep-hero-duration");
     await expect(duration).toBeVisible();
     const durationText = (await duration.innerText()).trim();
@@ -438,8 +438,8 @@ test.describe("Sleep page (#1066)", () => {
       "href",
       "/sleep"
     );
-    await expect(tile).toContainText("Today");
-    await expect(tile).not.toContainText("Last night");
+    // Same wake-day-is-today fixture as the hero, so the tile agrees with it.
+    await expect(tile).toContainText("Last night");
   });
 
   test("the Add entry action opens the shared sleep and mood editor", async ({
