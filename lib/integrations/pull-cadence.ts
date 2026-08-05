@@ -110,11 +110,13 @@ export function shouldPollNow(input: {
   now: Date;
   cadenceMinutes: number;
 }): PollDecision {
-  if (input.lastAttemptAt == null) return { poll: true, reason: "never-polled" };
+  if (input.lastAttemptAt == null)
+    return { poll: true, reason: "never-polled" };
   const lastMs = parseSyncEventAt(input.lastAttemptAt);
   if (lastMs == null) return { poll: true, reason: "unreadable" };
   const cadence = input.cadenceMinutes;
-  return pullWindow(lastMs, cadence) === pullWindow(input.now.getTime(), cadence)
+  return pullWindow(lastMs, cadence) ===
+    pullWindow(input.now.getTime(), cadence)
     ? { poll: false, reason: "same-window" }
     : { poll: true, reason: "window-open" };
 }
