@@ -54,7 +54,9 @@ test.describe("Equipment manager (#391)", () => {
       .getByTestId("equipment-row")
       .filter({ hasText: "E2E Delete Bar" });
     if (await row.count()) {
-      await row.getByRole("button", { name: "Delete" }).click();
+      // Delete moved into the shared ⋯ menu (#1491): open the row's menu first.
+      await row.getByRole("button", { name: "Equipment actions" }).click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
       await page
         .getByRole("dialog")
         .getByRole("button", { name: "Delete" })

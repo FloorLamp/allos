@@ -52,8 +52,10 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(row).toHaveAttribute("data-retired", "0");
 
   // Retire it — the row stays listed (history-preserving) but flips to retired and
-  // shows the badge.
-  await row.getByTestId("equipment-retire-toggle").click();
+  // shows the badge. Row actions live in the shared ⋯ menu (#1491): open it,
+  // then click the (portaled) Retire item.
+  await row.getByRole("button", { name: "Equipment actions" }).click();
+  await page.getByTestId("equipment-retire-toggle").click();
   await expect(page.getByText("Retired E2E Trap Bar")).toBeVisible();
   const retiredRow = page
     .getByTestId("equipment-row")
@@ -65,7 +67,8 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(retiredRow.getByText("Retired")).toBeVisible();
 
   // Restore it.
-  await retiredRow.getByTestId("equipment-retire-toggle").click();
+  await retiredRow.getByRole("button", { name: "Equipment actions" }).click();
+  await page.getByTestId("equipment-retire-toggle").click();
   await expect(page.getByText("Restored E2E Trap Bar")).toBeVisible();
   await expect(
     page.getByTestId("equipment-row").filter({ hasText: "E2E Trap Bar" })
