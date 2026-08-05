@@ -4,6 +4,7 @@
 // lays the daily taken/partial/skipped/missed/not-due states out on a Sun→Sat calendar
 // grid so the med's detail page can show the month-scale picture the strip can't.
 
+import { dayGrid } from "./day-grid";
 import type { AdherenceDot, AdherenceState } from "./supplement-adherence";
 
 export interface AdherenceCalendarCell {
@@ -21,12 +22,10 @@ export interface AdherenceCalendarModel {
   counts: Record<AdherenceState, number>;
 }
 
-// UTC-anchored weekday (0=Sun…6=Sat) of a YYYY-MM-DD date — matches shiftDateStr's
-// UTC anchoring so the grid never drifts across a DST boundary.
-function weekday(date: string): number {
-  return new Date(date + "T00:00:00Z").getUTCDay();
-}
-
+// An ADAPTER over the shared `dayGrid` (#2042), which replaced this module's local
+// UTC weekday helper and its hand-rolled lead/trail padding. `null` cells are the
+// grid's `before`/`after` padding under this domain's older name: a calendar page
+// renders them blank rather than as dates outside the course.
 export function buildAdherenceCalendar(
   dots: AdherenceDot[],
   startedOn: string | null = null
@@ -46,18 +45,24 @@ export function buildAdherenceCalendar(
   };
   for (const d of visibleDots) counts[d.state]++;
 
-  const cells: AdherenceCalendarCell[] = [];
-  if (visibleDots.length > 0) {
-    // Pad the first partial week with blanks up to the first day's weekday.
-    const lead = weekday(visibleDots[0].date);
-    for (let i = 0; i < lead; i++) cells.push({ date: null, state: null });
-    for (const d of visibleDots) cells.push({ date: d.date, state: d.state });
-    // Pad the final partial week so every row is 7 wide.
-    while (cells.length % 7 !== 0) cells.push({ date: null, state: null });
-  }
+  if (visibleDots.length === 0) return { weeks: [], counts };
 
-  const weeks: AdherenceCalendarCell[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const byDate = new Map(visibleDots.map((dot) => [dot.date, dot.state]));
+  // Sun→Sat rows over the dots' own span. weekStart 0 is this surface's fixed
+  // choice: a month calendar is a conventional layout, not a per-profile one.
+  const grid = dayGrid({
+    start: visibleDots[0].date,
+    end: visibleDots[visibleDots.length - 1].date,
+    weekStart: 0,
+    orientation: "week-rows",
+  });
+  const weeks: AdherenceCalendarCell[][] = grid.weeks.map((row) =>
+    row.map((cell) =>
+      cell.position === "in-window"
+        ? { date: cell.date, state: byDate.get(cell.date) ?? null }
+        : { date: null, state: null }
+    )
+  );
 
   return { weeks, counts };
 }

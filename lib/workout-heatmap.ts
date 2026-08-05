@@ -13,13 +13,8 @@
 // it is DST-immune and timezone-independent. Day bucketing itself already happened
 // upstream: `activities.date` is stored as the profile-local calendar day at
 // ingest (issue #94), so grouping by it buckets in the profile timezone.
-import {
-  lastNDates,
-  shiftDateStr,
-  startOfWeekStr,
-  weekdayOrder,
-  monthNames,
-} from "./date";
+import { lastNDates, weekdayOrder } from "./date";
+import { dayGrid, dayGridMonthLabels, gridStartFor } from "./day-grid";
 
 // One profile-local day's workout totals (the grouped query's row shape).
 export interface WorkoutDayDensity {
@@ -104,13 +99,17 @@ export function heatmapStart(
   weeks: number,
   weekStart = 0
 ): string {
-  const lastColStart = startOfWeekStr(end, weekStart);
-  return shiftDateStr(lastColStart, -(weeks - 1) * 7);
+  return gridStartFor(end, weeks, weekStart);
 }
 
 // Assemble the heatmap grid from the per-day density rows. `weeks` columns
 // (default 53 — a hair over a full year, so a trailing 12 months is always fully
 // visible) ending on the week of `end`. Pure: no DB, no clock.
+//
+// An ADAPTER over the shared `dayGrid` (#2042): the grid decides which day sits in
+// which cell, this decides what a day means (sessions, minutes, intensity level).
+// `future` is the grid's `after` padding under this domain's older name — the
+// window starts exactly on a week boundary, so a workout heatmap has no `before`.
 export function buildWorkoutHeatmap(
   density: WorkoutDayDensity[],
   end: string,
@@ -119,21 +118,16 @@ export function buildWorkoutHeatmap(
 ): WorkoutHeatmap {
   const byDate = new Map(density.map((d) => [d.date, d]));
   const start = heatmapStart(end, weeks, weekStart);
-  const months = monthNames("short");
+  const grid = dayGrid({ start, end, weekStart, orientation: "week-columns" });
 
-  const columns: HeatmapCell[][] = [];
-  const monthLabels: { col: number; label: string }[] = [];
   let totalSessions = 0;
   let activeDays = 0;
   let totalMinutes = 0;
-  let prevMonth = -1;
 
-  for (let col = 0; col < weeks; col++) {
-    const cells: HeatmapCell[] = [];
-    for (let row = 0; row < 7; row++) {
-      const date = shiftDateStr(start, col * 7 + row);
-      const future = date > end;
-      const d = future ? undefined : byDate.get(date);
+  const columns: HeatmapCell[][] = grid.weeks.map((cells) =>
+    cells.map((cell) => {
+      const future = cell.position === "after";
+      const d = future ? undefined : byDate.get(cell.date);
       const count = d?.count ?? 0;
       const minutes = d?.minutes ?? 0;
       if (count > 0) {
@@ -141,27 +135,20 @@ export function buildWorkoutHeatmap(
         activeDays += 1;
         totalMinutes += minutes;
       }
-      cells.push({
-        date,
+      return {
+        date: cell.date,
         count,
         minutes,
         level: intensityLevel(count),
         future,
-      });
-    }
-    // A month label sits above the first column whose top cell enters a new month.
-    const topMonth = Number(cells[0].date.slice(5, 7)) - 1;
-    if (topMonth !== prevMonth) {
-      monthLabels.push({ col, label: months[topMonth] });
-      prevMonth = topMonth;
-    }
-    columns.push(cells);
-  }
+      } satisfies HeatmapCell;
+    })
+  );
 
   return {
     columns,
     weekdayOrder: weekdayOrder(weekStart),
-    monthLabels,
+    monthLabels: dayGridMonthLabels(grid),
     start,
     end,
     totalSessions,

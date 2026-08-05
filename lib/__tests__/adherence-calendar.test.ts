@@ -30,8 +30,11 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
 
   it("spans multiple weeks with no leading blank when the range starts on Sunday", () => {
     // 2024-01-07 is a Sunday: 8 contiguous days → two full weeks, first cell is the 7th.
+    // (The dates are zero-padded properly here; the old string-slice fixture silently
+    // produced five copies of 2024-01-01, which the pre-#2042 "lay dots out in order"
+    // builder happened to render as eight sequential cells anyway.)
     const dots: AdherenceDot[] = Array.from({ length: 8 }, (_, i) => ({
-      date: `2024-01-0${7 + i}`.slice(0, 10),
+      date: `2024-01-${String(7 + i).padStart(2, "0")}`,
       state: "na" as const,
     }));
     const { weeks } = buildAdherenceCalendar(dots);
