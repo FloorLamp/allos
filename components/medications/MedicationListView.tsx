@@ -69,11 +69,11 @@ export default function MedicationListView({
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="section-label border-b border-black/15 text-left dark:border-white/15">
-                <th className="py-2 pr-3 font-medium">Medication</th>
-                <th className="py-2 pr-3 font-medium">Dose</th>
-                <th className="py-2 pr-3 font-medium">Schedule</th>
-                <th className="py-2 pr-3 font-medium">Prescriber</th>
-                <th className="py-2 font-medium">Started</th>
+                <th className="th">Medication</th>
+                <th className="th">Dose</th>
+                <th className="th">Schedule</th>
+                <th className="th">Prescriber</th>
+                <th className="th">Started</th>
               </tr>
             </thead>
             <tbody>
@@ -83,7 +83,7 @@ export default function MedicationListView({
                   data-testid="medication-list-row"
                   className="border-b border-black/10 align-top dark:border-white/10"
                 >
-                  <td className="py-2 pr-3">
+                  <td className="td">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="font-medium">{r.name}</span>
                       <RxOtcBadge rx={r.rx ? 1 : 0} />
@@ -94,10 +94,10 @@ export default function MedicationListView({
                       </div>
                     )}
                   </td>
-                  <td className="py-2 pr-3">{r.dose ?? "—"}</td>
-                  <td className="py-2 pr-3">{r.schedule}</td>
-                  <td className="py-2 pr-3">{r.prescriber ?? "—"}</td>
-                  <td className="py-2">
+                  <td className="td">{r.dose ?? "—"}</td>
+                  <td className="td">{r.schedule}</td>
+                  <td className="td">{r.prescriber ?? "—"}</td>
+                  <td className="td">
                     {r.startedOn
                       ? formatDateWithYear(r.startedOn, formatPrefs)
                       : "—"}

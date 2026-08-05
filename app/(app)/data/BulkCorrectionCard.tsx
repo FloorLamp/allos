@@ -400,9 +400,9 @@ export default function BulkCorrectionCard({
               <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
-                  <th className="py-1 font-medium">Date</th>
-                  <th className="py-1 font-medium">Now</th>
-                  <th className="py-1 font-medium">After</th>
+                  <th className="th">Date</th>
+                  <th className="th">Now</th>
+                  <th className="th">After</th>
                 </tr>
               </thead>
               <tbody>
@@ -411,9 +411,9 @@ export default function BulkCorrectionCard({
                     key={i}
                     className="border-t border-black/5 text-slate-700 dark:border-white/5 dark:text-slate-200"
                   >
-                    <td className="py-1">{row.date}</td>
-                    <td className="py-1">{row.before}</td>
-                    <td className="py-1">{row.after}</td>
+                    <td className="td">{row.date}</td>
+                    <td className="td">{row.before}</td>
+                    <td className="td">{row.after}</td>
                   </tr>
                 ))}
                 </tbody>

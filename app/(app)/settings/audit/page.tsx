@@ -10,6 +10,7 @@ import {
 } from "@/lib/audit-query";
 import { AUDIT_PAGE_SIZE, clampPage, pageCount } from "@/lib/audit-actions";
 import type { AppRoute } from "@/lib/hrefs";
+import LogTable from "@/components/LogTable";
 
 export const dynamic = "force-dynamic";
 
@@ -131,61 +132,46 @@ export default async function AuditLogPage(props: {
         )}
       </form>
 
-      {rows.length === 0 ? (
-        <div
-          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
-          data-testid="audit-empty"
-        >
-          No audit events match these filters.
-        </div>
-      ) : (
-        <div className="card overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="audit-table">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th whitespace-nowrap">Time (UTC)</th>
-                  <th className="th">Login</th>
-                  <th className="th">Action</th>
-                  <th className="th">Profile</th>
-                  <th className="th">Target</th>
-                  <th className="th">Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => (
-                  <tr
-                    key={e.id}
-                    className="border-b border-black/5 align-top dark:border-white/10"
-                    data-testid="audit-row"
-                  >
-                    <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {formatTimestamp(e.ts, formatPrefs, { zone: "utc" })}
-                    </td>
-                    <td className="td">
-                      {e.username ??
-                        (e.login_id != null ? `#${e.login_id}` : "—")}
-                    </td>
-                    <td className="td font-mono text-xs">{e.action}</td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {e.profile_name ??
-                        (e.active_profile_id != null
-                          ? `#${e.active_profile_id}`
-                          : "—")}
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      {e.target ?? "—"}
-                    </td>
-                    <td className="td break-words text-slate-500 dark:text-slate-400">
-                      {e.detail ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <LogTable
+        columns={[
+          { label: "Time (UTC)", className: "whitespace-nowrap" },
+          { label: "Login" },
+          { label: "Action" },
+          { label: "Profile" },
+          { label: "Target" },
+          { label: "Detail" },
+        ]}
+        isEmpty={rows.length === 0}
+        emptyMessage="No audit events match these filters."
+        emptyTestId="audit-empty"
+        tableTestId="audit-table"
+      >
+        {rows.map((e) => (
+          <tr
+            key={e.id}
+            className="border-b border-black/5 align-top dark:border-white/10"
+            data-testid="audit-row"
+          >
+            <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
+              {formatTimestamp(e.ts, formatPrefs, { zone: "utc" })}
+            </td>
+            <td className="td">
+              {e.username ?? (e.login_id != null ? `#${e.login_id}` : "—")}
+            </td>
+            <td className="td font-mono text-xs">{e.action}</td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {e.profile_name ??
+                (e.active_profile_id != null ? `#${e.active_profile_id}` : "—")}
+            </td>
+            <td className="td text-slate-500 dark:text-slate-400">
+              {e.target ?? "—"}
+            </td>
+            <td className="td break-words text-slate-500 dark:text-slate-400">
+              {e.detail ?? ""}
+            </td>
+          </tr>
+        ))}
+      </LogTable>
 
       {/* Pager: server-side LIMIT/OFFSET, so we never ship the whole table. */}
       <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">

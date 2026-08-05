@@ -51,9 +51,9 @@ export default function OpticalProgression({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
-              <th className="py-1 pr-3 font-medium">Date</th>
-              <th className="py-1 pr-3 font-medium">OD (right)</th>
-              <th className="py-1 font-medium">OS (left)</th>
+              <th className="th">Date</th>
+              <th className="th">OD (right)</th>
+              <th className="th">OS (left)</th>
             </tr>
           </thead>
           <tbody>
@@ -62,13 +62,11 @@ export default function OpticalProgression({
                 key={`${p.date}-${i}`}
                 className="border-t border-black/5 dark:border-white/5"
               >
-                <td className="py-1 pr-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                <td className="td whitespace-nowrap">
                   {formatRecordDate(p.date, "—", formatPrefs)}
                 </td>
-                <td className="py-1 pr-3 tabular-nums">
-                  {formatDiopter(p.od)}
-                </td>
-                <td className="py-1 tabular-nums">{formatDiopter(p.os)}</td>
+                <td className="td tabular-nums">{formatDiopter(p.od)}</td>
+                <td className="td tabular-nums">{formatDiopter(p.os)}</td>
               </tr>
             ))}
           </tbody>

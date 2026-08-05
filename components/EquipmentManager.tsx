@@ -2,15 +2,11 @@
 
 import { useId, useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  IconPencil,
-  IconTrash,
-  IconPlus,
-  IconX,
-  IconArchive,
-  IconArchiveOff,
-  IconChevronRight,
-} from "@tabler/icons-react";
+import { IconPlus, IconX, IconChevronRight } from "@tabler/icons-react";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import type { Equipment, EquipmentKind } from "@/lib/types";
 import { EQUIPMENT_CATEGORIES, kindOf } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
@@ -79,6 +75,7 @@ export default function EquipmentManager({
   const toast = useToast();
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [error, setError] = useState<string | null>(null);
@@ -222,42 +219,57 @@ export default function EquipmentManager({
             : "weight not set"}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={() => startEdit(e)}
-          disabled={pending}
-          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          title="Edit"
-          aria-label="Edit"
+      {/* Row actions in the shared ⋯ menu (#1491 item 9 — was a hand-rolled
+          inline pencil/archive/trash trio, the exact clone the row-action scan
+          now blocks). Same three actions, same handlers. */}
+      <div className="flex shrink-0 items-center">
+        <OverflowMenu
+          label="Equipment actions"
+          open={menuOpenId === e.id}
+          onOpenChange={(open) => setMenuOpenId(open ? e.id : null)}
         >
-          <IconPencil className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleRetired(e)}
-          disabled={pending}
-          data-testid="equipment-retire-toggle"
-          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          title={e.retired ? "Restore" : "Retire"}
-          aria-label={e.retired ? "Restore" : "Retire"}
-        >
-          {e.retired ? (
-            <IconArchiveOff className="h-4 w-4" />
-          ) : (
-            <IconArchive className="h-4 w-4" />
+          {({ close }) => (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={pending}
+                onClick={() => {
+                  startEdit(e);
+                  close();
+                }}
+                className={MENU_ITEM}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={pending}
+                data-testid="equipment-retire-toggle"
+                onClick={() => {
+                  toggleRetired(e);
+                  close();
+                }}
+                className={MENU_ITEM}
+              >
+                {e.retired ? "Restore" : "Retire"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={pending}
+                onClick={() => {
+                  close();
+                  void remove(e);
+                }}
+                className={MENU_ITEM_DANGER}
+              >
+                Delete
+              </button>
+            </>
           )}
-        </button>
-        <button
-          type="button"
-          onClick={() => remove(e)}
-          disabled={pending}
-          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-          title="Delete"
-          aria-label="Delete"
-        >
-          <IconTrash className="h-4 w-4" />
-        </button>
+        </OverflowMenu>
       </div>
     </li>
   );

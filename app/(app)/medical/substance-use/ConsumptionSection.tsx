@@ -8,10 +8,11 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
-import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import EntryHistoryTable, {
+  type EntryHistoryColumn,
+} from "@/components/EntryHistoryTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
-import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { EmptyState } from "@/components/ui";
 import {
@@ -35,8 +36,6 @@ import {
   undoSubstanceUnitAction,
   updateSubstanceHistoryEntryAction,
 } from "./actions";
-
-const COLLAPSED_HISTORY_COUNT = 5;
 
 function mutationError(kind: string): string {
   if (kind === "invalid-date") return "Enter a valid date.";
@@ -73,7 +72,6 @@ export default function ConsumptionSection({
   const def = substanceDef(substance);
   const confirm = useConfirm();
   const toast = useToast();
-  const undoable = useUndoableDelete();
   // The shared one-tap ledger (#2041): this surface has no optimistic count to move —
   // the week figure re-renders from the action's revalidation — so the cooldown IS its
   // feedback design (#2007 layer 1), which is exactly what the registry records.
@@ -81,11 +79,8 @@ export default function ConsumptionSection({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
-  const [rowMenuOpen, setRowMenuOpen] = useState<number | null>(null);
   const [capOpen, setCapOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const [capInput, setCapInput] = useState(cap != null ? String(cap) : "");
 
   function withSubstance(extra?: Record<string, string>): FormData {
@@ -171,7 +166,8 @@ export default function ConsumptionSection({
 
   async function editEntry(
     event: FormEvent<HTMLFormElement>,
-    entry: SubstanceHistoryEntry
+    entry: SubstanceHistoryEntry,
+    done: () => void
   ) {
     event.preventDefault();
     setPending(true);
@@ -185,29 +181,34 @@ export default function ConsumptionSection({
       return;
     }
     setError(null);
-    setEditingId(null);
+    done();
     toast("Entry updated.");
   }
 
-  async function removeEntry(entry: SubstanceHistoryEntry) {
-    if (
-      !(await confirm({
-        title: `Delete ${def.label.toLowerCase()} entry?`,
-        message: "This changes the weekly count and can be undone.",
-        confirmLabel: "Delete entry",
-        danger: true,
-      }))
-    )
-      return;
-    const fd = withSubstance({ id: String(entry.id) });
-    await undoable(deleteSubstanceHistoryEntryAction, fd, {
-      deletedMessage: "Entry deleted.",
-    });
-  }
+  const historyColumns: EntryHistoryColumn<SubstanceHistoryEntry>[] = [
+    {
+      header: "Date",
+      slot: "title",
+      cellClassName: "tabular-nums",
+      cell: (entry) => formatDateWithYear(entry.date, formatPrefs),
+    },
+    {
+      header: "Amount",
+      slot: "value",
+      label: "Amount",
+      cell: (entry) =>
+        `${entry.amount} ${entry.amount === 1 ? def.unitSingular : def.unitPlural}`,
+    },
+    {
+      header: "Notes",
+      slot: "meta",
+      label: "Notes",
+      empty: (entry) => !entry.notes,
+      cellClassName: "max-w-sm text-slate-500 dark:text-slate-400",
+      cell: (entry) => (entry.notes ? <NotesText notes={entry.notes} /> : "—"),
+    },
+  ];
 
-  const visibleHistory = expanded
-    ? history
-    : history.slice(0, COLLAPSED_HISTORY_COUNT);
   const maxTrend = Math.max(1, ...trend.map((week) => week.count));
 
   return (
@@ -334,135 +335,56 @@ export default function ConsumptionSection({
           </div>
         ) : (
           <div className="mt-2" data-testid={`substance-history-${substance}`}>
-            <ResponsiveTable className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-black/10 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="px-2 py-1.5 font-medium">Date</th>
-                  <th className="px-2 py-1.5 font-medium">Amount</th>
-                  <th className="px-2 py-1.5 font-medium">Notes</th>
-                  <th className="w-16 px-2 py-1.5 text-right font-medium">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleHistory.map((entry) => (
-                  <tr
-                    key={entry.id}
-                    data-testid={`substance-history-row-${substance}-${entry.id}`}
-                    className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
-                  >
-                    {editingId === entry.id ? (
-                      <Td slot="full" colSpan={4} className="px-2 py-2">
-                        <form
-                          className="grid gap-3 sm:grid-cols-2"
-                          onSubmit={(event) => void editEntry(event, entry)}
-                        >
-                          <HistoryFields
-                            entry={entry}
-                            defaultDate={defaultDate}
-                          />
-                          <div className="flex gap-2 sm:col-span-2">
-                            <button
-                              type="submit"
-                              className="btn"
-                              disabled={pending}
-                              data-testid={`substance-history-save-${substance}`}
-                            >
-                              {pending ? "Saving…" : "Save"}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-ghost"
-                              onClick={() => setEditingId(null)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </Td>
-                    ) : (
-                      <>
-                        <Td slot="title" className="px-2 py-2 tabular-nums">
-                          {formatDateWithYear(entry.date, formatPrefs)}
-                        </Td>
-                        <Td slot="value" label="Amount" className="px-2 py-2">
-                          {entry.amount}{" "}
-                          {entry.amount === 1
-                            ? def.unitSingular
-                            : def.unitPlural}
-                        </Td>
-                        <Td
-                          slot="meta"
-                          label="Notes"
-                          empty={!entry.notes}
-                          className="max-w-sm px-2 py-2 text-slate-500 dark:text-slate-400"
-                        >
-                          {entry.notes ? (
-                            <NotesText notes={entry.notes} />
-                          ) : (
-                            "—"
-                          )}
-                        </Td>
-                        <Td slot="actions" className="px-2 py-2">
-                          <div className="flex justify-end">
-                            <OverflowMenu
-                              label={`${def.label} entry actions`}
-                              open={rowMenuOpen === entry.id}
-                              onOpenChange={(open) =>
-                                setRowMenuOpen(open ? entry.id : null)
-                              }
-                            >
-                              {({ close }) => (
-                                <>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    className={MENU_ITEM}
-                                    data-testid={`substance-history-edit-${substance}-${entry.id}`}
-                                    onClick={() => {
-                                      close();
-                                      setEditingId(entry.id);
-                                    }}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    className={MENU_ITEM_DANGER}
-                                    data-testid={`substance-history-delete-${substance}-${entry.id}`}
-                                    onClick={() => {
-                                      close();
-                                      void removeEntry(entry);
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                </>
-                              )}
-                            </OverflowMenu>
-                          </div>
-                        </Td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </ResponsiveTable>
-            {history.length > COLLAPSED_HISTORY_COUNT ? (
-              <button
-                type="button"
-                className="mt-2 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
-                aria-expanded={expanded}
-                onClick={() => setExpanded((value) => !value)}
-                data-testid={`substance-history-toggle-${substance}`}
-              >
-                {expanded
-                  ? "Show fewer entries"
-                  : `View all ${history.length} entries`}
-              </button>
-            ) : null}
+            <EntryHistoryTable
+              items={history}
+              columns={historyColumns}
+              expandToggle={{
+                collapsedLabel: `View all ${history.length} entries`,
+                expandedLabel: "Show fewer entries",
+                testId: `substance-history-toggle-${substance}`,
+              }}
+              menuLabel={`${def.label} entry actions`}
+              rowTestId={(entry) =>
+                `substance-history-row-${substance}-${entry.id}`
+              }
+              editTestId={(entry) =>
+                `substance-history-edit-${substance}-${entry.id}`
+              }
+              deleteTestId={(entry) =>
+                `substance-history-delete-${substance}-${entry.id}`
+              }
+              renderEditForm={(entry, done) => (
+                <form
+                  className="grid gap-3 sm:grid-cols-2"
+                  onSubmit={(event) => void editEntry(event, entry, done)}
+                >
+                  <HistoryFields entry={entry} defaultDate={defaultDate} />
+                  <div className="flex gap-2 sm:col-span-2">
+                    <button
+                      type="submit"
+                      className="btn"
+                      disabled={pending}
+                      data-testid={`substance-history-save-${substance}`}
+                    >
+                      {pending ? "Saving…" : "Save"}
+                    </button>
+                    <button type="button" className="btn-ghost" onClick={done}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+              confirmDelete={() => ({
+                title: `Delete ${def.label.toLowerCase()} entry?`,
+                message: "This changes the weekly count and can be undone.",
+                confirmLabel: "Delete entry",
+              })}
+              deleteFormData={(entry) =>
+                withSubstance({ id: String(entry.id) })
+              }
+              deleteAction={deleteSubstanceHistoryEntryAction}
+              deletedMessage="Entry deleted."
+            />
           </div>
         )}
       </div>

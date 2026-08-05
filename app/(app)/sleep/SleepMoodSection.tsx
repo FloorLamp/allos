@@ -156,19 +156,19 @@ export default function SleepMoodSection({
             >
               <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                 <tr>
-                  <th scope="col" className="px-2 py-2 font-medium sm:px-3">
+                  <th scope="col" className="th">
                     Date
                   </th>
-                  <th scope="col" className="px-2 py-2 font-medium sm:px-3">
+                  <th scope="col" className="th">
                     Sleep
                   </th>
-                  <th scope="col" className="px-2 py-2 font-medium sm:px-3">
+                  <th scope="col" className="th">
                     Mood
                   </th>
                   {hasSupplementContext && (
                     <th
                       scope="col"
-                      className="hidden whitespace-nowrap px-3 py-2 font-medium sm:table-cell"
+                      className="th hidden whitespace-nowrap sm:table-cell"
                     >
                       Supplements
                     </th>
@@ -177,7 +177,7 @@ export default function SleepMoodSection({
                     <th
                       key={column.key}
                       scope="col"
-                      className={`hidden px-3 py-2 font-medium sm:table-cell ${
+                      className={`th hidden sm:table-cell ${
                         column.key === "deep"
                           ? "sm:border-l sm:border-black/10 dark:sm:border-white/10"
                           : ""
@@ -186,10 +186,7 @@ export default function SleepMoodSection({
                       {column.label}
                     </th>
                   ))}
-                  <th
-                    scope="col"
-                    className="px-2 py-2 text-right font-medium sm:px-3"
-                  >
+                  <th scope="col" className="th text-right">
                     Actions
                   </th>
                 </tr>
@@ -203,7 +200,7 @@ export default function SleepMoodSection({
                         STAGE_COLUMNS.length +
                         (hasSupplementContext ? 1 : 0)
                       }
-                      className="px-3 py-6 text-center text-slate-500 dark:text-slate-400"
+                      className="td py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
                       No sleep, stage, or mood entries in the past {windowDays}{" "}
@@ -219,7 +216,7 @@ export default function SleepMoodSection({
                       data-sleep-editable={row.sleepEditable ? "true" : "false"}
                       className="tabular-nums"
                     >
-                      <td className="whitespace-nowrap px-2 py-2 sm:px-3">
+                      <td className="td whitespace-nowrap">
                         <Link
                           href={timelineDayHref(row.date)}
                           className="font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -238,7 +235,7 @@ export default function SleepMoodSection({
                           </span>
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-slate-700 sm:px-3 dark:text-slate-200">
+                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
                         <span>
                           {row.sleepHours == null
                             ? "—"
@@ -255,7 +252,7 @@ export default function SleepMoodSection({
                           </div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-slate-700 sm:px-3 dark:text-slate-200">
+                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
                         {row.valence == null ? (
                           "—"
                         ) : (
@@ -266,7 +263,7 @@ export default function SleepMoodSection({
                         )}
                       </td>
                       {hasSupplementContext && (
-                        <td className="hidden whitespace-nowrap px-3 py-2 sm:table-cell">
+                        <td className="td hidden whitespace-nowrap sm:table-cell">
                           {row.bedtimeSupplements ? (
                             <BedtimeSupplementStatus
                               summary={row.bedtimeSupplements}
@@ -283,7 +280,7 @@ export default function SleepMoodSection({
                       {STAGE_COLUMNS.map((column) => (
                         <td
                           key={column.key}
-                          className={`hidden whitespace-nowrap px-3 py-2 text-slate-700 sm:table-cell dark:text-slate-200 ${
+                          className={`td hidden whitespace-nowrap text-slate-700 sm:table-cell dark:text-slate-200 ${
                             column.key === "deep"
                               ? "sm:border-l sm:border-black/10 dark:sm:border-white/10"
                               : ""
@@ -295,7 +292,7 @@ export default function SleepMoodSection({
                             : formatHm(row.stages[column.key])}
                         </td>
                       ))}
-                      <td className="whitespace-nowrap px-2 py-2 text-right sm:px-3">
+                      <td className="td whitespace-nowrap text-right">
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
