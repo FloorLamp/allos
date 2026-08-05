@@ -23,6 +23,8 @@
 // is an ibuprofen intake.
 
 import { db } from "../../db";
+import { cache } from "../../request-cache";
+import { tickCached } from "../../tick-cache";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import {
   medicationFamilies,
@@ -102,7 +104,34 @@ export function getActiveMedicationFamilies(
 // shared state object per family). `date` is the profile-local day the count
 // resets on. Two small queries per family (latest arming administration +
 // today's combined count), profile-scoped through the parent-item JOIN.
-export function getMedicationFamilyStates(
+//
+// MEMOIZED ON BOTH LIFETIMES (#2111). Every cross-item PRN counter is a formatter over
+// this ONE state, and a surface that renders several of them used to pay for the whole
+// gather once per formatter: the dashboard reached it twice (the quick-log gather and
+// the attention model's over-max finding), `/medications` twice, and the hourly tick
+// two or three times (redose notice, the digest's over-max item, the quick-log
+// gather) — where `cache()` is identity.
+//
+//   • `cache()` — collapses the per-render fan-out, the #2094 shape, keyed
+//     (profileId, date) as primitives so identity actually matches.
+//   • `tickCached` — the same collapse for the tick, whose scope
+//     `scripts/notify.ts` opens per profile (lib/tick-cache.ts).
+//
+// The one thing a memo here MUST NOT do is outlive a dose confirm: this is a safety
+// counter, and a stale low count is the "you may redose" false GO the family gather
+// exists to prevent. Neither lifetime can. A request is one render — `markDoseTaken`
+// revalidates, and the next render is a new request with a new memo — and a tick
+// scope contains no dose write at all (taps land in the webhook route or the sidecar's
+// separate `poll` mode, never in `tick()`).
+export const getMedicationFamilyStates = cache(
+  tickCached(
+    "getMedicationFamilyStates",
+    (profileId: number, date: string) => `${profileId}:${date}`,
+    getMedicationFamilyStatesUncached
+  )
+);
+
+function getMedicationFamilyStatesUncached(
   profileId: number,
   date: string
 ): Map<number, MedFamilyState> {

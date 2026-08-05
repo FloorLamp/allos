@@ -89,6 +89,7 @@ import {
   runDigest,
 } from "../lib/notifications/digest-data";
 import { reconcileProfileMessages } from "../lib/notifications/reconcile";
+import { runInTickScope } from "../lib/tick-cache";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -893,7 +894,12 @@ async function tick() {
 
   for (const p of profiles) {
     try {
-      if (await tickProfile(p)) anyFailed = true;
+      // One tick-scoped memo per profile (#2118, #2111): request-scoped cache() is
+      // identity here, so the tick's repeated heavy gathers — the preventive
+      // assessment and the medication-family state — each collapse to ONE
+      // evaluation for this profile. The scope closes with the profile, and nothing
+      // inside it writes what those gathers read (lib/tick-cache.ts states the rule).
+      if (await runInTickScope(() => tickProfile(p))) anyFailed = true;
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 156 (issue #2024): the USER-DECLARED precision of an injury constraint.
+// Migration 157 (issue #2024): the USER-DECLARED precision of an injury constraint.
 //
 // An injury row stays what it always was — the user's explicit training constraint, not a
 // diagnosis — but the constraint could only be declared at one coarse level (a whole
@@ -61,7 +61,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 156,
-  name: "156-injury-scope",
+  id: 157,
+  name: "157-injury-scope",
   up,
 };

@@ -7,6 +7,8 @@
 // (enforced by lib/__tests__/profile-scoping.test.ts).
 
 import { db, writeTx } from "../../db";
+import { cache } from "../../request-cache";
+import { tickCached } from "../../tick-cache";
 import { clearPreventiveDismissal } from "./suppressions";
 import {
   assessCatalog,
@@ -308,7 +310,34 @@ export function clearPreventiveOverride(
 // for every consumer. Shared by the Upcoming builder below AND the proactive
 // preventive nudge (lib/notifications/preventive.ts) so the page and the push can
 // never diverge on WHICH items are due. Every read is profile-scoped.
-export function assessProfilePreventive(
+//
+// MEMOIZED ON BOTH LIFETIMES (#2118). This is not a cheap read — it merges manual and
+// inferred satisfactions (medical records, encounters, screening results, optical Rx),
+// overrides, smoking history and the whole `getRiskFactors` gather — and it answers a
+// question that only changes at the profile-local date rollover, which its own `today`
+// argument already names. Every caller in one request or one tick asks it the same
+// pair of questions, so it is wrapped in BOTH memos:
+//
+//   • `cache()` — the request-scoped shim. Redundant today (the /upcoming page's two
+//     fan-outs already collapse in `rawUpcoming`'s own cache), kept so a future direct
+//     caller inherits the collapse instead of re-deriving it.
+//   • `tickCached` — the tick-scoped memo. This is the one that mattered: the nudge
+//     planner, the digest's `collectUpcoming` and the reconcile sweep's preventive
+//     reconciler — which re-asked ONCE PER LIVE PREVENTIVE-CARRYING POINTER — all ran
+//     it inside the same tick, where `cache()` is identity.
+//
+// Nothing inside a tick writes satisfactions, overrides, smoking history or risk
+// inputs (those move through Server Actions and Telegram taps, neither of which runs
+// in `tick()`), and the scope closes with the profile — see lib/tick-cache.ts.
+export const assessProfilePreventive = cache(
+  tickCached(
+    "assessProfilePreventive",
+    (profileId: number, today: string) => `${profileId}:${today}`,
+    assessProfilePreventiveUncached
+  )
+);
+
+function assessProfilePreventiveUncached(
   profileId: number,
   today: string
 ): PreventiveSummary {
