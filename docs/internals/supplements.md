@@ -322,6 +322,17 @@ exist?" is a different question with a better answer already, `doseWindowSince`,
 is timezone-aware and widened by logged history because a log is proof the dose existed
 on its date (#1442). The schedule resolver must never override it.
 
+**Attaching the history costs one join per profile per request/tick** (#2066).
+`withScheduleVersions` runs on every current-schedule read, and both the hourly tick and
+a single page render fan `getSupplementDoses` out across several consumers, so that read
+is memoized per profile with a short TTL (the `tzMemo` shape in `lib/db.ts`, for the same
+three-processes-one-file reason). A dose edit and an undo restore drop the entry
+in-process through `invalidateDoseScheduleVersions`; `getDoseScheduleVersions` itself is
+UNMEMOIZED because the write path's backfill decision must never read a cache. There is
+no lean "current schedule only" reader and there must not be one: the tick's own gather
+scores each dose's adherence strip over past days, so stripping `.versions` from it would
+re-introduce the retroactive re-judgment this whole feature prevents.
+
 **The bound that remains.** `buildAdherencePatternFindings` clamps by EXISTENCE only,
 the same bound the strip it summarizes uses (#221). It no longer filters at
 `updated_at`, so a re-timed dose keeps its pre-edit window and its pattern survives the
