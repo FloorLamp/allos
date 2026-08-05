@@ -3,20 +3,19 @@ import { db } from "../../db";
 import { cache } from "../../request-cache";
 import type { Encounter } from "../../types";
 import { visitContext, type VisitContext } from "../../visit-context";
+import {
+  REPRESENTATIVE_SPECS,
+  representativeIds,
+} from "../../representative-ids";
 
-export const ENCOUNTER_REPRESENTATIVE_IDS = `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, COALESCE(
-        CASE WHEN external_id IS NOT NULL
-             THEN substr(external_id, instr(external_id, '|') + 1) END,
-        date || '|' || COALESCE(end_date, '') || '|' || COALESCE(type, '')
-             || '|' || COALESCE(class_code, '') || '|' || COALESCE(reason, '')
-      )
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM encounters WHERE profile_id = ?
-  ) WHERE rn = 1`;
+// One row per visit across overlapping documents (#71) — the original of the
+// collapse idiom the clinical lists later adopted. Emitted by the shared builder
+// (lib/representative-ids.ts, #2035); the encounters registry row carries the
+// identity (the source system's own encounter id when there is one, else the content
+// tuple) and the manual-beats-imported preference axis. Takes ONE profile_id bind.
+export const ENCOUNTER_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.encounters
+);
 
 export const getEncounters = cache(function getEncounters(
   profileId: number

@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { REPRESENTATIVE_SPECS, representativeIds } from "../representative-ids";
 import { getMedicalRecords } from "./medical";
 import {
   isAllergenSpecificIgE,
@@ -125,117 +126,56 @@ export function getAllergy(profileId: number, id: number): Allergy | undefined {
 // procedure / family-history entry is stored once PER uploaded document (import
 // persistence scopes external_id with the document source, so each document keeps
 // its own physical row and a per-document delete never orphans another document's
-// copy — see lib/import-persist). These CTEs collapse those per-document twins to
-// ONE representative at READ TIME on the entry's NATURAL identity, exactly as
+// copy — see lib/import-persist). These subqueries collapse those per-document twins
+// to ONE representative at READ TIME on the entry's NATURAL identity, exactly as
 // ENCOUNTER_REPRESENTATIVE_IDS (#71) does for visits. Storage / delete are
 // untouched; each is the SINGLE source of truth for its collapse, shared by the
 // list pages, the Timeline, and Search so every read surface hides the duplicates
 // identically. Each takes ONE profile_id bind param.
 //
-// Representative rule (shared): prefer a MANUAL row (document_id IS NULL — the
-// user's own entry) over an imported twin, then the most recent physical row
-// (id DESC, a proxy for the newest upload). Identity is CONSERVATIVE — any
-// difference in the key leaves rows in separate groups so genuinely distinct
-// entries (e.g. type-1 vs type-2 diabetes, coded differently) both stay visible
-// and are never silently merged.
-
-// Conditions collapse on the coded identity when present ('code:<code>'), else the
-// normalized name ('name:<lower(name)>'). The 'code:'/'name:' prefixes keep the two
-// namespaces from ever colliding; NULLIF(TRIM(code),'') makes a blank code fall
-// through to the name branch. This COALESCE is the SQL mirror of the pure
+// The window itself is emitted by the shared builder (lib/representative-ids.ts,
+// #2035) from the registry rows that carry each table's collapse identity and its
+// preference axis — the rule used to be hand-written here four times, and one of its
+// seven copies repo-wide spelled the manual-beats-imported preference differently.
+// Identity is CONSERVATIVE — any difference in the key leaves rows in separate groups
+// so genuinely distinct entries (e.g. type-1 vs type-2 diabetes, coded differently)
+// both stay visible and are never silently merged. See that module for the identity
+// and preference rationale per table.
+//
+// The condition identity's COALESCE is the SQL mirror of the pure
 // conditionCollapseKey() in lib/icd10.ts (#155) — the ICD-10-CM entry-suggestion that
 // fills a code on a previously code-less row strengthens this natural key (code
 // equality beats name-string equality across documents from different providers); a
 // db-tier test pins that the SQL groups rows exactly as conditionCollapseKey() keys
 // them so the two can't drift.
 //
-// Representative ORDER (#193): an ACTIVE-status row wins the representative slot
-// BEFORE the manual-over-imported / newest tiebreakers, so when a same-name twin
-// pair (e.g. a resolved 2015 entry + an active 2023 recurrence of the same uncoded
-// condition) collapses, the SURVIVING representative is the active one — the
-// unfiltered list, Timeline, and Search all show the live problem, and an "active"
-// filtered view can never be emptied by a resolved representative hiding an active
-// twin.
-//
-// The status filter (#193, issue option (c)) is injected INTO the inner FROM (via
-// `filterStatus`) so the representative is chosen from ONLY the matching-status
-// rows: a filtered view then can't be emptied by a representative the filter would
-// exclude while a matching twin exists. The optional status bind comes AFTER the
-// profile_id bind.
+// The condition status filter (#193, issue option (c)) is injected INTO the inner
+// FROM (via `filterStatus`) so the representative is chosen from ONLY the
+// matching-status rows: a filtered view then can't be emptied by a representative the
+// filter would exclude while a matching twin exists. The optional status bind comes
+// AFTER the profile_id bind.
 function conditionRepresentativeIds(filterStatus: boolean): string {
-  return `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, COALESCE(
-        'code:' || NULLIF(TRIM(code), ''),
-        'name:' || LOWER(TRIM(name))
-      ),
-      -- Laterality is IDENTITY, not decoration (#1403/#482): left-knee and
-      -- right-knee osteoarthritis share a name AND an unspecified ICD-10 code, so
-      -- without this the two collapse and one side vanishes from the problem list.
-      -- An unstated side ('') groups with other unstated rows, as before.
-      'lat:' || COALESCE(laterality, '')
-      ORDER BY (status = 'active') DESC, (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM conditions WHERE profile_id = ?${filterStatus ? " AND status = ?" : ""}
-  ) WHERE rn = 1`;
+  return representativeIds(
+    REPRESENTATIVE_SPECS.conditions,
+    filterStatus ? { where: "status = ?" } : {}
+  );
 }
 
 // Unfiltered representative set — shared by the Timeline and Search (one row per
 // condition, preferring the active twin). Takes ONE profile_id bind param.
 export const CONDITION_REPRESENTATIVE_IDS = conditionRepresentativeIds(false);
 
-// Procedures collapse on (coded-or-named identity, performed date). Two procedures
-// with the same name on different dates stay distinct; an undated pair groups
-// together (COALESCE(date,'') treats NULLs as equal).
-export const PROCEDURE_REPRESENTATIVE_IDS = `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id,
-        COALESCE('code:' || NULLIF(TRIM(code), ''), 'name:' || LOWER(TRIM(name))),
-        COALESCE(date, '')
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM procedures WHERE profile_id = ?
-  ) WHERE rn = 1`;
+export const PROCEDURE_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.procedures
+);
 
-// Family history collapses on (relative, condition), both normalized. An unknown
-// relation (NULL) groups with other unknown-relation rows for the same condition.
-// The genetic discriminator and the family side join the key (#1407): a maternal
-// grandmother and a paternal one both labeled "Grandmother", or a biological and an
-// adopted parent both labeled "Father", are DIFFERENT relatives with different
-// hereditary weight — collapsing them would silently drop one. Unstated ('') groups
-// with other unstated rows, so nothing that used to collapse stops collapsing.
-export const FAMILY_HISTORY_REPRESENTATIVE_IDS = `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id,
-        'rel:' || LOWER(TRIM(COALESCE(relation, ''))),
-        'cond:' || LOWER(TRIM(condition)),
-        'type:' || COALESCE(relation_type, ''),
-        'line:' || COALESCE(lineage, '')
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM family_history WHERE profile_id = ?
-  ) WHERE rn = 1`;
+export const FAMILY_HISTORY_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.family_history
+);
 
-// Allergies collapse on (substance, reaction, status), all normalized — the same
-// entry stored once per uploaded document (two overlapping CCDs each carrying
-// "Penicillin — hives") collapses to one representative, while a genuinely
-// different reaction or a status change (active vs resolved) stays visible as its
-// own row (conservative identity, like its siblings). The 'sub:'/'rxn:'/'st:'
-// prefixes keep the three namespaces from colliding. Used by getAllergies (#384).
-export const ALLERGY_REPRESENTATIVE_IDS = `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id,
-        'sub:' || LOWER(TRIM(substance)),
-        'rxn:' || LOWER(TRIM(COALESCE(reaction, ''))),
-        'st:' || COALESCE(status, '')
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM allergies WHERE profile_id = ?
-  ) WHERE rn = 1`;
+export const ALLERGY_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.allergies
+);
 
 // Conditions, optionally filtered to a single status (drives the page's
 // active/resolved filter). Active first, then most recent onset. De-duplicated
