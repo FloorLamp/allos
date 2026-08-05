@@ -24,7 +24,10 @@ import {
   seedLabValueGoal,
   seedLoadContexts,
 } from "./seed/training";
-import { seedIntegrationSyncEvents } from "./seed/integrations";
+import {
+  seedIntegrationSyncEvents,
+  seedSyncHistoryDay,
+} from "./seed/integrations";
 import { seedPortalHouseholds } from "./seed/portals";
 import { seedMergeFixtures } from "./seed/merge";
 import {
@@ -115,6 +118,7 @@ import {
 seedPrelude();
 seedJournalCard();
 seedIntegrationSyncEvents();
+seedSyncHistoryDay();
 seedMergeFixtures();
 seedImportFeed();
 seedHouseholdRollup();

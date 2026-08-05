@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, openAllSyncDays } from "./helpers";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into sections; since #1880 the inbox order
@@ -185,17 +185,21 @@ test.describe("Data → Review import inbox", () => {
     await page.goto("/integrations/strava");
     const history = page.getByTestId("sync-history");
     await expect(history).toBeVisible();
+    await openAllSyncDays(history);
 
-    // The window the runs cover is stated ONCE above the table instead of repeating
-    // verbatim on every row.
+    // The window the runs cover is stated ONCE above the history instead of
+    // repeating verbatim on every row (and since #1991 it is the only place it
+    // appears — the structurally-constant Window column is gone).
     await expect(history.getByTestId("sync-history-window")).toContainText(
       "2026-07-01 → 2026-07-08"
     );
 
-    // The four consecutive hourly no-op re-scans collapse to a single summary row
-    // (#137) rather than filling four slots with rows that say nothing.
-    const quiet = history.getByTestId("sync-history-quiet");
-    await expect(quiet).toHaveText(/4 syncs with no new data/);
+    // The four consecutive hourly no-op re-scans collapse to a single line (#137,
+    // generalized to "nothing NOTABLE happened" by #1991) rather than filling four
+    // slots with rows that say nothing.
+    // (How many land on which day depends on the run's pinned timezone, so assert
+    // the SHAPE of the collapsed line rather than a count that would drift.)
+    await expect(history).toContainText(/\d+ syncs · routine/);
 
     // The seeded truncated run reports what it DID land and is explicitly marked
     // partial, so a page cap / rate limit can't read as a fully green sync.
@@ -214,6 +218,7 @@ test.describe("Data → Review import inbox", () => {
     await page.goto("/integrations/strava");
     const history = page.getByTestId("sync-history");
     await expect(history).toBeVisible();
+    await openAllSyncDays(history);
 
     // The newest Strava event is a failure — its reason shows, as it always did.
     await expect(

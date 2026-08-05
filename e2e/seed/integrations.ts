@@ -6,10 +6,16 @@
 import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
+import { now as clockNow } from "../../lib/clock";
 import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
 import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
-import { PROFILE_ID, ins } from "./common";
+import { generateHealthConnectToken } from "../../lib/integrations/connections";
+import {
+  E2E_LOGIN_SYNC_HISTORY,
+  SYNC_HISTORY_PROFILE,
+} from "../fixture-logins";
+import { PROFILE_ID, ins, fixtureProfileId, seedMemberLogin } from "./common";
 
 // ── Integration sync events, per-row provenance, connection states ──
 export function seedIntegrationSyncEvents(): void {
@@ -229,9 +235,25 @@ export function seedIntegrationSyncEvents(): void {
   );
   db.prepare(
     `UPDATE integration_sync_events
-        SET details = ?
+        SET details = ?, raw_ref = ?
       WHERE profile_id = ? AND provider = 'strava' AND at = ?`
-  ).run(truncatedSyncDetails(), PROFILE_ID, "2026-07-08 10:00:00");
+  ).run(
+    truncatedSyncDetails(),
+    // #1991: the admin-only raw payload is one LINK per run opening a dialog, not a
+    // JSON tree rendered inline in the primary reading position. Give the partial
+    // Strava run a captured payload so the source page has that link to open.
+    writeRawPayload(
+      PROFILE_ID,
+      "strava",
+      JSON.stringify(
+        [{ id: 111, name: "Fixture ride", distance: 24000 }],
+        null,
+        2
+      )
+    ),
+    PROFILE_ID,
+    "2026-07-08 10:00:00"
+  );
   ins.run(
     PROFILE_ID,
     "strava",
@@ -312,4 +334,106 @@ export function seedIntegrationSyncEvents(): void {
     null, // raw_ref
     "Withings token refresh failed (401)"
   );
+}
+
+// ── #1991 — a DAY of high-frequency pushes, on its own profile ──
+//
+// The Health Connect exporter re-sends its rolling window every ~20 minutes, so the
+// per-run history read "Synced · N new · 4 changed · 73 unchanged" some seventy times
+// a day and a real anomaly was invisible in it. This fixture is that stream: ~30
+// pushes across today, one of which dropped rows it couldn't map, and a newest push
+// whose SPLIT says 30 records while only TWO of them carry an openable identity (the
+// rest are minute-grain rows recordSyncRows deliberately skips — the exact shape of
+// the "What this wrote (30)" that expanded to three rows).
+//
+// Its OWN profile: the assertions are about a stream nothing else may add to, and the
+// shared profile's Health Connect state is relied on by review-inbox.spec.
+const SYNC_HISTORY_PUSHES = 30;
+// Minutes between pushes, and which push (counting back from the newest) skipped rows.
+const PUSH_INTERVAL_MIN = 20;
+const SYNC_HISTORY_ANOMALY_BACK = 12;
+export const SYNC_HISTORY_SKIPPED = 6;
+// The newest push's split, and how much of it the drill-in can actually list.
+export const SYNC_HISTORY_WRITTEN = 30;
+export const SYNC_HISTORY_ITEMIZABLE = 2;
+
+function sqlStamp(d: Date): string {
+  return d.toISOString().replace("T", " ").slice(0, 19);
+}
+
+export function seedSyncHistoryDay(): void {
+  const profileId = fixtureProfileId(SYNC_HISTORY_PROFILE);
+  seedMemberLogin(E2E_LOGIN_SYNC_HISTORY, profileId);
+  // A live connection, so the source page renders the status card and the history.
+  generateHealthConnectToken(profileId);
+  db.prepare(
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'health-connect'`
+  ).run(profileId);
+
+  // The frozen clock reads 13:mm LOCAL for this run (e2e/pinned-timezone.ts), so ten
+  // hours of 20-minute pushes all land inside the SAME local day — which is what makes
+  // "one day line" a deterministic assertion at every possible CI start hour.
+  const now = clockNow().getTime();
+  for (let back = SYNC_HISTORY_PUSHES - 1; back >= 0; back--) {
+    const skipped =
+      back === SYNC_HISTORY_ANOMALY_BACK ? SYNC_HISTORY_SKIPPED : 0;
+    const newest = back === 0;
+    ins.run(
+      profileId,
+      "health-connect",
+      sqlStamp(new Date(now - back * PUSH_INTERVAL_MIN * 60_000)),
+      1,
+      null,
+      null,
+      73, // received
+      73, // written
+      newest ? 20 : back % 5 === 0 ? 3 : 0, // inserted
+      newest ? 10 : 0, // updated
+      73, // unchanged → the repeating figure that made the log unreadable
+      skipped,
+      null, // raw_ref
+      null
+    );
+  }
+
+  // Provenance for the NEWEST push only, and only two rows of it.
+  const newestId = (
+    db
+      .prepare(
+        `SELECT id FROM integration_sync_events
+          WHERE profile_id = ? AND provider = 'health-connect'
+          ORDER BY at DESC, id DESC LIMIT 1`
+      )
+      .get(profileId) as { id: number }
+  ).id;
+  const day = today(profileId);
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND title = 'Day-group walk'`
+  ).run(profileId);
+  const actId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, distance_km, source, external_id)
+         VALUES (?, ?, 'cardio', 'Day-group walk', 41, 3.6, 'health-connect', 'hc:daygroup:1')`
+      )
+      .run(profileId, day).lastInsertRowid
+  );
+  db.prepare(
+    `DELETE FROM body_metrics WHERE profile_id = ? AND date = ? AND source = 'health-connect'`
+  ).run(profileId, day);
+  const bodyId = Number(
+    db
+      .prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+         VALUES (?, ?, 71.2, 'health-connect')`
+      )
+      .run(profileId, day).lastInsertRowid
+  );
+  const insRow = db.prepare(
+    `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+     VALUES (?, ?, ?, ?)`
+  );
+  insRow.run(newestId, "activities", actId, "inserted");
+  insRow.run(newestId, "body_metrics", bodyId, "updated");
 }

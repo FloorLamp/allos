@@ -65,7 +65,11 @@ export default async function HealthConnectPage() {
   )!;
 
   return (
-    <PageContainer width="reading" className="mx-auto">
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="integration-page"
+    >
       <Link
         href="/data?section=import"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"

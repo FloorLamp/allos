@@ -33,3 +33,12 @@ export const HEALTH_CONNECT_PROFILE = "Health Connect (e2e)";
 // concurrent reader under parallel workers. Read-only in its spec.
 export const E2E_LOGIN_MOBILE_HC = "e2e_mobile_hc";
 export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
+
+// #1991 — the day-grouped sync history. A member granted a dedicated profile whose
+// Health Connect connection carries a DAY of high-frequency pushes (the exporter
+// re-sends its rolling window every ~20 minutes), so the spec can assert that ~30
+// runs collapse to one day line with its one anomaly, and that the drill-in promises
+// only the records it can actually list. Its own profile, because the assertions are
+// about a stream nothing else may add to.
+export const E2E_LOGIN_SYNC_HISTORY = "e2e_sync_history";
+export const SYNC_HISTORY_PROFILE = "Sync History (e2e)";

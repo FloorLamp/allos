@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { IconCode } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import RawDataViewer from "@/components/RawDataViewer";
@@ -22,34 +22,30 @@ export default function RawPayloadDialog({ id }: { id: number }) {
   );
   const [text, setText] = useState("");
 
-  useEffect(() => {
-    if (!open || state !== "idle") return;
-    let alive = true;
+  // Fetched on the OPENING TAP, not from an effect: an effect keyed on the loading
+  // state tears its own request down on the very re-render that starting the request
+  // causes, and the dialog sits on "Loading…" forever. Nothing is fetched until an
+  // admin actually asks for the payload, which is the whole point of the dialog.
+  async function open_() {
+    setOpen(true);
+    if (state !== "idle") return;
     setState("loading");
-    void (async () => {
-      try {
-        const res = await fetch(`/api/integrations/raw/${id}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = await res.text();
-        if (!alive) return;
-        setText(body);
-        setState("loaded");
-      } catch (err) {
-        if (!alive) return;
-        setText(err instanceof Error ? err.message : String(err));
-        setState("error");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [open, state, id]);
+    try {
+      const res = await fetch(`/api/integrations/raw/${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setText(await res.text());
+      setState("loaded");
+    } catch (err) {
+      setText(err instanceof Error ? err.message : String(err));
+      setState("error");
+    }
+  }
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => void open_()}
         data-testid={`raw-payload-open-${id}`}
         aria-label="View the raw provider payload for this run"
         title="View raw payload"
