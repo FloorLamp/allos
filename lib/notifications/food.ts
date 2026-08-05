@@ -6,7 +6,7 @@
 // never sees it.
 
 import {
-  getFoodNudgeRankedKeys,
+  rankFoodGroups,
   getFoodServingsOnDate,
   getFoodSlotServingsOnDate,
   getProteinLoggedGrams,
@@ -51,9 +51,9 @@ export function buildFoodNudge(
   // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
   // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
   // the reserved __protein__ pseudo-group joins the ranked keys for a protein-logging
-  // profile so it surfaces in the slots they shake. Shares blendFoodOrder with the web bar
-  // (one computation, #221).
-  const rankedKeys = getFoodNudgeRankedKeys(profileId, window);
+  // profile so it surfaces in the slots they shake. This is THE ranking function the web
+  // log bar calls too (#1980) — not a parallel one that claims to agree.
+  const rankedKeys = rankFoodGroups(profileId, window);
   // Buttons are SLOT-scoped counts (#1016); the tally line is the DAY total.
   const slotServings = getFoodSlotServingsOnDate(profileId, window, date);
   const dayServings = getFoodServingsOnDate(profileId, date);

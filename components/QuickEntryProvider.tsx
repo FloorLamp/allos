@@ -13,6 +13,7 @@ import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
+import ProteinQuickAdd from "@/app/(app)/nutrition/ProteinQuickAdd";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import {
   loadQuickEntry,
@@ -253,9 +254,23 @@ function QuickEntryBody({
             today={data.today}
             days={data.days}
             groupsBySlot={data.groupsBySlot}
+            proteinRankBySlot={data.proteinRankBySlot}
             excludedGroups={data.excludedGroups}
             slot={data.slot}
             initialFoodGroup={prefill?.foodGroup}
+            proteinQuickAdd={
+              // Ranked in for a protein-tracking profile (#1980), rendered at the
+              // position the one ranking put it in. A profile with no scoop size to
+              // re-offer gets no control here — the Food tab remains the complete
+              // surface where direct grams are first entered.
+              data.proteinPreset != null ? (
+                <ProteinQuickAdd
+                  today={data.today}
+                  initialGrams={data.proteinToday}
+                  lastPreset={data.proteinPreset}
+                />
+              ) : undefined
+            }
           />
         </FoodSelectedDateProvider>
       );

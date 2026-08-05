@@ -33,7 +33,7 @@ import {
   currentFoodSlot,
   getFoodServingsOnDate,
   getFoodSlotServingsOnDate,
-  getFoodGroupLogOrder,
+  getFoodBarOrder,
 } from "@/lib/queries";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
@@ -202,7 +202,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
   it("the #950 ranking sees the same slot as the count (one derivation, #221)", () => {
     // The slot-frecency ranking reads foodEventWindow over the same rows, so the tap
     // ranks in the window it counted in.
-    const ranked = getFoodGroupLogOrder(p.profileId, NUDGE_WINDOW).map(
+    const ranked = getFoodBarOrder(p.profileId, NUDGE_WINDOW).groups.map(
       (g) => g.slug
     );
     expect(ranked).toContain("berries");

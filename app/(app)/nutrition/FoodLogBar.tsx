@@ -100,6 +100,7 @@ export default function FoodLogBar({
   today,
   days,
   groupsBySlot,
+  proteinRankBySlot,
   excludedGroups,
   slot,
   initialFoodGroup,
@@ -112,6 +113,12 @@ export default function FoodLogBar({
   // One server-ranked catalog per meal slot. Switching meals changes both the learned
   // order and the displayed counts without waiting for another server render.
   groupsBySlot: Record<FoodSlot, FoodGroup[]>;
+  // Where the protein pseudo-entry ranked in each meal's order (#1980): the number of
+  // groups ahead of it, or null when the profile doesn't track protein yet. It positions
+  // `proteinQuickAdd` among the quick rows instead of pinning it first; null puts it
+  // AFTER them rather than dropping it, because direct grams have no other entry point
+  // and a cold start must not be a dead end (#559).
+  proteinRankBySlot?: Record<FoodSlot, number | null>;
   // Profile-scoped food groups excluded from suggestions. Edited in-place through
   // the modal rather than navigating away from the meal being logged.
   excludedGroups: string[];
@@ -266,6 +273,29 @@ export default function FoodLogBar({
       group.slug !== initialGroup?.slug &&
       !quickSlugs.current![activeSlot].has(group.slug)
   );
+
+  // Where the protein control sits among the quick rows (#1980). Frozen with the row
+  // order and for the same reason: logging protein re-ranks it server-side, and the
+  // control must not slide out from under the finger that just tapped it.
+  const frozenProteinRank = useRef<Record<FoodSlot, number | null> | null>(
+    null
+  );
+  if (frozenProteinRank.current === null) {
+    frozenProteinRank.current = Object.fromEntries(
+      FOOD_SLOTS.map((meal) => [meal, proteinRankBySlot?.[meal] ?? null])
+    ) as Record<FoodSlot, number | null>;
+  }
+  const proteinRank = frozenProteinRank.current[activeSlot];
+  // Translate "N groups ranked ahead of protein" into an index in the QUICK set, which
+  // is a tier-balanced subset of the same order: count the quick rows that outrank it.
+  // An unranked (untracked) profile splits after every quick row, so the control renders
+  // last instead of vanishing.
+  const proteinSplit =
+    proteinRank == null
+      ? quickGroups.length
+      : quickGroups.filter(
+          (group) => orderedGroups.indexOf(group) < proteinRank
+        ).length;
 
   // Set one slug's daily count, leaving every other day untouched.
   function setCount(slug: string, next: (prev: number) => number) {
@@ -893,8 +923,10 @@ export default function FoodLogBar({
         <section data-testid="food-quick-log">
           <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
           <div className="space-y-1.5">
+            {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
             {activeDate === today && proteinQuickAdd}
-            {rows(quickGroups)}
+            {proteinSplit < quickGroups.length &&
+              rows(quickGroups.slice(proteinSplit))}
           </div>
         </section>
         {nutrientSummary}

@@ -27,7 +27,9 @@ import {
   currentFoodSlot,
   getFoodMealDays,
   type FoodMealEvent,
-  getFoodGroupLogOrder,
+  getFoodBarOrder,
+  getProteinLoggedGrams,
+  getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
 } from "@/lib/queries";
@@ -101,6 +103,16 @@ export type QuickEntryData =
         events: FoodMealEvent[];
       }>;
       groupsBySlot: Record<FoodSlot, FoodGroup[]>;
+      // Where the protein pseudo-entry ranked per meal (#1980), or null for a profile
+      // that doesn't track protein — the sheet then renders no protein control at all.
+      // The full Food tab stays the complete surface (the attention doctrine's class-3
+      // completeness), so nothing is lost: this compact overlay just doesn't offer a
+      // gram box to someone with no scoop size to re-offer.
+      proteinRankBySlot: Record<FoodSlot, number | null>;
+      // Today's manual-protein total + the last-used amount, for the ranked protein
+      // control. Null preset ⇒ untracked ⇒ no control (proteinRankBySlot is all null).
+      proteinToday: number;
+      proteinPreset: number | null;
       excludedGroups: string[];
       slot: FoodSlot;
     }
@@ -181,13 +193,23 @@ export async function loadQuickEntry(
     // The SAME slot derivation that orders the catalog, so the bar's slot chip
     // and its row order agree here exactly as they do on the page (#950).
     const slot = currentFoodSlot(profile.id);
+    // THE ranking (#1980) — the same call the Food tab and the Telegram nudge make, so
+    // the sheet can never offer a different order than the page it opened over.
+    const orderBySlot = Object.fromEntries(
+      FOOD_SLOTS.map((meal) => [meal, getFoodBarOrder(profile.id, meal)])
+    ) as Record<FoodSlot, ReturnType<typeof getFoodBarOrder>>;
     return {
       form: "food",
       today: date,
       days,
       groupsBySlot: Object.fromEntries(
-        FOOD_SLOTS.map((meal) => [meal, getFoodGroupLogOrder(profile.id, meal)])
+        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].groups])
       ) as Record<FoodSlot, FoodGroup[]>,
+      proteinRankBySlot: Object.fromEntries(
+        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
+      ) as Record<FoodSlot, number | null>,
+      proteinToday: getProteinLoggedGrams(profile.id, date),
+      proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
     };

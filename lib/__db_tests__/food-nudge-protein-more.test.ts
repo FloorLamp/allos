@@ -31,7 +31,7 @@ import { db, today } from "@/lib/db";
 import { setProfileSetting, setPublicUrl } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { buildFoodNudge } from "@/lib/notifications/food";
-import { getFoodNudgeRankedKeys } from "@/lib/queries";
+import { rankFoodGroups } from "@/lib/queries";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { foodGroupSlugs } from "@/lib/food-groups";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
@@ -202,7 +202,7 @@ describe("protein '+Xg' tap (#1073)", () => {
   });
 
   it("a non-protein-tracker's nudge omits the __protein__ button", async () => {
-    // A fresh profile that has never logged protein → getFoodNudgeRankedKeys excludes it.
+    // A fresh profile that has never logged protein → rankFoodGroups excludes it.
     const np = seedProfile("food-nudge-noprotein");
     const { buildFoodNudge } = await import("@/lib/notifications/food");
     const msg = buildFoodNudge(np.profileId, "Evening", today(np.profileId));
@@ -339,7 +339,7 @@ describe("'Show less' collapse (#1807)", () => {
     expect(lastRebuiltExpandLabels()).toEqual(["➕ Show more"]);
 
     // Expanding past every ranked key drops "Show more" and leaves "Show less" alone.
-    const ranked = getFoodNudgeRankedKeys(p.profileId, "Morning").length;
+    const ranked = rankFoodGroups(p.profileId, "Morning").length;
     expect(ranked).toBeGreaterThan(FOOD_NUDGE_BUTTON_COUNT);
     await handleCallbackQuery(
       cqWithFoodButtons(

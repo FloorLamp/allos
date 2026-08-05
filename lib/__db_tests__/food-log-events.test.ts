@@ -3,16 +3,16 @@
 // Proves (a) logFoodServingCore appends a per-tap food_log_events row in the SAME tx
 // as the counter increment (atomic), (b) undoFoodServingCore pops the NEWEST event
 // alongside the counter decrement and TOLERATES a pre-ledger counter row (popless
-// decrement), and (c) getFoodGroupLogOrder(profileId, window) leads with the group
+// decrement), and (c) rankFoodGroups(profileId, window) leads with the group
 // this profile taps in THAT window, backfilling with overall frecency — the same
-// getFoodGroupLogOrder the web bar and the Telegram nudge both call (one computation,
+// rankFoodGroups the web bar and the Telegram nudge both call (one computation,
 // #221), with the no-window case unchanged (degrade-to-overall).
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
-import { getFoodGroupLogOrder, getFoodMealDays } from "@/lib/queries";
+import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -135,7 +135,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
   });
 });
 
-describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
+describe("getFoodBarOrder slot-aware blend (#950)", () => {
   // Seed a slot-skewed profile: whole_grains is the heavy overall staple, always eaten
   // at breakfast; fatty_fish is a lighter but reliably-midday habit. Default timezone
   // is UTC and default boundaries are 11:00/15:00, so a 08:00Z tap is Morning and a
@@ -155,13 +155,13 @@ describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
 
   it("leads with the MIDDAY group at midday, even under a heavier morning staple", () => {
     const profileId = seedSlotSkewed("food-order-midday");
-    const midday = getFoodGroupLogOrder(profileId, "Midday").map((g) => g.slug);
+    const midday = getFoodBarOrder(profileId, "Midday").groups.map((g) => g.slug);
     expect(midday[0]).toBe("fatty_fish"); // slot leader
   });
 
   it("leads with the MORNING staple at morning", () => {
     const profileId = seedSlotSkewed("food-order-morning");
-    const morning = getFoodGroupLogOrder(profileId, "Morning").map(
+    const morning = getFoodBarOrder(profileId, "Morning").groups.map(
       (g) => g.slug
     );
     expect(morning[0]).toBe("whole_grains");
@@ -169,7 +169,7 @@ describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
 
   it("no-window ranking degrades to overall frecency (the heavier staple leads)", () => {
     const profileId = seedSlotSkewed("food-order-overall");
-    const overall = getFoodGroupLogOrder(profileId).map((g) => g.slug);
+    const overall = getFoodBarOrder(profileId).groups.map((g) => g.slug);
     // whole_grains has 12 servings vs fatty_fish's 6 → it leads the overall order.
     expect(overall.indexOf("whole_grains")).toBeLessThan(
       overall.indexOf("fatty_fish")
@@ -180,10 +180,10 @@ describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
     const profileId = seedSlotSkewed("food-order-cold");
     // Evening: nothing was ever tapped in the evening, so the evening ranking must
     // equal the no-window (overall) ranking exactly.
-    const evening = getFoodGroupLogOrder(profileId, "Evening").map(
+    const evening = getFoodBarOrder(profileId, "Evening").groups.map(
       (g) => g.slug
     );
-    const overall = getFoodGroupLogOrder(profileId).map((g) => g.slug);
+    const overall = getFoodBarOrder(profileId).groups.map((g) => g.slug);
     expect(evening).toEqual(overall);
   });
 });

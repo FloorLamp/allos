@@ -1,6 +1,6 @@
 // Pure rendering for the Telegram food-log nudge (issue #682) — DB-free so it's
 // unit-tested (lib/__tests__). The gather (lib/notifications/food.ts) ranks the
-// profile's food groups by recency-decayed frequency (getFoodGroupLogOrder — the
+// profile's food groups by recency-decayed frequency (rankFoodGroups — the
 // SAME "most eaten leads" computation the /nutrition log bar uses, #591/#195) and
 // hands the ranked list + today's serving counts here. One tap on a group button
 // logs one serving; unlike a dose reminder the buttons are NOT consumed (you can eat

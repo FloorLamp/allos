@@ -6,7 +6,7 @@ import {
   getFoodMealDays,
   getWeeklyFoodRollup,
   getFoodSuggestions,
-  getFoodGroupLogOrder,
+  getFoodBarOrder,
   currentFoodSlot,
   getProteinAdequacy,
   getProteinOnDate,
@@ -24,6 +24,7 @@ import {
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
+import type { FoodGroup } from "@/lib/food-groups";
 import {
   assessProteinAdequacy,
   proteinIntakeSummary,
@@ -212,11 +213,19 @@ export default async function FoodTab() {
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
   // derivation, so the label and the order can never disagree.
   const slot = currentFoodSlot(profile.id);
-  // One learned order per meal. Switching the selected slot on the client changes both
-  // the button counts and the ordering without a round-trip.
+  // One learned order per meal, from THE ranking both surfaces read (#1980). Switching
+  // the selected slot on the client changes both the button counts and the ordering
+  // without a round-trip. `proteinRank` is where the reserved protein pseudo-entry placed
+  // in that meal's order (null when the profile doesn't track protein yet).
+  const orderBySlot = Object.fromEntries(
+    FOOD_SLOTS.map((meal) => [meal, getFoodBarOrder(profile.id, meal)])
+  ) as Record<FoodSlot, ReturnType<typeof getFoodBarOrder>>;
   const groupsBySlot = Object.fromEntries(
-    FOOD_SLOTS.map((meal) => [meal, getFoodGroupLogOrder(profile.id, meal)])
-  ) as Record<FoodSlot, ReturnType<typeof getFoodGroupLogOrder>>;
+    FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].groups])
+  ) as Record<FoodSlot, FoodGroup[]>;
+  const proteinRankBySlot = Object.fromEntries(
+    FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
+  ) as Record<FoodSlot, number | null>;
   // Preference legibility (#980 item 4): a muted "showing <pattern>-friendly sources" note
   // for the suggestions summary, so #975's demote/substitute is explicable on-surface.
   // Null (no chrome) when no preference is set. Editing stays on the profile-settings
@@ -326,6 +335,7 @@ export default async function FoodTab() {
               today={date}
               days={mealDays}
               groupsBySlot={groupsBySlot}
+              proteinRankBySlot={proteinRankBySlot}
               excludedGroups={excludedGroups}
               slot={slot}
               nutrientSummaryByDate={mobileNutrients}
