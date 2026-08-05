@@ -197,6 +197,42 @@ export function isLastNight(wakeDay: string, todayStr: string): boolean {
   return daysBetweenDateStr(wakeDay, todayStr) === 0;
 }
 
+// How many nights BEFORE last night the tracking predicate looks at, and how many
+// of them have to carry a recorded night for the profile to count as currently
+// sleep-tracking. Two of three tolerates a forgotten charge without flipping, and
+// gives up after two or three consecutive missed nights.
+export const SLEEP_TRACKING_WINDOW_NIGHTS = 3;
+export const SLEEP_TRACKING_MIN_NIGHTS = 2;
+
+// Is this profile CURRENTLY recording sleep? The data-side companion to
+// `isLastNight`: that one asks whether last night is in hand, this one asks
+// whether last night is even coming.
+//
+// It deliberately looks at the nights BEFORE last night, never at last night
+// itself — the whole point is to answer "should I expect one?" during the window
+// where last night has not landed yet.
+//
+// WHY THE CONNECTION-SIDE SIGNAL CANNOT ANSWER THIS. Someone wears a tracker for
+// months, then stops, but the phone keeps syncing steps: `ok` sync events,
+// non-zero inserted counts, a healthy badge — only the sleep rows stop.
+// `isStaleSyncEvent` will never fire on that, by design (lib/integrations/
+// staleness.ts tracks the CONNECTION's liveness, so a rest week is not reported as
+// a break). Without a data-side predicate, "no last night yet" stays true every
+// morning once someone stops, and anything waiting on it waits forever.
+export function isSleepTracking(
+  recordedWakeDays: Iterable<string>,
+  todayStr: string,
+  windowNights = SLEEP_TRACKING_WINDOW_NIGHTS,
+  minNights = SLEEP_TRACKING_MIN_NIGHTS
+): boolean {
+  const recorded = new Set(recordedWakeDays);
+  let found = 0;
+  for (let back = 1; back <= windowNights; back++) {
+    if (recorded.has(shiftDateStr(todayStr, -back))) found++;
+  }
+  return found >= minNights;
+}
+
 // Issue #1186: "Last night" is a strict relative-day claim, not a synonym for
 // "latest row". This ONE pure formatter is shared by the page hero + dashboard
 // tile. Recent lag stays visible with an honest dated label; older lag is hidden

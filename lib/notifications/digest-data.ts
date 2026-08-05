@@ -36,7 +36,8 @@ import {
   mainSleepNights,
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
-import { isLastNight } from "../sleep-summary";
+import { isLastNight, isSleepTracking } from "../sleep-summary";
+import { shouldDeferDigest } from "./digest-schedule";
 import {
   countSituationalDue,
   doseDueOn,
@@ -636,6 +637,49 @@ export function digestTunableCategories(
     recent.presentCategories,
     gatherDigestSleep(profileId),
     getActivitiesByDate(profileId, shiftDateStr(date, -1)).length > 0
+  );
+}
+
+// Is last night's sleep still OUTSTANDING and EXPECTED for this profile? — the one
+// fact the digest's one-hour deferral (#2102) turns on.
+//
+// Three ways to answer "don't wait", each for its own reason:
+//   • the Sleep section is off (opt-in), so there is nothing to wait FOR;
+//   • last night is already in hand — asked with the SAME freshness rule the digest
+//     prints by (isLastNight over mainSleepNights, #2099/#1186), so "wait for the
+//     section" and "print the section" can never disagree about which night that is;
+//   • the profile is not currently sleep-tracking, so nothing is coming. Without
+//     that branch an abandoned tracker would defer the digest EVERY morning: "no
+//     last night yet" stays true forever once someone stops wearing the device, and
+//     the connection-side staleness signal is structurally unable to see it (see
+//     isSleepTracking).
+export function digestSleepPending(profileId: number): boolean {
+  if (!getProfileSleepDigest(profileId)) return false;
+  const todayStr = today(profileId);
+  const nights = mainSleepNights(
+    getSleepSessions(profileId),
+    getTimezone(profileId)
+  );
+  const last = nights[nights.length - 1];
+  if (last && isLastNight(last.wakeDay, todayStr)) return false;
+  return isSleepTracking(
+    nights.map((n) => n.wakeDay),
+    todayStr
+  );
+}
+
+// The tick's digest gate (#2102): decline this hour so the retry hour sends the
+// digest WITH last night's sleep in it. One conditional over the two-hour window
+// `slotDue` already provides — no new scheduling machinery, no new marker, and
+// bounded by construction (see lib/notifications/digest-schedule.ts).
+export function deferDigestForSleep(
+  profileId: number,
+  slotHour: number,
+  currentHour: number,
+  auto: boolean
+): boolean {
+  return shouldDeferDigest({ slotHour, currentHour, auto }, () =>
+    digestSleepPending(profileId)
   );
 }
 

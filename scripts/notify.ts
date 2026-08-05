@@ -84,6 +84,7 @@ import { runFollowUpNudges } from "../lib/notifications/followup";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import {
+  deferDigestForSleep,
   refreshDigestOfferTail,
   runDigest,
 } from "../lib/notifications/digest-data";
@@ -755,10 +756,21 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // of #1108 the "what's due" list is the digest's Today section — one message, one
   // due-today computation (collectUpcoming), one per-day marker (notify_last_digest);
   // the old separate upcoming digest + its notify_last_upcoming marker are retired.
+  //
+  // ONE DEFERRAL (#2102). `slotDue` is already a two-hour window paired with a hard
+  // per-day marker, so the first of those hours is free to decline: when last
+  // night's sleep is pending but expected, this hour is skipped and the retry hour
+  // sends the digest with the Sleep section in it. It can only ever happen once —
+  // deferDigestForSleep returns false the moment `hour` is no longer the slot hour —
+  // so the hour+1 tick sends whether or not the sleep ever landed, and the digest's
+  // other sections are never held hostage. Nothing is written by the decline: the
+  // marker is still set only by a real send, so a deferred-then-sent digest records
+  // its pointer, stamp and cursor exactly as an on-time one does.
   if (
     sched.digestHour != null &&
     slotDue(sched.digestHour, hour) &&
-    getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date
+    getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date &&
+    !deferDigestForSleep(profile.id, sched.digestHour, hour, sched.digestAuto)
   ) {
     try {
       const dg = await runDigest(
