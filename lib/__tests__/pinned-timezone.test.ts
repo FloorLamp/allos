@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { pinnedTimezone } from "../../e2e/pinned-timezone";
 import { isValidTimezone } from "../timezone";
+import { shiftDateStr, zonedWallTimeToUtc } from "../date";
+import { mainSleepNights } from "../sleep-regularity";
+import { isLastNight } from "../sleep-summary";
 
 // The e2e timezone pin (e2e/pinned-timezone.ts): for ANY frozen run-start
 // instant, the chosen zone must read 13:mm local on the SAME calendar date as
@@ -55,5 +58,55 @@ describe("pinnedTimezone (e2e frozen-clock timezone pin)", () => {
       zone: "UTC",
       offsetHours: 0,
     });
+  });
+});
+
+// The #2159 band: an e2e fixture overnight (23:00 prev night → 04:00 today,
+// meant LOCAL) must be stamped through the pinned zone (zonedWallTimeToUtc),
+// because a wakeDay is the PROFILE-LOCAL date a session ENDS (mainSleepNights →
+// zonedDateParts) and the coaching sleep signal refuses any night that is not
+// last night (isLastNight). A bare-UTC `${today}T04:00:00Z` stamp reads as
+// 23:00 the PREVIOUS local evening once the pinned offset reaches −5 — every
+// run starting ≥ 18:00 UTC — so the night lands on yesterday's wakeDay,
+// rest-sleep silently drops, and the rest card loses its "Also:" line. Same
+// clock-band family as #2031/#2051: pin the whole 24-hour sweep, not one hour.
+describe("pinned zone × fixture sleep instants (#2159 band)", () => {
+  const today = "2026-08-05";
+  const prevNight = shiftDateStr(today, -1);
+
+  it("a tz-correct 23:00→04:00 local overnight lands on today's wakeDay at every UTC start hour", () => {
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${today}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone } = pinnedTimezone(frozen);
+      const session = {
+        start: zonedWallTimeToUtc(zone, prevNight, "23:00").toISOString(),
+        end: zonedWallTimeToUtc(zone, today, "04:00").toISOString(),
+        value: 300,
+      };
+      const nights = mainSleepNights([session], zone);
+      expect(nights, `utc hour ${h} → ${zone}`).toHaveLength(1);
+      expect(nights[0].wakeDay, `utc hour ${h} → ${zone}`).toBe(today);
+      expect(nights[0].durationMin).toBe(300);
+      expect(isLastNight(nights[0].wakeDay, today)).toBe(true);
+    }
+  });
+
+  it("documents the bug: bare-UTC stamps strand the night on yesterday exactly when the pinned offset is ≤ −5 (run start ≥ 18:00 UTC)", () => {
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${today}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone, offsetHours } = pinnedTimezone(frozen);
+      const bare = {
+        start: `${prevNight}T23:00:00Z`,
+        end: `${today}T04:00:00Z`,
+        value: 300,
+      };
+      const nights = mainSleepNights([bare], zone);
+      expect(nights).toHaveLength(1);
+      const expectLastNight = offsetHours >= -4; // 04:00Z − 5h crosses local midnight
+      expect(
+        isLastNight(nights[0].wakeDay, today),
+        `utc hour ${h} (offset ${offsetHours}) → ${zone}`
+      ).toBe(expectLastNight);
+    }
   });
 });

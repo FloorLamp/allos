@@ -6,8 +6,8 @@
 import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
-import { shiftDateStr } from "../../lib/date";
-import { setProfileSetting } from "../../lib/settings";
+import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
+import { getTimezone, setProfileSetting } from "../../lib/settings";
 import {
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
@@ -84,10 +84,25 @@ export function seedRestCard(): void {
     ).run(rcId);
 
     // Signal 1 — a short overnight (300 min < the 6h floor) → rest-sleep fires.
+    // CRITICAL (#2159, the #1110 wake-day rule): getSleepSignal reads the MAIN
+    // overnight per wake-day, and a wakeDay is the PROFILE-LOCAL calendar date the
+    // session ENDED (mainSleepNights → zonedDateParts). So the window MUST be built
+    // through the profile timezone (zonedWallTimeToUtc) — the pinned e2e zone,
+    // seeded by seedPrelude before this runs — NOT bare `…Z` stamps. Bare
+    // `${rcToday}T04:00:00Z` reads as 23:00 the PREVIOUS local evening once the
+    // pinned zone crosses to UTC−5 (any run starting ≥ 18:00 UTC), landing the
+    // night on wakeDay rcPrevNight; isLastNight then refuses it, rest-sleep drops,
+    // rest-rhr becomes the lone primary, and the "Also:" line vanishes.
+    const rcTz = getTimezone(rcId);
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
-    ).run(rcId, rcToday, `${rcPrevNight}T23:00:00Z`, `${rcToday}T04:00:00Z`);
+    ).run(
+      rcId,
+      rcToday,
+      zonedWallTimeToUtc(rcTz, rcPrevNight, "23:00").toISOString(),
+      zonedWallTimeToUtc(rcTz, rcToday, "04:00").toISOString()
+    );
 
     // Signal 2 — resting HR elevated today (62) over a ~54 baseline (prior days) →
     // rest-rhr fires with a fixed threshold (a flat baseline has zero spread).
