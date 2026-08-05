@@ -10,19 +10,25 @@ function prnLogToken(): string {
 export async function handleDoseCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  // Match "/dose" or "/dose@botname" (any trailing args are ignored in v1).
-  if (!/^\/dose(@\w+)?(\s|$)/i.test(text)) return;
+  // Is this text a `/dose`? Asked of the VOCABULARY (#2004), never of a private regex:
+  // `isCommandText` runs the same parser the dispatcher routed on, so aliases,
+  // `@botname` addressing, case and trailing args cannot mean one thing there and
+  // another here.
+  if (!isCommandText("dose", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "💊 Log a PRN dose",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-      kind: "prn-list",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "💊 Log a PRN dose",
+        body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+        kind: "prn-list",
+      },
+      CHAT_WIDE
+    );
     return;
   }
 
@@ -55,20 +61,31 @@ export async function handleDoseCommand(
   }
 
   if (actions.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "💊 Log a PRN dose",
-      body: "No as-needed medications are set up. Add one under Medications in the app.",
-      kind: "prn-list",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "💊 Log a PRN dose",
+        body: "No as-needed medications are set up. Add one under Medications in the app.",
+        kind: "prn-list",
+      },
+      CHAT_WIDE
+    );
     return;
   }
 
-  await sendTelegramMessage(chatId, {
-    title: "💊 Log a PRN dose",
-    body: "Tap a medication to record a dose now:",
-    actions,
-    kind: "prn-list",
-  });
+  // CHAT_WIDE (#1995): ONE message carries every profile's buttons, prefixed by name,
+  // so the chat really is what this is about — and a stable subject is what lets a
+  // second `/dose` re-issue onto the same (chat, kind) slot instead of stacking.
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "💊 Log a PRN dose",
+      body: "Tap a medication to record a dose now:",
+      actions,
+      kind: "prn-list",
+    },
+    CHAT_WIDE
+  );
 }
 
 // A PRN log button tap: log one administration NOW for the named item, scoped to the
@@ -166,18 +183,22 @@ function symptomGridKeys(profileId: number): string[] {
 export async function handleSymptomCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/symptoms?(@\w+)?(\s|$)/i.test(text)) return;
+  // `/symptoms` resolves through the alias table, not through an `s?` here (#2004).
+  if (!isCommandText("symptom", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a symptom",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-      kind: "symptom",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "Log a symptom",
+        body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+        kind: "symptom",
+      },
+      CHAT_WIDE
+    );
     return;
   }
 
@@ -193,12 +214,16 @@ export async function handleSymptomCommand(
     }
   }
 
-  await sendTelegramMessage(chatId, {
-    title: "Log a symptom",
-    body: "Tap a symptom, then choose how bad it is:",
-    actions,
-    kind: "symptom",
-  });
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "Log a symptom",
+      body: "Tap a symptom, then choose how bad it is:",
+      actions,
+      kind: "symptom",
+    },
+    CHAT_WIDE
+  );
 }
 
 // A symptom button tap: replace the grid with a severity picker for the chosen symptom.
@@ -347,31 +372,44 @@ export async function handleSymptomSeverity(
 export async function handleTempCommand(
   message: TelegramMessage
 ): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/temp(erature)?(@\w+)?(\s|$)/i.test(text)) return;
+  // `/temperature` resolves through the alias table, not through an optional group
+  // here (#2004).
+  if (!isCommandText("temp", message.text)) return;
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a temperature",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-      kind: "temp",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "Log a temperature",
+        body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+        kind: "temp",
+      },
+      CHAT_WIDE
+    );
     return;
   }
 
   const multi = profileIds.length > 1;
   for (const pid of profileIds) {
     const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";
-    await sendTelegramMessage(chatId, {
-      title: "Log a temperature",
-      body:
-        `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
-        `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
-      kind: "temp",
-    });
+    // ONE PROMPT PER PROFILE, so each names its own subject (#1995). This is the shape
+    // that made the old "lowest profile in the chat" guess indefensible: N messages
+    // would all have recorded their pointer under one borrowed owner, and in a family
+    // chat each member's send would rotate somebody else's slot.
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "Log a temperature",
+        body:
+          `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
+          `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
+        kind: "temp",
+      },
+      pid
+    );
   }
 }
 
@@ -391,19 +429,27 @@ export async function handleTempReply(
   // Only honor the marker when the profile is actually reachable from this chat.
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (!profileIds.includes(markedProfile)) {
-    await sendTelegramMessage(chatId, {
-      title: "🌡️ Temperature not logged",
-      body: "That profile isn't linked to this chat anymore.",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🌡️ Temperature not logged",
+        body: "That profile isn't linked to this chat anymore.",
+      },
+      CHAT_WIDE
+    );
     return true;
   }
 
   const parsed = parseTempReply(message.text);
   if (!parsed) {
-    await sendTelegramMessage(chatId, {
-      title: "🌡️ Temperature not logged",
-      body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🌡️ Temperature not logged",
+        body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
+      },
+      markedProfile
+    );
     return true;
   }
 
@@ -415,10 +461,14 @@ export async function handleTempReply(
     date
   );
   if (outcome.kind === "invalid") {
-    await sendTelegramMessage(chatId, {
-      title: "🌡️ Temperature not logged",
-      body: outcome.error,
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🌡️ Temperature not logged",
+        body: outcome.error,
+      },
+      markedProfile
+    );
     return true;
   }
   // Event-driven red-flag push (#1025): a crossing reading dispatches the
@@ -436,18 +486,29 @@ export async function handleTempReply(
   // and illness-care messages both already carry.
   const base = getPublicUrl().replace(/\/$/, "");
   const episodeId = currentEpisodeForProfile(markedProfile)?.id ?? null;
-  await sendTelegramMessage(chatId, {
-    title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-    body:
-      redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
-    ...(base && episodeId != null
-      ? {
-          actions: [
-            { label: "View episode", url: `${base}${episodeHref(episodeId)}` },
-          ],
-        }
-      : {}),
-  });
+  // The subject is the profile the REPLY MARKER named and this chat was just checked
+  // against (#1995) — the one whose reading was logged. The confirmation can carry a
+  // keyboard (the episode link), so before the subject was declared this pointer was
+  // recorded against whichever profile happened to sort first in the chat.
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+      body:
+        redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
+      ...(base && episodeId != null
+        ? {
+            actions: [
+              {
+                label: "View episode",
+                url: `${base}${episodeHref(episodeId)}`,
+              },
+            ],
+          }
+        : {}),
+    },
+    markedProfile
+  );
   return true;
 }
 
@@ -496,22 +557,33 @@ export async function handleMoodCommand(
   }
 
   if (actions.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "🙂 Check-in",
-      body: alreadyLogged.length
-        ? `Already checked in today${multi ? ` (${alreadyLogged.join(", ")})` : ""} — open the app to change it.`
-        : "The daily check-in is off. Turn it on under Settings → Notifications.",
-      kind: "mood",
-    });
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🙂 Check-in",
+        body: alreadyLogged.length
+          ? `Already checked in today${multi ? ` (${alreadyLogged.join(", ")})` : ""} — open the app to change it.`
+          : "The daily check-in is off. Turn it on under Settings → Notifications.",
+        kind: "mood",
+      },
+      CHAT_WIDE
+    );
     return;
   }
 
-  await sendTelegramMessage(chatId, {
-    title: "🙂 How are you today?",
-    body: "One tap logs your day — or just skip this.",
-    actions,
-    kind: "mood",
-  });
+  // CHAT_WIDE (#1995), and that is the whole reason this command merges every member's
+  // faces into ONE message: a stable subject per (chat, kind) is what keeps the
+  // supersede invariant from closing a sibling the same command just sent.
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "🙂 How are you today?",
+      body: "One tap logs your day — or just skip this.",
+      actions,
+      kind: "mood",
+    },
+    CHAT_WIDE
+  );
 }
 
 // The ONE inbound text-message dispatcher (webhook + poller both call this), and since
@@ -649,13 +721,20 @@ export async function handleSymptomTextIntake(
     extras.push(`Not mapped: ${notMapped.join(", ")} — add these in the app.`);
   }
 
-  await sendTelegramMessage(chatId, {
-    title: "Log these symptoms?",
-    body:
-      "Tap each to confirm — nothing is logged until you do." +
-      (extras.length ? `\n${extras.join("\n")}` : ""),
-    actions,
-  });
+  // The single profile this intake already refused to run without (#1995): a plain
+  // sentence carries no profile token, so the gate above only fires for a one-profile
+  // chat — which means the subject is known exactly, not resolved by sort order.
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "Log these symptoms?",
+      body:
+        "Tap each to confirm — nothing is logged until you do." +
+        (extras.length ? `\n${extras.join("\n")}` : ""),
+      actions,
+    },
+    profileId
+  );
   return true;
 }
 
@@ -713,7 +792,7 @@ import {
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { buildMoodCheckin } from "./mood";
-import { parseCommand } from "./telegram-commands";
+import { isCommandText, parseCommand } from "./telegram-commands";
 import {
   chatCommandContext,
   isCommandAvailable,
@@ -775,6 +854,7 @@ import {
   rebuildMessage,
   sendTelegramMessage,
   updateMessageKeyboard,
+  CHAT_WIDE,
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";

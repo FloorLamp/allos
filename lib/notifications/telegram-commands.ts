@@ -163,6 +163,29 @@ export function parseCommand(
   };
 }
 
+// Does this message text trigger `name`? THE authority on the question — issue #2004.
+//
+// The dispatcher resolves a verb once, through `parseCommand`, and routes on the
+// result. But each logging handler ALSO re-checked the raw text against a hand-written
+// regex of its own (`/^\/dose(@\w+)?(\s|$)/i` and friends), so "which text triggers
+// this handler" had two independent answers that were kept in step by hand. An alias
+// added here without the matching regex edit there would have reproduced exactly the
+// silence #1895 exists to eliminate: the dispatcher routes, the availability gate says
+// the verb exists, and the handler's private regex declines — zero replies, which from
+// the chat's side is indistinguishable from an outage.
+//
+// So the guard is DERIVED, not duplicated: it asks the same parser the dispatcher asks
+// and compares the canonical name. Aliases, `@botname` addressing, case and trailing
+// args are therefore whatever `parseCommand` says they are, once, forever. A handler
+// called directly (a test, a future second entry point) keeps its guard; what it loses
+// is a second opinion about the vocabulary.
+export function isCommandText(
+  name: string,
+  text: string | null | undefined
+): boolean {
+  return parseCommand(text)?.name === name;
+}
+
 // ---- Replies ---------------------------------------------------------------
 
 // The copy rules (#1819/#1822): short, named verbs, no jargon, no exclamation.
