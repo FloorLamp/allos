@@ -449,3 +449,91 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   await expect(finalCard).toHaveCount(0);
   await expectNoClippedContent(page);
 });
+
+test("one-tap practice logging: a double-tap logs once, the label states today, and a deliberate repeat asks (#2007)", async ({
+  page,
+}) => {
+  test.slow();
+  const unique = `E2E Cadence ${frozenNow().getTime()}`;
+  await page.goto("/wellness");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { name: "Wellness" })).toBeVisible();
+
+  const create = await openPracticeCreate(page);
+  await create.getByLabel("Practice").fill(unique);
+  await create.getByLabel("Minimum days").fill("3");
+  await settledClick(
+    page,
+    create.getByRole("button", { name: "Save", exact: true })
+  );
+
+  const card = main
+    .getByTestId("wellness-practice-card")
+    .filter({ hasText: unique });
+  await expect(card).toBeVisible();
+  const button = card.getByTestId("practice-log-button");
+  const todayLine = card.getByTestId("practice-today-count");
+  const rows = card.getByTestId("practice-session-history").locator("tbody tr");
+
+  // Nothing logged yet: the first tap is offered as a first tap.
+  await expect(todayLine).toContainText("No sessions yet");
+  await expect(button).toHaveText("Log now");
+
+  // Layer 1 — the fat-finger double. The second tap lands inside the post-success
+  // cooldown and is absorbed: no dialog, and no second session.
+  await button.click();
+  await button.click();
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  await expect(todayLine).toContainText("1 session logged");
+
+  // Layer 2 — the affordance now renders today's state, so the next tap is visibly
+  // a SECOND one before it is taken.
+  await expect(button).toHaveText("Log another");
+  await expect(button).toHaveAttribute("title", /1 already logged today/);
+
+  // The pin: exactly one session reached the store. The reload also clears the
+  // client-side cooldown, which is why the next tap below is accepted at all.
+  await page.reload();
+  const reloaded = main
+    .getByTestId("wellness-practice-card")
+    .filter({ hasText: unique });
+  await expect(
+    reloaded.getByTestId("practice-session-history").locator("tbody tr")
+  ).toHaveCount(1);
+
+  // Layer 3 — a deliberate second session of the same day ASKS, naming the practice.
+  // Cancelling writes nothing: the confirm is a question, not a gate on the write.
+  await reloaded.getByTestId("practice-log-button").click();
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(`You logged ${unique} today`);
+  await hydratedClick(page, dialog.getByRole("button", { name: "Cancel" }));
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    reloaded.getByTestId("practice-session-history").locator("tbody tr")
+  ).toHaveCount(1);
+
+  // …and confirming logs the genuine second session (#798: informational, never
+  // permissive — a second sauna is legitimate).
+  await reloaded.getByTestId("practice-log-button").click();
+  await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+  await settledClick(
+    page,
+    page.getByTestId("confirm-dialog").getByRole("button", {
+      name: "Log session",
+    })
+  );
+  await expect(reloaded.getByTestId("practice-today-count")).toContainText(
+    "2 sessions logged"
+  );
+
+  // Clean up this run's practice and its history.
+  await choosePracticeAction(page, reloaded, "wellness-practice-delete");
+  await settledClick(
+    page,
+    page.getByTestId("confirm-dialog").getByRole("button", {
+      name: "Delete practice",
+    })
+  );
+  await expect(reloaded).toHaveCount(0);
+});
