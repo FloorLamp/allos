@@ -80,10 +80,14 @@ describe("tickCached — inside a scope", () => {
 
   it("memoizes a falsy or undefined answer instead of recomputing it", async () => {
     let calls = 0;
-    const fn = tickCached("empty", () => "k", () => {
-      calls++;
-      return undefined;
-    });
+    const fn = tickCached(
+      "empty",
+      () => "k",
+      () => {
+        calls++;
+        return undefined;
+      }
+    );
     await runInTickScope(async () => {
       expect(fn()).toBeUndefined();
       expect(fn()).toBeUndefined();

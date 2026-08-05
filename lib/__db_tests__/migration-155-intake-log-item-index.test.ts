@@ -127,10 +127,9 @@ describe("migration 155 — the (item_id, given_at) administration index", () =>
   });
 
   it("still finds the SAME arming administration — an index changes cost, not answers", () => {
-    const state = getMedicationFamilyStates(
-      profileId,
-      today(profileId)
-    ).get(itemId);
+    const state = getMedicationFamilyStates(profileId, today(profileId)).get(
+      itemId
+    );
     expect(state?.latestId).toBe(newestId);
     expect(state?.countToday).toBe(30);
   });

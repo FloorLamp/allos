@@ -179,7 +179,13 @@ most conservative confirmed ceiling among members (the finding stays keyed
 per-item ONE-SHOT marker semantics are unchanged, and a member with UNCONFIRMED
 fields still gets no notice of its own (the liability line stands) while its
 logged administrations count into a sibling's family math — a logged dose is a
-fact regardless of config. A multi-item family also emits ONE calm coaching-tier
+fact regardless of config. The gather is memoized on BOTH lifetimes (#2111) —
+`cache()` for a render, `tickCached` for a tick (`lib/tick-cache.ts`) — because
+several of those counter surfaces render together and each used to pay for the
+whole gather; neither lifetime can outlive a dose confirm, which is the only
+thing a memo over a safety counter may not do. Its arming-administration read is
+served by `intake_item_logs(item_id, given_at)` (migration 155) rather than a
+scan of the append-only ledger. A multi-item family also emits ONE calm coaching-tier
 duplication note (`med-dup:<familyKey>`, `buildMedicationDuplicationFindings` —
 never a push, never the hero). **Pediatric dosing** (`lib/prn-dosing.ts`, pure)
 reproduces the OTC label's **weight-BAND chart** (never a mg/kg computation)

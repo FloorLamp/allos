@@ -293,6 +293,12 @@ the only module allowed to import the raw Telegram API primitives.
 Inline notification actions carry IDs only and return typed outcomes. Never
 confirm success unconditionally when the underlying write can refuse or no-op.
 
+A tick is not a request, so `cache()` (`lib/request-cache.ts`) is identity in it.
+Per-tick memoization goes through `lib/tick-cache.ts`: `scripts/notify.ts` opens
+one scope per profile, and a repeated heavy gather declares `tickCached` beside
+its `cache()`. Do not reach for a TTL memo here — a scope, not a duration, is
+what lets a safety counter be memoized at all.
+
 See `docs/internals/notifications.md`.
 
 ### Supplements and medications

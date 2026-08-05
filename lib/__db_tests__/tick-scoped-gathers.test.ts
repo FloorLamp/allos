@@ -82,7 +82,8 @@ function countPrepares(signature: RegExp): { calls: () => number } {
 }
 
 const PREVENTIVE_SIGNATURE = /SELECT rule_key AS ruleKey, kind/;
-const FAMILY_SIGNATURE = /SELECT id, name, rxcui, rxcui_ingredients, max_daily_count/;
+const FAMILY_SIGNATURE =
+  /SELECT id, name, rxcui, rxcui_ingredients, max_daily_count/;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -118,13 +119,18 @@ function stubFetch(): ReturnType<typeof vi.fn> {
 // never-recorded `setup` state, which is outside `actionable` and never nudges).
 // Plus three live Telegram pointers carrying preventive keyboards — the per-pointer
 // multiplier #2118 measured, which is the part that grows with a chatty household.
-const PREVENTIVE_RULES = ["adult_physical", "blood_pressure", "lipid_screening"];
+const PREVENTIVE_RULES = [
+  "adult_physical",
+  "blood_pressure",
+  "lipid_screening",
+];
 
 function seedPreventiveProfile(name: string): number {
   const p = newProfile(name);
   setUserBirthdate(p, "1980-01-01");
   setUserSex(p, "male");
-  for (const rule of PREVENTIVE_RULES) recordPreventiveDone(p, rule, "2012-03-05");
+  for (const rule of PREVENTIVE_RULES)
+    recordPreventiveDone(p, rule, "2012-03-05");
   setTelegramBotConfig({
     telegramBotToken: "tick-scope-test-token",
     telegramMode: "poll",
@@ -360,9 +366,7 @@ describe("a tick scope's memo cannot outlive its tick", () => {
 
     // A dose confirmed between ticks — the write that must never be missed.
     const dose = db
-      .prepare(
-        "SELECT id FROM intake_item_doses WHERE item_id = ? LIMIT 1"
-      )
+      .prepare("SELECT id FROM intake_item_doses WHERE item_id = ? LIMIT 1")
       .get(otcItemId) as { id: number };
     logAdministration(otcItemId, dose.id, date, 0, "200 mg");
 
@@ -371,7 +375,9 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     );
     expect(second?.countToday).toBe(3);
     // And with no scope at all, every read is fresh.
-    expect(getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday).toBe(3);
+    expect(
+      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+    ).toBe(3);
   });
 
   it("WITHIN one scope the snapshot is stable — which is why the tick may not write these inputs", async () => {
@@ -389,12 +395,18 @@ describe("a tick scope's memo cannot outlive its tick", () => {
       .get(otcItemId) as { id: number };
 
     await runInTickScope(async () => {
-      expect(getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday).toBe(2);
+      expect(
+        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
-      expect(getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday).toBe(2);
+      expect(
+        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
-    expect(getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday).toBe(3);
+    expect(
+      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+    ).toBe(3);
   });
 
   it("a profile tick that THROWS still closes its scope", async () => {
