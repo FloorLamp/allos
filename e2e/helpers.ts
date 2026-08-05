@@ -593,54 +593,45 @@ export async function settledCheckSave(
   await awaitAutosaveSettled(scope);
 }
 
-// Click `locator` and await the Server Action POST it fires before returning.
+// ── The correlated Server-Action POST wait (#1952) ───────────────────────────
 //
 // Next App Router Server Actions POST to the CURRENT route URL (same origin) — a
 // `<form action={serverAction}>` submit posts natively before hydration and via a
 // `fetch` POST after, and either way the response completes only once the action
 // AND its `revalidatePath` have run server-side (the revalidate is what puts the
 // re-rendered tree in that very response — see
-// docs/internals/server-action-refresh.md). We arm a
-// `waitForResponse` for that POST BEFORE clicking (so a fast action can't resolve
-// in the gap between click and wait), then click, then await the response. When it
-// resolves the mutation is durably applied; the follow-up `expect(...)` asserts the
-// re-rendered UI (React applies the revalidated payload on the next tick — the
-// assertion's own retry absorbs that sub-tick).
+// docs/internals/server-action-refresh.md). So "the interaction's action landed"
+// is answerable from outside the browser: arm a `waitForResponse` for that POST
+// BEFORE the interaction (a fast action must not resolve in the gap), drive the
+// interaction, await the response.
 //
-// WORKS when: the click definitely triggers exactly one same-origin POST (form
-// submit, action button). PREFER this over networkidle/waitForTimeout/toPass for
-// those.
-//
-// DOES NOT WORK when: the click fires NO action (a pure client toggle, an
-// `<a href>` navigation with no action) — there is no POST to await and this will
-// time out. Use followLink for navigations and a plain `expect` for client-only
-// state (decision tree above). If a click fires an action AND navigates, this
-// still resolves on the action POST.
-//
-// THE WAIT IS CORRELATED WITH THE CLICK (#1952). It used to accept ANY same-origin
-// POST, which is not a contract at all: it cannot tell this click's action from a
-// bystander's, and the failure mode is SILENT — a spec pointed at a control that
-// posts NOTHING passes on somebody else's traffic, and only goes red when that
+// THE WAIT IS CORRELATED WITH THE INTERACTION. It used to accept ANY same-origin
+// POST, which is not a contract at all: it cannot tell this interaction's action
+// from a bystander's, and the failure mode is SILENT — a spec pointed at a control
+// that posts NOTHING passes on somebody else's traffic, and only goes red when that
 // traffic disappears. That is exactly what happened: both completion toasters used
 // to observe through a read Server Action (a POST) every few seconds on every
 // authenticated page, ~22 specs were coasting on it, and moving that poll to a
 // `fetch` GET (#1949) turned all of them red at once. Two filters replace "any
 // POST":
 //
-//   1. The request must have STARTED AFTER the click. We collect `page.on("request")`
-//      from the instant before `locator.click()`, so a poll already in flight when
-//      the click landed can no longer satisfy the wait. That is the #1437
-//      false-settle (settle on a bystander, then `goto` aborts the real write).
+//   1. The request must have STARTED AFTER the interaction. We collect
+//      `page.on("request")` from the instant before the click/`setInputFiles`, so a
+//      poll already in flight when it landed can no longer satisfy the wait. That
+//      is the #1437 false-settle (settle on a bystander, then `goto` aborts the
+//      real write).
 //   2. The request must be a SERVER ACTION, which Next marks with a `next-action`
 //      header carrying the action id. A route-handler POST (`/api/…`) has no such
-//      header and is by construction not the click's action.
+//      header and is by construction not the interaction's action — which is what
+//      excludes the offline queue's `/api/offline-replay` flush, the one background
+//      POST a page can still fire (`lib/__tests__/chrome-refresh-scan.test.ts`).
 //
 //      This started life as "must target this page's route", which is true of a
 //      Server Action — Next posts one to the current document URL — but pinning
 //      that route when the wait is ARMED turned out to be brittle in exactly the
 //      way `followLink` documents above: the App Router can commit a destination
 //      and then UNWIND to the source route while the interaction is still running.
-//      When it does, the click's own action posts from the route the page has
+//      When it does, the interaction's own action posts from the route the page has
 //      unwound to, the arm-time pin rejects it, and the timeout blames the call
 //      site for a navigation that happened underneath it (measured on
 //      `illness-episode-followups`, where the Save action and both toaster polls
@@ -652,19 +643,137 @@ export async function settledCheckSave(
 //      The one Server Action WITHOUT that header is a pre-hydration native `<form>`
 //      submit, which carries its action id in the body instead — that one is still
 //      matched on the route, which it necessarily posts to, being a document
-//      navigation. `opts.url` overrides both for a click that posts elsewhere.
+//      navigation. `opts.url` overrides both for an interaction that posts
+//      elsewhere.
 //
 // WHAT THIS DOES NOT GUARANTEE, said plainly: two Server Actions are
 // indistinguishable from outside the browser unless you pin their action ids, which
 // are build-generated hashes no spec should hard-code. So a background actor that
-// posts an action AFTER the click can still satisfy this wait. Nothing in the app
-// does that today (#1949 left the toasters on `fetch` GETs), and adding one would be
-// visible in `lib/__tests__/chrome-refresh-scan.test.ts`'s chrome-actor list — but
-// the guarantee is "a Server Action POST, caused no earlier than this click", not
-// "this click's action". Where that residue matters (a settled click followed by a
+// posts an action AFTER the interaction can still satisfy this wait. Nothing in the
+// app does that today (#1949 left the toasters on `fetch` GETs), and adding one
+// would be visible in the chrome-actor list above — but the guarantee is "a Server
+// Action POST, caused no earlier than this interaction", not "this interaction's
+// action". Where that residue matters (a settled interaction followed by a
 // NAVIGATION), keep asserting the durable server-rendered marker the completed
 // mutation produces before navigating — the rule this module's #1437 note already
 // states, and the wellbeing card's `mood-server-logged` precedent.
+//
+// ONE predicate, shared by settledClick and settledUpload, because they ask ONE
+// question. settledUpload kept the old "any same-origin POST" body when
+// settledClick stopped accepting it (#1958), so the identical silent-green defect
+// survived under the other helper's name — and its two call sites had each grown a
+// 45s `toPass` loop whose comment says exactly that ("settledUpload's POST arm
+// matches ANY same-origin POST … a satisfied settle doesn't prove the UPLOAD
+// landed"). A helper family cannot hold two different answers to one question.
+//
+// Usage: arm before the interaction; call `begin()` in the SAME synchronous turn as
+// it; await `settled`; `release()` in a `finally`.
+function armActionPost(
+  page: Page,
+  here: URL,
+  opts: { timeout: number; url?: RegExp }
+): {
+  settled: Promise<unknown>;
+  begin: () => void;
+  release: () => void;
+  diagnose: (err: unknown, helper: string, advice: string) => Error;
+} {
+  // Requests observed from the moment the interaction is dispatched. A WeakSet keyed
+  // on Playwright's own Request object is exact identity — no URL/timing heuristics
+  // — and `response.request()` returns that same object.
+  const caused = new WeakSet<Request>();
+  let collecting = false;
+  const onRequest = (request: Request) => {
+    if (collecting) caused.add(request);
+  };
+  // Every same-origin POST seen during the wait, with the reason it was refused.
+  // A timeout here is nearly always a question about WHICH post happened, so the
+  // failure answers it instead of making the next reader re-instrument (#1952).
+  const rejected: string[] = [];
+  page.on("request", onRequest);
+  const settled = page.waitForResponse(
+    (resp) => {
+      const request = resp.request();
+      if (request.method() !== "POST") return false;
+      let target: URL;
+      try {
+        target = new URL(resp.url());
+      } catch {
+        return false;
+      }
+      if (target.origin !== here.origin) return false;
+      if (!caused.has(request)) {
+        rejected.push(`${target.pathname} (already in flight at that moment)`);
+        return false;
+      }
+      // Next stamps every hydrated Server Action with the id it is dispatching;
+      // a pre-hydration native form submit has no header and is matched on the
+      // route it necessarily posts to.
+      const isServerAction = request.headers()["next-action"] != null;
+      const matches = opts.url
+        ? opts.url.test(resp.url())
+        : isServerAction || target.pathname === here.pathname;
+      if (!matches) {
+        rejected.push(
+          `${target.pathname} (started in time, but ` +
+            (opts.url
+              ? `does not match ${opts.url}`
+              : `carries no next-action header and is not this page's route`) +
+            `)`
+        );
+      }
+      return matches;
+    },
+    { timeout: opts.timeout }
+  );
+  return {
+    settled,
+    begin: () => {
+      collecting = true;
+    },
+    release: () => page.off("request", onRequest),
+    diagnose: (err, helper, advice) => {
+      // The old helper's timeout said only "waiting for event response", which reads
+      // as a slow server on a control that was never going to post. Name the real
+      // question instead — #1952's whole lesson is that this timeout usually means
+      // the call site is wrong, not the app.
+      const wrapped = err instanceof Error ? err : new Error(String(err));
+      if (!wrapped.message.includes("waitForResponse")) return wrapped;
+      wrapped.message +=
+        `\n\n[${helper}] armed on ${here.pathname}; page is now ${new URL(page.url()).pathname}.` +
+        `\n[${helper}] no correlated Server Action POST started after this ` +
+        `interaction. ${advice}` +
+        (rejected.length
+          ? `\n[${helper}] same-origin POSTs seen while waiting:\n  - ${rejected.join("\n  - ")}`
+          : `\n[${helper}] NO same-origin POST was seen at all during the wait — ` +
+            `not even a background one. The page produced no traffic, so the old ` +
+            `"any POST" helper would have timed out here too; suspect a stalled or ` +
+            `navigated page rather than this contract.`);
+      return wrapped;
+    },
+  };
+}
+
+// Click `locator` and await the Server Action POST it fires before returning.
+//
+// When it resolves the mutation is durably applied; the follow-up `expect(...)`
+// asserts the re-rendered UI (React applies the revalidated payload on the next
+// tick — the assertion's own retry absorbs that sub-tick). For a click whose
+// assertion needs the router to have APPLIED that payload, use
+// settledClickApplied.
+//
+// WORKS when: the click definitely triggers exactly one same-origin POST (form
+// submit, action button). PREFER this over networkidle/waitForTimeout/toPass for
+// those.
+//
+// DOES NOT WORK when: the click fires NO action (a pure client toggle, an
+// `<a href>` navigation with no action) — there is no POST to await and this will
+// time out. Use followLink for navigations and hydratedClick/a plain `expect` for
+// client-only state (decision tree above). If a click fires an action AND
+// navigates, this still resolves on the action POST.
+//
+// The wait is correlated with the click; see armActionPost above for what that
+// does and does not guarantee.
 export async function settledClick(
   page: Page,
   locator: Locator,
@@ -686,59 +795,12 @@ export async function settledClick(
   await expect(locator).toBeVisible({ timeout });
   const rest = Math.max(1_000, deadline - Date.now());
 
-  // Requests observed from the moment the click is dispatched. A WeakSet keyed on
-  // Playwright's own Request object is exact identity — no URL/timing heuristics —
-  // and `response.request()` returns that same object.
-  const causedByClick = new WeakSet<Request>();
-  let collecting = false;
-  const onRequest = (request: Request) => {
-    if (collecting) causedByClick.add(request);
-  };
-  // Every same-origin POST seen during the wait, with the reason it was refused.
-  // A timeout here is nearly always a question about WHICH post happened, so the
-  // failure answers it instead of making the next reader re-instrument (#1952).
-  const rejected: string[] = [];
-  page.on("request", onRequest);
+  const wait = armActionPost(page, here, { timeout: rest, url: opts.url });
   try {
-    const settled = page.waitForResponse(
-      (resp) => {
-        const request = resp.request();
-        if (request.method() !== "POST") return false;
-        let target: URL;
-        try {
-          target = new URL(resp.url());
-        } catch {
-          return false;
-        }
-        if (target.origin !== here.origin) return false;
-        if (!causedByClick.has(request)) {
-          rejected.push(`${target.pathname} (already in flight at click time)`);
-          return false;
-        }
-        // Next stamps every hydrated Server Action with the id it is dispatching;
-        // a pre-hydration native form submit has no header and is matched on the
-        // route it necessarily posts to.
-        const isServerAction = request.headers()["next-action"] != null;
-        const matches = opts.url
-          ? opts.url.test(resp.url())
-          : isServerAction || target.pathname === here.pathname;
-        if (!matches) {
-          rejected.push(
-            `${target.pathname} (started after the click, but ` +
-              (opts.url
-                ? `does not match ${opts.url}`
-                : `carries no next-action header and is not this page's route`) +
-              `)`
-          );
-        }
-        return matches;
-      },
-      { timeout: rest }
-    );
-    // Set INSIDE the same synchronous turn as the click: the wait above is already
+    // Set INSIDE the same synchronous turn as the click: the wait is already
     // listening (a fast action cannot resolve in the gap), and the browser cannot
     // have issued the click's request before the click.
-    collecting = true;
+    wait.begin();
     // The click and the wait share one deadline, so a click that never becomes
     // actionable (a disabled Save, a button under a closing popover) expires at the
     // same moment as the response wait — and `Promise.all` then reports whichever
@@ -749,34 +811,21 @@ export async function settledClick(
     const clicked = locator.click({ timeout: rest }).catch((err: unknown) => {
       clickError = err instanceof Error ? err : new Error(String(err));
     });
-    await Promise.all([settled, clicked]);
+    await Promise.all([wait.settled, clicked]);
     // The response landed, but the click behind it did not: something else on the
     // page produced that POST, so the caller's premise is already false.
     if (clickError) throw clickError;
   } catch (err) {
-    // The old helper's timeout said only "waiting for event response", which reads
-    // as a slow server on a control that was never going to post. Name the real
-    // question instead — #1952's whole lesson is that this timeout usually means
-    // the call site is wrong, not the app.
-    const wrapped = err instanceof Error ? err : new Error(String(err));
-    if (wrapped.message.includes("waitForResponse")) {
-      wrapped.message +=
-        `\n\n[settledClick] armed on ${here.pathname}; page is now ${new URL(page.url()).pathname}.` +
-        `\n[settledClick] no same-origin POST to ${here.pathname} started after ` +
-        `this click. If this control is a pure CLIENT toggle (a disclosure, a chip, ` +
-        `an overflow menu, a dialog opener) it never posts: use hydratedClick and ` +
-        `assert what it reveals. If it navigates, use followLink. If it posts ` +
-        `somewhere other than this route, pass { url }.` +
-        (rejected.length
-          ? `\n[settledClick] same-origin POSTs seen while waiting:\n  - ${rejected.join("\n  - ")}`
-          : `\n[settledClick] NO same-origin POST was seen at all during the wait — ` +
-            `not even a background one. The page produced no traffic, so the old ` +
-            `"any POST" helper would have timed out here too; suspect a stalled or ` +
-            `navigated page rather than this contract.`);
-    }
-    throw wrapped;
+    throw wait.diagnose(
+      err,
+      "settledClick",
+      `If this control is a pure CLIENT toggle (a disclosure, a chip, an overflow ` +
+        `menu, a dialog opener) it never posts: use hydratedClick and assert what ` +
+        `it reveals. If it navigates, use followLink. If it posts somewhere other ` +
+        `than this route, pass { url }.`
+    );
   } finally {
-    page.off("request", onRequest);
+    wait.release();
   }
 }
 
@@ -957,33 +1006,44 @@ export async function settledSelectSave(
 // Set files on a file `<input>` and await the Server-Action POST the resulting
 // change fires — the settledClick idiom for an upload input (which has no click to
 // drive). A hidden camera/file input's `onChange` submits a Server Action (upload
-// + `revalidatePath`); we arm the POST wait BEFORE
-// `setInputFiles` (so a fast upload can't resolve in the gap), then await it, so
-// the follow-up `expect(...)` runs against the durably-applied strip rather than a
-// bare timed count poll. WORKS when the change definitely fires exactly one
-// same-origin POST (the upload). Mirrors settledClick for inputs.
+// + `revalidatePath`); we arm the POST wait BEFORE `setInputFiles` (so a fast
+// upload can't resolve in the gap), then await it, so the follow-up `expect(...)`
+// runs against the durably-applied strip rather than a bare timed count poll.
+// WORKS when the change definitely fires exactly one Server Action (the upload).
+//
+// The wait goes through the SAME armActionPost predicate settledClick uses
+// (#1952). It used to be the pre-#1958 "any same-origin POST", which was the same
+// silent-green defect: the settle could land on a revalidation from an earlier step
+// or the offline queue's `/api/offline-replay` flush and prove nothing about the
+// upload — measured on CI, where the settle resolved and no thumbnail rendered for
+// 15s. Both call sites had wrapped it in a 45s `toPass` re-upload loop to survive
+// that; correlating the wait is what makes the loop unnecessary rather than
+// load-bearing.
 export async function settledUpload(
   page: Page,
   input: Locator,
   files: Parameters<Locator["setInputFiles"]>[0],
-  opts: { timeout?: number } = {}
+  opts: { timeout?: number; url?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 20_000;
-  const origin = new URL(page.url()).origin;
-  await Promise.all([
-    page.waitForResponse(
-      (resp) => {
-        if (resp.request().method() !== "POST") return false;
-        try {
-          return new URL(resp.url()).origin === origin;
-        } catch {
-          return false;
-        }
-      },
-      { timeout }
-    ),
-    input.setInputFiles(files),
-  ]);
+  const here = new URL(page.url());
+  const wait = armActionPost(page, here, { timeout, url: opts.url });
+  try {
+    // Same synchronous turn as the interaction, exactly as in settledClick.
+    wait.begin();
+    await Promise.all([wait.settled, input.setInputFiles(files)]);
+  } catch (err) {
+    throw wait.diagnose(
+      err,
+      "settledUpload",
+      `The input's onChange must submit a Server Action. If this upload posts to ` +
+        `a route handler instead, it is not a settledUpload site — await the ` +
+        `route's own response. If it posts somewhere other than this route, pass ` +
+        `{ url }.`
+    );
+  } finally {
+    wait.release();
+  }
 }
 
 // ── Touch gestures (issues #1425 / #1469) ────────────────────────────────────
