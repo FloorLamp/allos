@@ -256,6 +256,16 @@ describe("the two SQL consumers embed one shared clock fragment", () => {
     expect(staleness).toContain("${CHECK_CLOCK_COLS}");
   });
 
+  it("the ever-ran fact is one fragment on the same joins (#2064)", () => {
+    // "Has the tool ever run" is a different question from "when was it last
+    // checked" (see the constants' own headers), but it is answered by the SAME
+    // LEFT JOIN both enumerations already make. One fragment, embedded twice, and
+    // no per-account existence statement growing back beside it.
+    expect(src.match(/const EVER_RAN_COL = /g)).toHaveLength(1);
+    expect(src.match(/\$\{EVER_RAN_COL\}/g)).toHaveLength(2);
+    expect(src).not.toMatch(/FROM portal_run_reports\s+WHERE account_id/);
+  });
+
   it("no consumer restates the predicate in SQL", () => {
     // `contacted` and `attended` are decided ONCE, at ingest, by the pure predicates.
     // A `WHERE rr.contacted = 1` appearing here would be the bug growing back.

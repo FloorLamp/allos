@@ -205,14 +205,6 @@ export function mappedPatientCount(accountId: number): number {
   return (MAPPED_COUNT_STMT.get(accountId) as { n: number }).n;
 }
 
-const ALL_ACCOUNT_IDS_STMT = db.prepare(
-  "SELECT id AS accountId FROM portal_accounts ORDER BY id"
-);
-
-const EVER_RAN_STMT = db.prepare(
-  "SELECT 1 AS ran FROM portal_run_reports WHERE account_id = ?"
-);
-
 // ── THE TOOL-HAS-EVER-RUN FACT (#2010), which is NOT the check clock ─────────
 //
 // Row existence, nothing else. `portal_run_reports` holds ONE ROW PER LOGIN (migration
@@ -222,11 +214,24 @@ const EVER_RAN_STMT = db.prepare(
 // CHECK_CLOCK_COLS: "has the tool ever run" and "when was the portal last checked" are
 // different questions, and the constant above exists so they can never be confused.
 //
-// Spelled once, and read by BOTH automatic creators, so the setup carve-out cannot come
-// to mean two things. The pure rule that consumes it is `mayAutoRequestSync`.
-function accountEverRan(accountId: number): boolean {
-  return EVER_RAN_STMT.get(accountId) !== undefined;
-}
+// A COLUMN, not a per-account statement (#2064). Both automatic creators already
+// LEFT JOIN `portal_run_reports` for the account they are judging, so the fact was
+// sitting in a row they had already fetched; asking for it again was a third round
+// trip per account inside an hourly loop. Spelled once here and embedded by both
+// enumerations, so the setup carve-out still cannot come to mean two things. The
+// pure rule that consumes it is `mayAutoRequestSync`.
+//
+// The one-row-per-login key is what makes the LEFT JOIN safe to read this way: it
+// cannot multiply an account's row, so "joined" means "reported", exactly.
+const EVER_RAN_COL = `(rr.account_id IS NOT NULL) AS everRan`;
+
+// Every portal login, with that fact. The post-visit creator's enumeration.
+const ALL_ACCOUNTS_STMT = db.prepare(
+  `SELECT a.id AS accountId, ${EVER_RAN_COL}
+     FROM portal_accounts a
+     LEFT JOIN portal_run_reports rr ON rr.account_id = a.id
+    ORDER BY a.id`
+);
 
 const MAPPED_PROFILES_STMT = db.prepare(
   `SELECT DISTINCT profile_id AS profileId FROM portal_identities
@@ -295,6 +300,7 @@ const STALENESS_CANDIDATES_STMT = db.prepare(
             WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0
               AND i.profile_id IS NOT NULL)
             AS mapped,
+          ${EVER_RAN_COL},
           ${CHECK_CLOCK_COLS}
      FROM portal_accounts a
      LEFT JOIN portal_run_reports rr ON rr.account_id = a.id
@@ -330,6 +336,7 @@ export function evaluateStalenessRequests(
   for (const row of STALENESS_CANDIDATES_STMT.all() as {
     accountId: number;
     mapped: number;
+    everRan: number;
     lastReportAt: string | null;
     lastOkAt: string | null;
   }[]) {
@@ -337,7 +344,7 @@ export function evaluateStalenessRequests(
     if (today === null) continue; // no mapped patients — silent, by the pure rule below
     if (
       !isStalenessDue({
-        everRan: accountEverRan(row.accountId),
+        everRan: row.everRan !== 0,
         mappedPatients: row.mapped,
         lastCheckedAt: row.lastOkAt,
         today,
@@ -396,13 +403,16 @@ export function evaluatePostVisitRequests(
   const seen = new Set<number>();
   // Composed per ACCOUNT so each window is measured in its own mapped profile's clock,
   // then asked of the DB once per account. A household has a handful of logins.
-  for (const row of ALL_ACCOUNT_IDS_STMT.all() as { accountId: number }[]) {
+  for (const row of ALL_ACCOUNTS_STMT.all() as {
+    accountId: number;
+    everRan: number;
+  }[]) {
     const today = accountToday(row.accountId, todayFor);
     if (today === null) continue;
     // THE SETUP CARVE-OUT (#2010), the same one the staleness rule applies. A visit did
     // happen and records probably exist — but nothing can fetch them yet, so the ask is
     // "install the tool", which the card already makes in its own words.
-    if (!mayAutoRequestSync({ everRan: accountEverRan(row.accountId) })) {
+    if (!mayAutoRequestSync({ everRan: row.everRan !== 0 })) {
       continue;
     }
     const from = shiftDateStr(today, -POST_VISIT_WINDOW_DAYS);
