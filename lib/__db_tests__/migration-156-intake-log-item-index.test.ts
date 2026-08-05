@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — migration 155 (#2111 half 2): the arming-dose read is actually
+// DB INTEGRATION TIER — migration 156 (#2111 half 2): the arming-dose read is actually
 // indexed.
 //
 // `getMedicationFamilyStates` finds an ingredient family's ARMING administration with
@@ -84,7 +84,7 @@ beforeAll(() => {
   }
 });
 
-describe("migration 155 — the (item_id, given_at) administration index", () => {
+describe("migration 156 — the (item_id, given_at) administration index", () => {
   it("applies: the index exists on the migrated schema", () => {
     const row = db
       .prepare(

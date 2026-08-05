@@ -1008,7 +1008,7 @@ scope, and the within-scope snapshot is asserted outright, so a future tick step
 that DOES write one of these inputs fails there rather than silently reading its
 own stale answer.
 
-Migration 155 belongs to the same fix: the family's arming-administration read
+Migration 156 belongs to the same fix: the family's arming-administration read
 carries no date bound (the interval clock is armed whenever the last dose was),
 and on the baseline indexes it scanned the whole append-only dose ledger and
 sorted the survivors. `intake_item_logs(item_id, given_at)` turns that into a

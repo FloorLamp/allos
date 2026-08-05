@@ -184,7 +184,7 @@ fact regardless of config. The gather is memoized on BOTH lifetimes (#2111) —
 several of those counter surfaces render together and each used to pay for the
 whole gather; neither lifetime can outlive a dose confirm, which is the only
 thing a memo over a safety counter may not do. Its arming-administration read is
-served by `intake_item_logs(item_id, given_at)` (migration 155) rather than a
+served by `intake_item_logs(item_id, given_at)` (migration 156) rather than a
 scan of the append-only ledger. A multi-item family also emits ONE calm coaching-tier
 duplication note (`med-dup:<familyKey>`, `buildMedicationDuplicationFindings` —
 never a push, never the hero). **Pediatric dosing** (`lib/prn-dosing.ts`, pure)
