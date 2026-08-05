@@ -141,6 +141,19 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
     await expect(widget).toBeVisible();
     await expect(widget).toContainText("Creatine 5 g/day");
 
+    // THE THREE-SURFACE PIN (#2008). The seeded "Red light 3-5x/week" protocol is
+    // the only one of profile 1's ongoing protocols with a practice target, so its
+    // adherence line is the unique one in the widget. The widget used to derive its
+    // chip from `met` alone — a two-state answer — so the same practice, the same
+    // day and the same rows read amber "Behind" here while the wellness card and
+    // the protocol detail page read "On pace". All three now render the SAME
+    // <PracticeWeeklyProgress>, so the verdict word must be identical whatever the
+    // run's frozen day makes it.
+    const widgetVerdict = await widget
+      .getByTestId("active-protocol-adherence")
+      .locator(".badge")
+      .innerText();
+
     // Restore the default (hidden) so the shared dashboard layout is left untouched
     // for neighboring specs (suite hygiene — a spec owns its state).
     await main.getByRole("button", { name: "Edit dashboard" }).click();
@@ -153,5 +166,29 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
     await expect(
       main.getByTestId("dashboard-widget-active-protocols")
     ).toHaveCount(0, { timeout: 20_000 });
+
+    // Surface 2: the wellness card.
+    await page.goto("/wellness");
+    const wellnessVerdict = await page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: "Red light therapy" })
+      .getByTestId("wellness-practice-progress")
+      .locator(".badge")
+      .innerText();
+
+    // Surface 3: the protocol detail page.
+    await page.goto("/longevity#protocols");
+    await followLink(
+      page,
+      page.getByRole("main").getByRole("link", { name: /Red light/ }),
+      /\/protocols\/\d+/
+    );
+    const detailVerdict = await page
+      .getByTestId("protocol-adherence")
+      .locator(".badge")
+      .innerText();
+
+    expect(widgetVerdict).toBe(wellnessVerdict);
+    expect(detailVerdict).toBe(wellnessVerdict);
   });
 });

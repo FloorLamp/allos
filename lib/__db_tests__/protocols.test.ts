@@ -8,7 +8,7 @@
 // guard.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   getProtocols,
   getProtocol,
@@ -17,6 +17,7 @@ import {
   getProtocolWindows,
   getProtocolWindowsForOutcome,
   getActiveProtocolSummaries,
+  getFrequencyTargetProgress,
   getProtocolIntakeItem,
   getProtocolOutcomeOptions,
   resolveOutcomeSeries,
@@ -437,9 +438,48 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
     // Inclusive elapsed days: May 1 → May 10 = 10 days in.
     expect(out[0].daysElapsed).toBe(10);
     expect(out[0].primaryOutcome?.label).toBe("Body weight");
-    // No practice link → null adherence.
+    // No practice link → null adherence. The widget renders no verdict at all for
+    // that, which is what the detail page now also does (#2008): with no progress
+    // row there is nothing to be on pace WITH.
     expect(out[0].adherence).toBeNull();
     expect(out[0].href).toBe(`/protocols/${getProtocols(profile)[0].id}`);
+  });
+
+  it("carries the PACED weekly verdict, not just met/not-met (#2008)", () => {
+    const profile = newProfile("Proto Pace");
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (?, 'practice', 'Cold plunge', 'cold plunge', 3, 5)`
+        )
+        .run(profile).lastInsertRowid
+    );
+    const todayStr = today(profile);
+    db.prepare(
+      `INSERT INTO protocols
+         (profile_id, name, start_date, outcome_keys, frequency_target_id, owns_frequency_target)
+       VALUES (?, 'Plunge trial', ?, '[]', ?, 1)`
+    ).run(profile, todayStr, targetId);
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'Cold plunge', ?)`
+    ).run(profile, todayStr);
+
+    const progress = getFrequencyTargetProgress(profile).find(
+      (p) => p.target.id === targetId
+    )!;
+    const summary = getActiveProtocolSummaries(profile, todayStr, "kg")[0];
+    expect(summary.adherence).not.toBeNull();
+    // The widget's verdict is the SAME value the detail page and the wellness card
+    // render — one computation, copied through, never re-derived from `met`.
+    expect(summary.adherence!.pace).toBe(progress.pace);
+    expect(summary.adherence!.count).toBe(progress.count);
+    expect(summary.adherence!.atCeiling).toBe(progress.atCeiling);
+    // The range's ceiling and the practice's counting noun ride along, so the
+    // shared component can render "N days this week · Target 3-5x/week".
+    expect(summary.adherence!.perWeekMax).toBe(5);
+    expect(summary.adherence!.noun).toBe("day");
   });
 });
 

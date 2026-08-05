@@ -110,6 +110,7 @@ export default function PracticeCard({
                 perWeekMax: practice.perWeekMax,
                 pace: practice.pace,
                 atCeiling: practice.atCeiling,
+                testId: "wellness-practice-progress",
               }
         }
         subtitle={practice.perWeek == null ? "Session history only" : undefined}
