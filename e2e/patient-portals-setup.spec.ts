@@ -284,6 +284,57 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     await expect(patientRowFor(page, label)).toHaveCount(0);
   });
 
+  test("a fresh portal offers the login layer, and stops once a second one exists (#1930)", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Login Prompt ${stamp}`;
+
+    await addPortal(page, portal);
+    const section = sectionFor(page, portal);
+
+    // THE MIDDLE LAYER HAS A PRESENCE (#1930). A fresh portal has exactly one login —
+    // the implicit one, which never surfaces — so the card used to render no login at
+    // all, and its only affordance was a ⋯ entry nobody had a reason to open. The
+    // prompt sits beside the waiting text, and the rule for WHEN you want one is out
+    // here rather than inside the form it opens.
+    const prompt = section.getByTestId("portal-login-prompt");
+    await expect(prompt).toBeVisible();
+    await expect(prompt).toContainText(
+      `Only if two people sign in to ${portal} with their own accounts`
+    );
+    // ORDER IS THE POINT: the ask has to land before the run that freezes the name.
+    await expect(prompt).toContainText("before");
+    // Still no row for the implicit login — this prompts about adding a SECOND, and
+    // "Default login" continues to surface nowhere.
+    await expect(section.getByTestId("portal-login-group")).toHaveCount(0);
+    await expect(section).not.toContainText("Default login");
+
+    // The ⋯ entry STAYS — an affordance was added, not moved — and both routes open the
+    // same form. While that form is open the prompt stands down, so the rule is never
+    // on screen twice.
+    await openRowMenu(page, section, portal);
+    await (await menuItem(page, "portal-add-login")).click();
+    await expect(section.getByTestId("portal-add-login-cta")).toHaveCount(0);
+    await hydratedClick(page, section.getByTestId("account-add-cancel"));
+
+    await hydratedClick(page, section.getByTestId("portal-add-login-cta"));
+    // The form now says what the name IS: the key the companion tool quotes.
+    await expect(section.getByTestId("account-name-note")).toContainText(
+      "name it once and leave it"
+    );
+    await settledFill(page, section.getByTestId("account-name"), "Mom");
+    await hydratedClick(page, section.getByTestId("account-add"));
+
+    // Two logins: the titled sub-groups take over, and the prompt is finished — a
+    // household that has named a login has met the concept.
+    await expect(section.getByTestId("portal-login-group")).toHaveCount(2);
+    await expect(section.getByTestId("portal-login-prompt")).toHaveCount(0);
+
+    await removePortal(page, portal);
+  });
+
   test("a portal refuses a web address in its name, inline on the form", async ({
     page,
   }) => {
@@ -468,6 +519,13 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     await expect(page.getByTestId("guide-token-link")).toBeVisible();
     // The page finally says where the companion tool comes from.
     await expect(page.getByTestId("guide-tool-link")).toBeVisible();
+    // …and it names the LOGIN before the run that freezes it (#1930). The mention is
+    // folded into step 3 rather than made a step of its own: a login is optional by
+    // design, and a numbered step is a thing you owe.
+    await expect(page.getByTestId("guide-login-note")).toBeVisible();
+    await expect(page.getByTestId("guide-step-3")).toContainText(
+      "add each login above"
+    );
     await expect(sectionFor(page, portal)).toBeVisible();
     // No compact strip while the guide is the checklist's rendering.
     await expect(page.getByTestId("portal-checklist")).toHaveCount(0);
