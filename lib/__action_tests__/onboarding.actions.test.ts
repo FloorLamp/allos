@@ -253,14 +253,14 @@ describe("onboarding actions", () => {
     });
     expect(getNotifySchedule(profile.id)).toMatchObject({
       workoutEnabled: false,
-      digestHour: null,
+      digestMinute: null,
       preventiveEnabled: false,
     });
 
     await redirected(
       saveOnboardingNotifications(fd({ notification_intent: "none" }))
     );
-    expect(getNotifySchedule(profile.id).supplementHours).toEqual({
+    expect(getNotifySchedule(profile.id).supplementMinutes).toEqual({
       Morning: null,
       Midday: null,
       Evening: null,
@@ -270,11 +270,11 @@ describe("onboarding actions", () => {
     await redirected(
       saveOnboardingNotifications(fd({ notification_intent: "safety-only" }))
     );
-    expect(getNotifySchedule(profile.id).supplementHours).toEqual({
-      Morning: 8,
-      Midday: 13,
-      Evening: 20,
-      Bedtime: 22,
+    expect(getNotifySchedule(profile.id).supplementMinutes).toEqual({
+      Morning: 8 * 60,
+      Midday: 13 * 60,
+      Evening: 20 * 60,
+      Bedtime: 22 * 60,
     });
   });
 

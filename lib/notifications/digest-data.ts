@@ -668,18 +668,20 @@ export function digestSleepPending(profileId: number): boolean {
   );
 }
 
-// The tick's digest gate (#2102): decline this hour so the retry hour sends the
-// digest WITH last night's sleep in it. One conditional over the two-hour window
-// `slotDue` already provides — no new scheduling machinery, no new marker, and
-// bounded by construction (see lib/notifications/digest-schedule.ts).
+// The tick's digest gate (#2102): decline the FIRST attempt so the retry attempt
+// sends the digest WITH last night's sleep in it. One conditional over the two
+// attempt bands `slotDue` already provides — no new scheduling machinery, no new
+// marker, and bounded by construction (see lib/notifications/digest-schedule.ts).
 export function deferDigestForSleep(
   profileId: number,
-  slotHour: number,
-  currentHour: number,
+  slotMinute: number,
+  currentMinute: number,
+  tickMinutes: number,
   auto: boolean
 ): boolean {
-  return shouldDeferDigest({ slotHour, currentHour, auto }, () =>
-    digestSleepPending(profileId)
+  return shouldDeferDigest(
+    { slotMinute, currentMinute, tickMinutes, auto },
+    () => digestSleepPending(profileId)
   );
 }
 

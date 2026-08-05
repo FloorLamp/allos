@@ -12,7 +12,7 @@
 Status: **shipped** · extracted verbatim from AGENTS.md (#597)
 
 Maintainer documentation for `lib/notifications/`: delivery channels and the
-hourly tick, the delivery-health marker, the two suppression contracts, the
+notify tick, the delivery-health marker, the two suppression contracts, the
 two-way Telegram button principle, and the channel chokepoint — with the full
 design history and issue trail. The load-bearing invariants are summarized in
 AGENTS.md; the user-facing setup guide is
@@ -133,29 +133,44 @@ quotas, and is held to a per-provider cadence declared in the integrations regis
 `lib/integrations/pull-tick.ts` — see
 [`integrations-sync.md`](./integrations-sync.md). The consequence for this document:
 **a finer tick multiplies due evaluations and not provider API calls**, which is
-what makes taking the tick below the hour (#2121 step 2) a one-line change per
-scheduler shape rather than a quota decision. `docker-notify.sh` still fires hourly;
-nothing in this file's timing has changed yet.
+what made taking the tick below the hour a scheduler-shape change rather than a
+quota decision. `docker-notify.sh` now fires every 15 minutes; a host crontab may
+run any steady rhythm from 1-minute to hourly, because the tick OBSERVES its own
+cadence (the `notify_tick_last_run_at` watermark → `observedTickMinutes`) and
+sizes its slot windows from what the scheduler actually does, not from a config
+claim.
 
-**The retry budget is the slot window times the tick rate, and it is undecided on
-purpose (#2121 item 3).** A send marker is written only on `delivered`, so a slot
-whose sends FAIL retries on every tick inside its `slotDue` window: at the hourly
-tick that is at most 2 attempts, at 15-minute ticks 8, at 1-minute ticks 120 — with
-no edit to `slotDue` and nothing in a review to notice. Nothing user-visible
-repeats (nothing delivered ⇒ nothing marked, and the per-day marker still admits
-one delivered send per slot per day); what scales is failure-log volume and how
-hard a channel is hammered during an outage. No cap is implemented, because the
-right number is not knowable from the scheduler's side — #1855's email channel
-wants MORE retries (SMTP greylisting is designed to be retried) while a push
-service returning 429 wants fewer — and a counter would be persisted `notify_*`
-state to mint, key, sweep and declare for a quantity currently pinned at 2. The
-decision surface is written out at `slotDue` in `lib/notifications/schedule.ts`:
-whoever re-derives that window at minute grain owns the attempt count it implies,
-and either accepts it, caps it, or backs it off in the same change.
+**The retry budget is DECIDED (#2121 item 3): two attempts, an hour apart, at
+every tick rate.** A send marker is written only on `delivered`, so a slot whose
+sends FAIL retries on every tick on which it reads "due" — under a naive
+minute-grain membership window that count would have been the window divided by
+the tick rate (8 at 15-minute ticks, 120 at 1-minute), silently. Instead
+`slotDue` is two discrete ATTEMPT BANDS, each one observed-tick wide: the first
+tick at/after the slot minute, and the first tick an hour later
+(`slotAttempt`, `lib/notifications/schedule.ts`). A slot is due ONLY on a tick
+landing in a band, so a failing send is attempted exactly twice a day, one hour
+apart — the budget the hourly tick always had, now invariant under the tick
+rate, with no attempt counter and therefore nothing new in
+`SEND_MARKER_REGISTRY`. This is the stateless "back off" resolution of the
+email-vs-push tension the old note recorded: #1855's email channel keeps a
+retry that outlives an SMTP greylist (an hour does), and a push service
+returning 429 is never hammered (twice a day is not hammering). A channel that
+ever needs a different budget changes `SLOT_RETRY_DELAY_MIN` or the band count
+in that ONE place. What the bands preserve from the old `[slotHour, slotHour+1]`
+hour-equality window — bit-identical hourly behavior, DST spring-forward
+recovery on the retry band, the no-midnight-wrap rule and its cost — is spelled
+at `slotAttempt` itself. The tick learns its own cadence by observation
+(`notify_tick_last_run_at` → `observedTickMinutes`, clamped to [1, 60] so an
+outage can never widen the window), and Settings → Notifications warns when the
+observed cadence cannot honour a configured sub-hourly time
+(`subHourlySlotsAtRisk`): a sub-hourly slot under an hourly crontab fires up to
+~an hour late, and a slot after the day's last tick (e.g. 23:50 under hourly
+ticks) never fires at all, because slots never wrap into the next day.
 
 **Notifications** (`lib/notifications/`) are delivered over three channels —
-Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly
-tick (`npm run notify` / the `notify` Docker service). Sends are deduped per
+Telegram, Web Push, and an outbound Home Assistant webhook — driven by a tick
+(`npm run notify` / the `notify` Docker service, every 15 minutes; slot times are
+minute-precise since #2121, stored as "HH:MM" by migration 158). Sends are deduped per
 day/slot; timing follows the DB-stored timezone
 (Settings → Health profile → Timezone). Inbound
 button taps arrive either via the webhook route (`app/api/telegram/webhook`) or,
@@ -382,7 +397,7 @@ re-validated against live grants at send time, again at button-tap time, AND
 narrowed on write in the action (the form is client-side, so a posted read-only
 or ungranted id is dropped three times over). A revoked member drops out
 silently; a profile that is no login's own profile has no offerable members and
-the settings card says so. **Composition (§2).** Rides the existing hourly tick
+the settings card says so. **Composition (§2).** Rides the existing notify tick
 and the receiver's slots with its OWN per-day markers
 (`notify_last_household_<slot>`, on the receiver — the round is the receiver's
 notification), so a receiver whose personal reminder already fired this slot
@@ -732,7 +747,7 @@ activity id** (`notify_last_post_workout_<activityId>`, an id-keyed marker,
 every post_workout dose already logged sends nothing and does NOT burn the
 one-shot). `isPostWorkoutReady` stays the dueness truth — this changes DELIVERY
 timing only, and the scheduled slot remains the fallback when a finish was never
-observed. The 60-min finished window guarantees the hourly tick observes every
+observed. The 60-min finished window guarantees even an hourly tick observes every
 finish exactly once. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
 working out? Finish or discard" note when an `active` session's draft has gone
 quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
@@ -749,7 +764,7 @@ place** into the #924 post-workout-dose summary — the SAME
 `renderPostWorkoutFinishMessage` the tick sends (#221), with its take/skip dose
 buttons, or a plain "Workout finished ✅" when nothing is pending — while
 setting the `notify_last_post_workout_<activityId>` finish marker as delivered
-so the hourly tick sends NO second notification. The handler answers from a
+so the tick sends NO second notification. The handler answers from a
 typed outcome union (`finished` / `already-finished` / `empty-draft` /
 `not-found`) — a re-tap on an already-finished session says so (no false
 confirm, no re-edit surprise), an empty draft keeps its buttons so the user can
@@ -1020,7 +1035,7 @@ bounds them to a set that stays flat as history grows.
 
 **The overdue finding follow-up (#700) pushes — with zero settings and a
 per-item off-switch (owner ruling 2026-08-01).** `runFollowUpNudges`
-(`lib/notifications/followup.ts`) rides the hourly tick (waking-window, assessed
+(`lib/notifications/followup.ts`) rides the notify tick (waking-window, assessed
 once per profile-local day — overdue-ness is day-granular, and an escalation
 about something already months late earns no 3am delivery) over the SAME
 `followUpItems` computation the Upcoming page and Needs-attention hero render.
@@ -1098,29 +1113,31 @@ the single `digest` kind governs the merged message.
 **When the digest sends, and the one hour it will wait (#2102).** Two separate
 decisions, both pure in `lib/notifications/digest-schedule.ts`:
 
-- **`auto` resolves past the ARRIVAL, not the wake.** An `auto` digest hour used
-  to resolve through `wakeMinuteToHour(typicalWakeTime(profileId))` — the hour the
-  person WAKES — while the sleep row lands a measured ~70 minutes behind waking
-  (real Health Connect profile, 11 nights, wake 05:40, arrivals 06:02–07:49). The
-  rounding compounded it: `round(340/60)` is 6, so the digest fired at 06:00,
-  before all eleven arrivals and an hour worse than the manual 07:00 it was meant
-  to improve on. `digestAutoHour` now resolves to the first whole hour strictly
-  after wake + a p90 arrival lag, measured at read time by joining
+- **`auto` resolves past the ARRIVAL, not the wake.** An `auto` digest time used
+  to resolve to the hour the person WAKES — while the sleep row lands a measured
+  ~70 minutes behind waking (real Health Connect profile, 11 nights, wake 05:40,
+  arrivals 06:02–07:49). The old whole-hour rounding compounded it: `round(340/60)`
+  is 6, so the digest fired at 06:00, before all eleven arrivals and an hour worse
+  than the manual 07:00 it was meant to improve on. `digestAutoMinute` now
+  resolves to the first MINUTE strictly after wake + a p90 arrival lag (07:43 on
+  the measured profile — #2121 deleted the round-up-to-the-next-hour along with
+  the rounding defect), measured at read time by joining
   `integration_sync_rows` → `metric_samples` (`getSleepArrivalLagsMin`). Below the
-  sample gate it returns null and the caller falls back to the wake hour, where the
-  deferral below is the safety net. The **`auto` Morning intake hour deliberately
-  keeps `wakeMinuteToHour`**: it needs you awake, not your tracker synced, so do
-  not fold the lag into that shared helper.
-- **One deferral, into the retry hour that already exists.** `slotDue` is a
-  two-hour window paired with the hard per-day marker, so the FIRST of those hours
-  is free to decline: `deferDigestForSleep` skips the send when last night's sleep
-  is pending but expected, and the hour+1 tick sends it. It is bounded by
-  construction — the decision requires `currentHour === slotHour`, so the retry
-  hour never defers and the digest goes out at hour+1 whether or not the night
-  landed. **Auto only**: a manually set hour is user-owned timing, and silently
-  sliding someone's 07:00 would make their own setting untrue. Hour 23 never
-  defers, because `slotDue` does not wrap past midnight and there would be no hour
-  to defer into.
+  sample gate it returns null and the caller falls back to the wake minute, where
+  the deferral below is the safety net. The **`auto` Morning intake time
+  deliberately stays on the raw wake minute**: it needs you awake, not your
+  tracker synced, so do not fold the lag into the Morning resolution.
+- **One deferral, into the retry attempt that already exists.** `slotDue` is two
+  attempt bands paired with the hard per-day marker, so the FIRST attempt is free
+  to decline: `deferDigestForSleep` skips the send when last night's sleep is
+  pending but expected, and the retry attempt — an hour later, at every tick
+  rate — sends it. It is bounded by construction — the decision requires this
+  tick to be the slot's "first" band (`slotAttempt`), so the retry attempt never
+  defers and the digest goes out an hour later whether or not the night landed.
+  **Auto only**: a manually set time is user-owned timing, and silently sliding
+  someone's 07:00 would make their own setting untrue. A slot past 22:59 never
+  defers, because `slotAttempt` does not wrap past midnight and there would be no
+  attempt to defer into (`LAST_DEFERRABLE_MINUTE`).
 
 **No new stored state, and no new send marker.** "Have I already deferred today?"
 is answered by the clock, not a flag, which is why nothing here appears in
@@ -1816,11 +1833,11 @@ and the integration syncs arm a ~60s re-armable timer
 verification) that runs the SAME core, so the post-workout dose reminder lands
 moments after completion instead of on the next tick. Both paths share the
 stamp-on-delivery one-shot marker (`notify_last_post_workout_<activityId>`); the
-hourly tick remains the mandatory backstop (and flushes tick-armed timers before
+notify tick remains the mandatory backstop (and flushes tick-armed timers before
 exiting). Deliberately not quiet-hours-gated — a post-completion send answers an
 action the user just took.
 
-**One supplement reminder per hour (#1154).** Every slot due in a tick-hour —
+**One supplement reminder per tick (#1154).** Every slot due on a tick —
 the four windows plus the PreWorkout pseudo-slot (an `anytime` pre_workout dose
 timed one hour before the inferred training hour) — coalesces into ONE message
 (`buildIntakeReminderForSlots`/`renderMergedIntakeMessage`); each contributing

@@ -1,5 +1,5 @@
 // Issue #1154: the send-slot model — the PreWorkout pseudo-slot's membership
-// (doseSendSlot), its hour (preWorkoutSlotHour), the merged one-per-hour render
+// (doseSendSlot), its minute (preWorkoutSlotMinute), the merged one-per-tick render
 // (renderMergedIntakeMessage), and the callback plumbing that keeps a merged
 // message's buttons working (parseAllCallback / keyboardDoseFootprint).
 // Plus the #1156 notification priority floor's pure pieces.
@@ -13,7 +13,7 @@ import {
   INTAKE_SLOT_LABELS,
   type WindowDose,
 } from "../notifications/supplement-format";
-import { preWorkoutSlotHour } from "../notifications/schedule";
+import { preWorkoutSlotMinute } from "../notifications/schedule";
 import {
   parseAllCallback,
   keyboardDoseFootprint,
@@ -155,12 +155,12 @@ describe("doseSendSlot", () => {
   );
 });
 
-describe("preWorkoutSlotHour", () => {
-  it("fires one hour before the inferred training hour (18 → 17)", () => {
-    expect(preWorkoutSlotHour(18)).toBe(17);
+describe("preWorkoutSlotMinute", () => {
+  it("fires one hour before the inferred training time (18:00 → 17:00)", () => {
+    expect(preWorkoutSlotMinute(18 * 60)).toBe(17 * 60);
   });
-  it("wraps at midnight (0 → 23)", () => {
-    expect(preWorkoutSlotHour(0)).toBe(23);
+  it("wraps at midnight (00:30 → 23:30)", () => {
+    expect(preWorkoutSlotMinute(30)).toBe(23 * 60 + 30);
   });
 });
 

@@ -1,9 +1,12 @@
 // Outbound notification entrypoint.
 //
-//   npm run notify                 # HOURLY TICK — run every hour by cron; for
-//                                  # EACH profile sends whichever notifications
-//                                  # are scheduled for the current hour (and not
-//                                  # already sent today).
+//   npm run notify                 # THE TICK — run on a fixed cadence (the docker
+//                                  # sidecar every 15 min; an hourly host cron also
+//                                  # works); for EACH profile sends whichever
+//                                  # notifications are scheduled for the current
+//                                  # profile-local minute (and not already sent
+//                                  # today). The tick observes its own cadence and
+//                                  # sizes the slot windows from it.
 //   npm run notify -- poll         # LONG-RUNNING: long-poll Telegram getUpdates for
 //                                  # button taps (used when the app has no public
 //                                  # URL for a webhook). Never exits on its own.
@@ -22,7 +25,7 @@ import "./load-env";
 import {
   buildSupplementReminder,
   buildIntakeReminderForSlots,
-  getPreWorkoutSlotHour,
+  getPreWorkoutSlotMinute,
   type IntakeSendSlot,
   type ReminderWindow,
 } from "../lib/notifications/supplements";
@@ -103,9 +106,13 @@ import {
   gatherCoachingInput,
 } from "../lib/queries";
 import type { CoachingInput } from "../lib/coaching";
-import { slotDue, inWakingWindow } from "../lib/notifications/schedule";
+import {
+  slotDue,
+  inWakingWindow,
+  observedTickMinutes,
+} from "../lib/notifications/schedule";
 import { db, today, checkpointWal } from "../lib/db";
-import { hourInTz, weekdayInTz } from "../lib/date";
+import { minuteOfDayInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
 import { pruneSyncEvents } from "../lib/integrations/connections";
 import { syncIntegrations } from "../lib/integrations/pull-tick";
@@ -221,10 +228,16 @@ async function poll(): Promise<never> {
   }
 }
 
-// Evaluate + send this hour's due slots for a single profile. Returns true if any
+// Evaluate + send this tick's due slots for a single profile. Returns true if any
 // configured channel failed. Never throws for an ordinary send failure (so one
 // profile can't stop the loop); a thrown error is caught by the caller.
-async function tickProfile(profile: ProfileRow): Promise<boolean> {
+// `tickMinutes` is the observed scheduler cadence — it sizes slotDue's attempt
+// bands so every slot gets exactly two attempts, an hour apart, at any tick rate
+// (the decided #2121 retry budget; see lib/notifications/schedule.ts).
+async function tickProfile(
+  profile: ProfileRow,
+  tickMinutes: number
+): Promise<boolean> {
   // THE PULL PASS, ON ITS OWN CADENCE (#2121 step 1). Runs on every tick regardless
   // of which notification slots are due — but a provider is POLLED only once per its
   // registry-declared cadence window (hourly for all four today). That is the whole
@@ -235,11 +248,11 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // in lib/integrations/pull-tick.ts so both halves are testable.
   await syncIntegrations(profile.id);
 
-  // Decide due slots by the profile's configured-TZ hour/weekday so scheduling
-  // matches the user's clock regardless of the container's process TZ.
+  // Decide due slots by the profile's configured-TZ minute-of-day/weekday so
+  // scheduling matches the user's clock regardless of the container's process TZ.
   const tz = getTimezone(profile.id);
   const now = new Date();
-  const hour = hourInTz(tz, now);
+  const minute = minuteOfDayInTz(tz, now);
   const weekday = weekdayInTz(tz, now);
   const date = today(profile.id);
   const sched = getNotifySchedule(profile.id);
@@ -259,22 +272,24 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   const prefix = prefixForProfile(profile.id);
   let anyFailed = false;
 
-  // ── Supplement dose reminders: ONE merged send per hour (#1154) ────────────
-  // Every slot due (and unsent) this hour — the four fixed windows plus the
+  // ── Supplement dose reminders: ONE merged send per tick (#1154) ────────────
+  // Every slot due (and unsent) this tick — the four fixed windows plus the
   // workout-relative PreWorkout pseudo-slot — coalesces into ONE message, so two
-  // windows configured at the same hour (or the pseudo-slot colliding with a
+  // windows configured at the same time (or the pseudo-slot colliding with a
   // window) can never double-notify. Each slot keeps its own per-day marker
   // (notify_last_supp_<slot>); every slot that contributed entries to a
   // delivered merged send is marked, so none re-fires today. A slot whose gather
-  // is empty stays unmarked and re-evaluates next hour (the classic retry).
+  // is empty stays unmarked and re-evaluates on its retry attempt (the classic
+  // retry).
   const intakeSlotsDue: IntakeSendSlot[] = [];
   for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
-    const slotHour = sched.supplementHours[w];
-    // Due across [slotHour, slotHour+1] so a DST-skipped hour or a failed send
-    // still fires the next hour; the per-day dedup prevents a double send.
+    const slotMinute = sched.supplementMinutes[w];
+    // Due on the slot's two attempt bands (first tick at/after the time, first
+    // tick an hour later) so a DST-skipped hour or a failed send still fires on
+    // the retry attempt; the per-day dedup prevents a double send.
     if (
-      slotHour != null &&
-      slotDue(slotHour, hour) &&
+      slotMinute != null &&
+      slotDue(slotMinute, minute, tickMinutes) &&
       getProfileSetting(profile.id, intakeSlotMarkerKey(w)) !== date
     )
       intakeSlotsDue.push(w);
@@ -284,11 +299,11 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // Morning window. Gated on intake reminders being on at all (any window
   // configured) — turning every window off silences this too.
   if (
-    Object.values(sched.supplementHours).some((h) => h != null) &&
+    Object.values(sched.supplementMinutes).some((m) => m != null) &&
     getProfileSetting(profile.id, intakeSlotMarkerKey("PreWorkout")) !== date
   ) {
-    const preHour = getPreWorkoutSlotHour(profile.id);
-    if (preHour != null && slotDue(preHour, hour))
+    const preMinute = getPreWorkoutSlotMinute(profile.id);
+    if (preMinute != null && slotDue(preMinute, minute, tickMinutes))
       intakeSlotsDue.push("PreWorkout");
   }
   if (intakeSlotsDue.length > 0) {
@@ -330,10 +345,10 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // RECEIVER, which says nothing about when another member's doses are due.
   const householdSlotsDue: IntakeSendSlot[] = [];
   for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
-    const slotHour = sched.supplementHours[w];
+    const slotMinute = sched.supplementMinutes[w];
     if (
-      slotHour != null &&
-      slotDue(slotHour, hour) &&
+      slotMinute != null &&
+      slotDue(slotMinute, minute, tickMinutes) &&
       getProfileSetting(profile.id, householdRoundMarkerKey(w)) !== date
     )
       householdSlotsDue.push(w);
@@ -385,8 +400,8 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     telegramChannel.isConfigured(profile.id)
   ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
-      const slotHour = sched.supplementHours[w];
-      if (slotHour != null && slotDue(slotHour, hour))
+      const slotMinute = sched.supplementMinutes[w];
+      if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
         dueSlots.push({
           slot: `food_${w}`,
           markerKey: foodNudgeMarkerKey(w),
@@ -403,8 +418,8 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // check-in (card / offline replay / Telegram tap) resets it via upsertMoodLog,
   // re-arming the reminder. Ignoring it never escalates anything.
   if (getProfileMoodCheckin(profile.id)) {
-    const slotHour = sched.supplementHours.Evening;
-    if (slotHour != null && slotDue(slotHour, hour))
+    const slotMinute = sched.supplementMinutes.Evening;
+    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
       dueSlots.push({
         slot: "mood_checkin",
         markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
@@ -414,7 +429,12 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   }
   if (sched.workoutEnabled) {
     const inf = inferWorkoutSchedule(profile.id);
-    if (inf.weekdays.includes(weekday) && slotDue(inf.hour, hour))
+    // The inferred training hour joins the minute vocabulary at :00 — the
+    // inference itself is hour-grain (the mode over start hours).
+    if (
+      inf.weekdays.includes(weekday) &&
+      slotDue(inf.hour * 60, minute, tickMinutes)
+    )
       dueSlots.push({
         slot: "workout",
         markerKey: TICK_SLOT_MARKER_KEYS.workout,
@@ -444,15 +464,16 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     }
   }
 
-  // Missed-dose escalation: runs every hour regardless of which
+  // Missed-dose escalation: runs every tick regardless of which
   // slots are due, so a dose whose morning reminder already went out gets chased
-  // later the same day. Its own per-dose/day dedup prevents repeat nudges.
+  // later the same day. Its own per-dose/day dedup prevents repeat nudges; a
+  // finer tick only shrinks how long past the wait the chase lands.
   try {
     const esc = await runEscalations(
       profile.id,
       profile.name,
       date,
-      hour,
+      minute,
       sched
     );
     if (esc.failed) anyFailed = true;
@@ -465,7 +486,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   }
 
   // PRN redose notice (#798): safety-tier, armed by an actual administration, one-shot
-  // per administration. Like escalation it runs every hour regardless of slots AND —
+  // per administration. Like escalation it runs every tick regardless of slots AND —
   // deliberately — regardless of the waking window (a redose due at 3am is the
   // overnight fever case; the notice can only fire from a dose the user logged). Its
   // own per-item/administration marker (notify_last_redose_<itemId>) dedups.
@@ -509,7 +530,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // night-shift rhythm can shift it. The safety-tier senders above (dose reminders,
   // escalation) stay ungated — they must never consult quiet hours.
   const waking = inWakingWindow(
-    hour,
+    minute,
     sched.wakingStartHour,
     sched.wakingEndHour
   );
@@ -737,20 +758,27 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // due-today computation (collectUpcoming), one per-day marker (notify_last_digest);
   // the old separate upcoming digest + its notify_last_upcoming marker are retired.
   //
-  // ONE DEFERRAL (#2102). `slotDue` is already a two-hour window paired with a hard
-  // per-day marker, so the first of those hours is free to decline: when last
-  // night's sleep is pending but expected, this hour is skipped and the retry hour
-  // sends the digest with the Sleep section in it. It can only ever happen once —
-  // deferDigestForSleep returns false the moment `hour` is no longer the slot hour —
-  // so the hour+1 tick sends whether or not the sleep ever landed, and the digest's
-  // other sections are never held hostage. Nothing is written by the decline: the
-  // marker is still set only by a real send, so a deferred-then-sent digest records
-  // its pointer, stamp and cursor exactly as an on-time one does.
+  // ONE DEFERRAL (#2102). `slotDue` is already two attempt bands paired with a hard
+  // per-day marker, so the FIRST attempt is free to decline: when last night's
+  // sleep is pending but expected, this tick is skipped and the retry attempt —
+  // an hour later, at every tick rate — sends the digest with the Sleep section in
+  // it. It can only ever happen once — deferDigestForSleep returns false the moment
+  // this tick is not the slot's "first" band — so the retry attempt sends whether
+  // or not the sleep ever landed, and the digest's other sections are never held
+  // hostage. Nothing is written by the decline: the marker is still set only by a
+  // real send, so a deferred-then-sent digest records its pointer, stamp and cursor
+  // exactly as an on-time one does.
   if (
-    sched.digestHour != null &&
-    slotDue(sched.digestHour, hour) &&
+    sched.digestMinute != null &&
+    slotDue(sched.digestMinute, minute, tickMinutes) &&
     getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date &&
-    !deferDigestForSleep(profile.id, sched.digestHour, hour, sched.digestAuto)
+    !deferDigestForSleep(
+      profile.id,
+      sched.digestMinute,
+      minute,
+      tickMinutes,
+      sched.digestAuto
+    )
   ) {
     try {
       const dg = await runDigest(
@@ -815,14 +843,16 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     });
   }
 
-  // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapHour
+  // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapMinute
   // (this profile's timezone). Own per-profile/day dedup key — the recap only
   // triggers on its weekday, and the same-day marker prevents a double send, so
-  // next week's same weekday (a new date) fires again.
+  // next week's same weekday (a new date) fires again. The weekday+time pair
+  // needs no cross-midnight care: slotDue never wraps, so both attempts share
+  // the weekday.
   if (
     sched.weeklyRecapDay != null &&
     weekday === sched.weeklyRecapDay &&
-    slotDue(sched.weeklyRecapHour ?? 9, hour) &&
+    slotDue(sched.weeklyRecapMinute ?? 9 * 60, minute, tickMinutes) &&
     getProfileSetting(profile.id, WEEKLY_RECAP_MARKER_KEY) !== date
   ) {
     try {
@@ -862,12 +892,30 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   return anyFailed;
 }
 
-// --- Hourly tick: for every profile, decide which slots are due, dedupe, send. ---
+// --- The tick: for every profile, decide which slots are due, dedupe, send. ---
 // One profile's failure (a throw or a send failure) must not stop the others; the
 // exit code aggregates failures across all profiles.
 async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
+
+  // THE OBSERVED TICK CADENCE (#2121). The attempt bands in slotDue are one tick
+  // wide, so the tick must know how often it really runs — not how often a config
+  // claims it runs, because a mismatch in either direction mis-sizes the bands
+  // (too wide: duplicate attempts; too narrow: slots that never fire). The
+  // previous tick's start instant is a global watermark
+  // (`notify_tick_last_run_at`); the derived interval is clamped to [1, 60] so an
+  // outage cannot widen the window past the hourly behavior, and is stored
+  // (`notify_tick_interval_min`) for the Settings sub-hourly warning. First tick
+  // ever reads as hourly — the widest, safest bands.
+  const tickStartMs = Date.now();
+  const prevTickMs = Date.parse(getSetting("notify_tick_last_run_at") ?? "");
+  const tickMinutes = observedTickMinutes(
+    Number.isFinite(prevTickMs) ? prevTickMs : null,
+    tickStartMs
+  );
+  setSetting("notify_tick_last_run_at", new Date(tickStartMs).toISOString());
+  setSetting("notify_tick_interval_min", String(tickMinutes));
 
   // Portal sync requests (#1757): GLOBAL, once per tick, and deliberately BEFORE the
   // per-profile loop so an ask raised this hour is already visible to today's digest
@@ -899,7 +947,9 @@ async function tick() {
       // assessment and the medication-family state — each collapse to ONE
       // evaluation for this profile. The scope closes with the profile, and nothing
       // inside it writes what those gathers read (lib/tick-cache.ts states the rule).
-      if (await runInTickScope(() => tickProfile(p))) anyFailed = true;
+      if (await runInTickScope(() => tickProfile(p, tickMinutes))) {
+        anyFailed = true;
+      }
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,
@@ -922,7 +972,7 @@ async function tick() {
       (profileId) => {
         const s = getNotifySchedule(profileId);
         return inWakingWindow(
-          hourInTz(getTimezone(profileId), new Date()),
+          minuteOfDayInTz(getTimezone(profileId), new Date()),
           s.wakingStartHour,
           s.wakingEndHour
         );
@@ -940,7 +990,7 @@ async function tick() {
   // profile) at the configured instance-timezone hour. A backup failure is
   // surfaced via the exit code but never stops the notification flow.
   try {
-    const bk = runScheduledBackup();
+    const bk = runScheduledBackup(tickMinutes);
     if (bk.ran) log.info("scheduled backup", { failed: bk.failed });
     if (bk.failed) anyFailed = true;
   } catch (e) {

@@ -15,7 +15,7 @@ const candidate = (
   amount: "10 mg",
   window: "Morning",
   kind: "supplement",
-  slotHour: 8,
+  slotMinute: 8 * 60,
   escalateAfterMin: 120,
   escalateChatId: null,
   ...over,
@@ -111,7 +111,7 @@ describe("escalationsDue", () => {
           doseId: 2,
           supplementName: "Metformin",
           window: "Evening",
-          slotHour: 20,
+          slotMinute: 20 * 60,
           escalateAfterMin: 60,
         }),
       ],
@@ -147,7 +147,7 @@ describe("escalationsDue", () => {
       doseId: 42,
       supplementName: "Warfarin",
       window: "Bedtime",
-      slotHour: 22,
+      slotMinute: 22 * 60,
       escalateAfterMin: 120,
     });
 

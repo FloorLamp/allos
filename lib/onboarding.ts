@@ -3,7 +3,7 @@ import {
   type DashboardLayout,
 } from "./dashboard-widgets";
 import { MEDICATIONS_HREF, type AppRoute } from "./hrefs";
-import { DEFAULT_INTAKE_REMINDER_HOURS } from "./notifications/schedule";
+import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import type { NotifySchedule } from "./settings/notifications";
 
 // Versioned per-profile onboarding state (#719). Only profiles explicitly born
@@ -390,23 +390,23 @@ export function onboardingNotificationSchedule(
   // revisits this step and chooses an active intent, restore the shared defaults
   // only when those windows are still all off; preserve any intervening manual
   // schedule edits.
-  const supplementHours =
+  const supplementMinutes =
     previousIntent === "none" &&
-    Object.values(current.supplementHours).every((hour) => hour === null)
-      ? { ...DEFAULT_INTAKE_REMINDER_HOURS }
-      : current.supplementHours;
+    Object.values(current.supplementMinutes).every((minute) => minute === null)
+      ? { ...DEFAULT_INTAKE_REMINDER_MINUTES }
+      : current.supplementMinutes;
 
   const noSummary = {
-    digestHour: null,
+    digestMinute: null,
     // Digest off, not wake-auto (issue #1117).
     digestAuto: false,
     weeklyRecapDay: null,
-    weeklyRecapHour: current.weeklyRecapHour,
+    weeklyRecapMinute: current.weeklyRecapMinute,
   };
   if (intent === "none") {
     return {
       ...current,
-      supplementHours: {
+      supplementMinutes: {
         Morning: null,
         Midday: null,
         Evening: null,
@@ -423,7 +423,7 @@ export function onboardingNotificationSchedule(
   if (intent === "safety-only") {
     return {
       ...current,
-      supplementHours,
+      supplementMinutes,
       workoutEnabled: false,
       ...noSummary,
       milestonesEnabled: false,
@@ -433,9 +433,9 @@ export function onboardingNotificationSchedule(
 
   return {
     ...current,
-    supplementHours,
+    supplementMinutes,
     workoutEnabled: true,
-    digestHour: current.digestHour ?? 8,
+    digestMinute: current.digestMinute ?? 8 * 60,
     milestonesEnabled: true,
     preventiveEnabled: intent === "essentials-upcoming",
   };

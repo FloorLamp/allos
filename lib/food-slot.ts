@@ -38,23 +38,22 @@ export interface FoodSlotBoundaries {
   evening: number;
 }
 
-// Resolve the two bucket boundaries from the profile's configured notify slot HOURS
-// (each 0–23, or null when unset/off). Anchored to the profile's OWN schedule so a
-// coherently shifted rhythm re-anchors the buckets (a 14:00 morning hour with an
-// 18:00 midday hour keeps 14:00 in "morning"): the boundaries sit at the MIDPOINTS
-// between consecutive slot hours.
+// Resolve the two bucket boundaries from the profile's configured notify slot
+// TIMES (each a minute of day, or null when unset/off — minutes since #2121).
+// Anchored to the profile's OWN schedule so a coherently shifted rhythm re-anchors
+// the buckets (a 14:00 morning slot with an 18:00 midday slot keeps 14:00 in
+// "morning"): the boundaries sit at the MIDPOINTS between consecutive slot times.
 //
-// Only a FULLY configured schedule (all three hours set) re-anchors; otherwise we
+// Only a FULLY configured schedule (all three times set) re-anchors; otherwise we
 // fall back to the fixed 11:00/15:00 defaults so a fresh/partially-configured profile
 // reproduces the old currentTimeBucket splits exactly (and a degenerate non-monotonic
-// configuration can't invert the buckets). Midpoint of hours h1,h2 in minutes is
-// (h1+h2)/2*60 = (h1+h2)*30.
-export function foodSlotBoundaries(hours: {
+// configuration can't invert the buckets).
+export function foodSlotBoundaries(minutes: {
   morning: number | null;
   midday: number | null;
   evening: number | null;
 }): FoodSlotBoundaries {
-  const { morning, midday, evening } = hours;
+  const { morning, midday, evening } = minutes;
   if (
     morning != null &&
     midday != null &&
@@ -65,8 +64,8 @@ export function foodSlotBoundaries(hours: {
     morning <= midday &&
     midday <= evening
   ) {
-    const b1 = Math.round((morning + midday) * 30);
-    const b2 = Math.round((midday + evening) * 30);
+    const b1 = Math.round((morning + midday) / 2);
+    const b2 = Math.round((midday + evening) / 2);
     if (b1 < b2 && b2 <= 24 * 60) return { midday: b1, evening: b2 };
   }
   return {
@@ -106,17 +105,18 @@ export const DEFAULT_SLOT_ANCHORS: Record<FoodSlot, number> = {
   Evening: 18 * 60 + 30,
 };
 
-// The anchor minute for each window, from the profile's configured notify slot HOURS —
-// the SAME three numbers `foodSlotBoundaries` derives its midpoints from, so anchors and
-// boundaries can never describe two different schedules. A coherently shifted rhythm
-// (14:00 morning, 18:00 midday) moves the anchors with it; a partial or non-monotonic
-// configuration falls back to the defaults, exactly as the boundaries do.
-export function foodSlotAnchors(hours: {
+// The anchor minute for each window, from the profile's configured notify slot
+// TIMES — the SAME three numbers `foodSlotBoundaries` derives its midpoints from,
+// so anchors and boundaries can never describe two different schedules. A
+// coherently shifted rhythm (14:00 morning, 18:00 midday) moves the anchors with
+// it; a partial or non-monotonic configuration falls back to the defaults, exactly
+// as the boundaries do.
+export function foodSlotAnchors(minutes: {
   morning: number | null;
   midday: number | null;
   evening: number | null;
 }): Record<FoodSlot, number> {
-  const { morning, midday, evening } = hours;
+  const { morning, midday, evening } = minutes;
   if (
     morning != null &&
     midday != null &&
@@ -125,9 +125,9 @@ export function foodSlotAnchors(hours: {
     midday <= evening
   ) {
     return {
-      Morning: morning * 60,
-      Midday: midday * 60,
-      Evening: evening * 60,
+      Morning: morning,
+      Midday: midday,
+      Evening: evening,
     };
   }
   return { ...DEFAULT_SLOT_ANCHORS };

@@ -156,16 +156,21 @@ export function selectLatestVerified(
   return verified.length > 0 ? verified[0].name : null;
 }
 
-// Whether a scheduled backup should run this tick: enabled, within the configured
-// hour's window (same [hour, hour+1] retry window as notify slots), and none yet
-// taken today (per-day dedup, like the notify_last_* markers).
+// Whether a scheduled backup should run this tick: enabled, on one of the
+// configured hour's two attempt bands (the same first-then-hour-later retry
+// budget as notify slots), and none yet taken today (per-day dedup, like the
+// notify_last_* markers). THE BACKUP HOUR STAYS HOUR-TYPED ON PURPOSE (#2121): it
+// is a server-scoped operator setting where "roughly 3am" is the whole intent —
+// only the tick's CURRENT time moved to minute grain, so a finer tick still
+// attempts the backup at most twice a day.
 export function isBackupDue(
   cfg: { enabled: boolean; hour: number },
-  currentHour: number,
+  currentMinuteOfDay: number,
+  tickMinutes: number,
   lastBackupDate: string | undefined,
   today: string
 ): boolean {
   if (!cfg.enabled) return false;
-  if (!slotDue(cfg.hour, currentHour)) return false;
+  if (!slotDue(cfg.hour * 60, currentMinuteOfDay, tickMinutes)) return false;
   return lastBackupDate !== today;
 }

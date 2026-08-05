@@ -286,8 +286,12 @@ See `docs/internals/integrations-sync.md`.
 
 ### Notifications
 
-The hourly notification tick can deliver through Telegram, Web Push, and Home
-Assistant. It evaluates dates and slots in each profile's stored timezone.
+The notification tick (every 15 minutes in the Docker sidecar; any steady rhythm
+up to hourly works — it observes its own cadence) can deliver through Telegram,
+Web Push, and Home Assistant. It evaluates dates and slots in each profile's
+stored timezone; slot times are minutes of day, stored as `"HH:MM"`, and a slot
+gets exactly two due attempts a day, an hour apart, at every tick rate
+(`slotAttempt`, `lib/notifications/schedule.ts`).
 
 Refill, preventive, and workout nudges share the Upcoming suppression bus and
 use the same `dedupeKey` as their visible finding. Dose reminders and missed-dose
