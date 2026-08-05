@@ -893,8 +893,8 @@ other end — and this one is a product REFUSAL, not a stale read. `dose-history
 failed 3/3, deterministically, in the ~30 minutes before UTC midnight: the
 amend form prefills the stored `given_at` that `sqlNow()` wrote from the nudged
 frozen clock, `isHistoricalDoseTimeAccepted` compared it against real now, and
-the app refused its own timestamp with *"Choose a date and time that are not in
-the future."* (PR #2000's gate run; independently on PR #2030's shard 1 at
+the app refused its own timestamp with _"Choose a date and time that are not in
+the future."_ (PR #2000's gate run; independently on PR #2030's shard 1 at
 23:41Z, an unrelated lib-only PR).
 
 The rule: **a guard whose other half already reads the seam must read the seam

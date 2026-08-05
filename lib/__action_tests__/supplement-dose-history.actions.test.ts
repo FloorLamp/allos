@@ -243,8 +243,8 @@ describe("updateHistoricalDose action — supplements", () => {
         fd({ id: itemId, dose_id: doseId, date, time: hhmm, amount: "15 mg" })
       );
       expect(logged.ok).toBe(true);
-      const logId =
-        getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].id;
+      const logId = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0]
+        .id;
 
       const amended = await updateHistoricalDose(
         fd({ id: itemId, log_id: logId, date, time: hhmm, amount: "45 mg" })
