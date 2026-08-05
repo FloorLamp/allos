@@ -431,6 +431,15 @@ See `docs/internals/e2e-hygiene.md`.
   filesystem artifacts.
 - Every table written by document import must stay represented in imported-row
   cleanup, document reassignment, and extracted-count accounting.
+- A **day counter** — one row per (profile, date, identity) holding a running
+  amount — goes through `dayCounterLedger` (`lib/day-counter-ledger.ts` +
+  `-db.ts`), never a hand-written copy. The ledger owns the additive upsert, the
+  guarded clamped decrement, the drop-at-zero, and the authoritative re-select as
+  one thing; the call site keeps catalog validation, typed outcomes, its event
+  rows, and its `writeTx`. `DAY_COUNTERS` declares the tables (`food_log`,
+  `substance_log`, `protein_log`); the undo path builds its ledger from the same
+  `CounterSpec` the undo registry declares, so the write side and the undo side
+  cannot drift.
 - Identity families use one canonical pure function everywhere (movement facts
   key on `exerciseHistoryKey`; load-sensitive strength facts on
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,

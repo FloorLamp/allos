@@ -10,12 +10,15 @@
 //
 // One row per (profile, date) whose `grams` an add increments and an undo decrements;
 // the keyed upsert is idempotent-friendly and the row is dropped once it returns to
-// zero (no stray zero rows — the food_log discipline). Every add also records the
-// amount as the per-profile "last used" preset (scoop sizes repeat), so the quick-add
-// can re-offer it next time.
+// zero (no stray zero rows). That is the shared day-counter discipline, and since #2037
+// it is the shared day-counter LEDGER (lib/day-counter-ledger.ts) rather than a third
+// hand-written copy of it — grams is simply the counter whose tick size is N rather
+// than 1. Every add also records the amount as the per-profile "last used" preset
+// (scoop sizes repeat), so the quick-add can re-offer it next time.
 
 import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
+import { proteinDayCounter } from "./day-counter-ledger-db";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
 import { type FoodSlot } from "./food-slot";
@@ -77,12 +80,7 @@ export function addProteinGramsCore(
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
-    db.prepare(
-      `INSERT INTO protein_log (profile_id, date, grams)
-       VALUES (?, ?, ?)
-       ON CONFLICT (profile_id, date)
-       DO UPDATE SET grams = grams + excluded.grams`
-    ).run(profileId, date, grams);
+    const total = proteinDayCounter.bump(profileId, date, [], grams);
     // Remember this scoop size as the profile's last-used preset.
     setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, String(grams));
     // Append the per-tap ranking event under the reserved __protein__ pseudo-group (#1073),
@@ -102,12 +100,7 @@ export function addProteinGramsCore(
       time?.eatenAt ?? null,
       time?.source ?? null
     );
-    const row = db
-      .prepare(
-        `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
-      )
-      .get(profileId, date) as { grams: number } | undefined;
-    return { kind: "logged", grams: row?.grams ?? grams };
+    return { kind: "logged", grams: total };
   });
 }
 
@@ -123,15 +116,7 @@ export function undoProteinGramsCore(
 ): ProteinUndoOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
-    db.prepare(
-      `UPDATE protein_log
-          SET grams = MAX(0, grams - ?)
-        WHERE profile_id = ? AND date = ?`
-    ).run(grams, profileId, date);
-    db.prepare(
-      `DELETE FROM protein_log
-        WHERE profile_id = ? AND date = ? AND grams <= 0`
-    ).run(profileId, date);
+    const remaining = proteinDayCounter.unbump(profileId, date, [], grams);
     // Pop the NEWEST __protein__ ranking event for the day alongside the grams decrement
     // (#1073), one tx — so an undo doesn't leave a phantom event inflating the protein
     // slot frecency. A day with grams but no event (pre-#1073 history) has nothing to pop:
@@ -144,11 +129,6 @@ export function undoProteinGramsCore(
            ORDER BY logged_at DESC, id DESC LIMIT 1
         )`
     ).run(profileId, date, PROTEIN_NUDGE_KEY);
-    const row = db
-      .prepare(
-        `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
-      )
-      .get(profileId, date) as { grams: number } | undefined;
-    return { kind: "undone", grams: row?.grams ?? 0 };
+    return { kind: "undone", grams: remaining };
   });
 }

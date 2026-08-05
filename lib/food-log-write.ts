@@ -8,9 +8,19 @@
 // incremented; the keyed upsert is idempotent-friendly. group_key is validated
 // against the curated catalog so a forged/stale slug (a tampered Telegram token, a
 // retired group) lands nothing and is answered honestly by the caller.
+//
+// THE COUNTER ARITHMETIC IS NOT IN THIS FILE ANY MORE (#2037). Logging, undoing,
+// correcting and re-stamping a serving all move the same `food_log` day counter, and
+// this file used to spell the additive upsert / guarded decrement / drop-at-zero /
+// authoritative re-select sequence out once per operation. They now all call the shared
+// day-counter ledger (lib/day-counter-ledger.ts), so "what a serving does to the day's
+// count" has exactly one implementation and a fifth operation cannot invent a fifth
+// spelling of it. Everything else here — catalog canonicalization, the event ledger the
+// counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
 import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
+import { foodDayCounter } from "./day-counter-ledger-db";
 import { isRealIsoDate, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
@@ -116,12 +126,7 @@ export function logFoodServingCore(
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
-    db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings)
-       VALUES (?, ?, ?, 1)
-       ON CONFLICT (profile_id, date, group_key)
-       DO UPDATE SET servings = servings + 1`
-    ).run(profileId, date, slug);
+    const servings = foodDayCounter.bump(profileId, date, [slug], 1);
     // Append the per-tap event in the SAME transaction (#950): the counter and its
     // ledger see one consistent state, so a reader can never observe a bumped count
     // with no matching event (or vice versa). Additive — the counter row above is
@@ -139,15 +144,9 @@ export function logFoodServingCore(
       time?.eatenAt ?? null,
       time?.source ?? null
     );
-    const row = db
-      .prepare(
-        `SELECT servings FROM food_log
-          WHERE profile_id = ? AND date = ? AND group_key = ?`
-      )
-      .get(profileId, date, slug) as { servings: number } | undefined;
     return {
       kind: "logged",
-      servings: row?.servings ?? 1,
+      servings,
       ...(mealSlot ? { mealSlot } : {}),
       ...(mealSlot
         ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
@@ -172,13 +171,8 @@ export function undoFoodServingCore(
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
-    const current = db
-      .prepare(
-        `SELECT servings FROM food_log
-          WHERE profile_id = ? AND date = ? AND group_key = ?`
-      )
-      .get(profileId, date, slug) as { servings: number } | undefined;
-    if (!current || current.servings <= 0)
+    const current = foodDayCounter.total(profileId, date, [slug]);
+    if (current <= 0)
       return {
         kind: "undone",
         servings: 0,
@@ -215,19 +209,12 @@ export function undoFoodServingCore(
     if (mealSlot && !event)
       return {
         kind: "undone",
-        servings: current.servings,
+        servings: current,
         mealSlot,
         mealServings: 0,
       };
 
-    db.prepare(
-      `UPDATE food_log SET servings = servings - 1
-        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
-    ).run(profileId, date, slug);
-    db.prepare(
-      `DELETE FROM food_log
-        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-    ).run(profileId, date, slug);
+    const servings = foodDayCounter.unbump(profileId, date, [slug], 1);
     // Pop the chosen ledger event alongside the counter decrement (#950), one tx.
     // Default callers remove the newest event; meal-aware callers remove the newest
     // event in that meal. A pre-ledger counter row has no event to pop, which remains
@@ -238,12 +225,6 @@ export function undoFoodServingCore(
           WHERE id = ? AND profile_id = ?`
       ).run(event.id, profileId);
     }
-    const row = db
-      .prepare(
-        `SELECT servings FROM food_log
-          WHERE profile_id = ? AND date = ? AND group_key = ?`
-      )
-      .get(profileId, date, slug) as { servings: number } | undefined;
     const removedSlot =
       mealSlot && event
         ? foodSlotForProfileEvent(
@@ -255,7 +236,7 @@ export function undoFoodServingCore(
         : undefined;
     return {
       kind: "undone",
-      servings: row?.servings ?? 0,
+      servings,
       ...(removedSlot ? { mealSlot: removedSlot } : {}),
       ...(mealSlot
         ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
@@ -312,17 +293,11 @@ function placementOf(
   groupKey: string,
   mealSlot: FoodSlot
 ): FoodEventPlacement {
-  const row = db
-    .prepare(
-      `SELECT servings FROM food_log
-        WHERE profile_id = ? AND date = ? AND group_key = ?`
-    )
-    .get(profileId, date, groupKey) as { servings: number } | undefined;
   return {
     date,
     groupKey,
     mealSlot,
-    servings: row?.servings ?? 0,
+    servings: foodDayCounter.total(profileId, date, [groupKey]),
     mealServings: mealServingCount(profileId, groupKey, date, mealSlot),
   };
 }
@@ -394,20 +369,11 @@ export function updateFoodLogEventCore(
     );
 
     if (nextDate !== row.date || nextGroup !== row.group_key) {
-      db.prepare(
-        `UPDATE food_log SET servings = servings - 1
-          WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
-      ).run(profileId, row.date, row.group_key);
-      db.prepare(
-        `DELETE FROM food_log
-          WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-      ).run(profileId, row.date, row.group_key);
-      db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings)
-         VALUES (?, ?, ?, 1)
-         ON CONFLICT (profile_id, date, group_key)
-         DO UPDATE SET servings = servings + 1`
-      ).run(profileId, nextDate, nextGroup);
+      // The move is one unbump plus one bump on the shared ledger, so the drop-at-zero
+      // on the vacated coordinate and the create-on-first on the new one are the same
+      // two rules every other serving write obeys.
+      foodDayCounter.unbump(profileId, row.date, [row.group_key], 1);
+      foodDayCounter.bump(profileId, nextDate, [nextGroup], 1);
     }
     db.prepare(
       `UPDATE food_log_events
@@ -605,20 +571,10 @@ export function restampFoodEventsCore(
       const nextDate = zonedDateParts(tz, instant).date;
       const reDate = nextDate !== row.date && !isProteinNudgeKey(row.group_key);
       if (reDate) {
-        db.prepare(
-          `UPDATE food_log SET servings = servings - 1
-            WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
-        ).run(profileId, row.date, row.group_key);
-        db.prepare(
-          `DELETE FROM food_log
-            WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-        ).run(profileId, row.date, row.group_key);
-        db.prepare(
-          `INSERT INTO food_log (profile_id, date, group_key, servings)
-           VALUES (?, ?, ?, 1)
-           ON CONFLICT (profile_id, date, group_key)
-           DO UPDATE SET servings = servings + 1`
-        ).run(profileId, nextDate, row.group_key);
+        // Same unbump/bump pair as the correction path, on the day axis instead of the
+        // group axis — one serving exists throughout.
+        foodDayCounter.unbump(profileId, row.date, [row.group_key], 1);
+        foodDayCounter.bump(profileId, nextDate, [row.group_key], 1);
         movedDays++;
       }
       db.prepare(
