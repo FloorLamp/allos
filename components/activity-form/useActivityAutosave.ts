@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
+import { isStaleActionError } from "@/lib/sw-update";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
 // self-contained hook (#1207). It owns the whole save lifecycle: a 700ms debounced
@@ -21,6 +22,11 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
 export interface ActivityAutosave {
   status: SaveStatus;
   savedAt: number;
+  // This tab's build can no longer call the server (deployment skew's Server
+  // Action half): a save failed with the stale-action signature and none has
+  // succeeded since. Retrying cannot help — only a reload can — so the form
+  // renders an explicit banner off this instead of the bare error glyph.
+  staleBuild: boolean;
   createdId: number | null;
   // The row a save targets: the edited row, else the auto-created one (read
   // synchronously off the ref so a trailing save UPDATEs rather than re-inserts).
@@ -65,6 +71,9 @@ export function useActivityAutosave({
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Timestamp of the last successful save; drives the SaveStatus check + fade.
   const [savedAt, setSavedAt] = useState(0);
+  // Sticky across failures, cleared by a success: once a save has failed on the
+  // stale-action signature, every later one will too until the tab reloads.
+  const [staleBuild, setStaleBuild] = useState(false);
   // After an auto-save creates a fresh row, remember its id so later saves update
   // it (the ref is read synchronously by saves; the state drives the UI).
   const [createdId, setCreatedId] = useState<number | null>(null);
@@ -137,6 +146,7 @@ export function useActivityAutosave({
       if (mountedRef.current) {
         setStatus("saved");
         setSavedAt(Date.now());
+        setStaleBuild(false);
       }
     } catch (err) {
       // Close-path save on a dead connection, session never created server-side
@@ -169,10 +179,25 @@ export function useActivityAutosave({
           /* IndexedDB unavailable — fall through to the honest failure below */
         }
       }
-      if (mountedRef.current) setStatus("error");
-      // Failed after the form closed (the unmount flush): the status icon is
-      // gone, so this toast is the only signal the change didn't stick.
-      else toast("Couldn’t save your last change — reopen the activity.");
+      // Deployment skew's Server Action half: the deploy invalidated this build's
+      // action ids, so this failure — and every one after it — is a state, not an
+      // event. The form renders the reload banner off the flag; the local draft
+      // (#1699) is what makes "kept on this device" true.
+      const stale = isStaleActionError(err);
+      if (mountedRef.current) {
+        if (stale) setStaleBuild(true);
+        setStatus("error");
+      } else {
+        // Failed after the form closed (the unmount flush): the status icon is
+        // gone, so this toast is the only signal the change didn't stick. On a
+        // stale build, name the remedy that can actually work — reopening the
+        // editor in this same tab would fail identically.
+        toast(
+          stale
+            ? "Couldn’t save your last change — the app has updated. Reload the page; your entry is kept on this device."
+            : "Couldn’t save your last change — reopen the activity."
+        );
+      }
     } finally {
       inFlightRef.current = false;
       // Persist edits that landed while this save was in flight — even after
@@ -241,6 +266,7 @@ export function useActivityAutosave({
   return {
     status,
     savedAt,
+    staleBuild,
     createdId,
     savableId,
     hasRow,
