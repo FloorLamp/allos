@@ -371,6 +371,7 @@ decision tree; the summary:
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits an action POST that started AFTER the click and targets this page's route (#1952)              |
 | …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858) |
+| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)           |
 | Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                           |
 | **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                  |
 | **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard      |
@@ -602,6 +603,56 @@ sites this issue corrected only post in the OTHER branch of their own logic:
 `dup-cluster-merge` submits a clean cluster but merely opens the picker for a
 conflicting one, and a row's "Remove" awaits `confirm()` and posts only on yes.
 The testid is not the signal; what the handler does with the state it is in is.
+
+#### The same defect survived under `settledUpload`'s name
+
+The correlation above went into `settledClick` only. `settledUpload` — the same
+idiom for a hidden file input, whose `onChange` fires an upload Server Action —
+kept the old `origin === here.origin && method === "POST"` body, so "any POST" was
+still the contract wherever an upload was settled. A helper FAMILY cannot hold two
+answers to one question: the question both ask is "did the Server Action this
+interaction fires complete?", so the predicate is now one private `armActionPost()`
+that both call. `settledUpload` gained `{ url }` at the same time, for symmetry
+rather than for a current call site.
+
+This one had already been paid for at the call sites, which is how it stayed
+invisible: both `settledUpload` sites had grown a 45-second
+upload-until-applied `toPass` loop, and each loop's comment named the cause
+exactly — _"settledUpload's POST arm matches ANY same-origin POST … a satisfied
+settle doesn't prove the UPLOAD landed — CI hit exactly that (settle resolved, 0
+thumbnails for 15s)"_. A retry loop that RE-FIRES the write it is waiting on is the
+#1400 self-racing shape, and it was only tolerable because the settle proved
+nothing. With the wait correlated (the flush to `/api/offline-replay` — the one
+background POST a page can still fire — carries no `next-action` header and is
+excluded by construction), the settle IS the signal and both loops are gone.
+
+Note what that removal exposed, which is the general rule: **a retry loop hides the
+hydration hazards inside it.** Both loops wrapped raw `.fill()`/`.selectOption()`
+calls on CONTROLLED inputs — the #1941 shape — and it was the second iteration, not
+the raw call, that was rescuing a swallowed first attempt. Deleting a loop means
+re-reading every interaction inside it and giving each its own settled form.
+
+### A bare `.click()` on a Server-Action control is the same bet (#1947)
+
+`dashboard.spec`'s "temporary appointment absence" test failed 2-of-3 on unmodified
+`main`: the customize **Save** was a bare `.click()`, so the assertion below it
+raced the action round-trip on the 5 s default. The snapshot said so plainly — the
+page still in customize mode, `Saving` up, Save disabled. The same spec already used
+`settledClick` twenty lines earlier for the household chip, so the fix was
+consistency, not a technique.
+
+Worth stating because the reflex is the other one: **do not widen the ceiling.** That
+is the move this suite has lost with repeatedly (`wellness-practices:137` went 5 s →
+20 s → 45 s → `test.slow()` and still overran; what fixed it was removing the work,
+#1901/#1903), and a declared `{ timeout: N }` above 30 s is inert without
+`test.slow()` anyway. `settledClick` waits for the actual signal, which is faster in
+the common case and correct in the slow one.
+
+Sweeping the rest of that file turned up the other half of the same audit: the
+visit dialog's **Add** (a `<form action>` submit whose "Appointment saved" toast is
+only raised after the action resolves) had the identical shape, and three
+`Edit dashboard`/`Cancel` clicks are pure client toggles on the heaviest page in the
+app — `hydratedClick`, not `settledClick` and not a retry loop, since they TOGGLE.
 
 ### The action and the apply are two events — `settledClickApplied` (#1858)
 

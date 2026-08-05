@@ -36,6 +36,13 @@ import {
 //    This helper waits for both, under ONE named ceiling, so the call site declares
 //    which guarantee it needs instead of ceiling-patching the assertion below it.
 //
+// 1c. The interaction is a FILE PICK whose `onChange` fires a Server Action (there
+//    is no click to drive — the input is hidden behind a label):
+//        → settledUpload(page, input, files)
+//    Same guarantee, same correlated predicate as settledClick — they share
+//    armActionPost, because "did this interaction's action complete?" is one
+//    question and a helper family must not answer it two ways (#1952).
+//
 // 2. The click is a NAVIGATION to another route (a Next `<Link>`/tab `<a href>`)
 //    and the flake is the pre-hydration swallow (#500/#830):
 //        → followLink(page, locator, /destination-url/)
