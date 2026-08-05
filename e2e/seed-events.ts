@@ -92,7 +92,11 @@ import {
   seedReportPanes,
 } from "./seed/medical";
 import { seedCoverageGaps } from "./seed/coverage-gaps";
-import { seedNutritionTrio, seedFoodSlots } from "./seed/nutrition";
+import {
+  seedNutritionTrio,
+  seedFoodSlots,
+  seedFoodPinSplit,
+} from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
@@ -146,6 +150,7 @@ seedSourceCompare();
 seedBulkCorrection();
 seedIllness();
 seedFoodSlots();
+seedFoodPinSplit();
 seedEndurancePlans();
 seedFlaggedFollowups();
 seedPanelGroups();

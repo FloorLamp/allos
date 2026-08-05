@@ -1,6 +1,15 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { loginAs } from "./nav";
+import {
+  E2E_LOGIN_FOODPIN,
+  E2E_MEMBER_PASSWORD,
+  FOOD_PIN_GROUP,
+  FOOD_PIN_PROFILE,
+} from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
@@ -437,4 +446,76 @@ test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async (
   await revealFoodGroup(page, slug);
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(String(before));
+});
+
+// ── The deep-linked pin vs the ranked protein control (#2061) ────────────────────
+//
+// A protocol's "Log servings" opens the food bar with its own group pinned to the FRONT
+// of the quick rows, whatever that group's rank. The protein control is placed by RANK
+// ("N groups sit ahead of it"), and turning a rank into a slice point only works against
+// the order the rows are actually rendered in: counting the quick rows that outrank
+// protein put the split PAST the pin, which left a higher-ranked row below the control
+// while the pinned lower-ranked one sat above it.
+//
+// The fixture profile logs no food, so the order is the curated catalog order: the
+// protein entry ranks mid-list and FOOD_PIN_GROUP ranks after it. Protein therefore
+// outranks every quick row once the pin leads, and the control renders first.
+test("a protocol deep link pins its group, and the protein control still sits by rank (#2061)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FOODPIN,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    test.slow(); // local `next dev` compiles the protocol + overlay routes on first hit
+    const db = new Database(workerDbPath());
+    let protocolId: number;
+    try {
+      db.pragma("busy_timeout = 5000");
+      protocolId = (
+        db
+          .prepare(
+            `SELECT p.id AS id FROM protocols p
+               JOIN profiles pr ON pr.id = p.profile_id
+              WHERE pr.name = ?`
+          )
+          .get(FOOD_PIN_PROFILE) as { id: number }
+      ).id;
+    } finally {
+      db.close();
+    }
+
+    await page.goto(`/protocols/${protocolId}`);
+    await settledClick(page, page.getByTestId("protocol-log-button"));
+
+    const quickLog = page
+      .getByTestId("quick-entry-body")
+      .getByTestId("food-quick-log");
+    await expect(quickLog).toBeVisible();
+
+    // The deep-linked group is the pinned row, and it is the first food row.
+    const pinned = quickLog.locator('li[data-prefilled="true"]');
+    await expect(pinned).toHaveAttribute(
+      "data-testid",
+      `food-group-${FOOD_PIN_GROUP}`
+    );
+    const rows = quickLog.locator('li[data-testid^="food-group-"]');
+    await expect(rows.first()).toHaveAttribute("data-prefilled", "true");
+
+    // The control leads the rows it outranks — including the pin, which it now
+    // outranks BY RANK rather than by position in a list it never joined.
+    const control = quickLog.getByTestId("protein-quickadd");
+    await expect(control).toBeVisible();
+    const controlBox = await control.boundingBox();
+    expect(controlBox).not.toBeNull();
+    const rowTops = (await rows.all()).map(
+      async (row) => (await row.boundingBox())!.y
+    );
+    for (const top of await Promise.all(rowTops)) {
+      expect(top).toBeGreaterThan(controlBox!.y);
+    }
+  } finally {
+    await page.context().close();
+  }
 });
