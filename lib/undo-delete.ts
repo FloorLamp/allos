@@ -66,6 +66,25 @@ export interface ExternalRefSpec {
   global?: boolean;
 }
 
+// A denormalized day COUNTER that the kind's ROOT row is one tick of — not a cascade
+// child, and not a row that is deleted and re-inserted whole (#2038).
+//
+// `food_log.servings` is the first and only tenant: one logged serving is a
+// `food_log_events` ledger row AND +1 on the (date, group_key) day counter — one fact in
+// two shapes (#1963). So deleting ONE serving out of three must DECREMENT the counter,
+// never remove it, and undo must increment it back — re-creating the row (from the
+// captured snapshot, notes and all) only when the delete emptied the day to zero and
+// dropped it. Declared here so the capture half and the restore half read the SAME spec
+// instead of each carrying its own arithmetic, which is exactly the split #2039 removed
+// one table over.
+export interface CounterSpec {
+  // The counted column. Moved by exactly one per captured root row.
+  column: string;
+  // The counter row's natural-key columns BESIDE profile_id, read off the captured
+  // snapshot to find (or re-insert) the live row on restore. Constants, never user input.
+  key: readonly string[];
+}
+
 export interface EntitySpec {
   // Logical key within a kind (used to key the payload + the id maps).
   entity: string;
@@ -95,6 +114,10 @@ export interface EntitySpec {
   // (practice sessions + dismissals); captureDelete explicitly removes those
   // captured rows in the same transaction.
   deleteExplicitly?: boolean;
+  // This entity is a day COUNTER the root row is one tick of (see CounterSpec), so the
+  // delete decrements it and the undo increments it back — it is never deleted and
+  // re-inserted whole. Mutually exclusive with deleteExplicitly.
+  counter?: CounterSpec;
 }
 
 export interface KindSpec {
@@ -581,6 +604,42 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
     kind: "substance-history",
     ownedTable: "substance_log",
     entities: [{ entity: "entry", table: "substance_log", fks: [] }],
+  },
+
+  // ONE logged practice session (#2038). Deleting a whole practice has been undoable
+  // since the two kinds above it; deleting one of its sessions was permanent, while the
+  // structurally identical substance history row was not — an inconsistency that read as
+  // accidental rather than decided. A session is a single profile-owned row with no
+  // children, so this is the plainest possible kind; the import tombstone the delete
+  // writes stays and coexists with undo exactly as it does for the whole-practice kinds
+  // (captureDelete writes it, restore removes it).
+  "practice-session": {
+    kind: "practice-session",
+    ownedTable: "practice_logs",
+    entities: [{ entity: "session", table: "practice_logs", fks: [] }],
+  },
+
+  // ONE logged food serving (#2038/#1963). The root is the LEDGER row the ⋯ row menu
+  // named; `food_log` is its day counter, which the delete decremented and the undo has
+  // to give back — see CounterSpec. Rooting on the event (not on food_log, the way the
+  // alcohol kind does) is what keeps deleting one serving out of three from taking the
+  // other two with it: the alcohol history row IS the whole day, this is one tap inside
+  // it.
+  "food-serving": {
+    kind: "food-serving",
+    ownedTable: "food_log_events",
+    entities: [
+      { entity: "event", table: "food_log_events", fks: [] },
+      {
+        entity: "counter",
+        table: "food_log",
+        fks: [],
+        counter: { column: "servings", key: ["date", "group_key"] },
+        childWhere:
+          "profile_id = (SELECT profile_id FROM food_log_events WHERE id = ?) AND date = (SELECT date FROM food_log_events WHERE id = ?) AND group_key = (SELECT group_key FROM food_log_events WHERE id = ?)",
+        childBinds: 3,
+      },
+    ],
   },
 };
 

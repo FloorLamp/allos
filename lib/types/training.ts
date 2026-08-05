@@ -382,6 +382,14 @@ export type PracticeSessionMutationOutcome =
   | { kind: "invalid-date" }
   | { kind: "not-found" };
 
+// Removing ONE logged session (#2038). Separate from the mutation union above because a
+// delete carries the undo token the history row's Undo toast needs; an edit has nothing
+// to give back. `not-found` covers a leaked/stale id and another profile's row alike —
+// the capture is id + profile_id scoped, so nothing is written either way.
+export type PracticeSessionDeleteOutcome =
+  | { kind: "deleted"; id: number; undoId: number }
+  | { kind: "not-found" };
+
 // ── Routines (#738, migration 039) ─────────────────────────────────────────────
 // A routine is a declarative, user-owned program the user ADOPTS (from the
 // lib/routine-templates.ts catalog) or AUTHORS. Templates and custom routines share
