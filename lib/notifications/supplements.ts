@@ -49,7 +49,7 @@ import {
   type ReminderWindow,
   type WindowDose,
 } from "./supplement-format";
-import { preWorkoutSlotHour } from "./schedule";
+import { preWorkoutSlotMinute } from "./schedule";
 import type { NotificationMessage } from "./types";
 import { isPrn } from "../supplement-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
@@ -128,11 +128,14 @@ function preWorkoutTimed(profileId: number): boolean {
   return inferWorkoutSchedule(profileId).hasPattern;
 }
 
-// The profile-local hour the PreWorkout pseudo-slot fires (one hour before the
-// inferred training hour), or null when it doesn't apply: no inferable cadence
-// (the #558 logged-signal fallback keeps those doses in their bucket window), or
-// no active `anytime` pre_workout dose to time.
-export function getPreWorkoutSlotHour(profileId: number): number | null {
+// The profile-local minute of day the PreWorkout pseudo-slot fires (one hour
+// before the inferred training time), or null when it doesn't apply: no inferable
+// cadence (the #558 logged-signal fallback keeps those doses in their bucket
+// window), or no active `anytime` pre_workout dose to time. The inference itself
+// stays hour-grain (inferWorkoutSchedule takes the mode over start HOURS), so the
+// resulting minute is always :00 today — the type is minutes so the slot joins the
+// #2121 vocabulary without a private unit.
+export function getPreWorkoutSlotMinute(profileId: number): number | null {
   const preSupps = getSupplements(profileId).filter(
     (s) => s.active && !isPrn(s) && s.condition === "pre_workout"
   );
@@ -144,7 +147,7 @@ export function getPreWorkoutSlotHour(profileId: number): number | null {
   if (!hasAnytime) return null;
   const inf = inferWorkoutSchedule(profileId);
   if (!inf.hasPattern) return null;
-  return preWorkoutSlotHour(inf.hour);
+  return preWorkoutSlotMinute(inf.hour * 60);
 }
 
 // Gather the due doses in send slot `slot` on `date` from an already-fetched dose

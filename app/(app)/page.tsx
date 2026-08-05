@@ -1100,10 +1100,9 @@ export default async function Dashboard() {
   // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
-  const nowSlots = getNotifySchedule(profile.id).supplementHours;
+  const nowSlots = getNotifySchedule(profile.id).supplementMinutes;
   const nowMealAnchors = [nowSlots.Morning, nowSlots.Midday, nowSlots.Evening]
-    .filter((h): h is number => h != null)
-    .map((h) => h * 60);
+    .filter((m): m is number => m != null);
 
   // What the strip is ALLOWED to promote: a grid widget the user still has visible
   // AND that has something to render, or the standalone recap card under the same
