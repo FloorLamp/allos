@@ -159,9 +159,15 @@ the produced-count detail, the failure badge, and the sync-event accounting are
 unchanged, and an in-flight or failed document never badges.
 
 **Strava cycling detail.** The pull requests `profile:read_all` alongside
-`activity:read_all`. Each cycling activity consumes one additional keyed-stream
-request; the combined detail/stream request cap stays below Strava's rolling
-limit and advances the existing cursor over successive runs. DetailedActivity's
+`activity:read_all`. Strava's default read allowance is application-wide — 100
+requests per 15 minutes and 1,000 per UTC day — so every list, detail, athlete,
+zone, and stream request passes through one process-wide budget keyed by client
+id. The budget reserves short-window and daily headroom and learns upgraded app
+limits and current usage from Strava's `X-ReadRateLimit-*` response headers. A
+quiet trailing-window poll is list-only for cycling artifacts already stored;
+athlete settings and keyed streams are fetched only for a ride whose streams are
+missing. The absolute per-operation request cap remains a second safety bound and
+advances the existing cursor over successive runs. DetailedActivity's
 embedded laps and segment efforts cost no extra request. The normalized grouping
 preserves cycling subtype: MountainBikeRide is Mountain
 Biking, while VirtualRide and `trainer: true` rides are Stationary Bike so the
@@ -178,6 +184,14 @@ captured for a ride (a reconnect may fill a previously missing snapshot), so a
 later athlete-setting change cannot rewrite historical training load. Activity
 merges re-parent these children before deleting a duplicate, and undoable merges
 move them back with the restored activity.
+
+The connected Strava page also exposes a repeatable **Backfill ride details**
+action for cycling activities imported before telemetry existed (or whose prior
+stream request failed). It processes newest rides first through the same shared
+request budget, writes each completed ride atomically, and derives its remaining
+work from missing/empty telemetry rather than a second cursor. Completed rows
+therefore disappear from the next run automatically; a transient error or quota
+pause leaves the remainder safe to resume after the provider window resets.
 Power curves, FTP-relative load, and same-route identity are derived at read
 time rather than stored as competing facts. The aligned `time` and `latlng`
 streams remain optional but, when present, drive the ride detail's chart-linked
@@ -889,10 +903,12 @@ the tick rate a quota decision rather than a scheduling one.
   by the #388 retention pass. The guard reads it. It keys on the last ATTEMPT, not
   the last SUCCESS — a failed poll spent an API call, and "the remote is failing"
   is the worst case in which to retry on every tick.
-- **Manual "Sync now" is not guarded.** It goes through
+- **Manual "Sync now" is not cadence-guarded.** It goes through
   `app/(app)/integrations/sync-actions.ts` straight to the runner. The system may
   reduce its own contact unilaterally; it does not overrule a user's own action,
-  and "I just connected this, sync it" is why anyone presses that button.
+  and "I just connected this, sync it" is why anyone presses that button. Strava
+  requests still pass through the application-wide read budget, so a manual sync
+  cannot spend past the provider allowance shared with other profiles.
 - **The seam for what comes next.** A pull-based Health Connect ingest (#1563) and
   Garmin (#1863) join the polled set through the same dial and should declare
   cadence and quota posture in their scoping, rather than inheriting whatever the

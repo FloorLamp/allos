@@ -12,8 +12,16 @@ import {
   getStravaConfig,
 } from "@/lib/integrations/connections";
 import { stravaCallbackUrl, isLoopbackUrl } from "./url";
+import { runStravaDetailsBackfill } from "@/lib/integrations/strava-sync";
+import { createLogger } from "@/lib/log";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
+const log = createLogger("strava-backfill");
+
+export interface StravaBackfillActionResult {
+  status: "done" | "error";
+  message: string;
+}
 
 // Save the app-registration credentials (client id/secret) entered in the UI.
 export async function saveStravaCredentials(formData: FormData) {
@@ -66,4 +74,52 @@ export async function disconnectStravaAction() {
   revalidatePath("/integrations/strava");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
   revalidatePath("/data");
+}
+
+export async function backfillStravaRideDetails(): Promise<StravaBackfillActionResult> {
+  const { profile } = await requireWriteAccess();
+  try {
+    const result = await runStravaDetailsBackfill(profile.id);
+    if ("error" in result) {
+      return {
+        status: "error",
+        message:
+          result.error === "not connected"
+            ? "Connect Strava first, then backfill ride details."
+            : "Couldn’t backfill ride details. Try again.",
+      };
+    }
+    revalidatePath("/integrations/strava");
+    revalidatePath("/training");
+    revalidatePath("/training/rides/[id]", "page");
+    if (result.backfilled === 0 && result.remaining === 0) {
+      return {
+        status: "done",
+        message: "All Strava ride details are complete.",
+      };
+    }
+    const filled = `${result.backfilled} ${result.backfilled === 1 ? "ride" : "rides"}`;
+    const failed =
+      result.failed > 0 ? ` ${result.failed} couldn’t be fetched.` : "";
+    const remaining =
+      result.remaining > 0
+        ? ` ${result.remaining} ${result.remaining === 1 ? "ride remains" : "rides remain"}.`
+        : " Backfill complete.";
+    const quota = result.paused
+      ? " Paused before Strava’s read limit; run it again after the quota resets."
+      : "";
+    return {
+      status: "done",
+      message: `Added details to ${filled}.${failed}${remaining}${quota}`,
+    };
+  } catch (err) {
+    log.error("Strava ride-detail backfill failed", {
+      profileId: profile.id,
+      err: String(err),
+    });
+    return {
+      status: "error",
+      message: "Couldn’t backfill ride details. Try again.",
+    };
+  }
 }

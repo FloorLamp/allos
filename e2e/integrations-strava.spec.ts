@@ -13,6 +13,15 @@ import {
 // reconnect CTA. Both run as isolated member sessions so neither depends on (nor
 // disturbs) profile 1's seeded "connected" Strava that the review-inbox spec needs.
 test.describe("Strava integration (#391)", () => {
+  test("a connected profile can backfill older ride details", async ({
+    page,
+  }) => {
+    await page.goto("/integrations/strava");
+    const backfill = page.getByTestId("strava-backfill-details");
+    await expect(backfill).toBeVisible();
+    await expect(backfill).toContainText("Backfill ride details");
+  });
+
   test("a profile with no Strava connection renders the credentials setup form", async ({
     browser,
   }) => {
