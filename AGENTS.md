@@ -186,6 +186,26 @@ the surface's own key. A surface names a quantity or a row; it does not name a
 table. Neither phase changes schema — the physical merge is a separate, later
 decision. See `docs/internals/reading-model.md`.
 
+### Weekly cadence
+
+"How did this target do in week W?" is ONE question over `frequency_targets`, keyed
+on `target.id`. `lib/queries/cadence-ledger.ts` is its only reader; the current-week
+rollup, the completed-week history and both substance reads are adapters over it,
+distinguished by declared options, not by forked modules. `lib/cadence.ts` owns the
+axes: `CADENCE_SCOPES` (source, grain, direction), total over `FREQUENCY_SCOPE_KINDS`
+by the type, and the floor/cap verdict vocabulary.
+
+Substance caps are a `direction: "cap"` TENANT, not a fork. The #998 anti-nudge rule
+lives in the vocabulary now: a cap verdict has no to-go or pace state, under-cap is
+its success state, and `cadenceToGo` is null for it. Select tenants by direction —
+never by subtracting a scope kind. See `docs/internals/cadence-ledger.md`.
+
+Calendar grids and lens windows are the same discipline one level down:
+`dayGrid()` (`lib/day-grid.ts`) lays days on a 7×N grid for every heatmap and
+calendar, with the payload and level function supplied by the caller; `lensWindow()`
+(`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
+only the per-lens week caps supplied.
+
 ### Settings and units
 
 Settings have three storage tiers:

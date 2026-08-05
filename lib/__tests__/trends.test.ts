@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  clampLensWeeks,
   filterSeriesByRange,
+  lensWindow,
   outOfWindowAgeLabel,
   outOfWindowLatest,
   rangeSummaryLabel,
 } from "../trends";
+import {
+  MAX_FITNESS_WEEKS,
+  MIN_FITNESS_WEEKS,
+  fitnessWindow,
+} from "../trends-fitness";
+import {
+  MAX_PRACTICE_TREND_WEEKS,
+  MIN_PRACTICE_TREND_WEEKS,
+  practiceTrendWindow,
+} from "../trends-practices";
 import {
   ALL_TIME_RANGE_VALUE,
   defaultTrendsRange,
@@ -319,5 +331,96 @@ describe("outOfWindowAgeLabel", () => {
 
   it("never says 'Today ago'", () => {
     expect(outOfWindowAgeLabel(today, today)).toBe("today");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shared lens window (#2043)
+// ---------------------------------------------------------------------------
+
+describe("lensWindow", () => {
+  const TODAY = "2026-03-15";
+  const FITNESS = { minWeeks: MIN_FITNESS_WEEKS, maxWeeks: MAX_FITNESS_WEEKS };
+  const PRACTICE = {
+    minWeeks: MIN_PRACTICE_TREND_WEEKS,
+    maxWeeks: MAX_PRACTICE_TREND_WEEKS,
+  };
+
+  it("anchors an open-ended range on today and calls it all time", () => {
+    expect(lensWindow({}, TODAY, FITNESS)).toEqual({
+      from: null,
+      to: TODAY,
+      days: null,
+      allTime: true,
+      weeks: MAX_FITNESS_WEEKS,
+    });
+  });
+
+  it("keeps a range that ENDS in the past on its own end day", () => {
+    expect(
+      lensWindow({ from: "2026-01-01", to: "2026-01-31" }, TODAY, PRACTICE)
+    ).toMatchObject({ from: "2026-01-01", to: "2026-01-31", days: 31 });
+  });
+
+  // The #2043 bug: one hub, one range, two lenses that disagreed about where the
+  // window ENDS. The anchor rule is now a property of the range, not of the lens.
+  it("clamps a FUTURE end to today identically for every lens's caps", () => {
+    const future = { from: "2026-03-01", to: "2026-12-31" };
+    const fitness = lensWindow(future, TODAY, FITNESS);
+    const practice = lensWindow(future, TODAY, PRACTICE);
+    expect(fitness.to).toBe(TODAY);
+    expect(practice.to).toBe(TODAY);
+    expect(fitness.from).toBe(practice.from);
+    expect(fitness.days).toBe(practice.days);
+    expect(fitness.days).toBe(15); // Mar 1 → Mar 15 inclusive, not Dec 31
+  });
+
+  it("still applies each lens's OWN week cap — those stay per-lens decisions", () => {
+    const allTime = lensWindow({}, TODAY, FITNESS);
+    expect(allTime.weeks).toBe(MAX_FITNESS_WEEKS);
+    expect(lensWindow({}, TODAY, PRACTICE).weeks).toBe(
+      MAX_PRACTICE_TREND_WEEKS
+    );
+    // A year-long window exceeds the practice cap but not the fitness one.
+    const year = { from: "2025-03-16", to: TODAY };
+    expect(lensWindow(year, TODAY, FITNESS).weeks).toBe(53);
+    expect(lensWindow(year, TODAY, PRACTICE).weeks).toBe(
+      MAX_PRACTICE_TREND_WEEKS
+    );
+  });
+
+  it("floors a very short window and rounds a partial week up", () => {
+    expect(
+      lensWindow({ from: TODAY, to: TODAY }, TODAY, FITNESS)
+    ).toMatchObject({ days: 1, weeks: MIN_FITNESS_WEEKS });
+    expect(clampLensWeeks(30, FITNESS)).toBe(5);
+    expect(clampLensWeeks(36, FITNESS)).toBe(6);
+  });
+
+  it("is what BOTH lens resolvers now return", () => {
+    for (const range of [
+      {},
+      { from: "2026-01-01", to: "2026-01-31" },
+      { from: "2026-03-01", to: "2026-12-31" },
+      { from: "2026-02-01" },
+      { to: "2026-02-10" },
+    ]) {
+      const shared = lensWindow(range, TODAY, PRACTICE);
+      expect(practiceTrendWindow(range, TODAY)).toEqual({
+        asOf: shared.to,
+        weeks: shared.weeks,
+      });
+      const f = lensWindow(range, TODAY, FITNESS);
+      expect(fitnessWindow(range, TODAY)).toEqual({
+        from: f.from,
+        to: f.to,
+        days: f.days,
+        allTime: f.allTime,
+      });
+      // The whole point: the two lenses describe the SAME days.
+      expect(fitnessWindow(range, TODAY).to).toBe(
+        practiceTrendWindow(range, TODAY).asOf
+      );
+    }
   });
 });

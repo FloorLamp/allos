@@ -40,6 +40,11 @@ import {
 import type { ProtocolWindowInput } from "../trend-annotations";
 import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
+import {
+  CADENCE_SCOPES,
+  isCadenceScopeKind,
+  type CadenceSource,
+} from "../cadence";
 import type { FrequencyPace } from "../goals";
 import {
   protocolPracticeLabel,
@@ -260,6 +265,35 @@ type ProtocolUsageScope =
     }
   | { kind: "none" };
 
+// Which of this reader's three event ledgers a cadence SOURCE lands in — the
+// third scope dispatcher (#2034), rebased onto the one registry so it cannot
+// disagree with the weekly ledger about what a target measures.
+//
+// It stays its own table rather than reading a field off CADENCE_SCOPES, because
+// protocol usage asks a genuinely different question: EVENT ROWS in a date window
+// (a two-session day is two sessions), not a weekly count. What it must not do is
+// fall through silently, which is what the old `if` chain did for every scope kind
+// it hadn't been taught — so the mapping is exhaustive over `CadenceSource` and an
+// eighth scope kind is a compile error here, not a protocol that quietly reports
+// zero usage forever.
+const PROTOCOL_USAGE_LEDGER: Record<
+  CadenceSource,
+  "practice" | "food_group" | "activity-type" | "unmeasurable"
+> = {
+  "practice-logs": "practice",
+  "food-servings": "food_group",
+  "activity-type": "activity-type",
+  // A protocol's usage window counts SESSIONS it drove. A muscle region or a
+  // mobility region is a property OF a session, not a session ledger of its own,
+  // so such a protocol falls back to its equipment/activity link (below) exactly
+  // as it always has.
+  "exercise-sets": "unmeasurable",
+  "mobility-moves": "unmeasurable",
+  // A substance cap is a limit to stay under; "sessions of it during the protocol"
+  // is not usage of the intervention, and counting it would read as adherence.
+  "substance-ledger": "unmeasurable",
+};
+
 // Resolve the protocol intervention once, from its ALREADY-LOADED frequency target
 // (null when it links none, or the link dangles). Pure, so the one-protocol and the
 // batched gather below cannot disagree about what a protocol measures.
@@ -268,14 +302,14 @@ function usageScopeFor(
   target: { scope_kind: string; scope_value: string } | null
 ): ProtocolUsageScope {
   let activityType: string | null = null;
-  if (target) {
-    if (target.scope_kind === "practice") {
+  if (target && isCadenceScopeKind(target.scope_kind)) {
+    const ledger =
+      PROTOCOL_USAGE_LEDGER[CADENCE_SCOPES[target.scope_kind].source];
+    if (ledger === "practice")
       return { kind: "practice", value: target.scope_value };
-    }
-    if (target.scope_kind === "food_group") {
+    if (ledger === "food_group")
       return { kind: "food_group", value: target.scope_value };
-    }
-    if (target.scope_kind === "type") activityType = target.scope_value;
+    if (ledger === "activity-type") activityType = target.scope_value;
   }
 
   if (protocol.equipment_id != null || activityType != null) {

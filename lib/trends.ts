@@ -1,4 +1,5 @@
 import type { DateRange } from "./timeline-format";
+import { daysBetweenDateStr } from "./date";
 import { formatCompactAge } from "./format-date";
 
 // Pure helpers backing the Trends hub. The hub reuses the existing per-domain
@@ -71,6 +72,72 @@ export function outOfWindowAgeLabel(date: string, todayStr: string): string {
   // phrase. (Reachable only for a window that excludes today, e.g. a historical
   // custom range, but the label must read correctly there too.)
   return compact === "Today" ? "today" : `${compact} ago`;
+}
+
+// ---------------------------------------------------------------------------
+// The lens window (#2043)
+// ---------------------------------------------------------------------------
+
+// ONE resolution of the hub's shared DateRange into the (anchor, weeks) pair a
+// weekly lens reads. Two lenses on the same page used to resolve it separately —
+// Fitness left `to` exactly as given while Practices clamped it to today — so a
+// future-dated `to` made two sections of one page describe two different windows
+// (#2043). The anchor rule is decided HERE, once; only the per-lens week CAPS are
+// supplied by the caller, because those are genuine display decisions (the heatmap
+// affords a year of columns, a practice strip half of one).
+export interface LensWeekCaps {
+  /** Fewest week columns a window may resolve to. */
+  minWeeks: number;
+  /** Most week columns a window may resolve to; an all-time window takes it. */
+  maxWeeks: number;
+}
+
+export interface LensWindow {
+  /** Inclusive first day, or null for a window open at the start. */
+  from: string | null;
+  /**
+   * The window's ANCHOR: its last day, never in the future. A range ending in
+   * the past keeps its end (a window over January describes January); a range
+   * ending today, tomorrow, or not at all anchors on today.
+   */
+  to: string;
+  /** Window length in inclusive days, or null when it has no start bound. */
+  days: number | null;
+  /** True when the range names no window at all ("All time"). */
+  allTime: boolean;
+  /** `days` in week columns, rounded up and clamped to the caller's caps. */
+  weeks: number;
+}
+
+// How many week columns a span of days is worth: round the partial week UP so the
+// window's edge day still has a column, then clamp. A null span (no start bound)
+// is unbounded history and takes the cap.
+export function clampLensWeeks(
+  days: number | null,
+  caps: LensWeekCaps
+): number {
+  if (days == null) return caps.maxWeeks;
+  return Math.min(caps.maxWeeks, Math.max(caps.minWeeks, Math.ceil(days / 7)));
+}
+
+export function lensWindow(
+  range: DateRange,
+  todayStr: string,
+  caps: LensWeekCaps
+): LensWindow {
+  const to = range.to && range.to < todayStr ? range.to : todayStr;
+  const from = range.from ?? null;
+  const spanned = from ? daysBetweenDateStr(from, to) : null;
+  // An unparseable date (never produced by the hub, which validates its params)
+  // degrades to an unbounded span rather than a NaN-length window.
+  const days = spanned == null ? null : Math.max(1, spanned + 1);
+  return {
+    from: days == null ? null : from,
+    to,
+    days,
+    allTime: !range.from && !range.to,
+    weeks: clampLensWeeks(days, caps),
+  };
 }
 
 // Summarizing a windowed series — how many points, the endpoint values, the net

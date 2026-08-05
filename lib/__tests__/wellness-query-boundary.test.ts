@@ -32,9 +32,17 @@ describe("wellness and frequency-target query boundaries (#1622/#1637)", () => {
 
   it("keeps shared target reads out of the training consumer module", () => {
     const frequencyTargets = read("lib/queries/frequency-targets.ts");
-    expect(frequencyTargets).toContain("export function getFrequencyTargets");
     expect(frequencyTargets).toContain(
       "export function getFrequencyTargetProgress"
+    );
+    // The active-target roll moved to the cadence ledger (#2034) — still
+    // domain-neutral, still outside training/, and still reachable under its old
+    // name through this module and the barrel.
+    expect(frequencyTargets).toContain(
+      'export { getFrequencyTargets } from "./cadence-ledger"'
+    );
+    expect(read("lib/queries/cadence-ledger.ts")).toContain(
+      "export function getFrequencyTargets"
     );
 
     const trainingGoals = read("lib/queries/training/goals.ts");
