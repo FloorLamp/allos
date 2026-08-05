@@ -44,33 +44,27 @@ describe("shouldOfferUpdate", () => {
 });
 
 describe("shouldReloadOnControllerChange", () => {
-  it("reloads the tab that asked", () => {
-    expect(
-      shouldReloadOnControllerChange({
-        requestedByThisTab: true,
-        alreadyReloaded: false,
-      })
-    ).toBe(true);
+  it("reloads the tab that asked — even when the fallback timer already did (#2155)", () => {
+    // The tap IS the request, and the controller swap is its answer, however late.
+    // Chrome may hold a skip-waiting activation until the outgoing worker is idle,
+    // so the swap can land only after SW_RELOAD_FALLBACK_MS already reloaded — a
+    // navigation dispatched under the OLD worker, which the swap can strand
+    // mid-flight so it never commits and the tab hangs. Answering the swap again
+    // replaces that possibly-stranded navigation with one under the NEW controller.
+    // No "already reloaded" input exists to get this wrong with: controllerchange
+    // fires once per activation, and a committed reload destroys the document that
+    // requested it, so re-answering cannot loop.
+    expect(shouldReloadOnControllerChange({ requestedByThisTab: true })).toBe(
+      true
+    );
   });
 
   it("never reloads a tab that did NOT ask — the mid-form tab next door", () => {
     // Activation is registration-wide: every open tab gets controllerchange when
     // one of them taps Reload. This is the guard that keeps the others alive.
-    expect(
-      shouldReloadOnControllerChange({
-        requestedByThisTab: false,
-        alreadyReloaded: false,
-      })
-    ).toBe(false);
-  });
-
-  it("reloads at most once per activation (the loop guard)", () => {
-    expect(
-      shouldReloadOnControllerChange({
-        requestedByThisTab: true,
-        alreadyReloaded: true,
-      })
-    ).toBe(false);
+    expect(shouldReloadOnControllerChange({ requestedByThisTab: false })).toBe(
+      false
+    );
   });
 });
 
