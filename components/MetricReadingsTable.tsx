@@ -37,6 +37,12 @@ import {
 export interface MetricReadingRow {
   id: number;
   date: string;
+  /**
+   * The physical row this line writes to, as `store:id:measure` (#2032). Posted with
+   * every edit and delete so the action targets the ROW rather than re-deriving a store
+   * from the page's slug — which is what makes the folded observations below editable.
+   */
+  target: string;
   /** Already formatted in the page's display unit — this component only renders. */
   display: string;
   /** The raw display-unit number the edit field opens with. */
@@ -48,11 +54,10 @@ export interface MetricReadingRow {
   /**
    * A folded same-identity OBSERVATION (#1996): the same measurement, recorded as
    * a clinical record rather than in this metric's own store. It is listed here
-   * because it IS a reading of this quantity — leaving it out is the
-   * incompleteness #1996 reports — and it is READ-ONLY here because the write path
-   * still resolves its store from the metric slug (#1997 phase 2's job), so an
-   * Edit offered here could only fail. The row says where it lives instead of
-   * offering an action that refuses.
+   * because it IS a reading of this quantity — leaving it out is the incompleteness
+   * #1996 reports — and since #2032 it is EDITABLE here like any other reading: the
+   * row carries its own target, so a correction lands on the clinical record it came
+   * from. The marker stays, because where a reading was measured is worth saying.
    */
   observed?: boolean;
 }
@@ -64,7 +69,8 @@ export default function MetricReadingsTable({
   readOnlyReason,
   truncated = false,
 }: {
-  /** The metric slug — posted with every write so the action targets one store. */
+  /** The metric slug — the PAGE, posted so the action knows what to revalidate and
+   * which display unit to convert back from. The ROW is named by `row.target`. */
   kind: string;
   rows: MetricReadingRow[];
   unit: string;
@@ -118,9 +124,9 @@ export default function MetricReadingsTable({
                 <tbody>
                   {rows.map((row) => (
                     // Ids are per-STORE, so a folded observation can share one
-                    // with this metric's own row — the key names both.
+                    // with this metric's own row — the target names both.
                     <ReadingRow
-                      key={`${row.observed ? "obs" : "own"}-${row.id}`}
+                      key={row.target}
                       kind={kind}
                       row={row}
                       unit={unit}
@@ -175,7 +181,7 @@ function ReadingRow({
   async function save() {
     const fd = new FormData();
     fd.set("kind", kind);
-    fd.set("id", String(row.id));
+    fd.set("target", row.target);
     fd.set("value", value);
     setBusy(true);
     try {
@@ -234,9 +240,9 @@ function ReadingRow({
         className="metric-reading-source"
       >
         {row.source ?? "—"}
-        {/* Where this reading actually lives, said out loud: a clinic-measured
-            value is not a wearable one, and its row actions belong on the record
-            that owns it. */}
+        {/* Where this reading was actually taken, said out loud: a clinic-measured
+            value is not a wearable one. It is corrected in place all the same — the
+            row carries its own target (#2032). */}
         {row.observed && (
           <span
             className="ml-1 text-xs text-slate-500 dark:text-slate-400"
@@ -255,7 +261,7 @@ function ReadingRow({
         {row.notes ? <NotesText notes={row.notes} /> : "—"}
       </Td>
       <Td slot="actions">
-        {row.observed ? null : editing ? (
+        {editing ? (
           <span className="flex items-center justify-end gap-1">
             <button
               type="button"
@@ -318,7 +324,7 @@ function ReadingRow({
                       if (!ok) return;
                       const fd = new FormData();
                       fd.set("kind", kind);
-                      fd.set("id", String(row.id));
+                      fd.set("target", row.target);
                       await undoable(deleteMetricReading, fd, {
                         deletedMessage: "Reading deleted.",
                       });

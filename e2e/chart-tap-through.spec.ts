@@ -8,6 +8,8 @@ import {
   E2E_LOGIN_TRENDS_READINGS,
   TRENDS_READINGS_HRV_MANUAL,
   TRENDS_READINGS_HRV_SYNCED,
+  TRENDS_READINGS_RHR_CLINIC,
+  TRENDS_READINGS_RHR_CORRECTED,
 } from "./fixture-logins";
 
 // Chart tap-through (issue #1488): every full-size Trends chart reaches its
@@ -19,7 +21,10 @@ import {
 //   2. tapping the PLOT shows a tooltip and does NOT navigate — on touch that gesture
 //      is how you read a point, and it must never become navigation;
 //   3. the detail page renders the readings table, and a row's ⋯ menu edits and
-//      deletes with the chart above updating;
+//      deletes with the chart above updating — including a row that lives in a
+//      DIFFERENT STORE from the page's own (#2032): a folded same-identity clinical
+//      observation used to be read-only here, because the write path resolved its store
+//      from the metric slug;
 //   4. an empty chart card and a populated one occupy the SAME box (the mobile square
 //      rule), and desktop card proportions are unchanged by it.
 //
@@ -220,6 +225,60 @@ test.describe("chart tap-through (#1488)", () => {
         .locator("tr")
         .filter({ hasText: `${TRENDS_READINGS_HRV_SYNCED} ms` })
     ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("a folded clinical observation is corrected on the stream metric's page (#2032)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_READINGS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(DESKTOP);
+
+    // The routing half of the same change: a resting heart rate is a CONTINUOUS
+    // reading now, so the reading detail page sends it to the surface that charts it.
+    await page.goto("/biomarkers/view?name=Resting+Heart+Rate");
+    await expect(page).toHaveURL(/\/trends\/metric\/resting-hr$/);
+
+    const table = page.getByTestId("metric-readings-table");
+    await expect(table).toBeVisible();
+    // The clinic-measured row, addressed by the marker that says it lives elsewhere —
+    // not by its value, which this very test changes.
+    const observed = table
+      .locator("tr")
+      .filter({ has: page.getByTestId("metric-reading-observed") });
+    await expect(observed).toHaveCount(1);
+    // It is offered an action rather than marked read-only.
+    await hydratedClick(
+      page,
+      observed.getByRole("button", { name: "Reading actions" })
+    );
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
+    const field = page.getByLabel("Reading value");
+    await field.fill(String(TRENDS_READINGS_RHR_CORRECTED));
+    await settledClick(
+      page,
+      field
+        .locator("xpath=ancestor::tr")
+        .getByRole("button", { name: "Save", exact: true })
+    );
+
+    // The correction landed on the clinical record, and the row still says where the
+    // reading was taken.
+    await expect(observed).toContainText(
+      `${TRENDS_READINGS_RHR_CORRECTED} bpm`
+    );
+    await expect(observed).toContainText("clinical record");
+    await expect(
+      table
+        .locator("tr")
+        .filter({ hasText: `${TRENDS_READINGS_RHR_CLINIC} bpm` })
+    ).toHaveCount(0);
+    // The chart above is server-rendered from the same rows, so it redrew with it.
+    await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
 
     await page.context().close();
   });

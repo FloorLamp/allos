@@ -1,7 +1,7 @@
 # The reading model
 
-Status: partial (phase 1 shipped — a READ model; write consolidation and any
-physical merge are separate, later decisions)
+Status: partial (phases 1 and 2 shipped — one read model and one write core over
+the existing three stores; the physical merge is a separate, later decision)
 
 The app stores dated numeric readings in three places, and before #1997 every
 consumer knew which one it was reading:
@@ -149,25 +149,93 @@ Two consequences on `/trends/metric/[kind]`:
   beside it would be a wrong one — and when there is no reading to judge;
 - the series folds in same-identity observations
   (`getMetricObservations` + `foldObservationPoints`), so a clinic-measured reading
-  joins the trend it belongs to. Folded readings are **marked** and **read-only**
-  there (see phase 2 below), and the fold is empty for a metric whose readings
-  already ARE observations, which would otherwise list each one twice.
+  joins the trend it belongs to. Folded readings are **marked** — and, since phase
+  2, editable in place — and the fold is empty for a metric whose readings already
+  ARE observations, which would otherwise list each one twice.
 
-`lib/reading-cadence.ts` still keeps Resting Heart Rate off the metric-surface
-routing table, but for a **different reason than before**: the destination is no
-longer empty, it is not yet editable. See the comment there.
+## Phase 2 (shipped): one write core, one editability contract
 
-## Phase 2 / phase 3 — deliberately not started
+`lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes
+it. **Still no schema change** — this is placement over the same three stores,
+and `medical_records` remains the clinical record.
 
-- **Phase 2, write consolidation.** New writes going through one core that
-  decides physical placement. Until it lands, a folded observation is READ-ONLY
-  on a stream metric's surface: the write path still resolves its store from the
-  metric slug, so an observation id posted at it would be refused. That is the
-  #1933/#1934 editability contract, and it is a phase-2 job.
-- **Phase 3, the physical merge.** A single tall `readings` table is
-  **deliberately deferred**. After phase 1 nothing needs to read the tables
-  directly, so a later collapse is a data move rather than a rewrite — and
-  `medical_records` is the highest-stakes table in the app (biomarker families,
-  flags, trajectory, the import footprint, tombstones, undo, export, the passport,
-  and every FK enumerated in #1808), which is exactly why it should be migrated
-  last, behind an abstraction, or not at all.
+### The placement rule
+
+`placeReading({ name, provenance })` — four clauses, in order:
+
+1. **No identity, no placement.** Refused, never defaulted into a table. Sleep
+   minutes, steps, HRV and per-minute heart rate all arrive here, and each keeps
+   its own writer: inventing a mapping is exactly what the #482 exclusion
+   discipline forbids, and the grain boundary holds on the write side too.
+2. **Clinical provenance forces the observation store.** A document, an
+   encounter, a performing provider, the lab's own stated range or the name a lab
+   printed has nowhere to live in a stream store, so routing such a reading there
+   would DESTROY the provenance — the one placement error a later correction
+   cannot undo. This is the only clause that overrides a registered stream.
+3. **Otherwise the identity's registered stream** (`STREAM_READING_SOURCES`):
+   resting heart rate → `body_metrics.resting_hr`, body fat →
+   `body_metrics.body_fat_pct`. One quantity in one place, whichever surface
+   submitted it.
+4. **Otherwise `medical_records`** under the identity's canonical name — the
+   default: every lab analyte, and the four vitals whose readings already ARE
+   observations.
+
+The rule is pinned as a decision table over every registered identity
+(`lib/__tests__/reading-placement.test.ts`) and cross-checked in the DB tier
+against `METRIC_READING_STORE`, the registry the write path used to resolve a
+store from. That cross-check is the "nothing moved" proof: a writer migrated onto
+the core writes the row it wrote before.
+
+**A document-linked reading is refused** with `document-import`. Those rows
+belong to the import footprint (#453/#422), whose single entry point is
+`persistDocumentImport` — clear, reassign and the extracted counts cannot see a
+row written past it. The core does not drop the link, it declines the write.
+
+### On the substrate, not beside it
+
+`recordReading` classifies through `classifyUpsert`, `recordReadings` bumps the
+split only through `tallyUpsert`, and the #133 lock is read only through
+`isEditLocked`. The lock holds out a **source-owned re-push** — a write stamped
+with an integration id or a `document:<id>` import stamp — and never the user's
+own correction: a person re-entering a value they previously fixed is not a sync,
+and refusing there would strand them.
+
+### The editability contract
+
+`ReadingTarget` names a row: `{ store, id }` plus the measure the store needs to
+isolate one reading (the `body_metrics` column, the `metric_samples` metric key,
+the `medical_records` **identity**). `updateReadingAt` / `deleteReadingAt` route
+by it, with typed refusals. Observations are matched through the
+`biomarker_family()` SQL function rather than an exact canonical string — the
+#1933/#1934 contract generalized from "which table am I" to "which identity am I".
+
+A surface produces a target FROM THE ROW: `readingTarget(reading)` for a
+`Reading`, `metricReadingTarget(slug, id)` for the metric registry. The metric
+detail page's readings table posts `store:id:measure` alongside its `kind`, and
+the two fields answer different questions — `kind` is the PAGE (display unit,
+routes to revalidate), `target` is the ROW. They used to be one field, which is
+precisely why a folded clinical observation could be charted there but not
+corrected.
+
+A MOOD check-in rating is **not** a reading: a 1–5 self-rating has no canonical
+identity, no clinical knowledge and therefore no placement. It stays outside
+`ReadingTarget`, and `lib/metric-readings.ts` splits it off to the mood store's
+own write core, where #992 requires every mutation of that table to live.
+
+### What routed differently
+
+`Resting Heart Rate` joined `CONTINUOUS_READING_METRIC` (part 3 of #1996): its
+destination charts the folded observations AND now corrects them, so the two
+structural pins generalize from **one store per destination** to **one identity
+per destination** — the page's own store must be a store of the same quantity,
+which for a streaming reading is its registered stream.
+
+## Phase 3 — deliberately not started
+
+A single tall `readings` table is **deliberately deferred**. Nothing reads or
+writes the tables directly any more, so a later collapse is a data move rather
+than a rewrite — and `medical_records` is the highest-stakes table in the app
+(biomarker families, flags, trajectory, the import footprint, tombstones, undo,
+export, the passport, and every FK enumerated in #1808), which is exactly why it
+should be migrated last, behind an abstraction, or not at all. It gets its own
+issue if the remaining duplication still hurts.

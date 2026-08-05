@@ -23,6 +23,8 @@ import {
   TRENDS_READINGS_PROFILE,
   TRENDS_READINGS_HRV_MANUAL,
   TRENDS_READINGS_HRV_SYNCED,
+  TRENDS_READINGS_RHR_STREAM,
+  TRENDS_READINGS_RHR_CLINIC,
   E2E_LOGIN_TRENDS_FITNESS,
   TRENDS_FITNESS_PROFILE,
   TRENDS_FITNESS_LIFT,
@@ -400,6 +402,30 @@ export function seedTrendsReadings(): void {
   );
   insRdBm.run(rdId, shiftDateStr(rdToday, -5), 80.5);
   insRdBm.run(rdId, shiftDateStr(rdToday, -1), 80.1);
+
+  // The two-store pair (#2032): a wearable resting heart rate in `body_metrics`, and ONE
+  // clinic-measured reading of the SAME #482 identity in `medical_records`, on a day the
+  // stream does not cover. /trends/metric/resting-hr folds the second into the first, and
+  // since the write core routes by ROW rather than by the page's slug, the spec corrects
+  // it there. Named under the lab's own spelling ("Pulse") with the canonical beside it,
+  // so the identity — not the string — is what links the two.
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Resting Heart Rate'`
+  ).run(rdId);
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, source)
+     VALUES (?, ?, ?, 'health-connect')`
+  ).run(rdId, shiftDateStr(rdToday, -3), TRENDS_READINGS_RHR_STREAM);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+     VALUES (?, ?, 'vitals', 'Pulse', ?, ?, 'bpm', 'Resting Heart Rate', 'manual')`
+  ).run(
+    rdId,
+    shiftDateStr(rdToday, -10),
+    String(TRENDS_READINGS_RHR_CLINIC),
+    TRENDS_READINGS_RHR_CLINIC
+  );
 
   seedMemberLogin(E2E_LOGIN_TRENDS_READINGS, rdId, "write");
   console.log(

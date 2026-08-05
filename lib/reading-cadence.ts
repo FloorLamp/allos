@@ -87,30 +87,37 @@ export const CATEGORY_CADENCE = {
 // keeps); lookup below is by #482 identity family, so a future alias of one of these
 // names resolves with it.
 //
-// Resting Heart Rate is deliberately ABSENT despite being a vital-signs-panel entry
-// that streams. The REASON CHANGED with #1996/#1997 and is worth stating precisely,
-// because the old one no longer holds:
+// Resting Heart Rate is HERE as of #2032, and the two-step reason it took this long is
+// worth keeping, because both steps were real:
 //
-//   • It used to be "the destination would be empty": `/trends/metric/resting-hr`
+//   • Until #1996/#1999, "the destination would be empty": `/trends/metric/resting-hr`
 //     read `body_metrics.resting_hr` and never the `medical_records` row an imported
-//     "Resting Heart Rate" observation lands in. That is fixed — the metric surface
-//     now folds in same-identity observations (lib/queries/readings.ts), so the page
-//     charts and lists a clinic-measured reading beside the wearable ones, and the
-//     curated age bands finally judge the trend (lib/metric-judgment.ts).
-//   • What still holds is EDITABILITY. A folded observation is read-only on that
-//     surface: the reading write path resolves its store from the metric SLUG, so an
-//     edit or delete posted there would be refused. Routing an observation to a page
-//     that can chart it but not correct it would trade one gap for another, and the
-//     reading detail page can do both today. Routing follows #1997 phase 2 (write
-//     consolidation), which is what makes the fold editable — with it, this entry and
-//     the two structural pins below generalize from "one store per destination" to
-//     "one identity per destination".
+//     "Resting Heart Rate" observation lands in, so routing a clinic reading there
+//     showed a page that did not contain it. Phase 1 fixed that — the metric surface
+//     folds in same-identity observations (lib/queries/readings.ts) and the curated age
+//     bands judge the trend (lib/metric-judgment.ts).
+//   • Until #2032, what still held was EDITABILITY: a folded observation was read-only
+//     there, because the write path resolved its store from the metric SLUG. Routing a
+//     reading to a page that could chart it but not correct it would have traded one gap
+//     for another. Phase 2 closed it — every row of that table posts the PHYSICAL row it
+//     writes to, so a clinic-measured resting heart rate is corrected on the surface
+//     that charts it.
+//
+// With that, the two structural pins below GENERALIZE from "one store per destination"
+// to "one identity per destination": the destination no longer has to hold the reading
+// in `medical_records` under the same canonical name, it has to hold readings of the same
+// #482 IDENTITY — which for a streaming quantity means its registered stream source. See
+// lib/__db_tests__/vitals-reading-surface.test.ts.
 export const CONTINUOUS_READING_METRIC: Record<string, BodyMetricSlug> = {
   "Blood Pressure Systolic": "systolic",
   "Blood Pressure Diastolic": "diastolic",
   "Oxygen Saturation": "spo2",
   "Respiratory Rate": "respiratory-rate",
   "Body Temperature": "temperature",
+  // Streams into `body_metrics.resting_hr` rather than storing as an observation — the
+  // first entry whose destination is a STREAM store, which is exactly the generalization
+  // #2032 makes safe.
+  "Resting Heart Rate": "resting-hr",
 };
 
 const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(

@@ -6,9 +6,13 @@ import { getUnitPrefs } from "@/lib/settings";
 import { anxietyStoredValue } from "@/lib/mood";
 import { toKg } from "@/lib/units";
 import {
-  deleteMetricReading as deleteReadingCore,
-  updateMetricReading as updateReadingCore,
+  deleteMetricRow as deleteReadingCore,
+  updateMetricRow as updateReadingCore,
 } from "@/lib/metric-readings";
+import {
+  parseReadingTarget,
+  type MetricRowTarget,
+} from "@/lib/reading-placement";
 import {
   isBodyMetricSlug,
   type BodyMetricSlug,
@@ -26,21 +30,27 @@ import {
 // login's display unit and stored in kilograms. Every other metric on the detail page
 // is stored in the unit it is charted in, so its submitted value passes straight
 // through — the one conversion is named rather than a `switch` of unit math.
+//
+// TWO FIELDS, TWO DIFFERENT QUESTIONS (#2032). `kind` is the PAGE: it decides the display
+// unit to convert back from and the routes to revalidate. `target` is the ROW: it decides
+// which physical record is written. They used to be the same field, and that is exactly
+// why a clinical observation folded onto a stream metric's page could be charted but not
+// corrected — the page said `body_metrics` while the row lived in `medical_records`.
 
 export interface ReadingActionResult {
   ok: boolean;
   error?: string;
 }
 
-// Resolve the slug + reading id a submission names. A malformed pair is a rejected
-// no-op — never a write against a guessed metric.
+// Resolve the page and the row a submission names. Either half malformed is a rejected
+// no-op — never a write against a guessed row, and never against a guessed store.
 function parseTarget(
   formData: FormData
-): { slug: BodyMetricSlug; id: number } | null {
+): { slug: BodyMetricSlug; target: MetricRowTarget } | null {
   const raw = String(formData.get("kind") ?? "").trim();
-  const id = Number(formData.get("id"));
-  if (!isBodyMetricSlug(raw) || !Number.isInteger(id) || id <= 0) return null;
-  return { slug: raw, id };
+  if (!isBodyMetricSlug(raw)) return null;
+  const target = parseReadingTarget(String(formData.get("target") ?? ""));
+  return target ? { slug: raw, target } : null;
 }
 
 /** Correct one reading's value from the detail page's readings table. */
@@ -70,7 +80,7 @@ export async function updateMetricReading(
   if (value == null || !Number.isFinite(value))
     return { ok: false, error: "Enter a number." };
 
-  const outcome = updateReadingCore(profile.id, target.slug, target.id, value);
+  const outcome = updateReadingCore(profile.id, target.target, value);
   if (!outcome.ok) {
     return {
       ok: false,
@@ -95,7 +105,7 @@ export async function deleteMetricReading(
   const { profile } = await requireWriteAccess();
   const target = parseTarget(formData);
   if (!target) return { undoId: null };
-  const outcome = deleteReadingCore(profile.id, target.slug, target.id);
+  const outcome = deleteReadingCore(profile.id, target.target);
   if (!outcome.ok) return { undoId: null };
   revalidateReading(target.slug);
   return { undoId: outcome.undoId };

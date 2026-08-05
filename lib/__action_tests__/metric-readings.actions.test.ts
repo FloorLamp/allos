@@ -12,7 +12,10 @@
 //   3. a deleted imported sample is not resurrected by the next re-sync (the
 //      #507/#508 re-import tombstone);
 //   4. every path is profile-scoped — another profile's reading id is a no-op, never
-//      a cross-profile write.
+//      a cross-profile write;
+//   5. and, since #2032, a row that lives in a DIFFERENT store from the page's own —
+//      a folded same-identity clinical observation — is corrected and deleted here too,
+//      because the submission names the ROW rather than the metric slug.
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
@@ -25,7 +28,22 @@ import { upsertMoodLog } from "@/lib/offline/writes";
 import { getMetricReadings } from "@/lib/metric-readings";
 import { getMoodOnDate } from "@/lib/queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import { metricReadingTarget } from "@/lib/metric-readings";
+import { readingTargetToken } from "@/lib/reading-placement";
+import { getReadingSeries } from "@/lib/queries/readings";
+import { isBodyMetricSlug } from "@/lib/trends-body-metrics";
 import { seedActor, createProfile, fd } from "./harness";
+
+// The submission the readings table posts for a row (#2032): `kind` is the PAGE, and
+// `target` is the physical ROW — `store:id:measure`, produced from the row rather than
+// re-derived from the slug by the action. These tests go through the same two-field
+// vocabulary the table does, so a metric's own row is addressed exactly as the page
+// addresses it. (A `kind` the registry doesn't know has no target either; the deliberate
+// junk below stands in for a hand-crafted submission.)
+function target(kind: string, id: number): string {
+  const t = isBodyMetricSlug(kind) ? metricReadingTarget(kind, id) : null;
+  return t ? readingTargetToken(t) : `metric_samples:${id}:not-a-metric`;
+}
 
 const SRC = "health-connect";
 const DATE = "2026-05-05";
@@ -78,7 +96,7 @@ describe("updateMetricReading", () => {
     expect(row.edited).toBe(false);
 
     const res = await updateMetricReading(
-      fd({ kind: "hrv", id: row.id, value: 58 })
+      fd({ kind: "hrv", target: target("hrv", row.id), value: 58 })
     );
     expect(res).toEqual({ ok: true });
     expect(hrvRows(profile.id)[0]).toMatchObject({ value: 58, edited: true });
@@ -103,7 +121,7 @@ describe("updateMetricReading", () => {
     // 176 lb is submitted; kilograms are what land in the column (the ONE unit
     // boundary, converted in the action).
     const res = await updateMetricReading(
-      fd({ kind: "weight", id, value: 176 })
+      fd({ kind: "weight", target: target("weight", id), value: 176 })
     );
     expect(res).toEqual({ ok: true });
     const kg = (
@@ -120,10 +138,14 @@ describe("updateMetricReading", () => {
     const [row] = getMetricReadings(profile.id, "mood");
 
     expect(
-      await updateMetricReading(fd({ kind: "mood", id: row.id, value: 9 }))
+      await updateMetricReading(
+        fd({ kind: "mood", target: target("mood", row.id), value: 9 })
+      )
     ).toMatchObject({ ok: false });
     expect(
-      await updateMetricReading(fd({ kind: "mood", id: row.id, value: "abc" }))
+      await updateMetricReading(
+        fd({ kind: "mood", target: target("mood", row.id), value: "abc" })
+      )
     ).toMatchObject({ ok: false });
     expect(getMetricReadings(profile.id, "mood")[0].value).toBe(3);
   });
@@ -135,7 +157,7 @@ describe("updateMetricReading", () => {
     const [foreign] = hrvRows(other.id);
 
     const res = await updateMetricReading(
-      fd({ kind: "hrv", id: foreign.id, value: 99 })
+      fd({ kind: "hrv", target: target("hrv", foreign.id), value: 99 })
     );
     expect(res.ok).toBe(false);
     expect(hrvRows(other.id)[0].value).toBe(42);
@@ -148,7 +170,9 @@ describe("updateMetricReading", () => {
     const [row] = getMetricReadings(profile.id, "energy");
 
     expect(
-      await updateMetricReading(fd({ kind: "energy", id: row.id, value: 5 }))
+      await updateMetricReading(
+        fd({ kind: "energy", target: target("energy", row.id), value: 5 })
+      )
     ).toEqual({ ok: true });
     expect(getMetricReadings(profile.id, "energy")[0].value).toBe(5);
     expect(getMetricReadings(profile.id, "mood")[0].value).toBe(4);
@@ -164,13 +188,17 @@ describe("updateMetricReading", () => {
 
     // "4" means fairly calm on the axis the user sees → stored anxiety 2.
     expect(
-      await updateMetricReading(fd({ kind: "calm", id: row.id, value: 4 }))
+      await updateMetricReading(
+        fd({ kind: "calm", target: target("calm", row.id), value: 4 })
+      )
     ).toEqual({ ok: true });
     expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
     // An off-scale display slot converts to an off-scale stored value and is refused
     // rather than wrapping around into a plausible-looking rating.
     expect(
-      await updateMetricReading(fd({ kind: "calm", id: row.id, value: 9 }))
+      await updateMetricReading(
+        fd({ kind: "calm", target: target("calm", row.id), value: 9 })
+      )
     ).toMatchObject({ ok: false });
     expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
   });
@@ -178,8 +206,50 @@ describe("updateMetricReading", () => {
   it("rejects an unknown metric kind rather than guessing a store", async () => {
     seedActor();
     expect(
-      await updateMetricReading(fd({ kind: "not-a-metric", id: 1, value: 5 }))
+      await updateMetricReading(
+        fd({
+          kind: "not-a-metric",
+          target: target("not-a-metric", 1),
+          value: 5,
+        })
+      )
     ).toMatchObject({ ok: false });
+  });
+
+  it("corrects a FOLDED clinical observation on a stream metric's page (#2032)", async () => {
+    // The residual #1999 recorded and phase 2 closes. This row is a `medical_records`
+    // observation of the same identity, listed on /trends/metric/resting-hr — a page
+    // whose own store is `body_metrics`. Before the write core routed by row, the action
+    // resolved the store from `kind` and this edit could only be refused, which is why
+    // the row was rendered read-only.
+    const { profile } = seedActor();
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (?, ?, 'vitals', 'Resting Heart Rate', '70', 70, 'bpm', 'Resting Heart Rate', 'manual')`
+    ).run(profile.id, DATE);
+    const folded = getReadingSeries(profile.id, "Resting Heart Rate").find(
+      (r) => r.store === "medical_records"
+    );
+    expect(folded).toBeDefined();
+
+    const res = await updateMetricReading(
+      fd({
+        kind: "resting-hr",
+        target: readingTargetToken({
+          store: "medical_records",
+          id: folded!.rowId,
+          identity: folded!.identity,
+        }),
+        value: 64,
+      })
+    );
+    expect(res).toEqual({ ok: true });
+    expect(
+      db
+        .prepare(`SELECT value_num FROM medical_records WHERE id = ?`)
+        .get(folded!.rowId)
+    ).toEqual({ value_num: 64 });
   });
 });
 
@@ -189,7 +259,9 @@ describe("deleteMetricReading", () => {
     upsertMetricSamples(profile.id, sample(42), SRC);
     const [row] = hrvRows(profile.id);
 
-    await deleteMetricReading(fd({ kind: "hrv", id: row.id }));
+    await deleteMetricReading(
+      fd({ kind: "hrv", target: target("hrv", row.id) })
+    );
     expect(hrvRows(profile.id)).toEqual([]);
 
     // Without the tombstone the rolling window would simply re-insert it.
@@ -209,7 +281,9 @@ describe("deleteMetricReading", () => {
         .run(profile.id, DATE, 80, 21).lastInsertRowid
     );
 
-    await deleteMetricReading(fd({ kind: "body-fat", id }));
+    await deleteMetricReading(
+      fd({ kind: "body-fat", target: target("body-fat", id) })
+    );
     const row = db
       .prepare(`SELECT weight_kg, body_fat_pct FROM body_metrics WHERE id = ?`)
       .get(id) as { weight_kg: number | null; body_fat_pct: number | null };
@@ -217,12 +291,41 @@ describe("deleteMetricReading", () => {
     expect(row).toEqual({ weight_kg: 80, body_fat_pct: null });
   });
 
+  it("deletes a FOLDED clinical observation from a stream metric's page (#2032)", async () => {
+    const { profile } = seedActor();
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (?, ?, 'vitals', 'Resting Heart Rate', '72', 72, 'bpm', 'Resting Heart Rate', 'manual')`
+    ).run(profile.id, DATE);
+    const folded = getReadingSeries(profile.id, "Resting Heart Rate").find(
+      (r) => r.store === "medical_records"
+    );
+    const res = await deleteMetricReading(
+      fd({
+        kind: "resting-hr",
+        target: readingTargetToken({
+          store: "medical_records",
+          id: folded!.rowId,
+          identity: folded!.identity,
+        }),
+      })
+    );
+    // Undoable, because the clinical record's own delete capture is what ran.
+    expect(res.undoId).toBeGreaterThan(0);
+    expect(
+      getReadingSeries(profile.id, "Resting Heart Rate").map((r) => r.rowId)
+    ).not.toContain(folded!.rowId);
+  });
+
   it("deletes a mood check-in (a mis-tapped past day is recoverable)", async () => {
     const { profile } = seedActor();
     upsertMoodLog(profile.id, DATE, { valence: 1 });
     const [row] = getMetricReadings(profile.id, "mood");
 
-    await deleteMetricReading(fd({ kind: "mood", id: row.id }));
+    await deleteMetricReading(
+      fd({ kind: "mood", target: target("mood", row.id) })
+    );
     expect(getMetricReadings(profile.id, "mood")).toEqual([]);
   });
 
@@ -238,7 +341,9 @@ describe("deleteMetricReading", () => {
 
     // The body_metrics rule one store down: removing a mis-tapped energy must not
     // take that day's mood, note and Calm with it.
-    await deleteMetricReading(fd({ kind: "energy", id: row.id }));
+    await deleteMetricReading(
+      fd({ kind: "energy", target: target("energy", row.id) })
+    );
     expect(getMetricReadings(profile.id, "energy")).toEqual([]);
     expect(getMoodOnDate(profile.id, DATE)).toMatchObject({
       valence: 4,
@@ -254,7 +359,9 @@ describe("deleteMetricReading", () => {
     upsertMetricSamples(other.id, sample(42), SRC);
     const [foreign] = hrvRows(other.id);
 
-    const res = await deleteMetricReading(fd({ kind: "hrv", id: foreign.id }));
+    const res = await deleteMetricReading(
+      fd({ kind: "hrv", target: target("hrv", foreign.id) })
+    );
     expect(res).toEqual({ undoId: null });
     expect(hrvRows(other.id)).toHaveLength(1);
   });

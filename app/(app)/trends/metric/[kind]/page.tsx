@@ -62,7 +62,9 @@ import {
   METRIC_READING_STORE,
   METRIC_READINGS_LIMIT,
   getMetricReadings,
+  metricReadingTarget,
 } from "@/lib/metric-readings";
+import { readingTarget, readingTargetToken } from "@/lib/reading-placement";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { pediatricBpContextFor } from "@/lib/queries/bp-context";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
@@ -156,7 +158,13 @@ function readingRowsFor(
   // MetricReadingRow.observed.
   observations: readonly Reading[] = []
 ): MetricReadingRow[] {
-  const own = getMetricReadings(profileId, slug).map((r) => {
+  const own = getMetricReadings(profileId, slug).flatMap((r) => {
+    // Every row posts the PHYSICAL row it writes to (#2032). For this metric's own
+    // rows that is the registry's answer; a metric with no store is derived and never
+    // reaches here, so a missing target is a row we decline to offer actions on rather
+    // than one we guess a store for.
+    const target = metricReadingTarget(slug, r.id);
+    if (!target) return [];
     const shown =
       slug === "weight"
         ? dispWeight(r.value, weightUnit)
@@ -167,30 +175,42 @@ function readingRowsFor(
           slug === "calm"
           ? anxietyDisplaySlot(r.value)
           : round(r.value, decimals);
-    return {
-      id: r.id,
-      date: r.date,
-      display: String(shown),
-      editValue: shown,
-      source: r.source,
-      flag: r.flag,
-      edited: r.edited,
-      notes: r.notes,
-    };
+    return [
+      {
+        id: r.id,
+        date: r.date,
+        target: readingTargetToken(target),
+        display: String(shown),
+        editValue: shown,
+        source: r.source,
+        flag: r.flag,
+        edited: r.edited,
+        notes: r.notes,
+      },
+    ];
   });
   // The folded observations carry the identity's canonical unit, which for every
-  // metric that folds is the unit this page charts in (see getMetricJudgment).
-  const folded: MetricReadingRow[] = observations.map((r) => ({
-    id: r.rowId,
-    date: r.date,
-    display: String(round(r.value, decimals)),
-    editValue: round(r.value, decimals),
-    source: r.sourceKey,
-    flag: r.provenance?.flag ?? null,
-    edited: r.edited,
-    notes: r.notes,
-    observed: true,
-  }));
+  // metric that folds is the unit this page charts in (see getMetricJudgment). Each one
+  // names its OWN clinical record as its target, which is what makes it correctable
+  // here instead of read-only (#2032 — the residual #1999 recorded).
+  const folded: MetricReadingRow[] = observations.flatMap((r) => {
+    const target = readingTarget(r);
+    if (!target) return [];
+    return [
+      {
+        id: r.rowId,
+        date: r.date,
+        target: readingTargetToken(target),
+        display: String(round(r.value, decimals)),
+        editValue: round(r.value, decimals),
+        source: r.sourceKey,
+        flag: r.provenance?.flag ?? null,
+        edited: r.edited,
+        notes: r.notes,
+        observed: true,
+      },
+    ];
+  });
   // Newest first, the order the table reads in; a clinic reading sits on its own
   // day rather than at the end of the list.
   return [...own, ...folded].sort(
