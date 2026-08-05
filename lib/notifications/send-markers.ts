@@ -434,6 +434,12 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     key: "notify_messages",
     what: "the live-message pointer TABLE (migration 135), enumerated in lib/owned-tables.ts",
   },
+  // Reconciliation bookkeeping (profile_settings), not a send marker: it gates a silent
+  // EDIT, never a send, so it can never suppress an interruption.
+  {
+    key: "notify_digest_recon",
+    what: "the digest prose reconciler's last-rebuild record (#2069): `date|dependency stamp|epoch ms`, written by lib/notifications/reconcile.ts and read back by its own pre-check. Nothing is ever suppressed by it — it only decides whether a REBUILD is worth paying for, and its floor forces one regardless once the record is old enough",
+  },
   // Per-profile SCHEDULE and content preferences (profile_settings), not markers.
   {
     key: "notify_digest_hour",

@@ -819,7 +819,16 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // another hour is bad, but a reconcile error that stops a medication reminder is worse.
   try {
     const rc = await reconcileProfileMessages(profile.id);
-    if (rc.edited > 0 || rc.closed > 0 || rc.dropped > 0 || rc.deferred > 0) {
+    if (
+      rc.edited > 0 ||
+      rc.closed > 0 ||
+      rc.dropped > 0 ||
+      rc.deferred > 0 ||
+      // A pointer whose own reconciliation threw (#2070). The sweep carried on past it,
+      // which is exactly why it has to be visible here: without this the failure would
+      // be a silent per-profile regression in stale-keyboard cleanup.
+      rc.failed > 0
+    ) {
       log.info("messages reconciled", { profile: profile.id, ...rc });
     }
   } catch (e) {

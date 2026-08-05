@@ -403,7 +403,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "digest",
     reissuable: false,
-    why: "One per day, and the sweep's date arm closes yesterday's as soon as the guard of whichever family owns its keyboard refuses a tap. That keyboard is the offer tail, whose pointer the tick re-labels in place rather than re-sending.",
+    why: "One per day, and the sweep never re-issues it. It also never reaches the keyboard-expiry arm that closes a rolled-over message: `digest` declares a PROSE reconciler below, so the sweep's prose branch owns the pointer end to end, and at the day boundary it DROPS the pointer — untracked, no edit, no closing line — rather than closing the message (#2071). It could not have been closed by that arm anyway: every digest token is inert, so `decideReconcile` sees no claim and answers `none`. The keyboard itself is the offer tail, which the tick re-labels in place rather than re-sending (#1505).",
   },
   {
     kind: "upcoming",
@@ -452,7 +452,8 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
 // differs — so an unchanged tick performs zero Telegram calls, exactly like the food
 // nudge's additive class.
 //
-// DAY ROLLOVER CLOSES THE POINTER, NOT THE MESSAGE. A dated report is honest AS HISTORY:
+// DAY ROLLOVER DROPS THE POINTER, IT DOES NOT CLOSE THE MESSAGE. A dated report is honest
+// AS HISTORY:
 // yesterday's digest described yesterday, and replacing its text with "this is
 // yesterday's message" would destroy a report the reader may legitimately scroll back
 // to. Only the LIVE day's claims have to track the ledger, so the sweep simply stops
@@ -478,7 +479,7 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   {
     kind: "digest",
     prose: "digest",
-    why: "The digest's claims ARE its prose — an adherence fraction, a named missed item, a count of what is due — and every one of them can be resolved in the app while the message sits in the chat. Its keyboard is entirely inert, so nothing else in this registry could ever have covered it. Reconciled by re-running buildDigest for the pointer's date and rebuilding on change.",
+    why: "The digest's claims ARE its prose — an adherence fraction, a named missed item, a count of what is due — and every one of them can be resolved in the app while the message sits in the chat. Its keyboard is entirely inert, so nothing else in this registry could ever have covered it. Reconciled by re-running buildDigest for the pointer's date and rebuilding on change — behind the cheap dependency pre-check in ./digest-deps (#2069), which decides whether that rebuild is worth paying for and can only ever make it sooner. At the day boundary the pointer is DROPPED, not closed (#2071).",
   },
   {
     kind: "weekly-recap",
