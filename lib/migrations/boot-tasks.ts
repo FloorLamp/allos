@@ -201,13 +201,24 @@ export function resetInterruptedWork(
     // Provider backfills checkpoint after every completed item. A running row that
     // has stopped advancing past the shared lease was abandoned; pause it so the
     // next hourly integration pass resumes from the durable missing-row query.
-    db.exec(
-      `UPDATE integration_backfill_jobs
-         SET status = 'paused', retry_after_at = datetime('now'),
-             updated_at = datetime('now')
-       WHERE status IN ('queued','running')
-         AND updated_at < datetime('now', '${modifier}')`
-    );
+    // Partial-schema migration tests intentionally run boot tasks before migration
+    // 158 exists. Real boots have already run every migration, but this guard keeps
+    // the version-agnostic boot layer safe on those historical schema fixtures.
+    const backfillJobsReady =
+      db
+        .prepare(
+          `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+        )
+        .get("integration_backfill_jobs") != null;
+    if (backfillJobsReady) {
+      db.exec(
+        `UPDATE integration_backfill_jobs
+           SET status = 'paused', retry_after_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE status IN ('queued','running')
+           AND updated_at < datetime('now', '${modifier}')`
+      );
+    }
 
     // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by
     // flipping 'ready' -> 'committing' (bumping updated_at) before writing rows; a crash
