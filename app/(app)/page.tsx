@@ -1099,9 +1099,14 @@ export default async function Dashboard() {
   const nowEligible = NOW_CARD_IDS.filter((id) =>
     id === "session-recap" ? showRecapCard : gridPromotable.has(id)
   );
-  // Eligibility already excludes the empty case above, so reaching this point
-  // means the sleep widget has a fresh last-night summary to show.
-  const nowFreshSleep = nowEligible.includes("sleep-last-night");
+  // Eligibility only excludes the EMPTY case above, and the widget's empty gate
+  // tolerates lag up to the relabel window — so it can still be showing a night
+  // from several days ago. The "how did you sleep" card is a claim about THIS
+  // morning, so it needs the strict last-night freshness, not merely a rendered
+  // widget (the wakeDay-vs-today comparison NowSignals.freshSleepSummary asks for).
+  const nowFreshSleep =
+    nowEligible.includes("sleep-last-night") &&
+    sleepPresentation?.freshness === "last-night";
   const nowCardIds = rankNowCards({
     minutesOfDay: nowMinutes,
     // Only computed when sleep is actually in play — it is a 28-night regularity

@@ -2854,11 +2854,17 @@ if (!existingChild) {
 // weekend nights shifted ~90 min later) so the Trends → Body "Sleep regularity"
 // card (SRI) and the weekly-recap line have data. Stored as absolute instants
 // (source 'manual'), keyed on the time window like the Health Connect ingest.
+//
+// The newest night wakes TODAY, i.e. it IS last night. The window used to end
+// yesterday, which leaves a synced sleeper with no last-night sleep at all — the
+// state getSleepSignal now refuses to answer for, and the one the record label
+// dates rather than calling "Last night". Seeding a night nobody woke from would
+// make the sleep surfaces demo their own not-synced-yet path.
 const insSleep = db.prepare(
   `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
 );
-for (let i = 1; i <= 30; i++) {
+for (let i = 0; i <= 29; i++) {
   const wakeDay = daysAgo(i);
   const bedDay = shiftDateStr(wakeDay, -1);
   const dow = new Date(wakeDay + "T00:00:00Z").getUTCDay(); // 0=Sun … 6=Sat

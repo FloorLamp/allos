@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   lastNightSummary,
   latestDailySleepSummary,
+  isLastNight,
   sleepRecordPresentation,
   baselineDeltaPhrase,
   formatHm,
@@ -232,33 +233,68 @@ describe("latestDailySleepSummary", () => {
   });
 });
 
+describe("isLastNight — the shared relative-night rule", () => {
+  it("is true for a wake-day of today, because a wake-day dates the session's END", () => {
+    expect(isLastNight("2026-07-22", "2026-07-22")).toBe(true);
+  });
+
+  // Also the pre-waking state: after midnight the calendar day has rolled but the
+  // night in progress is not a recorded night, so nothing is last night yet.
+  it("is false for yesterday's wake-day — that is the night before last", () => {
+    expect(isLastNight("2026-07-21", "2026-07-22")).toBe(false);
+  });
+
+  it("is false for a future wake-day", () => {
+    expect(isLastNight("2026-07-23", "2026-07-22")).toBe(false);
+  });
+});
+
 describe("sleepRecordPresentation — issue #1186", () => {
   const present = (wakeDay: string) =>
     sleepRecordPresentation(wakeDay, "2026-07-22", DEFAULT_FORMAT_PREFS);
 
-  it("calls strictly yesterday Last night", () => {
-    expect(present("2026-07-21")).toEqual({
+  // `wakeDay` is the date the session ENDED, so the night you just woke from is
+  // dated TODAY. Counting the day gap alone was off by one night.
+  it("calls a today wake-day Last night", () => {
+    expect(present("2026-07-22")).toEqual({
       freshness: "last-night",
       label: "Last night",
     });
   });
 
-  it("never calls a today wake-day Last night", () => {
-    const result = present("2026-07-22");
+  it("never calls a yesterday wake-day Last night", () => {
+    const result = present("2026-07-21");
     expect(result.freshness).toBe("recent");
-    expect(result.label).toContain("Today");
+    expect(result.label).toContain("Tuesday, July 21");
+    expect(result.label).toContain("2 nights ago");
     expect(result.label).not.toContain("Last night");
   });
 
-  it("keeps a two-night-old record with an honest dated label", () => {
+  // The morning case that motivated the correction: the tracker has not pushed
+  // last night yet, so the newest record is the night before it. Naming that
+  // "Last night" reports the wrong night's sleep as this morning's.
+  it("keeps a three-night-old record with an honest dated label", () => {
     const result = present("2026-07-20");
     expect(result.freshness).toBe("recent");
     expect(result.label).toContain("Monday, July 20");
-    expect(result.label).toContain("2 nights ago");
+    expect(result.label).toContain("3 nights ago");
+  });
+
+  it("keeps the fourth night inside the relabel window", () => {
+    const result = present("2026-07-19");
+    expect(result.freshness).toBe("recent");
+    expect(result.label).toContain("4 nights ago");
   });
 
   it("hides a record older than the four-night relabel window", () => {
-    expect(present("2026-07-17")).toEqual({
+    expect(present("2026-07-18")).toEqual({
+      freshness: "stale",
+      label: "Sleep not synced",
+    });
+  });
+
+  it("hides a wake-day in the future rather than calling it fresh", () => {
+    expect(present("2026-07-23")).toEqual({
       freshness: "stale",
       label: "Sleep not synced",
     });
