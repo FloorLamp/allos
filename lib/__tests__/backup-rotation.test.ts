@@ -215,29 +215,39 @@ describe("planAsidePrune (#472)", () => {
   });
 });
 
-describe("isBackupDue", () => {
+describe("isBackupDue — the hour stays hour-typed; the clock is minutes (#2121)", () => {
   const cfg = { enabled: true, hour: 3 };
 
   it("is due at the configured hour when none taken today", () => {
-    expect(isBackupDue(cfg, 3, undefined, "2026-07-06")).toBe(true);
+    expect(isBackupDue(cfg, 3 * 60, 60, undefined, "2026-07-06")).toBe(true);
   });
 
-  it("retries in the following hour (matches notify slot window)", () => {
-    expect(isBackupDue(cfg, 4, undefined, "2026-07-06")).toBe(true);
+  it("retries an hour later (matches the notify slot retry band)", () => {
+    expect(isBackupDue(cfg, 4 * 60, 60, undefined, "2026-07-06")).toBe(true);
   });
 
-  it("is not due outside the window", () => {
-    expect(isBackupDue(cfg, 5, undefined, "2026-07-06")).toBe(false);
-    expect(isBackupDue(cfg, 2, undefined, "2026-07-06")).toBe(false);
+  it("is not due outside the two attempt bands", () => {
+    expect(isBackupDue(cfg, 5 * 60, 60, undefined, "2026-07-06")).toBe(false);
+    expect(isBackupDue(cfg, 2 * 60, 60, undefined, "2026-07-06")).toBe(false);
+  });
+
+  it("attempts at most twice a day under a 15-minute tick too", () => {
+    let due = 0;
+    for (let now = 0; now < 1440; now += 15) {
+      if (isBackupDue(cfg, now, 15, undefined, "2026-07-06")) due++;
+    }
+    expect(due).toBe(2);
   });
 
   it("is not due once one has been taken today", () => {
-    expect(isBackupDue(cfg, 3, "2026-07-06", "2026-07-06")).toBe(false);
+    expect(isBackupDue(cfg, 3 * 60, 60, "2026-07-06", "2026-07-06")).toBe(
+      false
+    );
   });
 
   it("is never due when disabled", () => {
     expect(
-      isBackupDue({ enabled: false, hour: 3 }, 3, undefined, "2026-07-06")
+      isBackupDue({ enabled: false, hour: 3 }, 3 * 60, 60, undefined, "2026-07-06")
     ).toBe(false);
   });
 });

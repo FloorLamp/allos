@@ -397,8 +397,9 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
     return mock;
   }
 
-  // Morning slot hour 8 + the 120-minute default wait → anything from 10:00 escalates.
-  const LATE_HOUR = 12;
+  // Morning slot 08:00 + the 120-minute default wait → anything from 10:00
+  // escalates; runEscalations takes the real minute of day since #2121.
+  const LATE_MINUTE = 12 * 60;
 
   it("the fixture really does escalate when the dose is simply unconfirmed", async () => {
     const { profileId, doseId, date } = escalationFixture();
@@ -408,7 +409,7 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       profileId,
       "Rearm",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(profileId)
     );
     expect(res.failed).toBe(false);
@@ -436,7 +437,7 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       profileId,
       "Rearm",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(profileId)
     );
     expect(res.failed).toBe(false);
@@ -461,7 +462,7 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       profileId,
       "Rearm",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(profileId)
     );
     expect(fetchMock).not.toHaveBeenCalled();
@@ -505,7 +506,7 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       profileId,
       "Rearm",
       date,
-      LATE_HOUR,
+      LATE_MINUTE,
       getNotifySchedule(profileId)
     );
     expect(fetchMock).toHaveBeenCalled();

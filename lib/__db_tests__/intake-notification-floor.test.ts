@@ -162,12 +162,13 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    // Default slot 8 + default 120-min wait → due from 10:00; use 12.
+    // Default slot 08:00 + default 120-min wait → due from 10:00; use noon
+    // (minute of day since #2121).
     const res = await runEscalations(
       p,
       "Floor Escalate (test)",
       date,
-      12,
+      12 * 60,
       getNotifySchedule(p)
     );
     expect(res.failed).toBe(false);

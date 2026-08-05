@@ -143,11 +143,14 @@ export function slotDue(
 // hourly tick fires a 07:30 slot at 08:00), or when it sits past the day's last
 // tick and would never fire at all (23:50 under hourly ticks — see the no-wrap
 // rule above). Hour-aligned slots are never at risk: every supported cadence
-// lands on :00. Returns the offending minutes so the caller can name them.
+// lands on :00. The default tolerance accepts the 15-minute sidecar cadence
+// (worst case 14 minutes late) as honouring a sub-hourly time — the warning is
+// for the hourly-crontab shape, not for ordinary tick quantisation. Returns the
+// offending minutes so the caller can name them.
 export function subHourlySlotsAtRisk(
   slotMinutes: readonly (number | null)[],
   observedTickMin: number,
-  toleranceMin = 5
+  toleranceMin = 15
 ): number[] {
   const tick = clampTickMinutes(observedTickMin);
   return slotMinutes.filter((m): m is number => {

@@ -22,13 +22,13 @@ const prefsForm = (over: Record<string, string>) =>
     telegram_enabled: "1",
     telegram_chat_id: "123",
     supp_morning_hour: "",
-    supp_midday_hour: "13",
-    supp_evening_hour: "20",
-    supp_bedtime_hour: "22",
+    supp_midday_hour: "13:00",
+    supp_evening_hour: "20:00",
+    supp_bedtime_hour: "22:00",
     workout_enabled: "1",
     digest_hour: "",
     recap_day: "",
-    recap_hour: "9",
+    recap_hour: "09:00",
     milestones_enabled: "1",
     preventive_enabled: "1",
     waking_start_hour: "8",
@@ -51,17 +51,34 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 
-  it("persists a manual Morning hour as a number (auto off)", async () => {
+  it("persists a manual Morning time as HH:MM at minute grain (auto off)", async () => {
     const login = createLogin();
     const profile = createProfile("manual-morning", login.id);
     actAs(login, profile);
 
-    await saveNotificationPrefs(prefsForm({ supp_morning_hour: "9" }));
+    await saveNotificationPrefs(prefsForm({ supp_morning_hour: "09:15" }));
 
-    expect(getProfileSetting(profile.id, "notify_supp_morning_hour")).toBe("9");
+    expect(getProfileSetting(profile.id, "notify_supp_morning_hour")).toBe(
+      "09:15"
+    );
     const sched = getNotifySchedule(profile.id);
     expect(sched.morningAuto).toBe(false);
-    expect(sched.supplementHours.Morning).toBe(9);
+    expect(sched.supplementMinutes.Morning).toBe(9 * 60 + 15);
+  });
+
+  it("still accepts a LEGACY bare-hour field from an old open tab, as HH:00", async () => {
+    const login = createLogin();
+    const profile = createProfile("legacy-morning", login.id);
+    actAs(login, profile);
+
+    await saveNotificationPrefs(prefsForm({ supp_morning_hour: "9" }));
+
+    // Stored canonically — the write path formats, so the legacy shape ends at
+    // the boundary rather than persisting.
+    expect(getProfileSetting(profile.id, "notify_supp_morning_hour")).toBe(
+      "09:00"
+    );
+    expect(getNotifySchedule(profile.id).supplementMinutes.Morning).toBe(9 * 60);
   });
 
   it("records 'auto' for the digest, turning it on at the wake hour", async () => {
@@ -85,7 +102,7 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     expect(getProfileSetting(profile.id, "notify_digest_hour")).toBe("");
     const sched = getNotifySchedule(profile.id);
     expect(sched.digestAuto).toBe(false);
-    expect(sched.digestHour).toBeNull();
+    expect(sched.digestMinute).toBeNull();
   });
 
   it("sleep summary is ON by default (#1378) and the toggle is an opt-OUT", async () => {

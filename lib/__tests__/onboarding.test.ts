@@ -221,13 +221,18 @@ describe("onboarding wizard steps", () => {
 
 describe("onboarding notification schedule", () => {
   const schedule = {
-    supplementHours: { Morning: 8, Midday: 13, Evening: 20, Bedtime: 22 },
+    supplementMinutes: {
+      Morning: 8 * 60,
+      Midday: 13 * 60,
+      Evening: 20 * 60,
+      Bedtime: 22 * 60,
+    },
     morningAuto: false,
     workoutEnabled: true,
-    digestHour: null,
+    digestMinute: null,
     digestAuto: false,
     weeklyRecapDay: null,
-    weeklyRecapHour: 9,
+    weeklyRecapMinute: 9 * 60,
     milestonesEnabled: true,
     preventiveEnabled: true,
     wakingStartHour: 8,
@@ -238,7 +243,7 @@ describe("onboarding notification schedule", () => {
     const safety = onboardingNotificationSchedule("safety-only", schedule);
     expect(safety).toMatchObject({
       workoutEnabled: false,
-      digestHour: null,
+      digestMinute: null,
       preventiveEnabled: false,
     });
 
@@ -248,7 +253,7 @@ describe("onboarding notification schedule", () => {
     );
     expect(guidance).toMatchObject({
       workoutEnabled: true,
-      digestHour: 8,
+      digestMinute: 8 * 60,
       preventiveEnabled: false,
     });
 
@@ -258,20 +263,20 @@ describe("onboarding notification schedule", () => {
     );
     expect(upcoming).toMatchObject({
       workoutEnabled: true,
-      digestHour: 8,
+      digestMinute: 8 * 60,
       preventiveEnabled: true,
     });
 
     const none = onboardingNotificationSchedule("none", schedule);
     expect(none).toMatchObject({
-      supplementHours: {
+      supplementMinutes: {
         Morning: null,
         Midday: null,
         Evening: null,
         Bedtime: null,
       },
       workoutEnabled: false,
-      digestHour: null,
+      digestMinute: null,
       milestonesEnabled: false,
       preventiveEnabled: false,
     });
@@ -282,17 +287,22 @@ describe("onboarding notification schedule", () => {
 
     expect(
       onboardingNotificationSchedule("safety-only", disabled, "none")
-        .supplementHours
-    ).toEqual({ Morning: 8, Midday: 13, Evening: 20, Bedtime: 22 });
+        .supplementMinutes
+    ).toEqual({
+      Morning: 8 * 60,
+      Midday: 13 * 60,
+      Evening: 20 * 60,
+      Bedtime: 22 * 60,
+    });
 
     const manuallyAdjusted = {
       ...disabled,
-      supplementHours: { ...disabled.supplementHours, Evening: 19 },
+      supplementMinutes: { ...disabled.supplementMinutes, Evening: 19 * 60 },
     };
     expect(
       onboardingNotificationSchedule("safety-only", manuallyAdjusted, "none")
-        .supplementHours
-    ).toEqual({ Morning: null, Midday: null, Evening: 19, Bedtime: null });
+        .supplementMinutes
+    ).toEqual({ Morning: null, Midday: null, Evening: 19 * 60, Bedtime: null });
   });
 });
 
