@@ -362,11 +362,7 @@ export function renderFoodNudge(
       // names WHAT it is about and WHEN it was tapped, so the sentence only has to say
       // what the numbers do.
       opts.picker && opts.tz
-        ? correctionPickerTitle(
-            "when did you eat",
-            opts.picker.burst,
-            opts.tz
-          )
+        ? correctionPickerTitle("when did you eat", opts.picker.burst, opts.tz)
         : corrections.length > 0
           ? "🕐 Ate earlier than you tapped? Nudge it back, or tap the row for an exact time."
           : null,

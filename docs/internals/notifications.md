@@ -411,11 +411,74 @@ access-filtered member checklist and a send-test.
 morning/midday/evening supplement slots and is opt-in per profile. Its keyboard is
 the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
 per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
-(#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
+(#221) — each carrying a day-total "(n)" suffix, plus the reserved `__protein__`
 pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
 "✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
+
+That "(n)" was slot-scoped until #2019, and stopped being so with the read-time
+window derivation it depended on. The protein button's count is the one that cannot
+come from the `food_log` day counter — the reserved key never lands there — so it is
+counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
+which keeps ONE suffix rule for every button on the keyboard.
+
+### Time correction: `foodtime` / `dosetime` (#2019, #2020)
+
+A one-tap button in a chat carries a contract — "I'm eating NOW", "I'm taking this
+NOW" — so **the tap instant IS a measurement** of when the thing happened, with a
+known error. Two things were missing: recording it, and a correction path for when
+the contract is false because the tap was late.
+
+**The capture.** A Telegram food tap writes `food_log_events.eaten_at` with
+`time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
+stamp migration 056 froze, and stays the ranking input. A write with nothing to
+state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
+reintroduce the guess under a more authoritative name. On the dose side there is no
+schema at all: `intake_item_logs.given_at` has carried the administration instant
+since migration 041, and the PRN redose window already arms off it.
+
+**The offer is a QUERY over ledger state**, never a memory of what some earlier
+message rendered — which is why the rows survive a rebuild, a pointer rotation and a
+restart, and simply appear on whichever keyboard is live. `lib/correction-time.ts`
+holds the whole model, domain-blind, and `lib/notifications/correction-rows.ts`
+renders it for both:
+
+- taps within ~15 min collapse into a **burst**, because burst-mates share one error
+  — dinner logged two hours late is off by two hours for all four servings;
+- the row is `🕐 <name> · −1h · −2h · −3h`, where the NAME button is the picker (a
+  fifth button would shrink a four-button row below legibility);
+- 🕐 drills down to **absolute hours** — the past twelve, starting one hour past the
+  last chip, three per row, plus `↩︎ Back` — the `symp:`→`symsev:` shape, except the
+  quick-log buttons stay on screen so `↩︎ Back` can rebuild from the live keyboard.
+
+**Every offer is anchored to the immutable tap stamp**, which makes a chip
+idempotent (the same chip tapped twice lands on the same instant, so two people
+tapping one message cannot walk a serving four hours back) and keeps a burst's
+internal spread. The picker is absolute rather than relative so the stamp does not
+drift with the seconds between rendering the keyboard and choosing an answer. An
+offered hour LATER than the current hour resolves to **yesterday** — which is how
+the cross-midnight re-date falls out of the same computation.
+
+**The two domains differ in exactly one place.** A serving's day is a fact about the
+serving, so a food correction crossing midnight moves the event's `date` AND the
+`food_log` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
+(#614), so `dosetime` moves `given_at` and nothing else, and the toast says so. The
+dose correction also never re-runs the phantom-dose proximity guard (it runs at
+INSERT time and a correction may legitimately move two administrations together) and
+never re-arms an escalation (#1933) — it is a correction of history. It can only
+move an instant EARLIER, so the redose window only ever becomes more conservative.
+
+`foodtime`/`foodtimeat` join the `food` family and `dosetime`/`dosetimeat` the
+`intake-dose` family in `RECONCILE_PREFIXES`. They are **not inert**: a chip claims
+"these entries are still correctable here", which stops being true an hour after the
+burst. The sweep strips them in one trailing edit per logging burst and then
+reconciles to zero calls — and the same rule closes an **abandoned open picker**,
+since a lapsed anchor drops out of the offer set and the plain nudge comes back. A
+picker whose burst is still fresh SURVIVES the sweep's rebuild (`openPickerAnchor`
+reads it back off the live keyboard, the way `countVisibleFoodButtons` reads back the
+expansion), because reconciliation may reduce what a chat claims but must not change
+what the user asked to see.
 
 **Capped groups rank below floor groups (#1822 item 5).** The ranking above is
 usage-only, which put "🍷 Alcohol" on the 08:00 keyboard for a profile who logs

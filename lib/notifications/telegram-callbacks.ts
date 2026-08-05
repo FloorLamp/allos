@@ -20,10 +20,7 @@ import {
   parseCorrectionAtToken,
   parseCorrectionChipToken,
 } from "../correction-time";
-import {
-  DOSE_TIME_PREFIXES,
-  FOOD_TIME_PREFIXES,
-} from "./correction-rows";
+import { DOSE_TIME_PREFIXES, FOOD_TIME_PREFIXES } from "./correction-rows";
 import {
   handleDoseTimeAt,
   handleDoseTimeChip,

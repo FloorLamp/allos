@@ -277,7 +277,9 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
       cq("5552024", `foodtime:${pid}:${anchor}:60`, kb)
     );
     expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T19:00:00.000Z");
-    expect(String(answer.mock.calls[0][1])).toMatch(/nothing was changed|Too late/);
+    expect(String(answer.mock.calls[0][1])).toMatch(
+      /nothing was changed|Too late/
+    );
   });
 });
 
@@ -534,13 +536,17 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     markDoseTaken(pid, doseId, itemId, today(pid));
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
-    const armedBefore = getMedicationFamilyStates(pid, today(pid)).get(itemId)!
-      .latestGivenAt!;
+    const armedBefore = getMedicationFamilyStates(pid, today(pid)).get(
+      itemId
+    )!.latestGivenAt!;
     const anchor = doseLogs(pid)[0].id;
-    await handleCallbackQuery(cq("5552032", `dosetime:${pid}:${anchor}:180`, []));
+    await handleCallbackQuery(
+      cq("5552032", `dosetime:${pid}:${anchor}:180`, [])
+    );
 
-    const armedAfter = getMedicationFamilyStates(pid, today(pid)).get(itemId)!
-      .latestGivenAt!;
+    const armedAfter = getMedicationFamilyStates(pid, today(pid)).get(
+      itemId
+    )!.latestGivenAt!;
     // The arming dose the safety read consults is the corrected one …
     expect(armedAfter).not.toBe(armedBefore);
     // … and it is EARLIER, so the computed freshness can only shrink. A correction of a

@@ -112,9 +112,7 @@ function ms(iso: string): number {
 // Group taps into bursts. Sorted by tap instant (id breaks a tie, which is what an
 // identical stamp on two rows written in one transaction produces), and a gap wider
 // than BURST_GAP_MIN starts a new burst.
-export function collapseBursts(
-  events: readonly TapEvent[]
-): CorrectionBurst[] {
+export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
   const sorted = [...events]
     .filter((e) => Number.isFinite(ms(e.tapAt)))
     .sort((a, b) => ms(a.tapAt) - ms(b.tapAt) || a.id - b.id);
@@ -193,7 +191,10 @@ export function chipInstant(tapAt: string, hoursBack: number): Date {
 export function pickerHourOptions(now: Date, tz: string): string[] {
   const out: string[] = [];
   for (let k = PICKER_FIRST_HOURS_BACK; k <= PICKER_LAST_HOURS_BACK; k++) {
-    const { hhmm } = zonedDateParts(tz, new Date(now.getTime() - k * 60 * MIN_MS));
+    const { hhmm } = zonedDateParts(
+      tz,
+      new Date(now.getTime() - k * 60 * MIN_MS)
+    );
     const hour = `${hhmm.slice(0, 2)}:00`;
     if (!out.includes(hour)) out.push(hour);
   }
@@ -268,9 +269,7 @@ export function chipLabel(hoursBack: number): string {
 // predicate covers the whole drill-down — the `symp:`→`symsev:` shape with the second
 // step folded in, because unlike a severity the picker has no state of its own.
 export type CorrectionPickerStep =
-  | { kind: "open" }
-  | { kind: "back" }
-  | { kind: "at"; hhmm: string };
+  { kind: "open" } | { kind: "back" } | { kind: "at"; hhmm: string };
 
 export interface CorrectionChipToken {
   profileId: number;

@@ -138,7 +138,10 @@ describe("freshness — the offer and the refusal are one predicate", () => {
   });
 
   it("drops a burst whose taps have all aged out", () => {
-    const events = [tap(1, "2026-08-05T18:00:00Z"), tap(2, "2026-08-05T18:05:00Z")];
+    const events = [
+      tap(1, "2026-08-05T18:00:00Z"),
+      tap(2, "2026-08-05T18:05:00Z"),
+    ];
     expect(correctionBursts(events, NOW)).toEqual([]);
   });
 });
@@ -307,10 +310,12 @@ describe("tokens — ids only, and the shapes both domains share", () => {
         DOSE_TIME_PREFIXES.at,
       ])
     ).toBe(412);
-    expect(correctionTokenAnchor("food:3:Evening:2026-08-05:salmon", [
-      DOSE_TIME_PREFIXES.chip,
-      DOSE_TIME_PREFIXES.at,
-    ])).toBeNull();
+    expect(
+      correctionTokenAnchor("food:3:Evening:2026-08-05:salmon", [
+        DOSE_TIME_PREFIXES.chip,
+        DOSE_TIME_PREFIXES.at,
+      ])
+    ).toBeNull();
   });
 });
 
@@ -374,12 +379,9 @@ describe("the rendered rows", () => {
     expect(openPickerAnchor(tokens, FOOD_TIME_PREFIXES)).toBe(11);
     expect(openPickerAnchor(tokens, DOSE_TIME_PREFIXES)).toBeNull();
     // A keyboard showing the CHIPS is not showing a picker.
-    const chipTokens = correctionActions(
-      FOOD_TIME_PREFIXES,
-      3,
-      bursts,
-      TZ
-    ).map((a) => a.data!);
+    const chipTokens = correctionActions(FOOD_TIME_PREFIXES, 3, bursts, TZ).map(
+      (a) => a.data!
+    );
     expect(openPickerAnchor(chipTokens, FOOD_TIME_PREFIXES)).toBeNull();
   });
 });

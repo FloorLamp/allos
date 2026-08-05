@@ -41,13 +41,7 @@ const RANKED = RANKED_GROUPS.map((g) => g.slug);
 
 describe("renderFoodNudge", () => {
   it("renders the top-N ranked keys as quick-log buttons in order", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map()
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
     const logButtons = (msg.actions ?? []).filter((a) =>
       a.data?.startsWith("food:")
     );
@@ -113,14 +107,9 @@ describe("renderFoodNudge", () => {
       weeklyAverageGrams: 95,
       trailing: { grams: 92, dayOne: false },
     };
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      { proteinLine: proteinTodayNudgeParts(t) }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      proteinLine: proteinTodayNudgeParts(t),
+    });
     // The nudge renders the SAME line lib/protein composes for any other surface —
     // one classification, one set of words (#221).
     expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
@@ -133,24 +122,12 @@ describe("renderFoodNudge", () => {
   });
 
   it("omits the protein line when none is supplied (no bare 0 g nag)", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map()
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
     expect(plainBody(msg.body)).not.toMatch(/Protein/);
   });
 
   it("prompts to tap when nothing is logged yet, with no tally", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Evening",
-      DATE,
-      RANKED,
-      new Map()
-    );
+    const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map());
     expect(msg.body).toContain("Tap what you've eaten");
     expect(msg.body).not.toContain("✓");
   });
@@ -160,14 +137,9 @@ describe("renderFoodNudge", () => {
   // keyboard is the whole surface, and the long tail is reached with "Show more".
   it("renders no deep-link button, compact or fully expanded", () => {
     for (const visibleCount of [undefined, RANKED.length]) {
-      const msg = renderFoodNudge(
-        1,
-        "Morning",
-        DATE,
-        RANKED,
-        new Map(),
-        { visibleCount }
-      );
+      const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+        visibleCount,
+      });
       expect((msg.actions ?? []).some((a) => a.url)).toBe(false);
     }
   });
@@ -184,16 +156,9 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   const withProtein = [RANKED[0], PROTEIN_NUDGE_KEY, ...RANKED.slice(1)];
 
   it("renders the reserved key as a '+Xg protein' button, not a food group", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Evening",
-      DATE,
-      withProtein,
-      new Map(),
-      {
-        proteinPresetGrams: 30,
-      }
-    );
+    const msg = renderFoodNudge(1, "Evening", DATE, withProtein, new Map(), {
+      proteinPresetGrams: 30,
+    });
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
@@ -224,14 +189,9 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   });
 
   it("shows a bare button (no suffix) when no protein has been logged today", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Evening",
-      DATE,
-      withProtein,
-      new Map(),
-      { proteinPresetGrams: 25 }
-    );
+    const msg = renderFoodNudge(1, "Evening", DATE, withProtein, new Map(), {
+      proteinPresetGrams: 25,
+    });
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
@@ -241,14 +201,9 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   // #1822 item 6: one keyboard, one label grammar. Every food-group button leads with
   // its catalog glyph (#1710); the protein button was the sole exception.
   it("leads with a glyph like every sibling button, and never a group's glyph", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Evening",
-      DATE,
-      withProtein,
-      new Map(),
-      { proteinPresetGrams: 25 }
-    );
+    const msg = renderFoodNudge(1, "Evening", DATE, withProtein, new Map(), {
+      proteinPresetGrams: 25,
+    });
     const quickLog = (msg.actions ?? []).filter(
       (a) => a.data?.startsWith("food:") || a.data?.startsWith("foodprotein:")
     );
@@ -267,13 +222,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   });
 
   it("falls back to the default preset grams when none is supplied", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Evening",
-      DATE,
-      withProtein,
-      new Map()
-    );
+    const msg = renderFoodNudge(1, "Evening", DATE, withProtein, new Map());
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
@@ -285,16 +234,9 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
 describe("renderFoodNudge progressive expansion (#1075)", () => {
   it("shows exactly visibleCount ranked buttons and a Show more row below the total", () => {
     for (const vc of [6, 12]) {
-      const msg = renderFoodNudge(
-        1,
-        "Morning",
-        DATE,
-        RANKED,
-        new Map(),
-        {
-          visibleCount: vc,
-        }
-      );
+      const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+        visibleCount: vc,
+      });
       const logButtons = (msg.actions ?? []).filter((a) =>
         a.data?.startsWith("food:")
       );
@@ -308,14 +250,9 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
   });
 
   it("drops the Show more row when visibleCount reaches the total", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      { visibleCount: RANKED.length }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      visibleCount: RANKED.length,
+    });
     const logButtons = (msg.actions ?? []).filter((a) =>
       a.data?.startsWith("food:")
     );
@@ -326,14 +263,9 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
   });
 
   it("drops the Show more row when visibleCount exceeds the total", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      { visibleCount: RANKED.length + 6 }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      visibleCount: RANKED.length + 6,
+    });
     expect(
       (msg.actions ?? []).some((a) => a.data?.startsWith("foodmore:"))
     ).toBe(false);
@@ -349,27 +281,16 @@ function expandControls(msg: ReturnType<typeof renderFoodNudge>) {
 
 describe("renderFoodNudge 'Show less' (#1807)", () => {
   it("is absent from the default compact send", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map()
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
     expect(
       (msg.actions ?? []).some((a) => a.data?.startsWith("foodless:"))
     ).toBe(false);
   });
 
   it("appears once expanded past the default, sharing the Show more row", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      { visibleCount: FOOD_NUDGE_BUTTON_COUNT * 2 }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      visibleCount: FOOD_NUDGE_BUTTON_COUNT * 2,
+    });
     const controls = expandControls(msg);
     expect(controls.map((a) => a.label)).toEqual([
       "➕ Show more",
@@ -382,14 +303,9 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
   });
 
   it("stands alone at full expansion, where Show more has dropped", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      { visibleCount: RANKED.length }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      visibleCount: RANKED.length,
+    });
     expect(expandControls(msg).map((a) => a.label)).toEqual(["➖ Show less"]);
   });
 
@@ -397,14 +313,9 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
   // ranked list can't produce a collapse button whose tap would change nothing.
   it("is absent when the request exceeds the ranked list but the render is still compact", () => {
     const short = RANKED.slice(0, 4);
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      short,
-      new Map(),
-      { visibleCount: 12 }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, short, new Map(), {
+      visibleCount: 12,
+    });
     expect(expandControls(msg)).toEqual([]);
   });
 });
@@ -448,16 +359,9 @@ describe("countVisibleFoodButtons (#1075)", () => {
   });
 
   it("round-trips a rendered nudge's visible count", () => {
-    const msg = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      {
-        visibleCount: 12,
-      }
-    );
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
+      visibleCount: 12,
+    });
     const keyboard = (msg.actions ?? []).map((a) => [
       { text: a.label, callback_data: a.data },
     ]);

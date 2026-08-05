@@ -1827,9 +1827,10 @@ export function restampDoseLogsCore(
       if (!t) continue;
       const instant = resolve(t.tapAt);
       if (dateStrInTz(tz, instant) !== t.row.date) crossedMidnight = true;
-      db.prepare(
-        `UPDATE intake_item_logs SET given_at = ? WHERE id = ?`
-      ).run(utcSqlString(instant), id);
+      db.prepare(`UPDATE intake_item_logs SET given_at = ? WHERE id = ?`).run(
+        utcSqlString(instant),
+        id
+      );
     }
     const anchorRow = byId.get(burst.fromId)?.row;
     return {

@@ -246,7 +246,8 @@ export function getFoodMealDays(
       // The EATING time where one was captured (#2019), the tap time otherwise. The
       // list exists to make two servings of one group distinguishable, and after a
       // correction the tap time is no longer the number the user would recognise.
-      time: zonedDateParts(tz, new Date(event.eaten_at ?? event.logged_at)).hhmm,
+      time: zonedDateParts(tz, new Date(event.eaten_at ?? event.logged_at))
+        .hhmm,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.

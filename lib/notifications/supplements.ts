@@ -108,7 +108,6 @@ export function withDoseCorrections(
   };
 }
 
-
 // Rolling window for the adherence percentage shown on each line —
 // matches the supplements page's strip length.
 const ADHERENCE_DAYS = 14;

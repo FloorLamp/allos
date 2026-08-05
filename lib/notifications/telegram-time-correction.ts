@@ -168,7 +168,10 @@ function foodRebuild(
   );
 }
 
-async function rebuildFood(r: Resolved, picker?: CorrectionBurst): Promise<void> {
+async function rebuildFood(
+  r: Resolved,
+  picker?: CorrectionBurst
+): Promise<void> {
   const rebuilt = foodRebuild(r.profileId, r.rows, r.now, picker);
   if (rebuilt)
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
@@ -222,7 +225,11 @@ export async function handleFoodTimeAt(
     return;
   }
   const instant = statedHourInstant(hhmm, r.now, r.tz);
-  const outcome = restampFoodEventsCore(r.profileId, token.fromId, () => instant);
+  const outcome = restampFoodEventsCore(
+    r.profileId,
+    token.fromId,
+    () => instant
+  );
   await answerCallbackQuery(
     cq.id,
     outcome.kind === "restamped"
@@ -305,10 +312,7 @@ async function rebuildDose(
   // that was tapped.
   await rebuildMessage(r.profileId, r.chatId, r.messageId, {
     ...rebuilt,
-    actions: [
-      ...(rebuilt.actions ?? []),
-      ...doseCorrectionActions(r, picker),
-    ],
+    actions: [...(rebuilt.actions ?? []), ...doseCorrectionActions(r, picker)],
   });
 }
 
@@ -326,12 +330,7 @@ function doseCorrectionActions(
         r.now,
         r.tz
       )
-    : correctionActions(
-        DOSE_TIME_PREFIXES,
-        r.profileId,
-        [r.burst],
-        r.tz
-      );
+    : correctionActions(DOSE_TIME_PREFIXES, r.profileId, [r.burst], r.tz);
 }
 
 export async function handleDoseTimeChip(

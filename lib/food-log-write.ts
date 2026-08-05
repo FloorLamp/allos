@@ -69,17 +69,22 @@ function mealServingCount(
 ): number {
   const events = db
     .prepare(
-      `SELECT logged_at, meal_slot FROM food_log_events
+      `SELECT logged_at, meal_slot, eaten_at FROM food_log_events
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .all(profileId, date, slug) as {
     logged_at: string;
     meal_slot: FoodSlot | null;
+    eaten_at: string | null;
   }[];
   return events.filter(
     (event) =>
-      foodSlotForProfileEvent(profileId, event.logged_at, event.meal_slot) ===
-      mealSlot
+      foodSlotForProfileEvent(
+        profileId,
+        event.logged_at,
+        event.meal_slot,
+        event.eaten_at
+      ) === mealSlot
   ).length;
 }
 
@@ -181,7 +186,7 @@ export function undoFoodServingCore(
 
     const candidates = db
       .prepare(
-        `SELECT id, logged_at, meal_slot FROM food_log_events
+        `SELECT id, logged_at, meal_slot, eaten_at FROM food_log_events
           WHERE profile_id = ? AND date = ? AND group_key = ?
           ORDER BY logged_at DESC, id DESC`
       )
@@ -189,6 +194,7 @@ export function undoFoodServingCore(
       id: number;
       logged_at: string;
       meal_slot: FoodSlot | null;
+      eaten_at: string | null;
     }[];
     const event = mealSlot
       ? candidates.find(
@@ -196,7 +202,8 @@ export function undoFoodServingCore(
             foodSlotForProfileEvent(
               profileId,
               candidate.logged_at,
-              candidate.meal_slot
+              candidate.meal_slot,
+              candidate.eaten_at
             ) === mealSlot
         )
       : candidates[0];
@@ -238,7 +245,12 @@ export function undoFoodServingCore(
       .get(profileId, date, slug) as { servings: number } | undefined;
     const removedSlot =
       mealSlot && event
-        ? foodSlotForProfileEvent(profileId, event.logged_at, event.meal_slot)
+        ? foodSlotForProfileEvent(
+            profileId,
+            event.logged_at,
+            event.meal_slot,
+            event.eaten_at
+          )
         : undefined;
     return {
       kind: "undone",
@@ -338,7 +350,8 @@ export function updateFoodLogEventCore(
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+        `SELECT group_key, date, logged_at, meal_slot, eaten_at
+           FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
       .get(eventId, profileId) as
@@ -347,6 +360,7 @@ export function updateFoodLogEventCore(
           date: string;
           logged_at: string;
           meal_slot: FoodSlot | null;
+          eaten_at: string | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -368,9 +382,15 @@ export function updateFoodLogEventCore(
     const fromSlot = foodSlotForProfileEvent(
       profileId,
       row.logged_at,
-      row.meal_slot
+      row.meal_slot,
+      row.eaten_at
     );
-    const toSlot = foodSlotForProfileEvent(profileId, row.logged_at, nextSlot);
+    const toSlot = foodSlotForProfileEvent(
+      profileId,
+      row.logged_at,
+      nextSlot,
+      row.eaten_at
+    );
 
     if (nextDate !== row.date || nextGroup !== row.group_key) {
       db.prepare(
@@ -446,7 +466,8 @@ export function deleteFoodLogEventCore(
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+        `SELECT group_key, date, logged_at, meal_slot, eaten_at
+           FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
       .get(eventId, profileId) as
@@ -455,6 +476,7 @@ export function deleteFoodLogEventCore(
           date: string;
           logged_at: string;
           meal_slot: FoodSlot | null;
+          eaten_at: string | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -466,7 +488,8 @@ export function deleteFoodLogEventCore(
     const slot = foodSlotForProfileEvent(
       profileId,
       row.logged_at,
-      row.meal_slot
+      row.meal_slot,
+      row.eaten_at
     );
 
     // The stored key is used verbatim (never canonicalized) for the decrement: a retired
