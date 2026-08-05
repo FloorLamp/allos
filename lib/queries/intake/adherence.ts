@@ -1030,7 +1030,8 @@ export function getIntakeDoseHistoryForItems(
 // side effect to invert is supply. The notify one-shot marker (notify_last_redose_*) is
 // id-keyed and never recycles, so a stale marker after a delete is a harmless dead ref.
 //
-// Kind 'administration' in deleted_rows (the shared 24h-purged holding table); restore
+// Kind 'administration' in deleted_rows (the shared retention-purged holding table);
+// restore
 // re-inserts the ledger row (NEW id) and RE-decrements supply. The undo toast +
 // undoDelete action route restore back here via restoreDeletedRow's kind branch.
 

@@ -2138,8 +2138,17 @@ better than naming its category.
 Deleting an activity, body-metrics entry, biomarker record,
 supplement/medication, wellness practice, substance-use history row, **practice
 session**, or **logged food serving** offers a one-tap **Undo** toast; the row
-(and its children) is held for 24 hours and restored intact if you undo, then
-purged. Every "remove one logged event" path behaves the same way — removing one
+(and its children) is held and restored intact if you undo, then purged.
+
+The toast is no longer the only way back. **Data → Trash** (issue #2013) lists
+every capture that is still restorable — what it was, when you deleted it, how
+many related rows came with it, and when it expires — with **Restore** (the same
+one-tap restore the toast performs) and **Delete permanently**, plus **Empty
+trash** for the lot. An admin sets the retention window in **Settings → Server →
+Trash retention** (30 days by default, 1–365). The window holds the deleted
+row's full content and any video clips captured with it, so a longer window
+keeps deleted health data on the server longer; "Delete permanently" removes a
+row and its clips immediately. Every "remove one logged event" path behaves the same way — removing one
 session of a practice is as recoverable as removing the whole practice, and
 undoing a serving gives back both the ledger row and the day counter it
 decremented, with its meal window and stated eating time intact (which a re-tap

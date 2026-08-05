@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
-import { getUnitPrefs, getUserFullName } from "@/lib/settings";
+import {
+  getTrashRetentionDays,
+  getUnitPrefs,
+  getUserFullName,
+} from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { PageHeader } from "@/components/ui";
@@ -12,6 +16,7 @@ import IntegrationsGrid from "@/components/IntegrationsGrid";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import CoverageSection from "@/app/(app)/data/CoverageSection";
+import TrashSection from "@/app/(app)/data/TrashSection";
 import { getImportJobs } from "@/app/(app)/data/actions";
 import { listDocumentTombstones } from "@/lib/document-tombstones";
 import { listCorrectionSources } from "@/lib/bulk-correction-db";
@@ -27,7 +32,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const SECTIONS = ["import", "review", "coverage", "manage"] as const;
+const SECTIONS = ["import", "review", "coverage", "manage", "trash"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function parseSection(value: string | string[] | undefined): Section {
@@ -45,9 +50,12 @@ function parseSection(value: string | string[] | undefined): Section {
 // #1086) is the catalog-coverage-gaps workflow (formerly /coverage, then briefly
 // /records#coverage) — biomarkers/meds/conditions the curated catalogs don't cover
 // yet, with the track/enrich/request paths — a data-management workflow about the
-// app's coverage of your data, not a clinical record. The active tab is
-// deep-linkable via ?section= (import | review | coverage | manage); /import and
-// /coverage redirect here.
+// app's coverage of your data, not a clinical record. The "Trash" tab (issue #2013)
+// is the rendered view over the restorable capture every destructive delete has
+// written since #30 — deleted rows, restorable for an admin-configured window, with
+// per-row "Delete permanently" and "Empty trash". The active tab is deep-linkable via
+// ?section= (import | review | coverage | manage | trash); /import and /coverage
+// redirect here.
 export default async function DataPage(
   props: {
     searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -84,6 +92,18 @@ export default async function DataPage(
   let activeSection: React.ReactNode;
   if (section === "manage") {
     activeSection = <DataExport searchParams={searchParams} />;
+  } else if (section === "trash") {
+    // Recently deleted (#2013) — the rendered view over the `deleted_rows` capture
+    // that has existed since #30 behind nothing but a 15-second toast. Built only
+    // when active: it parses one payload per capture, which is no work to do on an
+    // Import or Review request. The retention window is instance policy read from
+    // global settings (Settings → Server, admin-only).
+    activeSection = (
+      <TrashSection
+        profileId={profile.id}
+        retentionDays={getTrashRetentionDays()}
+      />
+    );
   } else if (section === "coverage") {
     // Coverage gaps (#550/#1086) — built only when active because it runs a
     // Light-tier AI blurb + a candidate scan across biomarkers/meds/conditions.
@@ -196,6 +216,7 @@ export default async function DataPage(
     { id: "review", label: reviewCount > 0 ? `Review (${reviewCount})` : "Review" },
     { id: "coverage", label: "Coverage" },
     { id: "manage", label: "Manage & export" },
+    { id: "trash", label: "Trash" },
   ];
 
   return (

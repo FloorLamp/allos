@@ -236,13 +236,13 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/undo-delete-db.ts",
     includes: "DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
-    why: "sweepDeletedRows: the 24h undo-holding purge is GLOBAL by design (one call per hourly tick clears every profile's expired rows), so it is intentionally profile-agnostic",
+    why: "sweepDeletedRows: the undo/Trash retention purge (window admin-configured since #2013, 30-day default) is GLOBAL by design — one call per hourly tick clears every profile's EXPIRED rows — so it is intentionally profile-agnostic. The user-invoked purges next door (purgeDeletedRow / emptyTrash, #2013) are a different operation and DO filter on profile_id",
   },
   {
     file: "lib/undo-delete-db.ts",
     includes:
       "SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
-    why: "sweepDeletedRows video-file cleanup (#1290): reads the SAME expiring rows the GLOBAL purge DELETE (above) is about to remove, to unlink their orphaned clip files — profile-agnostic for the identical reason, and each captured path is then re-contained under its domain root before any unlink",
+    why: "sweepDeletedRows video-file cleanup (#1290): reads the SAME expiring rows the GLOBAL retention purge DELETE (above) is about to remove, to unlink their orphaned clip files — profile-agnostic for the identical reason, and each captured path is then re-contained under its domain root before any unlink",
   },
   {
     file: "lib/offline/writes.ts",

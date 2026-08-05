@@ -3,8 +3,12 @@
 import { useToast } from "@/components/Toast";
 import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 
-// How long the Undo toast stays up (ms). The holding row itself lives ~24h, but the
-// toast is the only affordance, so it lingers well past the default success toast.
+// How long the Undo toast stays up (ms). The holding row itself lives for the admin-
+// configured Trash window (30 days by default, #2013), and since that window is now
+// REACHABLE — Data → Trash renders every capture until it expires — this toast is the
+// convenient affordance rather than the only one. It still lingers well past the
+// default success toast, because catching a mis-tap in place beats navigating to find
+// it.
 // Exported so a surface that wires its own Undo toast (the food-log bar, which must
 // reconcile its authoritative serving counts on both halves of the round trip) offers
 // the same window rather than picking a second number.

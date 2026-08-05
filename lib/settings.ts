@@ -11,7 +11,8 @@
 //   - kv.ts             the three-tier get/set/delete primitives
 //   - display.ts        unit prefs, timezone (per profile), week start/mode,
 //                       trend pins/views, dashboard layout
-//   - server.ts         public URL, instance timezone, backup, audit retention, AI
+//   - server.ts         public URL, instance timezone, backup, audit + trash
+//                       retention, AI
 //   - notifications.ts  telegram bot config, per-profile telegram, HA channel,
 //                       chat-id lookup, notify schedule
 //   - profile-attrs.ts  sex/reproductive/smoking/name/birthdate/age/max-HR/zone-2,

@@ -148,8 +148,8 @@ export function logPracticeByTargetId(
 // accident rather than a decision. It now captures through the shared substrate: one
 // transaction holds the capture, the delete, and the re-import tombstone that keeps a
 // resync from resurrecting an imported session, exactly as the whole-practice kinds do.
-// The tombstone is removed again if the user undoes, and outlives the 24h buffer if they
-// don't — undo and idempotency are orthogonal and both hold.
+// The tombstone is removed again if the user undoes, and outlives the retention window
+// if they don't — undo and idempotency are orthogonal and both hold.
 export function deletePracticeSession(
   profileId: number,
   id: number

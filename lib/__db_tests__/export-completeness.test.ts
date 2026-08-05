@@ -121,7 +121,7 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   },
   {
     table: "deleted_rows",
-    why: "24h undo holding buffer (tombstones); transient, purged on a timer",
+    why: "undo/Trash holding buffer (tombstones); transient, purged on a timer once the admin-configured retention window runs out (#2013)",
   },
   {
     table: "replayed_keys",

@@ -29,7 +29,8 @@ hand-correction survives the next rolling-window push. **Bulk corrections
 (`lib/bulk-correction.ts` / `lib/bulk-correction-db.ts`) applies a plan →
 preview → apply pass over a date-range × source × field run, sets the edit lock
 on every corrected source-owned row (the preview says so plainly), snapshots the
-inverse into `deleted_rows` (`kind='bulk-correction'`, 24h undo window), and its
+inverse into `deleted_rows` (`kind='bulk-correction'`, its own 24h undo window —
+excluded from Data → Trash, which lists deleted ROWS, not inverted edits), and its
 undo restores a row only while its value still equals the correction's result —
 clearing `edited` only where that correction set it. `body_metrics` is
 DB-keyed on `UNIQUE(profile_id, date, source)` (NULL source exempt —

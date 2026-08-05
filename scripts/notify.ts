@@ -61,6 +61,7 @@ import {
   getTimezone,
   getTelegramBotConfig,
   getAuditRetentionMonths,
+  getTrashRetentionDays,
   getPublicUrl,
 } from "../lib/settings";
 import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
@@ -959,10 +960,12 @@ async function tick() {
   const pruned = pruneAuditEvents({ maxMonths: getAuditRetentionMonths() });
   if (pruned > 0) log.info("pruned audit events", { pruned });
 
-  // Undo-window sweep (#30): global, once per tick. Purges undo holding rows older
-  // than 24h so a deleted row is genuinely gone after the window. Best-effort
-  // (sweepDeletedRows never throws); never affects the notification flow/exit code.
-  const swept = sweepDeletedRows();
+  // Undo/Trash retention sweep (#30, window configurable per #2013): global, once per
+  // tick. Purges holding rows past the admin-configured window (Settings → Server;
+  // 30-day default) — and unlinks the video clips they captured — so a deleted row is
+  // genuinely gone once the window runs out. Best-effort (sweepDeletedRows never
+  // throws); never affects the notification flow/exit code.
+  const swept = sweepDeletedRows(getTrashRetentionDays());
   if (swept > 0) log.info("swept expired undo rows", { swept });
 
   // Offline-replay ledger sweep (#98): global, once per tick. Prunes replayed_keys
