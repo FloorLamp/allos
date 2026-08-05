@@ -29,6 +29,7 @@ function signals(over: Partial<NowSignals> = {}): NowSignals {
     minutesOfDay: MIN(15),
     wakeMinutes: MIN(7),
     freshSleepSummary: false,
+    sleepWaiting: false,
     workoutFinishedMinAgo: null,
     mealAnchors: [MIN(8), MIN(13), MIN(20)],
     eveningAnchor: MIN(20),
@@ -55,6 +56,36 @@ describe("rankNowCards", () => {
       signals({ minutesOfDay: MIN(7, 30), freshSleepSummary: false })
     );
     expect(out).not.toContain("sleep-last-night");
+  });
+
+  it("promotes sleep for the WAITING state too — it is an answer, not filler (#2097)", () => {
+    // "Waiting for last night's sleep" is a real answer to "how did I sleep this
+    // morning"; withholding it would leave the strip silent in exactly the hour it
+    // exists for.
+    const out = rankNowCards(
+      signals({
+        minutesOfDay: MIN(7, 30),
+        freshSleepSummary: false,
+        sleepWaiting: true,
+      })
+    );
+    expect(out[0]).toBe("sleep-last-night");
+  });
+
+  it("keeps the PRE-WAKE in-progress state off the strip by construction", () => {
+    // The waiting decision can be open at 3am (the night is in progress), but the
+    // strip's own `since >= 0` gate is what keeps the top of the page quiet then —
+    // no second rule, and nothing added that comments on the hour.
+    expect(
+      rankNowCards(
+        signals({
+          minutesOfDay: MIN(3),
+          wakeMinutes: MIN(7),
+          freshSleepSummary: false,
+          sleepWaiting: true,
+        })
+      )
+    ).not.toContain("sleep-last-night");
   });
 
   it("closes the wake window after WAKE_WINDOW_MIN and never opens it before wake", () => {

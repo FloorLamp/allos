@@ -5,6 +5,7 @@ import { shiftDateStr } from "@/lib/date";
 import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import {
   getLastNightSummary,
+  getSleepWaitingState,
   getSleepDurationTrend,
   getSleepRegularity,
   getSleepRegularityTrend,
@@ -15,7 +16,9 @@ import {
   getOuraScores,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
-import { sleepRecordPresentation } from "@/lib/sleep-summary";
+import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sleepWaitingDetail } from "@/lib/sleep-waiting";
+import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
@@ -51,6 +54,21 @@ export default async function SleepPage() {
   const summaryPresentation = summary
     ? sleepRecordPresentation(summary.wakeDay, todayStr, formatPrefs)
     : null;
+  // The morning waiting window (#2097) — the SAME pure decision the dashboard tile
+  // and the Now strip read, so the three cannot disagree about whether this profile
+  // is waiting. When it is open the hero's figures would be a different night's, so
+  // the state replaces them and that night drops to a quiet line beneath.
+  const waiting = getSleepWaitingState(profile.id, summary?.wakeDay ?? null);
+  const waitingDetail = waiting
+    ? sleepWaitingDetail(waiting, {
+        clock: (min) => formatClockMinutes(formatPrefs.timeFormat, min),
+        when: (iso) => formatRelativeTime(iso),
+      })
+    : null;
+  const waitingPreviousNight =
+    summary && summaryPresentation?.freshness === "recent"
+      ? `${summaryPresentation.label} · ${formatHm(summary.durationMin)}`
+      : null;
   const duration = getSleepDurationTrend(profile.id, 90).map((r) => ({
     date: r.date,
     value: r.value / 60,
@@ -106,7 +124,30 @@ export default async function SleepPage() {
         }
       />
 
-      {summary &&
+      {waiting && (
+        <div className="card mb-6" data-testid="sleep-waiting">
+          <h2
+            className="font-semibold text-slate-800 dark:text-slate-100"
+            data-testid="sleep-waiting-headline"
+            data-kind={waiting.kind}
+          >
+            {waiting.headline}
+          </h2>
+          {waitingDetail && (
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {waitingDetail}
+            </p>
+          )}
+          {waitingPreviousNight && (
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              Most recent recorded night · {waitingPreviousNight}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!waiting &&
+        summary &&
         summaryPresentation &&
         summaryPresentation.freshness !== "stale" && (
           <SleepHero
@@ -117,7 +158,7 @@ export default async function SleepPage() {
           />
         )}
 
-      {summaryPresentation?.freshness === "stale" && (
+      {!waiting && summaryPresentation?.freshness === "stale" && (
         <div className="card mb-6" data-testid="sleep-stale">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             No sleep recorded last night

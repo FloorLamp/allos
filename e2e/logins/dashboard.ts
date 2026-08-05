@@ -68,6 +68,21 @@ export const SLEEP_PHASE_PROFILE = "Sleep Phase (e2e)";
 export const E2E_LOGIN_SLEEP_SEGMENTED = "e2e_sleep_segmented";
 export const SLEEP_SEGMENTED_PROFILE = "Sleep Segmented (e2e)";
 
+// Two dedicated READ-ONLY fixtures for the morning waiting window (#2097), one per
+// side of the wake anchor. Both carry 14 synced nights ending YESTERDAY and none on
+// today's wake-day, which is the state the feature exists for: last night is not in
+// hand, and something is still expected.
+//
+// The branch each one lands in is fixed by its WAKE ANCHOR relative to the run's
+// pinned 13:mm local clock (e2e/pinned-timezone.ts), not by the hour CI happens to
+// start — a 12:00 median wake puts the render an hour into the arrival window, a
+// 15:00 median wake puts it before the anchor entirely. Neither spec mutates them,
+// so parallel and --repeat-each runs cannot contend.
+export const E2E_LOGIN_SLEEP_WAITING = "e2e_sleep_waiting";
+export const SLEEP_WAITING_PROFILE = "Sleep Waiting (e2e)";
+export const E2E_LOGIN_SLEEP_INPROGRESS = "e2e_sleep_inprogress";
+export const SLEEP_INPROGRESS_PROFILE = "Sleep In Progress (e2e)";
+
 // A dedicated, write-granted ADULT profile with NO instrument scores logged (#716):
 // the mental-health-instruments spec OWNS every write here (it administers a PHQ-9 /
 // GAD-7 in-app), so it never touches — or counts rows on — a shared-seed profile. Its
