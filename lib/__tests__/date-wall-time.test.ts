@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   tzOffsetMs,
   zonedWallTimeToUtc,
+  zonedWallIsoToUtc,
   utcSqlString,
   parseUtcSql,
   zonedDateParts,
@@ -32,6 +33,72 @@ describe("zonedWallTimeToUtc", () => {
     const { date, hhmm } = zonedDateParts(tz, d);
     expect(date).toBe("2026-12-25");
     expect(hhmm).toBe("07:45");
+  });
+});
+
+describe("zonedWallIsoToUtc", () => {
+  const TZ = "America/New_York";
+
+  it("resolves a zoneless vendor wall clock, seconds and millis intact", () => {
+    expect(
+      zonedWallIsoToUtc(TZ, "2026-07-25T23:14:30.500")?.toISOString()
+    ).toBe("2026-07-26T03:14:30.500Z");
+    // A minute-precision stamp is equally valid; the seconds are simply zero.
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25T23:14")?.toISOString()).toBe(
+      "2026-07-26T03:14:00.000Z"
+    );
+    // Space-separated is the same wall clock in a different punctuation.
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25 23:14:30")?.toISOString()).toBe(
+      "2026-07-26T03:14:30.000Z"
+    );
+  });
+
+  it("does NOT depend on the server's timezone", () => {
+    const prev = process.env.TZ;
+    try {
+      const under = (serverTz: string) => {
+        process.env.TZ = serverTz;
+        return zonedWallIsoToUtc(TZ, "2026-07-25T23:14:30.000")?.toISOString();
+      };
+      expect(under("UTC")).toBe(under("Asia/Tokyo"));
+      expect(under("UTC")).toBe("2026-07-26T03:14:30.000Z");
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+    }
+  });
+
+  it("settles on the offset in force at the instant, across a DST boundary", () => {
+    // US DST ends 2026-11-01. 23:00 on Oct 31 is still EDT (−4); the same clock a
+    // week later is EST (−5). A one-pass conversion gets the second one wrong.
+    expect(zonedWallIsoToUtc(TZ, "2026-10-31T23:00:00")?.toISOString()).toBe(
+      "2026-11-01T03:00:00.000Z"
+    );
+    expect(zonedWallIsoToUtc(TZ, "2026-11-07T23:00:00")?.toISOString()).toBe(
+      "2026-11-08T04:00:00.000Z"
+    );
+  });
+
+  it("round-trips back to the wall clock it was given", () => {
+    const d = zonedWallIsoToUtc(TZ, "2026-12-25T07:45:00")!;
+    expect(zonedDateParts(TZ, d)).toMatchObject({
+      date: "2026-12-25",
+      hhmm: "07:45",
+    });
+  });
+
+  it("refuses anything that is not a bare wall clock", () => {
+    // Already absolute — the caller must decide what to do with it, not receive a
+    // second interpretation of a value that already states its own.
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25T23:14:30Z")).toBeNull();
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25T23:14:30-04:00")).toBeNull();
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25")).toBeNull();
+    expect(zonedWallIsoToUtc(TZ, "not a timestamp")).toBeNull();
+    expect(zonedWallIsoToUtc(TZ, "")).toBeNull();
+    // Out-of-range fields would ROLL OVER through Date.UTC into a plausible
+    // instant a month or a year away; refusing is the only honest answer.
+    expect(zonedWallIsoToUtc(TZ, "2026-13-01T00:00:00")).toBeNull();
+    expect(zonedWallIsoToUtc(TZ, "2026-07-25T25:14:00")).toBeNull();
   });
 });
 

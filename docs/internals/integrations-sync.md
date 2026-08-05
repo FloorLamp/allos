@@ -406,6 +406,30 @@ those secondary consumers from disagreeing with authoritative totals.
 Metric-sample tombstones use the same origin/start identity, so deleting an
 in-progress snapshot remains sticky when its next push has a later end.
 
+**A stored sleep session is an ABSOLUTE INSTANT (#2096).** `start_time` is both
+the natural upsert key and the value every read path hands to `new Date()`, and
+ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary
+stored as bare wall clock denotes a moment that is a property of the container's
+`TZ` rather than of the data. The Fitbit Takeout parser stored the vendor's
+zoneless `startTime`/`endTime` verbatim; on one profile's 52 nights that moved
+the derived typical wake time by four hours between the profile's zone and
+`TZ=UTC` (what Docker ships), and moved the night count too, as sessions
+re-bucketed across the wake-day boundary. It stayed hidden because
+`readSleepSessions` pins the whole read to ONE elected source, so the zoneless
+rows sat inert on any profile whose newest sleep came from elsewhere.
+`parseSleepJson` now takes `tz` and resolves each boundary through
+`zonedWallIsoToUtc` (`lib/date.ts`) — the seconds-and-millis, refuses-rather-than-
+guesses sibling of `zonedWallTimeToUtc`. The wake DAY still comes from Fitbit's
+own `dateOfSleep`, which was never zone-derived. `lib/__tests__/sleep-session-instants.test.ts`
+holds the invariant across all four sleep-emitting parsers, because a reader
+cannot repair a stamp that arrived without a zone. Migration 155 reinterprets the
+rows already stored — skipping edit-locked ones, and moving the delete tombstones
+with them so a re-import cannot resurrect a deleted night under the new key.
+This is a SIBLING of the clock-skew canonicalization (#2088), not the same
+mechanism: that one repairs an absolute timestamp carrying a wrong plausible
+offset, inferred from cross-source duplicate evidence; here nothing is wrong by
+an offset, the offset is simply absent, and the profile's zone is the answer.
+
 **Substrate-by-convention helpers (#944).** The observation-shaped tables are
 NOT merged (#860 rejected that), but the behaviors every keyed upsert shares are
 ONE helper each so a new importer can't re-implement (or forget) one. All three
@@ -810,6 +834,51 @@ providers through the one runner, each with its own rows, counts, events and
 cursor shape, idempotent on a second pass, and one failing without touching the
 other.
 
+**Poll cadence is declared, not implied by the scheduler (#2121 step 1).** The
+notify tick used to conflate two different cadences: _how often it evaluates what
+is due to send_ (bounded only by the tick process's ~0.5 s boot) and _how often it
+calls someone else's API_ (bounded by that provider's quota). Because the pull pass
+ran unconditionally at the top of every profile's tick, the second was silently
+pinned to the first — measured in #2121, a 1-minute tick would have meant ~1,440
+Strava calls per profile per day, at or over typical app quotas. That is what made
+the tick rate a quota decision rather than a scheduling one.
+
+- **Where it is declared.** `pull.cadenceMinutes` in `registry.ts`, beside the
+  provider's other delivery metadata, for the same reason `staleAfterDays` lives
+  there: the right number is a property of the provider's quota, not of the
+  scheduler. All four pull providers declare `60` today — hourly, exactly what
+  they were polled at before — each with its own reasoning. A provider that
+  declares none gets `DEFAULT_PULL_CADENCE_MINUTES` (60), so a new provider joins
+  at the cadence the quota table was measured against and must opt IN to anything
+  finer. Read it only through `pullCadenceMinutes()`.
+- **How it is enforced.** `lib/integrations/pull-cadence.ts` is the pure decision;
+  `lib/integrations/pull-tick.ts` is the tick's pull pass (moved out of
+  `scripts/notify.ts` so the loop that decides how many external calls an instance
+  makes is testable at all). A provider is polled at most once per epoch-aligned
+  window of `cadenceMinutes` — buckets, not "minutes since the last poll", because
+  elapsed-since needs a slack tolerance that an hourly cron would trip over
+  (09:00:01 → 10:00:00 measures 59m59s) and that then drifts the effective cadence
+  earlier at fine tick rates.
+- **No new state.** The last-run fact was already recorded: every run appends an
+  `integration_sync_events` row, indexed on `(profile_id, provider, at)` and swept
+  by the #388 retention pass. The guard reads it. It keys on the last ATTEMPT, not
+  the last SUCCESS — a failed poll spent an API call, and "the remote is failing"
+  is the worst case in which to retry on every tick.
+- **Manual "Sync now" is not guarded.** It goes through
+  `app/(app)/integrations/sync-actions.ts` straight to the runner. The system may
+  reduce its own contact unilaterally; it does not overrule a user's own action,
+  and "I just connected this, sync it" is why anyone presses that button.
+- **The seam for what comes next.** A pull-based Health Connect ingest (#1563) and
+  Garmin (#1863) join the polled set through the same dial and should declare
+  cadence and quota posture in their scoping, rather than inheriting whatever the
+  scheduler happens to be set to.
+
+`lib/__tests__/pull-cadence.test.ts` asserts the quota bound as a bound — it
+simulates a day of ticks at 1/15/60-minute rates and counts the polls admitted —
+and `lib/__db_tests__/tick-repetition.test.ts` drives the real pass with stubbed
+provider hosts: two ticks in one window make one round of outbound calls and write
+one event row per provider.
+
 **Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
 cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not
 advance), but its event carries `details.truncated` plus a standard Review
@@ -869,3 +938,32 @@ observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
 and asks the user to check, rather than asserting a cause it has no evidence for.
 The Data → Review row makes the same distinction — "sync has stopped" instead of
 "sync failed", which would claim a failure that never happened.
+
+**…and what it deliberately cannot see: the abandoned device (#2097).** The
+paragraph above states it outright — staleness measures the SYNC, not the DATA,
+so a rest week is not a broken connection. That is right for the attention
+surface and makes the signal structurally unable to answer a different question:
+_has this person stopped tracking sleep?_ Someone wears a tracker for months and
+then stops, but the phone keeps syncing steps: `ok=1` events with non-zero
+inserted counts, green badge, nothing stale. Only the sleep rows end.
+
+The answer is a **data-side** predicate, `isSleepTracking` (`lib/sleep-summary.ts`,
+#2102) — the companion to `isLastNight`, since the two are halves of one question:
+is last night in hand, and is it even coming. At least 2 of the 3 nights BEFORE
+last night must carry a recorded night, which tolerates a forgotten charge while
+giving up after two or three consecutive misses. ONE predicate, two consumers: the
+morning digest's one-hour deferral (#2102) and the waiting window
+(`lib/sleep-waiting.ts`, #2097), so nothing can disagree about whether someone has
+stopped. The waiting window checks it BEFORE any clock branch; unguarded the
+failure would not merely be a missing check, it would RECUR — "no last night, past
+typical wake" is true every morning once someone stops, and `typicalWakeTime` keeps
+supplying an anchor for roughly two more weeks.
+
+The two consumers differ only in what they FEED it, and deliberately. The digest
+passes every recorded night: deferring a send is a question about whether to wait.
+The waiting window passes only the wake-days a SYNCING source recorded, because it
+PROMISES an arrival — a manual-only logger has nothing coming, and "waiting" for
+something nobody is sending is the message that teaches people to ignore the
+surface. Its terminal state adds nothing new: the existing dated label, then the
+four-night stale CTA, with a genuinely dead connection still handled by
+Data → Review.

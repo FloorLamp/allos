@@ -24,6 +24,7 @@ import {
   attentionCountForProfile,
   getHealthspanPillars,
   getLastNightSummary,
+  getSleepWaitingState,
   getSleepRegularity,
   typicalWakeTime,
   getPrnMedicationsForQuickLog,
@@ -150,7 +151,8 @@ import NextAppointmentWidget, {
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
-import { sleepRecordPresentation } from "@/lib/sleep-summary";
+import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
+import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
 import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
 import StepsTodayWidget from "@/components/dashboard/StepsTodayWidget";
@@ -495,6 +497,17 @@ export default async function Dashboard() {
     has("sleep-last-night") && sleepSummary != null
       ? (getSleepRegularity(profile.id)?.sri ?? null)
       : null;
+  // The morning waiting window (#2097). When it is open, the tile names the state
+  // INSTEAD of showing a headline duration for a night nobody asked about — the
+  // recorded night drops to a quiet secondary line and stays one tap away on /sleep.
+  // Null (the common case) leaves every existing branch exactly as it was.
+  const sleepWaiting = has("sleep-last-night")
+    ? getSleepWaitingState(profile.id, sleepSummary?.wakeDay ?? null)
+    : null;
+  const sleepPreviousNightLabel =
+    sleepSummary && sleepPresentation?.freshness === "recent"
+      ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
+      : null;
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
@@ -799,6 +812,7 @@ export default async function Dashboard() {
     emptyIds.add("vitals-latest");
   if (
     has("sleep-last-night") &&
+    sleepWaiting == null &&
     (sleepSummary == null || sleepPresentation?.freshness === "stale")
   )
     emptyIds.add("sleep-last-night");
@@ -912,6 +926,14 @@ export default async function Dashboard() {
       case "healthspan-pillars":
         return <HealthspanPillarsWidget pillars={pillars} />;
       case "sleep-last-night":
+        if (sleepWaiting)
+          return (
+            <SleepWaitingWidget
+              state={sleepWaiting}
+              formatPrefs={formatPrefs}
+              previousNightLabel={sleepPreviousNightLabel}
+            />
+          );
         return sleepSummary && sleepPresentation ? (
           <SleepLastNightWidget
             summary={sleepSummary}
@@ -1107,12 +1129,20 @@ export default async function Dashboard() {
   const nowFreshSleep =
     nowEligible.includes("sleep-last-night") &&
     sleepPresentation?.freshness === "last-night";
+  // …and the waiting state is the other thing the sleep card can legitimately say
+  // this morning (#2097). It is a real answer to "how did I sleep", not filler, so
+  // it earns the same promotion — the strip's own `since >= 0` gate still keeps the
+  // pre-wake in-progress state off the top of the page.
+  const nowSleepWaiting =
+    nowEligible.includes("sleep-last-night") && sleepWaiting != null;
   const nowCardIds = rankNowCards({
     minutesOfDay: nowMinutes,
     // Only computed when sleep is actually in play — it is a 28-night regularity
     // pass, not worth running on an evening render that can't use it.
-    wakeMinutes: nowFreshSleep ? typicalWakeTime(profile.id) : null,
+    wakeMinutes:
+      nowFreshSleep || nowSleepWaiting ? typicalWakeTime(profile.id) : null,
     freshSleepSummary: nowFreshSleep,
+    sleepWaiting: nowSleepWaiting,
     workoutFinishedMinAgo: showRecapCard
       ? (finishedPresence?.sinceMin ?? null)
       : null,

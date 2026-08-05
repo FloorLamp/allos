@@ -8,7 +8,6 @@ import {
 } from "./useDeployedVersion";
 import {
   deployDetectorFor,
-  loadTimeUpdatePlan,
   reloadPlanFor,
   resolveUpdateState,
   shouldOfferUpdate,
@@ -18,6 +17,7 @@ import {
   UPDATE_CHECK_MS,
   UPDATE_PENDING_KEY,
   UPDATE_PENDING_MARKER,
+  waitingWorkerPlan,
   type ServiceWorkerStatus,
 } from "@/lib/sw-update";
 import {
@@ -66,19 +66,23 @@ import {
 //
 // A REFRESH CONSUMES THE UPDATE (issue #1905). The bar used to survive every manual
 // refresh: a refresh fetches the new build's HTML and assets but never activates a
-// WAITING worker, so the fresh load found one still waiting and re-offered an update
-// the page had already taken. Load-time waiting workers are now decided rather than
-// offered — see `loadTimeUpdatePlan` and the effect that acts on it below. Only the
-// worker path had this defect; the sha fallback compares against the freshly-served
-// sha, so a refresh always self-clears it.
+// WAITING worker. Worse, on the first load after a deploy the new worker usually is
+// not waiting YET — this page's own register() call with the new ?v= is what tells
+// the browser the deploy happened at all, so the worker installs seconds after load
+// and used to be offered as "mid-session discovery" to a page already running the
+// new build. Waiting workers are now decided rather than offered, however they
+// arrived, on one discriminator: the sha this document was served with against the
+// sha the server reports — see `waitingWorkerPlan` and the effect that acts on it
+// below. Only the worker path had this defect; the sha fallback compares against
+// the freshly-served sha, so a refresh always self-clears it.
 //
 // The decisions live in lib/sw-update.ts so they can be tested without a browser.
 export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   const [swWaiting, setSwWaiting] = useState(false);
-  // Whether that waiting worker was ALREADY there when registration first answered,
-  // rather than having installed while this page was open (#1905). Only the first
-  // shape can be the build this document was served with.
-  const [swWaitingAtLoad, setSwWaitingAtLoad] = useState(false);
+  // Counts newly-waiting workers, so the one sha read is re-armed per install: a
+  // second deploy under this open page must not be judged against the answer read
+  // for the first (#1905).
+  const [updateGen, setUpdateGen] = useState(0);
   const [swStatus, setSwStatus] = useState<ServiceWorkerStatus>("probing");
   // The live registration. The tap re-reads `.waiting` off it rather than holding a
   // ServiceWorker object from offer time: the browser can replace or discard a
@@ -89,7 +93,7 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   // This tab asked for the update; only it may reload on controllerchange.
   const requestedRef = useRef(false);
   const reloadedRef = useRef(false);
-  // At most one silent load-time activation per page (#1905).
+  // At most one silent activation per waiting worker (#1905).
   const silentlyActivatedRef = useRef(false);
 
   useEffect(() => subscribeUnsavedWork(setUnsaved), []);
@@ -135,12 +139,11 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     // there is no running build to replace: that is a first install, which activates
     // and claims on its own and has nothing to ask the user about.
     //
-    // `source` separates the two ways a worker comes to be waiting (#1905). "load"
-    // means it was already there when registration answered — the shape a manual
-    // refresh leaves behind, because a refresh never activates a waiting worker.
-    // "session" means it installed while this page was open, which is the bar's
-    // charter: a deploy discovered mid-session (#1700).
-    const offer = (sw: ServiceWorker | null, source: "load" | "session") => {
+    // Each newly-waiting worker re-opens the whole question (#1905): whatever this
+    // page decided about an earlier worker — and whatever the sha read answered
+    // then — does not describe this one, so the generation bump un-settles the read
+    // and the silent-activation guard resets with it.
+    const offer = (sw: ServiceWorker | null) => {
       if (disposed) return;
       if (
         !shouldOfferUpdate({
@@ -150,11 +153,9 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
       ) {
         return;
       }
+      silentlyActivatedRef.current = false;
       setSwWaiting(true);
-      setSwWaitingAtLoad(source === "load");
-      // A genuinely new mid-session install re-opens the question: whatever this
-      // page decided about the worker it loaded with does not describe this one.
-      if (source === "session") silentlyActivatedRef.current = false;
+      setUpdateGen((generation) => generation + 1);
     };
 
     const onControllerChange = () => {
@@ -209,13 +210,12 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
           }
           regRef.current = registration;
           setSwStatus("active");
-          offer(registration.waiting, "load");
+          offer(registration.waiting);
           registration.addEventListener("updatefound", () => {
             const installing = registration.installing;
             if (!installing) return;
             installing.addEventListener("statechange", () => {
-              if (installing.state === "installed")
-                offer(installing, "session");
+              if (installing.state === "installed") offer(installing);
             });
           });
           checkTimer = setInterval(checkForUpdate, UPDATE_CHECK_MS);
@@ -251,7 +251,11 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     : deployDetectorFor(swStatus) === "version-poll"
       ? "poll"
       : "off";
-  const deployed = useDeployedVersion({ baseline: sha, mode });
+  const deployed = useDeployedVersion({
+    baseline: sha,
+    mode,
+    generation: updateGen,
+  });
 
   const { pending, commitMessage } = resolveUpdateState({
     swWaiting,
@@ -261,13 +265,13 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   });
 
   // A REFRESH CONSUMES THE UPDATE (issue #1905). A manual refresh fetches the new
-  // build's HTML and assets but never activates a waiting worker, so the fresh load
-  // used to find that worker still waiting and re-offer an "update" to a page already
-  // running the new build — a bar no refresh could ever clear. When the served page's
-  // sha matches the sha the server reports, the waiting worker IS this build: take it
-  // silently, offer nothing.
-  const plan = loadTimeUpdatePlan({
-    waitingAtLoad: swWaitingAtLoad,
+  // build's HTML and assets but never activates a waiting worker — and the worker a
+  // fresh load discovers through its own register() call is not even waiting yet, so
+  // the fresh load used to re-offer an "update" to a page already running the new
+  // build — a bar no refresh could ever clear. When the served page's sha matches
+  // the sha the server reports, the waiting worker IS this build, however it
+  // arrived: take it silently, offer nothing.
+  const plan = waitingWorkerPlan({
     pageSha: sha,
     deployedSha: deployed.sha,
     deployedSettled: deployed.settled,
@@ -275,13 +279,13 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
 
   useEffect(() => {
     if (plan !== "activate-silently" || silentlyActivatedRef.current) return;
-    const waiting = regRef.current?.waiting;
-    if (!waiting) return;
     silentlyActivatedRef.current = true;
     // NO reload, and deliberately NOT `requestedRef` — this tab did not ask for
     // anything, so the controllerchange guard (#1806) leaves every tab, including
     // this one, exactly where it is. The page already has the new assets; the worker
-    // just takes over the fetches that come after.
+    // just takes over the fetches that come after. A waiting worker the browser has
+    // already discarded posts to nobody, which is fine: there is nothing left to
+    // consume, and the pending state clears with it.
     //
     // THE TRADEOFF, RECORDED RATHER THAN HIDDEN: activation is registration-wide, so
     // another still-open tab on the OLD build loses the old asset cache when the new
@@ -289,9 +293,8 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     // doomed — the deploy removed them from the server — so this widens no failure
     // window; it only makes an existing one arrive sooner. #1906 is what that tab
     // hits, and how it recovers.
-    waiting.postMessage({ type: SW_SKIP_WAITING });
+    regRef.current?.waiting?.postMessage({ type: SW_SKIP_WAITING });
     setSwWaiting(false);
-    setSwWaitingAtLoad(false);
   }, [plan]);
 
   // Hand the pending state across the crash boundary (issue #1906). A tab with a
@@ -338,10 +341,11 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     }, SW_RELOAD_FALLBACK_MS);
   }, []);
 
-  // `wait` holds the bar for the single sha read the decision above turns on —
-  // otherwise the bar would flash on every first load after a deploy, which is the
-  // symptom this fix exists to remove.
-  if (!pending || dismissed || plan === "wait") return null;
+  // The bar renders only when the plan is to OFFER: `wait` holds it for the single
+  // sha read the decision above turns on (otherwise it would flash on every first
+  // load after a deploy), and `activate-silently` never shows it at all — not even
+  // for the paint between the read settling and the effect consuming the worker.
+  if (!pending || dismissed || plan !== "offer") return null;
   return (
     <UpdateReadyBar
       onReload={reload}

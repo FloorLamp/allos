@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   deployDetectorFor,
   isDeploymentSkewError,
-  loadTimeUpdatePlan,
   nextSkewGuard,
   parseSkewGuard,
   SKEW_RECOVERY_MAX_ATTEMPTS,
@@ -18,6 +17,7 @@ import {
   SW_SKIP_WAITING,
   shouldOfferUpdate,
   shouldReloadOnControllerChange,
+  waitingWorkerPlan,
 } from "@/lib/sw-update";
 
 // The deferred service-worker update (issue #1700) and the ONE update-pending state
@@ -165,19 +165,21 @@ describe("resolveUpdateState (#1795)", () => {
   });
 });
 
-describe("loadTimeUpdatePlan — a refresh consumes the update (#1905)", () => {
+describe("waitingWorkerPlan — a refresh consumes the update (#1905)", () => {
   const SERVED = "abc1234";
   const OLDER = "0000fff";
   const settled = { deployedSettled: true };
 
   it("takes the waiting worker SILENTLY when the page is already on that build", () => {
     // The loop: a refresh fetches the new build's HTML and assets but never
-    // activates a waiting worker, so the fresh load found one still waiting and
-    // offered an "update" to the build it was already running. Equal shas say the
-    // worker is queued behind nothing — take it, say nothing.
+    // activates a waiting worker — and the worker the fresh load discovers through
+    // its own register() call is not even waiting yet, so it lands seconds after
+    // the "waiting at load" moment the first cut of this fix keyed on, and was
+    // offered as an "update" to the build the page was already running. Equal shas
+    // say the worker is queued behind nothing, whenever it arrived — take it, say
+    // nothing. There is no arrival-time input left to get that wrong with.
     expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: true,
+      waitingWorkerPlan({
         pageSha: SERVED,
         deployedSha: SERVED,
         ...settled,
@@ -186,23 +188,14 @@ describe("loadTimeUpdatePlan — a refresh consumes the update (#1905)", () => {
   });
 
   it("still offers when the shas differ — this document predates the deploy", () => {
-    // A document served from the worker's own shell cache, for instance: the page is
-    // genuinely on an older build and the user genuinely has a choice to make.
+    // A deploy genuinely discovered mid-session, or a document served from the
+    // worker's own shell cache: the page is on an older build and the user
+    // genuinely has a choice to make. This is the bar's whole charter (#1700), and
+    // it is also why the fallback path never loops — its baseline is the
+    // freshly-served sha, so a refresh self-clears the mismatch.
     expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: true,
+      waitingWorkerPlan({
         pageSha: OLDER,
-        deployedSha: SERVED,
-        ...settled,
-      })
-    ).toBe("offer");
-  });
-
-  it("leaves mid-session discovery alone — that is the bar's whole charter (#1700)", () => {
-    expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: false,
-        pageSha: SERVED,
         deployedSha: SERVED,
         ...settled,
       })
@@ -211,8 +204,7 @@ describe("loadTimeUpdatePlan — a refresh consumes the update (#1905)", () => {
 
   it("holds the bar until the one sha read settles, instead of flashing it", () => {
     expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: true,
+      waitingWorkerPlan({
         pageSha: SERVED,
         deployedSha: null,
         deployedSettled: false,
@@ -224,8 +216,7 @@ describe("loadTimeUpdatePlan — a refresh consumes the update (#1905)", () => {
     // /api/version is session-gated, so an anonymous tab settles with no answer. That
     // is the shipped behaviour, not a case to invent new silence for.
     expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: true,
+      waitingWorkerPlan({
         pageSha: SERVED,
         deployedSha: null,
         ...settled,
@@ -233,25 +224,13 @@ describe("loadTimeUpdatePlan — a refresh consumes the update (#1905)", () => {
     ).toBe("offer");
   });
 
-  it("offers with no baseline sha to compare against", () => {
-    expect(
-      loadTimeUpdatePlan({
-        waitingAtLoad: true,
-        pageSha: null,
-        deployedSha: SERVED,
-        ...settled,
-      })
-    ).toBe("offer");
-  });
-
-  it("never holds the bar for the no-worker fallback path", () => {
-    // The sha fallback does not loop: its baseline is the freshly-served sha, so a
-    // refresh self-clears it. Nothing here may gate that path on a worker decision.
+  it("offers with no baseline sha to compare against, without waiting", () => {
+    // The page cannot claim to be on the new build, and there is no read worth
+    // holding the bar for.
     for (const deployedSettled of [true, false]) {
       expect(
-        loadTimeUpdatePlan({
-          waitingAtLoad: false,
-          pageSha: OLDER,
+        waitingWorkerPlan({
+          pageSha: null,
           deployedSha: SERVED,
           deployedSettled,
         })

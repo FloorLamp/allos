@@ -1,4 +1,4 @@
-import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
+import { zonedDateParts, zonedMinuteStr, zonedWallIsoToUtc } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { resolveActivityType } from "@/lib/activity-meta";
 import type { ActivityType } from "@/lib/types";
@@ -797,6 +797,22 @@ export function parseComputedTemperatureCsv(
 // calendar day — the same attribution every other sleep source uses (the local date
 // the session ENDS), stated rather than derived, so no zone conversion is involved.
 //
+// The session's start/end INSTANTS are a different matter, and used to be handled as
+// if they weren't (#2096). Fitbit writes them as ZONELESS wall clock —
+// `2026-07-19T22:57:00.000`, no `Z`, no offset — where every other sleep source
+// writes an absolute instant. Passing that string through verbatim made the moment a
+// Takeout night denotes a property of the SERVER's timezone, because every read path
+// hands it to `new Date()`, which resolves an offset-less date-time as process-local.
+// Measured on one profile's 52 Takeout nights, the derived typical wake time moved
+// from 05:57 to 01:55 between `TZ=America/New_York` and `TZ=UTC` — and production
+// runs Docker, i.e. the wrong column. It only ever surfaced when Takeout was the
+// ELECTED sleep source, since readSleepSessions pins the read to one source.
+//
+// So the parser now takes `tz` (the dispatcher already had it in hand for this
+// family's siblings) and resolves each boundary against the profile timezone, storing
+// the same `Z`-stamped instant Health Connect, Oura and Withings store. A boundary
+// that cannot be resolved is a SKIP, not a guess.
+//
 // Stage minutes come from `levels.summary`, the vendor's own per-stage aggregate in
 // WHOLE minutes — one row per stage per night, exactly the shape Oura and Withings
 // deliver. The per-stage `levels.data` array is deliberately NOT summed instead: it
@@ -813,7 +829,26 @@ const FITBIT_STAGE_METRIC: Record<string, string> = {
   wake: "sleep_awake_min",
 };
 
-export function parseSleepJson(text: string): TakeoutParsed {
+// One session boundary → the absolute instant it denotes, as a canonical `Z` string.
+//
+// Zoneless (what Fitbit actually writes) is interpreted in `tz`. An already-absolute
+// value is accepted and NORMALIZED rather than passed through, so the stored key for
+// a night is the same string whichever shape the vendor wrote it in. Out-of-window or
+// unparseable → null, which the caller counts as skipped.
+export function sleepInstant(
+  iso: string | undefined,
+  tz: string
+): string | null {
+  if (!iso) return null;
+  const t = iso.trim();
+  if (!t) return null;
+  const d = HAS_OFFSET.test(t) ? new Date(t) : zonedWallIsoToUtc(tz, t);
+  if (!d || Number.isNaN(d.getTime()) || !inTimeWindow(d.getTime()))
+    return null;
+  return d.toISOString();
+}
+
+export function parseSleepJson(text: string, tz: string): TakeoutParsed {
   const out = emptyTakeoutParsed();
   let logs: unknown;
   try {
@@ -833,8 +868,14 @@ export function parseSleepJson(text: string): TakeoutParsed {
       typeof log.dateOfSleep === "string" && BARE_DAY.test(log.dateOfSleep)
         ? log.dateOfSleep
         : null;
-    const start = typeof log.startTime === "string" ? log.startTime : undefined;
-    const end = typeof log.endTime === "string" ? log.endTime : undefined;
+    const start = sleepInstant(
+      typeof log.startTime === "string" ? log.startTime : undefined,
+      tz
+    );
+    const end = sleepInstant(
+      typeof log.endTime === "string" ? log.endTime : undefined,
+      tz
+    );
     const ms = typeof log.duration === "number" ? log.duration : null;
     const total =
       ms != null ? boundedOrNull("sleep_min", Math.round(ms / 60000)) : null;

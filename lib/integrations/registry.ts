@@ -75,6 +75,14 @@ export const INTEGRATIONS: IntegrationDef[] = [
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
     pull: {
+      // THE PROVIDER THAT SETS THE TICK FLOOR (#2121). Strava's app quota is the
+      // tightest budget allos spends: 200 requests / 15 min and a daily cap, and a
+      // poll here is a list call PLUS one detail call per new activity, per profile.
+      // Hourly is what the quota table in #2121 was measured at and what this
+      // provider has always been polled at; going finer is a quota decision to be
+      // taken against Strava's published budget, not a side effect of the scheduler
+      // getting faster.
+      cadenceMinutes: 60,
       paging: {
         // Longer than the other pulls: the hourly tick processes profiles
         // SEQUENTIALLY and Strava's list+detail loop is the slowest of them (#476).
@@ -125,6 +133,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Sleep, HRV, and workouts from your ring have stopped arriving.",
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
     pull: {
+      // A personal access token against Oura's own per-token budget. The data is
+      // NIGHTLY — sleep, HRV, resting HR are written once when the night is
+      // finalized — so polling more often than hourly could not surface anything
+      // sooner than the ring uploads it. Hourly, unchanged.
+      cadenceMinutes: 60,
       paging: {
         timeoutMs: 15_000,
         maxPages: 25,
@@ -163,6 +176,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Measurements from your scale and cuff have stopped arriving.",
     docsUrl: "https://developer.withings.com/",
     pull: {
+      // Measurements arrive when someone steps on the scale or straps on the cuff —
+      // a handful of events a day at most. Hourly already sees every one of them
+      // within the hour, so a finer poll would buy latency nobody asked for at a
+      // cost Withings' quota does charge.
+      cadenceMinutes: 60,
       paging: {
         timeoutMs: 15_000,
         maxPages: 25,
@@ -297,6 +315,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // here to make the shape uniform would be a fiction — which is exactly the "forcing
     // a non-OAuth provider into the facet" the consolidation was told not to do.
     pull: {
+      // Keyless, but NOT free: Open-Meteo asks non-commercial users to stay under a
+      // daily request budget, and the data itself is hourly-resolution forecast, so
+      // a sub-hourly poll would re-fetch the same numbers. Hourly, like the rest.
+      cadenceMinutes: 60,
       revalidates: ["/", "/timeline", "/integrations/weather", "/data"],
     },
   },

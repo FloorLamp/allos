@@ -46,10 +46,19 @@ const NOTHING: DeployedVersion = {
 export function useDeployedVersion({
   baseline,
   mode,
+  generation,
 }: {
   /** The commit this document was served with — null when it couldn't be resolved. */
   baseline: string | null;
   mode: VersionWatchMode;
+  /**
+   * Which waiting worker the answer is FOR. A settled read describes the deploy
+   * state at the moment it was made; a worker that starts waiting later — a second
+   * deploy under the same open page — re-opens the question, and judging it
+   * against the old answer would silently consume a genuine update (#1905). The
+   * registrar bumps this for each newly-waiting worker; a bump un-settles the read.
+   */
+  generation: number;
 }): DeployedVersion {
   const [deployed, setDeployed] = useState<DeployedVersion>(NOTHING);
   // Stop asking once the answer can no longer change: the server has named a build
@@ -58,8 +67,14 @@ export function useDeployedVersion({
   // render's snapshot. The comparison here decides only whether to keep ASKING — the
   // pending-state decision stays in lib/sw-update.ts.
   const settledRef = useRef(false);
+  const generationRef = useRef(generation);
 
   useEffect(() => {
+    if (generationRef.current !== generation) {
+      generationRef.current = generation;
+      settledRef.current = false;
+      setDeployed(NOTHING);
+    }
     // No baseline means nothing to compare a sha against, so there is no question to
     // ask; `off` means the worker is answering it instead.
     if (mode === "off" || !baseline || settledRef.current) return;
@@ -134,7 +149,7 @@ export function useDeployedVersion({
       if (intervalId) clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [baseline, mode]);
+  }, [baseline, mode, generation]);
 
   return deployed;
 }
