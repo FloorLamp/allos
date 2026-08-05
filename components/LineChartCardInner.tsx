@@ -50,7 +50,9 @@ import {
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-type LineChartSyncMethod = ComponentProps<typeof LineChart>["syncMethod"];
+// Derived from ComposedChart since #1938 switched the chart element (the long-
+// range band needs an Area beside the Line); recharts' sync contract is the same.
+type LineChartSyncMethod = ComponentProps<typeof ComposedChart>["syncMethod"];
 
 export default function LineChartCard({
   data,
