@@ -530,6 +530,21 @@ export function getFoodSlotServingsOnDate(
   return slotServingCounts(events, tz, boundaries, window, date);
 }
 
+// How many PROTEIN taps landed on a day (#1073/#1379). The reserved __protein__ key
+// deliberately never reaches the `food_log` day counter — reserved-key discipline keeps a
+// shake from becoming a serving — so its "(n)" suffix has to be counted off the ledger it
+// DOES write to. One row per tap, so the count is taps, not grams; the day's grams stay on
+// the nudge's own protein line. Profile-scoped via the food_log_events filter.
+export function getProteinTapsOnDate(profileId: number, date: string): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM food_log_events
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    )
+    .get(profileId, date, PROTEIN_NUDGE_KEY) as { n: number };
+  return row.n;
+}
+
 // ---- Eating-time correction rows (issue #2019) ----
 
 // The profile's recent food taps as the correction offer reads them: row id, the
@@ -543,7 +558,7 @@ export function getFoodSlotServingsOnDate(
 // the LEDGER still justifies. Profile-scoped via the food_log_events filter.
 export function getRecentFoodTaps(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): FoodTapRow[] {
   const since = new Date(
     now.getTime() - CORRECTION_FRESH_MIN * 60_000
@@ -578,7 +593,7 @@ export function getRecentFoodTaps(
 // would refuse.
 export function getFoodCorrectionBursts(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): CorrectionBurst[] {
   return correctionBursts(getRecentFoodTaps(profileId, now), now);
 }

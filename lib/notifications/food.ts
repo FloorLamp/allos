@@ -10,6 +10,7 @@ import {
   getFoodNudgeRankedKeys,
   getFoodServingsOnDate,
   getProteinLoggedGrams,
+  getProteinTapsOnDate,
   getProteinQuickAddPreset,
   getProteinToday,
 } from "../queries";
@@ -65,6 +66,12 @@ export function buildFoodNudge(
   // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
+  // The protein button's own day count (#1379's sibling consistency, on #2019's day
+  // meaning). The reserved key never lands in the food_log counter `dayServings` reads,
+  // so its taps are counted off the ledger and merged in here — the renderer then applies
+  // ONE suffix rule to every button on the keyboard.
+  const proteinTaps = getProteinTapsOnDate(profileId, date);
+  if (proteinTaps > 0) dayServings.set(PROTEIN_NUDGE_KEY, proteinTaps);
   // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
   const pt = getProteinToday(profileId);

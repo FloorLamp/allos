@@ -53,6 +53,7 @@ import { isPrn } from "../supplement-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
 import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
+import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   correctionActions,
@@ -84,7 +85,7 @@ export function withDoseCorrections(
   message: NotificationMessage,
   opts: { now?: Date; pickerAnchor?: number | null } = {}
 ): NotificationMessage {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clockNow();
   const bursts = getDoseCorrectionBursts(profileId, now);
   if (bursts.length === 0) return message;
   const tz = getTimezone(profileId);

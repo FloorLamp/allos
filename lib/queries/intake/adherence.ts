@@ -1696,7 +1696,7 @@ export interface DoseTapRow {
 // correct, and inventing one would be the guess this feature exists to end.
 export function getRecentDoseTaps(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): DoseTapRow[] {
   const since = utcSqlString(
     new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
@@ -1741,7 +1741,7 @@ export function getRecentDoseTaps(
 // food side (#221), over the ledger the dose reminder itself writes to.
 export function getDoseCorrectionBursts(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): CorrectionBurst[] {
   return correctionBursts(getRecentDoseTaps(profileId, now), now);
 }
