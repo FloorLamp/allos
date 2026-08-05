@@ -147,17 +147,61 @@ imports outright.
 `app/(app)/error.tsx` needs none of this: it renders inside the root layout, so its
 Tailwind `dark:` variants already work.
 
+## Skew: the tab that keeps saving while stale
+
+Navigation is not the only thing a stale tab does. The reported loss was a live
+workout edited straight through a deploy: Server Actions are compiled into the
+client as **build-keyed ids**, so the moment the deploy lands, every action POST
+from an open tab is answered with Next's not-found marker
+(`x-nextjs-action-not-found`) and the client throws `UnrecognizedActionError`.
+Retrying in place cannot succeed — only a reload can — and before this section's
+change the failure was swallowed three times over: the auto-save showed a bare
+error glyph, the offline queue declined (online, not a `TypeError`), and the
+activity draft was inert in live mode because the session was "server-backed".
+The edits existed nowhere.
+
+`isStaleActionError()` (`lib/sw-update.ts`) recognises the signature — by error
+name and by both message wordings, deliberately narrow like the chunk classifier
+above. Two consumers:
+
+- **`shouldQueueOffline()`** (`lib/offline/queue.ts`) treats a stale-action
+  failure like a dead connection: the quick-log flows and the activity
+  close-path capture queue the intent instead of erroring. That is sound because
+  the replay route (`app/api/offline-replay`) is an ordinary route handler no
+  deploy re-keys — a queued tap lands from the stale tab itself (the sync/flush
+  machinery) or from the reloaded one.
+- **The activity auto-save** (`components/activity-form/useActivityAutosave.ts`)
+  reports `staleBuild` — sticky across failures, cleared by a success — and the
+  editor renders a banner naming the cause and the remedy, with the reload one
+  tap away. The unmount toast says the same instead of "reopen the activity",
+  which would fail identically.
+
+The banner can promise "kept on this device" because the local draft (#1699) now
+runs in **live mode** too. The #451 inertia — "a live session is server-backed,
+a second copy would compete" — was only true while the auto-save's POSTs landed;
+skew holds the unsaved window open indefinitely with no local copy at all. The
+competing-source-of-truth concern is answered by the clear-on-success effect the
+form already had: while saves land, the draft is dropped the moment the server
+copy is current, so it only ever outlives a save that failed.
+
 ## Testing
 
-Pure (`lib/__tests__/sw-update.test.ts`, `lib/__tests__/theme.test.ts`): the
-waiting-worker decision matrix, the skew classifier's positives and its deliberate
-negatives, the guard's state machine including a 25-pass broken-deploy simulation
-that must produce exactly one reload, the marker contract, and that the two error-card
-palettes genuinely invert rather than merely differ.
+Pure (`lib/__tests__/sw-update.test.ts`, `lib/__tests__/theme.test.ts`,
+`lib/__tests__/offline-queue.test.ts`): the waiting-worker decision matrix, both
+skew classifiers' positives and their deliberate negatives, the queue predicate's
+stale-action case, the guard's state machine including a 25-pass broken-deploy
+simulation that must produce exactly one reload, the marker contract, and that the
+two error-card palettes genuinely invert rather than merely differ.
 
 Browser: `e2e/sw-update.spec.ts` drives the real deferred-activation posture;
 `e2e/update-notice.spec.ts` drives the no-worker fallback detector and pins the
 pending marker being written, and kept across a dismissal.
+`e2e/stale-build-save.spec.ts` drives the Server Action half with the real client
+error (action POSTs answered with the not-found marker): the live editor's stale
+banner, the draft surviving in live mode and restoring after the reload, and the
+never-created session's close-path capture queueing and replaying.
+`e2e/form-drafts.spec.ts` pins the healthy-path complement — a live draft never
+outlives a successful save.
 
 **What is not driven end to end, honestly.**
 

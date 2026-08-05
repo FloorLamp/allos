@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   deployDetectorFor,
   isDeploymentSkewError,
+  isStaleActionError,
   nextSkewGuard,
   parseSkewGuard,
   SKEW_RECOVERY_MAX_ATTEMPTS,
@@ -336,6 +337,62 @@ describe("isDeploymentSkewError — the stale-build signature (#1906)", () => {
     expect(isDeploymentSkewError(null)).toBe(false);
     expect(isDeploymentSkewError(undefined)).toBe(false);
     expect(isDeploymentSkewError({})).toBe(false);
+  });
+});
+
+describe("isStaleActionError — the stale Server Action signature", () => {
+  it("recognises the client-thrown unrecognized-action error, by name and by slug", () => {
+    // What Next's action reducer throws when the server answers with its
+    // action-not-found marker — the exact shape a post-deploy save produces.
+    const err = Object.assign(
+      new Error(
+        'Server Action "7f9a" was not found on the server. \nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action'
+      ),
+      { name: "UnrecognizedActionError" }
+    );
+    expect(isStaleActionError(err)).toBe(true);
+    // Each half is sufficient on its own: the name alone…
+    expect(
+      isStaleActionError({ name: "UnrecognizedActionError", message: "" })
+    ).toBe(true);
+    // …and the docs slug alone (the name can be mangled by minification).
+    expect(
+      isStaleActionError(
+        new Error(
+          "Read more: https://nextjs.org/docs/messages/failed-to-find-server-action"
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("recognises the server-thrown variant, in either wording", () => {
+    expect(
+      isStaleActionError(
+        new Error(
+          'Failed to find Server Action "7f9a". This request might be from an older or newer deployment.'
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT claim a dropped connection — that is the offline path's signal", () => {
+    expect(isStaleActionError(new TypeError("Failed to fetch"))).toBe(false);
+  });
+
+  it("does NOT claim an ordinary server error or refusal", () => {
+    expect(
+      isStaleActionError(
+        new Error("An error occurred in the Server Components render.")
+      )
+    ).toBe(false);
+    expect(isStaleActionError(new Error("validation failed"))).toBe(false);
+  });
+
+  it("survives nothing at all, and non-object throwables", () => {
+    expect(isStaleActionError(null)).toBe(false);
+    expect(isStaleActionError(undefined)).toBe(false);
+    expect(isStaleActionError({})).toBe(false);
+    expect(isStaleActionError("Failed to find Server Action")).toBe(false);
   });
 });
 

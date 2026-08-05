@@ -343,7 +343,12 @@ waiting worker for the build the page already runs — found waiting at load, or
 installed by the page's own registration just after it — is consumed silently
 instead of re-offered. A tab that navigates while still stale hits a deleted chunk; the
 top-level error boundary recognises that signature and hard-reloads **once**,
-under a rationed `sessionStorage` guard, before rendering any card.
+under a rationed `sessionStorage` guard, before rendering any card. A tab that
+keeps SAVING while stale fails every Server Action (the ids are build-keyed);
+`isStaleActionError` classifies that signature, `shouldQueueOffline` treats it
+like a dead connection so quick-log taps queue and replay through the
+build-stable replay route, and the activity editor keeps its local draft (live
+mode included) and banners the reload instead of erroring in place.
 
 Every one of those decisions is pure and lives in `lib/sw-update.ts` (with the
 theme half in `lib/theme.ts`, which `app/global-error.tsx` needs because it

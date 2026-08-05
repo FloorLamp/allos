@@ -13,8 +13,10 @@ import { workerDbPath } from "./worker-env";
 //   2. a long record form (the supplement add form, with its state-only dose rows)
 //      round-trips the same way, submits, and leaves NO draft behind — a stale draft
 //      resurrecting a submitted record would be #1699 inverted;
-//   3. a LIVE session, which is server-persisted by design (#451), writes no
-//      competing draft.
+//   3. a LIVE session's draft is dropped the moment the server copy is current —
+//      the draft runs in live mode (it is the net when the server backing fails,
+//      see e2e/stale-build-save.spec.ts) but never OUTLIVES a successful save,
+//      which is what keeps #451's competing-source-of-truth concern answered.
 //
 // Fixture discipline (#868): every row this spec creates is deleted by value in a
 // finally, keyed on names nothing else uses.
@@ -271,7 +273,7 @@ test("a long record form restores its state-only rows, then clears on submit (#1
   }
 });
 
-test("a live session is server-backed, so it writes no competing draft (#1699/#451)", async ({
+test("a live session's draft never outlives a successful save (#1699/#451)", async ({
   page,
 }) => {
   test.slow();
@@ -296,12 +298,19 @@ test("a live session is server-backed, so it writes no competing draft (#1699/#4
     await expect(weight).toHaveValue(/^\d/);
 
     // The server row appearing is the positive signal that the live session is
-    // durable — and it lands strictly LATER than a draft write would have, so the
-    // absence below is a real absence, not a race.
+    // durable. The draft runs in live mode too (it is the only copy when the
+    // server backing fails — e2e/stale-build-save.spec.ts drives that), but the
+    // clear-on-success effect drops it the moment the server copy is current, so
+    // the store settles EMPTY while saves are landing.
     await expect(
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible({ timeout: DRAFT_SETTLE_MS });
-    expect(activityDrafts(await draftRows(page))).toEqual([]);
+    await expect
+      .poll(async () => activityDrafts(await draftRows(page)).length, {
+        timeout: DRAFT_SETTLE_MS,
+        message: "the live draft to be dropped once the server copy is current",
+      })
+      .toBe(0);
 
     // …and a plain create form opened afterwards has nothing to offer, which is the
     // observable form of "the live session left no draft behind".
