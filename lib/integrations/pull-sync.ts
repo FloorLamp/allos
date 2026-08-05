@@ -31,6 +31,14 @@ import {
   type NormMetricSample,
   type NormVital,
 } from "./normalize";
+import {
+  replaceActivityLaps,
+  replaceSegmentEfforts,
+  upsertCyclingTelemetry,
+  type NormActivityLap,
+  type NormCyclingTelemetry,
+  type NormSegmentEffort,
+} from "./cycling-telemetry";
 import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
 
 // THE pull-sync runner (#2040). One implementation of everything a scheduled pull
@@ -66,6 +74,15 @@ export interface PullBatch {
   // external_id inside the same transaction. Deliberately NOT folded into the run's
   // tally — it is not its own record.
   routes?: NormActivityRoute[];
+  // Optional rich cycling artifacts gathered with an activity. These resolve their
+  // parent through the activity external id, so the shared runner persists them in
+  // the SAME transaction, after the activity upsert. Replacement parents are
+  // explicit: a provider may successfully fetch an empty lap/segment list, while a
+  // transient detail failure must preserve the prior children.
+  cyclingTelemetry?: NormCyclingTelemetry[];
+  activityLaps?: NormActivityLap[];
+  segmentEfforts?: NormSegmentEffort[];
+  cyclingArtifactParents?: string[];
 }
 
 // A successful gather.
@@ -249,6 +266,23 @@ export async function runPullSync<
       // Routes resolve their parent activity by external_id, so this must run after
       // upsertActivities (same tx). Idempotent; not folded into the tally.
       if (batch.routes) upsertActivityRoutes(profileId, routes, spec.id);
+      if (batch.cyclingTelemetry) {
+        upsertCyclingTelemetry(profileId, batch.cyclingTelemetry, spec.id);
+      }
+      if (batch.cyclingArtifactParents) {
+        replaceActivityLaps(
+          profileId,
+          batch.activityLaps ?? [],
+          spec.id,
+          batch.cyclingArtifactParents
+        );
+        replaceSegmentEfforts(
+          profileId,
+          batch.segmentEfforts ?? [],
+          spec.id,
+          batch.cyclingArtifactParents
+        );
+      }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -158,6 +158,31 @@ through the one `feedItemView` shape. It is an ordering hint, never a failure:
 the produced-count detail, the failure badge, and the sync-event accounting are
 unchanged, and an in-flight or failed document never badges.
 
+**Strava cycling detail.** The pull requests `profile:read_all` alongside
+`activity:read_all`. Each cycling activity consumes one additional keyed-stream
+request; the combined detail/stream request cap stays below Strava's rolling
+limit and advances the existing cursor over successive runs. DetailedActivity's
+embedded laps and segment efforts cost no extra request. The normalized grouping
+preserves cycling subtype: MountainBikeRide is Mountain
+Biking, while VirtualRide and `trainer: true` rides are Stationary Bike so the
+indoor-only Analyze capability policy applies without inferring from absent GPS.
+`activity_telemetry` stores the compact keyed stream JSON plus the FTP and zone snapshot in one
+profile-owned row per activity/source; `activity_laps` and
+`activity_segment_efforts` store the individually rendered children. All three
+are idempotent and activity-cascaded, are included in profile deletion, undo,
+and portable export, and remain optional for older tokens: a profile-scope 403
+does not block activity/stream import, while reconnecting grants FTP/zones.
+Trailing rescans preserve the last good stream, lap, segment, FTP, and zone data
+when an independent supplemental request fails. FTP and zones are immutable once
+captured for a ride (a reconnect may fill a previously missing snapshot), so a
+later athlete-setting change cannot rewrite historical training load. Activity
+merges re-parent these children before deleting a duplicate, and undoable merges
+move them back with the restored activity.
+Power curves, FTP-relative load, and same-route identity are derived at read
+time rather than stored as competing facts. The aligned `time` and `latlng`
+streams remain optional but, when present, drive the ride detail's chart-linked
+route marker without making a map or geocoding request.
+
 **One rendering of sync history (#1212 → #1772).** Per-provider sync history —
 the events of `integration_sync_events` with the #674 inserted/updated/unchanged
 split — renders in exactly ONE place per stream. #1212 established that rule by

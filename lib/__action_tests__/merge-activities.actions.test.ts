@@ -89,6 +89,45 @@ const setsFor = (activityId: number) =>
     )
     .all(activityId) as { id: number; exercise: string }[];
 
+function insertCyclingArtifacts(profileId: number, activityId: number): void {
+  db.prepare(
+    `INSERT INTO activity_telemetry
+       (profile_id, activity_id, source, streams_json, snapshot_at)
+     VALUES (?, ?, 'strava', '{"time":{"data":[0,1]},"watts":{"data":[150,170]}}',
+             '2026-05-01T12:00:00Z')`
+  ).run(profileId, activityId);
+  db.prepare(
+    `INSERT INTO activity_laps
+       (profile_id, activity_id, source, external_id, lap_index)
+     VALUES (?, ?, 'strava', ?, 1)`
+  ).run(profileId, activityId, `lap:${activityId}`);
+  db.prepare(
+    `INSERT INTO activity_segment_efforts
+       (profile_id, activity_id, source, external_id, name)
+     VALUES (?, ?, 'strava', ?, 'Synthetic climb')`
+  ).run(profileId, activityId, `segment:${activityId}`);
+}
+
+function cyclingArtifactParents(profileId: number): {
+  telemetry: number[];
+  laps: number[];
+  segments: number[];
+} {
+  const ids = (table: string) =>
+    (
+      db
+        .prepare(
+          `SELECT activity_id FROM ${table} WHERE profile_id = ? ORDER BY id`
+        )
+        .all(profileId) as { activity_id: number }[]
+    ).map((row) => row.activity_id);
+  return {
+    telemetry: ids("activity_telemetry"),
+    laps: ids("activity_laps"),
+    segments: ids("activity_segment_efforts"),
+  };
+}
+
 beforeEach(() => {
   revalidate.mockClear();
 });
@@ -223,6 +262,41 @@ describe("mergeActivities", () => {
       )
       .get(profile.id) as { c: number };
     expect(restored.c).toBe(1);
+  });
+
+  it("moves cycling artifacts to the keeper and returns them to the drop on undo", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-cycling-artifacts", login.id);
+    actAs(login, profile);
+
+    const keepId = insertActivity(profile.id, { title: "Manual ride" });
+    const dropId = insertActivity(profile.id, {
+      title: "Strava ride",
+      source: "strava",
+      external_id: "strava:cycling-artifacts",
+    });
+    insertCyclingArtifacts(profile.id, dropId);
+
+    const { undoIds } = await mergeActivities(
+      fd({ keep_id: keepId, drop_id: dropId })
+    );
+    expect(cyclingArtifactParents(profile.id)).toEqual({
+      telemetry: [keepId],
+      laps: [keepId],
+      segments: [keepId],
+    });
+
+    expect((await undoDelete(undoIds[0]!)).ok).toBe(true);
+    const restored = db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND title = 'Strava ride'"
+      )
+      .get(profile.id) as { id: number };
+    expect(cyclingArtifactParents(profile.id)).toEqual({
+      telemetry: [restored.id],
+      laps: [restored.id],
+      segments: [restored.id],
+    });
   });
 
   // Issue #199: the discarded row's exercise_sets must survive the merge — they are

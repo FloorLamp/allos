@@ -11,6 +11,14 @@ import type {
   NormMetricSample,
   NormActivityRoute,
 } from "./normalize";
+import {
+  STRAVA_STREAM_KEYS,
+  type CyclingStreams,
+  type NormActivityLap,
+  type NormCyclingTelemetry,
+  type NormSegmentEffort,
+  type ProviderStream,
+} from "./cycling-telemetry";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
 // provider-agnostic normalized records (see normalize.ts), so the shared upserts
@@ -151,7 +159,7 @@ const STRAVA_SPORT_NAMES: Record<string, string> = {
   Ride: "Cycling",
   GravelRide: "Cycling",
   EBikeRide: "Cycling",
-  VirtualRide: "Cycling",
+  VirtualRide: "Stationary Bike",
   MountainBikeRide: "Mountain Biking",
   Run: "Running",
   VirtualRun: "Running",
@@ -265,6 +273,8 @@ export function mapStravaActivity(
   // by outdoor GPS devices only.
   const isOutdoor =
     rec.trainer !== true && !(str(sportType) ?? "").startsWith("Virtual");
+  const activityName =
+    isCycling && !isOutdoor ? "Stationary Bike" : stravaSportName(sportType);
 
   const hasHr = rec.has_heartrate === true;
   const mps = (v: unknown) => {
@@ -301,7 +311,7 @@ export function mapStravaActivity(
     // e.g. "Cycling" instead of fragmenting by its unique freeform title.
     components: [
       {
-        name: stravaSportName(sportType),
+        name: activityName,
         type,
         distance_km: distanceKm,
         duration_min: durationMin,
@@ -438,4 +448,140 @@ export function rpeToIntensity(rpe: number | null | undefined): string | null {
   if (rpe <= 3) return "easy";
   if (rpe <= 6) return "moderate";
   return "hard";
+}
+
+function int(v: unknown): number | null {
+  const n = num(v);
+  return n == null ? null : Math.round(n);
+}
+
+function providerId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return str(value);
+}
+
+function mapStreamSet(value: unknown): CyclingStreams {
+  if (!value || typeof value !== "object") return {};
+  const input = value as Record<string, unknown>;
+  const out: CyclingStreams = {};
+  for (const key of STRAVA_STREAM_KEYS) {
+    const stream = input[key];
+    if (!stream || typeof stream !== "object") continue;
+    const rec = stream as Record<string, unknown>;
+    if (!Array.isArray(rec.data)) continue;
+    const normalized: ProviderStream = { data: rec.data };
+    const originalSize = int(rec.original_size);
+    const resolution = str(rec.resolution);
+    const seriesType = str(rec.series_type);
+    if (originalSize != null) normalized.original_size = originalSize;
+    if (resolution) normalized.resolution = resolution;
+    if (seriesType) normalized.series_type = seriesType;
+    out[key] = normalized;
+  }
+  return out;
+}
+
+// DetailedActivity already embeds laps and segment efforts. The stream set is the
+// only per-ride supplemental request. Athlete FTP/zones are snapshotted onto the
+// telemetry row so later changes cannot silently rewrite the load context shown
+// for an older sync.
+export function mapStravaCyclingArtifacts(
+  activityId: string,
+  detail: unknown,
+  streams: unknown,
+  athlete: unknown,
+  zones: unknown,
+  snapshotAt: string
+): {
+  telemetry: NormCyclingTelemetry;
+  laps: NormActivityLap[];
+  segmentEfforts: NormSegmentEffort[];
+} {
+  const detailRec =
+    detail && typeof detail === "object"
+      ? (detail as Record<string, unknown>)
+      : {};
+  const athleteRec =
+    athlete && typeof athlete === "object"
+      ? (athlete as Record<string, unknown>)
+      : {};
+  const zonesRec =
+    zones && typeof zones === "object"
+      ? (zones as Record<string, unknown>)
+      : {};
+  const zoneList = (key: "heart_rate" | "power"): unknown[] | null => {
+    const block = zonesRec[key];
+    if (!block || typeof block !== "object") return null;
+    const list = (block as Record<string, unknown>).zones;
+    return Array.isArray(list) ? list : null;
+  };
+  const parentExternalId = `${STRAVA_ID}:${activityId}`;
+  const telemetry: NormCyclingTelemetry = {
+    external_id: parentExternalId,
+    streams: mapStreamSet(streams),
+    ftp_w: int(athleteRec.ftp),
+    heart_rate_zones: zoneList("heart_rate"),
+    power_zones: zoneList("power"),
+    snapshot_at: snapshotAt,
+  };
+
+  const laps = (Array.isArray(detailRec.laps) ? detailRec.laps : []).flatMap(
+    (value, index): NormActivityLap[] => {
+      if (!value || typeof value !== "object") return [];
+      const lap = value as Record<string, unknown>;
+      const externalId = providerId(lap.id) ?? `${activityId}:lap:${index + 1}`;
+      return [
+        {
+          external_id: parentExternalId,
+          lap_external_id: externalId,
+          lap_index: int(lap.lap_index) ?? index + 1,
+          name: str(lap.name),
+          distance_m: num(lap.distance),
+          moving_time_sec: int(lap.moving_time),
+          elapsed_time_sec: int(lap.elapsed_time),
+          start_index: int(lap.start_index),
+          end_index: int(lap.end_index),
+          elevation_gain_m: num(lap.total_elevation_gain),
+          average_speed_mps: num(lap.average_speed),
+          max_speed_mps: num(lap.max_speed),
+          average_cadence: num(lap.average_cadence),
+          average_watts: num(lap.average_watts),
+          average_heartrate: num(lap.average_heartrate),
+          max_heartrate: num(lap.max_heartrate),
+        },
+      ];
+    }
+  );
+
+  const segmentEfforts = (
+    Array.isArray(detailRec.segment_efforts) ? detailRec.segment_efforts : []
+  ).flatMap((value, index): NormSegmentEffort[] => {
+    if (!value || typeof value !== "object") return [];
+    const effort = value as Record<string, unknown>;
+    const segment =
+      effort.segment && typeof effort.segment === "object"
+        ? (effort.segment as Record<string, unknown>)
+        : {};
+    return [
+      {
+        external_id: parentExternalId,
+        effort_external_id:
+          providerId(effort.id) ?? `${activityId}:segment:${index + 1}`,
+        segment_id: providerId(segment.id),
+        name: str(effort.name) ?? str(segment.name) ?? `Segment ${index + 1}`,
+        distance_m: num(effort.distance, segment.distance),
+        moving_time_sec: int(effort.moving_time),
+        elapsed_time_sec: int(effort.elapsed_time),
+        start_index: int(effort.start_index),
+        end_index: int(effort.end_index),
+        average_cadence: num(effort.average_cadence),
+        average_watts: num(effort.average_watts),
+        average_heartrate: num(effort.average_heartrate),
+        max_heartrate: num(effort.max_heartrate),
+        pr_rank: int(effort.pr_rank),
+        kom_rank: int(effort.kom_rank),
+      },
+    ];
+  });
+  return { telemetry, laps, segmentEfforts };
 }

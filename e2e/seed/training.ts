@@ -43,12 +43,177 @@ export function seedJournalCard(): void {
   // disclosure + lock affordances can be exercised without another activity row.
   db.prepare(
     `UPDATE activities
-      SET notes = ?, edited = 1
+      SET notes = ?,
+          edited = 1,
+          equipment_id = (
+            SELECT id FROM equipment
+             WHERE profile_id = ? AND name = 'Road Bike'
+             LIMIT 1
+          )
     WHERE profile_id = ? AND external_id = 'strava:seed-ride-1'`
   ).run(
     "Synthetic training note: steady endurance work with controlled breathing through the first half, then a slightly stronger finish while keeping cadence smooth and effort comfortably below threshold.",
+    PROFILE_ID,
     PROFILE_ID
   );
+  // Give the older, similarly sized cycling fixture enough overlapping provider
+  // measurements to exercise the ride detail's selectable progression chart.
+  // Values are deliberately plausible and fictional.
+  db.prepare(
+    `UPDATE activities
+        SET avg_hr = 140,
+            elevation_m = 165,
+            relative_effort = 58,
+            avg_power_w = 168,
+            weighted_avg_power_w = 176,
+            avg_cadence = 84
+      WHERE profile_id = ? AND title = 'Zone 2 bike'`
+  ).run(PROFILE_ID);
+
+  const ride = db
+    .prepare(
+      `SELECT id, date FROM activities
+        WHERE profile_id = ? AND external_id = 'strava:seed-ride-1'`
+    )
+    .get(PROFILE_ID) as { id: number; date: string } | undefined;
+  if (ride) {
+    const times = Array.from({ length: 1201 }, (_, index) => index);
+    const streams = {
+      time: { data: times, original_size: times.length },
+      distance: {
+        data: times.map((second) => second * 5),
+        original_size: times.length,
+      },
+      moving: {
+        data: times.map((second) => second < 300 || second >= 360),
+        original_size: times.length,
+      },
+      watts: {
+        data: times.map((second) =>
+          second >= 400 && second < 500
+            ? 0
+            : second < 60
+              ? 285
+              : 175 + (second % 90)
+        ),
+        original_size: times.length,
+      },
+      cadence: {
+        data: times.map((second) => 82 + (second % 12)),
+        original_size: times.length,
+      },
+      velocity_smooth: {
+        data: times.map((second) => 6.4 + (second % 40) / 20),
+        original_size: times.length,
+      },
+      altitude: {
+        data: times.map((second) => 100 + second / 30),
+        original_size: times.length,
+      },
+      heartrate: {
+        data: times.map((second) => 132 + Math.floor(second / 120)),
+        original_size: times.length,
+      },
+      grade_smooth: {
+        data: times.map((second) =>
+          second >= 600 && second < 900 ? 4.2 : 0.5
+        ),
+        original_size: times.length,
+      },
+      latlng: {
+        data: times.map((second) => {
+          const anchors = [
+            [38.5, -120.2],
+            [40.7, -120.95],
+            [43.252, -126.453],
+          ];
+          const scaled = (second / 1200) * (anchors.length - 1);
+          const start = Math.min(Math.floor(scaled), anchors.length - 2);
+          const progress = scaled - start;
+          return [
+            anchors[start][0] +
+              (anchors[start + 1][0] - anchors[start][0]) * progress,
+            anchors[start][1] +
+              (anchors[start + 1][1] - anchors[start][1]) * progress,
+          ];
+        }),
+        original_size: times.length,
+      },
+    };
+    db.prepare(
+      `INSERT INTO activity_telemetry
+         (profile_id, activity_id, source, streams_json, ftp_w,
+          power_zones_json, snapshot_at)
+       VALUES (?, ?, 'strava', ?, 250, ?, datetime('now'))
+       ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
+         streams_json = excluded.streams_json,
+         ftp_w = excluded.ftp_w,
+         power_zones_json = excluded.power_zones_json`
+    ).run(
+      PROFILE_ID,
+      ride.id,
+      JSON.stringify(streams),
+      JSON.stringify([
+        { min: 0, max: 150 },
+        { min: 151, max: 205 },
+        { min: 206, max: 250 },
+        { min: 251, max: -1 },
+      ])
+    );
+    const insertRideHr = db.prepare(
+      `INSERT OR REPLACE INTO hr_minutes
+         (profile_id, ts, bpm, n, source)
+       VALUES (?, ?, ?, 6, 'health-connect')`
+    );
+    for (let minute = 0; minute < 62; minute++) {
+      const clockMinute = 7 * 60 + 15 + minute;
+      const hh = String(Math.floor(clockMinute / 60)).padStart(2, "0");
+      const mm = String(clockMinute % 60).padStart(2, "0");
+      insertRideHr.run(
+        PROFILE_ID,
+        `${ride.date}T${hh}:${mm}`,
+        135 + Math.floor(minute / 8)
+      );
+    }
+    db.prepare(
+      "DELETE FROM activity_laps WHERE profile_id = ? AND activity_id = ?"
+    ).run(PROFILE_ID, ride.id);
+    db.prepare(
+      `INSERT INTO activity_laps
+         (profile_id, activity_id, source, external_id, lap_index, name,
+          distance_m, moving_time_sec, average_speed_mps, average_watts)
+       VALUES (?, ?, 'strava', 'e2e-lap-1', 1, 'Lap 1', 10000, 1500, 6.67, 184),
+              (?, ?, 'strava', 'e2e-lap-2', 2, 'Lap 2', 14500, 2220, 6.53, 188)`
+    ).run(PROFILE_ID, ride.id, PROFILE_ID, ride.id);
+    db.prepare(
+      "DELETE FROM activity_segment_efforts WHERE profile_id = ? AND activity_id = ?"
+    ).run(PROFILE_ID, ride.id);
+    db.prepare(
+      `INSERT INTO activity_segment_efforts
+         (profile_id, activity_id, source, external_id, name, distance_m,
+          moving_time_sec, average_watts, pr_rank)
+       VALUES (?, ?, 'strava', 'e2e-segment-1', 'Fictional park climb',
+               1200, 245, 278, 1)`
+    ).run(PROFILE_ID, ride.id);
+
+    const prior = db
+      .prepare(
+        `SELECT id FROM activities
+          WHERE profile_id = ? AND title = 'Zone 2 bike'
+          ORDER BY date DESC, id DESC LIMIT 1`
+      )
+      .get(PROFILE_ID) as { id: number } | undefined;
+    const route = db
+      .prepare("SELECT polyline FROM activity_routes WHERE activity_id = ?")
+      .get(ride.id) as { polyline: string } | undefined;
+    if (prior && route) {
+      db.prepare(
+        `INSERT INTO activity_routes (activity_id, polyline, source)
+         VALUES (?, ?, 'strava')
+         ON CONFLICT(activity_id) DO UPDATE SET polyline = excluded.polyline`
+      ).run(prior.id, route.polyline);
+    }
+  }
 
   // Give one recent strength row an explicit met target so the card's visible and
   // accessible status treatment is covered by the browser tier.
@@ -290,8 +455,9 @@ export function seedActivityFormPaths(): void {
   );
   db.prepare(
     `INSERT INTO activities
-     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited, equipment_id)
-   VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?)`
+     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited, equipment_id, components)
+   VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?,
+           '[{"name":"Cycling","type":"cardio","distance_km":20,"duration_min":45}]')`
   ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -2), regBikeId);
 
   // A dedicated recovery device on profile 1 for the protocol-practice spec (issue

@@ -1,4 +1,5 @@
-import { encodedPolylineToSvg } from "@/lib/polyline";
+import { decodePolyline, polylineToSvg, type LatLng } from "@/lib/polyline";
+import { chartSeries } from "@/lib/chart-colors";
 
 // Tile-free SVG route thumbnail (issue #569). Decodes the activity's encoded GPS
 // polyline and draws its SHAPE as an SVG <path> scaled to its bounding box — the
@@ -16,6 +17,9 @@ export default function RouteMap({
   height,
   className,
   title = "Activity route",
+  points,
+  highlightIndex,
+  highlightTitle,
 }: {
   polyline: string | null | undefined;
   size?: number;
@@ -25,10 +29,15 @@ export default function RouteMap({
   height?: number;
   className?: string;
   title?: string;
+  points?: LatLng[];
+  highlightIndex?: number | null;
+  highlightTitle?: string;
 }) {
   const routeWidth = width ?? size;
   const routeHeight = height ?? size;
-  const route = encodedPolylineToSvg(polyline, {
+  const routePoints =
+    points && points.length > 1 ? points : decodePolyline(polyline);
+  const route = polylineToSvg(routePoints, {
     width: routeWidth,
     height: routeHeight,
     padding: 6,
@@ -36,6 +45,8 @@ export default function RouteMap({
   if (!route) return null;
   const start = route.points[0];
   const end = route.points[route.points.length - 1];
+  const highlighted =
+    highlightIndex != null ? route.points[highlightIndex] : undefined;
   return (
     <svg
       viewBox={`0 0 ${route.width} ${route.height}`}
@@ -68,6 +79,19 @@ export default function RouteMap({
         strokeWidth={2}
       />
       <circle cx={end.x} cy={end.y} r={3} fill="currentColor" />
+      {highlighted ? (
+        <circle
+          cx={highlighted.x}
+          cy={highlighted.y}
+          r={4.5}
+          fill={chartSeries.amber}
+          stroke="var(--color-surface, #fff)"
+          strokeWidth={2}
+          data-testid="route-active-point"
+        >
+          {highlightTitle ? <title>{highlightTitle}</title> : null}
+        </circle>
+      ) : null}
     </svg>
   );
 }

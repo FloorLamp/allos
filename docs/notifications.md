@@ -4,10 +4,21 @@ Status: **shipped** · descriptive documentation of current behavior, extracted
 from the README (#597)
 
 Reminders (supplements due in a window, and a workout nudge when you're behind
-on a weekly target) are delivered over three channels — **Telegram**, **Web
-Push**, and a **Home Assistant** webhook — that share the same schedule and
-per-day/slot dedup. Enable any or all; a profile with several configured gets
-each reminder on each.
+on a weekly target) are delivered over four channels — **Telegram**, **Web
+Push**, a **Home Assistant** webhook, and **email** — that share the same
+schedule and per-day/slot dedup. Enable any or all; a profile with several
+configured gets each reminder on each.
+
+**Email** (issue #1855) is per person and opt-in: turn it on under **Settings →
+Notifications → Email**, and reminders for every profile you manage go to your
+account's email address (the one invitations and password resets use; the
+instance needs SMTP configured on **Settings → Server**). By default the emails
+are **content-free** — "something needs your attention — open Allos" — so no
+health details land in your inbox or wherever your mail is stored or forwarded.
+You can switch your own account to **full content** on the same card; the
+control states the trade-off, and nothing but your own choice ever widens it.
+Email can't carry one-tap buttons, so the button-only nudges (the food nudge,
+the mood check-in) never send there.
 
 Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly
 recap** — a quiet once-a-week summary of your week (workouts, PRs, supplement

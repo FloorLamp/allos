@@ -3,7 +3,7 @@
 // the dashboard. /trends reads activity-derived data, so a create/edit/merge/delete
 // that skips it leaves the fitness chart and heatmap stale. These tests pin the exact
 // revalidated path SET for each mutation so a future edit can't silently drop /trends
-// again.
+// or the dedicated ride read model again.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -22,6 +22,12 @@ const revalidate = vi.mocked(revalidatePath);
 // The set of distinct paths an action asked Next to revalidate.
 const revalidatedPaths = () =>
   new Set(revalidate.mock.calls.map((c) => c[0] as string));
+const ACTIVITY_SURFACES = new Set([
+  "/training",
+  "/training/rides/[id]",
+  "/trends",
+  "/",
+]);
 
 function insertActivity(
   profileId: number,
@@ -53,7 +59,7 @@ describe("activity writes revalidate /trends (#333)", () => {
     );
 
     expect(res).toEqual({ ok: true, id: expect.any(Number) });
-    expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
+    expect(revalidatedPaths()).toEqual(ACTIVITY_SURFACES);
   });
 
   it("saveActivity (edit) refreshes /training, /trends, and /", async () => {
@@ -66,7 +72,7 @@ describe("activity writes revalidate /trends (#333)", () => {
       fd({ id, type: "cardio", title: "After", date: "2026-05-01" })
     );
 
-    expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
+    expect(revalidatedPaths()).toEqual(ACTIVITY_SURFACES);
   });
 
   it("logBodyweight refreshes /training, /trends, and / (bodyweight-lift volume)", async () => {
@@ -76,7 +82,7 @@ describe("activity writes revalidate /trends (#333)", () => {
 
     await logBodyweight(80, "2026-05-01");
 
-    expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
+    expect(revalidatedPaths()).toEqual(ACTIVITY_SURFACES);
   });
 
   it("mergeActivities refreshes /training, /trends, and /", async () => {
@@ -92,7 +98,7 @@ describe("activity writes revalidate /trends (#333)", () => {
     const undoId = undoIds[0] ?? null;
 
     expect(undoId).not.toBeNull();
-    expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
+    expect(revalidatedPaths()).toEqual(ACTIVITY_SURFACES);
   });
 
   it("deleteActivity refreshes /training, /trends, and /", async () => {
@@ -104,7 +110,7 @@ describe("activity writes revalidate /trends (#333)", () => {
     const { undoId } = await deleteActivity(fd({ id }));
 
     expect(undoId).not.toBeNull();
-    expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
+    expect(revalidatedPaths()).toEqual(ACTIVITY_SURFACES);
   });
 
   it("mergeActivityPair (Review resolver) refreshes /data, /training, /trends, and /", async () => {
@@ -119,7 +125,7 @@ describe("activity writes revalidate /trends (#333)", () => {
     );
 
     expect(revalidatedPaths()).toEqual(
-      new Set(["/data", "/training", "/trends", "/"])
+      new Set(["/data", "/training", "/training/rides/[id]", "/trends", "/"])
     );
   });
 });

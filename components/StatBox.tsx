@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { goalBarClass } from "@/lib/goals";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -8,15 +8,20 @@ import type { AppRoute } from "@/lib/hrefs";
 export function StatBox({
   label,
   value,
+  valueStyle,
+  valueTitle,
   sub,
   subClass,
   href,
   badge,
   progress,
   className,
+  "data-testid": testId,
 }: {
   label: string;
   value: string;
+  valueStyle?: CSSProperties;
+  valueTitle?: string;
   sub?: ReactNode;
   subClass?: string;
   // When set, the value links to it (e.g. the journal entry of the last session).
@@ -29,16 +34,22 @@ export function StatBox({
   progress?: number;
   // Extra classes on the box (e.g. "col-span-2" for a full-width goal).
   className?: string;
+  "data-testid"?: string;
 }) {
   return (
     <div
+      data-testid={testId}
       className={`rounded-lg bg-slate-50 px-3 py-2 dark:bg-ink-900 ${className ?? ""}`}
     >
       <dt className="flex items-center gap-1.5 section-label">
         {label}
         {badge}
       </dt>
-      <dd className="mt-0.5 font-semibold text-slate-800 dark:text-slate-100">
+      <dd
+        className="mt-0.5 font-semibold text-slate-800 dark:text-slate-100"
+        style={valueStyle}
+        title={valueTitle}
+      >
         {href ? (
           <a
             href={href}

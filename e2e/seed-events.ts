@@ -103,6 +103,7 @@ import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import {
   seedDigestTune,
+  seedEmailNotify,
   seedHaConfig,
   seedNotifSweep,
 } from "./seed/notifications";
@@ -170,6 +171,7 @@ seedSafetyCoverage();
 seedHaConfig();
 seedDigestTune();
 seedNotifSweep();
+seedEmailNotify();
 seedDataQualityGaps();
 seedVisitLinking();
 seedToasterIsolation();

@@ -8,8 +8,10 @@ import "../../scripts/load-env";
 import {
   DIGEST_TUNE_PROFILE,
   E2E_LOGIN_DIGEST_TUNE,
+  E2E_LOGIN_EMAIL_NOTIFY,
   E2E_LOGIN_HA_NOTIFY,
   E2E_LOGIN_NOTIF_SWEEP,
+  EMAIL_NOTIFY_PROFILE,
   HA_NOTIFY_PROFILE,
   NOTIF_SWEEP_PROFILE,
 } from "../fixture-logins";
@@ -42,6 +44,20 @@ export function seedDigestTune(): void {
   seedMemberLogin(E2E_LOGIN_DIGEST_TUNE, id, "write");
   console.log(
     `e2e: seeded digest-tune fixture — profile ${id} (${DIGEST_TUNE_PROFILE})`
+  );
+}
+
+// ── Email notification channel (#1855) ──
+export function seedEmailNotify(): void {
+  // A dedicated adult profile + login for email-notify.spec.ts. The channel enable,
+  // content mode, and email matrix column are LOGIN-scoped and persist, so the spec
+  // must not share a login with any other spec; the spec itself owns the login's
+  // logins.email address and resets the global SMTP config it touches. No health
+  // data needed — the spec reads and writes only notification settings.
+  const id = fixtureProfileId(EMAIL_NOTIFY_PROFILE);
+  seedMemberLogin(E2E_LOGIN_EMAIL_NOTIFY, id, "write");
+  console.log(
+    `e2e: seeded email notification fixture — profile ${id} (${EMAIL_NOTIFY_PROFILE})`
   );
 }
 

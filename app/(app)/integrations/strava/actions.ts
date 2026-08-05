@@ -31,7 +31,8 @@ export async function saveStravaCredentials(formData: FormData) {
 }
 
 // Begin the OAuth flow: store a single-use CSRF state, then redirect to Strava's
-// authorize page. activity:read_all covers private activities.
+// authorize page. profile:read_all is needed for FTP and athlete zone snapshots;
+// activity:read_all covers private activities and their streams.
 export async function connectStrava() {
   const { profile } = await requireWriteAccess();
   if (!hasStravaCredentials(profile.id)) {
@@ -53,7 +54,7 @@ export async function connectStrava() {
     response_type: "code",
     redirect_uri: callbackUrl,
     approval_prompt: "auto",
-    scope: "activity:read_all",
+    scope: "read,activity:read_all,profile:read_all",
     state,
   });
   redirect(`${AUTHORIZE_URL}?${params.toString()}`);

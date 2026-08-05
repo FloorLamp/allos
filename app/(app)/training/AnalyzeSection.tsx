@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   getCardioByActivity,
+  getCyclingOverviewData,
   getExerciseComparison,
   getExerciseLoadContexts,
   getGoalProgressMap,
@@ -40,6 +41,7 @@ import {
   STRENGTH_METRICS,
   CARDIO_METRICS,
   benchmarkState,
+  analyzeQuickLinks,
   type BenchmarkState,
   buildAnalyzeOptions,
   cardioMetricValue,
@@ -58,18 +60,27 @@ import {
   rangeFilter,
   strengthMetricValue,
   type AnalyzeKind,
+  type CardioMetric,
   type AnalyzeView,
   type RangeId,
 } from "@/lib/analyze-view";
 import { cardMetaEntries } from "@/lib/card-row";
 import { EmptyState } from "@/components/ui";
+import ActivityIcon from "@/components/ActivityIcon";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import LineChartCard from "@/components/LineChartCard";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import AnalyzePicker from "./AnalyzePicker";
-import type { AppRoute } from "@/lib/hrefs";
+import CyclingOverviewDetails from "./CyclingOverviewDetails";
+import { cyclingRideHref, type AppRoute, type CyclingLens } from "@/lib/hrefs";
+import {
+  CYCLING_METRICS,
+  cyclingHistoryMetricOrder,
+} from "@/lib/cycling-metrics";
+import { journalActivityHref } from "@/lib/timeline-format";
+import { isCyclingActivityName } from "@/lib/cycling-activity";
 
 export default async function AnalyzeSection({
   kind,
@@ -175,14 +186,24 @@ export default async function AnalyzeSection({
     activeRange,
     metric,
   });
+  const cardioStat =
+    activeKind === "cardio"
+      ? (cardio.find((c) => c.activity === selectedName) ?? cardio[0])
+      : undefined;
+  const cyclingOverview =
+    cardioStat && isCyclingActivityName(cardioStat.activity)
+      ? getCyclingOverviewData(profile.id, cardioStat.activity)
+      : null;
 
   const view =
     activeKind === "cardio"
       ? cardioView({
-          stat: cardio.find((c) => c.activity === selectedName) ?? cardio[0],
+          stat: cardioStat!,
           metric,
           fromDate,
           units,
+          formatPrefs,
+          overview: cyclingOverview,
         })
       : activeKind === "sport"
         ? sportView({
@@ -208,66 +229,136 @@ export default async function AnalyzeSection({
   const currentPickerLabel =
     analyzeOptions.find((o) => o.kind === activeKind && o.item === currentItem)
       ?.label ?? currentItem;
+  const isCyclingOverview = cyclingOverview != null;
+  const cyclingLens: CyclingLens | null = isCyclingOverview
+    ? {
+        metric: view.metric as CardioMetric,
+        range: activeRange,
+        activity: currentItem,
+      }
+    : null;
+  const cyclingNoun = cyclingOverview?.indoorOnly ? "session" : "ride";
+  const cyclingPlural = cyclingOverview?.indoorOnly ? "sessions" : "rides";
+  const quickLinks = analyzeQuickLinks(analyzeOptions);
+  const analysisControls = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
+        {view.metrics.map((m) => (
+          <Link
+            key={m.id}
+            href={hrefFor({ item: currentItem, metric: m.id })}
+            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+              m.id === view.metric
+                ? "bg-brand-600 text-white"
+                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+            }`}
+          >
+            {m.label}
+          </Link>
+        ))}
+      </div>
+      <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
+        {RANGES.map((r) => (
+          <Link
+            key={r.id}
+            href={hrefFor({ item: currentItem, range: r.id })}
+            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+              r.id === activeRange
+                ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-ink-950"
+                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+            }`}
+          >
+            {r.label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     // The section marker (#1496) is the lazy-tab proof: /training builds ONLY the
     // active tab, so an Overview response must not contain this testid.
     <section
       data-testid="analyze-section"
-      className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]"
+      className={
+        isCyclingOverview
+          ? "space-y-6"
+          : "grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]"
+      }
     >
       <div className="space-y-6">
-        <div className="card relative z-20 focus-within:z-50">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-            <label className="block min-w-0">
-              <span className="mb-1 block section-label">
-                Exercise or activity
-              </span>
-              <AnalyzePicker
-                options={analyzeOptions}
-                value={currentPickerLabel}
+        <div
+          className="card relative z-20 focus-within:z-50"
+          data-testid={isCyclingOverview ? "cycling-overview" : undefined}
+        >
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div
+              className="flex min-w-0 items-center gap-2.5"
+              data-testid="analyze-activity-title"
+            >
+              <ActivityIcon
+                type={activeKind}
+                sportNames={[currentItem]}
+                className="h-7 w-7 shrink-0 text-brand-600 dark:text-brand-400"
               />
-            </label>
+              <div className="min-w-0" role="heading" aria-level={2}>
+                <AnalyzePicker
+                  options={analyzeOptions}
+                  value={currentPickerLabel}
+                  appearance="title"
+                />
+              </div>
+            </div>
             <Link
-              href={`/training?tab=log#activity-${view.latestActivityId}`}
+              href={
+                cyclingLens && view.latestActivityId != null
+                  ? cyclingRideHref(view.latestActivityId, cyclingLens)
+                  : view.latestHref
+              }
               className="btn-ghost h-10 justify-center"
             >
-              History
+              {isCyclingOverview ? `Latest ${cyclingNoun}` : "Latest session"}
             </Link>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
-              {view.metrics.map((m) => (
-                <Link
-                  key={m.id}
-                  href={hrefFor({ item: currentItem, metric: m.id })}
-                  className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-                    m.id === view.metric
-                      ? "bg-brand-600 text-white"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-                  }`}
-                >
-                  {m.label}
-                </Link>
-              ))}
-            </div>
-            <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
-              {RANGES.map((r) => (
-                <Link
-                  key={r.id}
-                  href={hrefFor({ item: currentItem, range: r.id })}
-                  className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-                    r.id === activeRange
-                      ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-ink-950"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-                  }`}
-                >
-                  {r.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+          {quickLinks.length > 0 && (
+            <nav
+              aria-label="Relevant activities"
+              className="mt-3 flex flex-wrap items-center gap-2"
+              data-testid="analyze-quick-links"
+            >
+              <span className="mr-1 section-label">Quick access</span>
+              {quickLinks.map((option) => {
+                const current =
+                  option.kind === activeKind &&
+                  option.item.trim().toLowerCase() ===
+                    currentItem.trim().toLowerCase();
+                return (
+                  <Link
+                    key={`${option.kind}:${option.item}`}
+                    href={option.href}
+                    aria-current={current ? "page" : undefined}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                      current
+                        ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500 dark:text-white"
+                        : "border-black/10 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-300"
+                    }`}
+                  >
+                    <ActivityIcon
+                      type={option.kind}
+                      sportNames={[option.item]}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    {option.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
+
+          {!isCyclingOverview ? (
+            <div className="mt-4">{analysisControls}</div>
+          ) : null}
 
           {/* Load contexts (#1610). ONE top-level movement stays in the picker
               above; its implements are labeled CHILDREN here, defaulting to the
@@ -308,21 +399,36 @@ export default async function AnalyzeSection({
           )}
         </div>
 
-        <div className="card">
+        <div
+          className="card"
+          data-testid={isCyclingOverview ? "cycling-progression" : undefined}
+        >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                {view.displayName ?? view.name}
+                {isCyclingOverview
+                  ? `${cyclingNoun === "ride" ? "Ride" : "Session"} progression`
+                  : (view.displayName ?? view.name)}
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {view.chartLabel} across logged sessions
+                {view.chartLabel} across logged{" "}
+                {isCyclingOverview ? cyclingPlural : "sessions"}
               </p>
             </div>
             <span className="text-sm text-slate-500 dark:text-slate-400">
               {view.sessions.length}{" "}
-              {view.sessions.length === 1 ? "session" : "sessions"}
+              {isCyclingOverview
+                ? view.sessions.length === 1
+                  ? cyclingNoun
+                  : cyclingPlural
+                : view.sessions.length === 1
+                  ? "session"
+                  : "sessions"}
             </span>
           </div>
+          {isCyclingOverview ? (
+            <div className="mb-4">{analysisControls}</div>
+          ) : null}
           <LineChartCard
             data={view.chart}
             label={view.chartLabel}
@@ -331,12 +437,68 @@ export default async function AnalyzeSection({
           />
         </div>
 
-        <div className="card">
+        {isCyclingOverview && cyclingOverview && cyclingLens ? (
+          <>
+            <div
+              className="grid gap-6 lg:grid-cols-2"
+              data-testid="cycling-summary"
+            >
+              <CyclingOverviewDetails
+                data={cyclingOverview}
+                distanceUnit={units.distanceUnit}
+                formatPrefs={formatPrefs}
+                section="summary"
+                lens={cyclingLens}
+              />
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <CyclingOverviewDetails
+                data={cyclingOverview}
+                distanceUnit={units.distanceUnit}
+                formatPrefs={formatPrefs}
+                section="patterns"
+                lens={cyclingLens}
+              />
+            </div>
+            <div
+              className="grid gap-6 lg:grid-cols-2"
+              data-testid="cycling-performance"
+            >
+              <CyclingOverviewDetails
+                data={cyclingOverview}
+                distanceUnit={units.distanceUnit}
+                formatPrefs={formatPrefs}
+                section="power"
+                lens={cyclingLens}
+              />
+              <CyclingOverviewDetails
+                data={cyclingOverview}
+                distanceUnit={units.distanceUnit}
+                formatPrefs={formatPrefs}
+                section="heart-rate"
+                lens={cyclingLens}
+              />
+            </div>
+          </>
+        ) : null}
+
+        <div
+          className="card"
+          data-testid={isCyclingOverview ? "cycling-ride-history" : undefined}
+        >
           <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Sessions
+            {isCyclingOverview
+              ? `${cyclingNoun === "ride" ? "Ride" : "Session"} history`
+              : "Sessions"}
           </h3>
           {view.sessions.length === 0 ? (
-            <EmptyState message="No sessions in this range. Widen the range or log one." />
+            <EmptyState
+              message={
+                isCyclingOverview
+                  ? `No ${cyclingPlural} in this range. Widen the range or log one.`
+                  : "No sessions in this range. Widen the range or log one."
+              }
+            />
           ) : (
             /* Below `sm` these sessions stack as flat rows (#1426): the date is the
                row title, the view's LEADING metric — the one the chart above plots,
@@ -381,7 +543,11 @@ export default async function AnalyzeSection({
                       >
                         <Td slot="title">
                           <Link
-                            href={`/training?tab=log#activity-${s.activityId}`}
+                            href={
+                              cyclingLens
+                                ? cyclingRideHref(s.activityId, cyclingLens)
+                                : s.href
+                            }
                             className="font-medium text-brand-700 hover:underline dark:text-brand-300"
                           >
                             {dateText}
@@ -406,9 +572,23 @@ export default async function AnalyzeSection({
             </div>
           )}
         </div>
+
+        {isCyclingOverview && cyclingOverview && cyclingLens ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <CyclingOverviewDetails
+              data={cyclingOverview}
+              distanceUnit={units.distanceUnit}
+              formatPrefs={formatPrefs}
+              section="coverage"
+              lens={cyclingLens}
+            />
+          </div>
+        ) : null}
       </div>
 
-      <aside className="space-y-6">{view.detail}</aside>
+      {!isCyclingOverview ? (
+        <aside className="space-y-6">{view.detail}</aside>
+      ) : null}
     </section>
   );
 }
@@ -502,7 +682,9 @@ function strengthView({
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
     color: chartSeries.violet,
-    latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
+    latestHref: journalActivityHref(
+      newest[0]?.activityId ?? stat.lastActivityId
+    ),
     chart: sessions.map((s) => ({
       date: s.date,
       value: strengthMetricValue(s, activeMetric, units.weightUnit),
@@ -510,6 +692,7 @@ function strengthView({
     columns: ["Sets", "Best", "Est. 1RM", "Volume"],
     sessions: newest.map((s) => ({
       activityId: s.activityId,
+      href: journalActivityHref(s.activityId),
       date: s.date,
       cells: [
         String(s.setCount),
@@ -547,24 +730,88 @@ function strengthView({
   };
 }
 
+function cyclingHistoryCell(
+  session: CardioStat["trend"][number],
+  metric: CardioMetric,
+  distanceUnit: "km" | "mi"
+): string {
+  if (metric === "distance") {
+    return session.distanceKm > 0
+      ? fmtDistance(session.distanceKm, distanceUnit)
+      : "—";
+  }
+  if (metric === "duration") return formatMinutes(session.durationMin || null);
+  if (metric === "speed") {
+    return session.speedKmh == null
+      ? "—"
+      : fmtKmh(session.speedKmh, distanceUnit);
+  }
+  if (metric === "heart_rate") {
+    return session.avgHr == null ? "—" : `${Math.round(session.avgHr)} bpm`;
+  }
+  if (metric === "power") {
+    return session.avgPowerW == null
+      ? "—"
+      : `${Math.round(session.avgPowerW)} W`;
+  }
+  if (metric === "weighted_power") {
+    return session.weightedAvgPowerW == null
+      ? "—"
+      : `${Math.round(session.weightedAvgPowerW)} W`;
+  }
+  if (metric === "cadence") {
+    return session.avgCadence == null
+      ? "—"
+      : `${Math.round(session.avgCadence)} rpm`;
+  }
+  if (metric === "elevation") {
+    if (session.elevationM == null) return "—";
+    return distanceUnit === "mi"
+      ? `${Math.round(session.elevationM * 3.28084)} ft`
+      : `${Math.round(session.elevationM)} m`;
+  }
+  return session.relativeEffort == null ? "—" : String(session.relativeEffort);
+}
+
 function cardioView({
   stat,
   metric,
   fromDate,
   units,
+  formatPrefs,
+  overview,
 }: {
   stat: CardioStat;
   metric?: string;
   fromDate: string | null;
   units: ReturnType<typeof getUnitPrefs>;
+  formatPrefs: ReturnType<typeof getDisplayFormatPrefs>;
+  overview: ReturnType<typeof getCyclingOverviewData> | null;
 }): AnalyzeView {
-  const activeMetric = coerceCardioMetric(metric, stat);
-  const metrics = CARDIO_METRICS.filter(
-    (m) => stat.hasDistance || m.id === "duration"
-  );
+  let activeMetric = coerceCardioMetric(metric, stat);
+  const metrics = CARDIO_METRICS.filter((m) => {
+    if (m.id === "duration") return true;
+    if (m.id === "elevation" && overview?.indoorOnly) return false;
+    if (m.id === "distance" || m.id === "speed") return stat.hasDistance;
+    if (m.id === "heart_rate") return stat.hasHeartRate;
+    if (m.id === "elevation") return stat.hasElevation;
+    if (m.id === "power") return stat.hasPower;
+    if (m.id === "weighted_power") return stat.hasWeightedPower;
+    if (m.id === "cadence") return stat.hasCadence;
+    return stat.hasRelativeEffort;
+  });
+  if (!metrics.some((item) => item.id === activeMetric)) {
+    activeMetric = metrics[0]?.id ?? "duration";
+  }
   const sessions = rangeFilter(stat.trend, fromDate);
   const newest = [...sessions].sort(newestFirst);
   const chartMetric = metrics.find((m) => m.id === activeMetric)!;
+  const historyMetrics = overview
+    ? cyclingHistoryMetricOrder(
+        activeMetric,
+        metrics.map((item) => item.id)
+      )
+    : null;
   return {
     name: stat.activity,
     metric: activeMetric,
@@ -575,24 +822,59 @@ function cardioView({
         ? ` ${units.distanceUnit}`
         : activeMetric === "speed"
           ? ` ${units.distanceUnit}/h`
-          : " min",
-    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.sky,
-    latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
+          : activeMetric === "duration"
+            ? " min"
+            : activeMetric === "elevation"
+              ? units.distanceUnit === "mi"
+                ? " ft"
+                : " m"
+              : activeMetric === "heart_rate"
+                ? " bpm"
+                : activeMetric === "power" || activeMetric === "weighted_power"
+                  ? " W"
+                  : activeMetric === "cadence"
+                    ? " rpm"
+                    : "",
+    color: overview
+      ? CYCLING_METRICS[activeMetric].color
+      : activeMetric === "speed"
+        ? chartSeries.brand
+        : activeMetric === "heart_rate"
+          ? chartSeries.rose
+          : activeMetric === "power" || activeMetric === "weighted_power"
+            ? chartSeries.amber
+            : activeMetric === "elevation"
+              ? chartSeries.violet
+              : chartSeries.sky,
+    latestHref: newest[0]?.href ?? stat.lastHref,
+    latestActivityId: stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,
       value: cardioMetricValue(s, activeMetric, units.distanceUnit),
     })),
-    columns: ["Distance", "Duration", "Avg speed"],
+    columns: historyMetrics
+      ? historyMetrics.map((metric) => CYCLING_METRICS[metric].historyLabel)
+      : ["Distance", "Duration", "Avg speed"],
     sessions: newest.map((s) => ({
       activityId: s.activityId,
+      href: s.href,
       date: s.date,
-      cells: [
-        s.distanceKm > 0 ? fmtDistance(s.distanceKm, units.distanceUnit) : "—",
-        formatMinutes(s.durationMin || null),
-        s.speedKmh == null ? "—" : fmtKmh(s.speedKmh, units.distanceUnit),
-      ],
+      cells: historyMetrics
+        ? historyMetrics.map((metric) =>
+            cyclingHistoryCell(s, metric, units.distanceUnit)
+          )
+        : [
+            s.distanceKm > 0
+              ? fmtDistance(s.distanceKm, units.distanceUnit)
+              : "—",
+            formatMinutes(s.durationMin || null),
+            s.speedKmh == null ? "—" : fmtKmh(s.speedKmh, units.distanceUnit),
+          ],
     })),
-    detail: (
+    // Cycling composes its summary, patterns, performance, history, and
+    // coverage explicitly in AnalyzeSection so page order cannot drift back
+    // into one opaque detail fragment.
+    detail: overview ? null : (
       <div className="card">
         <CardioDetailPanel
           stat={stat}
@@ -621,7 +903,7 @@ function sportView({
     chartLabel: "Duration",
     chartUnit: " min",
     color: chartSeries.violet,
-    latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
+    latestHref: newest[0]?.href ?? stat.lastHref,
     chart: sessions.map((s) => ({
       date: s.date,
       value: Math.round(s.durationMin),
@@ -629,6 +911,7 @@ function sportView({
     columns: ["Duration", "Intensity"],
     sessions: newest.map((s) => ({
       activityId: s.activityId,
+      href: s.href,
       date: s.date,
       cells: [
         formatMinutes(s.durationMin || null),

@@ -14,6 +14,8 @@
 // via the JOIN to activities).
 
 import { db } from "../db";
+import { activityDetailHref } from "../ride-detail";
+import type { AppRoute } from "../hrefs";
 
 export interface EquipmentUsage {
   equipmentId: number;
@@ -124,6 +126,7 @@ export function getEquipmentUsageById(
 // the JOIN to activities and the session-level filter.
 export interface EquipmentSessionPoint {
   activityId: number;
+  href: AppRoute;
   date: string;
   title: string;
   volumeKg: number;
@@ -136,7 +139,8 @@ export function getEquipmentSessions(
 ): EquipmentSessionPoint[] {
   const setRows = db
     .prepare(
-      `SELECT a.id AS aid, a.date AS date, a.title AS title,
+      `SELECT a.id AS aid, a.date AS date, a.type AS type,
+              a.title AS title, a.components AS components,
               (COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)
                + COALESCE(s.weight_kg_right, 0) * COALESCE(s.reps_right, 0)) AS vol
          FROM exercise_sets s
@@ -146,12 +150,15 @@ export function getEquipmentSessions(
     .all(profileId, id) as {
     aid: number;
     date: string;
+    type: string;
     title: string;
+    components: string | null;
     vol: number;
   }[];
   const actRows = db
     .prepare(
-      `SELECT a.id AS aid, a.date AS date, a.title AS title,
+      `SELECT a.id AS aid, a.date AS date, a.type AS type,
+              a.title AS title, a.components AS components,
               COALESCE(a.distance_km, 0) AS dist
          FROM activities a
         WHERE a.profile_id = ? AND a.equipment_id = ?`
@@ -159,22 +166,39 @@ export function getEquipmentSessions(
     .all(profileId, id) as {
     aid: number;
     date: string;
+    type: string;
     title: string;
+    components: string | null;
     dist: number;
   }[];
 
   const byActivity = new Map<number, EquipmentSessionPoint>();
-  const point = (aid: number, date: string, title: string) => {
+  const point = (
+    aid: number,
+    date: string,
+    type: string,
+    title: string,
+    components: string | null
+  ) => {
     let p = byActivity.get(aid);
     if (!p)
       byActivity.set(
         aid,
-        (p = { activityId: aid, date, title, volumeKg: 0, distanceKm: 0 })
+        (p = {
+          activityId: aid,
+          href: activityDetailHref({ id: aid, type, title, components }),
+          date,
+          title,
+          volumeKg: 0,
+          distanceKm: 0,
+        })
       );
     return p;
   };
-  for (const r of setRows) point(r.aid, r.date, r.title).volumeKg += r.vol;
-  for (const r of actRows) point(r.aid, r.date, r.title).distanceKm += r.dist;
+  for (const r of setRows)
+    point(r.aid, r.date, r.type, r.title, r.components).volumeKg += r.vol;
+  for (const r of actRows)
+    point(r.aid, r.date, r.type, r.title, r.components).distanceKm += r.dist;
 
   return [...byActivity.values()].sort((a, b) =>
     a.date === b.date

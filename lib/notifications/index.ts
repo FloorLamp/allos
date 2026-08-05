@@ -11,6 +11,7 @@ import {
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
+import { emailChannel } from "./email";
 import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
 import {
   readDeliveryMarker,
@@ -86,7 +87,7 @@ function recordDeliveryOutcome(results: DispatchResult[]): void {
 // all three within the same tick; the marker ("delivered" = at least one channel ok)
 // only guards against re-sending on later hours, never against multi-channel fan-out.
 export function getChannels() {
-  return [telegramChannel, pushChannel, homeAssistantChannel];
+  return [telegramChannel, pushChannel, homeAssistantChannel, emailChannel];
 }
 
 export interface DispatchResult {

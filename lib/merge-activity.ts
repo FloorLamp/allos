@@ -31,6 +31,31 @@ import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 export interface DropFoldMove {
   dropId: number;
   movedRouteId: number | null;
+  movedTelemetryIds: number[];
+  movedLapIds: number[];
+  movedSegmentEffortIds: number[];
+}
+
+function moveOwnedActivityChildren(
+  table: "activity_laps" | "activity_segment_efforts",
+  profileId: number,
+  keepId: number,
+  dropId: number
+): number[] {
+  const ids = (
+    db
+      .prepare(
+        `SELECT id FROM ${table} WHERE profile_id = ? AND activity_id = ? ORDER BY id`
+      )
+      .all(profileId, dropId) as { id: number }[]
+  ).map((row) => row.id);
+  if (ids.length > 0) {
+    db.prepare(
+      `UPDATE ${table} SET activity_id = ?
+        WHERE profile_id = ? AND activity_id = ?`
+    ).run(keepId, profileId, dropId);
+  }
+  return ids;
 }
 
 // Fold the DISCARDED row's gap-filling fields into the KEEPER — COALESCE(keep, drop)
@@ -109,6 +134,50 @@ export function writeActivityFold(
         keeperHasRoute = true;
       }
     }
+    // Cycling artifacts are activity children just like routes and form-check
+    // videos. Move them before the drop is deleted so Review and automatic merges
+    // cannot cascade away a Strava ride's sensor history. Telemetry is unique per
+    // activity/source, so keep an existing keeper snapshot for a conflicting source.
+    // Undoable merges capture the duplicate left on the drop; permanent merges still
+    // retain the keeper's same-source snapshot.
+    const keeperTelemetrySources = new Set(
+      (
+        db
+          .prepare(
+            `SELECT source FROM activity_telemetry
+              WHERE profile_id = ? AND activity_id = ?`
+          )
+          .all(profileId, keepId) as { source: string }[]
+      ).map((row) => row.source)
+    );
+    const dropTelemetry = db
+      .prepare(
+        `SELECT id, source FROM activity_telemetry
+          WHERE profile_id = ? AND activity_id = ? ORDER BY id`
+      )
+      .all(profileId, dropId) as { id: number; source: string }[];
+    const movedTelemetryIds: number[] = [];
+    for (const telemetry of dropTelemetry) {
+      if (keeperTelemetrySources.has(telemetry.source)) continue;
+      db.prepare(
+        `UPDATE activity_telemetry SET activity_id = ?
+          WHERE id = ? AND profile_id = ? AND activity_id = ?`
+      ).run(keepId, telemetry.id, profileId, dropId);
+      keeperTelemetrySources.add(telemetry.source);
+      movedTelemetryIds.push(telemetry.id);
+    }
+    const movedLapIds = moveOwnedActivityChildren(
+      "activity_laps",
+      profileId,
+      keepId,
+      dropId
+    );
+    const movedSegmentEffortIds = moveOwnedActivityChildren(
+      "activity_segment_efforts",
+      profileId,
+      keepId,
+      dropId
+    );
     // Re-parent the drop's form-check video clips onto the keeper (#1224, #199) — a
     // blind move (many-per-activity, no uniqueness). activity_videos is profile-owned,
     // so the WHERE names profile_id (unlike the child exercise_sets/activity_routes).
@@ -116,7 +185,13 @@ export function writeActivityFold(
       `UPDATE activity_videos SET activity_id = ?
         WHERE activity_id = ? AND profile_id = ?`
     ).run(keepId, dropId, profileId);
-    moves.push({ dropId, movedRouteId });
+    moves.push({
+      dropId,
+      movedRouteId,
+      movedTelemetryIds,
+      movedLapIds,
+      movedSegmentEffortIds,
+    });
   }
 
   writeKeeperFoldState(profileId, keepId, state);
@@ -296,6 +371,27 @@ export function revertActivityMerge(
         WHERE activity_id = ? AND id = ?`
     ).run(newDropId, merge.keeperId, merge.movedRouteId);
   }
+
+  // 1c. Cycling artifacts moved before the cascade follow their restored drop on
+  // undo. Older pending undo payloads do not carry these arrays, so default them to
+  // empty for compatibility across a deployment.
+  const restoreOwnedChildren = (
+    table: "activity_telemetry" | "activity_laps" | "activity_segment_efforts",
+    ids: number[]
+  ) => {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => "?").join(", ");
+    db.prepare(
+      `UPDATE ${table} SET activity_id = ?
+        WHERE profile_id = ? AND activity_id = ? AND id IN (${placeholders})`
+    ).run(newDropId, profileId, merge.keeperId, ...ids);
+  };
+  restoreOwnedChildren("activity_telemetry", merge.movedTelemetryIds ?? []);
+  restoreOwnedChildren("activity_laps", merge.movedLapIds ?? []);
+  restoreOwnedChildren(
+    "activity_segment_efforts",
+    merge.movedSegmentEffortIds ?? []
+  );
 
   // 2. Re-fold the keeper from the drops STILL folded into it (#200/#1884). With none
   //    left this is exactly the pre-fold snapshot, undoing every gap-fill (incl. the

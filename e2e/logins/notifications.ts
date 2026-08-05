@@ -21,6 +21,15 @@ export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
 export const E2E_LOGIN_DIGEST_TUNE = "e2e_digest_tune";
 export const DIGEST_TUNE_PROFILE = "Digest Tune (e2e)";
 
+// A member with a dedicated adult profile for the email notification channel spec
+// (#1855). Isolated because the channel enable, the content mode, and the email
+// matrix column are all LOGIN-scoped and persist for the worker's whole run — on a
+// shared login a --repeat-each pass would re-enter with the previous run's state,
+// and an enabled email channel would join every other spec's session. The address
+// the spec writes onto logins.email is per-run-unique, like email-auth's.
+export const E2E_LOGIN_EMAIL_NOTIFY = "e2e_email_notify";
+export const EMAIL_NOTIFY_PROFILE = "Email Notify (e2e)";
+
 // A member with a dedicated adult profile for the matrix COLUMN select-all (#1868 §2).
 // Isolated for the same reason the per-cell matrix fixture is: a column sweep rewrites
 // a whole channel's disabled-kinds blob in one write, which on a shared login would

@@ -183,9 +183,13 @@ export default async function EquipmentDetailPage(props: {
                   key={s.activityId}
                   className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
                 >
-                  <span className="min-w-0 truncate text-slate-800 dark:text-slate-100">
+                  <Link
+                    href={s.href}
+                    data-testid="equipment-session-link"
+                    className="min-w-0 truncate font-medium text-slate-800 hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-300"
+                  >
                     {s.title}
-                  </span>
+                  </Link>
                   <span className="flex shrink-0 items-center gap-3 tabular-nums text-xs text-slate-500 dark:text-slate-400">
                     {showsDistance && s.distanceKm > 0 ? (
                       <span>
