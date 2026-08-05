@@ -90,6 +90,30 @@ function resolveActivity(profileId: number, externalId: string): number | null {
   return row?.id ?? null;
 }
 
+export function hasCyclingStreamDetails(
+  profileId: number,
+  externalId: string,
+  source: string
+): boolean {
+  const row = db
+    .prepare(
+      `SELECT t.streams_json
+         FROM activity_telemetry t
+         JOIN activities a
+           ON a.id = t.activity_id AND a.profile_id = t.profile_id
+        WHERE t.profile_id = ? AND a.external_id = ? AND t.source = ?`
+    )
+    .get(profileId, externalId, source) as
+    { streams_json: string | null } | undefined;
+  if (!row?.streams_json) return false;
+  try {
+    const streams = JSON.parse(row.streams_json) as Record<string, unknown>;
+    return Object.keys(streams).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function upsertCyclingTelemetry(
   profileId: number,
   rows: NormCyclingTelemetry[],

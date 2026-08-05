@@ -100,6 +100,14 @@ export interface IntegrationPullFacet {
   revalidates: readonly AppRoute[];
 }
 
+export interface IntegrationBackfillFacet {
+  // Stable provider-local operation id. It keys the durable job checkpoint and the
+  // runnable binding; a provider may eventually expose several independent fills.
+  id: string;
+  label: string;
+  itemNoun: string;
+}
+
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {
   id: IntegrationId;
@@ -135,6 +143,9 @@ export interface IntegrationDef {
   // push, archive, feed, attended-external, and `planned` entries — there is nothing
   // to run for those, so nothing dispatches them.
   pull?: IntegrationPullFacet;
+  // Optional enrichment of rows already imported. Metadata stays registry-pure;
+  // executable runners bind separately in lib/integrations/backfill-runners.ts.
+  backfills?: readonly IntegrationBackfillFacet[];
 }
 
 // Persisted connection state for a provider (integration_connections table).

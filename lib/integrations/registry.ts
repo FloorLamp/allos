@@ -77,20 +77,22 @@ export const INTEGRATIONS: IntegrationDef[] = [
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
     pull: {
-      // THE PROVIDER THAT SETS THE TICK FLOOR (#2121). Strava's app quota is the
-      // tightest budget allos spends: 200 requests / 15 min and a daily cap, and a
-      // poll here is a list call PLUS one detail call per new activity, per profile.
-      // Hourly is what the quota table in #2121 was measured at and what this
-      // provider has always been polled at; going finer is a quota decision to be
-      // taken against Strava's published budget, not a side effect of the scheduler
-      // getting faster.
+      // THE PROVIDER THAT SETS THE TICK FLOOR (#2121). Strava's default READ quota
+      // is 100 requests / 15 min and 1,000/day for the whole API application, not
+      // per athlete. The shared request budget learns upgraded limits from Strava's
+      // X-ReadRateLimit headers and reserves headroom for another profile/process.
+      // Quiet polls cost one list call; athlete/zones/streams are fetched only for a
+      // ride whose stored details are missing. Hourly remains a deliberate quota
+      // decision rather than a side effect of the scheduler getting faster.
       cadenceMinutes: 60,
       paging: {
         // Longer than the other pulls: the hourly tick processes profiles
         // SEQUENTIALLY and Strava's list+detail loop is the slowest of them (#476).
         timeoutMs: 30_000,
-        // Strava's cap is on DETAIL calls, not pages — each new activity costs one
-        // extra request for calories, and Strava allows 200 requests / 15 min.
+        // Historical name inherited from the shared paging facet. For Strava this
+        // is an absolute per-operation REQUEST ceiling (lists, details, athlete,
+        // zones, and streams all count); the provider's live read quota can stop a
+        // run sooner and it resumes on the next invocation.
         maxPages: 150,
         // The cursor tracks an activity's START time, but a ride recorded offline
         // can be uploaded days later with an older start; a strict `after = cursor`
@@ -108,6 +110,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
         "/data",
       ],
     },
+    backfills: [
+      {
+        id: "ride-details",
+        label: "Ride detail backfill",
+        itemNoun: "ride",
+      },
+    ],
   },
   {
     id: "oura",

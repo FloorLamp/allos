@@ -12,8 +12,19 @@ import {
   getStravaConfig,
 } from "@/lib/integrations/connections";
 import { stravaCallbackUrl, isLoopbackUrl } from "./url";
+import {
+  queueIntegrationBackfill,
+  runIntegrationBackfillJob,
+} from "@/lib/integrations/backfill-jobs";
+import { createLogger } from "@/lib/log";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
+const log = createLogger("strava-backfill");
+
+export interface StravaBackfillActionResult {
+  status: "done" | "error";
+  message: string;
+}
 
 // Save the app-registration credentials (client id/secret) entered in the UI.
 export async function saveStravaCredentials(formData: FormData) {
@@ -66,4 +77,36 @@ export async function disconnectStravaAction() {
   revalidatePath("/integrations/strava");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
   revalidatePath("/data");
+}
+
+export async function backfillStravaRideDetails(): Promise<StravaBackfillActionResult> {
+  const { profile } = await requireWriteAccess();
+  const queued = queueIntegrationBackfill(profile.id, "strava", "ride-details");
+  if ("error" in queued) {
+    return { status: "error", message: queued.error };
+  }
+  if (!queued.shouldRun) {
+    return {
+      status: "done",
+      message:
+        queued.job.status === "completed"
+          ? "All Strava ride details are complete."
+          : "The ride detail backfill is already running.",
+    };
+  }
+
+  void runIntegrationBackfillJob(profile.id, "strava", "ride-details").catch(
+    (err) => {
+      log.error("Strava ride-detail backfill runner rejected", {
+        profileId: profile.id,
+        err: String(err),
+      });
+    }
+  );
+  revalidatePath("/integrations/strava");
+  revalidatePath("/data");
+  return {
+    status: "done",
+    message: "Ride detail backfill started. Progress and ETA are shown below.",
+  };
 }

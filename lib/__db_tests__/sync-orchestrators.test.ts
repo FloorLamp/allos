@@ -32,7 +32,12 @@ import {
   getOuraCursor,
 } from "@/lib/integrations/connections";
 import { runWithingsSync } from "@/lib/integrations/withings-sync";
-import { runStravaSync } from "@/lib/integrations/strava-sync";
+import {
+  countMissingStravaRideDetails,
+  runStravaDetailsBackfill,
+  runStravaSync,
+} from "@/lib/integrations/strava-sync";
+import { resetStravaRateLimitState } from "@/lib/integrations/strava-rate-limit";
 import { runOuraSync } from "@/lib/integrations/oura-sync";
 import { getLatestSyncEvent } from "@/lib/queries";
 import { isTruncatedSyncEvent } from "@/lib/integrations/sync-details";
@@ -431,6 +436,7 @@ interface StravaOpts {
   athlete500?: boolean;
   zones500?: boolean;
   ftp?: number;
+  summaries?: Record<string, unknown>[];
   // Capture the `after` query param seen on each list request.
   afters?: number[];
 }
@@ -448,7 +454,9 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       const page = Number(new URL(u).searchParams.get("page"));
       // Page 1 returns both summaries (a short page < per_page ends paging); later
       // pages are empty.
-      return jsonResponse(page === 1 ? [STRAVA_ACT_1, STRAVA_ACT_2] : []);
+      return jsonResponse(
+        page === 1 ? (opts.summaries ?? [STRAVA_ACT_1, STRAVA_ACT_2]) : []
+      );
     }
     if (u.endsWith("/athlete/zones")) {
       if (opts.zones500) return new Response(null, { status: 500 });
@@ -491,6 +499,7 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
 describe("runStravaSync orchestrator", () => {
   let p: number;
   beforeEach(() => {
+    resetStravaRateLimitState();
     p = newProfile("S-ORCH");
     setStravaCredentials(p, "s-client", "s-secret");
     setStravaTokens(p, {
@@ -500,9 +509,9 @@ describe("runStravaSync orchestrator", () => {
     });
   });
 
-  it("end-to-end: list + per-activity detail land activities, cursor advances to the newest start, second run is all-unchanged over the trailing window", async () => {
+  it("end-to-end: details land once, the cursor advances, and a quiet trailing rescan is list-only", async () => {
     const afters: number[] = [];
-    stubStrava({ afters });
+    const fetchMock = stubStrava({ afters });
 
     const res = await runStravaSync(p);
     expect(res).not.toHaveProperty("error");
@@ -556,16 +565,26 @@ describe("runStravaSync orchestrator", () => {
 
     // First run paged from after=0 (no cursor yet).
     expect(afters[0]).toBe(0);
+    const firstRunRequests = fetchMock.mock.calls.length;
 
-    // Second run: the cursor rewinds by the 7-day trailing re-scan margin, so late
-    // uploads aren't skipped, and every re-fetched row dedups → all-unchanged.
+    // Second run: the cursor rewinds by the 7-day trailing re-scan margin so late
+    // uploads aren't skipped, but known complete rows need no detail/stream calls.
     const res2 = await runStravaSync(p);
     expect(res2).not.toHaveProperty("error");
     const RESCAN = 7 * 24 * 60 * 60;
     expect(afters[afters.length - 1]).toBe(startSec(STRAVA_ACT_2) - RESCAN);
     const ev2 = getLatestSyncEvent(p, "strava")!;
     expect(ev2.inserted).toBe(0);
-    expect(ev2.unchanged).toBe(4);
+    expect(ev2.unchanged).toBe(2);
+    const secondRunUrls = fetchMock.mock.calls
+      .slice(firstRunRequests)
+      .map(([url]) => String(url));
+    expect(secondRunUrls).toHaveLength(1);
+    expect(secondRunUrls.some((url) => url.endsWith("/athlete"))).toBe(false);
+    expect(secondRunUrls.some((url) => url.endsWith("/athlete/zones"))).toBe(
+      false
+    );
+    expect(secondRunUrls.some((url) => url.includes("/streams"))).toBe(false);
     expect(
       db
         .prepare(
@@ -580,6 +599,32 @@ describe("runStravaSync orchestrator", () => {
         )
         .get(p)
     ).toEqual({ id: artifactIds.segment });
+  });
+
+  it("applies late summary edits without refetching complete artifacts", async () => {
+    stubStrava();
+    await runStravaSync(p);
+
+    const fetchMock = stubStrava({
+      summaries: [
+        { ...STRAVA_ACT_1, name: "Morning Ride — edited", distance: 25000 },
+        STRAVA_ACT_2,
+      ],
+    });
+    await runStravaSync(p);
+
+    expect(
+      db
+        .prepare(
+          "SELECT title, distance_km FROM activities WHERE profile_id = ? AND external_id = 'strava:111'"
+        )
+        .get(p)
+    ).toEqual({ title: "Morning Ride — edited", distance_km: 25 });
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("/athlete/activities");
+    expect(urls.some((url) => url.includes("/streams"))).toBe(false);
+    expect(urls.some((url) => /\/activities\/111$/.test(url))).toBe(false);
   });
 
   it("rate limit (429) on a mid-run detail fetch: the run truncates, and the cursor stops at the last fully-imported activity", async () => {
@@ -668,6 +713,53 @@ describe("runStravaSync orchestrator", () => {
         )
         .get(p, activity.id)
     ).toEqual({ ftp_w: 250 });
+  });
+
+  it("backfills missing ride telemetry and is a no-op once the ride is complete", async () => {
+    db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, distance_km,
+          components, source, external_id)
+       VALUES (?, '2024-06-01', 'cardio', 'Legacy imported ride', 60, 24,
+          ?, 'strava', 'strava:111')`
+    ).run(
+      p,
+      JSON.stringify([
+        { name: "Cycling", type: "cardio", duration_min: 60, distance_km: 24 },
+      ])
+    );
+    expect(countMissingStravaRideDetails(p)).toBe(1);
+    const fetchMock = stubStrava();
+
+    const result = await runStravaDetailsBackfill(p);
+    expect(result).toMatchObject({
+      backfilled: 1,
+      failed: 0,
+      remaining: 0,
+      requests: 4,
+      paused: false,
+    });
+    expect(countMissingStravaRideDetails(p)).toBe(0);
+    expect(
+      db
+        .prepare(
+          `SELECT json_extract(t.streams_json, '$.watts.data[2]') AS watts
+             FROM activity_telemetry t
+             JOIN activities a ON a.id = t.activity_id
+            WHERE t.profile_id = ? AND a.external_id = 'strava:111'`
+        )
+        .get(p)
+    ).toEqual({ watts: 220 });
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM activity_laps WHERE profile_id = ?")
+        .get(p)
+    ).toEqual({ n: 1 });
+
+    const requestsAfterFirstRun = fetchMock.mock.calls.length;
+    const second = await runStravaDetailsBackfill(p);
+    expect(second).toMatchObject({ backfilled: 0, remaining: 0, requests: 0 });
+    expect(fetchMock.mock.calls).toHaveLength(requestsAfterFirstRun);
   });
 });
 

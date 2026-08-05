@@ -73,6 +73,10 @@ export function seedRestCard(): void {
   // clears its own fixture rows first. Synthetic values only; relative dates never stale.
   {
     const rcId = fixtureProfileId(REST_CARD_PROFILE);
+    // Pin this dedicated profile to UTC so the spec's per-test reset (which rebuilds
+    // the same signal state from frozenNow()'s UTC date) and this seed agree on the
+    // calendar date regardless of the prelude-pinned zone or the run's start hour.
+    setProfileSetting(rcId, "timezone", "UTC");
     const rcToday = today(rcId);
     const rcPrevNight = shiftDateStr(rcToday, -1);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rcId);
@@ -87,8 +91,8 @@ export function seedRestCard(): void {
     // CRITICAL (#2159, the #1110 wake-day rule): getSleepSignal reads the MAIN
     // overnight per wake-day, and a wakeDay is the PROFILE-LOCAL calendar date the
     // session ENDED (mainSleepNights → zonedDateParts). So the window MUST be built
-    // through the profile timezone (zonedWallTimeToUtc) — the pinned e2e zone,
-    // seeded by seedPrelude before this runs — NOT bare `…Z` stamps. Bare
+    // through the profile timezone (zonedWallTimeToUtc) — this profile's stored
+    // zone, pinned to UTC just above — NOT bare `…Z` stamps. In a non-UTC zone bare
     // `${rcToday}T04:00:00Z` reads as 23:00 the PREVIOUS local evening once the
     // pinned zone crosses to UTC−5 (any run starting ≥ 18:00 UTC), landing the
     // night on wakeDay rcPrevNight; isLastNight then refuses it, rest-sleep drops,

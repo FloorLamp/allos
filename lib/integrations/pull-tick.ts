@@ -9,6 +9,7 @@ import {
   type PollDecision,
 } from "./pull-cadence";
 import type { IntegrationId } from "@/lib/types";
+import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 
 // THE TICK'S PULL PASS (#2121 step 1). One profile's connected pull providers, polled
 // at each provider's DECLARED cadence rather than once per tick.
@@ -120,6 +121,14 @@ export async function syncIntegrations(
         err: e instanceof Error ? e : String(e),
       });
     }
+  }
+  try {
+    await resumeDueIntegrationBackfills(profileId, now);
+  } catch (e) {
+    log.error("integration backfill resume failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
   }
   return result;
 }

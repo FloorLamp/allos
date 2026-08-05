@@ -9,7 +9,8 @@ import {
   E2E_LOGIN_ROUTINE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1148 (multi-reason rest card) + #1150 ("Training anyway" acknowledgment + the
 // "Not today" → "Snooze" rename). Driven against the dedicated REST_CARD_PROFILE, which
@@ -17,10 +18,10 @@ import { workerDbPath } from "./worker-env";
 // short night (rest-sleep) AND an elevated resting HR (rest-rhr). Its own profile keeps
 // this spec's ack/snooze writes off the shared profile-1 coaching state.
 
-// The fixture profile's ack marker + coaching snooze rows, reset before each test so
-// --repeat-each starts clean (#868 fixture ownership) — the same pattern smoke.spec uses
-// for the coaching snooze. Short-lived connection + busy timeout so it never contends
-// with the running server on the WAL DB.
+// The dedicated profile's complete signal state is reset before each test so both
+// --repeat-each and the full shared-worker lane start clean (#868 fixture ownership).
+// Short-lived connection + busy timeout so it never contends with the running server
+// on the WAL DB.
 function resetRestCardState(): void {
   const dbPath = workerDbPath();
   const db = new Database(dbPath);
@@ -30,6 +31,42 @@ function resetRestCardState(): void {
       .prepare("SELECT id FROM profiles WHERE name = ?")
       .get(REST_CARD_PROFILE) as { id: number } | undefined;
     if (row) {
+      const rcToday = frozenNow().toISOString().slice(0, 10);
+      const rcPrevNight = shiftDateStr(rcToday, -1);
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(row.id);
+      db.prepare(
+        "DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'"
+      ).run(row.id);
+      // The #2159 wake-day rule: the overnight window is built through the
+      // profile timezone (pinned to UTC just above), never bare `…Z` stamps.
+      db.prepare(
+        `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+         VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+      ).run(
+        row.id,
+        rcToday,
+        zonedWallTimeToUtc("UTC", rcPrevNight, "23:00").toISOString(),
+        zonedWallTimeToUtc("UTC", rcToday, "04:00").toISOString()
+      );
+      db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(row.id);
+      const insertRhr = db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, resting_hr, notes)
+         VALUES (?, ?, ?, 'e2e:rest-card')`
+      );
+      insertRhr.run(row.id, rcToday, 62);
+      for (let d = 1; d <= 5; d += 1) {
+        insertRhr.run(row.id, shiftDateStr(rcToday, -d), 54);
+      }
+      db.prepare(
+        "DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:rest-card-context'"
+      ).run(row.id);
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+         VALUES (?, ?, 'strength', 'Rest Card context lift', 40, 'hard', 'manual', 'e2e:rest-card-context')`
+      ).run(row.id, shiftDateStr(rcToday, -10));
       db.prepare(
         "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'coaching_rest_ack'"
       ).run(row.id);
