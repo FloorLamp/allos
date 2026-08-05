@@ -140,11 +140,9 @@ export function getSubstanceWeekState(
     weeks: 1,
     includeCurrent: true,
   });
-  const count = getCadenceScopeCounts(
-    profileId,
-    substanceScope(substance),
-    [window]
-  )[0];
+  const count = getCadenceScopeCounts(profileId, substanceScope(substance), [
+    window,
+  ])[0];
   const target = getSubstanceTarget(profileId, substance);
   return {
     substance,

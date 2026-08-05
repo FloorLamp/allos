@@ -145,7 +145,9 @@ export type CapVerdict = (typeof CAP_VERDICTS)[number];
 export type CadenceVerdict = FloorVerdict | CapVerdict;
 
 export function verdictDirection(verdict: CadenceVerdict): CadenceDirection {
-  return (CAP_VERDICTS as readonly string[]).includes(verdict) ? "cap" : "floor";
+  return (CAP_VERDICTS as readonly string[]).includes(verdict)
+    ? "cap"
+    : "floor";
 }
 
 export interface CadenceVerdictInput {

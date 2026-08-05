@@ -23,10 +23,7 @@ import { setWeekMode } from "@/lib/settings";
 import { CADENCE_SCOPES } from "@/lib/cadence";
 import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
 import { practiceIdentity } from "@/lib/practice";
-import {
-  cadenceWindows,
-  getCadenceLedger,
-} from "@/lib/queries/cadence-ledger";
+import { cadenceWindows, getCadenceLedger } from "@/lib/queries/cadence-ledger";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargetWeeklyHistory,
@@ -269,7 +266,8 @@ describe("the cadence ledger (#2034)", () => {
   it("carries the range ceiling through to the week's verdict", () => {
     const pid = newProfile("cl-range");
     makeTarget(pid, "practice", "Sauna", 2, 3);
-    for (const back of [3, 2, 1]) logPracticeSession(pid, "Sauna", dayBack(pid, back));
+    for (const back of [3, 2, 1])
+      logPracticeSession(pid, "Sauna", dayBack(pid, back));
     const [entry] = getCadenceLedger(pid, {
       weeks: 1,
       includeCurrent: true,

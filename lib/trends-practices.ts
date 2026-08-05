@@ -18,11 +18,7 @@
 // at-ceiling state is a SUCCESS ("that's plenty", #1259), never a red flag, and an
 // under-floor week is a fact, not a nag.
 
-import {
-  cadenceVerdict,
-  cadenceWeekMet,
-  type FloorVerdict,
-} from "./cadence";
+import { cadenceVerdict, cadenceWeekMet, type FloorVerdict } from "./cadence";
 import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
 
 // ---------------------------------------------------------------------------

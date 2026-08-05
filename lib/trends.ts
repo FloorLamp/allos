@@ -112,7 +112,10 @@ export interface LensWindow {
 // How many week columns a span of days is worth: round the partial week UP so the
 // window's edge day still has a column, then clamp. A null span (no start bound)
 // is unbounded history and takes the cap.
-export function clampLensWeeks(days: number | null, caps: LensWeekCaps): number {
+export function clampLensWeeks(
+  days: number | null,
+  caps: LensWeekCaps
+): number {
   if (days == null) return caps.maxWeeks;
   return Math.min(caps.maxWeeks, Math.max(caps.minWeeks, Math.ceil(days / 7)));
 }

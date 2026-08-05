@@ -45,7 +45,11 @@ describe("dayGrid", () => {
   it("honors the profile's first weekday", () => {
     const sunday = dayGrid({ start: "2026-03-04", end: "2026-03-04" });
     expect(sunday.gridStart).toBe("2026-03-01");
-    const monday = dayGrid({ start: "2026-03-04", end: "2026-03-04", weekStart: 1 });
+    const monday = dayGrid({
+      start: "2026-03-04",
+      end: "2026-03-04",
+      weekStart: 1,
+    });
     expect(monday.gridStart).toBe("2026-03-02");
   });
 
@@ -64,23 +68,32 @@ describe("dayGrid", () => {
   });
 
   it("leaves an untruncated grid's visible start at the window's start", () => {
-    const grid = dayGrid({ start: "2026-03-02", end: "2026-03-15", maxWeeks: 53 });
+    const grid = dayGrid({
+      start: "2026-03-02",
+      end: "2026-03-15",
+      maxWeeks: 53,
+    });
     expect(grid.truncated).toBe(false);
     expect(grid.visibleStart).toBe("2026-03-02");
   });
 
   it("never returns fewer than one week, even for a backwards window", () => {
     expect(weekSpan("2026-03-15", "2026-03-01")).toBe(1);
-    expect(dayGrid({ start: "2026-03-15", end: "2026-03-01" }).weekCount).toBe(1);
+    expect(dayGrid({ start: "2026-03-15", end: "2026-03-01" }).weekCount).toBe(
+      1
+    );
   });
 
   it("echoes the orientation the caller renders on", () => {
-    expect(dayGrid({ start: "2026-03-01", end: "2026-03-07" }).orientation).toBe(
-      "week-columns"
-    );
     expect(
-      dayGrid({ start: "2026-03-01", end: "2026-03-07", orientation: "week-rows" })
-        .orientation
+      dayGrid({ start: "2026-03-01", end: "2026-03-07" }).orientation
+    ).toBe("week-columns");
+    expect(
+      dayGrid({
+        start: "2026-03-01",
+        end: "2026-03-07",
+        orientation: "week-rows",
+      }).orientation
     ).toBe("week-rows");
   });
 

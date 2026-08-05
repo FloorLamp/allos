@@ -86,7 +86,11 @@ export function weekSpan(start: string, end: string, weekStart = 0): number {
 }
 
 // The top-left cell date of a `weeks`-wide grid whose LAST week contains `end`.
-export function gridStartFor(end: string, weeks: number, weekStart = 0): string {
+export function gridStartFor(
+  end: string,
+  weeks: number,
+  weekStart = 0
+): string {
   return shiftDateStr(startOfWeekStr(end, weekStart), -(weeks - 1) * 7);
 }
 

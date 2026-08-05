@@ -420,9 +420,9 @@ describe("lensWindow", () => {
   });
 
   it("floors a very short window and rounds a partial week up", () => {
-    expect(lensWindow({ from: TODAY, to: TODAY }, TODAY, FITNESS)).toMatchObject(
-      { days: 1, weeks: MIN_FITNESS_WEEKS }
-    );
+    expect(
+      lensWindow({ from: TODAY, to: TODAY }, TODAY, FITNESS)
+    ).toMatchObject({ days: 1, weeks: MIN_FITNESS_WEEKS });
     expect(clampLensWeeks(30, FITNESS)).toBe(5);
     expect(clampLensWeeks(36, FITNESS)).toBe(6);
   });
