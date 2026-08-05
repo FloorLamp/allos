@@ -1,9 +1,19 @@
 import { db } from "@/lib/db";
 import { isEditLocked } from "@/lib/integrations/sync-log";
 import { getMoodReadings } from "@/lib/queries";
-import { moodRatingColumn, type MoodChartSeries } from "@/lib/mood";
+import {
+  clearMoodRating,
+  deleteMoodLog,
+  updateMoodRating,
+} from "@/lib/offline/writes";
+import {
+  MOOD_MAX,
+  MOOD_MIN,
+  moodRatingColumn,
+  type MoodChartSeries,
+} from "@/lib/mood";
 import { readingIdentity } from "@/lib/reading-model";
-import type { ReadingTarget } from "@/lib/reading-placement";
+import type { MetricRowTarget } from "@/lib/reading-placement";
 import {
   deleteReadingAt,
   updateReadingAt,
@@ -297,7 +307,7 @@ export function getMetricReadings(
 export function metricReadingTarget(
   slug: BodyMetricSlug,
   id: number
-): ReadingTarget | null {
+): MetricRowTarget | null {
   const store = METRIC_READING_STORE[slug];
   if (!store) return null;
   switch (store.table) {
@@ -317,12 +327,64 @@ export function metricReadingTarget(
 }
 
 /**
- * Correct one reading's value, in STORED units, addressed by metric slug.
+ * Correct one row of a metric detail page's readings table, in STORED units.
  *
- * A thin adapter over the ONE write contract (`updateReadingAt`): it resolves the slug
- * to a target and delegates. Kept because the bulk-correction and quick-fix paths speak
- * in slugs, and because "this metric is derived, there is no row" is a slug-level answer
- * the target vocabulary cannot express.
+ * The SPLIT this module owns, and the only one left: a READING goes to the one write
+ * core, which decides nothing about the surface it came from; a MOOD check-in rating goes
+ * to the mood store's own write core, because a 1–5 self-rating is not a reading of a
+ * quantity and mood is store-private (#992).
+ */
+export function updateMetricRow(
+  profileId: number,
+  target: MetricRowTarget,
+  value: number
+): ReadingWriteOutcome {
+  if (target.store !== "mood") return updateReadingAt(profileId, target, value);
+  // Every check-in rating is a whole 1–5 self-rating; the store's write core re-checks
+  // the scale, so an off-scale correction is refused there too.
+  const rating = Math.round(value);
+  if (rating < MOOD_MIN || rating > MOOD_MAX)
+    return { ok: false, error: "invalid" };
+  return updateMoodRating(
+    profileId,
+    target.id,
+    moodRatingColumn(target.series),
+    rating
+  )
+    ? { ok: true }
+    : { ok: false, error: "not-found" };
+}
+
+/** Delete one row of that table — the same split, with the same two destinations. */
+export function deleteMetricRow(
+  profileId: number,
+  target: MetricRowTarget
+): ReadingDeleteOutcome {
+  if (target.store !== "mood") return deleteReadingAt(profileId, target);
+  // No tombstone: there is no mood importer to resurrect a deleted check-in.
+  //
+  // The body_metrics rule one store over (#1408): a check-in ROW carries up to three
+  // ratings plus a note and factors, so removing a mis-tapped energy must NOT take that
+  // day's mood with it — the optional rating is nulled and the row stays. Valence is the
+  // check-in itself (NOT NULL), so removing it removes the day, exactly as it always has.
+  if (target.series === "valence") {
+    return { ok: deleteMoodLog(profileId, target.id), undoId: null };
+  }
+  return {
+    ok: clearMoodRating(
+      profileId,
+      target.id,
+      target.series === "energy" ? "energy" : "anxiety"
+    ),
+    undoId: null,
+  };
+}
+
+/**
+ * Correct one reading addressed by metric SLUG — the adapter for the callers that still
+ * speak in slugs (bulk correction, the quick-fix paths, the action tests). "This metric
+ * is derived, there is no row" is a slug-level answer the target vocabulary cannot
+ * express, which is why this wrapper survives rather than being inlined.
  */
 export function updateMetricReading(
   profileId: number,
@@ -332,7 +394,7 @@ export function updateMetricReading(
 ): ReadingWriteOutcome {
   const target = metricReadingTarget(slug, id);
   if (!target) return { ok: false, error: "derived" };
-  return updateReadingAt(profileId, target, value);
+  return updateMetricRow(profileId, target, value);
 }
 
 /** Delete one reading addressed by metric slug — the same adapter over the contract. */
@@ -343,5 +405,5 @@ export function deleteMetricReading(
 ): ReadingDeleteOutcome {
   const target = metricReadingTarget(slug, id);
   if (!target) return { ok: false, undoId: null };
-  return deleteReadingAt(profileId, target);
+  return deleteMetricRow(profileId, target);
 }

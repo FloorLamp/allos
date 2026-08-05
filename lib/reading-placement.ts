@@ -34,7 +34,6 @@ import {
   streamSourcesForIdentity,
   STREAM_READING_SOURCES,
   type Reading,
-  type ReadingStore,
 } from "./reading-model";
 import { MOOD_CHART_SERIES, type MoodChartSeries } from "./mood";
 import type { BodyMetricColumn } from "./metric-readings";
@@ -161,13 +160,6 @@ export function streamKeysPlacedIn(
 
 // ---- Targeting: the editability contract ----------------------------------
 
-// The stores an edit or delete can name. `mood` is the one destination that is not a
-// `ReadingStore`: a check-in is a self-rating rather than a measured reading, so it has
-// no identity and no placement — but the metric detail table lists its rows beside the
-// rest, so the CONTRACT has to reach it. Named for the store, not its table, because
-// mood is store-private (#992).
-export type ReadingTargetStore = ReadingStore | "mood";
-
 /**
  * The physical row an edit or delete names.
  *
@@ -184,14 +176,37 @@ export type ReadingTargetStore = ReadingStore | "mood";
  *     quantity it names;
  *   • `medical_records` — the #482 IDENTITY, matched through the `biomarker_family()`
  *     SQL function rather than an exact canonical string, so an aliased spelling of
- *     the same analyte is the same target (the generalization the issue asks for);
- *   • `mood` — which of the check-in's three 1–5 ratings (#1408).
+ *     the same analyte is the same target (the generalization the issue asks for).
  */
 export type ReadingTarget =
   | { store: "body_metrics"; id: number; column: BodyMetricColumn }
   | { store: "metric_samples"; id: number; metric: string }
-  | { store: "medical_records"; id: number; identity: string }
-  | { store: "mood"; id: number; series: MoodChartSeries };
+  | { store: "medical_records"; id: number; identity: string };
+
+/**
+ * A MOOD check-in rating, which a metric detail page lists beside real readings but
+ * which is NOT one.
+ *
+ * A 1–5 self-rating is not a measurement of a quantity: it has no canonical identity, no
+ * clinical knowledge (`METRIC_KNOWLEDGE` says so out loud) and therefore no placement —
+ * the write core would have nothing to decide. So it stays OUTSIDE `ReadingTarget`, and
+ * its mutations stay with the mood store's own write core, which is where #992 requires
+ * every one of them to live. `series` says which of the check-in's three ratings the row
+ * is (#1408).
+ */
+export interface MoodRowTarget {
+  store: "mood";
+  id: number;
+  series: MoodChartSeries;
+}
+
+/**
+ * What a row of a metric detail page's readings table can be: a reading, or a mood
+ * check-in rating. ONE posted vocabulary, so the table's row actions never branch on
+ * which kind of row they are looking at — `lib/metric-readings.ts` splits the two one
+ * layer down, and only readings reach the reading write core.
+ */
+export type MetricRowTarget = ReadingTarget | MoodRowTarget;
 
 const BODY_METRIC_COLUMNS: readonly BodyMetricColumn[] = [
   "weight_kg",
@@ -208,7 +223,7 @@ const BODY_METRIC_COLUMNS: readonly BodyMetricColumn[] = [
  * measure is the tail, unsplit, because a #482 family identity contains a colon
  * (`family:vitamin-d-25-hydroxy`).
  */
-export function readingTargetToken(target: ReadingTarget): string {
+export function readingTargetToken(target: MetricRowTarget): string {
   const measure =
     target.store === "body_metrics"
       ? target.column
@@ -229,7 +244,7 @@ export function readingTargetToken(target: ReadingTarget): string {
  */
 export function parseReadingTarget(
   raw: string | null | undefined
-): ReadingTarget | null {
+): MetricRowTarget | null {
   const text = (raw ?? "").trim();
   if (!text) return null;
   const first = text.indexOf(":");

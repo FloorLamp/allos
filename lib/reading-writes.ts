@@ -33,12 +33,6 @@ import {
 import { writeImportTombstoneForRow } from "./integrations/tombstones";
 import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
-import {
-  clearMoodRating,
-  deleteMoodLog,
-  updateMoodRating,
-} from "./offline/writes";
-import { MOOD_MAX, MOOD_MIN, moodRatingColumn } from "./mood";
 import { placeReading, type ReadingTarget } from "./reading-placement";
 import { readingSourceFor, type ReadingProvenance } from "./reading-model";
 import type { MedicalCategory } from "./types";
@@ -465,21 +459,6 @@ export function updateReadingAt(
         reconcileFlags(profileId, [target.id]);
         return { ok: true } as const;
       }
-      case "mood": {
-        // Every check-in rating is a whole 1–5 self-rating; the store's write core
-        // re-checks the scale, so an off-scale correction is refused there too.
-        const rating = Math.round(value);
-        if (rating < MOOD_MIN || rating > MOOD_MAX)
-          return { ok: false, error: "invalid" } as const;
-        return updateMoodRating(
-          profileId,
-          target.id,
-          moodRatingColumn(target.series),
-          rating
-        )
-          ? ({ ok: true } as const)
-          : ({ ok: false, error: "not-found" } as const);
-      }
     }
   });
 }
@@ -551,26 +530,6 @@ export function deleteReadingAt(
         writeImportTombstoneForRow(profileId, "metric_samples", row);
         return { ok: info.changes > 0, undoId: null };
       });
-    }
-    case "mood": {
-      // No tombstone: there is no mood importer to resurrect a deleted check-in.
-      //
-      // The body_metrics rule one store up (#1408): a check-in ROW carries up to three
-      // ratings plus a note and factors, so removing a mis-tapped energy must NOT take
-      // that day's mood with it — the optional rating is nulled and the row stays.
-      // Valence is the check-in itself (NOT NULL), so removing it removes the day,
-      // exactly as it always has.
-      if (target.series === "valence") {
-        return { ok: deleteMoodLog(profileId, target.id), undoId: null };
-      }
-      return {
-        ok: clearMoodRating(
-          profileId,
-          target.id,
-          target.series === "energy" ? "energy" : "anxiety"
-        ),
-        undoId: null,
-      };
     }
   }
 }
