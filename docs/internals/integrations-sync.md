@@ -80,6 +80,32 @@ SAME-source path gets no rescue at all — one source is one clock, so its two r
 cannot disagree about the offset, and an hour between them is an hour of the
 person's actual day.
 
+**A wrong offset can move the DATE too (#2056).** The rescue above compares two
+clocks; everything that feeds it grouped candidates by calendar date — the SQL
+pre-filter in `loadActivityDupRows` (and its `SELECT *` twin in
+`lib/import-review/auto-merge.ts`) and the pure bucketing in
+`findActivityDuplicates`. That grouping quietly assumed the two copies of one
+session land on the same day, which is exactly what a late-evening session breaks:
+a 23:30 walk reported at 00:30 the next day is the same defect one date apart, and
+the two copies went into different buckets, so the classifier never saw the pair at
+all.
+
+So the CANDIDATE phase widens to adjacent days, and only there. A row is a
+near-midnight candidate when the two dates are consecutive and the earlier row
+starts at or after `EVENING_CANDIDATE_CLOCK` (22:00) while the later starts at or
+before `MORNING_CANDIDATE_CLOCK` (02:00) — both derived from
+`MAX_CLOCK_OFFSET_MIN`, so the candidate set can never reach further than the
+classifier would forgive. `activityWindowFrom` then measures both windows from ONE
+midnight, so a 23:30/00:30 pair reads as the one-hour gap it is rather than a
+23-hour one. Nothing else changes: cross-source only (one source is one clock),
+same type, the same offset SHAPE, the same both-measures proximity, and the same
+MEDIUM verdict — `autoMergeCluster` measures overlap on each row's own clock, which
+two rows an offset apart never have, so a cross-midnight cluster always waits for a
+person. The two loaders share the widening rather than copying it
+(`lib/import-review/candidate-sql.ts`), because a pre-filter that drifted between
+Data → Review and the unattended auto-merge would let them see different worlds. A
+cross-midnight cluster is named by the day the session STARTED.
+
 **Which clock survives the merge is the person's call, not a guess (#2011).** The
 fold rule already settles it mechanically: the keeper's own `start_time`/`end_time`
 win outright and the discarded row only ever fills a GAP, so keeping the
