@@ -825,6 +825,26 @@ the subject's own recent average — never a judgment, never a streak, per the
 STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
 end to end and already renders it in this same message's Today section.
 
+**Arrival lines FOLD into the content lines they describe (#1913 item 1).** An
+arrival's only value is **provenance**, and the lines it described were already in
+the same message. So a routine overnight sync is no longer narrated at all:
+
+- **Yesterday's activity lines carry the source** — `🏋️ Morning Ride — 18.85 km ·
+Strava` — through the same `activityProvenanceLabel` the Journal and the timeline
+  render. A **manual** row carries no clause: "Manual" beside a session you logged
+  yourself is not provenance.
+- **The Sleep section IS the Health Connect arrival.** It needs no `📥` restatement
+  beside it.
+- **The New section keeps only the arrivals with no content line to ride:** a
+  provider's **first sync** (`📥 First data from Withings: sleep` — a new source
+  starting to flow is news about the setup) and a **kind this profile has never
+  received before** (`📥 New from Oura Ring: blood oxygen`). Both are once-ever by
+  construction, so neither can become the permanent line the attention doctrine
+  forbids. `arrivalChanges` reads its whole arrival history in one pass split at the
+  window edge, so "has this ever arrived before?" is one question with one answer.
+
+The two rules below still hold and still shape what those surviving lines say.
+
 **Arrival lines report NEWS, not substrate (#1819 items 1–2).** The data category
 had drifted into reporting the storage layer at the reader.
 
@@ -867,7 +887,53 @@ had drifted into reporting the storage layer at the reader.
   an outdoor plan also live in `training`, and the phrase is not about them.
 - The **workout preview** renders `digestWorkoutLine`'s bare variant, because the
   formatter's standalone `Today:` prefix restated the section heading it sits under.
-  Same computation, section-aware framing.
+  Same computation, section-aware framing. Its head is named from
+  `suggestTitle(rec.exercises)` — the SAME argument the dedicated nudge passes
+  (#2012). It used to pass `rec.focus`, a `MuscleRegion[]`, into a function that
+  takes exercise names and ends in a loose substring match, so "Back" resolved
+  through "back squat" and a pull day was titled **"Legs workout"**.
+
+**A data-plumbing ask gets ONE entry (#1913 items 2, 5–8).** `integration` and
+`portal-sync` are the two **named-line domains**: their whole point is that they
+happen without you opening the app, so a count alone would send the reader back to
+the surface the signal exists to save them from.
+
+- They are **excluded from the band count**, because the named line IS the band
+  item. Before this a single 503 arrived twice in one message. The merge keys on
+  `NAMED_LINE_DOMAINS`, not on the weather standing — both members were counted and
+  named, so a weather-shaped fix would have left the portal double-mentioning.
+- The sync lines consume the **#1880 flap-aware standing**, and always did:
+  `getImportIssues` gates on `standingEscalates`, so an `intermittent` provider (a
+  failure with a recent success beside it) never reaches a push channel.
+- The grammar is `glyph title — because · dueText`, each part declared rather than
+  inferred. **`because`** is a short cause fragment each producer writes for this
+  surface — the `${title} — ${detail}` join silently assumed `detail` was one, which
+  held for the integration producer and made the portal line say its imperative
+  twice. `syncRequestCopy` stays the one formatter and gained the fragment beside
+  its card sentence. **`dueText`** carries the expiry, and only for a domain that
+  declares it has a deadline: a broken integration does not expire, and its
+  `dueText` is a CTA label. **The glyph says WHO ACTS** — `🔌` keeps "a connection
+  broke and allos will keep retrying"; `🙋` marks a line only a person can close,
+  away from the device they are reading on. It is declared beside the domain, so a
+  new named-line domain must choose one rather than defaulting into `🔌` silently.
+
+```
+• 🙋 Run the portal tool for tbh — never checked · expires in 6 days
+```
+
+**New documents say WHICH and WHAT (#1913 item 3).** `📄 1 new document: ccda` was
+the raw `doc_type`: it named no document, reported nothing that came out of it, and
+linked nowhere. Every fact the honest line needs already sat on the row or in
+accounting the import had already done — so it renders the title/type, the
+`document_date`, the acquired-by portal (#1748), and the per-domain split of the
+SAME footprint tally that stamps `extracted_count` (#1827). The reader's word for
+each footprint table is declared **on `IMPORT_FOOTPRINT_TABLES` itself**, so a
+domain added to the registry lands in this line for free. A multi-document morning
+names up to three and then counts the rest.
+
+```
+• 📄 New: Ochsner visit summary (Jul 28, via Ochsner MyChart) — 12 labs, 2 meds
+```
 
 **Yesterday: the delta and the fraction merge when redundant (#1819 item 6).**
 `🔁 Missed: Glycine (1 day)` above `💊 Supplements: 8/9 taken` stated one fact
@@ -1179,6 +1245,41 @@ The on-demand command replies carry real kinds (`prn-list`, `symptom`, `temp`) f
 exactly this reason: an un-kinded send collapses into the `other` catch-all, which
 is the one bucket where superseding must never apply, since any two unrelated
 messages would then close each other.
+
+### Prose claims reconcile too (#1913 item 4)
+
+The two declarations above are **keyboard-shaped**: "what happens when this BUTTON is
+still in the chat tomorrow?" and "does sending this again replace the last one?". The
+morning digest slipped between them. Its every token is (correctly) declared inert — an
+offer tail and a ⚙️ Tune control claim nothing — so `owningFamily` returned null and the
+sweep concluded a collapsed digest had nothing to reconcile. Its **claims are its
+sentences**: "Supplements: 8/9 taken — missed Glycine (2 days)" stood until the next
+morning after the user had already logged it. That is #1779's harm pattern in the app's
+most-read message. The owner's question that exposed it: _"if I mark yesterday's Glycine
+now, will this message fix itself?"_
+
+A **prose-claim class**, declared by message KIND in `KIND_PROSE`
+(`lib/notifications/reconcile-registry.ts`):
+
+- **The send registers its pointer by KIND**, not by keyboard token. `recordPointer` no
+  longer requires a delivered keyboard when the kind declares a prose reconciler, which
+  is what lets a button-less digest be tracked at all.
+- **No second renderer.** The reconciler re-runs the SAME
+  `gatherDigestInput → buildDigest → renderDigestMessage` pipeline `runDigest` ran, for
+  the pointer's own date — so a reconciled digest is exactly the message that would have
+  been sent had it been composed now.
+- **Unchanged ⇒ no edit**, pinned by an edit-call count, exactly like the additive food
+  class. Migration 152 adds the `body_hash` witness that makes the comparison possible
+  without the pointer table holding a second copy of a message full of health facts, and
+  it doubles as the #1788 compare-and-swap for a prose edit — a digest's keyboard blob is
+  unchanged (often empty) across one, so it cannot tell two overlapping ticks apart.
+- **Day rollover closes the POINTER, not the message.** A dated report is honest AS
+  HISTORY; only the LIVE day's claims must track the ledger. Replacing yesterday's digest
+  text would destroy a report the reader may legitimately scroll back to.
+- **The completeness scan covers this class**, so the next report-shaped message has to
+  answer "do your sentences reconcile?" rather than inherit silence. The weekly recap
+  answers **no**, and says why: it describes seven days that are already over, so its
+  claims are history the moment they are made.
 
 **Deliberately out of scope.** No write-path coupling: the Server Action layer
 stays free of Telegram calls. A fire-and-forget edit from the action layer could
