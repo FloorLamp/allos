@@ -616,6 +616,12 @@ Four rules, all enforced in the pure core so no formatter can re-derive them:
   passed the recovery gate unconditionally (#2017). An unregistered scope kind is
   out by default, and the enum-parity test pins the registry against the
   `frequency_targets.scope_kind` CHECK so a new kind cannot join by omission.
+  A kind may also narrow to specific VALUES: `type` admits only `strength` and
+  `cardio`, because the third member of that vocabulary — `type:sport`, which the
+  Training page offers today — resolves to neither picker, so it was listed as a
+  deficit AND eligible to scope a strength workout that closes nothing (#2067).
+  `isWorkoutTargetScope` takes both halves of the scope, and the completeness test
+  now reads values as well as kinds.
 - **Weather parking is disclosed here too.** `recommendWorkout` carries
   `parkedNotes` from the shared `parkedDisclosureLines` (`lib/weather-training.ts`),
   the same formatter `contextNotes` renders for the dashboard card and the Training
