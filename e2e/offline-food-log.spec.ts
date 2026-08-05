@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
 // control — queue while offline and replay through the same write cores on
@@ -103,4 +105,100 @@ test("protein grams added offline queue, then sync exactly once on reconnect (#1
     `${before + 30}g today`
   );
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+});
+
+// The ledger's high-water mark, so a test can address the row IT created without
+// exact-counting the shared seed. A worker owns its database and runs one test at a
+// time, so nothing else moves this between the two reads.
+function maxFoodEventId(): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      (
+        db.prepare("SELECT MAX(id) AS id FROM food_log_events").get() as {
+          id: number | null;
+        }
+      ).id ?? 0
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function newestBerriesEventAfter(
+  afterId: number
+): { eaten_at: string | null; time_source: string | null } | undefined {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return db
+      .prepare(
+        `SELECT eaten_at, time_source FROM food_log_events
+          WHERE id > ? AND group_key = 'berries'
+          ORDER BY id DESC LIMIT 1`
+      )
+      .get(afterId) as
+      { eaten_at: string | null; time_source: string | null } | undefined;
+  } finally {
+    db.close();
+  }
+}
+
+// #2053: the eating-time statement has to survive the QUEUE, because a kitchen-moment
+// tap is precisely the one most likely to be offline — the case the chips exist for is
+// also the case the connection is worst. Offline the browser has no server to resolve a
+// choice against, so the capture carries a resolved INSTANT, and the replay validates it
+// (acceptEatenAt) rather than trusting it: it came off an untrusted client wall clock,
+// the same posture resolveQueuedTakenAt takes for a queued dose's tap instant.
+test("a stated eating time rides an offline serving through replay (#2053)", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // State the time BEFORE going offline — the chips are local state, so the statement is
+  // made against a page that already rendered its server-resolved options.
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
+  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await revealFoodGroup(page, "berries");
+  const count = page.getByTestId("count-berries");
+  const before = Number((await count.textContent())?.trim() || "0");
+  const baselineEventId = maxFoodEventId();
+
+  await context.setOffline(true);
+  await hydratedClick(page, page.getByTestId("log-berries"));
+  await expect(
+    page.getByText("Saved offline — will sync when you reconnect.")
+  ).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
+
+  await context.setOffline(false);
+  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await revealFoodGroup(page, "berries");
+  await expect(page.getByTestId("count-berries")).toHaveText(
+    String(before + 1)
+  );
+
+  // The replayed serving carries the stated instant, not a NULL and not the reconnect
+  // moment. Addressed by the row THIS test created — the one berries event newer than the
+  // baseline id — so nothing exact-counts a seeded row.
+  const row = newestBerriesEventAfter(baselineEventId);
+  expect(row).not.toBeUndefined();
+  expect(row!.time_source).toBe("stated");
+  expect(row!.eaten_at).not.toBeNull();
+  expect(
+    Math.abs(new Date(row!.eaten_at!).getTime() - frozenNow().getTime())
+  ).toBeLessThan(60 * 60_000);
 });

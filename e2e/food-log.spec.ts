@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -9,7 +9,7 @@ import {
   FOOD_PIN_GROUP,
   FOOD_PIN_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
@@ -519,4 +519,194 @@ test("a protocol deep link pins its group, and the protein control still sits by
   } finally {
     await page.context().close();
   }
+});
+
+// ── Eating-time capture on the web bar (#2053, from #2019 §2) ───────────────────
+//
+// The Telegram button's tap contract is "I'm eating now", so #2052 records its instant.
+// The web "+" carries no such contract — the same button logs the apple in your hand and
+// backfills Sunday's dinner — so it stays SILENT unless the user says otherwise, and
+// these chips are that statement. What is asserted is what the issue asked for: an
+// explicit choice writes `time_source = 'stated'`, silence writes nothing at all, and the
+// affordance is absent on a day where "now" would be meaningless.
+//
+// Fixture discipline: each test logs its OWN serving, finds that row by the id that
+// appeared in the day's list, reads THAT row from SQLite, and removes it again through
+// the product's own ⋯ → "Remove this serving" — so the shared profile is left as found
+// and nothing exact-counts a seeded row.
+
+function loggedListRows(page: Page) {
+  return page.getByTestId("food-logged-list").locator("li[data-group]");
+}
+
+async function loggedListIds(page: Page): Promise<string[]> {
+  return loggedListRows(page).evaluateAll((nodes) =>
+    nodes.map((n) => n.getAttribute("data-testid") ?? "")
+  );
+}
+
+// The ledger id of the one row that appeared since `before`.
+async function newlyLoggedId(page: Page, before: string[]): Promise<string> {
+  const added = (await loggedListIds(page)).filter(
+    (id) => !before.includes(id)
+  );
+  if (added.length !== 1)
+    throw new Error(
+      `expected exactly one new serving row, saw ${added.length}: ${added.join(", ")}`
+    );
+  return added[0].replace("food-logged-", "");
+}
+
+function eatingTimeOf(eventId: string): {
+  eaten_at: string | null;
+  time_source: string | null;
+} {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return db
+      .prepare("SELECT eaten_at, time_source FROM food_log_events WHERE id = ?")
+      .get(Number(eventId)) as {
+      eaten_at: string | null;
+      time_source: string | null;
+    };
+  } finally {
+    db.close();
+  }
+}
+
+async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
+  const row = page.getByTestId(`food-logged-${eventId}`);
+  await row.getByRole("button", { name: /^Actions for the/ }).click();
+  await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
+  await expect(row).toHaveCount(0);
+}
+
+test("a serving logged with no stated time records no eating time (#2053)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // The affordance is offered, and untouched it asserts nothing.
+  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    "record no eating time"
+  );
+
+  await revealFoodGroup(page, "nuts_seeds");
+  const before = await loggedListIds(page);
+  await settledClick(page, page.getByTestId("log-nuts_seeds"));
+  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
+
+  const eventId = await newlyLoggedId(page, before);
+  // NULL, not "now": defaulting a web log to the tap instant would reintroduce the
+  // guess `eaten_at` exists to end, under a more authoritative name.
+  expect(eatingTimeOf(eventId)).toEqual({ eaten_at: null, time_source: null });
+
+  await removeLoggedServing(page, eventId);
+});
+
+test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
+  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    "recorded as eaten now"
+  );
+
+  await revealFoodGroup(page, "nuts_seeds");
+  const before = await loggedListIds(page);
+  await settledClick(page, page.getByTestId("log-nuts_seeds"));
+  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
+
+  const eventId = await newlyLoggedId(page, before);
+  const stamped = eatingTimeOf(eventId);
+  // 'stated', never 'tap': the web "+" declares no contract of its own, so the source of
+  // the instant is the person who pressed the chip.
+  expect(stamped.time_source).toBe("stated");
+  expect(stamped.eaten_at).not.toBeNull();
+  expect(
+    Math.abs(new Date(stamped.eaten_at!).getTime() - frozenNow().getTime())
+  ).toBeLessThan(10 * 60_000);
+
+  // Pressing it again withdraws the statement — the chips are toggles, so there is no
+  // separate "clear" and no way to be stuck in a mode.
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
+  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+
+  await removeLoggedServing(page, eventId);
+});
+
+test("Earlier… states an absolute hour, and it is what lands (#2053)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // The hours stay one tap deep: "now" is the common answer, and a dozen hours
+  // permanently on screen would bury it.
+  const earlier = page.getByTestId("food-eating-earlier");
+  await expect(earlier).toHaveAttribute("aria-expanded", "false");
+  await hydratedClick(page, earlier);
+  await expect(earlier).toHaveAttribute("aria-expanded", "true");
+
+  // Every offered hour is one the write will accept — the server filtered them to hours
+  // that land on the day being logged to, so nothing on screen can be refused.
+  const hourChips = page.locator('[data-testid^="food-eating-at-"]');
+  const newestHour = hourChips.first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
+  await expect(newestHour).toBeVisible();
+  const hhmm = (await newestHour.textContent())!.trim();
+  await hydratedClick(page, newestHour);
+  await expect(earlier).toHaveText(hhmm);
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    `recorded as eaten at ${hhmm}`
+  );
+
+  await revealFoodGroup(page, "nuts_seeds");
+  const before = await loggedListIds(page);
+  await settledClick(page, page.getByTestId("log-nuts_seeds"));
+  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
+
+  const eventId = await newlyLoggedId(page, before);
+  const stamped = eatingTimeOf(eventId);
+  expect(stamped.time_source).toBe("stated");
+  // The stated wall time is what the row carries — resolved server-side in the profile's
+  // timezone, so the browser never converted it.
+  await expect(page.getByTestId(`food-logged-${eventId}`)).toBeVisible();
+  expect(stamped.eaten_at).not.toBeNull();
+  expect(new Date(stamped.eaten_at!).getTime()).toBeLessThan(
+    frozenNow().getTime()
+  );
+
+  await removeLoggedServing(page, eventId);
+});
+
+test("the eating-time chips are a today-only affordance (#2053)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await expect(page.getByTestId("food-eating-time")).toBeVisible();
+
+  // "Now" is meaningless on a backfill, and a seven-day-old serving genuinely has no
+  // stated eating time — which is exactly what the NULL default is for.
+  await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+  await expect(page.getByTestId("food-eating-time")).toHaveCount(0);
+
+  await hydratedClick(page, page.getByTestId("food-day-today"));
+  await expect(page.getByTestId("food-eating-time")).toBeVisible();
 });

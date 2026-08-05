@@ -22,6 +22,11 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  eatingTimeChoiceValue,
+  type EatingTimeChoice,
+  type EatingTimeOption,
+} from "@/lib/food-eating-time";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
 import OverflowMenu, {
@@ -68,6 +73,17 @@ const TIER_BADGE_CLASS: Record<FoodGroupTier, string> = {
   neutral: "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-300",
   limit: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
 };
+// A pressed/unpressed eating-time chip (#2053). Pressed reads as the brand-tinted
+// selection the meal cards already use, so "a statement is in force" is legible at a
+// glance rather than only from the note under the row.
+function chipClass(pressed: boolean): string {
+  return `tap-target rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+    pressed
+      ? "border-brand-400 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-200"
+      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+  }`;
+}
+
 const QUICK_GROUP_COUNT = 6;
 const QUICK_TIER_SEQUENCE: FoodGroupTier[] = [
   "encourage",
@@ -107,6 +123,7 @@ export default function FoodLogBar({
   proteinRankBySlot,
   excludedGroups,
   slot,
+  eatingTimeOptions = [],
   initialFoodGroup,
   nutrientSummaryByDate = [],
   proteinQuickAdd,
@@ -130,6 +147,12 @@ export default function FoodLogBar({
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
   slot: FoodSlot;
+  // The "earlier…" hours an eating-time statement may name (#2053), each with the local
+  // wall time to show and the instant it means. Resolved server-side from the profile's
+  // timezone and already filtered to hours that land on `today`, so this island never
+  // converts a profile-local hour with its own locale and never offers a chip the write
+  // would refuse. Empty disables the earlier half; "now" stands on its own.
+  eatingTimeOptions?: EatingTimeOption[];
   // Optional protocol-owned group (#1584). It is promoted into the quick rows
   // for this mount so opening "Log servings" lands on the intended existing
   // write control without inventing another food-log path.
@@ -151,6 +174,15 @@ export default function FoodLogBar({
     setSlotCountsByDate,
   } = useFoodSelectedDate();
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
+  // The eating-time statement in force for the next taps (#2053), or null for the default
+  // and honest silence: nobody said, so nothing is written. STICKY across taps on purpose
+  // — a meal is several servings and re-answering "when" for each one would be the kind of
+  // friction a one-tap bar exists to avoid — and reset whenever the selected DAY changes,
+  // because a statement made about today cannot survive onto a backfill.
+  const [eatingTime, setEatingTime] = useState<EatingTimeChoice | null>(null);
+  // Whether the "earlier…" hours are revealed. The offer stays one tap deep: "now" is the
+  // common answer and a dozen hours permanently on screen would bury it.
+  const [earlierOpen, setEarlierOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   // Optimistic daily totals and meal-slot counts live in the parent date context:
   // food_log remains the source-of-truth day counter, while food_log_events powers
@@ -504,6 +536,27 @@ export default function FoodLogBar({
     });
   }
 
+  // An eating-time statement is a TODAY-only affordance. "Now" is meaningless on a
+  // backfill, and the whole point of the NULL default is that a log with nothing to state
+  // records no eating time rather than a confident wrong one — which is exactly what a
+  // seven-day-old serving has. So the chips are hidden and the statement is not written
+  // while an older day is selected; it is still visible (and still pressed) on returning
+  // to today, so nothing is silently in force.
+  const statingTime = activeDate === today;
+  const statedChoice = statingTime ? eatingTime : null;
+
+  // The instant an OFFLINE capture carries for the statement in force, or null. Resolved
+  // here rather than at replay because a replay has no server to ask: "now" is this
+  // device's clock at the tap, and an "earlier…" hour is the instant the server already
+  // computed for that option. Both are validated server-side before they land.
+  function statedInstant(): string | null {
+    if (!statedChoice) return null;
+    if (statedChoice.kind === "now") return new Date().toISOString();
+    return (
+      eatingTimeOptions.find((o) => o.hhmm === statedChoice.hhmm)?.iso ?? null
+    );
+  }
+
   // The pair of counts one tap moves: the day's total for the group, and the group's
   // total inside the meal window under the user's finger. They travel together — the
   // optimistic bump, the rollback and the server's authoritative figures all name both
@@ -531,6 +584,12 @@ export default function FoodLogBar({
         groupKey: slug,
         mealSlot: activeSlot,
         grams: null,
+        // The statement travels as a RESOLVED instant, because a replay has no server to
+        // resolve a choice against: "now" is this device's clock at the tap, and an
+        // "earlier…" hour is the instant the server computed when it rendered that
+        // option. The replay validates both (acceptEatenAt) rather than trusting them,
+        // and an unusable one costs the statement, never the serving.
+        eatenAt: statedInstant(),
       });
       toast("Saved offline — will sync when you reconnect.");
     };
@@ -567,6 +626,12 @@ export default function FoodLogBar({
         fd.set("group_key", slug);
         fd.set("date", activeDate);
         fd.set("meal_slot", activeSlot);
+        // The CHOICE, not an instant: online the server resolves it against its own clock
+        // and the profile's timezone, so a tab open since breakfast cannot stamp a stale
+        // "now". Only an add states a time — an undo removes a serving and asserts
+        // nothing about when anything was eaten.
+        if (statedChoice && delta === 1)
+          fd.set("eaten_at", eatingTimeChoiceValue(statedChoice));
         return {
           kind: "wrote",
           outcome:
@@ -1009,6 +1074,85 @@ export default function FoodLogBar({
         )}
         <section data-testid="food-quick-log">
           <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
+          {statingTime && (
+            <div
+              data-testid="food-eating-time"
+              role="group"
+              aria-label="When the servings you add were eaten"
+              className="mb-2.5 flex flex-wrap items-center gap-1.5"
+            >
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Eaten
+              </span>
+              <button
+                type="button"
+                data-testid="food-eating-now"
+                aria-pressed={statedChoice?.kind === "now"}
+                title="Record the servings you add as eaten now"
+                onClick={() => {
+                  setEarlierOpen(false);
+                  setEatingTime((prev) =>
+                    prev?.kind === "now" ? null : { kind: "now" }
+                  );
+                }}
+                className={chipClass(statedChoice?.kind === "now")}
+              >
+                Now
+              </button>
+              {eatingTimeOptions.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="food-eating-earlier"
+                  aria-expanded={earlierOpen}
+                  title="State an earlier time instead"
+                  onClick={() => setEarlierOpen((open) => !open)}
+                  className={chipClass(statedChoice?.kind === "at")}
+                >
+                  {statedChoice?.kind === "at"
+                    ? statedChoice.hhmm
+                    : "Earlier\u2026"}
+                </button>
+              )}
+              {earlierOpen &&
+                eatingTimeOptions.map((option) => (
+                  <button
+                    key={option.hhmm}
+                    type="button"
+                    data-testid={`food-eating-at-${option.hhmm}`}
+                    aria-pressed={
+                      statedChoice?.kind === "at" &&
+                      statedChoice.hhmm === option.hhmm
+                    }
+                    onClick={() => {
+                      setEarlierOpen(false);
+                      setEatingTime((prev) =>
+                        prev?.kind === "at" && prev.hhmm === option.hhmm
+                          ? null
+                          : { kind: "at", hhmm: option.hhmm }
+                      );
+                    }}
+                    className={chipClass(
+                      statedChoice?.kind === "at" &&
+                        statedChoice.hhmm === option.hhmm
+                    )}
+                  >
+                    {option.hhmm}
+                  </button>
+                ))}
+              <span
+                data-testid="food-eating-time-note"
+                className="w-full text-xs text-slate-500 dark:text-slate-400"
+              >
+                {statedChoice
+                  ? `Servings you add are recorded as eaten ${
+                      statedChoice.kind === "now"
+                        ? "now"
+                        : `at ${statedChoice.hhmm}`
+                    }.`
+                  : "Servings you add record no eating time until you say one."}
+              </span>
+            </div>
+          )}
           <div className="space-y-1.5">
             {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
             {activeDate === today && proteinQuickAdd}

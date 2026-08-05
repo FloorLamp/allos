@@ -698,17 +698,30 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     date: string,
     groupKey: string,
     mealSlot: string | null,
-    capturedAt: string
+    capturedAt: string,
+    eatenAt?: string | null
   ): QueuedIntent {
     return {
       key: uniqueKey(),
       flow: "food",
       date,
       capturedAt,
-      payload: { entry: "serving", groupKey, mealSlot, grams: null },
+      payload: { entry: "serving", groupKey, mealSlot, grams: null, eatenAt },
       profileId,
       attempts: 0,
     };
+  }
+
+  function eventTimes(profileId: number, date: string, group: string) {
+    return db
+      .prepare(
+        `SELECT eaten_at, time_source FROM food_log_events
+          WHERE profile_id = ? AND date = ? AND group_key = ? ORDER BY id`
+      )
+      .all(profileId, date, group) as {
+      eaten_at: string | null;
+      time_source: string | null;
+    }[];
   }
 
   function proteinIntent(
@@ -776,6 +789,96 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     expect(events).toHaveLength(2);
     expect(events[0].logged_at).toBe(capturedAt);
     expect(events[0].meal_slot).toBe("Morning");
+  });
+
+  // ── #2053: the eating-time statement threads through REPLAY ──────────────────
+  //
+  // The chosen instant has to survive the queue, because the whole point of the chips is
+  // to say WHEN, and a kitchen-moment tap is exactly the one most likely to be offline.
+  // It is validated rather than trusted (acceptEatenAt) for the same reason a queued
+  // dose's tap instant is: it came off an untrusted client wall clock.
+  it("carries a stated eating instant through replay as time_source='stated'", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodEaten ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    // Local midnight on the intent's own day: always past, always that day.
+    const eatenAt = zonedWallTimeToUtc(
+      getTimezone(profile.id),
+      date,
+      "00:00"
+    ).toISOString();
+
+    const intent = servingIntent(
+      profile.id,
+      date,
+      "leafy_greens",
+      "Morning",
+      `${date}T09:00:00.000Z`,
+      eatenAt
+    );
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+
+    expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
+      { eaten_at: eatenAt, time_source: "stated" },
+    ]);
+  });
+
+  it("an intent with no statement replays with no eating time, as before", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodNoTime ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+
+    const intent = servingIntent(
+      profile.id,
+      date,
+      "leafy_greens",
+      "Morning",
+      `${date}T09:00:00.000Z`
+    );
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+
+    expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
+      { eaten_at: null, time_source: null },
+    ]);
+  });
+
+  it("an unusable client instant costs the STATEMENT, never the serving", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodBadTime ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    const tz = getTimezone(profile.id);
+
+    // A phone hours ahead, and an instant sitting on the wrong day — the two failures
+    // the gate exists for. Both replay as a logged serving with no eating time, because
+    // losing the minute is cosmetic and losing the food log is not.
+    const future = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
+    const wrongDay = zonedWallTimeToUtc(
+      tz,
+      shiftDateStr(date, -1),
+      "12:00"
+    ).toISOString();
+    for (const bad of [future, wrongDay, "not-an-instant"]) {
+      const res = await replay([
+        servingIntent(
+          profile.id,
+          date,
+          "berries",
+          "Morning",
+          `${date}T09:00:00.000Z`,
+          bad
+        ),
+      ]);
+      expect(res.body.results?.[0].status).toBe("done");
+    }
+    const times = eventTimes(profile.id, date, "berries");
+    expect(times).toHaveLength(3);
+    expect(
+      times.every((t) => t.eaten_at === null && t.time_source === null)
+    ).toBe(true);
+    expect(servingsFor(profile.id, date, "berries")).toBe(3);
   });
 
   it("dead-letters an unknown food group with a reason, writing nothing", async () => {
