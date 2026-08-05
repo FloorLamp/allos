@@ -1,3 +1,9 @@
+import {
+  canonicalizeProviderClock,
+  clockAtMinute,
+  type ClockReading,
+} from "@/lib/clock-skew";
+import { hhmmToMinutes } from "@/lib/date";
 import type { ActivityType } from "@/lib/types";
 import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
 import type {
@@ -23,6 +29,16 @@ export const STRAVA_ID = "strava";
 // literal Y-M-D-H-M fields, and use Date.UTC only to do duration arithmetic on
 // those same wall-clock numerals (read back via getUTC*). This is the opposite
 // of the Health Connect parser, whose timestamps are true instants.
+//
+// AND `start_date_local` IS THE ONE THAT CAN BE WRONG (#2088). Strava computes it as
+// `start_date + utc_offset`, and that offset is a property of the athlete's account
+// as Strava understood it — stale after a move, wrong across a DST boundary, wrong
+// again when a third party pushed the activity in. That is precisely how #2011's
+// duplicate arrived an hour early. `start_date` is a TRUE INSTANT, so given the
+// profile's own timezone the local day and clock follow with nothing inferred: the
+// canonicalization primitive's branch A. We take it whenever both are available and
+// fall back to the provider's own wall clock otherwise, which is the pre-#2088
+// behaviour exactly.
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -41,6 +57,26 @@ function parts(
     date: `${y}-${mo}-${d}`,
     hhmm: `${h}:${mi}`,
     ms: Date.UTC(+y, +mo - 1, +d, +h, +mi, se ? +se : 0),
+  };
+}
+
+// The reported wall clock as the primitive's dated reading, and the way back — the
+// two-line bridge between this parser's `{date, hhmm, ms}` shape and the one shape
+// every clock question in the app is asked in.
+function reportedReading(p: { date: string; hhmm: string }): ClockReading {
+  return { date: p.date, minutes: hhmmToMinutes(p.hhmm) };
+}
+function partsOfReading(r: ClockReading): {
+  date: string;
+  hhmm: string;
+  ms: number;
+} {
+  const hhmm = clockAtMinute(r.minutes);
+  const [y, mo, d] = r.date.split("-").map(Number);
+  return {
+    date: r.date,
+    hhmm,
+    ms: Date.UTC(y, mo - 1, d, Math.floor(r.minutes / 60), r.minutes % 60, 0),
   };
 }
 
@@ -173,7 +209,10 @@ function workoutTypeLabel(code: unknown): string | null {
 // unusable (no id or unparseable start).
 export function mapStravaActivity(
   a: unknown,
-  detail?: unknown
+  detail?: unknown,
+  // The PROFILE's timezone. Supplied by the sync runner; omitted by callers that
+  // have no profile context, which then get the provider's own wall clock verbatim.
+  tz?: string
 ): {
   activity: NormActivity;
   samples: NormMetricSample[];
@@ -183,8 +222,27 @@ export function mapStravaActivity(
   const rec = a as Record<string, unknown>;
   const id = num(rec.id);
   const startLocal = str(rec.start_date_local);
-  const p = parts(startLocal);
-  if (id == null || !startLocal || !p) return null;
+  const reported = parts(startLocal);
+  if (id == null || !startLocal || !reported) return null;
+
+  // #2088 branch A: the true instant read in the profile's zone, when we have both.
+  // The primitive returns `changed: false` for an activity whose reported clock
+  // already agrees, so a re-sync of a correctly-offset ride writes the same row it
+  // wrote last time.
+  const instantAt = str(rec.start_date)
+    ? new Date(String(rec.start_date))
+    : null;
+  const canonical =
+    tz && instantAt
+      ? canonicalizeProviderClock({
+          reported: reportedReading(reported),
+          instant: { at: instantAt, tz },
+        })
+      : null;
+  const p =
+    canonical?.kind === "canonical" && canonical.changed
+      ? partsOfReading(canonical.reading)
+      : reported;
 
   const sportType = rec.sport_type ?? rec.type;
   const type = classify(rec.sport_type, rec.type);
@@ -310,9 +368,14 @@ export function mapStravaActivity(
     : null;
   if (calories != null && elapsedSec != null) {
     // Wall-clock numerals as a stable, TZ-independent dedup key (consistent across
-    // re-syncs); `date` is the activity's true local day.
-    const startIso = new Date(p.ms).toISOString();
-    const endIso = new Date(p.ms + elapsedSec * 1000).toISOString();
+    // re-syncs); `date` is the activity's true local day. The KEY stays on the
+    // provider's REPORTED numerals even when the activity's clock is canonicalized
+    // (#2088): it is an identity token, not a claim about an instant, and re-keying
+    // it would make one already-imported calorie row look like a new one and double
+    // the day. The `date` beside it does take the canonical answer, which an
+    // idempotent upsert simply corrects in place.
+    const startIso = new Date(reported.ms).toISOString();
+    const endIso = new Date(reported.ms + elapsedSec * 1000).toISOString();
     samples.push({
       metric: "active_kcal",
       date: p.date,

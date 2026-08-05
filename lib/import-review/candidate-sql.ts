@@ -12,7 +12,10 @@
 // statement as a literal template so the profile-scoping scanner can read the
 // `profile_id` filters it enforces.
 
-import { EVENING_CANDIDATE_CLOCK, MORNING_CANDIDATE_CLOCK } from "./detect";
+import {
+  EVENING_CANDIDATE_CLOCK,
+  MORNING_CANDIDATE_CLOCK,
+} from "../clock-skew";
 
 // The time-of-day of an activity clock field, as the comparable "HH:MM" the column
 // stores. `instr(x, 'T')` is 0 when there is no 'T', so `substr(x, 1)` returns the

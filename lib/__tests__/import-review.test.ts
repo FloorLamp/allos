@@ -21,7 +21,6 @@ import {
   crossMidnightCandidate,
   EVENING_CANDIDATE_CLOCK,
   MORNING_CANDIDATE_CLOCK,
-  MINUTES_PER_DAY,
   bodyMetricToken,
   sharedMeasures,
   conflictingMeasures,
@@ -34,6 +33,7 @@ import {
   type ActivityDupInput,
   type BodyMetricConflictInput,
 } from "@/lib/import-review/detect";
+import { MINUTES_PER_DAY } from "@/lib/clock-skew";
 
 // A fully-specified activity row for detection tests; overrides tweak one field.
 function act(over: Partial<ActivityDupInput>): ActivityDupInput {
