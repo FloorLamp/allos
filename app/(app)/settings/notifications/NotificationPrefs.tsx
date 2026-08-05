@@ -18,13 +18,18 @@ import {
   sweepableKinds,
 } from "@/lib/notifications/matrix-bulk";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
+import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
   saveNotificationPrefs,
   saveHomeAssistantNotifyKinds,
 } from "../profile/actions";
-import { savePushNotifyKinds, saveLoginTelegramNotifyKinds } from "../actions";
+import {
+  savePushNotifyKinds,
+  saveLoginTelegramNotifyKinds,
+  saveLoginEmailNotifyKinds,
+} from "../actions";
 
 // The Schedule + Message kinds sections of the Notifications group page (#1462 §6).
 //
@@ -60,7 +65,7 @@ import { savePushNotifyKinds, saveLoginTelegramNotifyKinds } from "../actions";
 // never swept, so a column "turn off" leaves dose/escalation/redose exactly as the user
 // set them, individually. Row-level select-all is deliberately out.
 
-type ChannelId = "telegram" | "push" | "ha";
+type ChannelId = "telegram" | "push" | "ha" | "email";
 
 type Column = {
   id: ChannelId;
@@ -179,9 +184,11 @@ export default function NotificationPrefs({
   telegramDisabled,
   pushDisabled,
   haDisabled,
+  emailDisabled,
   telegramConfigured,
   pushConfigured,
   haConfigured,
+  emailConfigured,
 }: {
   schedule: NotifySchedule;
   workoutSummary: string;
@@ -199,9 +206,11 @@ export default function NotificationPrefs({
   telegramDisabled: NotificationKind[];
   pushDisabled: NotificationKind[];
   haDisabled: NotificationKind[];
+  emailDisabled: NotificationKind[];
   telegramConfigured: boolean;
   pushConfigured: boolean;
   haConfigured: boolean;
+  emailConfigured: boolean;
 }) {
   // ONE bag of form-field values keyed by the saveNotificationPrefs field name, so a
   // registry row renders and writes generically — adding a kind is a registry entry,
@@ -235,6 +244,7 @@ export default function NotificationPrefs({
     telegram: new Set(telegramDisabled),
     push: new Set(pushDisabled),
     ha: new Set(haDisabled),
+    email: new Set(emailDisabled),
   }));
   const [routing, setRouting] = useState(false);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
@@ -276,12 +286,20 @@ export default function NotificationPrefs({
       owner: "this profile",
       configured: haConfigured,
     },
+    {
+      id: "email",
+      short: "Email",
+      label: "Email",
+      owner: "this login",
+      configured: emailConfigured,
+    },
   ];
 
   const saver: Record<ChannelId, (fd: FormData) => Promise<unknown>> = {
     telegram: saveLoginTelegramNotifyKinds,
     push: savePushNotifyKinds,
     ha: saveHomeAssistantNotifyKinds,
+    email: saveLoginEmailNotifyKinds,
   };
 
   // The rendered rows. A kind with no registry entry (the NON_CONFIGURABLE set, e.g.
@@ -292,9 +310,11 @@ export default function NotificationPrefs({
   );
 
   // A cell is a real toggle unless the channel inherently can't deliver the kind
-  // (only push × food today). An unavailable cell is neither "on" nor a checkbox.
+  // (push/email × the button-only kinds). An unavailable cell is neither "on" nor
+  // a checkbox.
   function cellAvailable(channel: ChannelId, kind: NotificationKind): boolean {
     if (channel === "push") return isPushDeliverableKind(kind);
+    if (channel === "email") return isEmailDeliverableKind(kind);
     return true;
   }
 
@@ -479,7 +499,7 @@ export default function NotificationPrefs({
 
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
           <span>Kind</span>
-          <span className="grid w-[7.5rem] grid-cols-3 gap-1 text-center sm:w-40">
+          <span className="grid w-[10rem] grid-cols-4 gap-1 text-center sm:w-52">
             {columns.map((c) => {
               const sweep = columnSweep(c.id);
               const state = columnBulkState(sweep, disabled[c.id]);
@@ -655,7 +675,7 @@ export default function NotificationPrefs({
                   )}
                 </div>
 
-                <div className="grid w-[7.5rem] shrink-0 grid-cols-3 gap-1 pt-1 text-center sm:w-40">
+                <div className="grid w-[10rem] shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52">
                   {columns.map((c) => {
                     const available = cellAvailable(c.id, e.kind);
                     return available ? (
@@ -673,7 +693,7 @@ export default function NotificationPrefs({
                       <span
                         key={c.id}
                         className="text-slate-300 dark:text-slate-600"
-                        title="Web Push can’t deliver this button-only reminder."
+                        title={`${c.label} can’t deliver this button-only reminder.`}
                         data-testid={`matrix-unavailable-${c.id}-${e.kind}`}
                       >
                         &mdash;
