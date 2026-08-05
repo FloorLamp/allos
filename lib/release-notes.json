@@ -4,6 +4,27 @@
       "date": "2026-08-05",
       "entries": [
         {
+          "pr": 2093,
+          "title": "Deleted items get a home",
+          "body": "Everything you delete now lands in a Trash section under Data, listed with what it was and when it went — and Restore is one click, performing exactly the same restore the 15-second Undo toast always did. Items can be purged individually or all at once, and admins choose how long the Trash keeps things (30 days by default).",
+          "kind": "feature",
+          "issues": [2013]
+        },
+        {
+          "pr": 2092,
+          "title": "Half-hour time zones, honest workout targets, a form that remembers",
+          "body": "Duplicate workouts from providers reporting in half-hour or 45-minute time zones (India, Newfoundland, Nepal) are now caught like their whole-hour cousins. A sport-type training target can no longer quietly mis-aim the workout suggestion at something a lift slate can't close. And the measurements form now remembers which group you last used even when the entry was logged offline.",
+          "kind": "fix",
+          "issues": [2063, 2067, 2068, 2064]
+        },
+        {
+          "pr": 2094,
+          "title": "The protein entry sits where it ranks",
+          "body": "When a protocol button opened the food bar pinned to a specific group, the protein entry could render below rows it actually outranked. It now sits exactly where its ranking earns, pin or no pin.",
+          "kind": "fix",
+          "issues": [2061, 2060, 2062]
+        },
+        {
           "pr": 2083,
           "title": "Sync history reads as days, not a wall of rows",
           "body": "A source that syncs seventy times a day used to produce seventy identical history rows. The history now groups by day — notable runs (errors, imports, truncations) itemized, routine ones folded into an openable range — and the drill-in counts only what it can actually list, naming the remainder instead of guessing. Sync pages are also centred like the rest of the app. Under the hood, every pulled provider now runs through one shared sync engine, so each safety rule is enforced once for all of them.",
