@@ -43,7 +43,7 @@ export default async function OuraPage(props: {
   const state = getIntegrationState(profile.id, "oura", SETUP_HISTORY_LIMIT)!;
 
   return (
-    <div>
+    <PageContainer width="reading" className="mx-auto">
       <Link
         href="/data?section=import"
         className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -72,10 +72,11 @@ export default async function OuraPage(props: {
       )}
 
       {connected ? (
-        <PageContainer width="reading" className="grid gap-6">
+        <div className="grid gap-6">
           <div className="card space-y-2">
             <IntegrationStatusHeader
               state={state}
+              detail="period"
               isAdmin={login.role === "admin"}
               controls={
                 <>
@@ -98,9 +99,9 @@ export default async function OuraPage(props: {
           <SetupCard />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
-        </PageContainer>
+        </div>
       ) : (
-        <PageContainer width="reading" className="grid gap-6">
+        <div className="grid gap-6">
           <div className="card space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Paste your Oura <strong>personal access token</strong>. Create one
@@ -140,9 +141,9 @@ export default async function OuraPage(props: {
           </div>
 
           <SetupCard />
-        </PageContainer>
+        </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

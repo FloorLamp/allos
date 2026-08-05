@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
 import { loadSyncRows } from "@/app/(app)/data/review-actions";
+import { drilldownRemainderLabel } from "@/lib/integrations/sync-history-days";
 import type { SyncRowLink } from "@/lib/queries";
 
 // "What this sync wrote" drill-in (issue #1333, deferred part 2 of #1212). Behind a
@@ -22,15 +23,27 @@ import type { SyncRowLink } from "@/lib/queries";
 export default function SyncRowsDrilldown({
   eventId,
   count,
+  remainder = 0,
 }: {
   eventId: number;
+  // Records this drill-in will actually LIST — never the run's split total (#1991).
   count: number;
+  // Records the run also wrote that carry no openable identity (minute-grain rows
+  // with no row id, and the other targets recordSyncRows deliberately skips). Named
+  // rather than hidden: the count used to include them, so a partial list looked
+  // complete and overstated by 10× on a Health Connect push.
+  remainder?: number;
 }) {
   const [state, setState] = useState<"idle" | "loading" | "loaded" | "error">(
     "idle"
   );
   const [rows, setRows] = useState<SyncRowLink[]>([]);
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const remainderLabel = drilldownRemainderLabel(remainder);
+  // Once the list is loaded, the label states what is actually THERE. The passed
+  // count is the promise the caller resolved before opening; the loaded rows are the
+  // truth, and the two must never disagree in front of the reader (#1991).
+  const shown = state === "loaded" ? rows.length : count;
 
   async function load() {
     if (state === "loading" || state === "loaded") return;
@@ -60,7 +73,7 @@ export default function SyncRowsDrilldown({
       }}
     >
       <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
-        What this wrote ({count})
+        What this wrote — {shown} {shown === 1 ? "record" : "records"}
       </summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -70,6 +83,14 @@ export default function SyncRowsDrilldown({
       {state === "error" && (
         <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
           Couldn’t load the written records.
+        </p>
+      )}
+      {remainderLabel && (
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid={`sync-rows-remainder-${eventId}`}
+        >
+          {remainderLabel}
         </p>
       )}
       {state === "loaded" && rows.length > 0 && (

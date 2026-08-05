@@ -7,8 +7,12 @@ import {
   intermittentReassurance,
   intermittentRunsLabel,
   INTERMITTENT_HEADLINE,
+  periodActivityLabel,
   standingBadge,
+  standingHeadline,
+  syncRunNounForKind,
 } from "@/lib/integrations/provider-state";
+import { groupSyncDays } from "@/lib/integrations/sync-history-days";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 import StatusBadge from "./StatusBadge";
@@ -37,11 +41,24 @@ function writtenCount(ev: {
 //
 // `controls` is the per-surface slot (the responsive/shared-content rule): the shape
 // is shared, the buttons belong to whoever is rendering.
+//
+// `detail` is the other per-surface choice, and #1991 is why it exists:
+//
+//   "run"    — Review's inbox card. It shows ONE event and there is nothing beneath
+//              it, so the newest run's split, its coverage, its drill-in and its raw
+//              link ARE the card's content.
+//   "period" — the provider's own page, which renders the full history right below.
+//              The card answers and stops (pin 9): the standing as a sentence, plus
+//              today's aggregate. Restating the newest run here put the identical
+//              split, "What this wrote" and "View raw" TWICE on one screen.
+export type StatusDetail = "run" | "period";
+
 export default function IntegrationStatusHeader({
   state,
   showName = false,
   controls,
   isAdmin = false,
+  detail = "run",
   testid,
 }: {
   state: IntegrationState;
@@ -50,13 +67,28 @@ export default function IntegrationStatusHeader({
   showName?: boolean;
   controls?: ReactNode;
   isAdmin?: boolean;
+  detail?: StatusDetail;
   testid?: string;
 }) {
   const { latest, standing, vocabulary } = state;
   const badge = standingBadge(standing);
-  const coverage = latest ? formatCoverage(latest, vocabulary) : null;
-  const provenance = new Set(state.provenanceEventIds);
+  const perRun = detail === "run";
+  const noun = syncRunNounForKind(state.kind);
+  const coverage = perRun && latest ? formatCoverage(latest, vocabulary) : null;
+  const provenance = state.provenanceCounts;
   const written = latest ? writtenCount(latest) : 0;
+  // Today's activity, aggregated — the period card's one fact. The newest day group
+  // IS today's when the newest run landed today; periodActivityLabel refuses to
+  // dress an older day's tally as "today".
+  const newestDay = perRun
+    ? null
+    : (groupSyncDays(state.history, state.timeZone)[0] ?? null);
+  const activity = periodActivityLabel(
+    newestDay,
+    newestDay?.day === state.today,
+    noun,
+    vocabulary
+  );
 
   return (
     <div data-testid={testid}>
@@ -109,7 +141,7 @@ export default function IntegrationStatusHeader({
             · {intermittentReassurance(vocabulary)}.
           </p>
         </div>
-      ) : (
+      ) : perRun ? (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           {latest ? (
             <SyncOutcomeLine ev={latest} vocabulary={vocabulary} />
@@ -123,6 +155,19 @@ export default function IntegrationStatusHeader({
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {coverage}
             </span>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2" data-testid={`sync-period-${state.id}`}>
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+            {standingHeadline(standing, noun)}
+            {activity ? ` — ${activity}.` : "."}
+          </p>
+          {!latest && (
+            <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+              <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
+              No syncs yet
+            </p>
           )}
         </div>
       )}
@@ -158,15 +203,22 @@ export default function IntegrationStatusHeader({
             <SyncTimestamp value={state.lastSuccessAt} relativeOnly />.
           </p>
         )}
-      {latest && <SyncDetailsNotes ev={latest} />}
-      {latest && written > 0 && provenance.has(latest.id) && (
-        <SyncRowsDrilldown eventId={latest.id} count={written} />
+      {/* The newest run's diagnostics, drill-in and raw payload belong to whichever
+          surface OWNS that run. On the provider's own page the history below owns it,
+          and repeating it here was the #1991 duplication. */}
+      {perRun && latest && <SyncDetailsNotes ev={latest} />}
+      {perRun && latest && written > 0 && provenance[latest.id] && (
+        <SyncRowsDrilldown
+          eventId={latest.id}
+          count={provenance[latest.id]}
+          remainder={Math.max(written - provenance[latest.id], 0)}
+        />
       )}
 
-      {(controls || (isAdmin && latest?.raw_ref)) && (
+      {(controls || (perRun && isAdmin && latest?.raw_ref)) && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {controls}
-          {isAdmin && latest?.raw_ref && (
+          {perRun && isAdmin && latest?.raw_ref && (
             <div className="w-full">
               <RawPayloadViewer id={latest.id} />
             </div>

@@ -56,6 +56,18 @@ export function syncVocabularyForKind(kind: string): SyncVocabulary {
   return kind === "public" ? "forecast" : "records";
 }
 
+// What ONE RUN of this provider is called (#1991). The day-grouped history counts
+// runs — "26 pushes today" — and a phone exporter pushing to us is not "syncing", nor
+// is a keyless forecast fetch. Derived from the provider KIND for the same reason the
+// vocabulary is: a future provider of a known kind gets the right word for free.
+export type SyncRunNoun = "push" | "sync" | "refresh";
+
+export function syncRunNounForKind(kind: string): SyncRunNoun {
+  if (kind === "push") return "push";
+  if (kind === "public") return "refresh";
+  return "sync";
+}
+
 // The semantic tone of a status/outcome, resolved to classes in exactly one place
 // (components/integrations/StatusBadge.tsx). Surfaces never pick colors themselves.
 export type StatusTone = "good" | "caution" | "bad" | "neutral";
@@ -232,6 +244,62 @@ export function intermittentReassurance(vocabulary: SyncVocabulary): string {
 // The intermittent status header's headline. The copy states the pattern, not the
 // last event.
 export const INTERMITTENT_HEADLINE = "Working, with interruptions";
+
+// The status card's HEADLINE (#1991 pin 9). The card answers "what's the state of
+// this source" and then STOPS: it states the standing as a sentence and, below,
+// today's activity as an aggregate — never a restatement of the newest run's split,
+// its drill-in, or its raw link, all of which live in the history the same page
+// renders underneath. Two copies of one event on one screen was the defect.
+export function standingHeadline(
+  standing: ProviderStanding,
+  noun: SyncRunNoun = "sync"
+): string {
+  switch (standing) {
+    case "healthy":
+      return noun === "push" ? "Receiving normally" : "Syncing normally";
+    case "partial":
+      return "Working — more still upstream";
+    case "intermittent":
+      return INTERMITTENT_HEADLINE;
+    case "failing":
+      return noun === "push" ? "Not receiving" : "Not syncing";
+    case "needs-reauth":
+      return "Needs reconnecting";
+    case "not-connected":
+      return "Not connected";
+    case "never-synced":
+      return `Connected — waiting for the first ${noun}`;
+  }
+}
+
+// Today's activity, as one aggregate sentence: "26 pushes today, 340 records added,
+// 12 updated." Null when the newest recorded day is not today — an old day's tally
+// dressed as "today" would be a lie, and the header's timestamp already says when the
+// last run was.
+export function periodActivityLabel(
+  day: { runs: number; inserted: number; updated: number } | null,
+  isToday: boolean,
+  noun: SyncRunNoun = "sync",
+  vocabulary: SyncVocabulary = "records"
+): string | null {
+  if (!day || !isToday || day.runs === 0) return null;
+  const head = `${day.runs} ${day.runs === 1 ? noun : pluralRunNoun(noun)} today`;
+  if (vocabulary === "forecast") {
+    const revised = day.inserted + day.updated;
+    return revised === 0
+      ? `${head}, nothing revised`
+      : `${head}, ${revised} ${revised === 1 ? "reading" : "readings"} revised`;
+  }
+  const parts: string[] = [];
+  if (day.inserted > 0) parts.push(`${day.inserted} records added`);
+  if (day.updated > 0) parts.push(`${day.updated} updated`);
+  return parts.length ? `${head}, ${parts.join(", ")}` : `${head}, nothing new`;
+}
+
+// "push" → "pushes", "refresh" → "refreshes", "sync" → "syncs".
+export function pluralRunNoun(noun: SyncRunNoun): string {
+  return noun === "sync" ? "syncs" : `${noun}es`;
+}
 
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one
 // shared rule, so the page can promise what the badge and the digest will do.

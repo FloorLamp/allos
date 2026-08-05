@@ -1,4 +1,5 @@
 import { db, today } from "@/lib/db";
+import { getTimezone } from "@/lib/settings";
 import type { IntegrationId, IntegrationSyncEvent } from "@/lib/types";
 import {
   staleSyncs,
@@ -586,10 +587,14 @@ export interface IntegrationState {
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
-  // The ids, among `latest` + `history`, whose sync actually recorded row provenance
-  // (#1771). The "What this wrote" drill-in is offered ONLY for these; an event that
-  // recorded none gets no expander at all rather than one that apologizes on open.
-  provenanceEventIds: number[];
+  // How many rows the drill-in can actually LIST, per event id, among `latest` +
+  // `history` (#1771, corrected in #1991). An event absent from this map recorded no
+  // provenance and gets no expander at all rather than one that apologizes on open.
+  // The COUNT matters as much as the presence: "What this wrote (30)" used to label
+  // the split total while listing only what `integration_sync_rows` holds — and
+  // recordSyncRows deliberately skips minute-grain tables with no row id — so on a
+  // Health Connect push it overstated by 10× and a partial list looked complete.
+  provenanceCounts: Record<number, number>;
   // The last run that SUCCEEDED, however long ago — what the setup page's status
   // header reports when the latest attempt failed.
   lastSuccessAt: string | null;
@@ -604,6 +609,11 @@ export interface IntegrationState {
   // The standing window's tally (#1880): how many of the last `total` runs failed,
   // for the intermittent surfaces' honest "3 of the last 10 runs failed" copy.
   recentRuns: { total: number; failed: number };
+  // The PROFILE's time zone and its today, resolved once here (#1991). History groups
+  // by DAY, and a day is the reader's — a UTC slice would put a 21:00 local push on
+  // the wrong side of midnight for anyone east or west of Greenwich.
+  timeZone: string;
+  today: string;
 }
 
 // Retained for the surfaces that speak of "connected sources" (Data → Review). Same
@@ -681,9 +691,9 @@ export function getIntegrationState(
     canSyncNow: isPullIntegration(def),
     latest: facts.latest,
     history,
-    provenanceEventIds: ids.length
-      ? eventsWithProvenance(profileId, def.id, Math.min(...ids))
-      : [],
+    provenanceCounts: ids.length
+      ? provenanceCountsByEvent(profileId, def.id, Math.min(...ids))
+      : {},
     lastSuccessAt: facts.lastSuccessAt,
     standing: facts.standing,
     vocabulary: syncVocabularyForKind(def.kind),
@@ -692,12 +702,16 @@ export function getIntegrationState(
       total: facts.window.length,
       failed: facts.window.filter((e) => !e.ok).length,
     },
+    timeZone: getTimezone(profileId),
+    today: today(profileId),
   };
 }
 
-// Which of a provider's recent sync events actually RECORDED row provenance (#1771).
-// The "What this wrote" drill-in promises record-level detail, so it may only be
-// offered for an event that has some — and whether an event has any is a fact about
+// How many provenance rows each of a provider's recent sync events RECORDED (#1771,
+// counted rather than merely detected in #1991). The "What this wrote" drill-in
+// promises record-level detail, so it may only be offered for an event that has some,
+// and it must promise exactly as many as it will list — whether an event has any, and
+// how many, is a fact about
 // the EVENT, not about the provider: Weather legitimately records none (it writes
 // cells of the global location-keyed forecast cache, which name no user record —
 // #1212's scoping decision), and genuine pre-#1333 legacy events of the other
@@ -709,20 +723,26 @@ export function getIntegrationState(
 // oldest id in the rendered set, and `integration_sync_rows` is keyed on event_id.
 // PROFILE-SCOPED through the parent event (the child-table convention — the table has
 // no own profile_id).
-export function eventsWithProvenance(
+export function provenanceCountsByEvent(
   profileId: number,
   provider: string,
   minEventId: number
-): number[] {
+): Record<number, number> {
   const rows = db
     .prepare(
-      `SELECT DISTINCT r.event_id AS event_id
+      `SELECT r.event_id AS event_id, COUNT(*) AS n
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
-        WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?`
+        WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?
+        GROUP BY r.event_id`
     )
-    .all(profileId, provider, minEventId) as { event_id: number }[];
-  return rows.map((r) => r.event_id);
+    .all(profileId, provider, minEventId) as {
+    event_id: number;
+    n: number;
+  }[];
+  const out: Record<number, number> = {};
+  for (const r of rows) out[r.event_id] = r.n;
+  return out;
 }
 
 // The captured raw-payload ref for one sync event, scoped to the profile — powers
