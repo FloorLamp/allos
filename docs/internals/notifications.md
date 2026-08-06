@@ -1372,6 +1372,14 @@ replies; `handleIncomingMessage` is still the single router, now a switch over t
 parsed verb, and a DB-tier completeness pin fails the build if a verb in the
 registry has no route.
 
+**Which domains get a verb is a census, not a vibe** (#2130). The registry also
+declares `TELEGRAM_DOMAIN_CENSUS`, type-checked over the shared
+`LoggableDomain` axis (`lib/loggable-domains.ts`): every loggable domain maps to
+a shipped verb, a `plannedVerb(...)` (food, practice, weight — decided in;
+#1895 builds the vocabulary surface), or an `arguedExclusion(...)` with its
+reason (vitals, activity, period, substance, document). A new domain fails
+`tsc` there until someone decides.
+
 **One authority for "which text triggers this handler" (#2004).** The dispatcher
 resolved the verb through `parseCommand`/the alias table, and then each logging
 handler re-validated the raw text against a hand-written regex of its own

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  QUICK_LOG_IDS,
   LOG_ACTIVITY_ID,
   QUICK_LOG_ITEMS,
   primaryQuickLog,
@@ -79,6 +80,10 @@ describe("quickLogMenu", () => {
       "log-measurements",
       // #1633 — the web catching up to the Telegram bot's one-tap practice log.
       "log-practice",
+      // #2130 — the daily check-in joins the sheet: mood was a daily-loop one-tap
+      // log with its own Telegram command, reminder and offline flow, and #1892's
+      // membership argument reached it. The #2128 day chips ride along.
+      "log-mood",
       // #1892 — the missing logging path. Period day 1 is the app's most
       // time-sensitive log (both the phase derivation and the regularity data
       // depend on catching it), and the sheet had no entry for it at all.
@@ -97,6 +102,7 @@ describe("quickLogMenu", () => {
       "log-dose",
       "log-measurements",
       "log-practice",
+      "log-mood",
       "log-period",
       "add-document",
     ]);
@@ -114,6 +120,7 @@ describe("quickLogMenu", () => {
       "log-dose",
       "log-measurements",
       "log-practice",
+      "log-mood",
       "add-document",
     ]);
   });
@@ -178,6 +185,7 @@ describe("the registry itself", () => {
       "dose",
       "measurements",
       "practice",
+      "mood",
       "cycle",
       "document",
     ]);
@@ -290,8 +298,11 @@ describe("quick-log time semantics (#2019 §7)", () => {
       // chip-based correction UI has ever existed for either.
       "log-activity": "none",
       "log-measurements": "none",
-      // `day-only` entries have no instant, so no unit at all.
+      // `day-only` entries have no instant, so no unit at all. The mood row's
+      // #2128 day chips choose the day BEFORE the write — a statement, not a
+      // correction — so it stays day-only with no unit.
       "log-practice": null,
+      "log-mood": null,
       "add-document": null,
     });
   });
@@ -309,5 +320,23 @@ describe("quick-log time semantics (#2019 §7)", () => {
     // Practice is the DELIBERATE non-extension: day-granular by design, and nothing
     // reads an instant, so capturing one would invite a consumer to invent a meaning.
     expect(byId.get("log-practice")!.time.semantic).toBe("day-only");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The #2130 domain census. The `satisfies` in lib/quick-log.ts already proves,
+// at compile time, that every LoggableDomain maps to a sheet id or an argued
+// exclusion — what types cannot see is the id vocabulary's own honesty, so that
+// half is pinned here.
+// ---------------------------------------------------------------------------
+
+describe("the domain census (#2130)", () => {
+  it("every declared id is carried by exactly one sheet entry", () => {
+    for (const id of QUICK_LOG_IDS) {
+      expect(
+        QUICK_LOG_ITEMS.filter((i) => i.id === id),
+        id
+      ).toHaveLength(1);
+    }
   });
 });

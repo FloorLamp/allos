@@ -41,6 +41,11 @@ const QuickPracticeList = dynamic(
 // `.fill()` on a controlled input into a silently stale save (see settledFill in
 // e2e/helpers.ts), so the cost of breaking this rule is paid by other pages' flakes.
 const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
+// Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
+// hook and the mood action's client reference; loaded only once opened.
+const QuickMoodCheckin = dynamic(
+  () => import("./quick-entry/QuickMoodCheckin")
+);
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -117,6 +122,8 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
   // button, which is the point.
   cycle: { title: "Log period", ownsHeading: false },
+  // #2130: the sheet's mood row — the same check-in write, a second mount.
+  mood: { title: "Log mood", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -280,6 +287,11 @@ function QuickEntryBody({
       // start/end/reopen is one transaction with a real end, and #1468's contract is
       // that it lands you back where you were.
       return <QuickCyclePanel state={data.state} onDone={onDone} />;
+    case "mood":
+      // The SAME MoodValencePicker + logMood write the dashboard card runs, with
+      // the #2128 day chips — a second mounting context, never a second write
+      // path. A successful tap closes (a check-in is a transaction with an end).
+      return <QuickMoodCheckin days={data.days} onDone={onDone} />;
     case "practice":
       // No `onSaved`: like the food bar, practice logging has no single "saved"
       // moment — multi-session days are the point and a morning check may log two

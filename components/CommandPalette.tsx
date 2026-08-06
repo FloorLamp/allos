@@ -23,7 +23,9 @@ import {
   IconHeartbeat,
   IconHeartHandshake,
   IconMedicalCross,
+  IconMoodSmile,
   IconPill,
+  IconSalad,
   IconScale,
   IconSearch,
   IconSparkles,
@@ -126,6 +128,9 @@ const ACTION_ICONS: Record<
   chart: (p) => <IconChartLine {...p} />,
   camera: (p) => <IconCamera {...p} />,
   sparkles: (p) => <IconSparkles {...p} />,
+  salad: (p) => <IconSalad {...p} />,
+  pill: (p) => <IconPill {...p} />,
+  mood: (p) => <IconMoodSmile {...p} />,
   document: (p) => <IconFileText {...p} />,
 };
 

@@ -119,6 +119,18 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "optimistic-count",
     why: "A symptom-day keeps its WORST severity, so re-tapping the same chip settles on the same row.",
   },
+  "mood-valence": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "optimistic-count",
+    why: "UNIQUE(profile_id, date) upsert (#992) — re-tapping a face settles the day's single row; the selected face is the moving value, adopted from the server row on revalidation (#2130).",
+  },
+  "period-lifecycle": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "ONE offer rendered from server state (#1892); the write core re-enforces the same predicates with typed refusals, so a repeated or stale tap lands on an honest refusal, never a double period (#2130).",
+  },
   "dose-status": {
     repeat: "idempotent",
     expectedInterval: "none",
@@ -140,6 +152,20 @@ export const ONE_TAP_AFFORDANCES = {
 } as const satisfies Record<string, OneTapAffordanceDecl>;
 
 export type OneTapAffordance = keyof typeof ONE_TAP_AFFORDANCES;
+
+// The affordances whose declared repeat class is `idempotent`, DERIVED from the
+// registry at the type level (#2130, owner direction). The offline queue declares
+// its coverage over every affordance (lib/offline/queue.ts), and this union is
+// what makes the sharpest half of that rule structural: an affordance declared
+// idempotent — the queue's own stated admission criterion — cannot ship without
+// the queue either carrying its flow or arguing its exclusion, because the
+// coverage record's keys are checked against the registry's, not against a
+// hand-maintained list.
+export type IdempotentTap = {
+  [
+    K in OneTapAffordance
+  ]: (typeof ONE_TAP_AFFORDANCES)[K]["repeat"] extends "idempotent" ? K : never;
+}[OneTapAffordance];
 
 export function oneTapAffordance(id: OneTapAffordance): OneTapAffordanceDecl {
   return ONE_TAP_AFFORDANCES[id];

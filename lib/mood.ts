@@ -13,6 +13,8 @@
 //   • Calm and optional — skipping is frictionless and never escalates; the only
 //     downstream signals are coaching-tier observations (lib/mood-observation.ts).
 
+import { daysBetweenDateStr } from "./date";
+
 export const MOOD_MIN = 1;
 export const MOOD_MAX = 5;
 
@@ -148,6 +150,42 @@ export function moodSeriesPoints(
     if (value != null) out.push({ date: log.date, value });
   }
   return out;
+}
+
+// ---- The backfill window (issue #2128) ---------------------------------------
+//
+// Mood was CORRECT-ONLY — the exact inversion of the #1933/#1934 class: a past
+// rating could be edited from the readings table, but a MISSED day could never be
+// logged, on the one domain where "how were you yesterday, actually" is the most
+// natural backfill in the app. The fix is the #2019 chip pattern on the entry
+// surfaces (a day chip chosen BEFORE the tap), bounded the way
+// `lib/dose-log-window.ts` bounds a late dose date (#614, the cited-sibling
+// convention): a small window around the profile's today, so a legitimate
+// late check-in lands while a forged or far-off date cannot. PAST-ONLY, unlike
+// the dose window's ± band — a mood cannot be pre-logged for tomorrow.
+//
+// The bound applies to the USER-DATED entry path (`logMood`); the offline
+// replay deliberately keeps landing a queued check-in on its CAPTURED date
+// however long the queue sat, exactly as it always has — the capture was
+// in-window when it happened.
+export const MOOD_LOG_DATE_WINDOW_DAYS = 2;
+
+// Is `date` an acceptable check-in day, given the profile's `todayStr`? Pure —
+// both are YYYY-MM-DD, the caller resolves today.
+export function isMoodDateAccepted(todayStr: string, date: string): boolean {
+  const diff = daysBetweenDateStr(todayStr, date);
+  return diff != null && diff <= 0 && diff >= -MOOD_LOG_DATE_WINDOW_DAYS;
+}
+
+// The refusal `logMood` answers a well-formed but out-of-window date with.
+export const MOOD_DATE_OUT_OF_WINDOW_ERROR = `Check-ins can be logged for today or up to ${MOOD_LOG_DATE_WINDOW_DAYS} days back. Older days stay editable from the mood readings table once logged.`;
+
+// The chip label for a day `offset` days before today — shared by the dashboard
+// card and the quick-entry overlay so the two surfaces name a day identically.
+export function moodBackfillLabel(offset: number): string {
+  if (offset === 0) return "Today";
+  if (offset === 1) return "Yesterday";
+  return `${offset} days ago`;
 }
 
 // A 1–5 scale value, or null for "not answered" (energy/anxiety are expand-only).

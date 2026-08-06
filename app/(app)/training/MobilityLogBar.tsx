@@ -6,7 +6,9 @@ import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 import {
   logMobilityMove,
   unlogMobilityMove,
@@ -56,6 +58,7 @@ export default function MobilityLogBar({
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   const ledger = useOptimisticLedger<Set<string>>("mobility-move");
 
   const sections = useMemo(() => {
@@ -100,8 +103,34 @@ export default function MobilityLogBar({
         });
         return { kind: "rollback" };
       },
-      onError: () => {
-        toast("Couldn't save that move — try again.", { tone: "error" });
+      onError: async (err) => {
+        // The ON tap is a pure capture — set-add per (profile, date, move), the
+        // idempotence the offline queue's own admission criterion names — so an
+        // offline tap QUEUES (#2130) and the optimistic chip stands in until
+        // replay. The OFF tap is a removal against whatever session stands at
+        // replay time (the documented "−" exclusion in lib/offline/queue.ts),
+        // so it still fails honestly instead of pretending.
+        if (
+          !wasOn &&
+          shouldQueueOffline(
+            typeof navigator === "undefined" ? true : navigator.onLine,
+            err
+          )
+        ) {
+          await enqueue("mobility", today, { move: slug });
+          toast("Saved offline — will sync when you reconnect.");
+          return { kind: "keep" };
+        }
+        toast(
+          wasOn &&
+            shouldQueueOffline(
+              typeof navigator === "undefined" ? true : navigator.onLine,
+              err
+            )
+            ? "You're offline — removing a move needs a connection."
+            : "Couldn't save that move — try again.",
+          { tone: "error" }
+        );
         return { kind: "rollback" };
       },
     });
