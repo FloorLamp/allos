@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { db, readTx } from "./db";
 import { PHOTO_ROOT } from "./profile-photo";
+import { photoDomainRoot } from "./photo/store";
+import { videoDomainRoot } from "./video/store";
+import { LESION_PHOTO_DIR } from "./skin-photo-write";
+import { SYMPTOM_PHOTO_DIR } from "./symptom-photo-write";
 import { DATASETS, RESTRICTED_DATASETS } from "./export";
 import { isTrainingRestricted } from "./age-gate";
 import {
@@ -115,6 +119,148 @@ export function getProfilePhotoFile(profileId: number): ExportFile | null {
   } catch {
     return null;
   }
+}
+
+// ── Opt-in media bundle (#1846) ────────────────────────────────────────────────
+//
+// The photo + video cores are the STRICTEST privacy tier: structurally excluded
+// from share links, the emergency card, and the DEFAULT full export. Their one
+// other egress is the per-file authenticated serve route — which is why a year of
+// mole tracking could never leave the app. "Include photo & video files" on the
+// export flow opts the exporting profile's media into the ZIP under a per-domain
+// layout (media/<domain>/<rowId>-<basename>) alongside media/index.json, which
+// carries each file's row context (date, caption, which lesion, which activity).
+// Exclusion stays the DEFAULT and the opt-in is per-download — never a stored
+// setting, so it can't quietly become the new normal for later exports.
+
+// The five media domains, in bundle order. Each key doubles as the directory name
+// under media/ in the archive and as its section key in media/index.json.
+export const MEDIA_DOMAINS = [
+  "progress-photos",
+  "lesion-photos",
+  "symptom-photos",
+  "symptom-videos",
+  "activity-videos",
+] as const;
+export type MediaDomain = (typeof MEDIA_DOMAINS)[number];
+
+export interface MediaExportFile extends ExportFile {
+  domain: MediaDomain;
+  // Row context for media/index.json — the date/caption/parent fields that make the
+  // file readable to a clinician. The thin row itself is not a dataset, so this
+  // index IS its export.
+  meta: Record<string, unknown>;
+}
+
+interface MediaRow {
+  id: number;
+  stored_path: string;
+  [key: string]: unknown;
+}
+
+// Per-domain row reads. Every SELECT filters the exporting profile's own
+// profile_id — including the two with a JOIN, where the child row carries its own
+// profile_id and the join adds only display context. Ordered stably so the bundle
+// and the index come out deterministic.
+//
+// Exported so lib/__db_tests__/export-media.test.ts can assert that scoping per
+// declared domain: the statement below is prepared from this Record indexed by the
+// loop variable, so the #1208 source scan sees an expression instead of the strings
+// and takes an ALLOW_NON_LITERAL entry pointing at that test.
+export const MEDIA_ROW_SELECTS: Record<MediaDomain, string> = {
+  "progress-photos": `SELECT id, stored_path, date, pose, caption
+       FROM progress_photos WHERE profile_id = ? ORDER BY date, id`,
+  "lesion-photos": `SELECT lp.id, lp.stored_path, lp.date, lp.caption,
+              lp.lesion_id, sl.label AS lesion_label, sl.body_region
+       FROM lesion_photos lp JOIN skin_lesions sl ON sl.id = lp.lesion_id
+       WHERE lp.profile_id = ? ORDER BY lp.lesion_id, lp.date, lp.id`,
+  "symptom-photos": `SELECT id, stored_path, date, symptom, caption
+       FROM symptom_photos WHERE profile_id = ? ORDER BY date, id`,
+  "symptom-videos": `SELECT id, stored_path, date, symptom, caption, kind, duration_sec
+       FROM symptom_videos WHERE profile_id = ? ORDER BY date, id`,
+  "activity-videos": `SELECT av.id, av.stored_path, av.exercise, av.caption, av.kind,
+              av.duration_sec, a.date AS activity_date, a.title AS activity_title
+       FROM activity_videos av JOIN activities a ON a.id = av.activity_id
+       WHERE av.profile_id = ? ORDER BY a.date, av.id`,
+};
+
+// The one directory each domain's files may resolve into, taken from the STORES'
+// own path helpers rather than string-built here — the same roots the serve routes,
+// the per-row unlinks and deleteProfile contain against, so they cannot drift.
+function mediaDomainRootFor(domain: MediaDomain): string {
+  switch (domain) {
+    case "progress-photos":
+      return photoDomainRoot("progress");
+    case "lesion-photos":
+      return LESION_PHOTO_DIR;
+    case "symptom-photos":
+      return SYMPTOM_PHOTO_DIR;
+    case "symptom-videos":
+      return videoDomainRoot("symptom");
+    case "activity-videos":
+      return videoDomainRoot("activity");
+  }
+}
+
+// The profile's media files for the opt-in bundle.
+//
+// Containment is one notch TIGHTER than listProfileMedicalFiles: every one of these
+// five stores has written `<domainRoot>/<profileId>/<contentHash>.<ext>` since the
+// domain existed (there is no legacy flat layout to accommodate), so a stored_path
+// must resolve inside THIS profile's subdirectory — not merely inside the domain
+// root. The SQL profile filter is the scoping guarantee; this is the second lock on
+// it, so a corrupt or tampered stored_path can never make one profile's export read
+// another profile's bytes. Missing-on-disk rows are skipped, exactly like the
+// medical files.
+//
+// The zip name is `media/<domain>/<rowId>-<sanitized basename>`: the row id keeps
+// two files distinct, and the basename is the content-hash-derived stored name.
+// Posters and thumbnails are DERIVED artifacts and are deliberately not bundled —
+// the original capture is the record, and a viewer re-derives the rest.
+//
+// `trainingRestricted` gates the activity-videos domain out for an age-restricted
+// profile, because form-check clips hang off `activities` and that dataset is
+// already gated out of the ZIP (#471) — the clips must not be the way around it.
+export function listProfileMediaFiles(
+  profileId: number,
+  opts: { trainingRestricted?: boolean } = {}
+): MediaExportFile[] {
+  const out: MediaExportFile[] = [];
+  const seenNames = new Set<string>();
+  for (const domain of MEDIA_DOMAINS) {
+    if (opts.trainingRestricted && domain === "activity-videos") continue;
+    const profileRoot = path.resolve(
+      mediaDomainRootFor(domain),
+      String(profileId)
+    );
+    const rows = db
+      .prepare(MEDIA_ROW_SELECTS[domain])
+      .all(profileId) as MediaRow[];
+    for (const r of rows) {
+      const abs = path.resolve(process.cwd(), r.stored_path);
+      if (!abs.startsWith(profileRoot + path.sep)) continue;
+      let size = 0;
+      try {
+        const st = fs.statSync(abs);
+        if (!st.isFile()) continue;
+        size = st.size;
+      } catch {
+        continue; // vanished from disk
+      }
+      const base = sanitizeName(path.basename(r.stored_path)) || "file";
+      let zipName = `media/${domain}/${r.id}-${base}`;
+      let n = 1;
+      while (seenNames.has(zipName))
+        zipName = `media/${domain}/${r.id}-${n++}-${base}`;
+      seenNames.add(zipName);
+      // Row context = every selected column except the on-disk path, which is an
+      // instance-local detail the archive's own layout replaces.
+      const meta: Record<string, unknown> = { ...r };
+      delete meta.stored_path;
+      out.push({ zipName, absPath: abs, size, domain, meta });
+    }
+  }
+  return out;
 }
 
 // Strip path separators / control chars from a stored filename so it can't create
@@ -358,6 +504,10 @@ export interface ExportSnapshot {
   files: ExportFile[];
   // The profile avatar to bundle, or null when none is stored (#466).
   profilePhoto: ExportFile | null;
+  // The opt-in media bundle (#1846): the profile's photo/video files when the
+  // caller opted in, or null when media was NOT requested (the default). null vs
+  // [] keeps "opted out" distinguishable from "opted in, nothing to bundle".
+  media: MediaExportFile[] | null;
 }
 
 // Collect the whole export payload inside a SINGLE SQLite read transaction (issue
@@ -373,7 +523,8 @@ export interface ExportSnapshot {
 // read is scoped to `profileId` — the caller resolves it from the session.
 export function collectExportSnapshot(
   profileId: number,
-  profileName: string
+  profileName: string,
+  opts: { includeMedia?: boolean } = {}
 ): ExportSnapshot {
   // A training-restricted profile's fitness datasets (activities/goals) are gated
   // out of the ZIP too, not just the export UI (issue #471) — same authoritative
@@ -390,5 +541,10 @@ export function collectExportSnapshot(
     fhirInput: collectFhirExportInput(profileId, profileName),
     files: listProfileMedicalFiles(profileId),
     profilePhoto: getProfilePhotoFile(profileId),
+    // Media stays OUT unless this download explicitly opted in (#1846), and the
+    // same age gate that drops the fitness datasets drops the form-check clips.
+    media: opts.includeMedia
+      ? listProfileMediaFiles(profileId, { trainingRestricted: restricted })
+      : null,
   }));
 }

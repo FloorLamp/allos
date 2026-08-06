@@ -568,6 +568,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
   },
   {
+    file: "lib/export-full.ts",
+    expr: "MEDIA_ROW_SELECTS[domain]",
+    why: "the opt-in media bundle (#1846): five hand-authored literals in one Record keyed by MEDIA_DOMAINS, indexed by the loop variable so the scan sees an expression instead of the strings. Every one opens its WHERE with the exporting profile's own `profile_id = ?` — including the two that JOIN (lesion_photos, activity_videos), where the child row carries its OWN profile_id and the join only adds display context. lib/__db_tests__/export-media.test.ts asserts that per declared domain AND proves end-to-end that another profile's files never enter the bundle, which is stronger than this scan's per-literal read.",
+  },
+  {
     file: "lib/providers-db.ts",
     expr: "profileSql",
     why: "getProviderMergeImpact profiles-touched aggregate (#275): a GLOBAL, deliberately profile-AGNOSTIC count across every profile (the admin-only merge shows 'N across M profiles'). `profileSql` is one of two hand-authored strings over the bound PROVIDER_LINK_COLUMNS — the plain SELECT DISTINCT profile_id, or, for the child medication_courses (no own profile_id, #1204), a JOIN to intake_items resolving the parent's profile_id. Neither reads one profile's data into another's — it is the count itself that spans profiles by design.",
