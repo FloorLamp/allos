@@ -870,6 +870,9 @@ export const DATASETS: ExportDataset[] = [
     key: "conditions",
     label: "Conditions",
     table: "conditions",
+    // `edited` is the #2137 user-edit lock — exported like body_metrics' and
+    // medical_records' flags above: whether a hand correction locks the row against
+    // its derivation is user-meaningful state, not internal bookkeeping.
     columns: [
       "name",
       "code",
@@ -880,10 +883,11 @@ export const DATASETS: ExportDataset[] = [
       "stage",
       "onset_date",
       "resolved_date",
+      "edited",
       "notes",
     ],
     select: `SELECT id, name, code, code_system, status, laterality, severity, stage,
-              onset_date, resolved_date, notes
+              onset_date, resolved_date, edited, notes
        FROM conditions WHERE profile_id = ? ORDER BY name`,
     countSql: `SELECT COUNT(*) AS n FROM conditions WHERE profile_id = ?`,
   }),

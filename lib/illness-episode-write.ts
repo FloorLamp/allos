@@ -14,6 +14,7 @@ import { sqlNow } from "./clock";
 import { shiftDateStr } from "./date";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import { episodeReopenEligibility } from "./illness-episode-reopen";
+import { isEditLocked } from "./integrations/sync-log";
 import {
   getEpisodeRow,
   getOpenEpisodeRow,
@@ -43,28 +44,41 @@ function conditionValues(row: IllnessEpisodeRow) {
 }
 
 // Keep an already-promoted condition aligned with its episode. Called inside the
-// caller's writeTx; false simply means this episode has not been promoted.
-function syncPromotedCondition(
+// caller's writeTx; "none" simply means this episode has not been promoted.
+//
+// THE EDIT LOCK (#2137): the manual edit path stamps `conditions.edited`, and this
+// sync consults it through the SAME isEditLocked predicate every imported store uses
+// (#133/#944). RULING — a locked row is a FULL hold-out: it receives nothing from the
+// episode, not even the episode's resolved_date on close. The providers precedent
+// exactly ("contact refreshed only when NOT manually edit-locked", #1030): once the
+// user has corrected the row by hand, the row is theirs, and a partial sync that
+// still moved one column would be the same silent revert one column narrower. The
+// typed outcome makes the hold-out visible ("locked", parallel to the substrate's
+// `edited` upsert split) instead of folding it into "nothing changed"; the `AND
+// edited = 0` guard on the UPDATE keeps the decision enforced at the row even if a
+// future caller skips the read.
+export type PromotedConditionSyncOutcome = "synced" | "locked" | "none";
+
+export function syncPromotedCondition(
   profileId: number,
   row: IllnessEpisodeRow
-): boolean {
+): PromotedConditionSyncOutcome {
   const v = conditionValues(row);
-  return (
-    db
-      .prepare(
-        `UPDATE conditions
-            SET name = ?, status = ?, onset_date = ?, resolved_date = ?
-          WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
-      )
-      .run(
-        v.name,
-        v.status,
-        v.onsetDate,
-        v.resolvedDate,
-        profileId,
-        v.externalId
-      ).changes > 0
-  );
+  const existing = db
+    .prepare(
+      `SELECT edited FROM conditions
+        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+    )
+    .get(profileId, v.externalId) as { edited: number } | undefined;
+  if (!existing) return "none";
+  if (isEditLocked(existing.edited)) return "locked";
+  db.prepare(
+    `UPDATE conditions
+        SET name = ?, status = ?, onset_date = ?, resolved_date = ?
+      WHERE profile_id = ? AND external_id = ? AND source = 'episode'
+        AND edited = 0`
+  ).run(v.name, v.status, v.onsetDate, v.resolvedDate, profileId, v.externalId);
+  return "synced";
 }
 
 // Create (or find and synchronize) the Condition for an episode. onset = episode start;

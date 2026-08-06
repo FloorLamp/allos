@@ -9,7 +9,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
+import {
+  confirmConditionSuggestion,
+  updateCondition,
+} from "@/app/(app)/records/problems/conditions/actions";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -61,5 +64,39 @@ describe("confirmConditionSuggestion (#685)", () => {
     const res = await confirmConditionSuggestion(fd({ name: "  " }));
     expect(res.ok).toBe(false);
     expect(conditionRows(profile.id)).toHaveLength(0);
+  });
+});
+
+describe("updateCondition stamps the edit lock (#2137)", () => {
+  it("a manual save sets edited = 1, so an episode-promoted row locks against its sync", async () => {
+    const { profile } = seedActor();
+    // An episode-promoted condition, as promoteEpisodeToConditionCore writes it.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, onset_date, resolved_date, source, external_id)
+           VALUES (?, 'Illness', 'resolved', '2026-06-01', '2026-06-05',
+                   'episode', 'illness-episode:1')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const before = db
+      .prepare("SELECT edited FROM conditions WHERE id = ?")
+      .get(id) as { edited: number };
+    expect(before.edited).toBe(0);
+
+    const res = await updateCondition(
+      fd({ id, name: "Chronic sinusitis", status: "inactive" })
+    );
+    expect(res.ok).toBe(true);
+    const after = db
+      .prepare("SELECT name, status, edited FROM conditions WHERE id = ?")
+      .get(id) as { name: string; status: string; edited: number };
+    expect(after).toEqual({
+      name: "Chronic sinusitis",
+      status: "inactive",
+      edited: 1,
+    });
   });
 });

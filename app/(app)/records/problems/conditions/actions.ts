@@ -95,11 +95,19 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
   const laterality = toConditionLaterality(formData.get("laterality"));
   const severity = toConditionSeverity(formData.get("severity"));
   const stage = toConditionStage(formData.get("stage"));
+  // `edited = 1` is the #133 user-edit lock, extended to conditions by #2137
+  // (migration 161): a hand-save through this form is a manual correction, and for
+  // an episode-promoted row (source = 'episode') it must WIN over the derivation —
+  // syncPromotedCondition consults the flag through isEditLocked and holds out
+  // entirely on the next episode transition instead of silently reverting the
+  // correction. Stamped on every manual save (the substrate's "hand-edited in the
+  // app" meaning); on a manual or imported row the flag simply records that, since
+  // no sync rewrites those values today.
   db.prepare(
     `UPDATE conditions
        SET name = ?, code = ?, code_system = ?, status = ?,
            laterality = ?, severity = ?, stage = ?,
-           onset_date = ?, resolved_date = ?, notes = ?
+           onset_date = ?, resolved_date = ?, notes = ?, edited = 1
      WHERE id = ? AND profile_id = ?`
   ).run(
     name,

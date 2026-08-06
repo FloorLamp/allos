@@ -565,6 +565,11 @@ export interface Condition {
   source: string | null;
   document_id: number | null;
   external_id: string | null;
+  // The #133 user-edit lock, extended here by #2137 (migration 161): 1 once the row
+  // was hand-saved through the conditions form. For an episode-promoted row
+  // (source = 'episode') the flag makes syncPromotedCondition hold out entirely, so
+  // a manual correction survives every later episode transition.
+  edited: number;
   created_at: string;
 }
 
