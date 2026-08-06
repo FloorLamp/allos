@@ -35,10 +35,17 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
     expect(tables).toEqual([
       "cycles",
       "illness_episodes",
+      // The dose SCHEDULE's retired flag, added by #2131 — the parent whose gating the
+      // ledger below had and it lacked.
+      "intake_item_doses",
       // The dose LEDGER, added by #2039 — the row that drives the supply counter two
       // entries down, and the table whose second core this registry now forbids.
       "intake_item_logs",
+      // #2133 (sibling): the side-effect resolved flag's state-named CAS.
+      "intake_item_side_effects",
       "intake_items",
+      // #2132: the open-course ⇔ active invariant's single write core.
+      "medication_courses",
       "shared_supplies",
     ]);
   });
