@@ -15,13 +15,14 @@ import { hashShareToken } from "./share-token";
 export interface ShareLinkRow {
   id: number;
   profile_id: number;
-  // 'passport' (the pre-existing behavior), 'episode' (issue #801), or 'medications'
-  // (issue #852: the current-medication list). The row shape is shared; only the
-  // resolver differs — passport reads `fields`, an episode link reads `episode_id`
-  // (#856, the stable anchor) with `episode_situation` + `episode_anchor` as a graceful
-  // fallback, and a medications link re-derives the CURRENT med list at view time (so a
-  // shared list stays live). `fields` is '[]' for episode/medications links.
-  kind: "passport" | "episode" | "medications";
+  // 'passport' (the pre-existing behavior), 'episode' (issue #801), 'medications'
+  // (issue #852: the current-medication list), or 'immunizations' (issue #1849: the
+  // printable immunization record). The row shape is shared; only the resolver
+  // differs — passport reads `fields`, an episode link reads `episode_id` (#856, the
+  // stable anchor) with `episode_situation` + `episode_anchor` as a graceful fallback,
+  // and the medications/immunizations links re-derive their content at view time (so a
+  // shared list stays live). `fields` is '[]' for every non-passport kind.
+  kind: "passport" | "episode" | "medications" | "immunizations";
   fields: string; // JSON array (parse with parseShareFields) — '[]' for episode links
   episode_id: number | null; // #856: the stable episode row id (kind='episode')
   episode_situation: string | null; // set for kind='episode' (fallback resolver)
@@ -108,6 +109,27 @@ export function createMedicationShareLink(
       `INSERT INTO profile_share_links
          (profile_id, token_hash, kind, fields, expires_at, created_by)
        VALUES (?, ?, 'medications', '[]', ?, ?)`
+    )
+    .run(profileId, hashShareToken(token), expiresAtISO, createdBy);
+  return { id: Number(info.lastInsertRowid), token };
+}
+
+// Create an IMMUNIZATION-RECORD share link (issue #1849), returning the RAW token
+// once. The medications precedent applied to the vaccination record: no `fields`
+// ('[]'), content re-derived at view time (so a dose added after the link was handed
+// to a registrar shows up), same profile_share_links table / token machinery.
+// Migration 162 grew the `kind` CHECK to admit it.
+export function createImmunizationShareLink(
+  profileId: number,
+  createdBy: number | null,
+  expiresAtISO: string
+): { id: number; token: string } {
+  const token = crypto.randomBytes(32).toString("hex");
+  const info = db
+    .prepare(
+      `INSERT INTO profile_share_links
+         (profile_id, token_hash, kind, fields, expires_at, created_by)
+       VALUES (?, ?, 'immunizations', '[]', ?, ?)`
     )
     .run(profileId, hashShareToken(token), expiresAtISO, createdBy);
   return { id: Number(info.lastInsertRowid), token };

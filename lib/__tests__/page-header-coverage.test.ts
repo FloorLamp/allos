@@ -40,6 +40,8 @@ const COMPONENTS = path.join(REPO, "components");
 const EXEMPT: Record<string, string> = {
   "medications/print/page.tsx":
     "A print artifact (#852): it renders the medication list exactly as it prints, with no app chrome — a page heading would print on the sheet handed to a clinician.",
+  "immunizations/print/page.tsx":
+    "A print artifact (#1849), on the medications/print precedent: it renders the immunization record exactly as it prints, with no app chrome — a page heading would print on the sheet handed to a registrar.",
   "medical/episodes/[id]/page.tsx":
     "The episode detail is a single <EpisodeSummary> card whose own header carries the episode's identity banner (#1373 cross-profile subject stamping); a second heading above it would name the same thing twice.",
   "page.tsx":

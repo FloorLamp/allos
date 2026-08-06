@@ -20,7 +20,9 @@ sniff, cap, dedup, and byte-serving behavior identical across every current and
 future video domain. The privacy tier is **strictest** (physique-photo level):
 per- profile grants, **excluded from share links / the emergency card / the
 default export** structurally (no such path reads these tables), serve scoped
-`id AND profile_id`, path-contained.
+`id AND profile_id`, path-contained. Since #1846 there is exactly ONE more
+egress, and it is user-initiated per download: the export flow's "Include photo &
+video files" opt-in (see [Export](#export-1846) below).
 
 ## No native dependency (the `ffmpeg` line — the #1119 `sharp` twin)
 
@@ -141,7 +143,8 @@ their domain's actions:
 - Both tables are **profile-owned** (`lib/owned-tables.ts`); `deleteProfile`
   clears the rows and unlinks their files (clip + poster) path-contained.
 - Both are in the **export-completeness allowlist** with the strictest-tier
-  reason (excluded from the default export, opt-in follow-up).
+  reason — still out of the DEFAULT export, now pointing at the #1846 opt-in
+  rather than at a follow-up (see below).
 - `activity_videos.activity_id` carries **`ON DELETE CASCADE`**, so a plain
   activity delete removes its clips — and the rows are **captured into the undo
   buffer** first (`UNDO_KINDS.activity`) so a mis-tap delete is undoable, and
@@ -160,11 +163,47 @@ their domain's actions:
   live for is the admin-configured Trash retention (30 days by default), which
   is why the setting's help text names clips explicitly.
 
+## Export (#1846)
+
+The strictest-tier default is **exclude**, and that has not changed. What changed
+is that "excluded" no longer means "unreachable": the full-account export carries
+one checkbox, **"Include photo & video files"**, which adds `?media=1` to the
+download. Everything about it is deliberate:
+
+- **One toggle for both cores.** Clips are not a separate privacy question from
+  physique or lesion photos, so they do not get a separate control. The toggle
+  covers all five media domains — `progress_photos`, `lesion_photos`,
+  `symptom_photos`, `symptom_videos`, `activity_videos` — declared in
+  `MEDIA_DOMAINS` (`lib/export-full.ts`).
+- **Per download, never stored.** The route reads the query param and nothing
+  else; there is no setting, so an inclusive export cannot silently become the
+  standing default for the next one.
+- **Layout.** Files go to `media/<domain>/<rowId>-<storedName>` and the row
+  context goes to `media/index.json`, keyed by domain. That index IS the row
+  export for these tables — which is why they stay OUT of `DATASETS` while being
+  IN the bundle: a bare date/caption row is only meaningful beside its file. The
+  manifest gains a `contents.media` section and a `totals.mediaFiles` count kept
+  separate from the medical-document `files` count.
+- **Posters and thumbnails are not bundled.** They are derived artifacts; the
+  original capture is the record.
+- **Scoping is double-locked.** Every domain SELECT filters the exporting
+  profile's own `profile_id`, and each `stored_path` must then resolve inside
+  `<domainRoot>/<profileId>/` — the domain roots come from the stores' own path
+  helpers, so a corrupt or tampered path is skipped rather than followed. A
+  training-restricted profile's `activity_videos` are held back too, because
+  `activities` is already gated out of the ZIP (#471) and clips must not be the
+  way around it.
+- **The bytes still stream.** One clip can be hundreds of megabytes, so the route
+  reads and yields one entry at a time exactly as it does for medical uploads.
+
+Covered by `lib/__db_tests__/export-media.test.ts` (scoping, containment, row
+context, the age gate) and `e2e/export-media.spec.ts` (the rendered toggle, the
+default-off archive, the opted-in archive).
+
 ## Deliberately out (phase 2 / follow-ups)
 
 - **In-app MediaRecorder recording** — the clean-metadata path the upload
   warning steers toward (bitrate/resolution caps, a poster-ghost onion-skin for
   form checks, offline-queue integration). Native upload stays the fallback.
-- **Opt-in export** of clips (the strictest-tier default is exclude).
 - No AI (matches #1119): no form scoring, pose estimation, or episode
   classification — factual capture, tagging, and playback only.

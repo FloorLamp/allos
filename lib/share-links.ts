@@ -20,6 +20,12 @@ export const SHARE_FIELDS = [
   // it gets its OWN share field rather than riding under `conditions`. Existing links
   // (no `family_history` in their stored `fields`) therefore never expose it.
   { key: "family_history", label: "Family history" },
+  // Code status / healthcare proxy / organ-donor status (#1848). Its OWN share
+  // field, on the family_history precedent: an existing link (no `directives` in
+  // its stored `fields`) therefore never exposes a directive it was created
+  // before, and a passport shared for a coach or a school form can leave the
+  // end-of-life section out entirely.
+  { key: "directives", label: "Code status & healthcare proxy" },
   { key: "body", label: "Body metrics (height, weight, BMI)" },
   { key: "vitals", label: "Vitals & biomarkers" },
   { key: "medications", label: "Medications" },

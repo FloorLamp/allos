@@ -5,8 +5,16 @@ import {
   IconDroplet,
   IconPhone,
   IconActivityHeartbeat,
+  IconFileCertificate,
 } from "@tabler/icons-react";
 import { isEmergencyCardEmpty, type EmergencyCard } from "@/lib/emergency-card";
+import {
+  codeStatusDetail,
+  codeStatusLabel,
+  hasAdvanceDirectives,
+  organDonorLabel,
+} from "@/lib/advance-directives";
+import NotesText from "@/components/NotesText";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // Presentational, DOM-only render of the Emergency Card (issue #42). No hooks and
@@ -58,6 +66,12 @@ function Section({
 
 export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
   const empty = isEmergencyCardEmpty(card);
+  // An offline copy cached by a build older than #1848 simply has no `directives`
+  // key; hasAdvanceDirectives treats that the same as "nothing recorded", so the
+  // section is skipped rather than rendering an empty scaffold.
+  const directives = hasAdvanceDirectives(card.directives ?? null)
+    ? card.directives
+    : null;
   return (
     <div
       data-testid="emergency-card"
@@ -105,6 +119,95 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
           )}
         </div>
       </div>
+
+      {/* Advance directives (#1848) — code status, who may decide, donor status.
+          Placed directly under the identity banner because these are the first
+          questions asked about an unresponsive patient, ahead of the history. */}
+      {directives && (
+        <Section
+          title="Code Status & Directives"
+          icon={IconFileCertificate}
+          accent="text-violet-600 dark:text-violet-400"
+          testid="emergency-directives"
+        >
+          <div className="space-y-2 text-sm print:text-black">
+            {directives.codeStatus && (
+              <p data-testid="emergency-code-status">
+                <span className="text-lg font-extrabold text-slate-900 dark:text-slate-50 print:text-black">
+                  {codeStatusLabel(directives.codeStatus)}
+                </span>
+                {codeStatusDetail(directives.codeStatus) && (
+                  <span className="text-slate-600 dark:text-slate-300 print:text-black">
+                    {" "}
+                    — {codeStatusDetail(directives.codeStatus)}
+                  </span>
+                )}
+                {directives.codeStatusEffective && (
+                  <span className="text-slate-500 dark:text-slate-400 print:text-black">
+                    {" "}
+                    (effective {directives.codeStatusEffective})
+                  </span>
+                )}
+              </p>
+            )}
+            {/* The qualifier a five-way enum can't carry, verbatim. */}
+            <NotesText
+              as="p"
+              notes={directives.codeStatusNote}
+              data-testid="emergency-code-status-note"
+              className="text-slate-600 dark:text-slate-300 print:text-black"
+            />
+            {directives.proxy && (
+              <p data-testid="emergency-proxy">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+                  Healthcare proxy:
+                </span>{" "}
+                {directives.proxy.name || "Named contact"}
+                {directives.proxy.relation && (
+                  <span className="text-slate-500 dark:text-slate-400 print:text-black">
+                    {" "}
+                    ({directives.proxy.relation})
+                  </span>
+                )}
+                {directives.proxy.phone && (
+                  <>
+                    {" — "}
+                    <a
+                      href={`tel:${directives.proxy.phone.replace(/[^\d+]/g, "")}`}
+                      className="font-bold text-emerald-700 underline-offset-2 hover:underline print:text-black dark:text-emerald-300"
+                    >
+                      {directives.proxy.phone}
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
+            {directives.organDonor && (
+              <p data-testid="emergency-organ-donor">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+                  Organ donation:
+                </span>{" "}
+                {organDonorLabel(directives.organDonor)}
+              </p>
+            )}
+            {directives.documentsAt && (
+              <p data-testid="emergency-directive-documents">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+                  Documents on file at:
+                </span>{" "}
+                <NotesText
+                  notes={directives.documentsAt}
+                  className="text-slate-600 dark:text-slate-300 print:text-black"
+                />
+              </p>
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400 print:text-black">
+              Self-reported summary — the signed document itself is not stored
+              here.
+            </p>
+          </div>
+        </Section>
+      )}
 
       {card.activeEpisode && (
         <Section
@@ -162,10 +265,10 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
           data-testid="emergency-empty"
           className="rounded-xl border border-black/10 bg-white/80 p-4 text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
         >
-          No allergies, medications, conditions, blood type, or emergency
-          contact are recorded yet. Add them in the Medical section and Settings
-          → Profile, then reopen this card while online to refresh the offline
-          copy.
+          No allergies, medications, conditions, blood type, emergency contact,
+          code status, healthcare proxy, or organ-donor status are recorded yet.
+          Add them in the Medical section and on the card settings below, then
+          reopen this card while online to refresh the offline copy.
         </p>
       )}
 

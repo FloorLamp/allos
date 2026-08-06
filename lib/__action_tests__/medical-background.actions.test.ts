@@ -11,6 +11,7 @@ import {
   saveSmokingHistory,
   saveRiskFactors,
   saveEmergencyCardSettings,
+  saveAdvanceDirectives,
 } from "@/app/(app)/medical/background/actions";
 import {
   getSmokingHistory,
@@ -18,6 +19,7 @@ import {
   getEmergencyCardEnabled,
   getBloodType,
   getEmergencyContact,
+  getAdvanceDirectives,
 } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -116,5 +118,67 @@ describe("saveEmergencyCardSettings", () => {
       saveEmergencyCardSettings(fd({ emergency_enabled: "1" }))
     ).rejects.toThrow(/read-only/);
     expect(getEmergencyCardEnabled(profile.id)).toBe(false);
+  });
+});
+
+describe("saveAdvanceDirectives", () => {
+  it("persists code status, proxy, donor status and documents line", async () => {
+    const login = createLogin();
+    const profile = createProfile("directives", login.id);
+    actAs(login, profile);
+    await saveAdvanceDirectives(
+      fd({
+        code_status: "dnr-dni",
+        code_status_effective: "2026-02-01",
+        code_status_note: "Intubate for a reversible cause",
+        healthcare_proxy_name: "Robin Reyes",
+        healthcare_proxy_relation: "Spouse",
+        healthcare_proxy_phone: "555-0100",
+        organ_donor: "registered",
+        directive_documents_at: "POLST on the fridge",
+      })
+    );
+    expect(getAdvanceDirectives(profile.id)).toEqual({
+      codeStatus: "dnr-dni",
+      codeStatusEffective: "2026-02-01",
+      codeStatusNote: "Intubate for a reversible cause",
+      proxy: { name: "Robin Reyes", relation: "Spouse", phone: "555-0100" },
+      organDonor: "registered",
+      documentsAt: "POLST on the fridge",
+    });
+    // Both surfaces these facts render on live on the passport page.
+    expect(revalidate).toHaveBeenCalledWith("/profile");
+  });
+
+  it("clears a field on a blank re-save rather than storing an empty string", async () => {
+    const login = createLogin();
+    const profile = createProfile("directives-clear", login.id);
+    actAs(login, profile);
+    await saveAdvanceDirectives(
+      fd({ code_status: "full", organ_donor: "declined" })
+    );
+    expect(getAdvanceDirectives(profile.id).codeStatus).toBe("full");
+    await saveAdvanceDirectives(fd({ code_status: "", organ_donor: "" }));
+    const cleared = getAdvanceDirectives(profile.id);
+    expect(cleared.codeStatus).toBeNull();
+    expect(cleared.organDonor).toBeNull();
+  });
+
+  it("refuses an unrecognized code status instead of persisting it", async () => {
+    const login = createLogin();
+    const profile = createProfile("directives-enum", login.id);
+    actAs(login, profile);
+    await saveAdvanceDirectives(fd({ code_status: "partial-code" }));
+    expect(getAdvanceDirectives(profile.id).codeStatus).toBeNull();
+  });
+
+  it("refuses a read-only member (requireWriteAccess gate)", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("directives-ro", login.id);
+    actAs(login, profile, "read");
+    await expect(
+      saveAdvanceDirectives(fd({ code_status: "dnr" }))
+    ).rejects.toThrow(/read-only/);
+    expect(getAdvanceDirectives(profile.id).codeStatus).toBeNull();
   });
 });

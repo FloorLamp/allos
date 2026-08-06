@@ -9,6 +9,18 @@ import {
   type EmergencyCard,
   type EmergencyCardInput,
 } from "@/lib/emergency-card";
+import { buildAdvanceDirectives } from "@/lib/advance-directives";
+
+const BLANK_DIRECTIVES = {
+  codeStatus: null,
+  codeStatusEffective: null,
+  codeStatusNote: null,
+  proxyName: null,
+  proxyRelation: null,
+  proxyPhone: null,
+  organDonor: null,
+  documentsAt: null,
+};
 
 const baseInput: EmergencyCardInput = {
   name: "Test Patient",
@@ -119,6 +131,29 @@ describe("isEmergencyCardEmpty", () => {
         })
       )
     ).toBe(false);
+  });
+
+  it("counts a recorded code status / proxy as content (#1848)", () => {
+    const card = buildEmergencyCard({
+      ...baseInput,
+      directives: buildAdvanceDirectives({
+        ...BLANK_DIRECTIVES,
+        codeStatus: "dnr",
+        proxyName: "Robin Reyes",
+        proxyPhone: "555-0100",
+      }),
+    });
+    expect(isEmergencyCardEmpty(card)).toBe(false);
+    expect(card.directives?.codeStatus).toBe("dnr");
+  });
+
+  it("drops an all-blank directive summary rather than carrying a scaffold", () => {
+    const card = buildEmergencyCard({
+      ...baseInput,
+      directives: buildAdvanceDirectives(BLANK_DIRECTIVES),
+    });
+    expect(card.directives).toBeNull();
+    expect(isEmergencyCardEmpty(card)).toBe(true);
   });
 });
 

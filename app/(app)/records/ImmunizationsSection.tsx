@@ -31,6 +31,7 @@ import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
 import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
 import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
 import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
+import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRecordActions";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 
@@ -196,6 +197,9 @@ export default function ImmunizationsSection({
             <ImmunizationForm action={addImmunization} defaultDate={now} />
           </AddEntryPanel>
           <MyChartImport compact />
+          {/* Print / share the vaccination record (#1849). Acting-profile scoped
+              like the schedule above it; the artifact names the person it is for. */}
+          <ImmunizationRecordActions />
         </div>
 
         {/* Section status line + at-a-glance counts (the old PageHeader subtitle +

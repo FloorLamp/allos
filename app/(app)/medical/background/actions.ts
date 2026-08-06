@@ -15,6 +15,7 @@ import {
   setEmergencyCardEnabled,
   setBloodType,
   setEmergencyContact,
+  setAdvanceDirectives,
 } from "@/lib/settings";
 import {
   parsePackYears,
@@ -90,5 +91,30 @@ export async function saveEmergencyCardSettings(formData: FormData) {
   });
   revalidatePath("/records");
   // The card renders as the Passport page's #emergency section (#1042 phase 3).
+  revalidatePath("/profile");
+}
+
+// ---- Advance directives (profile scope, issue #1848) ----
+// Code status (+ its effective date and free-text qualifier), the healthcare proxy,
+// organ-donor status, and where the signed paperwork lives. The write core
+// (setAdvanceDirectives) normalizes the two enums and clears any blank, so an
+// unrecognized submitted value can never persist as a code status; this boundary
+// only carries the form fields across. Same requireWriteAccess tier as the rest of
+// the emergency-card settings, and the same revalidation targets — the passport
+// page renders BOTH the card and the passport summary these facts appear on.
+export async function saveAdvanceDirectives(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const field = (name: string) => String(formData.get(name) ?? "");
+  setAdvanceDirectives(profile.id, {
+    codeStatus: field("code_status"),
+    codeStatusEffective: field("code_status_effective"),
+    codeStatusNote: field("code_status_note"),
+    proxyName: field("healthcare_proxy_name"),
+    proxyRelation: field("healthcare_proxy_relation"),
+    proxyPhone: field("healthcare_proxy_phone"),
+    organDonor: field("organ_donor"),
+    documentsAt: field("directive_documents_at"),
+  });
+  revalidatePath("/records");
   revalidatePath("/profile");
 }

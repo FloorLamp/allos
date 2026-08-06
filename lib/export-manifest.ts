@@ -20,6 +20,11 @@ export interface ExportManifestInput {
   missingFiles?: string[];
   // The bundled profile photo's zip name, when the profile has one on disk (#466).
   profilePhoto?: string | null;
+  // The opt-in media bundle (#1846): file count + vanished names when this
+  // download opted in; null/omitted when media was not requested (the default),
+  // so an archive without a `media` section is one the user chose to keep
+  // media-free.
+  media?: { count: number; missing?: string[] } | null;
 }
 
 export interface ExportManifest {
@@ -32,12 +37,24 @@ export interface ExportManifest {
     medicalFiles: { directory: string; count: number; missing?: string[] };
     fhir: { file: string; resourceCount: number };
     profilePhoto?: string;
+    // Present only when the download opted into the media bundle (#1846).
+    media?: {
+      directory: string;
+      index: string;
+      count: number;
+      missing?: string[];
+    };
     manifest: string;
   };
   totals: {
     datasets: number;
     rows: number;
     files: number;
+    // Media files bundled, present ONLY when the download opted in (#1846). Kept
+    // separate from `files` rather than folded into it: `files` has always meant
+    // "uploaded medical documents", and a reader comparing two archives must be
+    // able to see that one of them carries photos and clips.
+    mediaFiles?: number;
   };
 }
 
@@ -73,12 +90,25 @@ export function buildExportManifest(
         resourceCount: input.fhirResourceCount,
       },
       ...(input.profilePhoto ? { profilePhoto: input.profilePhoto } : {}),
+      ...(input.media
+        ? {
+            media: {
+              directory: "media/",
+              index: "media/index.json",
+              count: input.media.count,
+              ...(input.media.missing?.length
+                ? { missing: input.media.missing }
+                : {}),
+            },
+          }
+        : {}),
       manifest: "manifest.json",
     },
     totals: {
       datasets: datasets.length,
       rows,
       files: input.fileCount,
+      ...(input.media ? { mediaFiles: input.media.count } : {}),
     },
   };
 }

@@ -1,5 +1,6 @@
 import { db, today } from "./db";
 import {
+  getAdvanceDirectives,
   getUserAge,
   getUserSex,
   getUserBirthdate,
@@ -307,5 +308,8 @@ export function getProfileSummary(
     immunizations,
     titers,
     history,
+    // Code status / healthcare proxy / organ-donor status (#1848), from the SAME
+    // profile_settings read the emergency card uses.
+    directives: getAdvanceDirectives(profileId),
   });
 }

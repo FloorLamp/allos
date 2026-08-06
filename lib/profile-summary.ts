@@ -16,6 +16,10 @@ import {
   type VaccineStatus,
 } from "./immunization-status";
 import { expandToComponents } from "./immunization-catalog";
+import {
+  hasAdvanceDirectives,
+  type AdvanceDirectives,
+} from "./advance-directives";
 
 // Pure view-model assembly for the profile summary / "medical passport".
 // Every field the passport shows already exists as a query; this module
@@ -185,6 +189,11 @@ export interface ProfileSummary {
   immunizations: SummaryImmunization[];
   titers: SummaryTiter[];
   history: SummaryHistoryItem[];
+  // The advance-directive summary (#1848) — code status, healthcare proxy,
+  // organ-donor status, documents-on-file line — or null when nothing is
+  // recorded. Same profile_settings read the emergency card uses, so the passport
+  // and the card can never disagree about a code status.
+  directives: AdvanceDirectives | null;
 }
 
 export interface ProfileSummaryInput {
@@ -226,6 +235,9 @@ export interface ProfileSummaryInput {
   immunizations: SummaryImmunization[];
   titers: SummaryTiter[];
   history: SummaryHistoryItem[];
+  // The advance-directive summary (#1848). Optional on the INPUT so an existing
+  // caller/fixture stays valid; absent and null both mean "nothing recorded".
+  directives?: AdvanceDirectives | null;
 }
 
 // How many merged vitals to surface on the card (keeps a printed passport tidy).
@@ -466,6 +478,11 @@ export function buildProfileSummary(
     immunizations: input.immunizations,
     titers: input.titers,
     history: input.history,
+    // Collapse an all-blank summary to null (#1848) so the passport renders the
+    // section only when something is actually on file.
+    directives: hasAdvanceDirectives(input.directives ?? null)
+      ? (input.directives ?? null)
+      : null,
   };
 }
 
