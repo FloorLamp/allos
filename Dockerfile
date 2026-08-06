@@ -2,18 +2,38 @@
 # better-sqlite3's `linux-*` prebuilt addons are built against — an Alpine/musl base
 # would need the `linuxmusl-*` ones instead.
 #
-# Since better-sqlite3 v13 the addon is N-API and nothing here compiles it: the
-# package declares `gypfile: false` and ships no install script, so npm neither runs
-# node-gyp nor downloads anything. The eight prebuilt binaries arrive inside the
-# tarball itself and one is picked at require() time by platform+arch. That means
-# there is no source-build fallback: an addon that doesn't load is a hard failure,
-# not a slow install. The prune step below turns that into a build-time check.
+# Since better-sqlite3 v13 the addon is N-API and nothing here compiles it: the eight
+# prebuilt binaries arrive inside the tarball itself and one is picked at require()
+# time by platform+arch. `npm ci` still runs node-gyp over it, though — see the
+# toolchain layer below for why that is not a contradiction. What it does mean is that
+# there is no source build to fall back on in practice: an addon that doesn't load is
+# a hard failure, not a slow install. The prune step below turns that into a
+# build-time check.
 
 # ---- builder ----
 FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 
-# Install deps first (better layer caching). No toolchain needed — see above.
+# node-gyp's prerequisites, needed by `npm ci` below and nothing else in this image.
+#
+# npm synthesizes the default `node-gyp rebuild` install script for any package that
+# has a binding.gyp on disk. better-sqlite3 ships one (it is listed in the package's
+# `files`), so `npm ci` — which extracts first and decides from the extracted tree —
+# always runs it. `gypfile: false` and the absent install script only steer
+# `npm install`, which decides from the packument before extracting. That asymmetry is
+# the trap: a local `npm install` of the same lockfile looks entirely toolchain-free.
+#
+# What actually runs is a configure and a make, not a compile. binding.gyp shells out
+# to `node lib/binding.js`, finds the host prebuild, and emits `type: none` for both
+# of its targets — so this layer buys ~80KB of makefiles and stamps, and no .node.
+# python3 and make are what node-gyp needs to get that far; g++ is for the case where
+# the prebuild check comes back empty and a real compile is the only thing standing
+# between us and an image that cannot open a database.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install deps first (better layer caching).
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -35,9 +55,10 @@ RUN mkdir -p public \
   && npm prune --omit=dev
 
 # Trim better-sqlite3 to what this image actually runs: one of the eight prebuilt
-# addons (~17MB the set), and none of the SQLite amalgamation it no longer compiles
-# (~10MB). 27MB -> ~2MB in the node_modules the runner stage copies. The target name
-# is the same platform+arch rule the package's own subpath exports are keyed on.
+# addons (~17MB the set), none of the SQLite amalgamation it no longer compiles
+# (~10MB), and the empty build tree node-gyp left behind. 27MB -> ~2MB in the
+# node_modules the runner stage copies. The target name is the same platform+arch
+# rule the package's own subpath exports are keyed on.
 #
 # The require() is the point, not a flourish: with the source-build fallback gone, a
 # prune that broke resolution would otherwise surface as a container that won't boot.
@@ -46,7 +67,7 @@ RUN BS3=/app/node_modules/better-sqlite3 \
   && TARGET="$(node -p "(process.platform === 'linux' && !process.report.getReport().header.glibcVersionRuntime ? 'linuxmusl' : process.platform) + '-' + process.arch")" \
   && test -f "$BS3/prebuilds/$TARGET.node" \
   && find "$BS3/prebuilds" -name '*.node' ! -name "$TARGET.node" -delete \
-  && rm -rf "$BS3/deps" "$BS3/src" "$BS3/binding.gyp" \
+  && rm -rf "$BS3/deps" "$BS3/src" "$BS3/binding.gyp" "$BS3/build" \
   && node -e "new (require('better-sqlite3'))(':memory:').prepare('select sqlite_version()').get()"
 
 # ---- runner ----
