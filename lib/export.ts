@@ -262,6 +262,8 @@ const PROVIDER_LINK_SELECTS = [
   `SELECT provider_id AS pid FROM immunizations WHERE profile_id = ? AND provider_id IS NOT NULL`,
   `SELECT provider_id AS pid FROM medical_records WHERE profile_id = ? AND provider_id IS NOT NULL`,
   `SELECT provider_id AS pid FROM intake_items WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM dental_procedures WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM skin_lesions WHERE profile_id = ? AND provider_id IS NOT NULL`,
 ];
 
 function referencedProviderIds(profileId: number): number[] {
@@ -1001,6 +1003,103 @@ export const DATASETS: ExportDataset[] = [
        FROM imaging_studies WHERE profile_id = ?
        ORDER BY COALESCE(study_date, '') DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM imaging_studies WHERE profile_id = ?`,
+  }),
+  // ── The two specialty record types that shipped in NO bundle (#1846) ──────────
+  // Both were export-allowlisted on the argument that they have no FHIR builder —
+  // which conflated two different things. Portability does not wait for a FHIR
+  // resource: imaging_studies has no FHIR export builder either and has been a flat
+  // dataset since #465. These two are the LAST manually-created clinical record
+  // types with a page, a finding→follow-up loop, and no way out of the app.
+  //
+  // Column discipline for both: every field a person TYPED or a document extraction
+  // filled, plus the state a reader needs to interpret it (`status`) — the #2200
+  // precedent for exporting a state flag rather than treating it as bookkeeping.
+  // Left out on purpose: `external_id` (an importer's source-system key, meaningless
+  // off the instance that synced it) and `encounter_id` (an instance-local row id no
+  // other dataset exports). `provider` is RESOLVED to the provider's NAME rather
+  // than exported as a raw id — for a domain with no FHIR resource to carry the
+  // reference, "which dentist/dermatologist" is the portable fact, and the full
+  // provider entry (NPI, phone, address) still ships in the providers dataset
+  // because both tables are now in PROVIDER_LINK_SELECTS above.
+  tableDataset({
+    // Structured dental procedures/findings (#705). `source` + `document_id` are the
+    // provenance pair the medical_records dataset already exports: manual vs
+    // AI-extracted, and the cross-reference into the bundle's own medical_documents
+    // dataset. Trendable periodontal MEASUREMENTS keep round-tripping via
+    // medical_records — these are the procedure/finding rows themselves.
+    // deletable: false — a dental row is not a plain id + profile_id delete: the
+    // care_plan_items follow-up chain references it
+    // (source_dental_procedure_id / resolved_by_dental_procedure_id), so delete
+    // lives on the dental page, which handles that side-state.
+    key: "dental_procedures",
+    label: "Dental procedures",
+    table: "dental_procedures",
+    deletable: false,
+    columns: [
+      "procedure_date",
+      "name",
+      "status",
+      "tooth",
+      "tooth_system",
+      "surface",
+      "cdt_code",
+      "finding",
+      "follow_up_interval_days",
+      "provider",
+      "source",
+      "document_id",
+      "notes",
+    ],
+    select: `SELECT dp.id, dp.procedure_date, dp.name, dp.status, dp.tooth,
+              dp.tooth_system, dp.surface, dp.cdt_code, dp.finding,
+              dp.follow_up_interval_days, p.name AS provider, dp.source,
+              dp.document_id, dp.notes
+       FROM dental_procedures dp LEFT JOIN providers p ON p.id = dp.provider_id
+       WHERE dp.profile_id = ?
+       ORDER BY COALESCE(dp.procedure_date, '') DESC, dp.id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM dental_procedures WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // Structured skin-lesion records (#715) — the same shape one specialty over, and
+    // the worse gap of the two: the lesion row carries no analyte that round-trips
+    // through another dataset, so this dataset is the ONLY egress for the record
+    // type. The five ABCDE columns are the user-recorded 0/1 observations; `size_mm`
+    // is the measurement a serial comparison turns on. The serial lesion PHOTOS ride
+    // the opt-in media bundle (media/lesion-photos/), not a dataset.
+    // deletable: false — lesion delete must clear its lesion_photos children
+    // (rows + files) and the care_plan_items follow-up links first; that lives on
+    // the skin page.
+    key: "skin_lesions",
+    label: "Skin lesions",
+    table: "skin_lesions",
+    deletable: false,
+    columns: [
+      "label",
+      "body_region",
+      "body_side",
+      "status",
+      "observed_date",
+      "size_mm",
+      "asymmetry",
+      "border",
+      "color",
+      "diameter",
+      "evolving",
+      "finding",
+      "follow_up_interval_days",
+      "provider",
+      "source",
+      "document_id",
+      "notes",
+    ],
+    select: `SELECT sl.id, sl.label, sl.body_region, sl.body_side, sl.status,
+              sl.observed_date, sl.size_mm, sl.asymmetry, sl.border, sl.color,
+              sl.diameter, sl.evolving, sl.finding, sl.follow_up_interval_days,
+              p.name AS provider, sl.source, sl.document_id, sl.notes
+       FROM skin_lesions sl LEFT JOIN providers p ON p.id = sl.provider_id
+       WHERE sl.profile_id = ?
+       ORDER BY COALESCE(sl.observed_date, '') DESC, sl.id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM skin_lesions WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "optical_prescriptions",
