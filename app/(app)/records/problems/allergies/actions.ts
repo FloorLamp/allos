@@ -8,6 +8,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { setAllergyReactions } from "@/lib/allergy-write";
 import { normalizeAllergenSubstance } from "@/lib/allergen-vocabulary";
 import { encounterIdForProfile } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
@@ -215,14 +216,23 @@ export async function updateAllergy(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-export async function deleteAllergy(formData: FormData): Promise<FormResult> {
+// Undoable since #1847 — the highest-value delete in the passport. An allergy GATES
+// the drug-safety matcher and prints on the emergency card, so a mis-tap here removed
+// a safety interlock permanently; the delete now captures the row AND its
+// `allergy_reactions` cascade and answers in the useUndoableDelete contract
+// ({ undoId, error? }), so the surface offers the standard Undo toast and Data → Trash
+// keeps it restorable for the whole retention window.
+export async function deleteAllergy(
+  formData: FormData
+): Promise<{ undoId: number | null; error?: string }> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that allergy.");
-  db.prepare("DELETE FROM allergies WHERE id = ? AND profile_id = ?").run(
-    id,
-    profileId
-  );
+  if (!id) return { undoId: null, error: "Couldn't find that allergy." };
+  const undoId = captureDelete("allergy", profileId, id);
+  // Typed refusal, not a silent no-op: an id that isn't this profile's allergy
+  // captured nothing, and the caller must not be told the delete landed.
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that allergy." };
   revalidateAllergies();
-  return formOk();
+  return { undoId };
 }

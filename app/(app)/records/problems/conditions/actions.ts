@@ -2,12 +2,13 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
-import { db, writeTx } from "@/lib/db";
+import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { ConditionStatus } from "@/lib/types";
 import { addSuggestedConditionCore } from "@/lib/condition-suggestion-write";
+import { captureDelete } from "@/lib/undo-delete-db";
 import {
   toConditionLaterality,
   toConditionSeverity,
@@ -147,23 +148,22 @@ export async function confirmConditionSuggestion(
   return formOk();
 }
 
-export async function deleteCondition(formData: FormData): Promise<FormResult> {
+// Undoable since #1847: the capture takes the whole row, `edited` flag included, so a
+// restored hand-corrected episode-promoted condition is still edit-LOCKED and the next
+// episode transition holds out of it rather than reverting the correction. The
+// indication back-link null-out (#1052) moved into captureDelete, where the Data →
+// Manage bulk delete inherits it too — it used to live only here, so bulk-deleting a
+// condition a medication treats tripped the FK. Answers in the useUndoableDelete
+// contract.
+export async function deleteCondition(
+  formData: FormData
+): Promise<{ undoId: number | null; error?: string }> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that condition.");
-  writeTx(() => {
-    // A medication may link this condition as its indication (#1052) — a REFERENCES
-    // FK with no ON DELETE. NULL that back-link FIRST so the delete can't trip the
-    // FK (the row-ops convention: deleting the condition NULLs the med's "For:" link).
-    db.prepare(
-      `UPDATE intake_items SET indication_condition_id = NULL
-        WHERE indication_condition_id = ? AND profile_id = ?`
-    ).run(id, profileId);
-    db.prepare("DELETE FROM conditions WHERE id = ? AND profile_id = ?").run(
-      id,
-      profileId
-    );
-  });
+  if (!id) return { undoId: null, error: "Couldn't find that condition." };
+  const undoId = captureDelete("condition", profileId, id);
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that condition." };
   revalidateConditions();
-  return formOk();
+  return { undoId };
 }

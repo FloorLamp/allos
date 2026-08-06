@@ -71,8 +71,9 @@ export interface TrashEntry {
 }
 
 // Captured columns that carry a human title, in priority order. Every registry kind's
-// root table is covered: activities.title, medical_records/intake_items.name,
-// practice_logs.practice, frequency_targets.scope_value, substance_log.substance,
+// root table is covered: activities.title, medical_records/intake_items/conditions.name,
+// practice_logs.practice, frequency_targets.scope_value,
+// allergies/substance_log.substance, immunizations.vaccine, skin_lesions.label,
 // food_log(_events).group_key. A root with none (body_metrics) renders by kind + date,
 // which is what its own surfaces do.
 const TITLE_COLUMNS = [
@@ -81,11 +82,26 @@ const TITLE_COLUMNS = [
   "practice",
   "scope_value",
   "substance",
+  // #1847's clinical roots. `vaccine` is the immunization dose's code and `label` the
+  // lesion's user-given name ("mole, left shoulder") — without them a deleted shot or
+  // lesion would read as a bare "immunization · 2024-05-01" in the Trash, which is
+  // exactly the "five identical rows, no way to pick" problem this list exists for.
+  "vaccine",
+  "label",
   "group_key",
 ] as const;
 
-// Captured columns that carry the deleted row's own date, in priority order.
-const DATE_COLUMNS = ["date", "logged_at", "created_at"] as const;
+// Captured columns that carry the deleted row's own date, in priority order. The
+// clinical roots lead with their CLINICAL date (when the lesion was observed, when the
+// allergy started) and fall through to created_at when it was never recorded — the same
+// order their own surfaces read them in.
+const DATE_COLUMNS = [
+  "date",
+  "observed_date",
+  "onset_date",
+  "logged_at",
+  "created_at",
+] as const;
 
 function firstString(row: Row, columns: readonly string[]): string | null {
   for (const c of columns) {

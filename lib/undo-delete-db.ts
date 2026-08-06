@@ -13,22 +13,30 @@ import { DEFAULT_TRASH_RETENTION_DAYS, daysAgoModifier } from "./retention";
 import { dayCounterSpecFor } from "./day-counter-ledger";
 import { dayCounterLedger } from "./day-counter-ledger-db";
 import {
+  capturedPhotoFiles,
   capturedVideoFiles,
   getKindSpec,
   parsePayload,
   remapRow,
   serializePayload,
+  type CapturedPhotoDomain,
+  type CapturedPhotoFile,
   type CapturedVideoFile,
+  type EntitySpec,
   type ExternalRefSpec,
   type IdMaps,
   type MergeUndoContext,
   type Row,
 } from "./undo-delete";
 import { unlinkVideoFiles } from "./video/store";
+import { thumbSiblingPath, unlinkPhotoFiles } from "./photo/store";
+import {
+  unlinkFollowUpsForSkinLesion,
+  unlinkFollowUpsForMedicalRecord,
+} from "./followup-write";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
 import { invalidateDoseScheduleVersions } from "./queries/intake/schedule";
-import { unlinkFollowUpsForMedicalRecord } from "./followup-write";
 import {
   writeImportTombstoneForRow,
   removeImportTombstoneForRow,
@@ -66,6 +74,12 @@ const KIND_LABELS: Record<string, string> = {
   "practice-session": "practice session",
   cycle: "period",
   "food-serving": "food serving",
+  // Clinical passport kinds (#1847). Generic and non-PHI like every label here —
+  // "allergy", never the substance; "condition", never the diagnosis.
+  allergy: "allergy",
+  condition: "condition",
+  immunization: "immunization",
+  "skin-lesion": "skin lesion",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
   // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
@@ -166,6 +180,29 @@ function targetExists(
   return row !== undefined;
 }
 
+// The id of a LIVE row already occupying the captured row's declared UNIQUE natural
+// key, or null when the key is free / not declared / not fully populated on the
+// snapshot (#1847). Column names come from the constant registry (never user input);
+// the values are bound. A partial index (…WHERE external_id IS NOT NULL) only
+// constrains rows with every key column present, so a snapshot missing one — a manual
+// allergy with no external_id — is outside the index and never adopts.
+function liveRowIdForUniqueKey(
+  profileId: number,
+  entity: EntitySpec,
+  row: Row
+): number | null {
+  const key = entity.uniqueKey;
+  if (!key || key.length === 0) return null;
+  const values = key.map((c) => row[c]);
+  if (values.some((v) => v == null)) return null;
+  const where = key.map((c) => `${c} = ?`).join(" AND ");
+  const found = db
+    .prepare(`SELECT id FROM ${entity.table} WHERE profile_id = ? AND ${where}`)
+    .get(profileId, ...(values as (string | number)[])) as
+    { id: number } | undefined;
+  return found ? found.id : null;
+}
+
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -255,6 +292,29 @@ export function captureDelete(
         `UPDATE intake_items SET source_record_id = NULL
           WHERE source_record_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
+    }
+
+    // Clinical inbound null-outs (#1847), centralized here for the same reason the
+    // intake_items ones above are: BOTH delete paths (the record surface and the Data →
+    // Manage bulk delete, which routes through DATASET_UNDO_KIND) must detach the
+    // inbound REFERENCES before the root DELETE, or foreign_keys = ON aborts it. Like
+    // every sibling null-out in this function they are side effects undo does NOT
+    // invert: the clinical row comes back, the other row's link stays honestly cleared.
+    if (spec.ownedTable === "conditions") {
+      // A medication may name this condition as its indication (#1052) — a REFERENCES
+      // FK with no ON DELETE. (Before #1847 only deleteCondition nulled it, so a bulk
+      // delete of a condition a med treated threw on the FK.)
+      db.prepare(
+        `UPDATE intake_items SET indication_condition_id = NULL
+          WHERE indication_condition_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
+    }
+    if (spec.ownedTable === "skin_lesions") {
+      // A recheck follow-up may link this observation as its SOURCE finding, or a
+      // resolution may cite it as the resolving record (#700) — the medical_records
+      // treatment one domain over: the follow-up degrades to a generic care-plan item
+      // and keeps its planned care.
+      unlinkFollowUpsForSkinLesion(profileId, rootId);
     }
 
     // A wellness practice target can be adopted by protocols. The accepted
@@ -441,6 +501,19 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
             continue;
           }
         }
+        // The registry-declared UNIQUE natural key (#1847): the clinical passport
+        // tables carry a partial UNIQUE(profile_id, external_id) and their importer
+        // re-inserts with OR IGNORE, so a document reprocess inside the (30-day)
+        // window can re-take a deleted imported row's key. Adopt the live row rather
+        // than aborting the whole restore on the index — the #509 treatment, declared
+        // as data because these tables are not sync-tombstoned.
+        if (isRoot && typeof oldId === "number") {
+          const liveId = liveRowIdForUniqueKey(profileId, entity, row);
+          if (liveId !== null) {
+            map.set(oldId, liveId);
+            continue;
+          }
+        }
         const toInsert = remapRow(row, idMaps, entity.fks, entity.keyRefs);
         // A practice target captured before migration 123 has no persisted
         // scope_identity. Rebuild it from the same domain identity before restore
@@ -554,21 +627,23 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
 // supplies `getTrashRetentionDays()`; the default exists so a stray argless call in a
 // test still means the shipped policy.
 //
-// Purge-time file cleanup (#1290): a captured delete's clip FILES (activity_videos /
-// symptom_videos stored_path + poster_path) survive the delete+undo window on disk so
-// a restore re-points at them, but a purge WITHOUT a restore leaves them orphaned —
-// rows gone (unservable) yet present on disk, which the strictest-privacy tier these
-// clips sit in can't tolerate. So BEFORE the delete we read the expiring payloads and
-// collect their captured clip files, and AFTER the delete we unlink each one that no
-// LIVE row still references (content-hash dedup means a re-upload can share the file).
+// Purge-time file cleanup (#1290, extended to photos by #1847): a captured delete's
+// MEDIA files — activity/symptom clip + poster paths, and since the clinical kinds a
+// lesion photo and its derived thumbnail sibling — survive the delete+undo window on
+// disk so a restore re-points at them, but a purge WITHOUT a restore leaves them
+// orphaned: rows gone (unservable) yet present on disk, which the strictest-privacy
+// tier this media sits in can't tolerate. So BEFORE the delete we read the expiring
+// payloads and collect their captured files, and AFTER the delete we unlink each one
+// that no LIVE row still references (content-hash dedup means a re-upload can share
+// the file).
 export function sweepDeletedRows(
   maxAgeDays = DEFAULT_TRASH_RETENTION_DAYS
 ): number {
   try {
     const cutoff = daysAgoModifier(maxAgeDays);
 
-    // Collect the captured clip/poster files of the rows about to be purged.
-    const videoFiles = capturedVideoFilesOf(
+    // Collect the captured media files of the rows about to be purged.
+    const files = capturedFilesOf(
       db
         .prepare(
           `SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
@@ -580,8 +655,8 @@ export function sweepDeletedRows(
       .prepare(`DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)`)
       .run(cutoff).changes;
 
-    // After the holding rows are gone, unlink the now-unreferenced clip files.
-    unlinkPurgedVideoFiles(videoFiles);
+    // After the holding rows are gone, unlink the now-unreferenced media files.
+    unlinkPurgedFiles(files);
 
     return changes;
   } catch {
@@ -606,7 +681,7 @@ export function purgeDeletedRow(
   profileId: number,
   undoId: number
 ): PurgeOutcome {
-  const videoFiles = writeTx((): CapturedVideoFile[] | null => {
+  const files = writeTx((): CapturedFiles | null => {
     const row = db
       .prepare(
         `SELECT payload FROM deleted_rows
@@ -615,16 +690,16 @@ export function purgeDeletedRow(
       .get(undoId, profileId, TRASH_EXCLUDED_KIND) as
       { payload: string } | undefined;
     if (!row) return null;
-    const files = capturedVideoFilesOf([row]);
+    const captured = capturedFilesOf([row]);
     db.prepare(
       `DELETE FROM deleted_rows WHERE id = ? AND profile_id = ? AND kind <> ?`
     ).run(undoId, profileId, TRASH_EXCLUDED_KIND);
-    return files;
+    return captured;
   });
-  if (videoFiles === null) return { kind: "gone" };
+  if (files === null) return { kind: "gone" };
   // Outside the transaction: the row delete is committed and authoritative, and the
   // unlink is best-effort filesystem work that must never hold the write lock.
-  unlinkPurgedVideoFiles(videoFiles);
+  unlinkPurgedFiles(files);
   return { kind: "purged" };
 }
 
@@ -634,8 +709,8 @@ export function purgeDeletedRow(
 // from your own Trash button would be someone else's data disappearing on your tap.
 // Same file-unlinking path again. Returns how many captures were purged.
 export function emptyTrash(profileId: number): number {
-  const { purged, videoFiles } = writeTx(() => {
-    const files = capturedVideoFilesOf(
+  const { purged, files } = writeTx(() => {
+    const captured = capturedFilesOf(
       db
         .prepare(
           `SELECT payload FROM deleted_rows WHERE profile_id = ? AND kind <> ?`
@@ -645,27 +720,40 @@ export function emptyTrash(profileId: number): number {
     const changes = db
       .prepare(`DELETE FROM deleted_rows WHERE profile_id = ? AND kind <> ?`)
       .run(profileId, TRASH_EXCLUDED_KIND).changes;
-    return { purged: changes, videoFiles: files };
+    return { purged: changes, files: captured };
   });
-  unlinkPurgedVideoFiles(videoFiles);
+  unlinkPurgedFiles(files);
   return purged;
 }
 
-// The captured clip/poster files of a set of holding rows. A malformed / legacy /
-// non-registry payload (the bespoke `administration` kind) never blocks a purge — its
-// parse is caught and skipped, because such a payload carries no reclaimable files.
-function capturedVideoFilesOf(
-  rows: readonly { payload: string }[]
-): CapturedVideoFile[] {
-  const out: CapturedVideoFile[] = [];
+// Every media file a set of holding rows captured — clips (#1290) AND photos
+// (#1847). One shape so the sweep and both by-hand purges reclaim BOTH kinds through
+// a single call rather than each remembering a list; a media core added later has one
+// place to join. A malformed / legacy / non-registry payload (the bespoke
+// `administration` kind) never blocks a purge — its parse is caught and skipped,
+// because such a payload carries no reclaimable files.
+interface CapturedFiles {
+  video: CapturedVideoFile[];
+  photo: CapturedPhotoFile[];
+}
+
+function capturedFilesOf(rows: readonly { payload: string }[]): CapturedFiles {
+  const out: CapturedFiles = { video: [], photo: [] };
   for (const r of rows) {
     try {
-      out.push(...capturedVideoFiles(parsePayload(r.payload)));
+      const payload = parsePayload(r.payload);
+      out.video.push(...capturedVideoFiles(payload));
+      out.photo.push(...capturedPhotoFiles(payload));
     } catch {
-      // an unparseable / non-registry payload carries no reclaimable video files
+      // an unparseable / non-registry payload carries no reclaimable media files
     }
   }
   return out;
+}
+
+function unlinkPurgedFiles(files: CapturedFiles): void {
+  unlinkPurgedVideoFiles(files.video);
+  unlinkPurgedPhotoFiles(files.photo);
 }
 
 // Unlink the clip/poster files of purged captures, SKIPPING any path a live
@@ -687,5 +775,39 @@ function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
       if (stillLive.get(p, p) === undefined) toUnlink.push(p);
     }
     if (toUnlink.length) unlinkVideoFiles(f.domain, toUnlink);
+  }
+}
+
+// The live table each photo domain's rows sit in — the read side of the registry's
+// PHOTO_FILE_TABLES, kept here because the probe is SQL.
+const PHOTO_TABLE_FOR_DOMAIN: Record<CapturedPhotoDomain, string> = {
+  progress: "progress_photos",
+  lesion: "lesion_photos",
+  symptom: "symptom_photos",
+};
+
+// The photo half of the same rule (#1847). Two differences from the clips above:
+//
+//  • THE THUMBNAIL IS DERIVED. Since the photo core landed (#1844 phase 3) a lesion /
+//    symptom photo has no thumb_path column — its thumbnail is a SIBLING of the stored
+//    file (thumbSiblingPath, the one rule the writer and every reader share), so a
+//    purge that reclaimed stored_path alone would leave a thumbnail of a deleted
+//    dermatology close-up on disk indefinitely. A domain that DOES carry the column
+//    (progress_photos) hands its own value over instead of re-deriving one.
+//  • The liveness probe is on stored_path only: the thumbnail's justification is its
+//    photo's, so if a re-upload re-created a live row at this content-named path, both
+//    files are still in use and neither is touched.
+function unlinkPurgedPhotoFiles(files: readonly CapturedPhotoFile[]): void {
+  for (const f of files) {
+    if (!f.storedPath) continue;
+    const table = PHOTO_TABLE_FOR_DOMAIN[f.domain];
+    const stillLive = db
+      .prepare(`SELECT 1 FROM ${table} WHERE stored_path = ?`)
+      .get(f.storedPath);
+    if (stillLive !== undefined) continue;
+    unlinkPhotoFiles(f.domain, [
+      f.storedPath,
+      f.thumbPath ?? thumbSiblingPath(f.storedPath),
+    ]);
   }
 }

@@ -10,6 +10,7 @@ import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -65,16 +66,22 @@ function LesionRecordRow({
   const fmt = useFormatPrefs();
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Undoable since #1847: deleting an observation takes its whole photo series with
+  // it, so the shared Undo toast is the safety net behind the confirm — and the photo
+  // FILES stay on disk for the retention window so a restore re-points at them.
+  const undoable = useUndoableDelete();
   const { run: runDelete, pending: deleting } = useConfirmedAction(
     {
       title: "Delete lesion record",
-      message: "Delete this observation? This can’t be undone.",
+      message: "Delete this observation and its photos?",
       confirmLabel: "Delete",
     },
     async () => {
       const fd = new FormData();
       fd.set("id", String(record.id));
-      await deleteSkinLesion(fd);
+      await undoable(deleteSkinLesion, fd, {
+        deletedMessage: "Lesion record deleted.",
+      });
     }
   );
   const letters = abcdeLetters(record);

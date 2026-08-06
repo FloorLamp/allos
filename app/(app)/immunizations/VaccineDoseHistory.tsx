@@ -3,6 +3,7 @@
 import ImmunizationForm from "./ImmunizationForm";
 import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import NotesText from "@/components/NotesText";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
@@ -39,6 +40,7 @@ export default function VaccineDoseHistory({
   // Numbered within this vaccine's series (direct + combo doses together, by
   // date); a user's explicit dose_label wins. Pure helper shared with the history.
   const labels = resolveDoseLabels(doses, seriesLengthForCode(code));
+  const undoable = useUndoableDelete();
 
   // Display order: chronological ascending (dose 1 first), matching the numbering.
   const ordered = [...doses].sort(
@@ -124,13 +126,16 @@ export default function VaccineDoseHistory({
             title: "Delete dose",
             message: `Delete the ${im.date} dose${via}? This removes the one recorded dose${
               im.vaccine === code ? "" : " and its credit to every component"
-            }. This can’t be undone.`,
+            }.`,
           };
         }}
         onDelete={async (im) => {
           const fd = new FormData();
           fd.set("id", String(im.id));
-          await deleteImmunization(fd);
+          // Undoable since #1847 — the standard shared toast.
+          await undoable(deleteImmunization, fd, {
+            deletedMessage: "Dose deleted.",
+          });
         }}
       />
     </div>

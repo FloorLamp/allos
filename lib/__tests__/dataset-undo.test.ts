@@ -41,7 +41,6 @@ describe("dataset table → undo kind mapping", () => {
   });
 
   it("undoKindForTable answers by physical table and returns null for unmapped ones", () => {
-    expect(undoKindForTable("immunizations")).toBeNull();
     expect(undoKindForTable("goals")).toBeNull();
     expect(undoKindForTable("nonexistent")).toBeNull();
     // The argued exclusions stay plain bulk deletes.
@@ -57,5 +56,15 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("substance_log")).toBe("substance-history");
     // #2127: one period row, same single-entity shape.
     expect(undoKindForTable("cycles")).toBe("cycle");
+    // #1847: the clinical passport datasets. `immunizations` had a dedicated
+    // "returns null" assertion here for its whole life — the bulk delete of a
+    // vaccination record was permanent while a weigh-in's was not, which is the
+    // inversion that issue ended.
+    expect(undoKindForTable("allergies")).toBe("allergy");
+    expect(undoKindForTable("conditions")).toBe("condition");
+    expect(undoKindForTable("immunizations")).toBe("immunization");
+    // Not a deletable dataset, so its undoable kind is reachable only from the row
+    // menu — no mapping, and none required by the type guard.
+    expect(undoKindForTable("skin_lesions")).toBeNull();
   });
 });

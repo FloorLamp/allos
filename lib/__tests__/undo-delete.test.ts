@@ -5,7 +5,9 @@ import {
   serializePayload,
   parsePayload,
   remapRow,
+  capturedPhotoFiles,
   capturedVideoFiles,
+  PHOTO_FILE_TABLES,
   VIDEO_FILE_TABLES,
   type IdMaps,
   type Row,
@@ -164,6 +166,64 @@ describe("undo-delete registry", () => {
       for (const e of spec.entities)
         for (const ref of e.externalRefs ?? [])
           expect(["null", "drop"]).toContain(ref.onMissing);
+  });
+
+  // #1847: every clinical root carries the SAME three outward links (source document,
+  // visit, provider), and all three must be reconciled — a captured allergy whose
+  // encounter was deleted inside the window would otherwise abort its own undo on the
+  // FK, which is the #202/#375 class landing in the passport.
+  it("reconciles the source document / visit / provider link on every clinical kind", () => {
+    const rootOf = (kind: string) => getKindSpec(kind).entities[0];
+    const doc = {
+      column: "document_id",
+      table: "medical_documents",
+      onMissing: "null",
+    };
+    const visit = {
+      column: "encounter_id",
+      table: "encounters",
+      onMissing: "null",
+    };
+    const provider = {
+      column: "provider_id",
+      table: "providers",
+      onMissing: "null",
+      global: true,
+    };
+    expect(rootOf("allergy").externalRefs).toEqual([doc, visit, provider]);
+    // Conditions carry no provider column at all, so declaring one would be a lie.
+    expect(rootOf("condition").externalRefs).toEqual([doc, visit]);
+    // Immunizations carry no document link (the importer records `source` only).
+    expect(rootOf("immunization").externalRefs).toEqual([visit, provider]);
+    expect(rootOf("skin-lesion").externalRefs).toEqual([doc, visit, provider]);
+  });
+
+  // #1847: the clinical roots sit under a partial UNIQUE(profile_id, external_id) and
+  // their importer re-inserts with OR IGNORE, so a document reprocess inside the undo
+  // window can re-take a deleted imported row's key. Declaring it lets restore ADOPT
+  // the live row instead of aborting on the index.
+  it("declares the UNIQUE natural key on every clinical root, and only on roots", () => {
+    for (const kind of ["allergy", "condition", "immunization", "skin-lesion"])
+      expect(getKindSpec(kind).entities[0].uniqueKey, kind).toEqual([
+        "external_id",
+      ]);
+    // A child's key is its parent's FK, which the remap already handles — a uniqueKey
+    // there would probe the wrong row.
+    for (const spec of Object.values(UNDO_KINDS))
+      for (const e of spec.entities.slice(1))
+        expect(e.uniqueKey, `${spec.kind}.${e.entity}`).toBeUndefined();
+  });
+
+  // #1847: `lesion_photos.lesion_id` is a plain REFERENCES (no ON DELETE), so the
+  // photos must be removed explicitly for the lesion DELETE to land — and captured
+  // first, or the series would be the one thing a restore could not reproduce.
+  it("captures the lesion photo series as an explicitly-deleted child", () => {
+    const photos = getKindSpec("skin-lesion").entities.find(
+      (e) => e.entity === "photos"
+    )!;
+    expect(photos.table).toBe("lesion_photos");
+    expect(photos.deleteExplicitly).toBe(true);
+    expect(photos.fks).toEqual([{ column: "lesion_id", ref: "lesion" }]);
   });
 });
 
@@ -326,6 +386,61 @@ describe("capturedVideoFiles (#1290)", () => {
     expect(VIDEO_FILE_TABLES).toEqual({
       activity_videos: "activity",
       symptom_videos: "symptom",
+    });
+  });
+});
+
+// #1847: the same purge obligation one media core over. The clinical block is the
+// first kind to capture a photo ROW, so a purge that reclaimed nothing would leave a
+// deleted dermatology close-up — and its thumbnail — on disk forever.
+describe("capturedPhotoFiles (#1847)", () => {
+  it("extracts lesion_photos stored paths from a skin-lesion payload", () => {
+    const payload = parsePayload(
+      serializePayload("skin-lesion", {
+        lesion: [{ id: 4 }],
+        photos: [
+          {
+            id: 11,
+            lesion_id: 4,
+            stored_path: "data/uploads/lesion-photos/3/abc.jpg",
+          },
+          {
+            id: 12,
+            lesion_id: 4,
+            stored_path: "data/uploads/lesion-photos/3/def.jpg",
+          },
+        ],
+      })
+    );
+    // thumbPath is null because `lesion_photos` has NO thumb_path column: the
+    // thumbnail is a derived sibling, and deriving it is the impure sweep's job (one
+    // rule, lib/photo/store thumbSiblingPath) rather than a second copy here.
+    expect(capturedPhotoFiles(payload)).toEqual([
+      {
+        domain: "lesion",
+        storedPath: "data/uploads/lesion-photos/3/abc.jpg",
+        thumbPath: null,
+      },
+      {
+        domain: "lesion",
+        storedPath: "data/uploads/lesion-photos/3/def.jpg",
+        thumbPath: null,
+      },
+    ]);
+  });
+
+  it("returns nothing for a payload with no photo child (an allergy delete)", () => {
+    const payload = parsePayload(
+      serializePayload("allergy", { allergy: [{ id: 1 }], reactions: [] })
+    );
+    expect(capturedPhotoFiles(payload)).toEqual([]);
+  });
+
+  it("maps the photo-file tables to their domain (the store's DOMAIN_DIRS keys)", () => {
+    expect(PHOTO_FILE_TABLES).toEqual({
+      progress_photos: "progress",
+      lesion_photos: "lesion",
+      symptom_photos: "symptom",
     });
   });
 });

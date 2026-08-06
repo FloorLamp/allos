@@ -10,6 +10,7 @@ import {
   slugifyVaccine,
 } from "@/lib/immunization-catalog";
 import { sweepImmunizationDismissals } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { createImmunizationShareLink } from "@/lib/share-links-db";
 import { expiresAtFor } from "@/lib/share-links";
 import { recordAudit } from "@/lib/audit";
@@ -159,12 +160,16 @@ export async function updateImmunization(
   return formOk();
 }
 
+// Undoable since #1847: the dose row is captured before it goes, so an undo re-backs
+// the component codes it credited and every derivation (series completeness, the due
+// nudge, the printable record) re-reads the live rows. Answers in the useUndoableDelete
+// contract.
 export async function deleteImmunization(
   formData: FormData
-): Promise<FormResult> {
+): Promise<{ undoId: number | null; error?: string }> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that immunization.");
+  if (!id) return { undoId: null, error: "Couldn't find that immunization." };
   // Read the dose's vaccine before deleting so we can tell which component codes
   // it credited (a combo dose credits several).
   const row = db
@@ -172,10 +177,9 @@ export async function deleteImmunization(
       "SELECT vaccine FROM immunizations WHERE id = ? AND profile_id = ?"
     )
     .get(id, profileId) as { vaccine: string } | undefined;
-  db.prepare("DELETE FROM immunizations WHERE id = ? AND profile_id = ?").run(
-    id,
-    profileId
-  );
+  const undoId = captureDelete("immunization", profileId, id);
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that immunization." };
   // If this was the last dose backing a vaccine code, clear that code's due-nudge
   // dismissal — the key is the reusable vaccine code, so a stale row would silence
   // the nudge again after the immunization is re-added later (issue #203). The sweep
@@ -183,7 +187,7 @@ export async function deleteImmunization(
   // vaccine's dismissal (no backing dose ever) is left intact.
   if (row) sweepImmunizationDismissals(profileId, [row.vaccine]);
   revalidateImmunizations();
-  return formOk();
+  return { undoId };
 }
 
 // ---- Per-vaccine status overrides ----

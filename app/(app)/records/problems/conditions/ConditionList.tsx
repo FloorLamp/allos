@@ -3,6 +3,7 @@
 import ConditionForm from "./ConditionForm";
 import { updateCondition, deleteCondition } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
@@ -122,6 +123,9 @@ export default function ConditionList({
   multiView?: ListMultiView;
 }) {
   const columns = buildColumns(useFormatPrefs(), treatedWith, diagnosedAt);
+  // Undoable since #1847 — the capture carries the row's `edited` edit lock, so a
+  // restored hand-corrected condition is not re-derived by the next episode sync.
+  const undoable = useUndoableDelete();
   return (
     <RecordTable
       items={items}
@@ -146,13 +150,15 @@ export default function ConditionList({
       confirmDelete={(c) => ({
         title: "Delete condition",
         // Side included: confirming a delete must name WHICH sided problem goes.
-        message: `Delete “${conditionDisplayLabel(c)}”? This can’t be undone.`,
+        message: `Delete “${conditionDisplayLabel(c)}”? Any medication recorded for it keeps its “For:” link cleared.`,
       })}
       onDelete={async (c) => {
         const fd = new FormData();
         fd.set("id", String(c.id));
         if (multiView) fd.set("profile_id", String(c.subject.profileId));
-        await deleteCondition(fd);
+        await undoable(deleteCondition, fd, {
+          deletedMessage: "Condition deleted.",
+        });
       }}
     />
   );

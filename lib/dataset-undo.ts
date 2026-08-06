@@ -76,6 +76,15 @@ export const DATASET_UNDO_KIND = {
   // delete now speak the same restorable kind (the very hole the type guard exists
   // to keep closed: an undoable root that is a deletable dataset must be decided).
   cycles: "cycle",
+  // #1847's clinical kinds. All three are 1:1 (the root row plus, for allergies, its
+  // ON DELETE CASCADE `allergy_reactions`), so bulk-deleting N selected rows means
+  // exactly N per-row deletes and the batch restores from one toast. Mapping them is
+  // not optional here — they are deletable datasets AND undoable roots, which is the
+  // decision this type forces. (`skin_lesions` is not a deletable dataset, so its kind
+  // needs no entry; encounters and medical_documents are not undoable roots yet.)
+  allergies: "allergy",
+  conditions: "condition",
+  immunizations: "immunization",
 } as const satisfies {
   [T in Exclude<DeletableUndoRoot, ExcludedUndoRoot>]: KindsRootedAt<T>;
 };
