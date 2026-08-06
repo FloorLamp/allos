@@ -829,7 +829,24 @@ feature is the button; a practice target exists only after the user creates one
 on Wellness or through a protocol — that IS the opt-in, and Stop tracking removes
 the target without erasing its session ledger). A target owned only by ended
 protocols is historical and therefore excluded from this active progress/nudge
-gather. Each behind practice carries an inline
+gather.
+
+**Rhythm retiming (#2188).** A behind practice with an inferred weekly rhythm —
+`inferPracticeSchedule` (`lib/queries/wellness.ts`), the `inferWorkoutSchedule`
+shape over `practice_logs` via the shared core in `lib/weekly-rhythm.ts` — is
+HELD inside `behindPractices` for its next predicted day and released at its
+typical hour, waking-window clamped (`practiceNudgeReleased`,
+`lib/practice.ts`). The refinement only ever moves the send LATER within the
+week and never adds one: a hold day is a day the daily-while-behind rule would
+also have fired on, and once the week's last predicted day passes while still
+behind, the flip-day rule is back so the week's nudge is never silently lost
+(rolling week mode treats every day as the last). No pattern → released
+unconditionally, byte-for-byte today's behavior (#558: unknown is never "every
+day"). Predicted ≠ due (#1505): `frequencyPace` remains the only dueness
+authority, and the bus gate, per-day marker, and ceiling silence are untouched.
+The same inference feeds the calm "usually a session day" note on the
+protocol/practice cards (rendered surfaces, quiet without a pattern), and the
+nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice. Each behind practice carries an inline
 **"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`

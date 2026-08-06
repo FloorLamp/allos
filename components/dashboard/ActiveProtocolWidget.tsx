@@ -97,6 +97,7 @@ export default function ActiveProtocolWidget({
                 todayCount={p.practiceTodayCount}
                 atCeiling={p.adherence?.atCeiling ?? false}
                 today={today}
+                usualSessionDay={p.practiceUsuallyToday}
               />
             )}
 

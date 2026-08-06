@@ -205,6 +205,7 @@ export default function PracticeCard({
         atCeiling={practice.atCeiling}
         today={today}
         defaultDurationMin={practice.previousDurationMin}
+        usualSessionDay={practice.usuallyToday}
         showDetails
       />
 

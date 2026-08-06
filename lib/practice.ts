@@ -6,8 +6,11 @@
 // protocol adherence card, the Active-protocols widget, Upcoming, the Telegram nudge)
 // keys on the SAME computation (the "one question, one computation" rule, #221).
 
+import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./goals";
+import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
+import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
 // `practice:<targetId>`. The SINGLE source of truth for the key — the Upcoming practice
@@ -198,6 +201,95 @@ export function shouldNudgePractice(
   if (state.met || state.atCeiling) return false;
   return state.pace === "behind";
 }
+
+// ---- The rhythm-retimed nudge moment (#2188) --------------------------------
+//
+// When a behind practice HAS an inferred weekly rhythm (lib/weekly-rhythm.ts),
+// the pace nudge WAITS for the practice's next predicted day and fires at its
+// typical hour instead of the first waking tick of the flip day — the message
+// lands when the user can actually act on it. The decision is pure and lives
+// here with the other nudge decisions; the tick supplies the moment.
+//
+// The contact-consent constraints (#2188 item 3) are structural in this function:
+//
+//   • NO PATTERN → released unconditionally, so the caller's existing gates
+//     (behind + waking + per-day marker + bus) produce today's behavior
+//     byte-for-byte.
+//   • Within a week the retimed send is only ever LATER than the flip-day rule:
+//     a hold day is strictly later, and on a predicted day the release minute is
+//     clamped INTO the waking window, so it is never before the first waking tick.
+//   • Never more often: every released day is a day today's daily-while-behind
+//     rule would also have fired on.
+//   • If the week's LAST predicted day passes while still behind, release —
+//     falling back to the flip-day rule so the week's nudge is never silently
+//     lost. Rolling week mode has `daysLeftInWindow` 0 (every day is the last
+//     day), so it can defer within a day but never across days.
+//
+// Predicted ≠ due (#1505): this only DELAYS a send the pace ledger already
+// justified; frequencyPace remains the one dueness authority.
+export interface PracticeNudgeMoment {
+  weekday: number; // profile-local today, 0=Sun … 6=Sat
+  minuteOfDay: number; // profile-local minute of day (0–1439)
+  wakingStartHour: number; // the profile's waking window (#450), hour-typed
+  wakingEndHour: number;
+  // On-days remaining AFTER today in the target's week window, from
+  // FrequencyTargetProgress.daysLeftInWindow (0 in rolling mode).
+  daysLeftInWindow: number;
+}
+
+export function practiceNudgeReleased(
+  rhythm: WeeklyRhythm,
+  moment: PracticeNudgeMoment
+): boolean {
+  if (!rhythm.hasPattern) return true;
+
+  if (rhythm.weekdays.includes(moment.weekday)) {
+    // Today is a predicted day: release at the typical hour, clamped into the
+    // waking window. A wrapped (night-shift) window has no meaningful nearest
+    // bound for an out-of-window hour, so it clamps to the window start.
+    let releaseHour = rhythm.hour;
+    if (
+      !inWakingWindow(
+        releaseHour * 60,
+        moment.wakingStartHour,
+        moment.wakingEndHour
+      )
+    ) {
+      releaseHour =
+        moment.wakingStartHour <= moment.wakingEndHour
+          ? Math.min(
+              Math.max(releaseHour, moment.wakingStartHour),
+              moment.wakingEndHour
+            )
+          : moment.wakingStartHour;
+    }
+    // "At or after the release minute", ordered from the waking-window start so a
+    // wrapped window's post-midnight tail still counts as after its evening head.
+    const start = moment.wakingStartHour * 60;
+    const offset = (m: number) => (m - start + 1440) % 1440;
+    return offset(moment.minuteOfDay) >= offset(releaseHour * 60);
+  }
+
+  // Not a predicted day: hold while a predicted day is still ahead in THIS week;
+  // once the last one has passed, fall back to the flip-day rule.
+  for (let i = 1; i <= Math.min(6, moment.daysLeftInWindow); i++) {
+    if (rhythm.weekdays.includes((moment.weekday + i) % 7)) return false;
+  }
+  return true;
+}
+
+// Display: the inferred rhythm named as DATA, not advice (#2188 item 3 of the
+// surfaces list) — "usually Mon/Wed/Fri". Callers only render it for a real
+// pattern; there is deliberately no phrasing for the no-pattern fallback (#558:
+// no pattern renders nothing).
+export function practiceRhythmDaysText(weekdays: readonly number[]): string {
+  return `usually ${weekdays.map((wd) => WEEKDAYS_SHORT[wd]).join("/")}`;
+}
+
+// Display: the calm rhythm note the practice cards show on a predicted day with
+// no session logged yet (#2188). One string, shared by the wellness card and the
+// protocol surfaces, so the copy cannot drift.
+export const PRACTICE_USUAL_DAY_TEXT = "usually a session day";
 
 // Display: the weekly cadence text for a practice target. "3×/week" for a bare floor,
 // "3–5×/week" for a range. Shared by every surface so the phrasing never drifts.
