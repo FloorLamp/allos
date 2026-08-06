@@ -281,3 +281,83 @@ describe("the re-log confirm copy", () => {
     expect(elapsedPhrase(3 * 24 * 60 * 60_000)).toBe("3 days ago");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The #2106 guard: the `dose-status` affordance declares `outcome-toast`, which is
+// a promise that every caller ANSWERS from markDoseTaken / markDoseSkipped's typed
+// outcome. The registry's internal invariants above can't see a Server Action that
+// quietly drops the outcome and returns void (the household confirm and the
+// attention hero both had) — so this source scan pins the class: a dose resolver
+// called as a bare statement is a discarded outcome, and a discarded outcome is an
+// unconditional confirm waiting to happen.
+// ---------------------------------------------------------------------------
+
+import { readSource, relPath, sourceFiles } from "./sql-scan";
+
+const DOSE_RESOLVERS = ["markDoseTaken", "markDoseSkipped"] as const;
+
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+// The resolver calls in `src` whose result nothing captures: statement position —
+// preceded (after whitespace) by `;`, `{`, `}`, `)` or nothing, with `await`
+// stripped first. A call reached through `=`, `return`, a ternary arm, an arrow
+// body, an argument slot etc. is captured by construction; the core's own
+// `function markDoseTaken(` definition is skipped.
+function discardedResolverCalls(src: string): string[] {
+  const bad: string[] = [];
+  const code = stripComments(src);
+  for (const name of DOSE_RESOLVERS) {
+    const re = new RegExp(String.raw`\b${name}\(`, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code))) {
+      let before = code.slice(0, m.index).replace(/\s+$/, "");
+      if (/\bfunction$/.test(before)) continue;
+      while (/\bawait$/.test(before))
+        before = before.slice(0, -"await".length).replace(/\s+$/, "");
+      const ch = before.at(-1) ?? "";
+      if (ch === "" || ch === ";" || ch === "{" || ch === "}" || ch === ")")
+        bad.push(name);
+    }
+  }
+  return bad;
+}
+
+describe("dose-status callers never discard the typed outcome (#2106)", () => {
+  it("no scanned module calls a dose resolver as a bare statement", () => {
+    const violations: string[] = [];
+    for (const f of sourceFiles()) {
+      for (const name of discardedResolverCalls(readSource(f))) {
+        violations.push(
+          `${relPath(f)}: ${name}(…) called as a bare statement — its typed ` +
+            `DoseTakenOutcome is discarded, so the surface can only confirm ` +
+            `unconditionally. Return the outcome and render it.`
+        );
+      }
+    }
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+  });
+
+  // The guard must be able to fail (the #1893 fixture rule).
+  it("FLAGS a planted bare-statement call and passes captured ones", () => {
+    expect(
+      discardedResolverCalls("markDoseTaken(pid, doseId, null, date);")
+    ).toEqual(["markDoseTaken"]);
+    expect(
+      discardedResolverCalls("{\n  await markDoseTaken(pid, d, null, date);\n}")
+    ).toEqual(["markDoseTaken"]);
+    expect(
+      discardedResolverCalls("const outcome = markDoseTaken(pid, d, null, dt);")
+    ).toEqual([]);
+    expect(
+      discardedResolverCalls("return markDoseSkipped(pid, d, null, dt);")
+    ).toEqual([]);
+    expect(
+      discardedResolverCalls("// markDoseTaken(pid) discussed in prose")
+    ).toEqual([]);
+    expect(
+      discardedResolverCalls("export function markDoseTaken(a: number) {")
+    ).toEqual([]);
+  });
+});

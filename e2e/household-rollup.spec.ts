@@ -55,6 +55,78 @@ function resetHouseholdDose(): void {
   }
 }
 
+// A dedicated item for the stale-tap refusal test (#2106) — created and reset by the
+// test itself so it owns its fixture across --repeat-each runs, and never shared with
+// the confirm/read-only specs above.
+const STALE_TAP_ITEM = "Household Stale Pause";
+
+function seedStaleTapItem(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const existing = db
+      .prepare(`SELECT id FROM intake_items WHERE profile_id = ? AND name = ?`)
+      .get(Number(SEEDED_PROFILE_2), STALE_TAP_ITEM) as
+      | { id: number }
+      | undefined;
+    if (existing) {
+      db.prepare(`DELETE FROM intake_item_logs WHERE item_id = ?`).run(
+        existing.id
+      );
+      db.prepare(`DELETE FROM intake_item_doses WHERE item_id = ?`).run(
+        existing.id
+      );
+      db.prepare(`DELETE FROM intake_items WHERE id = ?`).run(existing.id);
+    }
+    const supp = db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
+      )
+      .run(Number(SEEDED_PROFILE_2), STALE_TAP_ITEM);
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '10 mg', '08:00', 'any', 0)`
+    ).run(Number(supp.lastInsertRowid));
+  } finally {
+    db.close();
+  }
+}
+
+// Pause the stale-tap item AFTER the page has rendered its confirm — the stale-tab
+// scenario the outcome rendering exists for.
+function pauseStaleTapItem(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `UPDATE intake_items SET active = 0 WHERE profile_id = ? AND name = ?`
+    ).run(Number(SEEDED_PROFILE_2), STALE_TAP_ITEM);
+  } finally {
+    db.close();
+  }
+}
+
+function staleTapLogCount(): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM intake_item_logs
+            WHERE item_id IN (
+              SELECT id FROM intake_items WHERE profile_id = ? AND name = ?
+            )`
+        )
+        .get(Number(SEEDED_PROFILE_2), STALE_TAP_ITEM) as { n: number }
+    ).n;
+  } finally {
+    db.close();
+  }
+}
+
 // Sign in as the given credentials in a brand-new, explicitly cookie-less context
 // (so it does NOT inherit the admin storageState). Returns the member's page.
 async function loginAs(
@@ -126,6 +198,12 @@ test.describe("Household view for members (issue #31)", () => {
       doseRow.getByTestId("household-confirm-dose")
     );
 
+    // The confirm is answered from the write's typed outcome (#2106) — success
+    // wording comes from markDoseTaken, not from the button confirming itself.
+    await expect(
+      memberPage.getByTestId("toast").filter({ hasText: "Dose logged" })
+    ).toBeVisible();
+
     // The confirmed dose drops off the card (revalidate) and we STAY on /household
     // — confirming a non-active profile's dose never switches the active profile
     // (openProfileAction would have redirected to "/").
@@ -140,6 +218,36 @@ test.describe("Household view for members (issue #31)", () => {
     );
 
     await memberPage.context().close();
+  });
+
+  test("a stale confirm tap on a since-paused item shows the refusal instead of silence (#2106)", async ({
+    page,
+  }) => {
+    // Runs as the default admin storageState — admin reaches both profiles, so the
+    // household cards carry confirm buttons.
+    seedStaleTapItem();
+    await page.goto("/household");
+    const card = page.locator(
+      `[data-testid="household-card"][data-profile-id="${SEEDED_PROFILE_2}"]`
+    );
+    const doseRow = card
+      .getByTestId("household-due-dose")
+      .filter({ hasText: STALE_TAP_ITEM });
+    await expect(doseRow).toBeVisible();
+
+    // The item is paused AFTER the card rendered its confirm — the stale-tab
+    // scenario. The tap must be answered from the write's typed outcome, not
+    // swallowed into a silent unchanged re-render.
+    pauseStaleTapItem();
+    await settledClick(page, doseRow.getByTestId("household-confirm-dose"));
+
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "Not logged — this item is paused" })
+    ).toBeVisible();
+    // The refusal was honest: nothing was written for the paused item.
+    expect(staleTapLogCount()).toBe(0);
   });
 
   test("a single-profile member has no Household nav and is redirected from the URL", async ({

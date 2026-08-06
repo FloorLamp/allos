@@ -22,6 +22,7 @@ import {
   acknowledgeRestToday,
 } from "@/lib/queries";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 
 // Persist the active profile's dashboard customization: the widget
 // display order and the set of hidden widget ids. Profile-scoped like the other
@@ -191,13 +192,22 @@ export async function dismissAttention(formData: FormData) {
 // markDoseTaken (verifies the dose belongs to this profile via its parent
 // supplement) — the same path the Upcoming page and Telegram callback use — so a
 // dose confirmed here drops off the hero and reflects everywhere. Profile-scoped.
-export async function markAttentionDose(formData: FormData) {
+//
+// The result CARRIES the typed outcome (#2106): the dose-status affordance declares
+// `outcome-toast`, and this action had been dropping the outcome — a stale hero tab's
+// tap on a paused item or a retired dose logged nothing and the row just silently
+// re-rendered, indistinguishable from a lost tap. The hero's button renders every
+// branch through doseConfirmMessage.
+export async function markAttentionDose(
+  formData: FormData
+): Promise<DoseConfirmResult> {
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
-  if (!doseId) return;
-  markDoseTaken(profile.id, doseId, null, today(profile.id));
+  if (!doseId) return { ok: false, error: "Couldn't find that dose." };
+  const outcome = markDoseTaken(profile.id, doseId, null, today(profile.id));
   revalidatePath("/");
   revalidatePath("/upcoming");
   revalidatePath("/nutrition");
   revalidatePath("/medications");
+  return { ok: true, outcome };
 }
