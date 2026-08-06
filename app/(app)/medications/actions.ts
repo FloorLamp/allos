@@ -9,7 +9,7 @@ import {
   restartMedicationCourse,
   insertMedicationSideEffect,
   updateMedicationSideEffect,
-  toggleMedicationSideEffectResolved,
+  setMedicationSideEffectResolved,
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
@@ -49,7 +49,9 @@ export type MedicationAdministrationResult =
 // which own the transactions + ownership checks.
 
 // Stop a medication: close its open course (reason + note) and clear `active`;
-// optionally capture a side effect at stop time.
+// optionally capture a side effect at stop time. The course core returns a typed,
+// changes-checked outcome (#2132) and this action RENDERS it — an already-stopped med
+// or a forged id refuses instead of confirming a write that no-oped.
 export async function stopMedication(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
@@ -60,16 +62,22 @@ export async function stopMedication(formData: FormData): Promise<FormResult> {
     )
     .get(id, profile.id) as
     { active: number; quantity_on_hand: number | null } | undefined;
-  stopMedicationCourses(profile.id, id, {
+  const outcome = stopMedicationCourses(profile.id, id, {
     date: today(profile.id),
     reason: normalizeStopReason(formData.get("stop_reason")),
     note: strOrNull(formData.get("note")),
     effect: strOrNull(formData.get("effect")),
     severity: normalizeSeverity(formData.get("severity")),
   });
+  if (outcome === "not-found") {
+    return formError("Couldn't find that medication.");
+  }
+  if (outcome === "already-stopped") {
+    return formError("Already stopped — nothing changed.");
+  }
   // Stopping a tracked medication clears `active`, removing it from the refill-nudge
   // tracked set — so drop its low-supply episode marker, exactly as Pause does
-  // (`toggleActive`), so a Restart while still low re-fires a fresh nudge instead of
+  // (`setItemActive`), so a Restart while still low re-fires a fresh nudge instead of
   // being silenced by a stale marker (issue #325 parity: Stop/Restart mirrors
   // Pause/Resume).
   if (
@@ -87,13 +95,21 @@ export async function stopMedication(formData: FormData): Promise<FormResult> {
 }
 
 // Restart a medication: open a NEW course dated today and set `active` back on.
+// Renders the course core's typed outcome (#2132): a stale tab's second Restart on an
+// already-open course refuses rather than silently confirming.
 export async function restartMedication(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
-  restartMedicationCourse(profile.id, id, today(profile.id));
+  const outcome = restartMedicationCourse(profile.id, id, today(profile.id));
+  if (outcome === "not-found") {
+    return formError("Couldn't find that medication.");
+  }
+  if (outcome === "already-open") {
+    return formError("Already active — nothing changed.");
+  }
   // Restart re-activates the med, putting a refill-tracked one back INTO the nudge
   // set — the enter-side twin of Stop's leave-side clear above. `leftRefillTrackedSet`
   // only fires on a LEAVE, so drop any lingering low-supply marker here directly, so a
@@ -149,16 +165,35 @@ export async function updateSideEffect(
   return formOk();
 }
 
-export async function toggleSideEffectResolved(
+// Set a side effect's resolved state to the INTENDED value the card rendered
+// ("Mark resolved" posts 1, "Reopen" posts 0) — never a blind toggle, so a stale tab's
+// tap refuses with the state that already holds instead of inverting it (#2133).
+export async function setSideEffectResolved(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that side effect.");
-  toggleMedicationSideEffectResolved(profile.id, id);
-  revalidatePath("/medications");
-  revalidatePath("/");
-  return formOk();
+  const toRaw = String(formData.get("to") ?? "");
+  if (!id || (toRaw !== "0" && toRaw !== "1")) {
+    return formError("Couldn't find that side effect.");
+  }
+  const outcome = setMedicationSideEffectResolved(
+    profile.id,
+    id,
+    toRaw === "1" ? 1 : 0
+  );
+  switch (outcome) {
+    case "not-found":
+      return formError("Couldn't find that side effect.");
+    case "already-resolved":
+      return formError("Already marked resolved — nothing changed.");
+    case "already-open":
+      return formError("Already reopened — nothing changed.");
+    default:
+      revalidatePath("/medications");
+      revalidatePath("/");
+      return formOk();
+  }
 }
 
 export async function deleteSideEffect(

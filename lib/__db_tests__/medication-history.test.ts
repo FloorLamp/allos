@@ -16,7 +16,7 @@ import {
   setMedicationActive,
   insertMedicationSideEffect,
   updateMedicationSideEffect,
-  toggleMedicationSideEffectResolved,
+  setMedicationSideEffectResolved,
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   ownedMedicationId,
@@ -166,11 +166,23 @@ describe("side effect CRUD + promote-to-intolerance", () => {
     expect(effects[0].effect).toBe("Dizzy spells");
     expect(effects[0].severity).toBe("severe");
 
-    // Toggle resolved.
-    toggleMedicationSideEffectResolved(p.profileId, seId);
+    // State-named resolved transitions (#2133): intended-state CAS, typed outcomes;
+    // a repeat of the same intent refuses instead of inverting.
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 1)).toBe(
+      "resolved"
+    );
     expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(1);
-    toggleMedicationSideEffectResolved(p.profileId, seId);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 1)).toBe(
+      "already-resolved"
+    );
+    expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(1);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 0)).toBe(
+      "reopened"
+    );
     expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(0);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 0)).toBe(
+      "already-open"
+    );
 
     // Promote → an allergies row is created and the side effect is resolved.
     const allergiesBefore = (

@@ -23,18 +23,28 @@ import {
   decrementSupply,
   incrementSupply,
   ensureMedicationCourse,
-  setMedicationActive,
   setMedicationEndDate,
+  setCourseStartDate,
   isLinkableSupply,
   deleteAdministrationLog,
   // The ONE intake_item_logs resolution core (#2039) — this action module holds no
   // dose-ledger SQL of its own.
   setDoseStatusCore,
+  // The dose-schedule lifecycle core (#2131) — this action module holds no
+  // retire/version SQL of its own.
+  recordScheduleVersion,
+  retireRemovedDoses,
+  unretireDose,
   // The historical-dose cores keep the shared, kind-neutral names; the aliases only
   // keep them apart from the Server Actions of the same name defined below.
   logHistoricalDose as logHistoricalDoseCore,
   updateHistoricalDose as updateHistoricalDoseCore,
 } from "@/lib/queries";
+import {
+  setIntakeActive,
+  INTAKE_ACTIVE_REFUSAL_TEXT,
+} from "@/lib/intake-active-write";
+import { readForUpdate, casUpdate } from "@/lib/tx";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
@@ -69,10 +79,7 @@ import {
   type CadenceKind,
   type DoseSchedule,
 } from "@/lib/intake-cadence";
-import {
-  getDoseScheduleVersions,
-  invalidateDoseScheduleVersions,
-} from "@/lib/queries";
+import { getDoseScheduleVersions } from "@/lib/queries";
 import {
   formError,
   formOk,
@@ -382,48 +389,9 @@ const insertDoseStmt = () =>
      VALUES (?,?,?,?,?,?,?,?,?)`
   );
 
-// Record ONE version of a dose's schedule, effective from a profile-local calendar day
-// (#1973, migration 151). UPSERT on (dose_id, effective_from): several schedule edits on
-// one day collapse to that day's final state, which is the right grain because dueness is
-// evaluated per DAY. Append-only in every other respect — an earlier version is never
-// rewritten, which is what makes a past day judgeable by the rule that applied then.
-//
-// `created_at` comes from the CLOCK SEAM (sqlNow, #1534) and is deliberately NOT the same
-// value as `effective_from`: a backfilled version records a past effective day while
-// having been written now.
-const insertScheduleVersionStmt = () =>
-  db.prepare(
-    `INSERT INTO intake_dose_schedule_versions
-       (dose_id, effective_from, time_of_day, weekdays, start_date, end_date, created_at)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(dose_id, effective_from) DO UPDATE SET
-       time_of_day = excluded.time_of_day,
-       weekdays    = excluded.weekdays,
-       start_date  = excluded.start_date,
-       end_date    = excluded.end_date,
-       created_at  = excluded.created_at`
-  );
-
-function recordScheduleVersion(
-  doseId: number,
-  effectiveFrom: string,
-  schedule: DoseSchedule
-): void {
-  insertScheduleVersionStmt().run(
-    doseId,
-    effectiveFrom,
-    schedule.time_of_day ?? null,
-    schedule.weekdays ?? null,
-    schedule.start_date ?? null,
-    schedule.end_date ?? null,
-    sqlNow()
-  );
-  // The current-schedule readers memoize this profile's history for a few seconds
-  // (#2066). This is the write whose result is rendered right afterwards — the edited
-  // page, the rebuilt reminder — so it drops the memo rather than waiting out the TTL.
-  // Cheap and rare: recording a version happens on a dose edit, not on a read.
-  invalidateDoseScheduleVersions();
-}
+// The schedule-version writer (recordScheduleVersion) lives with the dose-lifecycle
+// core (#2131, lib/queries/intake/dose-lifecycle.ts) so the dose-edit path and the
+// retire/un-retire transitions share ONE version writer; imported above.
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
 // inside a transaction.
@@ -739,7 +707,7 @@ export async function updateSupplement(
     f.kind,
     f.indicationConditionIdRaw
   );
-  const result = writeTx(() => {
+  const result = writeTx((tx) => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
     // prior refill-tracked state (active + quantity_on_hand) so an edit that turns
@@ -981,20 +949,11 @@ export async function updateSupplement(
     });
     // A dose the user removed is RETIRED (kept, flagged) when adherence logs
     // reference it — hard-deleting would ON DELETE CASCADE away its entire taken
-    // history — and hard-deleted only when no log ever pointed at it. Already-
-    // retired rows are never resubmitted by the form (it only sees live doses),
-    // so both statements skip them to leave history untouched.
-    const placeholders = keptIds.map(() => "?").join(",");
-    db.prepare(
-      `UPDATE intake_item_doses SET retired = 1
-        WHERE item_id = ? AND retired = 0 AND id NOT IN (${placeholders})
-          AND EXISTS (SELECT 1 FROM intake_item_logs l
-                       WHERE l.dose_id = intake_item_doses.id)`
-    ).run(id, ...keptIds);
-    db.prepare(
-      `DELETE FROM intake_item_doses
-        WHERE item_id = ? AND retired = 0 AND id NOT IN (${placeholders})`
-    ).run(id, ...keptIds);
+    // history — and hard-deleted only when no log ever pointed at it. The rule is
+    // executed by the dose-lifecycle core (#2131) inside THIS transaction (the Tx
+    // token), which also closes each retired dose's dueness window as of today so a
+    // later Restore never re-judges the gap.
+    retireRemovedDoses(tx, profile.id, id, keptIds, todayStr);
     reconcilePairs(id, pairs, profile.id);
     // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
@@ -1008,16 +967,9 @@ export async function updateSupplement(
         !!f.isPrn && hasStartedOn && !startedOnRaw
       );
       if (hasStartedOn && hasCourseId) {
-        db.prepare(
-          `UPDATE medication_courses
-              SET started_on = ?
-            WHERE id = ? AND item_id = ?
-              AND EXISTS (
-                SELECT 1 FROM intake_items ii
-                 WHERE ii.id = medication_courses.item_id
-                   AND ii.profile_id = ? AND ii.kind = 'medication'
-              )`
-        ).run(startedOnRaw || null, courseId, id, profile.id);
+        // Through the course core (#2132) inside THIS transaction (the Tx token) — the
+        // course was validated above, so a refusal here is unreachable.
+        setCourseStartDate(tx, profile.id, id, courseId, startedOnRaw || null);
       }
       // End date (#1140 Part D): apply only when it actually changed vs the current
       // latest-course state (re-read under the write lock, the #467 lifecycle-field
@@ -1034,7 +986,13 @@ export async function updateSupplement(
           )
           .get(id) as { stopped_on: string | null } | undefined;
         if ((cur?.stopped_on ?? null) !== endDateNorm) {
-          setMedicationEndDate(profile.id, id, endDateNorm);
+          // Typed outcome (#2132): the ensure-course above guarantees a course exists,
+          // so a refusal here means the med vanished mid-edit — surface it rather than
+          // confirming a write that no-oped.
+          const endOutcome = setMedicationEndDate(profile.id, id, endDateNorm);
+          if (endOutcome === "not-found" || endOutcome === "no-course") {
+            return "course-not-found" as const;
+          }
           deleteProfileSetting(profile.id, refillMarkerKey(id));
         }
       }
@@ -1290,41 +1248,99 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
   return doseStatusResult(outcome);
 }
 
-export async function toggleActive(formData: FormData): Promise<FormResult> {
+export type SetItemActiveResult =
+  | { ok: true; state: "paused" | "resumed" }
+  | { ok: false; error: string };
+
+// Pause or resume an intake item (#2133). STATE-NAMED, not a toggle: the form posts the
+// state its render promised (`to`), the auth-blind core (lib/intake-active-write.ts)
+// compare-and-swaps it inside one IMMEDIATE transaction, and a stale tab's "Pause" on
+// an already-paused item refuses with a typed outcome the row renders — never the old
+// read-then-flip that RESUMED it while toasting "paused". The success words come from
+// the outcome, not the stale render. A medication's course history moves in the same
+// transition (the active=1 ⇔ open-course invariant, via the #2132 course core).
+export async function setItemActive(
+  formData: FormData
+): Promise<SetItemActiveResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that item.");
+  const toRaw = String(formData.get("to") ?? "");
+  if (!id || (toRaw !== "0" && toRaw !== "1")) {
+    return formError("Couldn't find that item.");
+  }
+  const to: 0 | 1 = toRaw === "1" ? 1 : 0;
+  // The refill-tracked input for the #325 marker drop below; the transition itself is
+  // decided by the core, never by this read.
   const row = db
     .prepare(
-      "SELECT active, kind, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+      "SELECT quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as
-    | { active: number; kind: string; quantity_on_hand: number | null }
-    | undefined;
-  if (!row) return formError("Couldn't find that item.");
-  const nextActive: 0 | 1 = row.active ? 0 : 1;
-  if (row.kind === "medication") {
-    // Keep the medication's course history in sync with the plain Pause/Resume
-    // toggle so `active` can't desync from the open-course state.
-    setMedicationActive(profile.id, id, nextActive, today(profile.id));
-  } else {
-    db.prepare(
-      "UPDATE intake_items SET active = ? WHERE id = ? AND profile_id = ?"
-    ).run(nextActive, id, profile.id);
+    .get(id, profile.id) as { quantity_on_hand: number | null } | undefined;
+  const outcome = setIntakeActive(profile.id, id, to);
+  if (outcome !== "paused" && outcome !== "resumed") {
+    return formError(INTAKE_ACTIVE_REFUSAL_TEXT[outcome]);
   }
   // Pausing a tracked item removes it from the refill-nudge tracked set; drop its
   // low-supply episode marker so resuming it while still low re-fires a fresh nudge
-  // (issue #325). No-op on resume, or when the item wasn't refill-tracked.
+  // (issue #325). No-op on resume (the transition fired means prior state was active),
+  // or when the item wasn't refill-tracked.
   if (
+    outcome === "paused" &&
+    row &&
     leftRefillTrackedSet(
-      { active: !!row.active, quantityOnHand: row.quantity_on_hand },
-      { active: !!nextActive, quantityOnHand: row.quantity_on_hand }
+      { active: true, quantityOnHand: row.quantity_on_hand },
+      { active: false, quantityOnHand: row.quantity_on_hand }
     )
   ) {
     deleteProfileSetting(profile.id, refillMarkerKey(id));
   }
   revalidateIntake();
-  return formOk();
+  return { ok: true, state: outcome };
+}
+
+// Restore a retired dose to the schedule (#2131) — the un-retire the retire never had.
+// Thin boundary: auth here, the guarded transition (retired? conflicting live slot?)
+// in the dose-lifecycle core, whose typed outcome is rendered verbatim — never an
+// unconditional confirm. Success returns the restored dose so the open edit form can
+// show the row (and keep it across its own save) without a refetch.
+export type RestoreDoseResult =
+  | {
+      ok: true;
+      dose: {
+        id: number;
+        amount: string | null;
+        time_of_day: string | null;
+        food_timing: FoodTiming;
+        weekdays: string | null;
+        start_date: string | null;
+        end_date: string | null;
+      };
+    }
+  | { ok: false; error: string };
+
+export async function restoreDose(
+  formData: FormData
+): Promise<RestoreDoseResult> {
+  const { profile } = await requireWriteAccess();
+  const doseId = Number(formData.get("dose_id"));
+  if (!doseId) return formError("Couldn't find that dose.");
+  const outcome = unretireDose(profile.id, doseId);
+  switch (outcome.kind) {
+    case "restored": {
+      revalidateIntake();
+      const { item_id: _itemId, ...dose } = outcome.dose;
+      return { ok: true, dose };
+    }
+    case "schedule-conflict":
+      return formError(
+        "A live dose already covers that time slot — edit it instead of restoring this one."
+      );
+    case "not-retired":
+      return formError("That dose is already on the schedule.");
+    case "not-found":
+    default:
+      return formError("Couldn't find that dose.");
+  }
 }
 
 export async function deleteSupplement(
@@ -1485,32 +1501,51 @@ export async function acceptSuggestion(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that suggestion.");
-  const s = db
-    .prepare(
-      "SELECT * FROM intake_item_suggestions WHERE id = ? AND status = 'pending' AND profile_id = ?"
-    )
-    .get(id, profile.id) as
-    | {
-        name: string;
-        dosage: string | null;
-        time_of_day: string | null;
-        food_timing: FoodTiming;
-        condition: string;
-        obligation: string;
-        brand: string | null;
-        product: string | null;
-        situation: string | null;
-        rationale: string;
-      }
-    | undefined;
-  if (!s) return formError("That suggestion is no longer available.");
-  // Parse the free-text dosage ("5–10 g once daily") into a clean amount and
-  // intake count, rather than dumping it all into one dose's amount.
-  const parsed = parseDosage(s.dosage);
-  const amount = parsed.amount ?? s.dosage;
-  const time = s.time_of_day ?? parsed.timeOfDay ?? null;
-  const times = spreadDoseTimes(parsed.perDay, time);
-  writeTx(() => {
+  // The WHOLE accept — the pending check, the claim, and the item + dose inserts — runs
+  // inside ONE IMMEDIATE transaction (#2139). The claim is a compare-and-swap on
+  // status='pending' via the Tx-token helpers, so two concurrent accepts (a double-tap
+  // across a slow response, two devices) produce exactly one medication and one honest
+  // refusal — the old guard was a plain read before the transaction, and both racers
+  // passed it.
+  const accepted = writeTx((tx): boolean => {
+    const s = readForUpdate<{
+      status: string;
+      name: string;
+      dosage: string | null;
+      time_of_day: string | null;
+      food_timing: FoodTiming;
+      condition: string;
+      obligation: string;
+      brand: string | null;
+      product: string | null;
+      situation: string | null;
+      rationale: string;
+    }>(
+      tx,
+      db.prepare(
+        "SELECT * FROM intake_item_suggestions WHERE id = ? AND profile_id = ?"
+      ),
+      id,
+      profile.id
+    );
+    if (!s || s.status !== "pending") return false;
+    // Claim the suggestion FIRST: the expectation lives in the WHERE, and only the
+    // accept whose UPDATE lands may mint the item.
+    const claim = casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ? AND status = 'pending'"
+      ),
+      id,
+      profile.id
+    );
+    if (claim.kind === "stale") return false;
+    // Parse the free-text dosage ("5–10 g once daily") into a clean amount and
+    // intake count, rather than dumping it all into one dose's amount.
+    const parsed = parseDosage(s.dosage);
+    const amount = parsed.amount ?? s.dosage;
+    const time = s.time_of_day ?? parsed.timeOfDay ?? null;
+    const times = spreadDoseTimes(parsed.perDay, time);
     // Link an accepted situational suggestion to its situation ROW (#560).
     const situationId =
       s.condition === "situational" && s.situation
@@ -1551,10 +1586,9 @@ export async function acceptSuggestion(
       })),
       today(profile.id)
     );
-    db.prepare(
-      "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ?"
-    ).run(id, profile.id);
+    return true;
   });
+  if (!accepted) return formError("That suggestion is no longer available.");
   revalidateIntake();
   return formOk();
 }

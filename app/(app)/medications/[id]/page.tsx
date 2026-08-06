@@ -218,6 +218,7 @@ export default async function MedicationDetailPage(props: {
             <MedicationCard
               supplement={m.med}
               doses={m.doses}
+              retiredDoses={m.retiredDoses}
               allSupplements={data.allSupplements}
               stackItems={data.stackItems}
               pgxVariants={data.pgxVariants}

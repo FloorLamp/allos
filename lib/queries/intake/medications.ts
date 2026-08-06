@@ -4,7 +4,8 @@
 // intake_items JOIN.
 // Medication history / lifecycle: courses (episodes), active-flag sync, side
 // effects and their promotion to an allergy row.
-import { db, today, writeTx } from "../../db";
+import { db, today, writeTx, type Tx } from "../../db";
+import { casUpdate, readForUpdate } from "../../tx";
 import { sqlNow } from "../../clock";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { strengthFromName } from "../../prescription-parse";
@@ -21,6 +22,9 @@ import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
 import type { IntakeObligation } from "../../types";
+// Type-only: the shared pause/resume outcome vocabulary lives with the kind-agnostic
+// gate (lib/intake-active-write.ts); the medication half returns the same words.
+import type { IntakeActiveOutcome } from "../../intake-active-write";
 
 // The pediatric label-dosing context (#798) for a medication form: the profile's age
 // in months + its latest recorded weight, so a PRN med form (full or the #843 quick-
@@ -439,10 +443,48 @@ export function ownedMedicationId(
   return row ? row.id : null;
 }
 
+// ---- The course-transition write core (#2132) ------------------------------
+//
+// The invariant "intake_items.active = 1 ⇔ an open (stopped_on IS NULL) course exists"
+// is enforced HERE, structurally: medication_courses is registered in
+// STATEFUL_WRITE_TABLES with this module as its only core, so no other module can close
+// or open a course without passing a transition below — each of which moves `active` in
+// the SAME transaction. Every transition returns a typed, changes-checked outcome
+// (#232): a forged id, an already-stopped med, or an already-open course is a refusal
+// the caller renders, never a silent no-op behind an unconditional formOk(). The
+// in-transaction reads and compare-and-swaps use the Tx-token helpers (lib/tx.ts), so a
+// guard evaluated outside the transaction cannot typecheck.
+
+// The medication row a transition acts on, read INSIDE the transaction (ownership +
+// kind + current flag in one guard read).
+function medicationForUpdate(
+  tx: Tx,
+  profileId: number,
+  itemId: number
+): { active: number } | undefined {
+  return readForUpdate<{ active: number }>(
+    tx,
+    db.prepare(
+      "SELECT active FROM intake_items WHERE id = ? AND profile_id = ? AND kind = 'medication'"
+    ),
+    itemId,
+    profileId
+  );
+}
+
+export type CourseStopOutcome =
+  | "stopped"
+  | "already-stopped"
+  | "synced"
+  | "not-found";
+
 // Stop a medication: close its open course(s) (stopped_on = date + reason, note
-// appended) AND clear the live `active` flag so scheduling/reminders stop.
-// Optionally records a side effect linked to the just-closed course. All within
-// one transaction. Ownership is verified first; a forged id is a no-op.
+// appended) AND clear the live `active` flag so scheduling/reminders stop, in one
+// transaction. Optionally records a side effect linked to the just-closed course.
+// Refusals: `not-found` (forged/cross-profile id), `already-stopped` (no open course,
+// active already 0). `synced` repairs the one remaining state — no open course but
+// active still 1 — by clearing the flag, which upholds the invariant without minting
+// course history.
 export function stopMedicationCourses(
   profileId: number,
   itemId: number,
@@ -453,19 +495,36 @@ export function stopMedicationCourses(
     effect?: string | null;
     severity?: string | null;
   }
-): void {
-  if (ownedMedicationId(profileId, itemId) == null) return;
-  writeTx(() => {
+): CourseStopOutcome {
+  return writeTx((tx): CourseStopOutcome => {
+    const item = medicationForUpdate(tx, profileId, itemId);
+    if (!item) return "not-found";
     const openCourses = db
       .prepare(
         "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL ORDER BY started_on, id"
       )
       .all(itemId) as { id: number }[];
-    db.prepare(
-      `UPDATE medication_courses
-          SET stopped_on = ?, stop_reason = ?, notes = COALESCE(?, notes)
-        WHERE item_id = ? AND stopped_on IS NULL`
-    ).run(opts.date, opts.reason, opts.note ?? null, itemId);
+    // The close carries its expectation in the WHERE (stopped_on IS NULL): `stale`
+    // means there was nothing open to stop.
+    const closed = casUpdate(
+      tx,
+      db.prepare(
+        `UPDATE medication_courses
+            SET stopped_on = ?, stop_reason = ?, notes = COALESCE(?, notes)
+          WHERE item_id = ? AND stopped_on IS NULL`
+      ),
+      opts.date,
+      opts.reason,
+      opts.note ?? null,
+      itemId
+    );
+    if (closed.kind === "stale") {
+      if (item.active !== 1) return "already-stopped";
+      db.prepare(
+        "UPDATE intake_items SET active = 0 WHERE id = ? AND profile_id = ?"
+      ).run(itemId, profileId);
+      return "synced";
+    }
     db.prepare(
       "UPDATE intake_items SET active = 0 WHERE id = ? AND profile_id = ?"
     ).run(itemId, profileId);
@@ -479,33 +538,49 @@ export function stopMedicationCourses(
          VALUES (?,?,?,?,?,0)`
       ).run(itemId, courseId, opts.effect, opts.severity ?? null, opts.date);
     }
+    return "stopped";
   });
 }
 
-// Restart a medication: open a NEW course (preserving prior courses) and set
-// `active` back on. Guarded so it never stacks a second open course.
+export type CourseRestartOutcome =
+  | "restarted"
+  | "already-open"
+  | "synced"
+  | "not-found";
+
+// Restart a medication: open a NEW course (preserving prior courses) and set `active`
+// back on. Refusals: `not-found`, `already-open` (an open course exists and the med is
+// already active — a stale tab's second Restart). `synced` repairs the open-course/
+// inactive desync by setting the flag without stacking a second open course.
 export function restartMedicationCourse(
   profileId: number,
   itemId: number,
   date: string
-): void {
-  if (ownedMedicationId(profileId, itemId) == null) return;
-  writeTx(() => {
-    const openCount = (
-      db
-        .prepare(
-          "SELECT COUNT(*) AS c FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL"
-        )
-        .get(itemId) as { c: number }
-    ).c;
-    if (openCount === 0) {
+): CourseRestartOutcome {
+  return writeTx((tx): CourseRestartOutcome => {
+    const item = medicationForUpdate(tx, profileId, itemId);
+    if (!item) return "not-found";
+    const open = readForUpdate<{ id: number }>(
+      tx,
       db.prepare(
-        "INSERT INTO medication_courses (item_id, started_on, stopped_on) VALUES (?,?,NULL)"
-      ).run(itemId, date);
+        "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL LIMIT 1"
+      ),
+      itemId
+    );
+    if (open) {
+      if (item.active === 1) return "already-open";
+      db.prepare(
+        "UPDATE intake_items SET active = 1 WHERE id = ? AND profile_id = ?"
+      ).run(itemId, profileId);
+      return "synced";
     }
+    db.prepare(
+      "INSERT INTO medication_courses (item_id, started_on, stopped_on) VALUES (?,?,NULL)"
+    ).run(itemId, date);
     db.prepare(
       "UPDATE intake_items SET active = 1 WHERE id = ? AND profile_id = ?"
     ).run(itemId, profileId);
+    return "restarted";
   });
 }
 
@@ -521,80 +596,150 @@ export function restartMedicationCourse(
 //     (active stays 0; the invariant is unaffected) rather than manufacturing spurious
 //     course history. This is the sole in-place stopped_on write, kept here so no other
 //     path hand-writes the column. Ownership is verified; a forged id is a no-op.
+export type CourseEndDateOutcome =
+  | CourseStopOutcome
+  | CourseRestartOutcome
+  | "reactivated"
+  | "corrected"
+  | "no-course";
+
 export function setMedicationEndDate(
   profileId: number,
   itemId: number,
   endDate: string | null
-): void {
-  if (ownedMedicationId(profileId, itemId) == null) return;
-  writeTx(() => {
+): CourseEndDateOutcome {
+  return writeTx((tx): CourseEndDateOutcome => {
+    if (!medicationForUpdate(tx, profileId, itemId)) return "not-found";
     if (endDate == null) {
-      restartMedicationCourse(profileId, itemId, today(profileId));
-      return;
+      // Clearing the end date REACTIVATES via the shared restart core (nested writeTx
+      // is a SAVEPOINT); its refusals pass through so a stale form can't silently
+      // re-confirm.
+      const r = restartMedicationCourse(profileId, itemId, today(profileId));
+      return r === "restarted" ? "reactivated" : r;
     }
-    const openCourse = db
-      .prepare(
+    const openCourse = readForUpdate<{ id: number }>(
+      tx,
+      db.prepare(
         "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL ORDER BY started_on, id LIMIT 1"
-      )
-      .get(itemId) as { id: number } | undefined;
+      ),
+      itemId
+    );
     if (openCourse) {
       // Close the open course as of the given date (active → 0), through the shared stop
       // core so the active-flag sync + course close stay identical to the Stop button.
-      stopMedicationCourses(profileId, itemId, {
+      return stopMedicationCourses(profileId, itemId, {
         date: endDate,
         reason: "course_finished",
       });
-      return;
     }
     // No open course — correct the LATEST closed course's end date in place. Active is
     // already 0, so the invariant holds without touching it; no new course row is minted.
-    const latest = db
-      .prepare(
+    const latest = readForUpdate<{ id: number }>(
+      tx,
+      db.prepare(
         "SELECT id FROM medication_courses WHERE item_id = ? ORDER BY started_on DESC, id DESC LIMIT 1"
-      )
-      .get(itemId) as { id: number } | undefined;
-    if (latest) {
+      ),
+      itemId
+    );
+    if (!latest) return "no-course";
+    const corrected = casUpdate(
+      tx,
       db.prepare(
         "UPDATE medication_courses SET stopped_on = ? WHERE id = ? AND item_id = ?"
-      ).run(endDate, latest.id, itemId);
-    }
+      ),
+      endDate,
+      latest.id,
+      itemId
+    );
+    return corrected.kind === "applied" ? "corrected" : "no-course";
   });
 }
 
-// Keep a medication's course history in sync with a plain active-flag toggle
-// (the Pause/Resume control). Pausing closes the open course (no reason);
-// resuming opens a fresh one when none is open. Ownership is verified first
-// (matching its stop/restart siblings) so a forged / cross-profile id is a no-op.
+// Keep a medication's course history in sync with the Pause/Resume control (#2133):
+// pausing closes the open course (no reason); resuming opens a fresh one when none is
+// open. The transition is STATE-NAMED — `to` is the intended state, compare-and-swapped
+// against the current flag inside the transaction — so a stale tab's "Pause" on an
+// already-paused med refuses with `already-paused` instead of silently resuming it.
+// Shares IntakeActiveOutcome with the supplement core (lib/intake-active-write.ts), the
+// kind-agnostic gate the Server Action calls.
 export function setMedicationActive(
   profileId: number,
   itemId: number,
-  active: 0 | 1,
+  to: 0 | 1,
   date: string
-): void {
-  if (ownedMedicationId(profileId, itemId) == null) return;
-  writeTx(() => {
-    db.prepare(
-      "UPDATE intake_items SET active = ? WHERE id = ? AND profile_id = ?"
-    ).run(active, itemId, profileId);
-    if (active === 0) {
+): IntakeActiveOutcome {
+  return writeTx((tx): IntakeActiveOutcome => {
+    const item = medicationForUpdate(tx, profileId, itemId);
+    if (!item) return "not-found";
+    if (item.active === to) {
+      return to === 1 ? "already-active" : "already-paused";
+    }
+    const flipped = casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE intake_items SET active = ? WHERE id = ? AND profile_id = ? AND active = ?"
+      ),
+      to,
+      itemId,
+      profileId,
+      to === 1 ? 0 : 1
+    );
+    if (flipped.kind === "stale") {
+      // Unreachable inside the transaction after the guard read; kept so the write can
+      // never be confirmed without having landed.
+      return to === 1 ? "already-active" : "already-paused";
+    }
+    if (to === 0) {
       db.prepare(
         "UPDATE medication_courses SET stopped_on = ? WHERE item_id = ? AND stopped_on IS NULL"
       ).run(date, itemId);
     } else {
-      const openCount = (
-        db
-          .prepare(
-            "SELECT COUNT(*) AS c FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL"
-          )
-          .get(itemId) as { c: number }
-      ).c;
-      if (openCount === 0) {
+      const open = readForUpdate<{ id: number }>(
+        tx,
+        db.prepare(
+          "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL LIMIT 1"
+        ),
+        itemId
+      );
+      if (!open) {
         db.prepare(
           "INSERT INTO medication_courses (item_id, started_on, stopped_on) VALUES (?,?,NULL)"
         ).run(itemId, date);
       }
     }
+    return to === 1 ? "resumed" : "paused";
   });
+}
+
+// Set a course's started_on (the edit form's course-start field, #1140; and the
+// historical-PRN backdated course extension, #1933). Runs INSIDE the caller's
+// transaction — the Tx token is the proof — and is changes-checked: `not-found` means
+// the (course, item, profile, kind) scope didn't match and nothing was written.
+export function setCourseStartDate(
+  tx: Tx,
+  profileId: number,
+  itemId: number,
+  courseId: number,
+  startedOn: string | null
+): "updated" | "not-found" {
+  const res = casUpdate(
+    tx,
+    db.prepare(
+      `UPDATE medication_courses
+          SET started_on = ?
+        WHERE id = ? AND item_id = ?
+          AND EXISTS (
+            SELECT 1 FROM intake_items ii
+             WHERE ii.id = medication_courses.item_id
+               AND ii.profile_id = ? AND ii.kind = 'medication'
+          )`
+    ),
+    startedOn,
+    courseId,
+    itemId,
+    profileId
+  );
+  return res.kind === "applied" ? "updated" : "not-found";
 }
 
 // Add a side effect to a medication. course_id is validated to belong to the same
@@ -675,14 +820,51 @@ export function updateMedicationSideEffect(
   );
 }
 
-export function toggleMedicationSideEffectResolved(
+export type SideEffectResolvedOutcome =
+  | "resolved"
+  | "reopened"
+  | "already-resolved"
+  | "already-open"
+  | "not-found";
+
+// Set a side effect's resolved flag to an INTENDED state (#2133's sibling fix): the old
+// `SET resolved = 1 - resolved` blind toggle inverted a stale tab's tap. The caller
+// posts the state its render promised ("Mark resolved" / "Reopen"), the compare-and-swap
+// runs inside the transaction, and a mismatch refuses with the state that already holds.
+export function setMedicationSideEffectResolved(
   profileId: number,
-  id: number
-): void {
-  if (!getOwnedSideEffect(profileId, id)) return;
-  db.prepare(
-    "UPDATE intake_item_side_effects SET resolved = 1 - resolved WHERE id = ?"
-  ).run(id);
+  id: number,
+  to: 0 | 1
+): SideEffectResolvedOutcome {
+  return writeTx((tx): SideEffectResolvedOutcome => {
+    const row = readForUpdate<{ resolved: number }>(
+      tx,
+      db.prepare(
+        `SELECT se.resolved FROM intake_item_side_effects se
+           JOIN intake_items ii ON ii.id = se.item_id
+          WHERE se.id = ? AND ii.profile_id = ?`
+      ),
+      id,
+      profileId
+    );
+    if (!row) return "not-found";
+    if (row.resolved === to) {
+      return to === 1 ? "already-resolved" : "already-open";
+    }
+    const res = casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE intake_item_side_effects SET resolved = ? WHERE id = ? AND resolved = ?"
+      ),
+      to,
+      id,
+      to === 1 ? 0 : 1
+    );
+    if (res.kind === "stale") {
+      return to === 1 ? "already-resolved" : "already-open";
+    }
+    return to === 1 ? "resolved" : "reopened";
+  });
 }
 
 export function deleteMedicationSideEffect(

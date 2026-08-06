@@ -1,7 +1,7 @@
 // SERVER-ACTION TIER — supplement/intake write path.
 //
 // Covers addSupplement (manual source), the refill invariant on toggleTaken
-// (decrement on confirm / re-increment on untoggle), toggleActive, a
+// (decrement on confirm / re-increment on untoggle), setItemActive, a
 // kind='medication' create, and the updateSupplement dose reconcile —
 // specifically that a schedule edit can never destroy or rewrite adherence
 // history (removed-but-logged doses are retired, not cascaded; confirmed
@@ -15,7 +15,7 @@ import {
   updateSupplement,
   toggleTaken,
   setDoseStatus,
-  toggleActive,
+  setItemActive,
   dismissIntakeFinding,
 } from "@/app/(app)/nutrition/supplement-actions";
 import {
@@ -503,15 +503,52 @@ describe("updateSupplement dose reconcile", () => {
   });
 });
 
-describe("toggleActive", () => {
-  it("flips the active flag for the acting profile's item", async () => {
+describe("setItemActive", () => {
+  it("moves the active flag to the POSTED state for the acting profile's item", async () => {
     const { profile } = seedActor();
     await addSupplement(fd({ name: "Magnesium" }));
     const id = getSupplements(profile.id)[0].id;
     expect(itemRow(id).active).toBe(1);
 
-    await toggleActive(fd({ id }));
+    const res = await setItemActive(fd({ id, to: "0" }));
+    expect(res).toEqual({ ok: true, state: "paused" });
     expect(itemRow(id).active).toBe(0);
+  });
+
+  it("REFUSES a stale tab's intent instead of inverting it (#2133)", async () => {
+    const { profile } = seedActor();
+    await addSupplement(fd({ name: "Zinc" }));
+    const id = getSupplements(profile.id)[0].id;
+    // Someone else already paused the item; a tab still rendering "Pause" posts to=0.
+    await setItemActive(fd({ id, to: "0" }));
+    const res = await setItemActive(fd({ id, to: "0" }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/Already paused/);
+    // The wrong write did NOT happen: the item stays paused.
+    expect(itemRow(id).active).toBe(0);
+  });
+
+  it("medication pause/resume keeps course history in sync and refuses repeats", async () => {
+    const { profile } = seedActor();
+    await addSupplement(fd({ name: "Lisinopril", kind: "medication" }));
+    const id = getSupplements(profile.id)[0].id;
+    const openCourses = () =>
+      getMedicationCourses(profile.id).filter((c) => c.stopped_on == null);
+    expect(openCourses()).toHaveLength(1);
+
+    const paused = await setItemActive(fd({ id, to: "0" }));
+    expect(paused).toEqual({ ok: true, state: "paused" });
+    expect(itemRow(id).active).toBe(0);
+    expect(openCourses()).toHaveLength(0);
+
+    const again = await setItemActive(fd({ id, to: "0" }));
+    expect(again.ok).toBe(false);
+    expect(openCourses()).toHaveLength(0);
+
+    const resumed = await setItemActive(fd({ id, to: "1" }));
+    expect(resumed).toEqual({ ok: true, state: "resumed" });
+    expect(itemRow(id).active).toBe(1);
+    expect(openCourses()).toHaveLength(1);
   });
 });
 
@@ -565,28 +602,40 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     );
   });
 
-  it("toggleActive clears the marker on pause and does not recreate it on resume", async () => {
+  it("setItemActive clears the marker on pause and does not recreate it on resume", async () => {
     const { profile, id } = await seedTrackedWithMarker();
     // Pause: leaves the tracked set → marker cleared.
-    await toggleActive(fd({ id }));
+    await setItemActive(fd({ id, to: "0" }));
     expect(itemRow(id).active).toBe(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
 
     // Resume: re-enters the tracked set but the write path never re-creates a marker
     // (a fresh nudge is the tick's job once it's low again).
-    await toggleActive(fd({ id }));
+    await setItemActive(fd({ id, to: "1" }));
     expect(itemRow(id).active).toBe(1);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 
-  it("toggleActive on an UNtracked item leaves any unrelated marker untouched", async () => {
+  it("a REFUSED pause never clears the marker (#2133 × #325)", async () => {
+    const { profile, id } = await seedTrackedWithMarker();
+    await setItemActive(fd({ id, to: "0" }));
+    // Marker gone after the real pause; plant a fresh one and refuse a repeat pause.
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-02");
+    const res = await setItemActive(fd({ id, to: "0" }));
+    expect(res.ok).toBe(false);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
+      "2026-07-02"
+    );
+  });
+
+  it("setItemActive on an UNtracked item leaves any unrelated marker untouched", async () => {
     const { profile } = seedActor();
     await addSupplement(fd({ name: "Magnesium" })); // no quantity tracking
     const id = getSupplements(profile.id)[0].id;
     // A stray marker on this untracked item is not this seam's concern; pausing an
     // item that was never in the tracked set is not a "left the set" transition.
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
-    await toggleActive(fd({ id }));
+    await setItemActive(fd({ id, to: "0" }));
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
       "2026-07-01"
     );
@@ -604,14 +653,14 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     );
     const id = getSupplements(profile.id)[0].id;
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
-    await toggleActive(fd({ id }));
+    await setItemActive(fd({ id, to: "0" }));
     expect(itemRow(id).active).toBe(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 });
 
 // Refill-marker cleanup on the medication Stop/Restart lifecycle (issue #603). The
-// eager clear existed on Pause/Resume (toggleActive) but Stop/Restart cleared
+// eager clear existed on Pause/Resume (setItemActive) but Stop/Restart cleared
 // nothing — so a Stop then Restart within the same hour (before a notify tick's
 // self-healing sweep) stranded a stale low-supply marker and no refill nudge
 // re-fired until an actual refill. Stop now mirrors Pause (leaves the tracked set →

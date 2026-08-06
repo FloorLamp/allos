@@ -9,6 +9,7 @@
 import {
   getSupplements,
   getSupplementDoses,
+  getRetiredDoses,
   getTakenDoseTimes,
   getSkippedDoseIds,
   getIntakeLogsInRange,
@@ -110,6 +111,9 @@ import { isPrn } from "@/lib/supplement-schedule";
 export interface MedCardData {
   med: Supplement;
   doses: SupplementDose[];
+  // Retired doses (#2131): the edit form's "Retired doses" section with its Restore
+  // affordance. Kept OUT of `doses` so no current-schedule consumer can act on one.
+  retiredDoses: SupplementDose[];
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
@@ -207,6 +211,12 @@ export function loadMedicationsData(
     const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d);
     dosesBySupp.set(d.item_id, arr);
+  }
+  const retiredBySupp = new Map<number, SupplementDose[]>();
+  for (const d of getRetiredDoses(profileId)) {
+    const arr = retiredBySupp.get(d.item_id) ?? [];
+    arr.push(d);
+    retiredBySupp.set(d.item_id, arr);
   }
 
   const todayStr = today(profileId);
@@ -383,6 +393,7 @@ export function loadMedicationsData(
     return {
       med,
       doses: dosesBySupp.get(med.id) ?? [],
+      retiredDoses: retiredBySupp.get(med.id) ?? [],
       courses: coursesByItem.get(med.id) ?? [],
       sideEffects: sideEffectsByItem.get(med.id) ?? [],
       strip: supplementAdherenceStrip(
