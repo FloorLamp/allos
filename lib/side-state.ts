@@ -155,4 +155,14 @@ export const SIDE_STATE_KEY_SHAPES: readonly string[] = [
 export const NON_SIDE_STATE_KEYS: readonly {
   literal: string;
   reason: string;
-}[] = [];
+}[] = [
+  {
+    literal: "dismissed_at",
+    reason:
+      "A COLUMN NAME, declared in the #2205 temporal-column index (lib/time-columns.ts) " +
+      "as upcoming_dismissals\u2019 lifecycle instant — WHEN a dismissal was made. The " +
+      "dismissal family\u2019s side-state KEY is `signal_key`, registered in " +
+      "DISMISSAL_KEY_REGISTRY; this timestamp mints nothing and keys nothing, and it " +
+      "matches only because the shape scan looks for the `dismissed_` prefix.",
+  },
+];
