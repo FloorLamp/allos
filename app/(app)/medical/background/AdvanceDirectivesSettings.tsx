@@ -70,12 +70,16 @@ export default function AdvanceDirectivesSettings({
     });
   }
 
+  // `next` is derived from the CURRENT render's draft, never inside a setState
+  // updater: the updater can be invoked more than once and must stay pure, so
+  // firing the save from in there would queue a second component's state update
+  // from another component's render — the React error that leaves a controlled
+  // input reverted to its last committed value. `immediate` marks the controls that
+  // save on change (select / date) rather than on blur.
   const update = (patch: Partial<Draft>, immediate: boolean) => {
-    setDraft((d) => {
-      const next = { ...d, ...patch };
-      if (immediate) save(next);
-      return next;
-    });
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    if (immediate) save(next);
   };
 
   return (

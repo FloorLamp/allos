@@ -1,5 +1,22 @@
 import { test, expect } from "./fixtures";
-import { settledFillSave, settledSelectSave } from "./helpers";
+import { settledFill, settledSelectSave } from "./helpers";
+import type { Locator, Page } from "@playwright/test";
+
+// A free-text field here saves ON BLUR (the settings-form contract), so the fill
+// alone writes nothing: move focus off the field, then wait out the card's autosave
+// before touching the next control — otherwise the next interaction races a save
+// still in flight. settledFill owns the pre-hydration retry; the blur is what
+// commits; the spinner going away is what says it landed.
+async function fillAndSave(
+  page: Page,
+  field: Locator,
+  value: string,
+  scope: Locator
+): Promise<void> {
+  await settledFill(page, field, value);
+  await field.blur();
+  await expect(scope.getByLabel("Saving")).toHaveCount(0);
+}
 
 // Advance directives on the emergency card (#1848): code status, healthcare proxy,
 // organ-donor status and the documents-on-file line — the first facts an ED asks
@@ -32,19 +49,19 @@ test("code status, proxy and donor status save inline and render on the card and
     "dnr-dni",
     settings
   );
-  await settledFillSave(
+  await fillAndSave(
     page,
     settings.getByTestId("code-status-note"),
     "Intubate for a reversible cause",
     settings
   );
-  await settledFillSave(
+  await fillAndSave(
     page,
     settings.getByTestId("proxy-name"),
     "Robin Reyes",
     settings
   );
-  await settledFillSave(
+  await fillAndSave(
     page,
     settings.getByTestId("proxy-phone"),
     "555-0100",
@@ -56,15 +73,18 @@ test("code status, proxy and donor status save inline and render on the card and
     "registered",
     settings
   );
-  await settledFillSave(
+  await fillAndSave(
     page,
     settings.getByTestId("directive-documents"),
     "POLST on the fridge",
     settings
   );
 
-  // The card carries all four facts, with the free-text qualifier verbatim.
-  await page.reload();
+  // The card carries every recorded fact, with the free-text qualifier verbatim.
+  // Asserted on the LIVE page first: each save revalidates /profile, so the card
+  // below the form re-renders with the new fact — that is the signal the write
+  // landed, and it is what makes the reload below a persistence check rather than
+  // a race.
   const directives = page.getByTestId("emergency-directives");
   await expect(directives).toBeVisible();
   await expect(page.getByTestId("emergency-code-status")).toContainText(
@@ -95,6 +115,10 @@ test("code status, proxy and donor status save inline and render on the card and
   await expect(passportDirectives).toContainText("Robin Reyes");
 
   // The values survive a reload (they are stored profile facts, not form state).
+  await page.reload();
+  await expect(page.getByTestId("emergency-code-status")).toContainText(
+    "DNR / DNI"
+  );
   await expect(settings.getByTestId("code-status-select")).toHaveValue(
     "dnr-dni"
   );
