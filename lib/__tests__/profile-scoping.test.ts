@@ -462,8 +462,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   // token-resolution path, verified by hand.
   {
     file: "lib/integrations/connections.ts",
-    includes:
-      "DELETE FROM integration_sync_events WHERE at < datetime('now', ?)",
+    includes: "DELETE FROM integration_sync_events WHERE at < ?",
     why: "pruneSyncEvents: a GLOBAL retention prune (one call per tick clears every profile's aged sync events, keeping the newest per (profile_id, provider)). profile_id appears only in the retained-newest GROUP BY subquery, never a predicate — deliberately profile-agnostic, mirroring sweepDeletedRows/sweepReplayedKeys.",
   },
   {

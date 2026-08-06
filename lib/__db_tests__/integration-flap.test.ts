@@ -48,7 +48,8 @@ function syncEvent(
     `INSERT INTO integration_sync_events
        (profile_id, provider, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
-  ).run(profileId, provider, `${day} ${hour}:00:00`, ok, ok ? 1 : null, error);
+    // The ledger stores UTC with an explicit `Z` since migration 163 (#2205).
+  ).run(profileId, provider, `${day}T${hour}:00:00Z`, ok, ok ? 1 : null, error);
 }
 
 const ERR = "weather fetch failed (503)";

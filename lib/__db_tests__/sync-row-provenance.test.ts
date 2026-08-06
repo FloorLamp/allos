@@ -6,6 +6,7 @@
 // deep link. Retention is inherited: pruning the event cascades its rows away.
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { utcInstant } from "@/lib/date";
 import { db, writeTx } from "@/lib/db";
 import {
   upsertActivities,
@@ -278,9 +279,10 @@ describe("integration_sync_rows provenance (#1333)", () => {
     expect(provenanceRowCount()).toBe(1);
     // Age the event well past the retention window so the sweep removes it. (Its
     // provenance rows carry an ON DELETE CASCADE FK; foreign_keys is ON at runtime.)
-    db.prepare(
-      "UPDATE integration_sync_events SET at = datetime('now', '-400 days') WHERE id = ?"
-    ).run(eventId);
+    db.prepare("UPDATE integration_sync_events SET at = ? WHERE id = ?").run(
+      utcInstant(new Date(Date.now() - 400 * 86_400_000)),
+      eventId
+    );
     // A newer event keeps the pruner from retaining the aged one as newest-per-provider.
     recordSyncEvent(profileId, "health-connect", { ok: true });
     pruneSyncEvents();

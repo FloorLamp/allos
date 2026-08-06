@@ -64,7 +64,14 @@ const CANONICAL_INSTANT_COLUMNS: Record<
   string,
   { columns: string[]; why: string }
 > = {
-  // Populated by migration 163 (integration sync ledger) and 164 (hr_minutes).
+  integration_sync_events: {
+    columns: ["at", "created_at"],
+    why: "migration 163 — the sync ledger's own instants. `at` is the timestamp #2205 names: it is joined and compared against columns that carry `Z` (metric_samples' instants, a caller's ISO cursor), and it defaulted to SQLite's bare shape.",
+  },
+  integration_sync_rows: {
+    columns: ["created_at"],
+    why: "migration 163 — the per-row provenance stamp (#1333), converted with its parent so the arrival-lag join reads one convention on both sides.",
+  },
 };
 
 // ---- Rule C allowlist --------------------------------------------------------

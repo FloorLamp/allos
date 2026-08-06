@@ -30,7 +30,8 @@ const WX_TODAY = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 }).format(frozenNow());
-const SEEDED_SYNC_EVENTS = [`${WX_TODAY} 05:00:00`, `${WX_TODAY} 06:00:00`];
+// The sync ledger stores UTC with an explicit `Z` (#2205, migration 163).
+const SEEDED_SYNC_EVENTS = [`${WX_TODAY}T05:00:00Z`, `${WX_TODAY}T06:00:00Z`];
 
 // Undo what the re-enable's kicked sync wrote. Whatever the network did, the run
 // appends an integration_sync_events row — ok:1 with a today-relative window where

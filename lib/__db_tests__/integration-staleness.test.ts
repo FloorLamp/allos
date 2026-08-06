@@ -49,7 +49,9 @@ function syncEvent(
   ok = 1,
   error: string | null = null
 ): void {
-  const at = `${shiftDateStr(today(profileId), -daysAgo)} 04:00:00`;
+  // The sync ledger stores UTC with an explicit `Z` since migration 163 (#2205);
+  // the fixture writes the shape the column actually holds.
+  const at = `${shiftDateStr(today(profileId), -daysAgo)}T04:00:00Z`;
   db.prepare(
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok, error)
      VALUES (?, ?, ?, ?, ?)`
