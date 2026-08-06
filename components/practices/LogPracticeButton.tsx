@@ -8,6 +8,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import DateField from "@/components/DateField";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
+import { PRACTICE_USUAL_DAY_TEXT } from "@/lib/practice";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_LABEL,
@@ -41,6 +42,7 @@ export default function LogPracticeButton({
   defaultDurationMin = null,
   showDetails = false,
   lastLoggedTime = null,
+  usualSessionDay = false,
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -55,6 +57,11 @@ export default function LogPracticeButton({
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
   // the count still asks an honest question rather than inventing a time.
   lastLoggedTime?: string | null;
+  // Whether today is one of this practice's INFERRED rhythm days (#2188). The server
+  // decides (isPredictedPracticeDay / WellnessPractice.usuallyToday); this component
+  // only formats. No pattern → the caller passes false and the note renders NOWHERE
+  // (#558). Data, not dueness (#1505) — it never changes the button or the counts.
+  usualSessionDay?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -173,6 +180,15 @@ export default function LogPracticeButton({
               ? "1 session logged"
               : `${count} sessions logged`}
           {atCeiling ? " · weekly maximum reached" : ""}
+          {/* The rhythm note (#2188): only on a predicted day with nothing logged
+              yet, and NEVER at the ceiling — a dose-limited practice done for the
+              week must not be handed a reason for more (#998's posture). */}
+          {count === 0 && usualSessionDay && !atCeiling && (
+            <span data-testid="practice-rhythm-note">
+              {" · "}
+              {PRACTICE_USUAL_DAY_TEXT}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">

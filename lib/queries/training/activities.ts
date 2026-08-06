@@ -5,7 +5,13 @@ import {
   type CompanionMap,
   type CompanionRow,
 } from "../../companions";
-import { shiftDateStr, weekdayOfDateStr } from "../../date";
+import { shiftDateStr } from "../../date";
+import {
+  inferWeeklyRhythm,
+  predictedOnDay,
+  RHYTHM_WINDOW_WEEKS,
+  type WeeklyRhythm,
+} from "../../weekly-rhythm";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import {
@@ -593,23 +599,20 @@ export function getActivityDates(profileId: number): string[] {
   ).map((r) => r.date);
 }
 
-export interface InferredWorkoutSchedule {
-  weekdays: number[]; // 0=Sun … 6=Sat the user habitually trains
-  hour: number; // typical start hour (local), fallback 18
-  // Whether a real training cadence was detected. false means `weekdays` is the
-  // "every day" fallback (no discernible pattern), so consumers that need to know
-  // "is TODAY specifically a predicted training day?" must treat it as unknown
-  // rather than "yes, every day" (see isPredictedWorkoutDay / issue #558).
-  hasPattern: boolean;
-}
+// The inferred training cadence — the shared weekly-rhythm shape (see
+// lib/weekly-rhythm.ts, which owns the window/gate/fallback thresholds this and
+// the practice inference both key on). The historical name survives for its many
+// consumers.
+export type InferredWorkoutSchedule = WeeklyRhythm;
 
 // Derive the user's regular training cadence from recent history, so the workout
 // reminder fires around when they normally train: the weekdays trained on often
 // enough, and the most common start hour. Falls back to every day at 18:00 when
-// there's no clear pattern.
+// there's no clear pattern. A thin SQL gather over the shared inference core
+// (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
 export function inferWorkoutSchedule(
   profileId: number,
-  weeks = 8
+  weeks = RHYTHM_WINDOW_WEEKS
 ): InferredWorkoutSchedule {
   const rows = db
     .prepare(
@@ -619,37 +622,10 @@ export function inferWorkoutSchedule(
     date: string;
     start_time: string | null;
   }[];
-
-  const datesByWeekday = new Map<number, Set<string>>();
-  const hourCounts = new Map<number, number>();
-  for (const r of rows) {
-    const wd = weekdayOfDateStr(r.date);
-    let set = datesByWeekday.get(wd);
-    if (!set) datesByWeekday.set(wd, (set = new Set()));
-    set.add(r.date);
-    if (r.start_time) {
-      const h = Number(r.start_time.slice(0, 2));
-      if (Number.isInteger(h) && h >= 0 && h <= 23)
-        hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
-    }
-  }
-
-  // Most common start hour; fallback 18 when start times are absent.
-  let hour = 18;
-  let best = 0;
-  for (const [h, c] of hourCounts) if (c > best) ((best = c), (hour = h));
-
-  // A weekday counts as habitual when trained on it in ≥ this many distinct
-  // dates within the window.
-  const minDates = Math.max(2, Math.ceil(weeks * 0.4));
-  const weekdays = [...datesByWeekday.entries()]
-    .filter(([, dates]) => dates.size >= minDates)
-    .map(([wd]) => wd)
-    .sort((a, b) => a - b);
-
-  if (weekdays.length === 0)
-    return { weekdays: [0, 1, 2, 3, 4, 5, 6], hour, hasPattern: false };
-  return { weekdays, hour, hasPattern: true };
+  return inferWeeklyRhythm(
+    rows.map((r) => ({ date: r.date, time: r.start_time })),
+    { weeks }
+  );
 }
 
 // Whether `date` should be a training day for this profile, per the inferred
@@ -662,11 +638,9 @@ export function inferWorkoutSchedule(
 export function isPredictedWorkoutDay(
   profileId: number,
   date: string,
-  weeks = 8
+  weeks = RHYTHM_WINDOW_WEEKS
 ): boolean | null {
-  const inf = inferWorkoutSchedule(profileId, weeks);
-  if (!inf.hasPattern) return null;
-  return inf.weekdays.includes(weekdayOfDateStr(date));
+  return predictedOnDay(inferWorkoutSchedule(profileId, weeks), date);
 }
 
 // (date, exercise) rows over the recent window — one scan that powers the workout

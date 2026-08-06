@@ -671,6 +671,16 @@ async function tickProfile(
   // old gate also failed at the both-channels case it was written for — it let a
   // Telegram+push profile through and then dispatched a buttonless push telling the
   // user to "tap when you've done a session".
+  //
+  // RHYTHM-RETIMED (#2188): the passed moment lets a behind practice with an
+  // inferred weekly rhythm hold for its next predicted day and typical hour
+  // (practiceNudgeReleased, lib/practice.ts) — only ever LATER than this gate
+  // within the week, with the flip-day rule back the moment the week's last
+  // predicted day has passed. A practice with no pattern is released
+  // unconditionally, so this block's own gates ARE its behavior, unchanged. The
+  // waking gate and per-day marker here stay exactly as they were: a held
+  // practice simply isn't in the gather, so an empty build leaves the marker
+  // unset and the slot re-evaluates next waking tick.
   if (
     waking &&
     getProfileSetting(profile.id, TICK_SLOT_MARKER_KEYS.practice) !== date
@@ -679,7 +689,13 @@ async function tickProfile(
       const built = buildPracticeReminder(
         profile.id,
         undefined,
-        getPublicUrl()
+        getPublicUrl(),
+        {
+          weekday,
+          minuteOfDay: minute,
+          wakingStartHour: sched.wakingStartHour,
+          wakingEndHour: sched.wakingEndHour,
+        }
       );
       if (built) {
         const msg = prefixMessage(built, prefix);

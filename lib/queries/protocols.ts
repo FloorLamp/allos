@@ -54,6 +54,7 @@ import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeDayCount,
   getPracticeSpellingsMap,
+  isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "./wellness";
 import {
@@ -954,6 +955,11 @@ export interface ActiveProtocolSummary {
   // same model to ProtocolLogButton as the detail page.
   practice: ProtocolPractice | null;
   practiceTodayCount: number;
+  // Whether today is one of the wellness practice's inferred rhythm days (#2188)
+  // — the calm "usually a session day" note beside the log button. Always false
+  // for non-practice scopes and whenever no rhythm exists (#558: no pattern
+  // renders nothing). Data, not dueness (#1505).
+  practiceUsuallyToday: boolean;
   primaryOutcome: {
     label: string;
     betterness: Betterness;
@@ -1017,6 +1023,9 @@ export function getActiveProtocolSummaries(
                 practiceSpellingsFor(spellingsByIdentity, practice.value)
               )
             : 0,
+        practiceUsuallyToday:
+          practice?.scopeKind === "practice" &&
+          isPredictedPracticeDay(profileId, practice.value, today) === true,
         primaryOutcome: primary
           ? {
               label: primary.label,

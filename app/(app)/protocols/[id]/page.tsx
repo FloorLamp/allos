@@ -14,6 +14,7 @@ import {
   getPracticeDayCount,
   getPracticeSessions,
   getPracticeSpellingsMap,
+  isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "@/lib/queries";
 import { getSituations } from "@/lib/settings";
@@ -113,6 +114,11 @@ export default async function ProtocolDetailPage(props: {
           practiceSpellings
         )
       : 0;
+  // The rhythm note (#2188): whether today is one of the practice's inferred
+  // session days. False when no pattern exists (#558 — the note renders nowhere).
+  const practiceUsuallyToday =
+    practice?.scopeKind === "practice" &&
+    isPredictedPracticeDay(profile.id, practice.value, todayStr) === true;
   const usage = getProtocolUsage(
     profile.id,
     protocol,
@@ -300,6 +306,7 @@ export default async function ProtocolDetailPage(props: {
                   atCeiling={adherence?.atCeiling ?? false}
                   today={todayStr}
                   defaultDurationMin={previousDurationMin}
+                  usualSessionDay={practiceUsuallyToday}
                   showDetails
                 />
               )}
