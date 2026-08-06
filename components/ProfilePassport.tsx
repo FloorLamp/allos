@@ -12,6 +12,12 @@ import { isFieldInScope, type ShareField } from "@/lib/share-links";
 import type { ProfileSummary } from "@/lib/profile-summary";
 import { ordinalPercentile } from "@/lib/growth-format";
 import { statusBadgeParts } from "@/lib/immunization-status-ui";
+import {
+  codeStatusDetail,
+  codeStatusLabel,
+  organDonorLabel,
+} from "@/lib/advance-directives";
+import NotesText from "@/components/NotesText";
 
 // The shared, presentational "medical passport". Rendered verbatim
 // by BOTH the authenticated page (app/(app)/profile) and the unauthenticated
@@ -230,6 +236,83 @@ export default function ProfilePassport({
             </div>
           </div>
         </section>
+
+        {/* Advance directives (#1848) — code status, who may decide, donor
+          status, and where the signed paperwork is. Its own share field, so a
+          passport shared for a coach or a school form need not carry it; the
+          section renders only when something is recorded. */}
+        {inScope(fields, "directives") && summary.directives && (
+          <Section title="Code status & directives">
+            <div
+              className="space-y-2 text-sm"
+              data-testid="passport-directives"
+            >
+              {summary.directives.codeStatus && (
+                <p className="text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold">
+                    {codeStatusLabel(summary.directives.codeStatus)}
+                  </span>
+                  {codeStatusDetail(summary.directives.codeStatus) && (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {" "}
+                      — {codeStatusDetail(summary.directives.codeStatus)}
+                    </span>
+                  )}
+                  {summary.directives.codeStatusEffective && (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {" "}
+                      (effective{" "}
+                      {fmtDate(
+                        summary.directives.codeStatusEffective,
+                        formatPrefs
+                      )}
+                      )
+                    </span>
+                  )}
+                </p>
+              )}
+              <NotesText
+                as="p"
+                notes={summary.directives.codeStatusNote}
+                className="text-slate-600 dark:text-slate-300"
+              />
+              {summary.directives.proxy && (
+                <p className="text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold">Healthcare proxy:</span>{" "}
+                  {summary.directives.proxy.name || "Named contact"}
+                  {summary.directives.proxy.relation && (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {" "}
+                      ({summary.directives.proxy.relation})
+                    </span>
+                  )}
+                  {summary.directives.proxy.phone && (
+                    <> — {summary.directives.proxy.phone}</>
+                  )}
+                </p>
+              )}
+              {summary.directives.organDonor && (
+                <p className="text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold">Organ donation:</span>{" "}
+                  {organDonorLabel(summary.directives.organDonor)}
+                </p>
+              )}
+              {summary.directives.documentsAt && (
+                <p className="text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold">Documents on file at:</span>{" "}
+                  <NotesText
+                    notes={summary.directives.documentsAt}
+                    className="text-slate-600 dark:text-slate-300"
+                  />
+                </p>
+              )}
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Self-reported summary — the signed document itself is not stored
+                here.
+              </p>
+            </div>
+          </Section>
+        )}
 
         {/* Allergies — an emergency-card essential, shown prominently. Merges
           documented allergies with lab-derived IgE sensitizations. */}

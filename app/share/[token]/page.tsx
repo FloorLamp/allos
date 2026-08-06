@@ -22,6 +22,8 @@ import PrintButton from "@/components/illness/PrintButton";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import MedicationListView from "@/components/medications/MedicationListView";
 import { getCurrentMedicationList } from "@/app/(app)/medications/med-data";
+import ImmunizationRecordView from "@/components/immunizations/ImmunizationRecordView";
+import { getImmunizationRecord } from "@/app/(app)/immunizations/record-data";
 import { getTimezone } from "@/lib/settings";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
@@ -135,6 +137,31 @@ export default async function SharePage(props: {
           personName={medName}
           generatedAt={new Date().toISOString()}
           rows={rows}
+        />
+      </PageContainer>
+    );
+  }
+
+  // Immunization-record share (issue #1849): the "hand a copy to the registrar"
+  // artifact, tokenized. Re-derives the record at view time from the SAME
+  // getImmunizationRecord gather the print page uses, and renders the SAME view
+  // component (one computation), so a dose added after the link went out appears.
+  if (link.kind === "immunizations") {
+    const name = getProfileNameById(link.profile_id) ?? "Profile";
+    const record = getImmunizationRecord(link.profile_id, name);
+    return (
+      <PageContainer
+        width="reading"
+        className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+      >
+        <div className="mb-4 flex items-center justify-end">
+          <PrintButton />
+        </div>
+        <ImmunizationRecordView
+          personName={record.personName}
+          birthdate={record.birthdate}
+          generatedAt={new Date().toISOString()}
+          groups={record.groups}
         />
       </PageContainer>
     );
