@@ -577,7 +577,10 @@ function inferPracticeScheduleUncached(
               WHERE profile_id = ? AND practice IN (${inClause(values)})
               ORDER BY date ASC, id ASC`
           )
-          .all(profileId, ...values) as { date: string; time: string | null }[]);
+          .all(profileId, ...values) as {
+          date: string;
+          time: string | null;
+        }[]);
   return inferPracticeRhythm(rows, asOf);
 }
 

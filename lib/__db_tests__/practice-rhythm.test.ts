@@ -64,7 +64,12 @@ function seedWeeklyHabit(
     `INSERT INTO practice_logs (profile_id, practice, date, time) VALUES (?, ?, ?, ?)`
   );
   for (let k = 1; k <= weeks; k++) {
-    insert.run(profileId, practice, shiftDateStr(sunday, -k * 7 + weekday), time);
+    insert.run(
+      profileId,
+      practice,
+      shiftDateStr(sunday, -k * 7 + weekday),
+      time
+    );
   }
 }
 
@@ -99,8 +104,18 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     const anchorWeekday = 2; // Tuesday
     const sunday = shiftDateStr(t, -anchorWeekday);
     for (let k = 1; k <= 8; k++) {
-      insert.run(pid, "Red light therapy", shiftDateStr(sunday, -k * 7 + 3), "18:30");
-      insert.run(pid, "Red light therapy", shiftDateStr(sunday, -k * 7 + 5), "18:30");
+      insert.run(
+        pid,
+        "Red light therapy",
+        shiftDateStr(sunday, -k * 7 + 3),
+        "18:30"
+      );
+      insert.run(
+        pid,
+        "Red light therapy",
+        shiftDateStr(sunday, -k * 7 + 5),
+        "18:30"
+      );
     }
 
     expect(inferPracticeSchedule(pid, "Meditation")).toMatchObject({

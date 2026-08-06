@@ -169,7 +169,11 @@ const moment = (over: Partial<PracticeNudgeMoment>): PracticeNudgeMoment => ({
 
 describe("practiceNudgeReleased", () => {
   it("no pattern → released unconditionally (today's behavior byte-for-byte)", () => {
-    const none = { weekdays: [0, 1, 2, 3, 4, 5, 6], hour: 18, hasPattern: false };
+    const none = {
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      hour: 18,
+      hasPattern: false,
+    };
     expect(practiceNudgeReleased(none, moment({}))).toBe(true);
     expect(practiceNudgeReleased(none, moment({ minuteOfDay: 0 }))).toBe(true);
   });

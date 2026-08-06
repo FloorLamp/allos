@@ -48,7 +48,8 @@ test("practice cards show the rhythm note on a predicted day and nothing for a y
     // Four sessions on TODAY's weekday across the past four weeks — at the
     // habitual-day gate (max(2, ceil(8 × 0.4)) = 4 distinct dates), so today is
     // a predicted day. Nothing logged today, so the zero-count line renders.
-    for (const back of [7, 14, 21, 28]) log.run(rhythmName, shift(-back), "18:30");
+    for (const back of [7, 14, 21, 28])
+      log.run(rhythmName, shift(-back), "18:30");
     // The young practice has ONE session yesterday: below the gate → no pattern.
     log.run(youngName, shift(-1), null);
     const protocol = db.prepare(
