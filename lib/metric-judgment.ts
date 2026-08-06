@@ -395,7 +395,8 @@ export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(
  */
 export function metricIdentity(slug: BodyMetricSlug): string | null {
   const knowledge = METRIC_KNOWLEDGE[slug];
-  return knowledge.source === "canonical" || knowledge.source === "personal-best"
+  return knowledge.source === "canonical" ||
+    knowledge.source === "personal-best"
     ? readingIdentity(knowledge.canonical)
     : null;
 }

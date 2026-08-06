@@ -90,7 +90,9 @@ export default function PeakFlowZoneCard({
       data-testid="peak-flow-zone"
       data-zone={verdict?.zone ?? "none"}
       className={`card mb-6 border-l-4 ${
-        verdict ? ZONE_CLASS[verdict.zone] : "border-l-slate-300 dark:border-l-slate-600"
+        verdict
+          ? ZONE_CLASS[verdict.zone]
+          : "border-l-slate-300 dark:border-l-slate-600"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
@@ -108,8 +110,8 @@ export default function PeakFlowZoneCard({
                 className="mt-0.5 text-sm tabular-nums text-slate-500 dark:text-slate-400"
                 data-testid="peak-flow-zone-percent"
               >
-                {verdict.percent}% of your personal best (
-                {verdict.personalBest} {PEAK_FLOW_UNIT})
+                {verdict.percent}% of your personal best ({verdict.personalBest}{" "}
+                {PEAK_FLOW_UNIT})
               </div>
             </>
           ) : (

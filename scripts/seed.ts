@@ -1009,9 +1009,72 @@ for (const [days, thresholds] of [
   }
 }
 
+// Spirometry (#1850) — the clinic-measured half of the respiratory domain, on the
+// same observation substrate as the perio / vision / audiogram analytes above. One
+// dated pulmonology visit. The ratio is the one value with a real cutoff, and it is
+// seeded just BELOW it (68%) so the flagged-reading surfaces have a respiratory row;
+// the two absolute volumes carry no band and simply trend.
+for (const [name, value, unit] of [
+  ["FEV1", 3.1, "L"],
+  ["FVC", 4.55, "L"],
+  ["FEV1/FVC Ratio", 68, "%"],
+] as const) {
+  medIds.push(
+    Number(
+      insMed.run(
+        daysAgo(45),
+        "vitals",
+        name,
+        String(value),
+        unit,
+        name === "FEV1/FVC Ratio" ? "≥70%" : null,
+        value,
+        name,
+        "Spirometry"
+      ).lastInsertRowid
+    )
+  );
+}
+
 // Derive clinical (high/low) and non-optimal flags from the canonical reference
 // + optimal bands, so seeded readings flag exactly like real imported ones.
 reconcileFlags(SEED_PROFILE_ID, medIds);
+
+// Peak expiratory flow (#1850) — the HOME-measured half, and the reason the domain
+// needed a stream rather than a fourth observation vocabulary: three weeks of morning
+// and evening blows, dipping through a flare in the middle and recovering. Two rows a
+// day, each with its own instant, which is exactly what `body_metrics`' one-row-per-day
+// shape could not have held.
+//
+// The personal best is DECLARED (a profile setting, never derived), so the zone card
+// has something to judge against: 620 L/min, which puts the flare's 430 in the yellow
+// zone (69%) and leaves the normal days green.
+const insPeakFlow = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (1, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
+);
+for (let d = 20; d >= 0; d--) {
+  const date = daysAgo(d);
+  // A flare between day 12 and day 8 ago: morning readings sag, evenings sag further.
+  const dip = d <= 12 && d >= 8 ? 150 - Math.abs(10 - d) * 30 : 0;
+  const jitter = (d * 7) % 15;
+  insPeakFlow.run(
+    date,
+    `${date}T07:30:00`,
+    `${date}T07:30:00`,
+    600 - dip + jitter
+  );
+  insPeakFlow.run(
+    date,
+    `${date}T20:00:00`,
+    `${date}T20:00:00`,
+    585 - dip + jitter
+  );
+}
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'peak_flow_personal_best', '620')
+   ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run();
 
 // Non-biomarker records (no optimal range; kept for category variety).
 const med = db.prepare(

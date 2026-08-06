@@ -54,6 +54,12 @@ import {
   E2E_LOGIN_LONG_RANGE,
   LONG_RANGE_PROFILE,
   LONG_RANGE_DAYS,
+  E2E_LOGIN_PEAK_FLOW,
+  PEAK_FLOW_PROFILE,
+  PEAK_FLOW_LATEST_LMIN,
+  PEAK_FLOW_DAYS,
+  E2E_LOGIN_PEAK_FLOW_LOG,
+  PEAK_FLOW_LOG_PROFILE,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -881,5 +887,59 @@ export function seedLongRange(): void {
   seedMemberLogin(E2E_LOGIN_LONG_RANGE, pid, "read");
   console.log(
     `e2e: seeded long-range fixture — profile ${pid} (${LONG_RANGE_PROFILE}) (#1938)`
+  );
+}
+
+// ── Respiratory function: readings with NO personal best (issue #1850) ──
+export function seedPeakFlow(): void {
+  // The respiratory domain's no-verdict state, made observable in a browser.
+  //
+  // Peak flow is the one specialty domain whose band is SELF-REFERENTIAL: green
+  // >=80%, yellow 50-80%, red <50% of your own personal best. So the interesting
+  // fixture is not a reading — it is a reading with NOTHING TO JUDGE IT AGAINST.
+  // This profile has a week of home blows and no declared best, and the card must
+  // say so plainly instead of borrowing a population range peak flow has never had.
+  //
+  // Relative dates -> never stale. Read-only in its spec, and idempotent: it clears
+  // its own fixture rows (and any stray declared best) first.
+  const pid = fixtureProfileId(PEAK_FLOW_PROFILE);
+  const pToday = today(pid);
+
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'peak_flow_lmin'`
+  ).run(pid);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'peak_flow_personal_best'`
+  ).run(pid);
+
+  const insBlow = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
+  );
+  for (let ago = PEAK_FLOW_DAYS; ago >= 1; ago--) {
+    const date = shiftDateStr(pToday, -ago);
+    // A gentle decline ending on the distinctive latest value, so the trend has a
+    // shape and the newest row is addressable by its number.
+    const value =
+      ago === 1 ? PEAK_FLOW_LATEST_LMIN : PEAK_FLOW_LATEST_LMIN + ago * 20;
+    insBlow.run(pid, date, `${date}T07:30:00`, `${date}T07:30:00`, value);
+  }
+
+  seedMemberLogin(E2E_LOGIN_PEAK_FLOW, pid, "read");
+
+  // The WRITE half's profile: deliberately empty of peak-flow readings, so the one
+  // blow its spec logs is the only reading on file and the zone it produces is an
+  // exact percentage rather than an average over a seeded series.
+  const logId = fixtureProfileId(PEAK_FLOW_LOG_PROFILE);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'peak_flow_lmin'`
+  ).run(logId);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'peak_flow_personal_best'`
+  ).run(logId);
+  seedMemberLogin(E2E_LOGIN_PEAK_FLOW_LOG, logId, "write");
+
+  console.log(
+    `e2e: seeded peak-flow fixtures — profiles ${pid} (${PEAK_FLOW_PROFILE}) + ${logId} (${PEAK_FLOW_LOG_PROFILE}) (#1850)`
   );
 }
