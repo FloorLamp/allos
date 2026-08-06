@@ -615,20 +615,22 @@ export async function handleFoodCommand(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) return;
 
-  const multi = profileIds.length > 1;
   const skipped: string[] = [];
   for (const pid of profileIds) {
-    const name = getProfileNameById(pid) ?? "Profile";
     const built = buildFoodNudge(pid, currentFoodSlot(pid), today(pid));
     // Null is the life-stage gate (an infant logs no food groups, #591) — answered
     // honestly below rather than with an empty keyboard.
     if (!built) {
-      skipped.push(name);
+      skipped.push(getProfileNameById(pid) ?? "Profile");
       continue;
     }
+    // Attribution through the ONE derivation (#429), never a hand-built "[Name] ":
+    // the sweep's rebuild re-applies `prefixForProfile` at the chokepoint (#377), so a
+    // prefix minted by any other rule would silently appear or vanish the first time
+    // this nudge is rebuilt.
     await sendTelegramMessage(
       chatId,
-      multi ? prefixMessage(built, `[${name}] `) : built,
+      prefixMessage(built, prefixForProfile(pid)),
       pid
     );
   }
@@ -1025,6 +1027,7 @@ import {
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
+import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { currentFoodSlot } from "../queries";
