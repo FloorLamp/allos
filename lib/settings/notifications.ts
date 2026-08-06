@@ -308,6 +308,37 @@ export function resetMoodCheckinIgnored(profileId: number): void {
   setProfileSetting(profileId, "mood_checkin_ignored", "0");
 }
 
+// ---- Bedtime wear reminder (issue #2161) — per-profile OPT-IN, off by default ----
+// Whether this profile gets the one nightly "your watch hasn't recorded since X —
+// still on the charger?" send at its Bedtime slot.
+//
+// This flag IS the consent. Sleep and HR are observation domains, so no obligation
+// exists to hang a send on (docs/internals/findings.md §3), and the contact-consent
+// rule permits a contact INCREASE only behind a user-owned declaration — this one, in
+// the same position `obligation` occupies for a medication. Absent reads as OFF, and
+// off is byte-for-byte today's behaviour: no send, no marker, no gather past the
+// settings read.
+//
+// PROFILE tier, deliberately, and not the login tier the delivery channels use: "do I
+// wear a device to sleep, and do I want to be asked about it" is a fact about the data
+// SUBJECT, not about a phone. A caregiver reading two profiles gets the answer each of
+// those profiles declared. Settings → Notifications is mixed-scope for exactly this
+// reason (AGENTS.md).
+//
+// NOTHING WRITES THIS BUT A USER ACTION. A detected lost night may suggest turning it
+// on; the suggestion is not the write.
+
+export function getProfileWearReminder(profileId: number): boolean {
+  return getProfileSetting(profileId, "wear_reminder_enabled") === "1";
+}
+
+export function setProfileWearReminder(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "wear_reminder_enabled", enabled ? "1" : "0");
+}
+
 // Whether the weekly recap includes the gentle mood line (issue #992) — a summary
 // (average + days logged), never a score to beat. Per-profile opt-in, off by
 // default, read by the ONE gatherRecapInput both the widget and the notification

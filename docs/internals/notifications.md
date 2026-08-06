@@ -846,7 +846,15 @@ day"). Predicted ≠ due (#1505): `frequencyPace` remains the only dueness
 authority, and the bus gate, per-day marker, and ceiling silence are untouched.
 The same inference feeds the calm "usually a session day" note on the
 protocol/practice cards (rendered surfaces, quiet without a pattern), and the
-nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice. Each behind practice carries an inline
+nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
+**The one-tap paths feed that inference now (#2204).** `logPracticeSession`
+treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
+instant" — distinct from an explicit `null`, which stays the expanded form's
+"this session has no instant". Until #2202 nothing read `practice_logs.time`, so
+the quick sheet and this Done ✓ button both wrote null; once `modalHour` became
+its reader that inverted into a defect where the fastest logging paths starved
+the inference that reschedules their own nudge. The stamp is bounded to the
+profile's today, so a backdated correction never acquires a fabricated instant. Each behind practice carries an inline
 **"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`
@@ -913,6 +921,73 @@ still reads as progress. It rides WITH the recap line inside the congratulatory
 message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
+
+## Bedtime wear reminder (#2161)
+
+**The one consented send in the quiet-stream family.** A watch left on the
+charger as bedtime approaches costs a whole night of sleep data that no later
+sync recovers — on the measured 56-day profile it happened once in eight weeks
+and was that profile's only missing night. #2146 detects and RENDERS that state
+and is deliberately never-a-send; its constraint 4 reserves contact for "a
+separate consented feature", and this is it.
+
+**Why it may be a class-1 send at all.** Sleep and HR are observation domains
+(`docs/internals/findings.md` §3), so no obligation exists to hang a send on.
+The contact-consent rule permits a contact INCREASE only behind a user-owned
+declaration, so the declaration IS the feature: `wear_reminder_enabled`
+(`profile_settings`, off by default), rendered as one row of the Settings →
+Notifications kinds matrix. Two properties are enforced, not merely intended:
+
+- **Off is byte-for-byte today's behaviour.** `bedtimeWearVerdict`
+  (`lib/wear-reminder.ts`) checks consent FIRST and returns before any other
+  signal is read; `bedtimeWearReminderState` pays one settings read and stops.
+- **Nothing enables it but a user action.** `saveNotificationPrefs` is the only
+  writer. A detected lost night may SUGGEST turning it on — the right-sizing
+  family's shape, detection suggests and the tap writes — but no detector, tick,
+  or gather may perform the write.
+
+**The predicate** is #2146's quiet-stream shape at a bedtime-sized tolerance:
+the declared continuous stream has been silent for ≥ `WEAR_QUIET_TOLERANCE_MIN`
+(40 min, declared — never learned from a wear pattern) **while the provider kept
+syncing ok in that window**. The second clause is load-bearing: continuing ok
+syncs with nothing on the stream is the off-wrist signature, whereas a window
+with no ok syncs is a CONNECTION outage that #1685 already owns and names — two
+rows for one fault is exactly what the one-row rule forbids. The declared stream
+is Health Connect's `hr_minutes`, the only continuous wear stream the app
+ingests (the Fitbit Takeout archive import has no live cadence to be silent
+against and is exempt by construction). #2146 moves that declaration into the
+provider registry beside `staleAfterDays` once a second provider needs one.
+
+Two gates sit in front of the predicate. The **expected-active** gate is the
+SHARED #2097 vocabulary — `isSleepTracking` over `getSyncedSleepWakeDays` — so a
+profile that does not wear a device to sleep is never reminded even when the
+setting is on, and a manual-only sleep logger never hears from it at all. The
+**deference** gate yields to a failing or `needs-reauth` provider through the
+same `getIntegrationAttention` model every other surface reads: a reconnect item
+already owns that contact, and "still on the charger?" would be false advice
+while the pipeline is down.
+
+**Send hygiene.** It rides the profile's existing **Bedtime** supplement slot
+minute (no schedule of its own), through the tick's ordinary `dueSlots` loop, on
+one declared per-day marker `notify_last_wear_reminder` (`profile-fixed`,
+`profile_settings`, swept by the standard date rollover). One send per night, no
+escalation, no repeat; ignoring it does nothing further and the morning surface
+is #2146's calm row. The cadence is the tick's per-day marker discipline rather
+than `planNudgeCadence`: there is one profile-fixed key with no subject to
+strand, so there is no candidate set to freeze and no self-healing sweep to run.
+A skipped night leaves the marker UNSET, so it never spends the night's send.
+
+**Timestamps.** The gather joins two of the three coexisting conventions
+(#94/#1333/#2146 constraint 6): `hr_minutes.ts` is profile-local bare,
+`integration_sync_events.at` is UTC bare. The stream's wall time is converted
+once through `zonedWallIsoToUtc` and everything is compared in UTC from there —
+reading `hr_minutes.ts` as UTC is the #2096 failure class, and subtracting two
+bare local strings would report wall-clock difference rather than elapsed time
+on a DST night.
+
+**Known grain limit, accepted.** The check runs at the slot minute, so a charger
+placement a few minutes before a late bedtime is missed. #2121's finer ticks and
+a `typicalBedTime` anchor tighten it later; neither is a dependency.
 
 ## Send markers and nudge cadence (#2036)
 

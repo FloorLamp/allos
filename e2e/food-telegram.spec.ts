@@ -7,6 +7,8 @@ import { settledCheck, settledCheckSave, settledFill } from "./helpers";
 //   • the LOGIN Telegram channel ("Telegram (your chat)") — enable + chat id + save;
 //   • the per-SUBJECT food-logging opt-in, which #1462 §6 moved onto the food row of
 //     the consolidated (autosaving) "Message kinds" card;
+//   • the per-SUBJECT bedtime watch reminder opt-in (#2161) on the row beside it —
+//     off by default, and the only place in the app that can turn it on;
 //   • the per-(login, profile) mute toggle.
 // BLAST RADIUS: it toggles the login channel + food + mute, then RESETS them at the
 // end, leaving the shared fixture as found. No bot token is configured in the e2e DB,
@@ -42,6 +44,18 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     await expect(foodToggle).not.toBeChecked(); // off by default
     await settledCheckSave(page, foodToggle, true, kindsCard);
 
+    // --- Bedtime watch reminder (#2161) — the CONSENT for a class-1 send ---
+    // It sits on the same autosaving kinds card, one row down, and the assertion that
+    // matters most is the first one: OFF by default. Sleep is an observation domain,
+    // so nothing here is ever "missed"; this send exists only because the user asked
+    // for it, and a default-on would be the contact-consent rule broken at the only
+    // place it can be broken.
+    const wearRow = kindsCard.getByTestId("kind-row-wear-reminder");
+    await expect(wearRow).toContainText("Bedtime watch reminder");
+    const wearToggle = page.getByTestId("wear-reminder-enabled");
+    await expect(wearToggle).not.toBeChecked();
+    await settledCheckSave(page, wearToggle, true, kindsCard);
+
     // --- Per-(login, profile) mute ---
     const muteToggle = page.getByTestId("profile-notify-mute");
     await expect(muteToggle).toBeVisible();
@@ -51,6 +65,7 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     // Persists across a reload.
     await page.reload();
     await expect(page.getByTestId("food-telegram-enabled")).toBeChecked();
+    await expect(page.getByTestId("wear-reminder-enabled")).toBeChecked();
     await expect(page.getByTestId("login-telegram-chat-id")).toHaveValue(
       "55501234"
     );
@@ -61,6 +76,12 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     await settledCheckSave(
       page,
       page.getByTestId("food-telegram-enabled"),
+      false,
+      kindsCard
+    );
+    await settledCheckSave(
+      page,
+      page.getByTestId("wear-reminder-enabled"),
       false,
       kindsCard
     );

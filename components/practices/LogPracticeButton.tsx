@@ -1,14 +1,18 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { IconCheck, IconClock } from "@tabler/icons-react";
+import { IconCheck, IconClock, IconMinus, IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import DateField from "@/components/DateField";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
-import { PRACTICE_USUAL_DAY_TEXT } from "@/lib/practice";
+import {
+  PRACTICE_DURATION_STEP_MIN,
+  PRACTICE_USUAL_DAY_TEXT,
+  stepPracticeDuration,
+} from "@/lib/practice";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_LABEL,
@@ -41,6 +45,7 @@ export default function LogPracticeButton({
   today,
   defaultDurationMin = null,
   showDetails = false,
+  inlineDuration = false,
   lastLoggedTime = null,
   usualSessionDay = false,
 }: {
@@ -51,8 +56,20 @@ export default function LogPracticeButton({
   atCeiling?: boolean;
   // The acting profile's today (YYYY-MM-DD).
   today: string;
+  // The duration the controls START at — `practiceDurationPrefill` server-side, never
+  // re-derived here. Null means blank, and blank is a real answer.
   defaultDurationMin?: number | null;
   showDetails?: boolean;
+  // Render the INLINE duration stepper beside the tap (#2204). Off everywhere the
+  // expanded form is one tap away; on for the quick-log sheet, whose whole reason for
+  // existing is that opening that form is the thing you were avoiding.
+  //
+  // The gate is load-bearing for constraint 2 ("a logged duration must always be one
+  // the user saw"): `duration` is seeded from the prefill for the modal's benefit on
+  // every mount, so the one-tap write may only send it where the stepper is actually
+  // on screen. A surface without the stepper posts no duration at all, exactly as
+  // before.
+  inlineDuration?: boolean;
   // The local HH:MM of today's most recent session, when the surface knows it. The
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
   // the count still asks an honest question rather than inventing a time.
@@ -87,6 +104,29 @@ export default function LogPracticeButton({
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
+  // Follow the SERVER's prefill for the same reason the count does: the prefill is
+  // "the last LOGGED duration", and a session can be corrected or deleted from the
+  // history table beside this button. A local value frozen at mount would keep
+  // offering a duration the log no longer contains — which is the "last-shown"
+  // failure #2204 constraint 4 names, arriving by the back door.
+  const [serverDuration, setServerDuration] = useState(defaultDurationMin);
+  if (serverDuration !== defaultDurationMin) {
+    setServerDuration(defaultDurationMin);
+    setDuration(defaultDurationMin == null ? "" : String(defaultDurationMin));
+  }
+
+  // The stepper's current value as the pure helper speaks it. A half-typed or
+  // non-numeric input reads as blank rather than NaN.
+  const durationValue = (): number | null => {
+    const n = Number(duration);
+    return duration.trim() !== "" && Number.isFinite(n) && n >= 1
+      ? Math.round(n)
+      : null;
+  };
+  function step(delta: number) {
+    const next = stepPracticeDuration(durationValue(), delta);
+    setDuration(next == null ? "" : String(next));
+  }
 
   function report(outcome: PracticeLogOutcome) {
     if (outcome.kind === "logged") {
@@ -127,6 +167,12 @@ export default function LogPracticeButton({
       write: () => {
         const fd = new FormData();
         fd.set("practice", practice);
+        // Only where the stepper is rendered, and only when it holds a value: the tap
+        // may write a duration the user SAW, never the seeded-for-the-modal state.
+        // No `time` field is set on any path here — its absence is what tells the
+        // write core to stamp the tap instant (#2204 part 2).
+        const mins = inlineDuration ? durationValue() : null;
+        if (mins != null) fd.set("duration_min", String(mins));
         return logPractice(fd);
       },
       settle: (outcome) => {
@@ -192,6 +238,54 @@ export default function LogPracticeButton({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* The INLINE duration control (#2204). The standing objection was never to
+            the field — it was to stacking a MODAL over a one-tap sheet, and that
+            objection holds. This is the other shape: prefilled from the practice's
+            own last logged session, accepted by the same "Log now" tap that already
+            existed (zero extra taps when the default is right, which is the common
+            case), adjusted with two steppers, and cleared by stepping off the bottom.
+            Nothing here logs — the value rides the existing tap's FormData. */}
+        {inlineDuration && (
+          <div
+            className="flex items-center gap-0.5"
+            data-testid="practice-inline-duration"
+          >
+            <button
+              type="button"
+              onClick={() => step(-PRACTICE_DURATION_STEP_MIN)}
+              disabled={pending || ledger.pending() || duration === ""}
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
+              aria-label={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
+              title={`−${PRACTICE_DURATION_STEP_MIN} min`}
+              data-testid="practice-duration-down"
+            >
+              <IconMinus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+            </button>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              step="1"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+              className="input w-14 px-1.5 py-1 text-center text-sm"
+              aria-label={`Duration in minutes for this ${practice} session`}
+              placeholder="min"
+              data-testid="practice-duration-input"
+            />
+            <button
+              type="button"
+              onClick={() => step(PRACTICE_DURATION_STEP_MIN)}
+              disabled={pending || ledger.pending()}
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
+              aria-label={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
+              title={`+${PRACTICE_DURATION_STEP_MIN} min`}
+              data-testid="practice-duration-up"
+            >
+              <IconPlus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+            </button>
+          </div>
+        )}
         <button
           type="button"
           disabled={pending || ledger.pending()}

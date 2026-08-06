@@ -46,6 +46,7 @@ export const ALL_NOTIFICATION_KINDS = [
   "upcoming",
   "weekly-recap",
   "milestone",
+  "wear-reminder",
   "prn-list",
   "symptom",
   "temp",
@@ -219,6 +220,20 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     // so the notification's own description promised two things it no longer
     // sent.
     more: "Workouts, PRs, adherence, weight, sleep, and goals. Weeks with nothing to report are skipped.",
+  },
+  {
+    kind: "wear-reminder",
+    label: "Bedtime watch reminder",
+    blurb:
+      "A nudge at your Bedtime slot when your watch hasn’t recorded in a while.",
+    safety: false,
+    control: { type: "toggle", field: "wear_reminder_enabled" },
+    controlTestId: "wear-reminder-enabled",
+    // Off unless you turn it on, and it stays off until you do — the ONE place this
+    // feature can be enabled from. Sleep is an observation domain, so nothing here is
+    // ever "missed"; the reminder exists only because a watch left on the charger
+    // costs a whole night of data that no later sync recovers.
+    more: "Off unless you turn it on. Sent at most once a night, and only when your watch has gone quiet while your phone keeps syncing normally — never when a connection is already broken, and never if you don’t usually wear a device to sleep. Ignoring it does nothing further.",
   },
   {
     kind: "milestone",

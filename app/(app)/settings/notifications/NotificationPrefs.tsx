@@ -179,6 +179,7 @@ export default function NotificationPrefs({
   moodCheckinEnabled,
   moodRecapEnabled,
   sleepDigestEnabled,
+  wearReminderEnabled,
   wakeMinute,
   subHourlyAtRisk,
   telegramDisabled,
@@ -197,6 +198,10 @@ export default function NotificationPrefs({
   moodCheckinEnabled: boolean;
   moodRecapEnabled: boolean;
   sleepDigestEnabled: boolean;
+  // #2161: the user-owned consent for the bedtime wear reminder. Profile tier — it is
+  // a fact about the data subject's habits, not about a device — and off by default,
+  // so an absent setting renders unchecked and sends nothing.
+  wearReminderEnabled: boolean;
   // The profile's typical wake minute of day that "Auto" resolves to, or null
   // when there isn't enough sleep data yet (#1117).
   wakeMinute: number | null;
@@ -220,6 +225,7 @@ export default function NotificationPrefs({
     mood_checkin_enabled: moodCheckinEnabled ? "1" : "0",
     mood_recap_enabled: moodRecapEnabled ? "1" : "0",
     digest_sleep_enabled: sleepDigestEnabled ? "1" : "0",
+    wear_reminder_enabled: wearReminderEnabled ? "1" : "0",
     supp_morning_hour: timeValue(
       schedule.supplementMinutes.Morning,
       schedule.morningAuto

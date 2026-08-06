@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { resolveTimezone } from "./timezone";
-import { dateStrInTz, shiftDateStr } from "./date";
+import { dateStrInTz, shiftDateStr, zonedMinuteStr } from "./date";
 import { now } from "./clock";
 import { runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
@@ -254,4 +254,13 @@ export function today(profileId: number): string {
 
 export function yesterday(profileId: number): string {
   return shiftDateStr(today(profileId), -1);
+}
+
+// The profile-local wall-clock HH:MM right now — `today()`'s time-of-day twin, over the
+// same timezone resolution and the same clock seam, so "which day is it" and "what time
+// is it" can never be answered from two different zones. Added for #2204's one-tap
+// practice stamp; anything else that needs to record WHEN a server-side tap happened
+// should read it here rather than trusting a device clock (#450).
+export function nowTime(profileId: number): string {
+  return zonedMinuteStr(appTimezone(profileId), now()).slice(11);
 }
