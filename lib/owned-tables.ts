@@ -16,10 +16,16 @@
 // (as a new migration in lib/migrations/versions/ — born `profile_id INTEGER NOT
 // NULL` in its CREATE):
 //   1. Add its name to OWNED_TABLES below. That single edit propagates to:
-//        • deleteProfile   (app/(app)/settings/family/actions.ts) — clears its
-//          rows on profile deletion,
+//        • the profile-delete sweep (lib/profile-delete.ts, consumed by
+//          deleteProfile in app/(app)/settings/family/actions.ts) — clears its
+//          rows AND every FK-reachable child table on profile deletion (the child
+//          set is derived from PRAGMA foreign_key_list, #2126, so a new child
+//          table needs no edit anywhere),
 //        • the profile-scoping leak test (lib/__tests__/profile-scoping.test.ts)
-//          — enforces every `.prepare` on it names profile_id.
+//          — enforces every `.prepare` on it names profile_id,
+//        • the export-completeness binding (lib/__db_tests__/
+//          export-completeness.test.ts) — the table and its FK children must be
+//          exported, passport-reached, or argued-excluded (#465/#2129).
 // The agreement test (in lib/__tests__/profile-scoping.test.ts) DERIVES the owned
 // set from the schema source — the tables whose CREATE TABLE block declares a
 // profile_id column — and fails the build if OWNED_TABLES doesn't equal it (minus

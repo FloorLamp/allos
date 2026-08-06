@@ -205,14 +205,14 @@ describe("dataset delete affordance", () => {
 describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
   it("every deletable dataset has a matching DELETE_POLICY entry", () => {
     const missing = DATASETS.filter(
-      (d) => d.deletable !== false && !DELETE_POLICY[d.key]
+      (d) => d.deletable !== false && !(d.key in DELETE_POLICY)
     ).map((d) => d.key);
     expect(missing).toEqual([]);
   });
 
   it("no browse-only (deletable:false) dataset has a DELETE_POLICY entry", () => {
     const stray = DATASETS.filter(
-      (d) => d.deletable === false && DELETE_POLICY[d.key]
+      (d) => d.deletable === false && d.key in DELETE_POLICY
     ).map((d) => d.key);
     expect(stray).toEqual([]);
   });

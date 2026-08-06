@@ -1,17 +1,26 @@
-// DB INTEGRATION TIER — export COMPLETENESS binding (issue #465).
+// DB INTEGRATION TIER — export COMPLETENESS binding (issue #465, extended to
+// child tables by #2129).
 //
 // The export-side twin of the #201/#212 import-footprint disease: tables added after
 // the export feature never joined it, and nothing bound DATASETS to the schema. This
 // test is the established cure — it DERIVES the completeness obligation from
 // OWNED_TABLES so a new profile-owned table can no longer be silently absent from the
-// portable export a family relies on when migrating off an instance.
+// portable export a family relies on when migrating off an instance. #2129 extends
+// the same model one FK hop down: the obligation for CHILD tables (no profile_id of
+// their own) is derived from PRAGMA foreign_key_list over the owned roots — the
+// profile-delete sweep guard's sibling on the read side — because every child that
+// WAS exported got there by someone happening to write a dataset, and
+// intake_dose_schedule_versions / medical_record_revisions proved undo can consider
+// history worth preserving while export silently drops it.
 //
 // It lives in the DB tier (not the pure tier) only because importing lib/export pulls
-// in the SQLite handle; the assertions themselves are structural (no rows needed).
+// in the SQLite handle.
 
 import { describe, it, expect } from "vitest";
+import { db } from "@/lib/db";
 import { DATASETS } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
+import { ownedChildTables } from "@/lib/profile-delete";
 import { FHIR_EXPORT_RESOURCE_TYPES } from "@/lib/fhir-export";
 import { FHIR_IMPORT_RESOURCE_TYPES } from "@/lib/fhir";
 
@@ -210,6 +219,98 @@ describe("full export covers every owned domain (issue #465)", () => {
       (a) => datasetTables.has(a.table) || FHIR_INPUT_TABLES.has(a.table)
     ).map((a) => a.table);
     expect(overlap).toEqual([]);
+  });
+});
+
+// ── Child tables (#2129) ────────────────────────────────────────────────────────
+
+// Child tables whose rows reach the export through the FHIR passport INPUT
+// (collectFhirExportInput in lib/export-full.ts) rather than a flat dataset:
+// allergy_reactions rides AllergyIntolerance.reaction[], and intake_item_doses is
+// folded into each medication's dosage string (it ALSO folds into the supplements
+// dataset's schedule column).
+const FHIR_CHILD_INPUT_TABLES = new Set<string>([
+  "allergy_reactions",
+  "intake_item_doses",
+]);
+
+// Child tables intentionally NOT in the portable export, each with the reason a
+// migrating family isn't losing health data by their absence — the same contract
+// as EXPORT_ALLOWLIST, one FK hop down. A child of an allowlisted PARENT still
+// needs its own entry here (naming the parent's argument), so the decision stays
+// visible when the parent's entry changes.
+const CHILD_EXPORT_ALLOWLIST: { table: string; why: string }[] = [
+  {
+    table: "intake_item_pairs",
+    why: "take-together/apart pairing between two intake_items rows, keyed on instance-local row ids that are meaningless off this instance; both endpoint items export in full via the supplements dataset, and the pair itself is a two-tap re-declaration — no independent clinical payload",
+  },
+  {
+    table: "routine_days",
+    why: "children of routines, itself allowlisted: the routine's meaningful training signal exports via frequency_targets, and full round-trip export of custom routines (days + slots) lands with the builder UI (#739)",
+  },
+  {
+    table: "routine_slots",
+    why: "children of routine_days — same #739 argument as routine_days, one level down",
+  },
+  {
+    table: "fitness_assessment_entries",
+    why: "children of fitness_assessments, itself allowlisted: a coverage ledger referencing measured VALUES that already round-trip through their natural stores (activities/exercise_sets, medical_records, body_metrics) — no independent clinical payload",
+  },
+  {
+    table: "integration_sync_rows",
+    why: "per-row provenance of integration_sync_events (#1333), itself allowlisted: operational sync audit detail, not a health record — the synced rows themselves export via their own datasets",
+  },
+];
+
+describe("full export covers every FK child of an owned table (#2129)", () => {
+  const datasetTables = new Set(DATASETS.map((d) => d.table));
+  const childTables = [...ownedChildTables(db).keys()].sort();
+  const allowlisted = new Set(CHILD_EXPORT_ALLOWLIST.map((a) => a.table));
+
+  it("derives a non-trivial child set from the schema", () => {
+    // Sanity that the FK walk works — the two #2129 misses plus known children.
+    for (const t of [
+      "intake_dose_schedule_versions",
+      "medical_record_revisions",
+      "exercise_sets",
+      "allergy_reactions",
+    ]) {
+      expect(childTables, t).toContain(t);
+    }
+  });
+
+  it("every child table is a dataset, in the FHIR passport input, or justified-allowlisted", () => {
+    const uncovered = childTables.filter(
+      (t) =>
+        !datasetTables.has(t) &&
+        !FHIR_CHILD_INPUT_TABLES.has(t) &&
+        !allowlisted.has(t)
+    );
+    expect(
+      uncovered,
+      `\nUn-exported child tables (add a dataset/passport reach, or allowlist with a reason):\n${uncovered.join("\n")}\n`
+    ).toEqual([]);
+  });
+
+  it("the child allowlist references only real child tables, each justified, none also exported", () => {
+    const children = new Set(childTables);
+    for (const a of CHILD_EXPORT_ALLOWLIST) {
+      expect(children.has(a.table), `${a.table} is not a child table`).toBe(
+        true
+      );
+      expect(a.why.trim().length).toBeGreaterThan(0);
+      expect(
+        datasetTables.has(a.table) || FHIR_CHILD_INPUT_TABLES.has(a.table),
+        `${a.table} is exported — remove its allowlist entry`
+      ).toBe(false);
+    }
+  });
+
+  it("the FHIR child input set stays real (collectFhirExportInput reads these)", () => {
+    const children = new Set(childTables);
+    for (const t of FHIR_CHILD_INPUT_TABLES) {
+      expect(children.has(t), `${t} is not a child table`).toBe(true);
+    }
   });
 });
 

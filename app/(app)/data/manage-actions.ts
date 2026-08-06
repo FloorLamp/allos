@@ -13,7 +13,7 @@ import {
   cleanupOrphanPrDismissals,
   sweepImmunizationDismissals,
 } from "@/lib/queries";
-import { undoKindForDataset } from "@/lib/dataset-undo";
+import { undoKindForTable } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   intakeItemDoseIds,
@@ -22,19 +22,22 @@ import {
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import { TOMBSTONE_TABLES } from "@/lib/integrations/tombstone-keys";
 
-// A dataset whose plain (non-undo) bulk delete must leave a re-import tombstone so
-// the next rolling-window sync can't resurrect the removed row (#653). The undoable
-// roots (activities/body_metrics/medical_records) already tombstone via captureDelete;
-// this covers the tombstone-tracked tables that DON'T route through undo — today just
-// metric_samples, which is independently deletable but has no undoable parent. The row
-// pre-images are captured BEFORE the delete so their natural keys survive it.
+// A plain (non-undo) bulk delete of a tombstone-tracked table must leave a
+// re-import tombstone so the next rolling-window sync can't resurrect the removed
+// rows (#653). The undoable datasets' row-wise deletes tombstone via captureDelete
+// instead (which the undo path removes again on restore) — but BOTH helpers here
+// serve only plain-delete paths: deleteDatasetRows reaches tombstonePreImages only
+// after the undo branch returned, and deleteAllDatasetRows is intentionally never
+// undoable, so it must take pre-images even for a table that HAS an undo kind
+// (#2125 — the old undo-kind guard here silently dropped delete-all tombstones for
+// every undoable root). The row pre-images are captured BEFORE the delete so their
+// natural keys survive it.
 function tombstonePreImages(
   table: string,
   ids: number[],
   profileId: number
 ): Record<string, unknown>[] {
   if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
-  if (undoKindForDataset(table)) return []; // handled by captureDelete instead
   const placeholders = ids.map(() => "?").join(",");
   return db
     .prepare(
@@ -48,7 +51,6 @@ function tombstoneAllPreImages(
   profileId: number
 ): Record<string, unknown>[] {
   if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
-  if (undoKindForDataset(table)) return [];
   return db
     .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
     .all(profileId) as Record<string, unknown>[];
@@ -65,7 +67,9 @@ function tombstoneAllPreImages(
 // Resolve a dataset key to its table + policy, guarding against unknown keys.
 function resolve(key: string) {
   const ds = getDataset(key);
-  const policy = DELETE_POLICY[key];
+  const policy = (
+    DELETE_POLICY as Record<string, DatasetDeletePolicy | undefined>
+  )[key];
   if (!ds || !policy) return null;
   return { table: ds.table, policy };
 }
@@ -131,11 +135,12 @@ export async function deleteDatasetRows(
   if (clean.length === 0) return { ok: false, error: "No rows selected." };
 
   // Datasets whose table is an undoable root (activities, body metrics, biomarker
-  // records, supplements/meds) capture EACH row into the undo holding table so the
-  // whole batch is restorable from one "Deleted N · Undo" toast (issue #29/#30).
-  // captureDelete already scopes to this profile and cascades children; a row that
-  // isn't this profile's returns null and is skipped.
-  const kind = undoKindForDataset(key);
+  // records, supplements/meds, practice sessions, substance history — #2125)
+  // capture EACH row into the undo holding table so the whole batch is restorable
+  // from one "Deleted N · Undo" toast (issue #29/#30). captureDelete already
+  // scopes to this profile and cascades children; a row that isn't this profile's
+  // returns null and is skipped.
+  const kind = undoKindForTable(resolved.table);
   if (kind) {
     // Intake items (supplements/meds) leave notification dedup markers behind on
     // delete; capture each item's dose ids BEFORE its cascade delete removes them, so

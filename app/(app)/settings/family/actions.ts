@@ -41,7 +41,7 @@ import {
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
 import { deleteApiTokensForLogin } from "@/lib/api-tokens";
-import { OWNED_TABLES } from "@/lib/owned-tables";
+import { deleteProfileData } from "@/lib/profile-delete";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { photoDomainRoot } from "@/lib/photo/store";
 import { recordAudit } from "@/lib/audit";
@@ -201,14 +201,16 @@ export async function renameProfile(formData: FormData): Promise<FamilyResult> {
 }
 
 // Permanently delete a profile and its ENTIRE health record. Destructive and
-// admin-only. Every owned + key-rebuilt table is deleted explicitly by
-// profile_id (NOT via FK cascade — upgraded DBs got profile_id via
-// addColumnIfMissing, which can't attach an ON DELETE action), and child rows are
-// deleted through their parents. profile_settings + login_profiles cascade, but
-// are deleted explicitly too for clarity. sessions.active_profile_id is nulled so
-// the profiles delete doesn't trip the sessions FK; getCurrentSession() then snaps
-// any parked session to its first accessible profile. Files are removed on disk
-// after the transaction commits.
+// admin-only. Every owned table is deleted explicitly by profile_id (NOT via FK
+// cascade — upgraded DBs got profile_id via addColumnIfMissing, which can't attach
+// an ON DELETE action), and child rows are deleted through their parents by the
+// SCHEMA-DERIVED sweep in lib/profile-delete.ts (#2126 — a hand-maintained child
+// list went stale three tables deep, leaving orphaned PHI; the derivation walks
+// PRAGMA foreign_key_list from OWNED_TABLES, so it cannot). profile_settings +
+// login_profiles cascade, but are deleted explicitly too for clarity.
+// sessions.active_profile_id is nulled so the profiles delete doesn't trip the
+// sessions FK; getCurrentSession() then snaps any parked session to its first
+// accessible profile. Files are removed on disk after the transaction commits.
 export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   const admin = await requireAdmin();
   const id = Number(formData.get("id"));
@@ -304,82 +306,15 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   if (fkWasOn) db.pragma("foreign_keys = OFF");
   try {
     writeTx(() => {
-      // Child tables first, reached through their parent (they carry no profile_id
-      // of their own, so these deletes are exempt from the profile-scoping test).
-      db.prepare(
-        "DELETE FROM exercise_sets WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
-      ).run(id);
-      db.prepare(
-        "DELETE FROM activity_routes WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
-      ).run(id);
-      db.prepare(
-        "DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
-      ).run(id);
-      // Dose schedule history (#1973) — a GRANDCHILD, so it is cleared before the dose
-      // rows it hangs off. Its FK is ON DELETE CASCADE, but this sweep runs with
-      // foreign_keys OFF, so the cascade would not fire and the rows would be orphaned
-      // PHI.
-      db.prepare(
-        `DELETE FROM intake_dose_schedule_versions
-          WHERE dose_id IN (SELECT d.id FROM intake_item_doses d
-                              JOIN intake_items i ON i.id = d.item_id
-                             WHERE i.profile_id = ?)`
-      ).run(id);
-      db.prepare(
-        "DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
-      ).run(id);
-      db.prepare(
-        `DELETE FROM intake_item_pairs
-        WHERE a_id IN (SELECT id FROM intake_items WHERE profile_id = ?)
-           OR b_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-      ).run(id, id);
-      // Routine children (#738), reached through routines (parent, OWNED). Slots
-      // first (they FK routine_days), then days; the routines rows themselves are
-      // cleared by the OWNED_TABLES loop below.
-      db.prepare(
-        `DELETE FROM routine_slots WHERE routine_day_id IN (
-           SELECT rd.id FROM routine_days rd
-             JOIN routines r ON r.id = rd.routine_id
-            WHERE r.profile_id = ?)`
-      ).run(id);
-      db.prepare(
-        `DELETE FROM routine_days WHERE routine_id IN (
-           SELECT id FROM routines WHERE profile_id = ?)`
-      ).run(id);
-      // Fitness-check entries (#834), reached through fitness_assessments (parent,
-      // OWNED). Its ON DELETE CASCADE FK is a no-op here because the sweep runs with
-      // foreign_keys OFF, so the child rows are cleared explicitly before the parent
-      // (mirrors exercise_sets/routine_days above).
-      db.prepare(
-        `DELETE FROM fitness_assessment_entries WHERE assessment_id IN (
-           SELECT id FROM fitness_assessments WHERE profile_id = ?)`
-      ).run(id);
-      // Integration sync-row provenance (#1333), reached through integration_sync_events
-      // (parent, OWNED). Its ON DELETE CASCADE FK is a no-op here because the sweep runs
-      // with foreign_keys OFF, so the child rows are cleared explicitly before the parent
-      // (mirrors exercise_sets/routine_days/fitness_assessment_entries above).
-      db.prepare(
-        `DELETE FROM integration_sync_rows WHERE event_id IN (
-           SELECT id FROM integration_sync_events WHERE profile_id = ?)`
-      ).run(id);
-      // Correction lineage (#1404), reached through medical_records (parent, OWNED).
-      // Its ON DELETE CASCADE FK is a no-op here because the sweep runs with
-      // foreign_keys OFF, so the child rows are cleared explicitly before the parent
-      // (mirrors exercise_sets/routine_days/integration_sync_rows above).
-      db.prepare(
-        `DELETE FROM medical_record_revisions WHERE record_id IN (
-           SELECT id FROM medical_records WHERE profile_id = ?)`
-      ).run(id);
-
-      // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
-      // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON
-      // DELETE action, so rows are removed explicitly here.) OWNED_TABLES is the
-      // shared source of truth (lib/owned-tables.ts): a new owned table added there
-      // is cleared here automatically, so a forgotten table can't silently leave a
-      // deleted person's PHI behind.
-      for (const t of OWNED_TABLES) {
-        db.prepare(`DELETE FROM ${t} WHERE profile_id = ?`).run(id);
-      }
+      // The profile's entire data subtree: every child table reachable from an
+      // OWNED_TABLES parent via PRAGMA foreign_key_list (deepest first, reached
+      // through their parents — they carry no profile_id of their own, so those
+      // deletes are exempt from the profile-scoping test), then every owned table
+      // by profile_id. Derived from the live schema each time (#2126), so a child
+      // table added by a future migration is swept automatically; the guard scan
+      // (lib/__db_tests__/profile-delete-fk-scan.test.ts) fails the build on any
+      // FK shape the derivation can't express.
+      deleteProfileData(db, id);
 
       db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(id);
       db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(id);

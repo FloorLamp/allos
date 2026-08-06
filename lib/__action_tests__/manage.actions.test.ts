@@ -124,6 +124,96 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
       expect(restoreDeletedRow(profile.id, token)).toBe(true);
     expect(bmCount(profile.id)).toBe(2);
   });
+
+  // #2125: the kinds #2038 made undoable at the row menu are undoable at the bulk
+  // surface too — same rows, ONE contract. Pre-fix, these two datasets hard-deleted.
+  function addPracticeSession(profileId: number, date: string): number {
+    return Number(
+      db
+        .prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date, duration_min) VALUES (?, 'sauna', ?, 20)"
+        )
+        .run(profileId, date).lastInsertRowid
+    );
+  }
+  function practiceCount(profileId: number): number {
+    return (
+      db
+        .prepare("SELECT COUNT(*) AS c FROM practice_logs WHERE profile_id = ?")
+        .get(profileId) as { c: number }
+    ).c;
+  }
+
+  it("bulk-deleted practice sessions restore from their undo tokens (#2125)", async () => {
+    const { profile } = seedActor();
+    const id1 = addPracticeSession(profile.id, "2026-02-01");
+    const id2 = addPracticeSession(profile.id, "2026-02-03");
+    const keeper = addPracticeSession(profile.id, "2026-02-05");
+
+    const res = await deleteDatasetRows("practice_logs", [id1, id2]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.deleted).toBe(2);
+    expect(res.undoIds).toHaveLength(2);
+    // The practice-session kind is 1:1 — the unselected sibling session survives
+    // (the wellness-practice-history kind would have dragged it along).
+    expect(practiceCount(profile.id)).toBe(1);
+    expect(
+      db.prepare("SELECT id FROM practice_logs WHERE id = ?").get(keeper)
+    ).toBeDefined();
+
+    const { restoreDeletedRow } = await import("@/lib/undo-delete-db");
+    for (const token of res.undoIds)
+      expect(restoreDeletedRow(profile.id, token)).toBe(true);
+    expect(practiceCount(profile.id)).toBe(3);
+  });
+
+  it("bulk-deleted substance history restores from its undo token (#2125)", async () => {
+    const { profile } = seedActor();
+    const id = Number(
+      db
+        .prepare(
+          "INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
+        )
+        .run(profile.id).lastInsertRowid
+    );
+
+    const res = await deleteDatasetRows("substance_log", [id]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.deleted).toBe(1);
+    expect(res.undoIds).toHaveLength(1);
+
+    const { restoreDeletedRow } = await import("@/lib/undo-delete-db");
+    expect(restoreDeletedRow(profile.id, res.undoIds[0])).toBe(true);
+    const row = db
+      .prepare(
+        "SELECT substance, units FROM substance_log WHERE profile_id = ? AND date = '2026-02-02'"
+      )
+      .get(profile.id);
+    expect(row).toEqual({ substance: "nicotine", units: 3 });
+  });
+
+  it("delete-all still tombstones a synced practice session (#653 — undo never covers delete-all)", async () => {
+    // Regression for the guard this fix removed from tombstoneAllPreImages: with
+    // practice_logs newly mapped to an undo kind, the old "handled by
+    // captureDelete" short-circuit would have silently dropped delete-all
+    // tombstones — but deleteAllDatasetRows is intentionally never undoable, so
+    // nothing else writes them.
+    const { profile } = seedActor();
+    db.prepare(
+      "INSERT INTO practice_logs (profile_id, practice, date, source, external_id) VALUES (?, 'sauna', '2026-02-01', 'oura', 'oura:sauna:1')"
+    ).run(profile.id);
+
+    const res = await deleteAllDatasetRows("practice_logs");
+    expect(res).toMatchObject({ ok: true, deleted: 1, undoIds: [] });
+    const tombstones = db
+      .prepare(
+        "SELECT natural_key FROM import_tombstones WHERE profile_id = ? AND target_table = 'practice_logs'"
+      )
+      .all(profile.id) as { natural_key: string }[];
+    expect(tombstones.map((t) => t.natural_key)).toEqual(["oura:sauna:1"]);
+  });
 });
 
 describe("deleteDatasetRows — browse-only datasets are rejected", () => {

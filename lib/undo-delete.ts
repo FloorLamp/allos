@@ -91,19 +91,19 @@ export interface EntitySpec {
   // The physical table name (a constant, never user input).
   table: string;
   // FK columns to remap on restore. Empty for the root.
-  fks: FkSpec[];
+  fks: readonly FkSpec[];
   // String-key references to remap on restore (for example
   // upcoming_dismissals.signal_key = `practice:<targetId>`).
-  keyRefs?: KeyRefSpec[];
+  keyRefs?: readonly KeyRefSpec[];
   // Captured FK columns pointing OUTSIDE this capture whose target may have been
   // deleted since capture — reconciled (null/drop) on restore. Absent when none.
-  externalRefs?: ExternalRefSpec[];
+  externalRefs?: readonly ExternalRefSpec[];
   // Two columns that must stay canonically ordered (col[0] < col[1]) on the row —
   // e.g. intake_item_pairs (a_id, b_id), which carries CHECK (a_id < b_id) since
   // issue #97. Remapping a captured endpoint to a restored item's NEW (larger) id
   // can invert the order, so restore re-canonicalizes these two columns after the
   // remap. Absent when the entity has no ordered pair.
-  orderedPair?: [string, string];
+  orderedPair?: readonly [string, string];
   // For a CHILD entity, how to select its rows given the root id: a WHERE fragment
   // and how many times the root id is bound into it. Omitted for the root (which is
   // captured by `id = ? AND profile_id = ?`). Static SQL — no user input.
@@ -126,7 +126,7 @@ export interface KindSpec {
   // ownership check and to keep the registry honest against OWNED_TABLES.
   ownedTable: string;
   // Entities in dependency order; entities[0] is the root.
-  entities: EntitySpec[];
+  entities: readonly EntitySpec[];
 }
 
 // A captured/serialized delete: the kind plus the rows of each entity (each row is
@@ -192,7 +192,13 @@ export interface MergeUndoContext {
 // ── The kind registry ─────────────────────────────────────────────────────────
 // Adding a new undoable kind = one entry here + wiring its delete action to
 // captureDelete(kind, ...). The root table MUST be in OWNED_TABLES.
-export const UNDO_KINDS: Record<string, KindSpec> = {
+//
+// Const-asserted (#2125) so each kind's `ownedTable` stays a literal type: the
+// Data → Manage bulk-delete mapping (lib/dataset-undo.ts) derives its completeness
+// obligation from these literals — a new kind whose root is a deletable dataset
+// becomes a COMPILE error there until it is mapped or argued-excluded. Runtime
+// consumers use the wide UNDO_KINDS view below (payload kinds arrive as strings).
+const KIND_SPECS = {
   activity: {
     kind: "activity",
     ownedTable: "activities",
@@ -668,7 +674,16 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
       },
     ],
   },
-};
+} as const satisfies Record<string, KindSpec>;
+
+// The closed union of undoable kind names, and the literal-typed registry view
+// lib/dataset-undo.ts computes its type-level completeness guard from (#2125).
+export type UndoKind = keyof typeof KIND_SPECS;
+export type UndoKindRegistry = typeof KIND_SPECS;
+
+// The wide view of the same registry object for runtime consumers, which look
+// kinds up by plain strings (stored payloads, action params).
+export const UNDO_KINDS: Record<string, KindSpec> = KIND_SPECS;
 
 export function getKindSpec(kind: string): KindSpec {
   const spec = UNDO_KINDS[kind];
@@ -709,8 +724,8 @@ export type IdMaps = Record<string, Map<number, number>>;
 export function remapRow(
   row: Row,
   idMaps: IdMaps,
-  fks: FkSpec[],
-  keyRefs: KeyRefSpec[] = []
+  fks: readonly FkSpec[],
+  keyRefs: readonly KeyRefSpec[] = []
 ): Row {
   const out: Row = { ...row };
   delete out.id;
