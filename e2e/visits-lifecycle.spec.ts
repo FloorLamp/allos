@@ -18,7 +18,9 @@ function cleanup() {
   try {
     // Appointments hold the encounter_id FK, so drop them BEFORE their encounters.
     handle.prepare("DELETE FROM appointments WHERE title = ?").run(MARKER);
-    handle.prepare("DELETE FROM appointments WHERE title = ?").run(STALE_MARKER);
+    handle
+      .prepare("DELETE FROM appointments WHERE title = ?")
+      .run(STALE_MARKER);
     handle.prepare("DELETE FROM encounters WHERE reason = ?").run(MARKER);
   } finally {
     handle.close();

@@ -116,8 +116,7 @@ export async function updateAppointment(
 // cross-state conflict (complete a cancelled row, cancel a completed one) and a
 // missing/foreign row are refusals the caller renders.
 export type AppointmentStatusResult =
-  | { ok: true; outcome: "done" | "already" }
-  | { ok: false; error: string };
+  { ok: true; outcome: "done" | "already" } | { ok: false; error: string };
 
 // Set the lifecycle status through the CAS core (lib/appointment-status.ts).
 // 'completed'/'cancelled' drop the row off Upcoming; 'scheduled' returns it.
