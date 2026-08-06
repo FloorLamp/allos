@@ -146,8 +146,10 @@ describe("getNotifySchedule — wake-seeded Morning time (#1117, minutes since #
     expect(getNotifySchedule(wakeProfile).digestAuto).toBe(false);
     setProfileSetting(wakeProfile, "notify_digest_hour", "auto");
     const sched = getNotifySchedule(wakeProfile);
-    // No measured arrival lags in this fixture → digestAutoMinute returns null
-    // and the digest falls back to the wake minute.
+    // No sync provenance in this fixture → the arrival statistic has no answer
+    // ("no-source"), digestAutoMinute returns null, and the digest falls back to
+    // the wake minute. The corrected statistic itself is pinned in
+    // lib/__db_tests__/sleep-arrivals.test.ts (#2214).
     expect(sched.digestMinute).toBe(7 * 60);
     expect(sched.digestAuto).toBe(true);
     setProfileSetting(wakeProfile, "notify_digest_hour", ""); // reset off

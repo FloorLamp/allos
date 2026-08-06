@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  isDstTransitionDay,
+  localDayMinutes,
   tzOffsetMs,
   zonedWallTimeToUtc,
   zonedWallIsoToUtc,
@@ -117,5 +119,35 @@ describe("utcSqlString / parseUtcSql", () => {
   it("returns null for missing/garbage", () => {
     expect(parseUtcSql(null)).toBeNull();
     expect(parseUtcSql("nope")).toBeNull();
+  });
+});
+
+describe("localDayMinutes / isDstTransitionDay", () => {
+  it("measures an ordinary local day as 24 hours", () => {
+    expect(localDayMinutes("UTC", "2026-07-15")).toBe(1440);
+    expect(localDayMinutes("America/New_York", "2026-07-15")).toBe(1440);
+    expect(isDstTransitionDay("America/New_York", "2026-07-15")).toBe(false);
+    // A zone with no DST at all never has one.
+    expect(isDstTransitionDay("Asia/Tokyo", "2026-03-08")).toBe(false);
+  });
+
+  it("finds the two days a year the offset moves, in both hemispheres", () => {
+    // US spring forward 2026-03-08 (23h) and fall back 2026-11-01 (25h).
+    expect(localDayMinutes("America/New_York", "2026-03-08")).toBe(23 * 60);
+    expect(localDayMinutes("America/New_York", "2026-11-01")).toBe(25 * 60);
+    expect(isDstTransitionDay("America/New_York", "2026-03-08")).toBe(true);
+    expect(isDstTransitionDay("America/New_York", "2026-11-01")).toBe(true);
+    // Southern hemisphere, the other way round the year: Sydney 2026-04-05 (25h).
+    expect(localDayMinutes("Australia/Sydney", "2026-04-05")).toBe(25 * 60);
+    expect(isDstTransitionDay("Australia/Sydney", "2026-04-05")).toBe(true);
+    // The days either side are ordinary — the flag marks the seam, not the season.
+    expect(isDstTransitionDay("America/New_York", "2026-03-07")).toBe(false);
+    expect(isDstTransitionDay("America/New_York", "2026-03-09")).toBe(false);
+  });
+
+  it("reports the ordinary day for unparseable input rather than a transition", () => {
+    // A caller keying an EXCLUSION on this must drop nothing on a garbage date.
+    expect(localDayMinutes("UTC", "not-a-date")).toBe(1440);
+    expect(isDstTransitionDay("UTC", "")).toBe(false);
   });
 });
