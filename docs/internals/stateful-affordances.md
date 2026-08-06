@@ -285,17 +285,25 @@ each one to answer _"did my tap land?"_ its own way, and by the 2026-08-05 surve
 one-tap logging had four unrelated answers and five hand-rolled copies of the
 same optimistic-reconcile code. The decision is recorded here and enforced as
 data in `lib/one-tap.ts` (`ONE_TAP_AFFORDANCES`), which every surface running the
-shared hook must name itself in.
+shared hook must name itself in. Since #2130 the registry has declare-or-argue
+teeth in both directions: a source scan
+(`lib/__tests__/one-tap-call-sites.test.ts`) fails an entry no component wires
+and a call site the registry doesn't know, and the offline queue's
+`OFFLINE_QUEUE_COVERAGE` (`lib/offline/queue.ts`) must map every affordance to a
+queue flow or an argued exclusion at the type level — an idempotent tap (the
+queue's own admission criterion) can no longer ship unqueued-and-unargued. The
+same #2130 mechanism gives the quick-log sheet, the palette, and the Telegram
+vocabulary a per-domain census over `lib/loggable-domains.ts`.
 
 **The four feedback designs.** A new one-tap surface picks one of these; it does
 not invent a fifth.
 
-| design             | when it applies                                                                                           | who uses it                                                    |
-| ------------------ | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `optimistic-count` | there is a number beside the tap that can move now and reconcile after (the #748 item 2 pattern)          | food servings, protein grams, mobility moves, symptom severity |
-| `cooldown`         | no count to move — the figure arrives with the action's revalidation, so the inert window IS the feedback | substance units                                                |
-| `outcome-toast`    | the write can REFUSE, so the tap is answered from its typed outcome and never confirmed unconditionally   | dose confirm/skip, PRN dose, practice session                  |
-| `recency-line`     | additive with a corrupting double-tap: an informational line beside a button that stays enabled (#798)    | mark refilled                                                  |
+| design             | when it applies                                                                                           | who uses it                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `optimistic-count` | there is a number beside the tap that can move now and reconcile after (the #748 item 2 pattern)          | food servings, protein grams, mobility moves, symptom severity, mood valence |
+| `cooldown`         | no count to move — the figure arrives with the action's revalidation, so the inert window IS the feedback | substance units                                                              |
+| `outcome-toast`    | the write can REFUSE, so the tap is answered from its typed outcome and never confirmed unconditionally   | dose confirm/skip, PRN dose, practice session, period offer                  |
+| `recency-line`     | additive with a corrupting double-tap: an informational line beside a button that stays enabled (#798)    | mark refilled                                                                |
 
 **How a second tap is classified.** This is what decides whether a confirm may
 ever appear, and it is declared per affordance rather than inferred:

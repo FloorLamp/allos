@@ -414,6 +414,7 @@ export default function HowAreYouCard({
                     key={day.date}
                     type="button"
                     data-testid={`mood-day-${offset}`}
+                    data-date={day.date}
                     aria-pressed={day.date === selectedDate}
                     onClick={() => pickDay(day)}
                     className={`badge cursor-pointer border ${

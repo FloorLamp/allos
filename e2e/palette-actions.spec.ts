@@ -75,6 +75,37 @@ test.describe("command palette — create actions open the overlay in place (#21
     expect(page.url()).toBe(startUrl);
   });
 
+  // #2130: the palette's own header promised "everything the sheet has a drawer
+  // form for" (#2184) while food, dose and mood had no entry. Non-mutating on
+  // purpose — each pick proves it opens the SAME overlay form the sheet mounts
+  // (same testids because it is the same component), in place; the write paths
+  // are already covered by the sheet specs over those very forms.
+  test("'Log food', 'Log dose' and 'Log mood' open their sheet forms in place (#2130)", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    const startUrl = page.url();
+
+    const cases = [
+      { query: "log food", action: "log-food", form: "food" },
+      { query: "log dose", action: "log-dose", form: "dose" },
+      { query: "log mood", action: "log-mood", form: "mood" },
+    ] as const;
+    for (const c of cases) {
+      const input = await openCommandPalette(page);
+      await input.fill(c.query);
+      await page.getByTestId(`palette-action-${c.action}`).click();
+      await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
+      await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+        "data-form",
+        c.form
+      );
+      expect(page.url()).toBe(startUrl);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    }
+  });
+
   test("'Log vitals' opens the same form on the Vitals group, in place", async ({
     page,
   }) => {

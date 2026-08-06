@@ -108,6 +108,18 @@ function clearShellDocuments(prefix: string): void {
   }
 }
 
+// Clear the shell profile's check-ins so the mood test owns its rows (#868).
+function clearShellMoodLogs(): void {
+  const db = openDb();
+  try {
+    db.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(
+      shellProfileId()
+    );
+  } finally {
+    db.close();
+  }
+}
+
 // Clear the dose's logs so it is DUE again — the one mutable precondition.
 function clearDoseLogs(doseId: number): void {
   const db = openDb();
@@ -455,6 +467,60 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     await expect(card).toContainText("1 day this week");
   } finally {
     clearShellPracticeLogs();
+    await page.context().close();
+  }
+});
+
+test("the mood row logs a check-in in place — and 'Yesterday' backfills the missed day (#2130/#2128)", async ({
+  browser,
+}) => {
+  // #2130 made mood a sheet member (the last daily-loop one-tap log without a
+  // row), and #2128 gave the entry path a day: the overlay mounts the SAME
+  // MoodValencePicker over the SAME logMood upsert the dashboard card runs, with
+  // the backfill chips choosing the day. The assertion that matters is the last
+  // one: the row landed in mood_logs ON the chip's own date.
+  clearShellMoodLogs();
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+
+    const overlay = await openQuickEntry(page, "log-mood");
+    const checkin = overlay.getByTestId("quick-mood-checkin");
+    await expect(checkin).toBeVisible();
+
+    // The overlay renders only after its on-open gather resolved, so the chips
+    // are hydrated client state by the time they are visible.
+    const yesterdayChip = checkin.getByTestId("quick-mood-day-1");
+    await expect(yesterdayChip).toHaveText("Yesterday");
+    const yesterdayDate = await yesterdayChip.getAttribute("data-date");
+    expect(yesterdayDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    await yesterdayChip.click();
+    await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
+
+    // One tap writes and closes the sheet (a check-in is a transaction with an
+    // end); you are still on the dashboard.
+    await settledClick(page, checkin.getByTestId("quick-mood-tap-4"));
+    await expect(page.getByTestId("toast")).toContainText("Logged Good");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    expect(page.url()).toBe(dashboardUrl);
+
+    // Durable, from the store every mood surface reads: one row, on the chip's
+    // own date — the day the user meant, not the day they remembered.
+    const db = openDb();
+    try {
+      const rows = db
+        .prepare(
+          "SELECT date, valence FROM mood_logs WHERE profile_id = ? ORDER BY date"
+        )
+        .all(shellProfileId()) as { date: string; valence: number }[];
+      expect(rows).toEqual([{ date: yesterdayDate, valence: 4 }]);
+    } finally {
+      db.close();
+    }
+  } finally {
+    clearShellMoodLogs();
     await page.context().close();
   }
 });

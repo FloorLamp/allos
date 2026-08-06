@@ -123,6 +123,7 @@ export default function QuickMoodCheckin({
             key={d.date}
             type="button"
             data-testid={`quick-mood-day-${i}`}
+            data-date={d.date}
             aria-pressed={i === selected}
             onClick={() => pickDay(i)}
             className={`badge cursor-pointer border ${
@@ -153,7 +154,7 @@ export default function QuickMoodCheckin({
           {error}
         </p>
       ) : null}
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Energy, calm, and notes live on the dashboard check-in.
       </p>
     </div>

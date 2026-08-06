@@ -144,7 +144,7 @@ export const TELEGRAM_DOMAIN_CENSUS = {
     "A workout is a SESSION lifecycle with an editor (the #1428 decision rule), not a one-line capture; the activity editor and dock own it."
   ),
   period: arguedExclusion(
-    "The period affordance is ONE offer rendered from server state with typed refusals (#1892). A chat keyboard is stale by construction — the #2018 live-keyboard problem — so the verb on the button could not be trusted to name the write it performs. Deliberately app-only."
+    "The period affordance is ONE offer rendered from server state with typed refusals (#1892). A chat keyboard is stale by construction — the #2018 live-keyboard problem — so the verb on the button cannot be trusted to name the write it performs. Deliberately app-only."
   ),
   substance: arguedExclusion(
     "Deliberate-access, sensitive domain: the tap must render beside its #998 cap verdict, and chat delivery can surface on lock screens and shared devices. Off the chat vocabulary by reach policy (docs/internals/findings.md)."

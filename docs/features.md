@@ -199,8 +199,13 @@ explicit edit.
 ### Quick entry and context
 
 The Dashboard's **How are you today?** card has four stable intents: **Rate /
-Context / Report / Act**. On a well day, **Report** reveals the symptom logger
-without first declaring an illness. **Context** carries ongoing situations such
+Context / Report / Act**. **Rate** carries small day chips — Today, Yesterday,
+and the day before — so a missed check-in can still be logged for the day it
+belongs to (a small, dose-log-style window; older days stay editable from the
+mood readings table once logged). The same chips appear on the quick-log
+sheet's **Log mood** row and the palette's **Log mood** action, which mount the
+same picker over the same write. On a well day, **Report** reveals the symptom
+logger without first declaring an illness. **Context** carries ongoing situations such
 as Travel, High stress, and Poor sleep. **Act** offers quick logging for
 as-needed medication when relevant. The same situation vocabulary drives
 situational supplements, so a toggle has one meaning everywhere.
@@ -2462,8 +2467,9 @@ today?" card — idempotent per day, so a replay updates the day's one entry), a
 **workout session** logged entirely offline (the Training editor: if the
 connection is gone for the whole session, closing the editor queues the
 complete workout — sets, loads, times — instead of stranding it on the device),
-and the **food quick-adds** (a one-tap food-group serving or protein grams on
-Nutrition) — the app no longer fails when you're offline: it **queues the entry
+the **food quick-adds** (a one-tap food-group serving or protein grams on
+Nutrition), and a **mobility move** tapped on (Training — the un-tap stays
+online-only, see below) — the app no longer fails when you're offline: it **queues the entry
 on your device** (in this browser's IndexedDB) and shows a "Saved offline —
 will sync when you reconnect" confirmation plus a **pending badge** counting
 the queued writes.
@@ -2489,9 +2495,12 @@ navigation while offline still shows the reconnect screen. Two nearby cases are
 deliberately excluded (documented in the queue's scope): **editing a workout
 that already reached the server** relies on the editor's own retrying auto-save
 and local draft rather than the queue (a replayed stale edit would overwrite a
-session that may have moved), and the food/protein **"−" undo taps** are
-online-only (an undo is a decrement against the current total, not a captured
-entry).
+session that may have moved), and the food/protein **"−" undo taps** and the mobility **un-tap** are
+online-only (an undo or removal is applied against the current total or
+session, not a captured entry). Since #2130 that scope is a type-checked
+census: every one-tap affordance in the app is either mapped to a queue flow or
+excluded with a written argument (`OFFLINE_QUEUE_COVERAGE` in
+`lib/offline/queue.ts`).
 
 ## App updates
 
