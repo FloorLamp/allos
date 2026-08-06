@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import SaveStatus from "@/components/SaveStatus";
+import DateField from "@/components/DateField";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import {
   CODE_STATUSES,
@@ -121,14 +122,11 @@ export default function AdvanceDirectivesSettings({
             <label className="label" htmlFor="code-status-effective">
               Effective date
             </label>
-            <input
+            <DateField
               id="code-status-effective"
-              type="date"
               value={draft.codeStatusEffective}
-              onChange={(e) =>
-                update({ codeStatusEffective: e.target.value }, true)
-              }
-              className="input"
+              onChange={(v) => update({ codeStatusEffective: v }, true)}
+              data-testid="code-status-effective"
             />
           </div>
           <div>

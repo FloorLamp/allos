@@ -10,6 +10,10 @@ import {
   slugifyVaccine,
 } from "@/lib/immunization-catalog";
 import { sweepImmunizationDismissals } from "@/lib/queries";
+import { createImmunizationShareLink } from "@/lib/share-links-db";
+import { expiresAtFor } from "@/lib/share-links";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
@@ -230,4 +234,37 @@ export async function clearImmunizationOverride(
   revalidateImmunizations();
   revalidatePath(`/immunizations/${vaccine}`);
   return formOk();
+}
+
+export type ImmunizationShareResult =
+  { ok: true; path: string } | { ok: false; error: string };
+
+// Mint a tokenized immunization-record share link (#1849) — the #852 medication-list
+// precedent applied to the one record type whose stated purpose is being handed to a
+// registrar. Returns the one-time /share path; the raw token is never stored (only its
+// hash). requireWriteAccess gates it, and the link is audited by its id, never the
+// token. The record IS the shared content by design (owner opted in), served through
+// the same token-auth + public-path allowlist as the passport and medication shares —
+// the shared view renders exactly the printed record, with no navigation into the app.
+export async function createImmunizationShareLinkAction(
+  formData: FormData
+): Promise<ImmunizationShareResult> {
+  const { login, profile } = await requireWriteAccess();
+  const ttl = String(formData.get("ttl") ?? "");
+  const { id: linkId, token } = createImmunizationShareLink(
+    profile.id,
+    login.id,
+    expiresAtFor(ttl, new Date())
+  );
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.shareLinkCreate,
+    target: String(linkId),
+  });
+  // The revoke list lives with the passport's share management (one surface for
+  // every kind of link this profile has handed out).
+  revalidatePath("/records/history/immunizations");
+  revalidatePath("/profile");
+  return { ok: true, path: `/share/${token}` };
 }

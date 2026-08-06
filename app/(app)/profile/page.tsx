@@ -55,6 +55,7 @@ export default async function ProfilePage() {
 
   const links: ShareLinkView[] = listShareLinks(profile.id).map((l) => ({
     id: l.id,
+    kind: l.kind,
     fields: parseShareFields(l.fields),
     status: shareLinkStatus(l, new Date()),
     expiresAt: l.expires_at,

@@ -25,6 +25,11 @@ import {
 
 export interface ShareLinkView {
   id: number;
+  // What the link shares. A passport link is described by its FIELDS; every other
+  // kind carries an empty field list and is described by the kind itself — without
+  // this an episode / medication / immunization link listed here as a blank line
+  // (#1849), which made revoking the right one guesswork.
+  kind: "passport" | "episode" | "medications" | "immunizations";
   fields: ShareField[];
   status: "valid" | "revoked" | "expired";
   expiresAt: string;
@@ -32,6 +37,22 @@ export interface ShareLinkView {
 }
 
 const FIELD_LABEL = new Map(SHARE_FIELDS.map((f) => [f.key, f.label]));
+
+const KIND_LABEL: Record<Exclude<ShareLinkView["kind"], "passport">, string> = {
+  episode: "Illness episode summary",
+  medications: "Current medication list",
+  immunizations: "Immunization record",
+};
+
+// One line describing what a link exposes: the chosen passport sections, or the
+// non-passport artifact's name.
+function linkDescription(link: ShareLinkView): string {
+  if (link.kind !== "passport") return KIND_LABEL[link.kind];
+  return (
+    link.fields.map((f) => FIELD_LABEL.get(f) ?? f).join(", ") ||
+    "No sections selected"
+  );
+}
 
 function statusBadge(status: ShareLinkView["status"]): string {
   if (status === "valid")
@@ -235,9 +256,7 @@ export default function PassportControls({
                         </span>
                       </div>
                       <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                        {l.fields
-                          .map((f) => FIELD_LABEL.get(f) ?? f)
-                          .join(", ")}
+                        {linkDescription(l)}
                       </div>
                     </div>
                     {l.status === "valid" && (

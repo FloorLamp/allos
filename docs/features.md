@@ -1725,11 +1725,33 @@ A dose records the administration facts school, travel, camp, and employer forms
 ask for: **lot number**, **route** (IM / SC / ID / oral / intranasal / other),
 **site**, and any **adverse reaction** to that dose. All optional — an unstated
 field prints an em dash, never a guess — and all shown on the recorded-dose
-table, the per-vaccine dose history, the CSV export, and the FHIR `Immunization`
-resource (`lotNumber` / `route` / `site` / `reaction`). A per-vaccine
+table, the per-vaccine dose history, the printable record, the CSV export, and
+the FHIR `Immunization` resource (`lotNumber` / `route` / `site` / `reaction`). A per-vaccine
 **declination** additionally carries a structured **exemption type** (medical /
 religious / philosophical) alongside its free-text reason; an "immune" override
 never carries one, because it is not an exemption.
+
+### Printing and sharing the record
+
+Those administration facts exist to be transcribed onto somebody's form, so the
+record **prints** (`/immunizations/print`, the printer button on **Records →
+History → Immunizations**) and can be **shared as a revocable link** — the same
+pair the medication list has. The printout leads with the name and date of birth
+a form is matched against, then one section per vaccine with every dose in date
+order: date, dose number within that series, product, lot, route, site, and the
+administering provider, with an em dash wherever a fact was never recorded. A
+**combination shot appears under each series it credits** (a ProQuad dose under
+both MMR and Varicella), naming the product actually given, which is how a school
+form wants to read it. Any adverse reaction to a dose is listed beneath its
+vaccine.
+
+The **share link** is a `kind='immunizations'` link on the existing share-link
+machinery: an unguessable token, a chosen lifetime (1 hour to 30 days), no login
+required to open it, and exactly the printed record — no app navigation. It
+re-derives the record at view time, so a dose added after you hand the link over
+still shows up. Every link a profile has issued is listed with **what it shares**
+and a **Revoke** button on **Medical → Passport → Share**; revoking makes the URL
+404 like any other dead link.
 
 ## Cycle
 

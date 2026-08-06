@@ -175,6 +175,14 @@ const ROUTE_LABELS: Record<string, string> = {
   other: "Other route",
 };
 
+// The route as a form prints it ("IM", "PO"). One vocabulary, so the inline
+// administration line and the printable record (#1849) can't abbreviate the same
+// route differently; an unrecognized stored value passes through verbatim.
+export function immunizationRouteLabel(route: string | null): string | null {
+  if (!route) return null;
+  return ROUTE_LABELS[route] ?? route;
+}
+
 // The one-line "lot / route / site" summary of HOW a dose was given (#1406) — the
 // facts school / travel / camp / employer forms ask for. ONE computation, so the
 // history table, the per-vaccine dose list, and the export can never phrase the same
@@ -188,7 +196,8 @@ export function immunizationAdministrationLine(dose: {
 }): string {
   const parts: string[] = [];
   if (dose.lot_number?.trim()) parts.push(`Lot ${dose.lot_number.trim()}`);
-  if (dose.route) parts.push(ROUTE_LABELS[dose.route] ?? dose.route);
+  const route = immunizationRouteLabel(dose.route);
+  if (route) parts.push(route);
   if (dose.site?.trim()) parts.push(dose.site.trim());
   return parts.join(" · ");
 }

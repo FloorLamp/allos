@@ -160,6 +160,7 @@ import { migration as m158 } from "./158-notify-times-minute-grain";
 import { migration as m159 } from "./159-cycling-telemetry";
 import { migration as m160 } from "./160-integration-backfill-jobs";
 import { migration as m161 } from "./161-condition-edit-lock";
+import { migration as m162 } from "./162-immunizations-share-kind";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -329,4 +330,5 @@ export const MIGRATIONS: Migration[] = [
   m159,
   m160,
   m161,
+  m162,
 ];
