@@ -149,8 +149,22 @@ setTierConfigProvider(() => getTierConfigs());
 // enforced by lib/__tests__/immediate-tx.test.ts. Nesting is safe: better-sqlite3
 // turns a transaction opened inside an already-open one into a SAVEPOINT and ignores
 // the access mode, so writeTx works at either the top level or nested.
-export function writeTx<T>(fn: () => T): T {
-  return db.transaction(fn).immediate() as T;
+// The write-transaction TOKEN (#2133, owner mechanism). `writeTx` hands its callback a
+// value only this module can mint, and the in-transaction read/compare helpers in
+// lib/tx.ts REQUIRE it — so a guard read or compare-and-swap written with those helpers
+// cannot typecheck OUTSIDE the transaction it protects. That makes the defect class
+// #2133/#2139 found (status checked outside, write inside) unwritable rather than
+// something each core's author remembers. The token is EVIDENCE, not an async handle:
+// the callback-synchronous rule is unchanged, and a callback that ignores the token
+// (every additive write) is exactly as valid as before.
+declare const TX_BRAND: unique symbol;
+export interface Tx {
+  readonly [TX_BRAND]: true;
+}
+const txToken = {} as Tx;
+
+export function writeTx<T>(fn: (tx: Tx) => T): T {
+  return db.transaction(() => fn(txToken)).immediate() as T;
 }
 
 // Run a READ-ONLY snapshot transaction (DEFERRED): wrap several reads in one

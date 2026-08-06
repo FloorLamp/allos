@@ -30,13 +30,20 @@ const MENU_WIDTH = 160; // matches w-40
 const GAP = 4;
 const MARGIN = 8; // keep the panel this far from the viewport edges
 
+// What a menu action may resolve with. `void` keeps the render-time message (the
+// additive case). A RESULT lets the toast come from the write's OUTCOME instead of the
+// stale render (#2133): a refusal (`ok: false`) toasts its error in the error tone, and
+// a success may carry the state-named `message` the write actually performed.
+export type MenuActionResult =
+  void | { ok: true; message?: string } | { ok: false; error: string };
+
 export interface MenuHelpers {
   close: () => void;
   // Run a menu item's server action, then close the menu and toast. Awaiting the
   // action first is load-bearing: closing the menu (which unmounts the <form>)
   // before React dispatches the action would silently drop it.
   runAction: (
-    action: (fd: FormData) => Promise<void>,
+    action: (fd: FormData) => Promise<MenuActionResult>,
     fd: FormData,
     message: string
   ) => Promise<void>;
@@ -62,8 +69,9 @@ export default function OverflowMenu({
 
   const close = () => onOpenChange(false);
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
+    let result: MenuActionResult;
     try {
-      await action(fd);
+      result = await action(fd);
     } catch {
       // An uncaught menu-action throw used to escalate to the route error
       // boundary (issue #477) — close the menu and toast the failure instead.
@@ -74,7 +82,13 @@ export default function OverflowMenu({
       return;
     }
     close();
-    toast(message);
+    // A typed refusal is rendered, never papered over with the success message —
+    // the inline-action rule (#2133).
+    if (result && result.ok === false) {
+      toast(result.error, { tone: "error" });
+      return;
+    }
+    toast((result && result.message) || message);
   };
 
   const reposition = useCallback(() => {

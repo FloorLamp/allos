@@ -16,7 +16,7 @@ import {
   setMedicationActive,
   insertMedicationSideEffect,
   updateMedicationSideEffect,
-  toggleMedicationSideEffectResolved,
+  setMedicationSideEffectResolved,
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   ownedMedicationId,
@@ -87,15 +87,99 @@ describe("stop / restart produces separate courses", () => {
     const p = seedProfile("syncflag");
     ensureMedicationCourse(p.profileId, p.medicationId, "2025-01-01");
     // Pause → open course closes.
-    setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-01");
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-01")
+    ).toBe("paused");
     expect(
       getMedicationCourses(p.profileId).filter((c) => c.stopped_on == null)
     ).toHaveLength(0);
+    // A repeated pause is a stale tab's intent — refuse, don't invert (#2133).
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-02")
+    ).toBe("already-paused");
     // Resume → a fresh open course.
-    setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-10");
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-10")
+    ).toBe("resumed");
     expect(
       getMedicationCourses(p.profileId).filter((c) => c.stopped_on == null)
     ).toHaveLength(1);
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-11")
+    ).toBe("already-active");
+  });
+
+  it("course transitions answer typed, changes-checked outcomes (#2132)", () => {
+    const p = seedProfile("outcomes");
+    ensureMedicationCourse(p.profileId, p.medicationId, "2025-01-01");
+    // Restart with a course already open (and active=1) is a stale tab's tap.
+    expect(
+      restartMedicationCourse(p.profileId, p.medicationId, "2025-01-02")
+    ).toBe("already-open");
+    expect(
+      stopMedicationCourses(p.profileId, p.medicationId, {
+        date: "2025-02-01",
+        reason: "other",
+      })
+    ).toBe("stopped");
+    expect(
+      stopMedicationCourses(p.profileId, p.medicationId, {
+        date: "2025-02-02",
+        reason: "other",
+      })
+    ).toBe("already-stopped");
+    expect(
+      restartMedicationCourse(p.profileId, p.medicationId, "2025-03-01")
+    ).toBe("restarted");
+    // Forged ids refuse rather than silently no-op.
+    expect(
+      stopMedicationCourses(p.profileId, 999999, {
+        date: "2025-01-01",
+        reason: "other",
+      })
+    ).toBe("not-found");
+    expect(restartMedicationCourse(p.profileId, 999999, "2025-01-01")).toBe(
+      "not-found"
+    );
+    expect(setMedicationActive(p.profileId, 999999, 0, "2025-01-01")).toBe(
+      "not-found"
+    );
+  });
+
+  it("repairs an open-course ⇔ active desync as 'synced' without minting history (#2132)", () => {
+    const active = (id: number) =>
+      (
+        db.prepare("SELECT active FROM intake_items WHERE id = ?").get(id) as {
+          active: number;
+        }
+      ).active;
+    const p = seedProfile("desync");
+    ensureMedicationCourse(p.profileId, p.medicationId, "2025-01-01");
+    // Desync A: open course but active=0 (planted raw — the corruption the gate now
+    // prevents). Restart repairs the flag WITHOUT stacking a second open course.
+    db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(
+      p.medicationId
+    );
+    expect(
+      restartMedicationCourse(p.profileId, p.medicationId, "2025-01-05")
+    ).toBe("synced");
+    expect(active(p.medicationId)).toBe(1);
+    expect(getMedicationCourses(p.profileId)).toHaveLength(1);
+    // Desync B: no open course but active=1. Stop repairs the flag without touching
+    // the (already closed) course rows.
+    db.prepare(
+      "UPDATE medication_courses SET stopped_on = '2025-01-06' WHERE item_id = ?"
+    ).run(p.medicationId);
+    expect(
+      stopMedicationCourses(p.profileId, p.medicationId, {
+        date: "2025-01-07",
+        reason: "other",
+      })
+    ).toBe("synced");
+    expect(active(p.medicationId)).toBe(0);
+    const courses = getMedicationCourses(p.profileId);
+    expect(courses).toHaveLength(1);
+    expect(courses[0].stopped_on).toBe("2025-01-06"); // untouched by the sync
   });
 
   it("ownedMedicationId gates a forged / cross-profile id", () => {
@@ -106,15 +190,17 @@ describe("stop / restart produces separate courses", () => {
     expect(ownedMedicationId(a.profileId, b.medicationId)).toBeNull();
     // a supplement isn't a medication.
     expect(ownedMedicationId(a.profileId, a.supplementId)).toBeNull();
-    // A stop against a non-owned id is a silent no-op (no course created).
-    stopMedicationCourses(a.profileId, b.medicationId, {
-      date: "2025-01-01",
-      reason: "other",
-    });
+    // A stop against a non-owned id refuses (typed, #2132) and creates no course.
+    expect(
+      stopMedicationCourses(a.profileId, b.medicationId, {
+        date: "2025-01-01",
+        reason: "other",
+      })
+    ).toBe("not-found");
     expect(getMedicationCourses(a.profileId)).toHaveLength(0);
 
     // setMedicationActive must ALSO gate a non-owned id (F3): a's call against b's
-    // med changes nothing on b.
+    // med refuses and changes nothing on b.
     ensureMedicationCourse(b.profileId, b.medicationId, "2025-01-01");
     const bActiveBefore = (
       db
@@ -166,11 +252,23 @@ describe("side effect CRUD + promote-to-intolerance", () => {
     expect(effects[0].effect).toBe("Dizzy spells");
     expect(effects[0].severity).toBe("severe");
 
-    // Toggle resolved.
-    toggleMedicationSideEffectResolved(p.profileId, seId);
+    // State-named resolved transitions (#2133): intended-state CAS, typed outcomes;
+    // a repeat of the same intent refuses instead of inverting.
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 1)).toBe(
+      "resolved"
+    );
     expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(1);
-    toggleMedicationSideEffectResolved(p.profileId, seId);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 1)).toBe(
+      "already-resolved"
+    );
+    expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(1);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 0)).toBe(
+      "reopened"
+    );
     expect(getMedicationSideEffects(p.profileId)[0].resolved).toBe(0);
+    expect(setMedicationSideEffectResolved(p.profileId, seId, 0)).toBe(
+      "already-open"
+    );
 
     // Promote → an allergies row is created and the side effect is resolved.
     const allergiesBefore = (

@@ -1,6 +1,7 @@
 import {
   getSupplements,
   getSupplementDoses,
+  getRetiredDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getIntakeLogsInRange,
@@ -184,6 +185,14 @@ export default async function SupplementsTab({
     const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d);
     dosesBySupp.set(d.item_id, arr);
+  }
+  // Retired doses (#2131): the edit form's Restore affordance. Kept apart from the
+  // live map so no schedule consumer can act on one.
+  const retiredBySupp = new Map<number, SupplementDose[]>();
+  for (const d of getRetiredDoses(profile.id)) {
+    const arr = retiredBySupp.get(d.item_id) ?? [];
+    arr.push(d);
+    retiredBySupp.set(d.item_id, arr);
   }
 
   const taken = getTakenDoseIds(profile.id, todayStr);
@@ -618,6 +627,7 @@ export default async function SupplementsTab({
         supplement={it.supplement}
         dose={it.dose}
         doses={dosesBySupp.get(it.supplement.id) ?? []}
+        retiredDoses={retiredBySupp.get(it.supplement.id) ?? []}
         allSupplements={supplements}
         stackItems={stackItems}
         pgxVariants={pgxVariants}

@@ -82,13 +82,33 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   },
   {
     table: "intake_items",
-    columns: ["quantity_on_hand"],
+    columns: ["quantity_on_hand", "active"],
     cores: [
       "lib/queries/intake/refill.ts",
       "lib/queries/intake/supply-pool.ts",
+      "lib/intake-active-write.ts",
+      "lib/intake-obligation-write.ts",
+      "lib/queries/intake/medications.ts",
     ],
     offerState: "refillRecencyLine",
-    why: "#467/#1893: the PRIVATE (unpooled) supply counter, same discipline as the pool one column over — refill.ts holds the only increment/decrement, supply-pool.ts nulls and restores it across a link/unlink. Column-narrowed because intake_items carries the whole medication/supplement record: name, dose, obligation and cadence edits are ordinary last-write-wins form writes and are none of this gate's business. The item FORM's own absolute write is allowlisted in the scan with its #467 compare-and-set justification.",
+    why: "#467/#1893: the PRIVATE (unpooled) supply counter, same discipline as the pool one column over — refill.ts holds the only increment/decrement, supply-pool.ts nulls and restores it across a link/unlink. #2133 added `active`: it is the pause LIFECYCLE flag, not a form field — a read-then-flip toggle inverted a stale tab's tap — so every flip is a state-named CAS in lib/intake-active-write.ts (supplements) or lib/queries/intake/medications.ts (medications, which must move course history in the same transaction). lib/intake-obligation-write.ts is a core only because its obligation CAS names `active` in its guard WHERE. Column-narrowed because intake_items carries the whole medication/supplement record: name, dose, obligation and cadence edits are ordinary last-write-wins form writes and are none of this gate's business. The item FORM's own absolute write and the importer's item CREATE are allowlisted in the scan with their justifications.",
+  },
+  {
+    table: "medication_courses",
+    cores: ["lib/queries/intake/medications.ts"],
+    why: "#2132: the invariant 'intake_items.active = 1 ⇔ an open (stopped_on IS NULL) course exists' was prose enforced in one module but the table was written from THREE — exactly the illness_episodes hazard ('a raw close from a third module would leave … unreconciled'). medications.ts now owns every course transition — stop, restart, end-date, pause-sync, start-date correction, renewal and import creation — each a typed, changes-checked outcome that moves `active` in the SAME transaction. The adherence backdated-extension and the edit form's course-start write reach the table only through setCourseStartDate under the caller's Tx token. A raw close anywhere else would desync scheduling from course history, which is the state every reader assumes cannot exist.",
+  },
+  {
+    table: "intake_item_doses",
+    columns: ["retired"],
+    cores: ["lib/queries/intake/dose-lifecycle.ts"],
+    why: "#2131: `retired` decides whether a dose's child ledger rows are still SCHEDULED — the child table (intake_item_logs) was gated (#2074) while this parent flag was raw SQL in a Server Action with no typed outcome and no reopen. dose-lifecycle.ts owns both transitions: retire-or-delete for removed doses (retire keeps the row precisely because deleting would CASCADE away its taken history) and the guarded un-retire (only a retired dose with no conflicting live slot reopens), each bounding dueness through appended schedule versions (#1973) so neither transition ever re-judges a past day. Column-narrowed: amount/time/window edits on a live dose are ordinary form writes (the edit UPDATE's `retired = 0` guard predicate is allowlisted in the scan).",
+  },
+  {
+    table: "intake_item_side_effects",
+    columns: ["resolved"],
+    cores: ["lib/queries/intake/medications.ts"],
+    why: "#2133 (sibling): `resolved` is an open/closed lifecycle flag and was a blind `SET resolved = 1 - resolved` toggle, so a stale tab's 'Mark resolved' REOPENED an effect someone else had resolved. medications.ts owns the state-named CAS (setMedicationSideEffectResolved), the stop-time capture, the edit form write and the promote-to-allergy resolution — all in one module already, so the gate just keeps a second toggle from growing elsewhere. Column-narrowed: effect/severity/notes edits are ordinary form writes.",
   },
 ];
 

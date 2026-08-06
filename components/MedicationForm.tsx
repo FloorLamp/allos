@@ -15,6 +15,7 @@ import DoseRowsEditor, {
   emptyDose,
   type DoseState,
 } from "@/components/intake/DoseRowsEditor";
+import RetiredDoses from "@/components/intake/RetiredDoses";
 import CadenceEditor, {
   type CadenceState,
 } from "@/components/intake/CadenceEditor";
@@ -109,6 +110,7 @@ export default function MedicationForm({
   action,
   supplement,
   doses: initialDoses,
+  retiredDoses = [],
   allSupplements = [],
   stackItems = [],
   pgxVariants = [],
@@ -124,6 +126,8 @@ export default function MedicationForm({
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
   doses?: SupplementDose[];
+  // Retired doses of the edited med (#2131), rendered with their Restore affordance.
+  retiredDoses?: SupplementDose[];
   allSupplements?: { id: number; name: string }[];
   // The profile's recorded conditions, for the optional "For condition…" indication
   // picker (#1052). Absent → the picker doesn't render (surfaces that don't thread it).
@@ -1322,6 +1326,14 @@ export default function MedicationForm({
           amountPlaceholder="e.g. 200 mg"
           singleAmountOnly={asNeeded}
         />
+        {/* Retired doses with their Restore affordance (#2131). A restored dose joins
+          the dose rows with its ORIGINAL id, so Save keeps it on the schedule. */}
+        {s && (
+          <RetiredDoses
+            doses={retiredDoses}
+            onRestored={(d) => setDosesTouched((ds) => [...ds, d])}
+          />
+        )}
       </div>
 
       <KeepApartPairsEditor

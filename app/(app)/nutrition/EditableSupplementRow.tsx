@@ -35,7 +35,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
-  toggleActive,
+  setItemActive,
   deleteSupplement,
 } from "./supplement-actions";
 import { isPrn } from "@/lib/supplement-schedule";
@@ -47,6 +47,7 @@ export default function EditableSupplementRow({
   supplement,
   dose,
   doses,
+  retiredDoses = [],
   allSupplements,
   stackItems,
   pgxVariants,
@@ -68,6 +69,8 @@ export default function EditableSupplementRow({
   supplement: Supplement;
   dose: SupplementDose;
   doses: SupplementDose[];
+  // Retired doses of this item (#2131), for the edit form's Restore affordance.
+  retiredDoses?: SupplementDose[];
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
@@ -240,11 +243,23 @@ export default function EditableSupplementRow({
                 >
                   {showHistory ? "Hide dose history" : "Dose history"}
                 </button>
+                {/* STATE-NAMED transition (#2133): the form posts the state this render
+                  promised (`to`), and the toast words come from the write's OUTCOME —
+                  a stale row's tap gets the typed refusal ("Already paused…"), never
+                  the wrong write with the wrong words. */}
                 <form
                   action={(fd) =>
                     runAction(
                       async (data) => {
-                        await toggleActive(data);
+                        const res = await setItemActive(data);
+                        if (!res.ok) return res;
+                        return {
+                          ok: true,
+                          message:
+                            res.state === "paused"
+                              ? "Supplement paused"
+                              : "Supplement resumed",
+                        };
                       },
                       fd,
                       s.active ? "Supplement paused" : "Supplement resumed"
@@ -252,6 +267,7 @@ export default function EditableSupplementRow({
                   }
                 >
                   <input type="hidden" name="id" value={s.id} />
+                  <input type="hidden" name="to" value={s.active ? "0" : "1"} />
                   <button type="submit" role="menuitem" className={MENU_ITEM}>
                     {s.active ? "Pause" : "Resume"}
                   </button>
@@ -377,6 +393,7 @@ export default function EditableSupplementRow({
               action={updateSupplement}
               supplement={s}
               doses={doses}
+              retiredDoses={retiredDoses}
               allSupplements={allSupplements}
               stackItems={stackItems}
               pgxVariants={pgxVariants}

@@ -257,6 +257,21 @@ export function getSupplementDosesForHistory(
   );
 }
 
+// The RETIRED doses only — removed from the schedule by an edit but kept for their
+// adherence logs (#2131). The edit form renders these with their Restore affordance
+// (the equipment pattern); every current-schedule consumer keeps reading
+// getSupplementDoses, so a retired row can never become schedulable by accident.
+export function getRetiredDoses(profileId: number): SupplementDose[] {
+  return db
+    .prepare(
+      `SELECT d.* FROM intake_item_doses d
+       JOIN intake_items s ON s.id = d.item_id
+      WHERE s.profile_id = ? AND d.retired = 1
+      ORDER BY d.item_id, d.sort, d.id`
+    )
+    .all(profileId) as SupplementDose[];
+}
+
 // AI suggestions still awaiting review, newest first.
 export function getPendingSuggestions(
   profileId: number

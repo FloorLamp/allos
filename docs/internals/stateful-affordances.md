@@ -54,13 +54,16 @@ JSX: the corruption class is closable mechanically, the ergonomics class is not.
 
 Today's entries:
 
-| table                                  | cores                                                               | gate                 | offer state         |
-| -------------------------------------- | ------------------------------------------------------------------- | -------------------- | ------------------- |
-| `cycles`                               | `lib/cycle-store.ts`                                                | `lib/cycle-write.ts` | `cycleControlState` |
-| `illness_episodes`                     | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`      | —                    | —                   |
-| `intake_item_logs`                     | `lib/queries/intake/adherence.ts`                                   | —                    | —                   |
-| `shared_supplies` (`quantity_on_hand`) | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts` | —                    | `refillRecencyLine` |
-| `intake_items` (`quantity_on_hand`)    | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts` | —                    | `refillRecencyLine` |
+| table                                         | cores                                                                                                                                                                    | gate                 | offer state         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------- |
+| `cycles`                                      | `lib/cycle-store.ts`                                                                                                                                                     | `lib/cycle-write.ts` | `cycleControlState` |
+| `illness_episodes`                            | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`                                                                                                           | —                    | —                   |
+| `intake_item_logs`                            | `lib/queries/intake/adherence.ts`                                                                                                                                        | —                    | —                   |
+| `shared_supplies` (`quantity_on_hand`)        | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`                                                                                                      | —                    | `refillRecencyLine` |
+| `intake_items` (`quantity_on_hand`, `active`) | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`, `lib/intake-active-write.ts`, `lib/intake-obligation-write.ts`, `lib/queries/intake/medications.ts` | —                    | `refillRecencyLine` |
+| `medication_courses`                          | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
+| `intake_item_doses` (`retired`)               | `lib/queries/intake/dose-lifecycle.ts`                                                                                                                                   | —                    | —                   |
+| `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
@@ -186,6 +189,44 @@ Two defects were fixed by #1893:
   refilled". Treated with the #798 pattern — an informational
   "Refilled just now (+90)" line for a short window, never a gate, because two
   bottles is a legitimate restock.
+
+## The intake lifecycle machines (#2139/#2133/#2132/#2131)
+
+The 2026-08-05 lifecycle-machine audit found four stale-actor defects in the
+intake domain and closed them with one shared mechanism plus four entries above.
+
+**The Tx token (`lib/tx.ts`).** `writeTx` hands its callback a `Tx` value only
+`lib/db.ts` can mint, and the in-transaction helpers `readForUpdate(tx, stmt, …)`
+and `casUpdate(tx, stmt, …)` REQUIRE it — so a guard read or compare-and-swap
+written with them cannot typecheck outside the transaction it protects, which is
+exactly the defect #2139 found (pending checked outside, insert inside). The
+helpers take an already-prepared statement, never a SQL string, so both source
+scans still see every statement. The token is evidence, not an async handle: the
+callback-synchronous rule is unchanged, and genuinely additive writes ignore it.
+
+The four machines:
+
+- **`intake_items.active` (#2133)** — Pause/Resume was a read-then-flip; a stale
+  tab's "Pause" resumed the item while toasting "Supplement paused". It is now a
+  state-named transition: the form posts the state its render promised,
+  `setIntakeActive` CASes it (delegating a medication to `setMedicationActive`
+  so course history moves in the same transition), and the toast words come from
+  the OUTCOME. The same intended-state treatment fixed the side-effect
+  `resolved` blind toggle.
+- **`medication_courses` (#2132)** — the `active = 1 ⇔ open course` invariant
+  was prose in one module and written from three. Every transition now lives in
+  `lib/queries/intake/medications.ts` with typed, changes-checked outcomes
+  (`stopped` / `already-stopped` / `restarted` / `already-open` / `synced` /
+  `not-found`); the actions and cards render refusals instead of confirming
+  no-ops, and `synced` repairs a planted desync without minting course history.
+- **`intake_item_doses.retired` (#2131)** — the one irreversible retire in an
+  app where every sibling reopens. `lib/queries/intake/dose-lifecycle.ts` owns
+  retire-or-delete AND the guarded `unretireDose`; both bound dueness through
+  appended schedule versions (#1973) so neither transition re-judges a past day,
+  and the edit forms render retired rows with "Restore to schedule".
+- **`intake_item_suggestions` (#2139)** — not a registry entry (the table has no
+  second writer), but the accept now claims `status='pending'` with an
+  in-transaction CAS before minting the item, so a double accept mints once.
 
 ## The one-tap feedback family (#2041, #2007)
 

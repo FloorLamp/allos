@@ -61,6 +61,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import { useToast } from "@/components/Toast";
 import {
   updateSupplement,
   deleteSupplement,
@@ -70,7 +71,7 @@ import {
   stopMedication,
   restartMedication,
   addSideEffect,
-  toggleSideEffectResolved,
+  setSideEffectResolved,
   deleteSideEffect,
   promoteSideEffectToIntolerance,
 } from "./actions";
@@ -92,6 +93,7 @@ const SIDE_EFFECT_OPTIONS = symptomLabelOptions();
 export default function MedicationCard({
   supplement,
   doses,
+  retiredDoses = [],
   allSupplements,
   stackItems,
   pgxVariants,
@@ -128,6 +130,8 @@ export default function MedicationCard({
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
+  // Retired doses of this med (#2131), for the edit form's Restore affordance.
+  retiredDoses?: SupplementDose[];
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
@@ -215,6 +219,7 @@ export default function MedicationCard({
   const [newEffect, setNewEffect] = useState("");
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
+  const toast = useToast();
   const formatPrefs = useFormatPrefs();
   const closeInitialAction = () => {
     if (initialAction) {
@@ -237,6 +242,7 @@ export default function MedicationCard({
           action={updateSupplement}
           supplement={s}
           doses={doses}
+          retiredDoses={retiredDoses}
           allSupplements={allSupplements}
           stackItems={stackItems}
           pgxVariants={pgxVariants}
@@ -455,7 +461,12 @@ export default function MedicationCard({
                           close();
                           const fd = new FormData();
                           fd.set("id", String(s.id));
-                          await restartMedication(fd);
+                          // Render the typed outcome (#2132) — a stale card's second
+                          // Restart refuses, and the card must say so instead of
+                          // swallowing the result.
+                          const res = await restartMedication(fd);
+                          if (!res.ok) toast(res.error, { tone: "error" });
+                          else toast(`${s.name} restarted.`);
                         }}
                       >
                         Restart medication
@@ -1036,8 +1047,14 @@ export default function MedicationCard({
                               onClick={async () => {
                                 const fd = new FormData();
                                 fd.set("id", String(se.id));
-                                await toggleSideEffectResolved(fd);
+                                // STATE-NAMED (#2133): post the state this render
+                                // promised, and render the typed refusal — never a
+                                // blind toggle a stale tab could invert.
+                                fd.set("to", se.resolved ? "0" : "1");
+                                const res = await setSideEffectResolved(fd);
                                 close();
+                                if (!res.ok)
+                                  toast(res.error, { tone: "error" });
                               }}
                             >
                               {se.resolved

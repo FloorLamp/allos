@@ -53,6 +53,16 @@ const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
     includes: "UPDATE intake_items SET name = ?",
     why: "updateSupplement: the item EDIT form writes quantity_on_hand as an ABSOLUTE value alongside name/dose/cadence, because the user is stating what is in the bottle. It is not a blind clobber — it goes through the #467 compare-and-set (resolveOnHandWrite over the `quantity_on_hand_loaded` snapshot the form was rendered with), so a dose confirm that landed between page-load and save is preserved exactly as the refill core preserves it. Splitting one form save into two writes would be the second decrement path #1374 removed.",
   },
+  {
+    file: "lib/import-persist.ts",
+    includes: "INSERT INTO intake_items",
+    why: "the importer's medication CREATE names `active` only as the born row's literal initial value (1) — there is no prior state to transition from, the additive case the audit criterion leaves plain (#2133). Every later flip of the flag, including the import path's own course-derived re-sync, goes through the registered cores.",
+  },
+  {
+    file: "app/(app)/nutrition/supplement-actions.ts",
+    includes: "UPDATE intake_item_doses SET amount = ?",
+    why: "updateSupplement's dose EDIT: amount/time/window on a live dose are ordinary last-write-wins form writes; `retired` appears only as the guard PREDICATE (`AND retired = 0`) that keeps a forged/stale id from rewriting a retired dose's row — the column is never SET here (#2131). The retire/un-retire transitions themselves live in the registered dose-lifecycle core.",
+  },
 ];
 
 // MIGRATIONS are allowlisted wholesale (the issue's own carve-out): a numbered migration

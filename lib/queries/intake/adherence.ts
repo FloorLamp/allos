@@ -34,6 +34,7 @@ import {
   type CorrectionBurst,
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
+import { setCourseStartDate } from "./medications";
 import { getMedicationFamilyStates } from "./prn-family";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
@@ -583,7 +584,7 @@ export function logHistoricalDose(
   const date = dateStrInTz(tz, givenAt);
   const givenAtStr = utcSqlString(givenAt);
 
-  return writeTx((): HistoricalDoseOutcome => {
+  return writeTx((tx): HistoricalDoseOutcome => {
     const dose = db
       .prepare(
         `SELECT d.item_id, d.amount, s.obligation
@@ -666,16 +667,9 @@ export function logHistoricalDose(
 
     const amount = amountOverride?.trim() || dose.amount;
     if (courseToExtend) {
-      db.prepare(
-        `UPDATE medication_courses
-            SET started_on = ?
-          WHERE id = ? AND item_id = ?
-            AND EXISTS (
-              SELECT 1 FROM intake_items s
-               WHERE s.id = medication_courses.item_id
-                 AND s.profile_id = ? AND s.kind = 'medication'
-            )`
-      ).run(date, courseToExtend.id, itemId, profileId);
+      // Backdate the course's start through the course core (#2132) — the same
+      // transaction (Tx token), the DML lives with the invariant's owner.
+      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
     }
     db.prepare(
       `INSERT INTO intake_item_logs
@@ -731,7 +725,7 @@ export function updateHistoricalDose(
   const date = dateStrInTz(tz, givenAt);
   const givenAtStr = utcSqlString(givenAt);
 
-  return writeTx((): HistoricalDoseOutcome => {
+  return writeTx((tx): HistoricalDoseOutcome => {
     const row = db
       .prepare(
         `SELECT l.dose_id, l.date AS old_date, l.amount,
@@ -817,16 +811,9 @@ export function updateHistoricalDose(
     }
 
     if (courseToExtend) {
-      db.prepare(
-        `UPDATE medication_courses
-            SET started_on = ?
-          WHERE id = ? AND item_id = ?
-            AND EXISTS (
-              SELECT 1 FROM intake_items s
-               WHERE s.id = medication_courses.item_id
-                 AND s.profile_id = ? AND s.kind = 'medication'
-            )`
-      ).run(date, courseToExtend.id, itemId, profileId);
+      // Backdate the course's start through the course core (#2132) — the same
+      // transaction (Tx token), the DML lives with the invariant's owner.
+      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
     }
     const amount = amountOverride?.trim() || row.dose_amount;
     db.prepare(
