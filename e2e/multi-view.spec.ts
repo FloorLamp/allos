@@ -1239,7 +1239,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
   }) => {
     test.slow();
     const { sharedId } = multiIds();
-    const probeName = `${UNDO_PROBE_PREFIX} ${Date.now()}`;
+    const probeName = `${UNDO_PROBE_PREFIX} ${Date.now()}`; // clock-ok: unique probe-name suffix, not a stored timestamp
     seedProbe(sharedId, probeName);
 
     const page = await loginAs(browser, {
