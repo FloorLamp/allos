@@ -106,7 +106,7 @@ first-vs-latest), `lightboxNeighbors` (no-wrap paging).
 Captions/meta are factual only (date, weight snapshot) — no scoring, no derived
 judgment anywhere in the core (product-decided, #1119).
 
-## Adding a tenant domain (the phase-3 / #1224 checklist)
+## Adding a tenant domain (the checklist phase 3 and #1224 followed)
 
 1. Add the domain key + dir to `PhotoDomain`/`DOMAIN_DIRS` in
    `lib/photo/store.ts`.
