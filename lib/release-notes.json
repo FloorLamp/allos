@@ -1,6 +1,74 @@
 {
   "days": [
     {
+      "date": "2026-08-06",
+      "entries": [
+        {
+          "pr": 2143,
+          "title": "Cycling gets its own analysis home",
+          "body": "Ride detail pages with charts, routes, heart-rate zones, laps, and segment efforts from Strava — plus overview trends and comparisons across road, gravel, mountain, e-bike, virtual, and indoor rides.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2165,
+          "title": "Email joins the reminder channels",
+          "body": "Email now delivers reminders alongside Telegram, Web Push, and Home Assistant. Opt in per person under Settings → Notifications; by default emails are content-free (“something needs your attention”) so no health details reach your inbox, and you can opt your own account into full content with the trade-off stated.",
+          "kind": "feature",
+          "issues": [1855]
+        },
+        {
+          "pr": 2166,
+          "title": "Track a full year",
+          "body": "The Trends and Timeline quick ranges gain a 1Y pill, rolling summaries add a 365-day window, and long-range charts plot weekly or monthly averages with a low–high band instead of an unreadable point-per-day trace.",
+          "kind": "feature",
+          "issues": [1938]
+        },
+        {
+          "pr": 2157,
+          "title": "Reminder times are minute-precise",
+          "body": "Set any reminder time, not just on-the-hour. The Docker scheduler now runs every 15 minutes, and Settings warns if your server’s schedule can’t honor a sub-hourly time.",
+          "kind": "feature",
+          "issues": [2121]
+        },
+        {
+          "pr": 2158,
+          "title": "Ride-history backfills survive anything",
+          "body": "Strava detail backfills run as durable jobs with live progress and an ETA on the provider page. They pause at provider rate limits and resume automatically — across navigation, restarts, and quota windows.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2167,
+          "title": "Data tables behave the same everywhere",
+          "body": "One shared responsive shell means every records list stacks into readable cards on phones, sortable headers look alike across the app, row actions live in one consistent menu, and history lists share the same expand, edit, and undo-delete behavior.",
+          "kind": "feature",
+          "issues": [1491]
+        },
+        {
+          "pr": 2163,
+          "title": "Reload can no longer strand the tab",
+          "body": "Tapping Reload on the update bar completes even when the update activates slowly — no more hung tab waiting on a swap that already happened.",
+          "kind": "fix",
+          "issues": [2155]
+        },
+        {
+          "pr": 2169,
+          "title": "Deletion now means deletion — and undo where it counts",
+          "body": "Deleting a profile removes every trace of that person’s data, including nested clinical history. Bulk deletes on Data → Manage offer the same Undo toast as row deletes, and dose schedule history and record revisions now ship in exports.",
+          "kind": "fix",
+          "issues": [2126, 2125, 2129]
+        },
+        {
+          "pr": 2171,
+          "title": "Access-control hardening",
+          "body": "Re-pointing a portal patient mapping now requires write access to both profiles involved, sync reports can no longer write another household login’s portal state, and undoing a delete is authorized against the profile that owns the deleted row.",
+          "kind": "security",
+          "issues": [2103, 2105, 2104]
+        }
+      ]
+    },
+    {
       "date": "2026-08-05",
       "entries": [
         {
