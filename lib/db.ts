@@ -17,6 +17,11 @@ import {
 // into the Edge middleware / client bundles (where fs is unavailable) — keeping
 // log.ts itself Edge-safe.
 import "./error-log";
+// Side-effect import: registers the fs-backed SCOPE sink so the notification tick's
+// decisions — including the declines, which write no row anywhere — persist to
+// data/logs/notify.jsonl (issue #2209). Same boot-path reasoning as the error sink
+// above: Node only, never the Edge middleware or a client bundle.
+import "./notify-log";
 import { registerSqlFunctions } from "./sql-functions";
 import { setTierConfigProvider } from "./ai-client";
 import { getTierConfigs } from "./settings/ai-tiers";

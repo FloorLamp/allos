@@ -42,6 +42,16 @@ services:
     volumes:
       - "${DATA_DIR:-./data}:/app/data"
     restart: unless-stopped
+    # Bound the Docker json-file log (issue #2209 part 3). Without `options`, the
+    # json-file driver has NO rotation at all — a long-lived container grows its log
+    # until the disk fills, and that disk is shared with the SQLite DB and uploads.
+    # Deploy churn masks it today (each recreate starts a fresh log), which makes it
+    # a latent landmine rather than a live problem. Sibling to #1856.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       # Cheap liveness check via the dedicated /api/health route (no DB/AI work).
       # Node 24 has global fetch, so no curl/wget needed in the slim image.
@@ -87,6 +97,16 @@ services:
     depends_on:
       - allos
     restart: unless-stopped
+    # Same bound as the app service above (#2209 part 3). This sidecar is the one
+    # whose stdout mattered most and retained least — the deploy timer recreates it
+    # tens of times a day, so it observed ~3-4 ticks before deletion. Its DECISIONS
+    # now persist to data/logs/notify.jsonl on the bind mount instead; this only
+    # stops the stdout copy from growing without limit between deploys.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # Uncomment to use a managed named volume instead of a host bind mount:
 # volumes:

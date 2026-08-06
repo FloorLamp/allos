@@ -650,7 +650,7 @@ export function getSleepWaitingState(
 // The most recent sync ATTEMPT of whichever provider last wrote this profile's
 // sleep — "last checked 6:33 AM". Reuses the grid's own per-provider event read
 // rather than introducing a second notion of when a source was last contacted.
-function latestSleepSyncAt(profileId: number): string | null {
+export function latestSleepSyncAt(profileId: number): string | null {
   const row = db
     .prepare(
       `SELECT source FROM metric_samples

@@ -17,6 +17,11 @@ import {
   getSleepSignal,
   getSleepRegularity,
   getSleepSessions,
+  // The #2209 deferral trace's arrival-side inputs (#2192): when last night was
+  // expected to land, and when the source was last contacted.
+  typicalWakeTime,
+  getSleepArrivalLagMinutes,
+  latestSleepSyncAt,
   getMetricDailyTotals,
   getEffectiveActiveSituations,
   getDerivedSituationLines,
@@ -654,24 +659,76 @@ export function digestTunableCategories(
 //     the connection-side staleness signal is structurally unable to see it (see
 //     isSleepTracking).
 export function digestSleepPending(profileId: number): boolean {
-  if (!getProfileSleepDigest(profileId)) return false;
+  return digestSleepPendingTrace(profileId).pending;
+}
+
+// The same answer, with its INPUTS named (#2209 part 2). ONE computation — the
+// boolean above is this function's `pending` field — so the trace can never describe
+// a decision other than the one that was actually taken.
+export interface DigestSleepPendingTrace {
+  pending: boolean;
+  /** The Sleep section's opt-in: false means there is nothing to wait FOR. */
+  sleepSection: boolean;
+  /** The newest recorded night's wake day, or null when there is none. */
+  newestWakeDay: string | null;
+  /** `isLastNight(newestWakeDay, today)` — is last night already in hand. */
+  hasLastNight: boolean;
+  /** `isSleepTracking(...)` — is anything still coming at all. */
+  tracking: boolean;
+}
+
+export function digestSleepPendingTrace(
+  profileId: number
+): DigestSleepPendingTrace {
+  const sleepSection = getProfileSleepDigest(profileId);
+  if (!sleepSection)
+    return {
+      pending: false,
+      sleepSection,
+      newestWakeDay: null,
+      hasLastNight: false,
+      tracking: false,
+    };
   const todayStr = today(profileId);
   const nights = mainSleepNights(
     getSleepSessions(profileId),
     getTimezone(profileId)
   );
   const last = nights[nights.length - 1];
-  if (last && isLastNight(last.wakeDay, todayStr)) return false;
-  return isSleepTracking(
+  const newestWakeDay = last?.wakeDay ?? null;
+  const hasLastNight = last != null && isLastNight(last.wakeDay, todayStr);
+  const tracking = isSleepTracking(
     nights.map((n) => n.wakeDay),
     todayStr
   );
+  return {
+    pending: !hasLastNight && tracking,
+    sleepSection,
+    newestWakeDay,
+    hasLastNight,
+    tracking,
+  };
 }
 
 // The tick's digest gate (#2102): decline the FIRST attempt so the retry attempt
 // sends the digest WITH last night's sleep in it. One conditional over the two
 // attempt bands `slotDue` already provides — no new scheduling machinery, no new
 // marker, and bounded by construction (see lib/notifications/digest-schedule.ts).
+//
+// THE TRACE (#2209 part 2). #2102's WRITE policy is deliberately trace-free — the
+// marker is set only by a real send — and that is unchanged: nothing below writes
+// any state. What it also left trace-free was the EVIDENCE, and this is the one tick
+// decision with none at all: a deferred-then-sent digest is byte-identical to an
+// on-time one, so "did the digest defer this morning, and why?" was answerable only
+// from a container's stdout. Had it deferred, nothing distinguished "sleep was
+// genuinely late" from "the waiting-window predictor was wrong" — the question #2192
+// is open about, which is why the line names that predictor's inputs too.
+//
+// It costs at most one line per profile per day: `shouldDeferDigest` consults the
+// thunk only on the single attempt band where the slot is current, the digest hour
+// is `auto`, and the band is deferrable. BOTH outcomes are logged — recording only
+// the deferral would leave "it considered waiting and decided not to" exactly as
+// unanswerable as before.
 export function deferDigestForSleep(
   profileId: number,
   slotMinute: number,
@@ -679,9 +736,62 @@ export function deferDigestForSleep(
   tickMinutes: number,
   auto: boolean
 ): boolean {
-  return shouldDeferDigest(
+  // Collected rather than assigned to a `let`: the thunk runs (or does not) inside
+  // shouldDeferDigest, and a captured assignment there narrows to `never` under
+  // control-flow analysis, which would let a wrong argument through the typecheck.
+  const consulted: DigestSleepPendingTrace[] = [];
+  const deferred = shouldDeferDigest(
     { slotMinute, currentMinute, tickMinutes, auto },
-    () => digestSleepPending(profileId)
+    () => {
+      const t = digestSleepPendingTrace(profileId);
+      consulted.push(t);
+      return t.pending;
+    }
+  );
+  // Empty when the gate short-circuited before reading sleep at all (a manual hour,
+  // the retry band, an undeferrable slot) — those ticks stay silent, as they should.
+  const trace = consulted[0];
+  if (trace)
+    logDigestDeferral(profileId, slotMinute, currentMinute, trace, deferred);
+  return deferred;
+}
+
+// The arrival-side half of the trace: WHEN last night was expected to land, when the
+// source was last contacted, and whether any provider is in the failing/stale
+// attention state (#2192). Read only on the one attempt band a day the gate above is
+// consulted, so the ordinary tick pays nothing for it.
+function logDigestDeferral(
+  profileId: number,
+  slotMinute: number,
+  currentMinute: number,
+  trace: DigestSleepPendingTrace,
+  deferred: boolean
+): void {
+  const wakeMinutes = typicalWakeTime(profileId);
+  const arrivalLagMin = getSleepArrivalLagMinutes(profileId);
+  const expectedByMin =
+    wakeMinutes == null || arrivalLagMin == null
+      ? null
+      : (wakeMinutes + arrivalLagMin) % (24 * 60);
+  log.info(
+    deferred ? "digest deferred for sleep" : "digest deferral evaluated",
+    {
+      profile: profileId,
+      // DECLARED, so the persisted log classifies this line by what the tick decided
+      // rather than by reading its message text (lib/notify-log-format.ts).
+      decision: deferred ? "declined" : "proceeded",
+      slotMinute,
+      currentMinute,
+      sleepSection: trace.sleepSection,
+      newestWakeDay: trace.newestWakeDay,
+      hasLastNight: trace.hasLastNight,
+      tracking: trace.tracking,
+      wakeMinutes,
+      arrivalLagMin,
+      expectedByMin,
+      lastSyncAt: latestSleepSyncAt(profileId),
+      providerHealthy: getIntegrationAttention(profileId).length === 0,
+    }
   );
 }
 

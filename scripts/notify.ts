@@ -93,6 +93,7 @@ import {
 } from "../lib/notifications/digest-data";
 import { reconcileProfileMessages } from "../lib/notifications/reconcile";
 import { runInTickScope } from "../lib/tick-cache";
+import { beginNotifyRun } from "../lib/notify-log";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -915,6 +916,19 @@ async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
 
+  // THE RUN (#2209). One id for this whole invocation, stamped onto every line the
+  // persisted tick log keeps, so the admin viewer can group by (run, profile)
+  // instead of guessing from timestamps — a fan-out over several profiles routinely
+  // straddles a minute, and a bucketing heuristic splits exactly those runs.
+  //
+  // The line below is the run's own marker and the ONE new global line this issue
+  // adds. It earns its place by being the thing that makes a QUIET tick visible: a
+  // run that decided nothing must still render as a row, or "silence because nothing
+  // was due" stays indistinguishable from "silence because the sidecar is wedged" —
+  // which is the ambiguity the log exists to kill.
+  const run = beginNotifyRun();
+  log.info("tick started", { run, profiles: profiles.length });
+
   // THE OBSERVED TICK CADENCE (#2121). The attempt bands in slotDue are one tick
   // wide, so the tick must know how often it really runs — not how often a config
   // claims it runs, because a mismatch in either direction mis-sizes the bands
@@ -963,9 +977,19 @@ async function tick() {
       // assessment and the medication-family state — each collapse to ONE
       // evaluation for this profile. The scope closes with the profile, and nothing
       // inside it writes what those gathers read (lib/tick-cache.ts states the rule).
-      if (await runInTickScope(() => tickProfile(p, tickMinutes))) {
-        anyFailed = true;
-      }
+      //
+      // The scope also DECLARES its subject (#2209), which is what lets the persisted
+      // tick log attribute a line to a profile without threading an id through every
+      // log call site in lib/notifications/**.
+      const failed = await runInTickScope(() => tickProfile(p, tickMinutes), {
+        profileId: p.id,
+      });
+      if (failed) anyFailed = true;
+      // The per-profile run marker — the second and last new line this issue adds.
+      // One row per profile per run is exactly the viewer's unit, and without it a
+      // profile the tick evaluated and had nothing to say about would leave no trace
+      // at all: the quiet-tick ambiguity again, one level down.
+      log.info("profile evaluated", { profile: p.id, failed });
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,
