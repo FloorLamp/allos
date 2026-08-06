@@ -31,11 +31,6 @@ const ALLOWLIST = new Map<string, string>([
       "bulk 'Delete selected/all' buttons — table-level controls, not a " +
       "per-row action pair",
   ],
-  [
-    "components/illness/SymptomPhotoStrip.tsx",
-    "photo-tile toolbar (edit caption / delete photo) on an image strip — " +
-      "a media object's controls, not a data-table row",
-  ],
 ]);
 
 function walk(dir: string): string[] {

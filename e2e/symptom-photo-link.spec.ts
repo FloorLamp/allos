@@ -13,20 +13,22 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SICK_PHOTO } from "./fixture-logins";
 // #1093 — the symptom↔photo cross-link, end to end. This OWNS a dedicated sick-solo login
 // (seed-events.ts) whose open episode has cough + fever logged today, so its cockpit's
 // photo strip offers a "Symptom (optional)" selector. The spec attaches a photo TAGGED to
-// a specific symptom and proves the photo binds to that log: the thumbnail renders the
-// symptom's label chip. Isolated so its exact-count / delete-all photo assertions never
-// race the shared profile-1 episode the round3 spec drives. A salted 1x1 PNG is synthetic
-// (no PHI); per-profile content-hash dedup (migration 049) needs the unique bytes so a
-// retry / --repeat-each iteration is a genuinely new row, not a silent no-op.
-
-const PNG_1x1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQBHYh4RAAAAAElFTkSuQmCC",
+// a specific symptom and proves the photo binds to that log: since #1844 the symptom is
+// the photo's SERIES in the shared gallery, so the binding shows as a series chip and in
+// the lightbox beside the date. Isolated so its exact-count / delete-all photo assertions
+// never race the shared profile-1 episode the round3 spec drives.
+//
+// A real 8x8 PNG, synthetic (no PHI). It must genuinely DECODE: since #1844 this domain's
+// upload runs through processPhoto, and the 1x1 fixture this spec used to carry only ever
+// had to pass a magic-byte sniff. Salting it is also pointless now — the content hash is
+// taken over PROCESSED bytes, so trailing garbage no longer makes a distinct row and only
+// different PIXELS would. What keeps a retry / --repeat-each iteration deterministic is
+// the discipline below: the strip is emptied FIRST, so the hash this upload produces is
+// guaranteed free.
+const PHOTO_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWOo0DiBFTEMLQkAFtVaATzGqpoAAAAASUVORK5CYII=",
   "base64"
 );
-
-function uniquePng(): Buffer {
-  return Buffer.concat([PNG_1x1, randomBytes(16)]);
-}
 
 test.describe("Symptom photo ↔ log link (#1093)", () => {
   test("a photo tagged to a symptom shows that symptom on the episode cockpit", async ({
@@ -56,20 +58,26 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
       symptomSelect.getByRole("option", { name: "Cough" })
     ).toHaveCount(1);
 
-    const deleteButtons = strip.locator(
-      '[data-testid^="symptom-photo-delete-"]'
-    );
-    // OWN the strip state: clear any leftover photo so the tagged upload is unambiguous.
-    for (
-      let remaining = await deleteButtons.count();
-      remaining > 0;
-      remaining--
-    ) {
-      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
-      await expect(deleteButtons).toHaveCount(remaining - 1, {
-        timeout: 15_000,
-      });
+    // Photos live in the shared gallery since #1844: the grid shows pixels and each
+    // photo's own controls live on its lightbox, so a delete is open-tile → delete →
+    // watch the grid shrink (the illness-round3 pattern).
+    const tiles = strip.locator('[data-testid^="photo-gallery-item-"]');
+    const lightbox = page.getByTestId("photo-lightbox");
+
+    async function emptyTheStrip() {
+      for (let remaining = await tiles.count(); remaining > 0; remaining--) {
+        await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
+        await expect(lightbox).toBeVisible();
+        await settledClick(
+          page,
+          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+        );
+        await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
+      }
     }
+
+    // OWN the strip state: clear any leftover photo so the tagged upload is unambiguous.
+    await emptyTheStrip();
 
     const captionInput = strip.getByLabel("Caption (optional)");
     const caption = `Cough photo ${randomBytes(4).toString("hex")}`;
@@ -90,24 +98,25 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
       name: `cough-${randomBytes(6).toString("hex")}.png`,
       mimeType: "image/png",
-      buffer: uniquePng(),
+      buffer: PHOTO_PNG,
     });
-    await expect(deleteButtons.first()).toBeVisible(); // first-ok: asserts a photo delete button rendered before the assertions below — order-agnostic
+    await expect(tiles).toHaveCount(1, { timeout: 15_000 });
 
     await expect(page.getByText("Photo attached.")).toBeVisible();
 
-    // THE payoff: the tagged photo carries its symptom's label chip (the symptom_log_id
-    // link surfaced) — not just a bare day photo.
-    const taggedPhoto = strip
-      .locator("figure")
-      .filter({ hasText: caption })
-      .last();
-    const testId = await taggedPhoto.getAttribute("data-testid");
-    expect(testId).toMatch(/^symptom-photo-\d+$/);
-    const photoId = testId!.replace("symptom-photo-", "");
-    await expect(
-      taggedPhoto.getByTestId(`symptom-photo-symptom-${photoId}`)
-    ).toHaveText("Cough");
+    // THE payoff, on the surface that carries it since #1844: the symptom_log_id link
+    // is the photo's SERIES. The gallery derives its series chips from the photos
+    // themselves, so a chip labelled "Cough" existing at all means this photo bound to
+    // that symptom log — and the lightbox names it beside the date, with the caption.
+    await expect(strip.getByTestId("photo-gallery-series-cough")).toHaveText(
+      "Cough"
+    );
+    await tiles.first().click(); // first-ok: the strip was emptied above, so this is the only tile
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox).toContainText("Cough");
+    await expect(lightbox).toContainText(caption);
+    await lightbox.getByTestId("photo-lightbox-close").click();
+    await expect(lightbox).toHaveCount(0);
 
     // The reverse payoff: the episode cockpit gathers cough as one of its symptoms.
     await expect(
@@ -115,16 +124,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     ).toContainText("Cough");
 
     // Clean up every photo we added so a re-run starts where it began.
-    for (
-      let remaining = await deleteButtons.count();
-      remaining > 0;
-      remaining--
-    ) {
-      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
-      await expect(deleteButtons).toHaveCount(remaining - 1, {
-        timeout: 15_000,
-      });
-    }
-    await expect(deleteButtons).toHaveCount(0);
+    await emptyTheStrip();
+    await expect(tiles).toHaveCount(0);
   });
 });

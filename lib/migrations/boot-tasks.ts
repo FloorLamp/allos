@@ -14,6 +14,7 @@ import {
   serializeOnboardingState,
 } from "../onboarding";
 import { seedStandardMetricSaves } from "../standard-metric-seeds";
+import { runPhotoMetadataBackfill } from "../photo/metadata-backfill";
 import { runBootTx } from "./schema-utils";
 import { clockOverride } from "../clock";
 import { createLogger } from "../log";
@@ -51,6 +52,14 @@ import { createLogger } from "../log";
 //                                  ANY process — the same lease reapStuckExtractions
 //                                  uses — so a live extraction/import survives the tick.
 //   • seedTimezoneFromEnv        — env-dependent first-boot seeding.
+//   • runPhotoMetadataBackfill   — one-time EXIF strip of lesion/symptom photos
+//                                  stored before the photo core covered those
+//                                  domains (#1844). FILESYSTEM work behind an
+//                                  async codec, so it can't be a versioned
+//                                  migration (which is both transactional and
+//                                  synchronous); marker-gated like the flag
+//                                  reconcile, and detached so boot never waits on
+//                                  it.
 //
 // (The old boot path also carried backfillProfileIds, adopting legacy
 // NULL-profile_id rows onto profile 1. On the current schema every owned table is
@@ -119,6 +128,15 @@ export function bootTasks(db: Database.Database): void {
   // long-running instance that has NEVER taken a backup (#464). Set only when
   // absent — never overwritten.
   seedInstallMarker(db);
+
+  // One-time photo metadata backfill (#1844): re-encode lesion/symptom photos stored
+  // BEFORE the photo core covered those domains, so the GPS/device EXIF they arrived
+  // with stops sitting on disk. Marker-gated (a settings claim, the flag-reconcile
+  // pattern) and DETACHED — the re-encode is async (sharp) and boot is not, so this
+  // call only claims the work and lets the sweep log its own processed/skipped/failed
+  // tally. See lib/photo/metadata-backfill.ts for why it is a boot task and not a
+  // versioned migration.
+  runPhotoMetadataBackfill(db);
 }
 
 // Stamp `install_first_boot_at` with the current time on the first boot that lacks

@@ -9,12 +9,16 @@
 //     links (symptoms survive); a merge reparents them to the keeper; deleting a symptom
 //     log takes its photos (rows + files).
 //
-// Deterministic: :memory:-backed temp DB via setup.ts; a tiny synthetic PNG per photo.
+// Deterministic: :memory:-backed temp DB via setup.ts; a synthetic ProcessedPhoto per
+// photo (the write core takes bytes ALREADY through the shared photo core since #1844,
+// so the strip itself is proven at the action tier — this suite is about the LINKS).
 
 import { describe, it, expect, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { db, today } from "@/lib/db";
+import type { ProcessedPhoto } from "@/lib/photo/ingest";
 import { shiftDateStr } from "@/lib/date";
 import {
   logSymptomCore,
@@ -47,11 +51,22 @@ function newProfile(name: string): number {
   return id;
 }
 
-// A minimal valid PNG (signature + a unique body per seed so per-profile content-hash
-// dedup treats each as a distinct photo).
-function pngBytes(seed: string): Buffer {
-  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  return Buffer.concat([sig, Buffer.from(`synthetic-fixture-${seed}`)]);
+// A synthetic already-processed photo: what processPhoto hands the write core. The
+// bytes are opaque to this suite (only the row links and the file lifecycle matter);
+// a unique hash per seed keeps the per-profile content-hash dedup treating each as a
+// distinct photo. Real image bytes + the EXIF strip are pinned at the action tier.
+function processedFixture(seed: string): ProcessedPhoto {
+  const bytes = Buffer.from(`synthetic-fixture-${seed}`);
+  return {
+    bytes,
+    thumbBytes: bytes,
+    mime: "image/jpeg",
+    width: 4,
+    height: 3,
+    sizeBytes: bytes.length,
+    contentHash: crypto.createHash("sha256").update(bytes).digest("hex"),
+    captureDate: null,
+  };
 }
 
 function logId(profileId: number, date: string, symptom: string): number {
@@ -100,22 +115,19 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const a = attachSymptomPhotoCore(
       p,
       date,
-      pngBytes("rash-1"),
-      "r1.png",
+      processedFixture("rash-1"),
       "rash"
     );
     const b = attachSymptomPhotoCore(
       p,
       date,
-      pngBytes("rash-2"),
-      "r2.png",
+      processedFixture("rash-2"),
       "rash"
     );
     const c = attachSymptomPhotoCore(
       p,
       date,
-      pngBytes("cough-1"),
-      "c1.png",
+      processedFixture("cough-1"),
       "cough"
     );
     expect(a.kind).toBe("attached");
@@ -135,7 +147,7 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const p = newProfile("Day Photo");
     const date = "2026-05-05";
     logSymptomCore(p, "fever", 2, date);
-    const res = attachSymptomPhotoCore(p, date, pngBytes("day"), "day.png");
+    const res = attachSymptomPhotoCore(p, date, processedFixture("day"));
     expect(res.kind).toBe("attached");
     const row = getSymptomPhotosInRange(p, date, date)[0];
     expect(row.symptom_log_id).toBeNull();
@@ -147,8 +159,7 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const res = attachSymptomPhotoCore(
       p,
       date,
-      pngBytes("nolog"),
-      "x.png",
+      processedFixture("nolog"),
       "rash"
     );
     expect(res.kind).toBe("attached");
@@ -253,8 +264,8 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const date = "2026-07-01";
     logSymptomCore(p, "rash", 2, date);
     const rashLog = logId(p, date, "rash");
-    attachSymptomPhotoCore(p, date, pngBytes("del-1"), "d1.png", "rash");
-    attachSymptomPhotoCore(p, date, pngBytes("del-2"), "d2.png", "rash");
+    attachSymptomPhotoCore(p, date, processedFixture("del-1"), "rash");
+    attachSymptomPhotoCore(p, date, processedFixture("del-2"), "rash");
     const before = getSymptomPhotosForLog(p, rashLog);
     expect(before).toHaveLength(2);
     const files = before.map((ph) => {
@@ -290,8 +301,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     attachSymptomPhotoCore(
       p,
       date,
-      pngBytes("cust-1"),
-      "t.png",
+      processedFixture("cust-1"),
       "weird tingling arm"
     );
     expect(getSymptomPhotosForLog(p, oldLog)).toHaveLength(1);

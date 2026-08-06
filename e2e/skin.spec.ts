@@ -15,11 +15,13 @@ import { workerDbPath } from "./worker-env";
 const DB_PATH = workerDbPath();
 const LABEL = "E2ESkinWatchMole"; // collision-free identity marker (not in seed)
 
-// A minimal valid PNG (signature + a truncated body) — enough for the magic-byte sniff.
-const PNG = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("e2e-synthetic-fixture-bytes"),
-]);
+// A tiny (8x8) solid PNG, base64 — a synthetic fixture image (no PHI).
+// It must DECODE now, not merely pass a magic-byte sniff: since #1844 a lesion photo
+// goes through the shared photo core, which re-encodes it and strips its metadata.
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWOo0DiBFTEMLQkAFtVaATzGqpoAAAAASUVORK5CYII=",
+  "base64"
+);
 
 function cleanup() {
   const handle = new Database(DB_PATH);
@@ -92,9 +94,10 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       { timeout: 15000 }
     );
 
-    // Attach a dated photo — the serial-comparison strip renders a thumbnail. The
-    // upload form is explicit-submit (no auto-submit on file change), so set the file
-    // then settledClick the button that fires the POST.
+    // Attach a dated photo — the serial-comparison strip renders it through the
+    // shared photo gallery (#1844). The upload form is explicit-submit (no
+    // auto-submit on file change), so set the file then settledClick the button that
+    // fires the POST.
     await card.getByTestId(/^add-lesion-photo-/).click();
     const upload = card.getByTestId(/^lesion-photo-upload-/);
     await expect(upload).toBeVisible();
@@ -104,9 +107,13 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       buffer: PNG,
     });
     await settledClick(page, upload.getByRole("button", { name: "Add photo" }));
-    await expect(
-      card.getByRole("img", { name: /Lesion photo from/ })
-    ).toBeVisible({ timeout: 15000 });
+    const tile = card.locator('[data-testid^="photo-gallery-item-"]');
+    await expect(tile).toBeVisible({ timeout: 15000 });
+    // The grid reads the ingest thumbnail; the lightbox opens the full image.
+    await tile.click();
+    const lightbox = page.getByTestId("photo-lightbox");
+    await expect(lightbox.getByTestId("photo-lightbox-image")).toBeVisible();
+    await lightbox.getByTestId("photo-lightbox-close").click();
 
     // Filter by "Removed" hides it; back to "All" shows it again. The status filter
     // is the family's shared FilterPills group since #1449, not a <select>.
@@ -140,7 +147,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
 
     // Delete the observation and confirm the card is gone. The row's "Delete" button
     // opens the confirm dialog (a client toggle); the dialog's Delete fires the POST.
-    // exact:true scopes it off the photo strip's "Delete photo" remove control.
+    // exact:true scopes it off the lightbox's "Delete photo" control.
     await card.getByRole("button", { name: "Record actions" }).click();
     await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
     await settledClick(

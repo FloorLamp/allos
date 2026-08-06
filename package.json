@@ -24,6 +24,7 @@
     "notify": "tsx scripts/notify.ts",
     "upload-docs": "tsx scripts/upload-docs.ts",
     "backup": "tsx scripts/backup.ts",
+    "photo:backfill": "tsx scripts/photo-backfill.ts",
     "restore": "tsx scripts/restore.ts",
     "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
     "gen:exercise-guides": "tsx scripts/gen-exercise-guides.ts",

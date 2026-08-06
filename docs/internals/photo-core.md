@@ -4,9 +4,10 @@ Status: shipped
 
 The one capture → ingest → store → browse/compare stack every photo-carrying
 domain uses (issue #1119, phase 1). The physique progress-photo domain
-(`progress_photos`, phase 2) is its first tenant; skin (`lesion_photos`) and
-symptom (`symptom_photos`) photos migrate onto it in phase 3. **Video capture
-(#1224) shipped as a SIBLING core** — `lib/video/*` / `components/video/*`, same
+(`progress_photos`, phase 2) was its first tenant; skin (`lesion_photos`) and
+symptom (`symptom_photos`) photos joined it in phase 3 (#1844), so **all three
+photo domains now ride one ingest**. **Video capture (#1224) shipped as a
+SIBLING core** — `lib/video/*` / `components/video/*`, same
 per-profile store conventions and strictest-privacy tier, adding container
 sniffing, a Range-capable serve, and poster frames; see
 `docs/internals/video-core.md` (the poster frame it extracts is EXIF-stripped
@@ -64,10 +65,20 @@ server pipeline runs REGARDLESS. Never trust the client.
 
 ## Store / serve — `lib/photo/store.ts`
 
+- `PhotoDomain` is `progress` / `lesion` / `symptom`; `DOMAIN_DIRS` maps each to
+  the per-profile dir it already used, so phase 3 moved no files.
 - `storeProcessedPhoto(domain, profileId, photo)` writes
   `data/uploads/<domain-dir>/<profileId>/<hash16>.jpg` + `<hash16>.thumb.jpg`
   and returns repo-relative paths for the row. Content-named ⇒ an identical
   re-store overwrites in place (idempotent).
+- `thumbSiblingPath(storedPath)` is the ONE rule naming a photo's thumbnail:
+  drop the extension, add `.thumb.jpg`. `progress_photos` records `thumb_path`
+  on the row; `lesion_photos`/`symptom_photos` predate the core and carry no
+  such column, and phase 3 deliberately shipped **no schema change**, so their
+  readers derive it. The thumbnail is a derived artifact of the stored file, not
+  an independent fact, so a sibling name encodes it truthfully — and every
+  reader `existsSync`es first, falling back to the full image for a photo the
+  metadata backfill has not reached.
 - `unlinkPhotoFiles(domain, relPaths)` is best-effort and **path-contained**: a
   stored path resolving outside the domain root is skipped, never followed.
 - Serve routes follow the lesion/symptom posture, hardened: session-gated,
@@ -95,7 +106,7 @@ first-vs-latest), `lightboxNeighbors` (no-wrap paging).
 Captions/meta are factual only (date, weight snapshot) — no scoring, no derived
 judgment anywhere in the core (product-decided, #1119).
 
-## Adding a tenant domain (the phase-3 / #1224 checklist)
+## Adding a tenant domain (the checklist phase 3 and #1224 followed)
 
 1. Add the domain key + dir to `PhotoDomain`/`DOMAIN_DIRS` in
    `lib/photo/store.ts`.
@@ -118,18 +129,46 @@ judgment anywhere in the core (product-decided, #1119).
    allowlist documents the export stance; owned-table registration.
 6. Surface: `PhotoCapture` (pass the series' last photo as `ghostUrl`),
    `PhotoGallery` (add the domain — the selector lights up on data), and
-   `PhotoTimeline` per series.
+   `PhotoTimeline` per series. A domain whose table predates the core and has no
+   `thumb_path` derives the grid's thumbnail with `thumbSiblingPath` instead
+   (#1844) — it does NOT earn a schema change for it.
 
-## Deliberately out (as of phase 2)
+## Phase 3 (#1844) — the other two domains, and the backfill
 
-- **Phase 3** — migrating `lesion_photos`/`symptom_photos` writes onto
-  `processPhoto`, their strips onto `PhotoTimeline`, their domains into
-  `PhotoGallery`, plus the optional one-time EXIF-strip backfill of existing
-  files.
+`lib/skin-photo-write.ts` and `lib/symptom-photo-write.ts` were the last domain
+writes storing uploaded bytes verbatim, on the two most sensitive photo domains
+in the app. Both now take a `ProcessedPhoto`, exactly like the progress core; both
+Server Actions run `processPhoto` → `resolvePhotoDate` → core. Their surfaces
+render through the shared views: `LesionPhotoStrip` and `SymptomPhotoStrip` are
+Browse (`PhotoGallery`) / Compare (`PhotoTimeline`) over one series — the lesion
+for skin, the symptom for illness — which is what "is this mole changing?" and
+"is the rash spreading?" actually ask. Both serve routes gained `?thumb=1`.
+
+**The one-time backfill** (`lib/photo/metadata-backfill.ts`) is what makes the
+guarantee retroactive. Owner ruling (2026-08-01, #1844): **strip in place** — the
+pass re-encodes each stored file through the same `processPhoto` and replaces the
+bytes, with no archived-originals tier, because an archive only relocates the
+exposure. It is a **boot task, not a versioned migration**: the work is filesystem
+work (a migration's transaction cannot roll back re-encoded files), sharp is async
+while the runner and `bootTasks` are synchronous by design, and it changes no
+schema — it writes only the three byte-derived columns (`mime_type`, `size_bytes`,
+`content_hash`). `bootTasks` claims it through a `settings` marker (the
+canonical-flag-reconcile pattern) and lets it run detached; the pass logs a
+processed / skipped / failed tally. Idempotence is per FILE — a stored JPEG with
+no Exif segment is skipped, never re-compressed — so `npm run photo:backfill`
+re-runs it safely at any time. A file that cannot be cleaned (undecodable, HEIC)
+is counted `failed` and left exactly as it was, never replaced.
+
+## Deliberately out (as of phase 3)
+
 - The **global quick-capture type→target chooser** (camera in the pinned
-  quick-actions routing Progress/Skin/Symptom/Document) — meaningful once
-  multiple domains ride the core; the in-context capture on `/progress` and the
-  palette's `Add progress photo` action cover phase 2.
+  quick-actions routing Progress/Skin/Symptom/Document). Phase 3 removed what it
+  was waiting on — three domains now ride the core with the same capture,
+  storage and gallery contract, so a chooser has real targets to route to and
+  each one already accepts the same `ProcessedPhoto`. Still unbuilt, and still a
+  product decision (where the entry point lives, what a mis-routed capture
+  costs); the in-context capture on `/progress`, the lesion strip, the episode
+  strip and the palette's `Add progress photo` action cover today's paths.
 - **Offline capture queueing** — the client already downscales before upload so
   a queued blob would be small; wiring the capture flow into the offline write
   queue is future work.

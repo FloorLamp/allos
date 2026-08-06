@@ -43,7 +43,7 @@ import { removeFromOffsiteMirror } from "@/lib/backup";
 import { deleteApiTokensForLogin } from "@/lib/api-tokens";
 import { deleteProfileData } from "@/lib/profile-delete";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
-import { photoDomainRoot } from "@/lib/photo/store";
+import { photoDomainRoot, thumbSiblingPath } from "@/lib/photo/store";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -64,30 +64,14 @@ const MEDICAL_UPLOAD_ROOT = path.resolve(
   "medical"
 );
 
-// Symptom photos (#859 item 4) live under their own per-profile root; deleting a
-// profile unlinks its photo files too (path-contained, same posture as medical files).
-const SYMPTOM_PHOTO_UPLOAD_ROOT = path.resolve(
-  process.cwd(),
-  "data",
-  "uploads",
-  "symptom-photos"
-);
-
-// Lesion photos (#715) live under their own per-profile root; deleting a profile
-// unlinks its lesion-photo files too (path-contained, same posture as symptom photos).
-const LESION_PHOTO_UPLOAD_ROOT = path.resolve(
-  process.cwd(),
-  "data",
-  "uploads",
-  "lesion-photos"
-);
-
-// Progress photos (#1119) live under the shared photo core's per-profile root;
-// deleting a profile unlinks its photo files AND thumbnails too (path-contained,
-// same posture as the other photo domains). Reuse the store's OWN mapping
-// (photoDomainRoot → DOMAIN_DIRS, #1284) rather than re-deriving the path here, so a
-// later rename of the "progress" domain dir can't leave this containment check
-// silently pointing at the wrong root and orphaning files after a profile delete.
+// The three photo-core domains (#1119 progress, #1844 lesion + symptom) live under
+// their own per-profile roots; deleting a profile unlinks its photo files AND
+// thumbnails too (path-contained, same posture as medical files). Each root is read
+// out of the store's OWN mapping (photoDomainRoot → DOMAIN_DIRS, #1284) rather than
+// re-derived here, so a later rename of a domain dir can't leave this containment
+// check silently pointing at the wrong root and orphaning files after a delete.
+const SYMPTOM_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("symptom"));
+const LESION_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("lesion"));
 const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("progress"));
 
 // Symptom / episode video clips and training form-check clips (#1224) live under
@@ -239,7 +223,10 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   ).map((r) => r.stored_path);
 
   // Symptom-photo file paths (#859 item 4), collected before the OWNED_TABLES sweep
-  // deletes their rows.
+  // deletes their rows. Since #1844 these rows carry a photo-core thumbnail beside the
+  // stored file; those tables have no thumb_path column, so the sibling is derived by
+  // the store's own rule (thumbSiblingPath) — a path with no file behind it is a
+  // best-effort no-op here, never an orphan left under the root.
   const photoPaths = (
     db
       .prepare(
@@ -247,10 +234,10 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
           WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
       )
       .all(id) as { stored_path: string }[]
-  ).map((r) => r.stored_path);
+  ).flatMap((r) => [r.stored_path, thumbSiblingPath(r.stored_path)]);
 
-  // Lesion-photo file paths (#715), collected before the OWNED_TABLES sweep deletes
-  // their rows.
+  // Lesion-photo file paths (#715) + their derived thumbnails, collected before the
+  // OWNED_TABLES sweep deletes their rows.
   const lesionPhotoPaths = (
     db
       .prepare(
@@ -258,7 +245,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
           WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
       )
       .all(id) as { stored_path: string }[]
-  ).map((r) => r.stored_path);
+  ).flatMap((r) => [r.stored_path, thumbSiblingPath(r.stored_path)]);
 
   // Progress-photo file paths (#1119) — stored photo AND thumbnail — collected
   // before the OWNED_TABLES sweep deletes their rows.

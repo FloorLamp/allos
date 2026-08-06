@@ -32,6 +32,12 @@ const SCAN_DIRS = ["lib", "app", "scripts"];
 //    — a completely unrelated API that merely shares the method name.
 const ALLOWLIST = new Set<string>([
   "lib/db.ts",
+  // The one-time photo metadata backfill (#1844) is boot-path work under the SAME
+  // hardened contract as lib/migrations/*: every write goes through runBootTx
+  // (BEGIN IMMEDIATE + bounded SQLITE_BUSY retry). It cannot use writeTx — it is
+  // reached from bootTasks and takes the Database handle directly, so importing
+  // lib/db here would close the db → boot-tasks → db import cycle.
+  "lib/photo/metadata-backfill.ts",
   "lib/offline/queue-db.ts",
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
   // nothing to do with SQLite write locks (#1699).

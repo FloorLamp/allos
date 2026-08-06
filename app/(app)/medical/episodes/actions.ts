@@ -51,6 +51,8 @@ import {
   deleteSymptomVideoCore,
   updateSymptomVideoCaptionCore,
 } from "@/lib/symptom-video-write";
+import { processPhoto } from "@/lib/photo/ingest";
+import { resolvePhotoDate } from "@/lib/photo/policy";
 import { ingestVideo } from "@/lib/video/ingest";
 import { posterBytesFrom } from "@/lib/video/poster";
 import { resolveVideoDate } from "@/lib/video/policy";
@@ -636,10 +638,16 @@ export async function endEpisodeWithMedsAction(
   return { ok: true };
 }
 
-// Attach a symptom photo to a day (issue #859 item 4). Rides the existing upload posture
-// (per-profile dirs, sha256 dedup, image sniff). Cross-profile gated (issue #879): an
-// explicit `profileId` attaches to that member's episode. Answers from the core's typed
-// outcome; never leaks internals.
+// Attach a symptom photo to a day (issue #859 item 4). The bytes go through the shared
+// photo core FIRST (#1844 phase 3): magic-byte sniff, EXIF harvest, then the STRIP +
+// auto-orient + downscale + thumbnail — a photo of a child's rash must never keep the
+// GPS coordinates and device identity its camera wrote. Cross-profile gated (issue
+// #879): an explicit `profileId` attaches to that member's episode. Answers from the
+// core's typed outcome; never leaks internals.
+//
+// The DAY is the user's: this surface always sends the episode day it is standing on,
+// so an EXIF capture date never overrides it (resolvePhotoDate's explicit-date rule) —
+// it only fills in when the form carries no day at all.
 export async function uploadSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
@@ -654,16 +662,23 @@ export async function uploadSymptomPhotoAction(
   const file = formData.get("photo");
   if (!(file instanceof File) || file.size === 0)
     return { ok: false, error: "Choose a photo to attach." };
-  const date = parseDateOrNull(formData.get("date"));
-  if (!date) return { ok: false, error: "Enter a valid date." };
+  const rawDate = parseDateOrNull(formData.get("date"));
+  if (!rawDate) return { ok: false, error: "Enter a valid date." };
   const symptom = String(formData.get("symptom") ?? "").trim() || null;
   const caption = String(formData.get("caption") ?? "").trim() || null;
   const buffer = Buffer.from(await file.arrayBuffer());
+  const processed = await processPhoto(buffer);
+  if (processed.kind === "invalid")
+    return { ok: false, error: processed.error };
+  const date = resolvePhotoDate(
+    rawDate,
+    processed.photo.captureDate,
+    today(profileId)
+  );
   const outcome = attachSymptomPhotoCore(
     profileId,
     date,
-    buffer,
-    file.name,
+    processed.photo,
     symptom,
     caption
   );
