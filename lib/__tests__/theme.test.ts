@@ -5,8 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   errorCardPalette,
   isDarkTheme,
+  isHydrationErrorMessage,
   normalizeThemeChoice,
+  THEME_BOOT_SCRIPT,
   THEME_STORAGE_KEY,
+  themeReassertEvent,
+  type ThemeReassertObservation,
 } from "@/lib/theme";
 
 // The one theme rule (app/layout.tsx's boot script, components/ThemeToggle.tsx) and
@@ -87,11 +91,169 @@ describe("errorCardPalette (#1906)", () => {
 describe("one theme source", () => {
   it("is the key the pre-paint boot script reads", () => {
     // The boot script is a STRING of source that must run before any bundle, so it
-    // cannot import the rule — but it can and does interpolate this key. If they ever
-    // diverge, the error card reads a preference nobody wrote.
-    const layout = fs.readFileSync(path.join(REPO, "app/layout.tsx"), "utf8");
-    expect(layout).toContain("localStorage.getItem('${THEME_STORAGE_KEY}')");
+    // cannot import the rule — but it interpolates this key, and the matrix test
+    // below executes it against the rule itself. If they ever diverge, the error
+    // card reads a preference nobody wrote.
+    expect(THEME_BOOT_SCRIPT).toContain(
+      `localStorage.getItem('${THEME_STORAGE_KEY}')`
+    );
     expect(THEME_STORAGE_KEY).toBe("theme");
+  });
+
+  it("is the script the root layout actually inlines", () => {
+    // The one-computation pin only binds anything if the layout ships THIS string
+    // rather than a re-typed copy (#2183).
+    const layout = fs.readFileSync(path.join(REPO, "app/layout.tsx"), "utf8");
+    expect(layout).toContain("THEME_BOOT_SCRIPT");
+    expect(layout).not.toContain("localStorage.getItem(");
+  });
+});
+
+describe("THEME_BOOT_SCRIPT ≡ isDarkTheme (#2183)", () => {
+  // Execute the boot script's source against stubbed browser globals and compare
+  // its classList decision with the imported rule, across the full matrix — the
+  // one-computation pin for the one place the rule is retyped rather than
+  // imported. The re-assert component imports isDarkTheme outright, so this test
+  // is what keeps boot and re-assert answering identically.
+  function runBootScript(
+    stored: string | null,
+    prefersDark: boolean
+  ): boolean | null {
+    let applied: boolean | null = null;
+    const run = new Function(
+      "localStorage",
+      "window",
+      "document",
+      THEME_BOOT_SCRIPT
+    );
+    run(
+      { getItem: (k: string) => (k === THEME_STORAGE_KEY ? stored : null) },
+      {
+        matchMedia: (q: string) => ({
+          matches: q === "(prefers-color-scheme: dark)" && prefersDark,
+        }),
+      },
+      {
+        documentElement: {
+          classList: {
+            toggle: (cls: string, on: boolean) => {
+              if (cls === "dark") applied = on;
+            },
+          },
+        },
+      }
+    );
+    return applied;
+  }
+
+  it("decides exactly as isDarkTheme for every stored × prefersDark case", () => {
+    for (const stored of [null, "", "light", "dark", "system", "midnight"]) {
+      for (const prefersDark of [true, false]) {
+        expect(
+          runBootScript(stored, prefersDark),
+          `stored=${JSON.stringify(stored)} prefersDark=${prefersDark}`
+        ).toBe(isDarkTheme({ stored, prefersDark }));
+      }
+    }
+  });
+
+  it("swallows a storage failure rather than throwing before first paint", () => {
+    const run = new Function(
+      "localStorage",
+      "window",
+      "document",
+      THEME_BOOT_SCRIPT
+    );
+    expect(() =>
+      run(
+        {
+          getItem: () => {
+            throw new Error("denied");
+          },
+        },
+        {},
+        { documentElement: { classList: { toggle: () => {} } } }
+      )
+    ).not.toThrow();
+  });
+});
+
+describe("themeReassertEvent (#2183)", () => {
+  const base: ThemeReassertObservation = {
+    route: "/wellness",
+    expectedDark: true,
+    classPresent: false,
+    bootScriptPresent: true,
+    swControlled: false,
+    hydrationErrors: [],
+  };
+
+  it("fires exactly on the poisoned signature: dark expected, class missing", () => {
+    expect(themeReassertEvent(base)).toEqual({
+      route: "/wellness",
+      bootScriptPresent: true,
+      swControlled: false,
+      hydrationErrors: [],
+    });
+  });
+
+  it("is silent on the healthy path and for an explicit light theme", () => {
+    expect(themeReassertEvent({ ...base, classPresent: true })).toBeNull();
+    expect(themeReassertEvent({ ...base, expectedDark: false })).toBeNull();
+    expect(
+      themeReassertEvent({
+        ...base,
+        expectedDark: false,
+        classPresent: true,
+      })
+    ).toBeNull();
+  });
+
+  it("carries the trigger-pinning facts and no health data", () => {
+    const event = themeReassertEvent({
+      ...base,
+      bootScriptPresent: false,
+      swControlled: true,
+      hydrationErrors: ["Hydration failed because…"],
+    });
+    expect(event).toEqual({
+      route: "/wellness",
+      bootScriptPresent: false,
+      swControlled: true,
+      hydrationErrors: ["Hydration failed because…"],
+    });
+  });
+
+  it("keeps only the newest hydration errors, capped in length", () => {
+    const event = themeReassertEvent({
+      ...base,
+      hydrationErrors: ["one", "two", "three", "four", "x".repeat(500)],
+    });
+    const errors = (event as { hydrationErrors: string[] }).hydrationErrors;
+    expect(errors).toHaveLength(3);
+    expect(errors[0]).toBe("three");
+    expect(errors[2]).toHaveLength(300);
+  });
+});
+
+describe("isHydrationErrorMessage (#2183)", () => {
+  it("matches every React hydration wording", () => {
+    for (const msg of [
+      "Hydration failed because the server rendered HTML didn't match the client.",
+      "An error occurred during hydration. The server HTML was replaced with client content.",
+      "There was an error while hydrating this Suspense boundary.",
+    ]) {
+      expect(isHydrationErrorMessage(msg), msg).toBe(true);
+    }
+  });
+
+  it("rejects ordinary errors and empty input", () => {
+    expect(isHydrationErrorMessage("Failed to fetch")).toBe(false);
+    expect(isHydrationErrorMessage("TypeError: x is not a function")).toBe(
+      false
+    );
+    expect(isHydrationErrorMessage("")).toBe(false);
+    expect(isHydrationErrorMessage(null)).toBe(false);
   });
 });
 

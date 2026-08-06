@@ -5,7 +5,10 @@
 //   • `focus=` — the care surfaces' convention (the preventive blood-pressure nudge
 //     `focus=blood-pressure` (#1083), the sleep prompt `focus=sleep` (#800), the
 //     pediatric-height data-quality CTA `focus=height` (#1146));
-//   • `new=`   — the command palette's FOCUS_PARAM (`new=weight` / `new=vitals`, #29).
+//   • `new=`   — the FOCUS_PARAM convention (`new=weight` / `new=vitals`, #29).
+//     Originally the command palette's; #2184 moved those palette picks onto the
+//     in-place quick-entry overlay, but the links stay valid for PWA shortcuts,
+//     bookmarks, and anything else that speaks them.
 // After the merge both land on ONE form, so the mapping is one pure table here —
 // shared by the form (which field to focus) and by the desktop expander / mobile
 // overlay (whether to open at all). An unrecognized value focuses nothing, so a
@@ -29,8 +32,10 @@ export function deepLinkFieldId(
     case "weight":
       return "m-weight";
     case "vitals":
-      // The palette's "Log vitals" action (keywords: resting, hr, heart, body fat)
-      // has always focused the resting-HR field; the merge keeps that target.
+      // The historical "Log vitals" link has always focused the resting-HR
+      // field; the merge keeps that target. (The palette pick itself opens the
+      // overlay on the vitals GROUP now — #2184 — resolved through the same
+      // field→group table below.)
       return "m-resting-hr";
   }
   return null;

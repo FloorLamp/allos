@@ -2,9 +2,13 @@
 //
 // Everywhere in the app, "is it dark?" is answered by a `dark` class on <html> and
 // then by Tailwind's `dark:` variants — set before first paint by the inline boot
-// script in app/layout.tsx, kept live by components/ThemeToggle.tsx. Those two used
-// to hold two hand-copied transcriptions of the same rule ("stay in sync", said both
-// comments); the rule itself now lives here and both read it.
+// script (THEME_BOOT_SCRIPT below, inlined by app/layout.tsx), kept live by
+// components/ThemeToggle.tsx, and re-asserted post-hydration and on route changes
+// by components/ThemeReassert.tsx (#2183), so one hard navigation whose boot
+// script never ran cannot poison the whole SPA session. The boot script and the
+// toggle used to hold two hand-copied transcriptions of the same rule ("stay in
+// sync", said both comments); the rule itself now lives here and every consumer
+// reads it.
 //
 // `app/global-error.tsx` is the surface that needs the decision as DATA rather than
 // as a class. It replaces the ROOT LAYOUT when something above the route group
@@ -14,8 +18,34 @@
 // the same storage key the boot script reads is the point: a second theme source
 // would be a second answer to a question the user already answered once (#1906).
 
-/** Where the user's choice lives. Mirrored in the boot script's inline source. */
+/** Where the user's choice lives. Interpolated into the boot script's source. */
 export const THEME_STORAGE_KEY = "theme";
+
+/**
+ * The pre-paint boot script (#2183). One place the rule has to be RETYPED rather
+ * than imported: this is a string of source that must execute before any bundle
+ * does, so it cannot call `isDarkTheme` — but it lives HERE, beside the rule it
+ * transcribes, and `lib/__tests__/theme.test.ts` executes it against `isDarkTheme`
+ * across the whole stored × prefersDark matrix so the two cannot drift. (That pin
+ * caught a real one on arrival: the old copy's `t || 'system'` read an
+ * unrecognised stored value as light, where `normalizeThemeChoice` means system —
+ * hence `t !== 'light'`, the same "anything unrecognised defers to the OS".)
+ *
+ * app/layout.tsx inlines it (nonce'd, in <head>) so the class is set before first
+ * paint — the no-FOUC happy path. It runs ONCE per document; the safety net under
+ * it is components/ThemeReassert.tsx, which re-applies the same rule (imported,
+ * not retyped) post-hydration and on every route change, so one hard navigation
+ * whose boot script never ran cannot leave the whole SPA session light (#2183).
+ */
+export const THEME_BOOT_SCRIPT = `
+(function () {
+  try {
+    var t = localStorage.getItem('${THEME_STORAGE_KEY}');
+    var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {}
+})();
+`;
 
 export type ThemeChoice = "light" | "dark" | "system";
 
@@ -97,4 +127,73 @@ const DARK_ERROR_CARD: ErrorCardPalette = {
 
 export function errorCardPalette(dark: boolean): ErrorCardPalette {
   return dark ? DARK_ERROR_CARD : LIGHT_ERROR_CARD;
+}
+
+// ── The re-assert diagnostic (#2183) ─────────────────────────────────────────
+//
+// The reported bug: one hard navigation whose boot script never ran left the
+// whole session light until a manual toggle. The re-assert heals that; this pair
+// of pure functions is the instrumentation that pins the TRIGGER on the next
+// occurrence instead of guessing at it. Both are pure so the decision — what
+// counts as poisoned, what the event carries — is testable without a DOM.
+
+/**
+ * Does a window error message look like a React hydration failure? The #2183
+ * follow-up theory is a hydration-recovery root re-render silently dropping the
+ * boot-added class, so the diagnostic records any hydration error seen on the
+ * page alongside the light-session event. React 19's recoverable errors reach
+ * `window`'s "error" listener via its default `onRecoverableError` (reportError);
+ * every wording it uses ("Hydration failed…", "An error occurred during
+ * hydration", "…error while hydrating") names the act, so one stem matches all
+ * of them without matching ordinary errors.
+ */
+export function isHydrationErrorMessage(
+  message: string | null | undefined
+): boolean {
+  return /hydrat/i.test(message ?? "");
+}
+
+/** What the re-assert observed, gathered impurely by ThemeReassert. */
+export interface ThemeReassertObservation {
+  /** The App Router pathname the re-assert ran on. */
+  route: string;
+  /** What the ONE rule (isDarkTheme) says the document should be. */
+  expectedDark: boolean;
+  /** Whether `<html>` actually carries the `dark` class right now. */
+  classPresent: boolean;
+  /** Whether an inline nonce'd script survived into this document at all. */
+  bootScriptPresent: boolean;
+  /** Whether a service worker controls this document (offline-shell candidate). */
+  swControlled: boolean;
+  /** Hydration-looking error messages seen on this page, oldest first. */
+  hydrationErrors: string[];
+}
+
+// Bound the event: a page minting hydration errors in a loop must not balloon
+// one diagnostic line. Newest errors win — they are the ones adjacent in time to
+// the light landing being reported.
+const REASSERT_MAX_HYDRATION_ERRORS = 3;
+const REASSERT_MAX_ERROR_CHARS = 300;
+
+/**
+ * The one structured client event (#2183): non-null exactly when the boot
+ * failed in the reported direction — storage says dark, the class is missing.
+ * The healthy path, an explicit light theme, and the impossible inverse (a
+ * class present that storage disowns — the toggle's own writes, which the
+ * re-assert also corrects) log nothing: the event exists to convert "sometimes
+ * light" into a pinned trigger, not to narrate every render. No health data —
+ * route and document facts only.
+ */
+export function themeReassertEvent(
+  obs: ThemeReassertObservation
+): Record<string, unknown> | null {
+  if (!obs.expectedDark || obs.classPresent) return null;
+  return {
+    route: obs.route,
+    bootScriptPresent: obs.bootScriptPresent,
+    swControlled: obs.swControlled,
+    hydrationErrors: obs.hydrationErrors
+      .slice(-REASSERT_MAX_HYDRATION_ERRORS)
+      .map((m) => m.slice(0, REASSERT_MAX_ERROR_CHARS)),
+  };
 }

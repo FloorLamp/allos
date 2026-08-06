@@ -30,9 +30,14 @@ export default function OfflinePage() {
     setCard(parsed?.card ?? null);
   }, []);
 
+  // `data-offline-shell` + `offline-card` hook the CSS-only prefers-color-scheme
+  // base in globals.css (#2183): this page must render sensibly under OS dark
+  // even when NO script runs (a cached shell whose boot script was blocked), so
+  // its dark treatment cannot rely solely on the boot-set `.dark` class the
+  // `dark:` variants key on.
   if (showCard && card) {
     return (
-      <main className="min-h-screen px-4 py-8">
+      <main data-offline-shell className="min-h-screen px-4 py-8">
         <PageContainer width="narrow" className="mx-auto">
           <button
             type="button"
@@ -49,12 +54,15 @@ export default function OfflinePage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-12">
+    <main
+      data-offline-shell
+      className="flex min-h-screen items-center justify-center px-4 py-12"
+    >
       <div className="w-full max-w-sm text-center">
         <div className="mb-8 flex items-center justify-center gap-2">
           <Wordmark markClassName="h-8 w-14" />
         </div>
-        <div className="rounded-2xl border border-black/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-ink-950/70">
+        <div className="offline-card rounded-2xl border border-black/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-ink-950/70">
           <h1 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-100">
             You&apos;re offline
           </h1>

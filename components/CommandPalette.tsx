@@ -366,10 +366,13 @@ export default function CommandPalette({
         openRepeatLast();
       } else if (action.target.kind === "overlay") {
         // In place, exactly as the quick-log sheet opens it (#1468): a palette action
-        // that files a document must leave you on the page you were reading.
-        const form = action.target.form;
+        // that files a document or logs a weight must leave you on the page you were
+        // reading (#2184). The prefill is the context the PICK implies (#2014 — "Log
+        // weight" opens the weight group), overriding the form's last-written-group
+        // memory, which stays for context-free opens (#2068).
+        const { form, prefill } = action.target;
         close();
-        openQuickEntry(form);
+        openQuickEntry(form, prefill);
       } else {
         // A matching data search may already be in flight by the time an action
         // is picked. Its Server Action response can race an App Router push and

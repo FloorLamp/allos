@@ -126,16 +126,34 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
   expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(390);
 });
 
-test("the command palette preserves the first-practice creation path (#1620)", async ({
+test("the command palette opens the practice overlay in place; the deep link keeps the first-practice path (#1620/#2184)", async ({
   page,
 }) => {
   await page.goto("/");
+  const dashboardUrl = page.url();
   const input = await openCommandPalette(page);
-  await input.fill("Wellness practices");
+  // Findable by the domain word even though the label is now the sheet row's
+  // ("Log practice") — the #2184 drift fix must not cost #1620's findability.
+  await input.fill("wellness");
   const action = page.getByTestId("palette-action-wellness-practices");
   await expect(action).toBeVisible();
+  await expect(action).toContainText("Log practice");
   await action.click();
-  await expect(page).toHaveURL(/\/wellness\?new=1$/);
+  // The SAME overlay the quick-log sheet's row opens, IN PLACE: same form key,
+  // same practice list, URL untouched — no more hard navigation mid-whatever.
+  await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
+  await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+    "data-form",
+    "practice"
+  );
+  await expect(page.getByTestId("quick-entry-practice-list")).toBeVisible();
+  expect(page.url()).toBe(dashboardUrl);
+  await page.keyboard.press("Escape");
+
+  // The /wellness?new=1 deep link is untouched (#2184 removes nothing): it still
+  // lands on the page with the create form focused — the first-practice creation
+  // path for a profile with nothing tracked yet.
+  await page.goto("/wellness?new=1");
   await expect(
     page.getByTestId("practice-create-form").getByLabel("Practice")
   ).toBeFocused();

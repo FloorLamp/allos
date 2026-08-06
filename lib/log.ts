@@ -3,8 +3,14 @@
 // development and structured `json` in production, overridable via LOG_FORMAT.
 // Verbosity is controlled by LOG_LEVEL (default "info").
 //
-// Server-only: reads process.env and writes to the console at module scope; do
-// not import from client components.
+// Primarily server-side: reads process.env (shimmed to {} in browser bundles)
+// and writes to the console. In a client bundle the error sink below is never
+// registered (lib/error-log.ts only loads on the Node boot path), so a client
+// consumer gets the structured console echo and nothing else — which is exactly
+// what the ONE sanctioned client consumer wants: the #2183 theme-reassert
+// diagnostic, a client-log-only event with no endpoint behind it. Don't add
+// client imports casually; anything that must be SEEN by an admin needs a
+// server-side path, because a browser console line reaches nobody.
 
 // The SAME redaction chokepoint the persisted copies use (lib/error-log.ts via
 // buildDetail, lib/ai-log.ts directly). error-log-format.ts is pure — no fs, no
