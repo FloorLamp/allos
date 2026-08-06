@@ -586,6 +586,227 @@ export async function handleMoodCommand(
   );
 }
 
+// `/food` command (#1895): the food-log keyboard for the CURRENT slot, on demand. The
+// domain has had inline logging buttons since #682, but only if a nudge happened to
+// arrive — an opted-out profile, a slot whose send was hours ago, or a nudge that
+// scrolled away all left the chat with no door.
+//
+// A RE-RENDER, never a second engine (#221): `buildFoodNudge` is the builder the tick
+// calls, the reconcile rebuilds with, and every tap re-renders through, so the ranked
+// buttons, the day counts, the protein line and the eating-time chips are whatever the
+// send renderer says they are — for the slot the profile is IN right now
+// (`currentFoodSlot`, the same derivation the Food tab's chip reads).
+//
+// ONE MESSAGE PER PROFILE, not one merged keyboard (the `/temp` shape, not `/dose`'s):
+// the food family's reconciler REBUILDS a nudge from its first `food:` token, so two
+// profiles' buttons in one message would have every rebuild silently render one
+// profile's nudge over the other's. Each message therefore declares its own subject
+// (#1995) and rotates its own #947 pointer.
+//
+// It is deliberately NOT gated on the food_telegram_enabled opt-in: that flag governs
+// whether the tick may CONTACT someone, and this is a reply to a message they just sent.
+// Nothing here sends anything nobody asked for.
+export async function handleFoodCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("food", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  const skipped: string[] = [];
+  for (const pid of profileIds) {
+    const name = getProfileNameById(pid) ?? "Profile";
+    const built = buildFoodNudge(pid, currentFoodSlot(pid), today(pid));
+    // Null is the life-stage gate (an infant logs no food groups, #591) — answered
+    // honestly below rather than with an empty keyboard.
+    if (!built) {
+      skipped.push(name);
+      continue;
+    }
+    await sendTelegramMessage(
+      chatId,
+      multi ? prefixMessage(built, `[${name}] `) : built,
+      pid
+    );
+  }
+
+  if (skipped.length === profileIds.length) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🍽️ Log food",
+        body: "Food-group logging doesn't apply here yet. Everything else is in the app.",
+        kind: "food",
+      },
+      CHAT_WIDE
+    );
+  }
+}
+
+// `/practice` command (#1895): the tracked wellness practices as one-tap buttons.
+// Telegram has offered practice logging since #1259 but ONLY on the pace nudge, so a
+// practice you are on track with had no chat door at all.
+//
+// ONE MESSAGE, per-profile prefixed buttons — the `/dose` shape, since the list's
+// buttons carry their own profile id and nothing rebuilds the message from a single
+// token. CHAT_WIDE (#1995) keeps the (chat, kind) supersede slot stable, so a second
+// `/practice` re-issues THE list rather than stacking a second one (#1898).
+export async function handlePracticeCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("practice", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  const nonce = crypto.randomBytes(4).toString("hex");
+  const actions: NotificationAction[] = [];
+  const lines: string[] = [];
+  for (const pid of profileIds) {
+    const name = getProfileNameById(pid) ?? "Profile";
+    const built = buildPracticeList(pid, nonce);
+    if (!built) continue;
+    lines.push(
+      multi ? `${name}\n${plainBody(built.body)}` : plainBody(built.body)
+    );
+    for (const a of built.actions ?? []) {
+      actions.push({
+        ...a,
+        label: multi ? `${name}: ${a.label}` : a.label,
+        row: multi ? `practice-${pid}` : a.row,
+      });
+    }
+  }
+
+  if (actions.length === 0) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🧘 Log a practice",
+        body: "No wellness practices are tracked yet. Add one under Practices in the app.",
+        kind: "practice-list",
+      },
+      CHAT_WIDE
+    );
+    return;
+  }
+
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "🧘 Log a practice",
+      body: lines.join("\n"),
+      actions,
+      kind: "practice-list",
+    },
+    CHAT_WIDE
+  );
+}
+
+// `/weight` command (#1895): the `/temp` prompt-reply shape, one quantity over. A
+// weight is a single number, which is exactly the capture a chat does well and exactly
+// what a keyboard cannot do — so the prompt asks for a reply and carries a marker that
+// attributes it, with no server-side pending state. A multi-profile chat gets one named
+// prompt each, never a guess about whose weigh-in this is.
+export async function handleWeightCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("weight", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  for (const pid of profileIds) {
+    const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "Log a weight",
+        body:
+          `Reply to this message with ${who}weight — e.g. 82.5, or 180 lb ` +
+          `(kg unless you say otherwise). ${weightReplyMarker(pid)}`,
+        kind: "weight",
+      },
+      pid
+    );
+  }
+}
+
+// A reply to a `/weight` prompt (#1895) — the `/temp` reply handler's twin: resolve the
+// profile from the prompt's marker, parse the number through the SAME grammar the
+// palette's `weight 82.5` uses, write through the SAME `insertBodyMetric` core every
+// weight entry goes through (canonical kg conversion server-side, at the boundary), and
+// answer from what the write actually returned. Returns whether the message was a weight
+// reply, so the dispatcher can stop. Never confirms unconditionally.
+export async function handleWeightReply(
+  message: TelegramMessage
+): Promise<boolean> {
+  const chatId = message.chat?.id;
+  const markedProfile = parseWeightReplyMarker(message.reply_to_message?.text);
+  if (chatId == null || markedProfile == null) return false;
+
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (!profileIds.includes(markedProfile)) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "⚖️ Weight not logged",
+        body: "That profile isn't linked to this chat anymore.",
+      },
+      CHAT_WIDE
+    );
+    return true;
+  }
+
+  // kg by default: a chat carries no login unit preference (#857 lives on the login,
+  // and several logins with different preferences can watch one profile), so the
+  // notification unit policy applies — canonical kg, with an explicit lb still honored.
+  const parsed = parseWeightEntry((message.text ?? "").trim(), "kg");
+  if (parsed.error || !Number.isFinite(parsed.value)) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "⚖️ Weight not logged",
+        body:
+          parsed.error ??
+          "Couldn't read a weight there — reply with a number like 82.5.",
+      },
+      markedProfile
+    );
+    return true;
+  }
+
+  const wrote = insertBodyMetric(markedProfile, {
+    date: today(markedProfile),
+    weight: String(parsed.value),
+    weightUnit: parsed.unit,
+    bodyFatPct: null,
+    restingHr: null,
+    notes: null,
+  });
+  await sendTelegramMessage(
+    chatId,
+    wrote
+      ? {
+          title: `⚖️ Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
+          body: "Recorded for today.",
+        }
+      : {
+          title: "⚖️ Weight not logged",
+          body: "Couldn't record that weight — try again in the app.",
+        },
+    markedProfile
+  );
+  return true;
+}
+
 // The ONE inbound text-message dispatcher (webhook + poller both call this), and since
 // #1895 the ONE router for the command vocabulary too.
 //
@@ -607,6 +828,10 @@ export async function handleIncomingMessage(
   message: TelegramMessage
 ): Promise<void> {
   if (await handleTempReply(message)) return;
+  // The second prompt-reply flow (#1895). Same arm, same reason: a REPLY to a prompt is
+  // not a command and must not be re-parsed as one. Each marker is its own, so the two
+  // cannot claim each other's replies.
+  if (await handleWeightReply(message)) return;
 
   const parsed = parseCommand(message.text);
   if (!parsed) {
@@ -658,6 +883,15 @@ export async function handleIncomingMessage(
       return;
     case "mood":
       await handleMoodCommand(message);
+      return;
+    case "food":
+      await handleFoodCommand(message);
+      return;
+    case "practice":
+      await handlePracticeCommand(message);
+      return;
+    case "weight":
+      await handleWeightCommand(message);
       return;
     default:
       // A verb declared in TELEGRAM_COMMANDS with no route here. Unreachable while the
@@ -792,6 +1026,14 @@ import {
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { buildMoodCheckin } from "./mood";
+import { buildFoodNudge } from "./food";
+import { currentFoodSlot } from "../queries";
+import { buildPracticeList } from "./practices";
+import { plainBody } from "./rich-text";
+import { parseWeightEntry } from "../palette-quick-log";
+import { insertBodyMetric } from "../offline/writes";
+import { fmtWeight } from "../units";
+import { toKg } from "../units";
 import { isCommandText, parseCommand } from "./telegram-commands";
 import {
   chatCommandContext,
@@ -834,11 +1076,13 @@ import {
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
+  parseWeightReplyMarker,
   removeButton,
   replacementWithTitle,
   resolveTapProfile,
   SYMPTOM_SEVERITY_LABELS,
   tempReplyMarker,
+  weightReplyMarker,
   OUTDATED_MESSAGE_TEXT,
   type MoodCheckinCallback,
   type MoodKeepCallback,
@@ -858,7 +1102,7 @@ import {
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
-import type { NotificationAction } from "./types";
+import { prefixMessage, type NotificationAction } from "./types";
 
 // An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.

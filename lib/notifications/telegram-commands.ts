@@ -44,6 +44,14 @@ export interface ChatCommandContext {
   linked: boolean;
   // The daily wellbeing check-in is enabled for at least one of the chat's profiles.
   moodCheckin: boolean;
+  // Food-group serving logging is life-stage relevant for at least one profile — the
+  // SAME gate the /nutrition surface and the food nudge use (#591). Deliberately NOT
+  // the food_telegram_enabled opt-in: that flag governs whether the tick may CONTACT
+  // someone, and a verb the user types is access, not contact.
+  foodLogging: boolean;
+  // At least one profile tracks a wellness practice. Nothing to offer otherwise —
+  // the verb logs against an existing target, it never invents one.
+  practiceTargets: boolean;
 }
 
 export interface TelegramCommand {
@@ -97,6 +105,21 @@ const COMMANDS = [
     description: "Check in on how you are",
     relevant: (ctx: ChatCommandContext) => ctx.moodCheckin,
   },
+  {
+    name: "food",
+    description: "Log what you've eaten",
+    relevant: (ctx: ChatCommandContext) => ctx.foodLogging,
+  },
+  {
+    name: "practice",
+    description: "Log a wellness practice",
+    aliases: ["practices"],
+    relevant: (ctx: ChatCommandContext) => ctx.practiceTargets,
+  },
+  {
+    name: "weight",
+    description: "Log a weight",
+  },
 ] as const satisfies readonly TelegramCommand[];
 
 export const TELEGRAM_COMMANDS: readonly TelegramCommand[] = COMMANDS;
@@ -125,18 +148,12 @@ export const TELEGRAM_DOMAIN_CENSUS = {
   symptom: "symptom",
   temperature: "temp",
   mood: "mood",
-  food: plannedVerb(
-    "food",
-    "Decided IN: the domain already has inline logging buttons (the food-nudge reconcile family), and the /dose precedent is that a chat-loggable domain gets an on-demand door rather than waiting for a nudge. #1895 builds the verb."
-  ),
-  practice: plannedVerb(
-    "practice",
-    "Decided IN: Telegram has offered one-tap practice logging since #1259, nudge-arrival-only. Same /dose precedent as food. #1895 builds the verb."
-  ),
-  weight: plannedVerb(
-    "weight",
-    "Decided IN: the same one-number capture shape as /temp, with the canonical-kg conversion server-side like every boundary. #1895 builds the verb."
-  ),
+  // Decided IN by #2130, BUILT by #1895 — these three rows flipped from
+  // `plannedVerb(...)` to their shipped verbs in the same change that routed them,
+  // which is what the "a planned verb never shadows a shipped one" pin is for.
+  food: "food",
+  practice: "practice",
+  weight: "weight",
   vitals: arguedExclusion(
     "Multi-field structured entry (a BP pair, SpO2, sleep hours) is a form, not a one-line chat capture; the measurements form owns it, and a partial chat grammar for it would be a second entry vocabulary to drift."
   ),

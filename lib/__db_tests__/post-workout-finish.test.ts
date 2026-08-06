@@ -235,7 +235,9 @@ describe("recap-led finish nudge composition (#924)", () => {
     // Recap line leads; the dose section (Creatine) follows.
     expect(payload.body.startsWith("Push day done")).toBe(true);
     expect(payload.body).toContain("Creatine (test)");
-    expect(payload.body).toContain("2 sets");
+    // The chat form (#2172) states the target verdict rather than the bare set count:
+    // this session declared targets and hit them, so THAT is what the line says.
+    expect(payload.body).toContain("all targets hit");
     // Combined message keeps the SAFETY-tier dose kind.
     expect(payload.kind).toBe("dose");
   });

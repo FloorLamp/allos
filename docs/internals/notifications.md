@@ -1375,10 +1375,12 @@ registry has no route.
 **Which domains get a verb is a census, not a vibe** (#2130). The registry also
 declares `TELEGRAM_DOMAIN_CENSUS`, type-checked over the shared
 `LoggableDomain` axis (`lib/loggable-domains.ts`): every loggable domain maps to
-a shipped verb, a `plannedVerb(...)` (food, practice, weight — decided in;
-#1895 builds the vocabulary surface), or an `arguedExclusion(...)` with its
+a shipped verb, a `plannedVerb(...)`, or an `arguedExclusion(...)` with its
 reason (vitals, activity, period, substance, document). A new domain fails
-`tsc` there until someone decides.
+`tsc` there until someone decides. #2130 decided food, practice and weight IN and
+#1895 built them, so those three rows now name their shipped verbs — the flip
+happened in the same change that routed the handlers, which a runtime pin forces
+(a planned verb may never shadow a shipped one) and nothing is left planned.
 
 **One authority for "which text triggers this handler" (#2004).** The dispatcher
 resolved the verb through `parseCommand`/the alias table, and then each logging
@@ -1420,6 +1422,42 @@ supersede invariant from closing a sibling the same command just sent). A build
 that yields nothing is answered honestly — "already checked in today" — never with
 an empty keyboard, because a command that silently produced nothing is the defect
 this feature exists to remove.
+
+**`/food`, `/practice` and `/weight`** — the three verbs #2130 decided in.
+
+- **`/food`** re-renders `buildFoodNudge` for the profile's CURRENT slot
+  (`currentFoodSlot`, the derivation the Food tab's chip reads) — the same builder
+  the tick sends, the reconcile rebuilds and every tap re-renders through. ONE
+  MESSAGE PER PROFILE rather than one merged keyboard, because the food family's
+  reconciler rebuilds a nudge from its first `food:` token and two profiles' buttons
+  in one message would make every rebuild render one over the other. Each message
+  declares its own subject (#1995) and rotates its own #947 pointer, so the single
+  live food keyboard invariant holds across both senders — which is why that
+  rotation now lives in `trackDelivered` beside the other bookkeeping rather than in
+  the fan-out branch alone. Gated on food-logging RELEVANCE (the life-stage rule the
+  dashboard uses), deliberately not on the `food_telegram_enabled` opt-in: that flag
+  decides whether the tick may CONTACT someone, and a typed verb is access.
+- **`/practice`** lists the tracked practices as one-tap buttons — the door the
+  domain never had, since #1259 only offers logging when the pace nudge happens to
+  arrive. It is not the nudge with its filters removed: the nudge exists because the
+  SYSTEM found a target behind (bus-gated, ceiling-silent, rhythm-retimed), and this
+  exists because the user asked, so it carries every tracked practice including the
+  met ones and none of the nudge's ride-alongs. Its buttons take their own `plog:`
+  prefix, declared INERT (the `prn:` shape one domain over): logging a session is
+  additive and always valid, so the list claims nothing that could go stale — while
+  `pdone:` keeps its state-claim family, because the nudge asserts "this is behind".
+  Same handler, same write core, typed outcome.
+- **`/weight`** is the `/temp` prompt-reply shape one quantity over: a prompt
+  carrying a `(#weight:<profileId>)` marker, a reply parsed by the palette's own
+  `parseWeightEntry` (one grammar and one range guard for `weight 82.5` and a chat
+  reply alike), and a write through `insertBodyMetric` — canonical kg converted at
+  the boundary, kg assumed when the reply names no unit, since a chat carries no
+  login unit preference. A refusal is stated; nothing is confirmed unconditionally.
+
+`practice-list` and `weight` are their own notification kinds, non-configurable for
+the reason every on-demand reply is: the request IS the consent. `practice-list`
+re-issues (a second `/practice` supersedes the first); the `weight` prompt carries no
+keyboard, so it records no pointer and supersedes nothing.
 
 ## Live-message reconciliation (#1779)
 

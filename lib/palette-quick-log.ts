@@ -85,12 +85,21 @@ export function parseQuickLog(
 
   // Weight FIRST: its keywords are the older, shorter vocabulary, and a practice
   // someone happened to name "weight" must not be able to shadow `weight 82.5`.
-  if (WEIGHT_KEYWORDS.has(keyword)) return parseWeight(rest, weightUnit);
+  if (WEIGHT_KEYWORDS.has(keyword)) return parseWeightEntry(rest, weightUnit);
   if (PRACTICE_KEYWORDS.has(keyword)) return parsePractice(rest, practices);
   return null;
 }
 
-function parseWeight(rest: string, weightUnit: WeightUnit): QuickLogWeight {
+// Parse a bare weight ENTRY — the part after the palette's keyword, and the whole of a
+// Telegram `/weight` reply (#1895). Exported because those two surfaces ask the same
+// question ("is this text a weight, and is it plausible?") and a second grammar for it
+// is how "82,5" or "180 lbs" comes to mean one thing in the palette and another in the
+// chat. `weightUnit` is the unit an unsuffixed number is read in — the login's display
+// preference in the palette, canonical kg in a chat, which has no login context.
+export function parseWeightEntry(
+  rest: string,
+  weightUnit: WeightUnit
+): QuickLogWeight {
   // Accept an optional trailing unit: "82.5", "82.5kg", "180 lb".
   const m = rest.match(/^([0-9]*\.?[0-9]+)\s*(kg|lb|lbs)?$/i);
   if (!m) {

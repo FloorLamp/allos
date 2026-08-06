@@ -141,17 +141,6 @@ export const telegramChannel: NotificationChannel = {
       if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))
         continue;
       const messageId = await sendMessageRaw(chatId, msg);
-      // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947):
-      // each slot sends a fresh message with live serving buttons, and a stale
-      // keyboard from a previous day would silently log to the WRONG date on tap.
-      // Done HERE, in the chokepoint, because this is the only place with both the
-      // just-sent message id and the guarded keyboard-edit primitive. STRICTLY
-      // best-effort — the send already succeeded, so a failed strip must never
-      // surface as a channel failure; rotateFoodNudgePointer swallows. The pointer
-      // is stored per-profile (last chat wins on a multi-chat fan-out — a food nudge
-      // is gated on Telegram deliverability and is overwhelmingly single-chat).
-      if (msg.kind === "food" && messageId != null)
-        await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
       // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
       // its confirm tokens carry each member's SEND-TIME date, so a surviving round
       // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
@@ -196,6 +185,18 @@ async function trackDelivered(
   messageId: number | undefined,
   msg: NotificationMessage
 ): Promise<void> {
+  // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947): each
+  // slot sends a fresh message with live serving buttons, and a stale keyboard from a
+  // previous day would silently log to the WRONG date on tap. It lives HERE, with the
+  // other two bookkeeping calls, because since #1895 the food keyboard has a SECOND
+  // sender — `/food`, a chat-addressed send — and the invariant is about the chat, not
+  // about which code path put the keyboard there. `kind: "food"` is declared
+  // non-re-issuable precisely because the generic (chat, kind) rule cannot express this
+  // one's condition (rotate only when the new message really carries a `food:` token),
+  // which `foodNudgePointerFromMessage` decides. STRICTLY best-effort, like everything
+  // else here: the send already succeeded.
+  if (msg.kind === "food" && messageId != null)
+    await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
   recordPointer(profileId, chatId, messageId, msg);
   await supersedePriorKeyboards(profileId, chatId, messageId, msg);
 }
