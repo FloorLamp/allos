@@ -33,6 +33,9 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
   it("registers at least the issue's first entries", () => {
     const tables = STATEFUL_WRITE_TABLES.map((e) => e.table).sort();
     expect(tables).toEqual([
+      // #2134: the scheduled/completed/cancelled flag — appointments' one-tap
+      // status transitions now pass a state-named CAS core.
+      "appointments",
       "cycles",
       // #2138: the retire flag that gates pickers/availability/suggestions —
       // equipment's state-named CAS core.

@@ -56,6 +56,7 @@ Today's entries:
 
 | table                                         | cores                                                                                                                                                                    | gate                 | offer state         |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------- |
+| `appointments` (`status`)                     | `lib/appointment-status.ts`                                                                                                                                              | —                    | —                   |
 | `cycles`                                      | `lib/cycle-store.ts`                                                                                                                                                     | `lib/cycle-write.ts` | `cycleControlState` |
 | `illness_episodes`                            | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`                                                                                                           | —                    | —                   |
 | `intake_item_logs`                            | `lib/queries/intake/adherence.ts`                                                                                                                                        | —                    | —                   |
@@ -172,11 +173,24 @@ it on its own `active && due` read, but that derivation is not extracted.
 Already stateful, no action: dose confirms (typed outcomes, #1779), PRN quick
 log (the #798 redose-window line), mood (`upsertMoodLog` updates same-day),
 preventive done (idempotent per rule+date), the illness front door, cycle
-(#1892), practice/protocol buttons. Appointments have no one-tap affordance —
-completion is form-level. **Weight and food servings are additive by design and
-correctly plain** — which is also why the vitals card's "Log reading" (#1892) is
-a plain button: it opens the measurements form, and a reading is a fact added,
-not a transition.
+(#1892), practice/protocol buttons. **Weight and food servings are additive by
+design and correctly plain** — which is also why the vitals card's "Log reading"
+(#1892) is a plain button: it opens the measurements form, and a reading is a
+fact added, not a transition.
+
+Appointments were this page's own stale claim: an earlier revision said they
+had "no one-tap affordance — completion is form-level", and a lifecycle-machine
+audit (#2134) found the Visits list had meanwhile grown icon-only Mark
+completed / Cancel buttons and a Reopen, all riding a bare `SET status = ?`
+that could not refuse, plus a palette "Mark complete" that toasted success
+unconditionally — while the import path compare-and-swapped the very same
+transition. `appointments` (`status`) is a registry entry now:
+`lib/appointment-status.ts` owns the state-named CAS (typed
+`already-scheduled` / `already-completed` / `already-cancelled` / `not-found`
+refusals the list and the palette render) and the two complete+link swaps —
+"Log this visit" (unlinked-only) and the import auto-complete, whose
+scheduled-only guard keeps the machine from overwriting a manual completion or
+cancellation.
 
 Two defects were fixed by #1893:
 
