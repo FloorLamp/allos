@@ -1,14 +1,16 @@
 // Pure registry + matcher for the command palette's create actions (issue #29).
 //
 // v1 of the palette was navigation-only. These actions let it CREATE: each entry
-// either opens the shared activity editor in-place ("Log workout") or navigates
-// to a create surface with a query param that auto-focuses its form ("Log
-// weight", "Add appointment", …). The registry is pure data + a pure matcher so
+// opens the shared activity editor in-place ("Log workout"), opens a quick-entry
+// overlay form in-place ("Log weight", "Add document" — #2184: everything the
+// quick-log sheet has a drawer form for), or navigates to a create surface with a
+// query param that auto-focuses its form ("Add appointment", … — exactly the
+// entries with no drawer form). The registry is pure data + a pure matcher so
 // the labels/keywords/targets are unit-testable and stay in one place; the
 // palette component maps `icon`/`target` to real behavior.
 
 import type { AppRoute } from "./hrefs";
-import type { QuickEntryForm } from "./quick-log";
+import type { QuickEntryForm, QuickEntryPrefill } from "./quick-log";
 
 export type PaletteActionTarget =
   // Open the activity editor overlay via the ActivityEditor context (no nav).
@@ -16,8 +18,11 @@ export type PaletteActionTarget =
   // Open an existing form in the shared quick-entry overlay, in place (#1468) — the
   // SAME `QuickEntryForm` key the quick-log sheet's registry uses, because browse (the
   // sheet) and search (the palette) are two surfaces over one set of forms, not two
-  // encodings of "open a create form" (#1506).
-  | { kind: "overlay"; form: QuickEntryForm }
+  // encodings of "open a create form" (#1506). `prefill` is the context the PICK
+  // itself implies (#2014/#2184): "Log weight" opens the measurements form ON the
+  // weight group, overriding the form's last-written-group memory (#2068), which
+  // stays for context-free opens like the sheet's rows.
+  | { kind: "overlay"; form: QuickEntryForm; prefill?: QuickEntryPrefill }
   // Start a LIVE workout (issue #340): opens the create form in the in-gym layout
   // (rest timer + set check-off). Hidden for age-restricted profiles (#489).
   | { kind: "live" }
@@ -84,12 +89,21 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   },
   {
     id: "log-weight",
+    // TWO palette entries onto the ONE merged measurements form (#1486), where the
+    // sheet carries one row: the sheet is a browse surface and one door is enough;
+    // the palette is a search surface and "weight" and "vitals" are different
+    // intents that should land on different GROUPS of that one form (#2014's
+    // context rule). Both used to hard-navigate to the Trends body-section inline
+    // forms — a pre-merge journey the sheet had already left behind (#2184).
     label: "Log weight",
     keywords: ["body", "metric", "bodyweight", "scale", "mass"],
     icon: "scale",
     target: {
-      kind: "navigate",
-      href: `/trends?${FOCUS_PARAM}=weight#body`,
+      kind: "overlay",
+      form: "measurements",
+      // m-weight's home group; pinned against lib/measurements-deeplink's one
+      // field→group table by the registry test.
+      prefill: { measurementGroup: "body" },
     },
   },
   {
@@ -98,8 +112,9 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     keywords: ["resting", "hr", "heart", "rate", "body fat", "pulse"],
     icon: "heart",
     target: {
-      kind: "navigate",
-      href: `/trends?${FOCUS_PARAM}=vitals#body`,
+      kind: "overlay",
+      form: "measurements",
+      prefill: { measurementGroup: "vitals" },
     },
   },
   {
@@ -134,11 +149,17 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   },
   {
     id: "wellness-practices",
-    // Always visible because the matching sidebar leaf is relevance-gated until
-    // a first practice target or session exists (#1620).
-    label: "Wellness practices",
+    // Always visible because the matching sidebar leaf is relevance-gated until a
+    // first practice target or session exists (#1620). The label is the sheet
+    // row's label and the target is the sheet row's target (#2184): the SAME
+    // practice overlay, in place. A profile with nothing tracked yet gets the
+    // overlay's honest empty state, which points at Wellness — the #1620
+    // first-practice path keeps a door (and the /wellness?new=1 deep link
+    // itself is untouched).
+    label: "Log practice",
     keywords: [
-      "practice",
+      "wellness",
+      "wellness practices",
       "meditation",
       "breathwork",
       "sauna",
@@ -146,7 +167,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
       "session",
     ],
     icon: "sparkles",
-    target: { kind: "navigate", href: `/wellness?${FOCUS_PARAM}=1` },
+    target: { kind: "overlay", form: "practice" },
   },
   {
     id: "add-document",

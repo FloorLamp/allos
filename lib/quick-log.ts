@@ -33,6 +33,7 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
+import type { MeasurementGroup } from "./measurements-deeplink";
 import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
@@ -60,6 +61,19 @@ export type QuickLogIcon =
 // gathered on open so a sheet opened this morning cannot offer yesterday's verb.
 export type QuickEntryForm =
   "food" | "measurements" | "dose" | "practice" | "cycle" | "document";
+
+// What the CALLER's context implies about the form it opens (#2014): the vitals
+// card's "Log reading" opens Vitals, a palette pick named "Log weight" opens the
+// weight group (#2184), the Nutrition page's promoted food row lands on its
+// group. A context-free open (the sheet's rows) passes nothing and the form
+// falls back to its own memory/default. Lives HERE — beside the form vocabulary —
+// because both quick-entry surfaces (the sheet's overlay host and the palette's
+// registry) speak it; components/QuickEntryProvider.tsx re-exports it for its
+// callers.
+export interface QuickEntryPrefill {
+  foodGroup?: string;
+  measurementGroup?: MeasurementGroup;
+}
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
