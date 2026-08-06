@@ -217,6 +217,19 @@ Every agent prompt must contain, verbatim where marked:
   in CI (`Date.now()` without `clock-ok`, `.first()` with its `first-ok` comment
   on the wrong line — the scan requires SAME-LINE markers). The scan is 2 seconds;
   a CI round trip is 25 minutes.
+- The e2e port variable is `E2E_PORT`, NOT `PORT`. `playwright.config.ts` reads
+  `PORT_BASE = Number(process.env.E2E_PORT ?? 3100)`, so a prompt saying `PORT=6900`
+  is INERT — that agent silently runs on base 3100 like every other agent, and two
+  concurrent agents then share ports and manufacture exactly the flaky e2e results
+  the orchestrator spends the day diagnosing. Copy the invocation from the Local e2e
+  row above verbatim rather than paraphrasing it.
+- **Orchestrator: when the runbook already answers something, follow it rather than
+  improvising.** Twice on 2026-08-06 the orchestrator drifted from a rule written
+  here — reviews went through the GraphQL MCP path instead of the documented REST
+  one (draining GraphQL to zero while REST sat unused), and dispatch prompts said
+  `PORT=` where the Local e2e row says `E2E_PORT=`. Both were caught by someone
+  else. Before writing a dispatch prompt or a review, re-read the row that governs
+  it; the cost of skimming is paid by every agent dispatched that day.
 - npm run phi-scan before the final push — the pre-commit staged-files hook does
   NOT fire in agent worktrees, and CI's whole-tree scan will red a PR for a
   pattern-shaped literal (a SHA-256 golden's digit substring once formed a
