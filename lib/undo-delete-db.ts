@@ -197,12 +197,9 @@ function liveRowIdForUniqueKey(
   if (values.some((v) => v == null)) return null;
   const where = key.map((c) => `${c} = ?`).join(" AND ");
   const found = db
-    .prepare(
-      `SELECT id FROM ${entity.table} WHERE profile_id = ? AND ${where}`
-    )
+    .prepare(`SELECT id FROM ${entity.table} WHERE profile_id = ? AND ${where}`)
     .get(profileId, ...(values as (string | number)[])) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   return found ? found.id : null;
 }
 
@@ -740,9 +737,7 @@ interface CapturedFiles {
   photo: CapturedPhotoFile[];
 }
 
-function capturedFilesOf(
-  rows: readonly { payload: string }[]
-): CapturedFiles {
+function capturedFilesOf(rows: readonly { payload: string }[]): CapturedFiles {
   const out: CapturedFiles = { video: [], photo: [] };
   for (const r of rows) {
     try {

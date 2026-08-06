@@ -13,9 +13,9 @@ second restore engine.** All of the hard machinery already existed:
 
 | Concern         | Owner                                                                                         | Note                                                                                                                                                                                                                                                                 |
 | --------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows, one transaction with the delete                                                                                                                                                                                       |
+| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows + (since #1847) clinical children and lesion photo rows, one transaction with the delete                                                                                                                               |
 | Restore         | `restoreDeletedRow`                                                                           | new ids, external-FK reconciliation (#202/#375), merge inversion (#199/#200), re-import tombstone removal (#200)                                                                                                                                                     |
-| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290)                                                                                                                                                                                         |
+| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290) and lesion photos + their derived thumbnail siblings (#1847)                                                                                                                            |
 | Auth            | `requireProfileWriteAccess(capture's profile)` + profile-scoped SQL                           | the restore gates the profile the CAPTURE carries (#2104), resolved from the holding row via `deletedRowProfile` — not the acting profile, which a multi-view delete need not match; the `profile_id` filter in `restoreDeletedRow` stays as the anti-replay compare |
 
 The Trash adds: `lib/trash.ts` (pure derivation), `lib/queries/trash.ts` (the
@@ -70,9 +70,19 @@ Two things follow, and both are implemented:
 ## The two purges
 
 Both route through the **same file-unlinking path** the expiry sweep uses
-(`capturedVideoFiles` → `unlinkPurgedVideoFiles`). A permanent delete that
-removed only the `deleted_rows` row would leak the captured clips onto disk with
-nothing left pointing at them — the #1290 leak, re-opened by hand.
+(`capturedFilesOf` → `unlinkPurgedFiles`, which fans out to the clip half and,
+since #1847, the photo half). A permanent delete that removed only the
+`deleted_rows` row would leak the captured media onto disk with nothing left
+pointing at them — the #1290 leak, re-opened by hand.
+
+The photo half has one rule the clip half does not need: **the thumbnail is a
+derived sibling.** `lesion_photos` (and `symptom_photos`) carry no `thumb_path`
+column — since the photo core landed (#1844 phase 3) the thumbnail lives beside
+the stored file under `thumbSiblingPath`. A purge that reclaimed `stored_path`
+alone would leave the thumbnail of a deleted dermatology close-up on disk
+indefinitely, so `unlinkPurgedPhotoFiles` derives and unlinks it too, behind the
+same "skip anything a live row still references" guard (content-hash naming means
+a re-upload can share the file).
 
 - `purgeDeletedRow(profileId, undoId)` → `{ kind: "purged" | "gone" }`. "Gone"
   is a real state (another tab, the tick, an already-taken restore) and the row
@@ -103,6 +113,44 @@ text through `<NotesText>`.
   as stable or links to a pre-restore route. The only id an entry carries is the
   holding row's — the undo token.
 
+## The clinical kinds (#1847)
+
+For its whole life the registry covered activities, weigh-ins, biomarker
+readings, supplements, practices and food servings — every low-stakes row — while
+the medical passport deleted for good. `allergy`, `condition`, `immunization` and
+`skin-lesion` close that inversion. What each capture carries beyond its root row:
+
+| Kind           | Children                                                | Reconciled links            | Side effects NOT inverted                       |
+| -------------- | ------------------------------------------------------- | --------------------------- | ----------------------------------------------- |
+| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider | —                                               |
+| `condition`    | —                                                       | document / visit            | `intake_items.indication_condition_id` null-out |
+| `immunization` | —                                                       | visit / provider            | `sweepImmunizationDismissals` (#376)            |
+| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider | `care_plan_items` follow-up links (#700)        |
+
+Three things worth naming:
+
+- **`conditions.edited` rides in the snapshot.** A hand-corrected
+  episode-promoted condition restores still edit-LOCKED, so the next episode
+  transition holds out of it instead of reverting the correction.
+- **The lesion's photo FILES are deliberately left on disk** by the delete (the
+  `activity_videos` posture, #1224) so a restore re-points at them. The purge is
+  where they are reclaimed.
+- **A declared `uniqueKey`** (`external_id` on all four roots) lets restore ADOPT
+  a live row that re-took the captured key — a document reprocess inside the
+  window — instead of aborting the whole undo on the partial unique index. It is
+  the registry-declared twin of the `liveRowIdForCapturedRoot` (#509) treatment
+  for sync-tombstoned roots.
+
+Inbound null-outs stay uninverted on purpose, matching the three documented
+siblings (`protocols.intake_item_id`, the medical-record follow-up links, and
+`intake_items.source_record_id`): the clinical row comes back, the other row's
+link stays honestly cleared.
+
+`allergies`, `conditions` and `immunizations` are also deletable datasets, so
+`DATASET_UNDO_KIND` maps them and the Data → Manage bulk delete captures each
+selected row. `skin_lesions` is not a deletable dataset, so its kind is reachable
+only from the row menu.
+
 ## What `deleted_rows` holds that the Trash does not list
 
 The table has three writers; only two capture a deleted row.
@@ -129,6 +177,13 @@ by-hand purges — the expiry sweep still takes it, on its own schedule.
   Empty trash clears the acting profile's rows and leaves another profile's
   intact; restore-from-Trash is the same core as undo.
   `lib/__db_tests__/video-write.test.ts` covers the clip unlink on both the
-  sweep and the by-hand purge.
+  sweep and the by-hand purge; `lib/__db_tests__/clinical-undo.test.ts` covers
+  the four clinical kinds' capture/restore fidelity and the photo unlink on all
+  three purge paths (including the "an undone delete keeps its files" case).
+- Server action — `lib/__action_tests__/clinical-undo.actions.test.ts`: each
+  clinical delete answers `{ undoId, error? }` and REFUSES an id that is not the
+  acting profile's rather than reporting a delete it did not perform.
 - E2E — `e2e/trash.spec.ts`: delete a row, let the toast go, open
   `/data?section=trash`, restore it, assert it is back on its own surface.
+  `e2e/clinical-undo.spec.ts`: delete an allergy and a lesion in the UI and Undo,
+  proving the graded manifestations and the photo series come back too.

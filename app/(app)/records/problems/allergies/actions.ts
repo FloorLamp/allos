@@ -231,7 +231,8 @@ export async function deleteAllergy(
   const undoId = captureDelete("allergy", profileId, id);
   // Typed refusal, not a silent no-op: an id that isn't this profile's allergy
   // captured nothing, and the caller must not be told the delete landed.
-  if (undoId == null) return { undoId: null, error: "Couldn't find that allergy." };
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that allergy." };
   revalidateAllergies();
   return { undoId };
 }

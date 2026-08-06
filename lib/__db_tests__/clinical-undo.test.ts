@@ -74,7 +74,11 @@ function newLesion(label: string): number {
 // Attach a photo the way the write core does — file store first, then the row — so
 // the capture/restore/purge path sees the real (row, file, thumbnail sibling) triple.
 function attachPhoto(lesionId: number, hash: string, caption: string): string {
-  const { storedPath } = storeProcessedPhoto("lesion", p.profileId, fakePhoto(hash));
+  const { storedPath } = storeProcessedPhoto(
+    "lesion",
+    p.profileId,
+    fakePhoto(hash)
+  );
   db.prepare(
     `INSERT INTO lesion_photos
        (profile_id, lesion_id, date, stored_path, content_hash, mime_type, size_bytes, caption)
@@ -228,9 +232,9 @@ describe("allergy delete → undo (#1847)", () => {
         p.profileId
       )
     ).toBe(1);
-    expect(
-      count("SELECT COUNT(*) c FROM allergies WHERE id = ?", liveId)
-    ).toBe(1);
+    expect(count("SELECT COUNT(*) c FROM allergies WHERE id = ?", liveId)).toBe(
+      1
+    );
     expect(
       count("SELECT COUNT(*) c FROM deleted_rows WHERE id = ?", undoId)
     ).toBe(0);

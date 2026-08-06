@@ -49,8 +49,11 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
     expect(immCount(profile.id)).toBe(2);
 
     const res = await deleteDatasetRows("immunizations", [id1]);
-    // immunizations has no undo kind, so its bulk delete is non-undoable.
-    expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+    // Undoable since #1847: the dataset's rows are an undo-kind root now, so the
+    // bulk delete captures each one and hands back a token per removed row.
+    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, deleted: 1 });
+    expect((res as { undoIds: number[] }).undoIds).toHaveLength(1);
     expect(immCount(profile.id)).toBe(1);
     // The remaining row is the untouched one.
     expect(
@@ -68,8 +71,33 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
 
     // Acting as A, try to delete B's row id — the profile_id filter blocks it.
     const res = await deleteDatasetRows("immunizations", [idB]);
+    // captureDelete returns null for a row that isn't the acting profile's, so the
+    // batch captures nothing and reports nothing deleted.
     expect(res).toEqual({ ok: true, deleted: 0, undoIds: [] });
     expect(immCount(profileB.id)).toBe(1);
+  });
+
+  // #1847 routed this dataset through the undo branch, which returns BEFORE the
+  // plain path's pre-image read. The dismissal sweep (#376) reads the vaccines that
+  // were removed, so it has to take its pre-image on that branch too — otherwise a
+  // bulk delete would silently leave an `immunization:<code>` suppression standing
+  // with no dose backing it, and a later re-import would surface pre-silenced.
+  it("still sweeps the un-backed dismissal on the undoable bulk path (#376)", async () => {
+    const { profile } = seedActor();
+    const id = addImmunizationRow(profile.id, "tdap");
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+       VALUES (?, 'immunization:tdap', datetime('now'))`
+    ).run(profile.id);
+
+    await deleteDatasetRows("immunizations", [id]);
+    expect(
+      db
+        .prepare(
+          `SELECT 1 FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = 'immunization:tdap'`
+        )
+        .get(profile.id)
+    ).toBeUndefined();
   });
 
   it("deleteAllDatasetRows clears only the acting profile's immunizations", async () => {
