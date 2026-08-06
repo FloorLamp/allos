@@ -307,6 +307,7 @@ export default async function ProtocolDetailPage(props: {
                   today={todayStr}
                   defaultDurationMin={previousDurationMin}
                   usualSessionDay={practiceUsuallyToday}
+                  inlineDuration
                   showDetails
                 />
               )}

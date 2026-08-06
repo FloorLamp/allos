@@ -847,6 +847,17 @@ authority, and the bus gate, per-day marker, and ceiling silence are untouched.
 The same inference feeds the calm "usually a session day" note on the
 protocol/practice cards (rendered surfaces, quiet without a pattern), and the
 nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
+**Every one-tap practice log now records what it shows (#2204, owner ruling).** The
+inline duration stepper is on all four practice affordances — the quick-log
+sheet, the Wellness card, the protocol detail card, and the dashboard's
+Active-protocols widget — each rendering `practiceDurationPrefill` over the
+practice's last LOGGED session. `LogPracticeButton` routes the stepper's render
+and the tap's write through ONE `stepperShown` expression, so no surface can
+post a duration that is not on screen. The expanded modal survives where it
+already was (`showDetails`): it owns the past date, the corrected time and the
+notes, and the objection it answered was always about stacking a modal over a
+one-tap surface, never about the field.
+
 **The one-tap paths feed that inference now (#2204).** `logPracticeSession`
 treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
 instant" — distinct from an explicit `null`, which stays the expanded form's

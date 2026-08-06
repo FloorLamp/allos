@@ -192,6 +192,16 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
     card.getByRole("heading", { name: practiceName, exact: true })
   ).toBeVisible();
 
+  // #2204 (owner ruling): the protocol detail's practice affordance carries the
+  // inline stepper too — it was the LAST one-tap practice log that wrote a session
+  // with no duration. Both controls coexist: the modal still owns date/time/notes.
+  const duration = card.getByTestId("practice-duration-input");
+  await expect(duration).toHaveValue("");
+  await expect(card.getByTestId("practice-log-details-trigger")).toBeVisible();
+  for (let i = 0; i < 4; i++)
+    await hydratedClick(page, card.getByTestId("practice-duration-up"));
+  await expect(duration).toHaveValue("20");
+
   // One-tap log a session — the shared write core, answered from its outcome.
   await settledClick(page, card.getByTestId("practice-log-button"));
 
@@ -207,6 +217,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
   const history = detailMain.getByTestId("practice-session-history");
   await expect(history.locator("tbody tr")).toHaveCount(1);
+  // ...carrying the duration the stepper was showing when it was tapped, and the
+  // stepper now starts from that LOGGED value.
+  await expect(history).toContainText("20 min");
+  await expect(duration).toHaveValue("20");
 
   // Ending makes the protocol historical, but correction controls remain available
   // (#1585; #1592 later removes only NEW-data affordances).

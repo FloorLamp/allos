@@ -18,6 +18,7 @@ export default function ProtocolLogButton({
   today,
   defaultDurationMin = null,
   showDetails = false,
+  inlineDuration = false,
   usualSessionDay = false,
 }: {
   practice: ProtocolPractice;
@@ -28,6 +29,17 @@ export default function ProtocolLogButton({
   today: string;
   defaultDurationMin?: number | null;
   showDetails?: boolean;
+  // Render the inline duration stepper on the practice scope (#2204, owner ruling).
+  // This was the LAST one-tap practice log that silently discarded the duration: the
+  // detail page had the expanded form beside it and the dashboard widget had nothing
+  // at all, and in both cases the tap wrote a session with no duration for a domain
+  // where "20 min sauna" vs "5 min" is most of the meaning. Passed straight through —
+  // the shared button routes both the render and the write through one `stepperShown`
+  // expression, so this surface cannot post a value that is not on screen either.
+  //
+  // Only meaningful for the "practice" scope; the activity/food actions below open
+  // their own full forms, which have always asked for what they record.
+  inlineDuration?: boolean;
   // Whether today is an inferred rhythm day for the wellness practice (#2188) —
   // see LogPracticeButton. Only meaningful for the "practice" scope.
   usualSessionDay?: boolean;
@@ -48,6 +60,7 @@ export default function ProtocolLogButton({
         today={today}
         defaultDurationMin={defaultDurationMin}
         showDetails={showDetails}
+        inlineDuration={inlineDuration}
         usualSessionDay={usualSessionDay}
       />
     );
