@@ -716,6 +716,15 @@ export const TIME_COLUMNS = {
       convention: "n/a",
     },
   ],
+  // FOR WHOEVER RUNS PHASE 2 WAVE 2 — do not re-derive this.
+  //
+  // `given_at` and `taken_at` are NOT an event/record pair. Both answer "when did this
+  // enter the app": `given_at` is INFERRED (a scheduled confirm writes the tap moment,
+  // standing in for an intake nothing observed) and `taken_at` is the row's insert
+  // stamp. So the dozen hand-rolled `COALESCE(given_at, taken_at)` readers were falling
+  // back WITHIN one question all along — the right value under the wrong name — and the
+  // wave's job is a rename plus a NEW nullable `occurred_at`, not a re-pointing of
+  // existing readers. Until that column exists this table has no event instant at all.
   intake_item_logs: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
