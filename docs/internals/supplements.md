@@ -206,6 +206,14 @@ logs instead of hard-deleting it (a delete would `ON DELETE CASCADE` away its
 whole taken history), and every confirm **snapshots the dose amount and
 formulation onto the log** (`intake_item_logs.amount` / `product`) so history
 keeps showing what was actually taken after a dosage or product change.
+The retire-or-delete rule is executed by the dose-lifecycle core
+(`lib/queries/intake/dose-lifecycle.ts`, #2131), registered in
+`STATEFUL_WRITE_TABLES` for the `retired` column: retiring appends a schedule
+version that CLOSES the dose's dueness window as of the retire day, and the
+guarded inverse — `unretireDose`, surfaced as the edit form's "Retired doses →
+Restore to schedule" affordance — reopens the SAME dose id (typed refusals:
+`not-found` / `not-retired` / `schedule-conflict` when a live dose covers the
+slot) with dueness resuming from the restore day, never retroactively.
 `getSupplementDoses` is the "current schedule" read and excludes retired doses;
 history reads join `intake_item_doses` directly. `markDoseTaken` returns a
 `DoseTakenOutcome`

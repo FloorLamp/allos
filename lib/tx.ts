@@ -8,10 +8,10 @@
 // that ran outside the transaction cannot typecheck.
 //
 // Deliberately thin:
-//   • They take an already-`db.prepare(...)`d statement, NOT a SQL string — the repo's
-//     static SQL guards (profile scoping, the gated-table write scan) read `.prepare`
-//     first arguments out of the source, and SQL smuggled through a helper would be
-//     invisible to both.
+//   • They take an already-prepared Statement, NOT a SQL string — the repo's static
+//     SQL guards (profile scoping, the gated-table write scan) read each prepare
+//     call's first argument out of the source, and SQL smuggled through a helper
+//     would be invisible to both.
 //   • They add nothing async. The token is evidence, not a handle; the
 //     callback-synchronous `writeTx` contract is unchanged.
 //   • They are for lifecycle transitions with an EXPECTATION. Genuinely additive writes
