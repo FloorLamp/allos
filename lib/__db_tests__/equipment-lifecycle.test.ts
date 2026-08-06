@@ -111,14 +111,32 @@ describe("getEquipment / setEquipmentRetired — retire semantics", () => {
     expect(getEquipment(1).map((x) => x.id)).toContain(e.id);
   });
 
-  it("retire is profile-scoped — a foreign id is a no-op", () => {
+  it("retire is profile-scoped — a foreign id refuses as not-found", () => {
     const e = createEquipment(1, {
       name: "Scoped Bar",
       weight_kg: 20,
       category: "Barbell",
     });
-    setEquipmentRetired(999, e.id, true); // wrong profile
+    // wrong profile: nothing flips, and the outcome SAYS so (#2138)
+    expect(setEquipmentRetired(999, e.id, true)).toEqual({ kind: "not-found" });
     expect(getEquipment(1).map((x) => x.id)).toContain(e.id);
+  });
+
+  // #2138: the flip is a state-named CAS. A landed swap reports `applied`; a repeat
+  // of the same intent distinguishes "already in that state" from "row gone" under
+  // the same write lock, so a silently-failed retire can no longer keep offering
+  // sold gear.
+  it("typed outcomes: applied / already / not-found", () => {
+    const e = createEquipment(1, {
+      name: "CAS Bar",
+      weight_kg: 20,
+      category: "Barbell",
+    });
+    expect(setEquipmentRetired(1, e.id, true)).toEqual({ kind: "applied" });
+    expect(setEquipmentRetired(1, e.id, true)).toEqual({ kind: "already" });
+    expect(setEquipmentRetired(1, e.id, false)).toEqual({ kind: "applied" });
+    expect(setEquipmentRetired(1, e.id, false)).toEqual({ kind: "already" });
+    expect(setEquipmentRetired(1, 99999, true)).toEqual({ kind: "not-found" });
   });
 });
 

@@ -122,6 +122,12 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     cores: ["lib/queries/intake/medications.ts"],
     why: "#2133 (sibling): `resolved` is an open/closed lifecycle flag and was a blind `SET resolved = 1 - resolved` toggle, so a stale tab's 'Mark resolved' REOPENED an effect someone else had resolved. medications.ts owns the state-named CAS (setMedicationSideEffectResolved), the stop-time capture, the edit form write and the promote-to-allergy resolution — all in one module already, so the gate just keeps a second toggle from growing elsewhere. Column-narrowed: effect/severity/notes edits are ordinary form writes.",
   },
+  {
+    table: "equipment",
+    columns: ["retired"],
+    cores: ["lib/equipment.ts"],
+    why: "#2138: `retired` is the lifecycle gate that keeps sold/broken gear out of pickers, availability summaries, and workout suggestions (#341) — a flag by the registry's own criterion, and until #2138 its absence here was silence rather than a decision. lib/equipment.ts owns the state-named CAS (setEquipmentRetired): the caller posts the state its render promised, and a swap that did not land is distinguished under the write lock into already-in-that-state versus row-gone, so a silently-failed retire can no longer keep offering sold gear. Column-narrowed: name/weight/category edits and the create INSERT are ordinary form writes, and DELETE (deleteEquipment's changes-checked detach-then-drop) is not a state transition.",
+  },
 ];
 
 // True when a repo-relative path is one of an entry's registered cores.

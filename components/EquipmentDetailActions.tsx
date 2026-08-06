@@ -30,7 +30,13 @@ export default function EquipmentDetailActions({
   function toggleRetired() {
     const next = !retired;
     startTransition(async () => {
-      await setEquipmentRetiredAction(id, next);
+      // Typed outcome rendered (#2138): a stale tab's repeat tap or a since-deleted
+      // row reports its refusal in the error tone; the toast never outruns the write.
+      const res = await setEquipmentRetiredAction(id, next);
+      if (!res.ok) {
+        toast(res.error, { tone: "error" });
+        return;
+      }
       toast(next ? `Retired ${name}` : `Restored ${name}`);
     });
   }
@@ -44,7 +50,11 @@ export default function EquipmentDetailActions({
     });
     if (!ok) return;
     startTransition(async () => {
-      await deleteEquipmentAction(id);
+      const res = await deleteEquipmentAction(id);
+      if (!res.ok) {
+        toast(res.error, { tone: "error" });
+        return;
+      }
       toast(`Deleted ${name}`);
       router.push("/equipment");
     });

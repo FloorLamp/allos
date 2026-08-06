@@ -148,18 +148,15 @@ export default function EquipmentManager({
     });
     if (!ok) return;
     startTransition(async () => {
-      await deleteEquipmentAction(e.id);
+      // Typed outcome rendered (#2138): a forged/stale id reports its refusal in
+      // the error tone instead of confirming a delete that did not happen.
+      const res = await deleteEquipmentAction(e.id);
       if (editingId === e.id) cancel();
+      if (!res.ok) {
+        toast(res.error, { tone: "error" });
+        return;
+      }
       toast(`Deleted ${e.name}`);
-    });
-  }
-
-  function toggleRetired(e: Equipment) {
-    const next = e.retired ? false : true;
-    startTransition(async () => {
-      await setEquipmentRetiredAction(e.id, next);
-      if (editingId === e.id) cancel();
-      toast(next ? `Retired ${e.name}` : `Restored ${e.name}`);
     });
   }
 
@@ -228,7 +225,7 @@ export default function EquipmentManager({
           open={menuOpenId === e.id}
           onOpenChange={(open) => setMenuOpenId(open ? e.id : null)}
         >
-          {({ close }) => (
+          {({ close, runAction }) => (
             <>
               <button
                 type="button"
@@ -248,8 +245,16 @@ export default function EquipmentManager({
                 disabled={pending}
                 data-testid="equipment-retire-toggle"
                 onClick={() => {
-                  toggleRetired(e);
-                  close();
+                  // The shared MenuActionResult plumbing (#2138): the action posts
+                  // the state this render promised, and a typed refusal ("already
+                  // retired", "not found") toasts in the error tone instead of
+                  // being papered over with the success message.
+                  if (editingId === e.id) cancel();
+                  void runAction(
+                    () => setEquipmentRetiredAction(e.id, !e.retired),
+                    new FormData(),
+                    e.retired ? `Restored ${e.name}` : `Retired ${e.name}`
+                  );
                 }}
                 className={MENU_ITEM}
               >
