@@ -359,3 +359,122 @@ describe("pending-identity actions (#1739)", () => {
     expect(identityExists(binding.id)).toBe(false);
   });
 });
+
+// ── Hand-typed bind over an existing binding (#2103) ─────────────────────────
+//
+// The "Pre-bind a patient by hand" form posts a free-typed label, and the bind core is
+// an upsert — so when the (login, label) pair is already LIVE-BOUND, the action is not
+// creating a binding, it is RE-POINTING one: every future acquirer upload for that
+// patient re-routes onto the new profile. The one-sided target gate let a member with
+// write access only to their OWN profile re-route a household member's clinical
+// documents onto themselves. The action now resolves the current owner from the row
+// (#1747) and takes remapIdentityAction's discipline: BOTH sides gated, one CAS.
+describe("bindIdentityAction re-point protection (#2103)", () => {
+  it("REFUSES a member re-pointing another profile's binding through a hand-typed label", async () => {
+    const { accountId } = makePortal();
+
+    // The victim: a profile the attacker has no grant on at all, already mapped.
+    const victimLogin = createLogin({ role: "member" });
+    const victimProfile = createProfile("Repoint Victim", victimLogin.id);
+    const bound = bindPortalIdentity(
+      accountId,
+      "Household Member B",
+      victimProfile.id
+    );
+    expect(bound.ok).toBe(true);
+    if (!bound.ok) return;
+
+    // The attacker: genuine write access to their own profile only — the gate on the
+    // TARGET side passes, so only the resolved current owner's gate can refuse.
+    const attackerLogin = createLogin({ role: "member" });
+    const attackerProfile = createProfile("Repoint Attacker", attackerLogin.id);
+    actAs(attackerLogin, attackerProfile);
+
+    await expect(
+      bindIdentityAction(
+        fd({
+          account_id: accountId,
+          patient_label: "Household Member B",
+          profile_id: attackerProfile.id,
+        })
+      )
+    ).rejects.toThrow(/not accessible|read-only/);
+
+    // B's binding is untouched: future records still land on the victim's profile.
+    expect(portalIdentityProfile(bound.id)).toBe(victimProfile.id);
+  });
+
+  it("REFUSES when the caller holds only READ on the profile currently bound", async () => {
+    const { accountId } = makePortal();
+
+    const login = createLogin({ role: "member" });
+    const readOnly = createProfile("Repoint ReadOnly", login.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(login.id, readOnly.id);
+    const writable = createProfile("Repoint Writable", login.id);
+    actAs(login, writable);
+
+    const bound = bindPortalIdentity(accountId, "Read Only Bound", readOnly.id);
+    expect(bound.ok).toBe(true);
+    if (!bound.ok) return;
+
+    await expect(
+      bindIdentityAction(
+        fd({
+          account_id: accountId,
+          patient_label: "Read Only Bound",
+          profile_id: writable.id,
+        })
+      )
+    ).rejects.toThrow(/read-only/);
+    expect(portalIdentityProfile(bound.id)).toBe(readOnly.id);
+  });
+
+  it("re-points when the caller may write BOTH sides — the same row, atomically", async () => {
+    const { accountId } = makePortal();
+
+    const login = createLogin({ role: "member" });
+    const from = createProfile("Repoint From", login.id);
+    const to = createProfile("Repoint To", login.id);
+    actAs(login, to);
+
+    const bound = bindPortalIdentity(accountId, "Both Sides Writable", from.id);
+    expect(bound.ok).toBe(true);
+    if (!bound.ok) return;
+
+    expect(
+      await bindIdentityAction(
+        fd({
+          account_id: accountId,
+          patient_label: "Both Sides Writable",
+          profile_id: to.id,
+        })
+      )
+    ).toEqual({ ok: true });
+    // The SAME row was re-pointed (remap CAS), not a second row minted.
+    expect(portalIdentityProfile(bound.id)).toBe(to.id);
+  });
+
+  it("binding the profile it already points at stays an idempotent success", async () => {
+    const { accountId } = makePortal();
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("Repoint Same", login.id);
+    actAs(login, profile);
+
+    const bound = bindPortalIdentity(accountId, "Same Again", profile.id);
+    expect(bound.ok).toBe(true);
+    if (!bound.ok) return;
+
+    expect(
+      await bindIdentityAction(
+        fd({
+          account_id: accountId,
+          patient_label: "Same Again",
+          profile_id: profile.id,
+        })
+      )
+    ).toEqual({ ok: true });
+    expect(portalIdentityProfile(bound.id)).toBe(profile.id);
+  });
+});

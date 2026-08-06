@@ -202,6 +202,13 @@ as an ordinary sync event, so Data → Review shows it like any other integratio
 is recorded against the identity it names, so each mapped patient gets its own
 "Last checked".
 
+**Who may report.** A report writes state onto the portal login it names — its pending
+list, its run report, whose channels a sync reminder reaches — so the token's login must
+hold **write access to at least one profile mapped under that login**; before any
+patient is mapped (first contact), write access to any profile is enough. A token
+without that is answered with the same `404` an unknown login gets, and **records
+nothing** — the endpoint stays deliberately unable to confirm which portal logins exist.
+
 Counts are optional and default to `0`. Alongside `inserted` / `updated` / `unchanged` /
 `failed`, report **`suppressed`** — how many documents allos refused because a user had
 deleted them (the `blocked` outcome). It lands in the same accounting column the app

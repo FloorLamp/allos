@@ -192,6 +192,47 @@ export function listVisiblePendingIdentities(
   }));
 }
 
+// ── The write-side gate a RUN REPORT must pass (#2105) ───────────────────────
+//
+// POST /api/documents/sync-report used to write discovered identities and the
+// account-level run report BEFORE its per-profile write gate — so any login able to
+// mint an `upload:documents` token could fabricate another login's portal run state,
+// stuff pending patient labels onto its mapping list, and stamp `reportedByLoginId`
+// onto the row that decides whose channels a sync nudge reaches.
+//
+// The rule is the SAME predicate as the read side above, applied to the token's WRITE
+// set instead of the viewer's accessible set: a token may report on an account when
+//
+//   (a) it can WRITE at least one profile bound under that account — the population
+//       whose records a run on this login actually concerns; or
+//   (b) the account is UNCLAIMED and the login can write somewhere — the #1756
+//       first-contact case, without which a first run could never report at all (its
+//       own patient is not bound yet, which is exactly what the report exists to fix).
+//
+// A demo-restricted token has an EMPTY write set, so both clauses refuse it. The route
+// answers a refusal with its existing non-oracular 404, so an unauthorized probe is
+// indistinguishable from an unknown login.
+//
+// Cross-profile by construction like the readers above: the route resolves the write
+// set at its auth boundary and hands in already-authorized ids; this module never
+// imports lib/auth.
+export function canReportOnAccount(
+  writableProfileIds: readonly number[],
+  // True when the token may also report on UNCLAIMED accounts — the any-writer
+  // population, passed in rather than derived so the route's one boundary decides it.
+  canReportUnclaimed: boolean,
+  accountId: number
+): boolean {
+  const ids = [...writableProfileIds];
+  const row = db
+    .prepare(
+      `SELECT 1 AS ok FROM portal_accounts a
+        WHERE a.id = ? AND ${reachableAccountSql(ids, "a.id")}`
+    )
+    .get(accountId, ...ids, canReportUnclaimed ? 1 : 0);
+  return row !== undefined;
+}
+
 // ── The registry a tool INGESTS (#1796) ──────────────────────────────────────
 //
 // `GET /api/documents/portals` (#1759) used to answer with `listPortals()` /

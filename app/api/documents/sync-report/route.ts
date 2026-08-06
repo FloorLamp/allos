@@ -21,6 +21,7 @@ import {
   resolvePortalIdentity,
   type PortalAccount,
 } from "@/lib/portals";
+import { canReportOnAccount } from "@/lib/portal-visibility";
 import {
   recordSync,
   recordSyncEvent,
@@ -46,6 +47,17 @@ import { createLogger } from "@/lib/log";
 // demand `upload:documents` (a run report is part of the upload capability, not a new
 // one); then compose the write gate explicitly — demo refusal, reachability, then write.
 // A sync event is profile-owned data, so reporting one is a write and is gated like one.
+//
+// THE ACCOUNT-LEVEL WRITE GATE COMES BEFORE THE FIRST WRITE (#2105). Discovered
+// identities, per-identity outcomes, and the account-level run report are all writes
+// keyed to the portal LOGIN, and two of them used to run before any gate — letting any
+// upload token fabricate another login's run state, stuff its pending list, and re-point
+// its sync nudges via reportedByLoginId. Every account-keyed write is now behind
+// canReportOnAccount (lib/portal-visibility.ts): the token must be able to WRITE at
+// least one profile bound under the account, or — for an UNCLAIMED first-contact
+// account (#1756) — write somewhere at all. The refusal reuses the branch's existing
+// non-oracular 404, so an unauthorized probe is indistinguishable from an unknown
+// login or an unmapped patient.
 //
 // The destination is named exactly as an upload names it, through the same
 // exactly-one-of parser: an acquirer reports `(portal, patient)` and allos resolves it,
@@ -230,11 +242,13 @@ export async function POST(req: Request): Promise<Response> {
       target.target.portalSlug,
       target.target.accountSlug
     );
-    if (!account.ok) {
-      // The same typed, non-oracular refusal an unmapped patient gets: an unknown
-      // portal, an unknown login, and an omitted login on a multi-login portal are
-      // indistinguishable from out here.
-      return Response.json(
+    // The unknown-login refusal, minted once so the account-gate refusal below is
+    // byte-identical to it: an unknown portal, an unknown login, an omitted login on a
+    // multi-login portal, AND a login whose bound profiles the token cannot write are
+    // all indistinguishable from out here (the same typed, non-oracular refusal an
+    // unmapped patient gets).
+    const unknownLogin = (): Response =>
+      Response.json(
         {
           ok: false,
           error: "unmapped-identity",
@@ -243,6 +257,21 @@ export async function POST(req: Request): Promise<Response> {
         },
         { status: 404 }
       );
+    if (!account.ok) return unknownLogin();
+    // THE WRITE GATE, BEFORE THE FIRST WRITE (#2105): everything below stamps state
+    // onto this LOGIN — its pending list, its per-identity outcomes, the run report
+    // that drives the card's status line, the staleness clock, and whose channels a
+    // sync nudge reaches — so a token that cannot write any profile bound under it
+    // (or, for an unclaimed first-contact login, cannot write anywhere) records
+    // nothing and learns nothing.
+    if (
+      !canReportOnAccount(
+        writableProfileIds,
+        writableProfileIds.length > 0,
+        account.account.id
+      )
+    ) {
+      return unknownLogin();
     }
     if (discovered.length > 0) {
       newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
@@ -294,6 +323,29 @@ export async function POST(req: Request): Promise<Response> {
       target.target.accountSlug
     );
     if (account.ok) {
+      // THE WRITE GATE, BEFORE THE FIRST WRITE (#2105) — the patient branch's copy of
+      // the portal-level gate above, refused with THIS branch's non-oracular 404 so an
+      // unauthorized token gets the same answer whether the patient is mapped, unmapped,
+      // or invented. Nothing below it (discovered identities, per-identity outcomes,
+      // the pending row, the account-level run report) runs for a token that cannot
+      // write any profile bound under this login.
+      if (
+        !canReportOnAccount(
+          writableProfileIds,
+          writableProfileIds.length > 0,
+          account.account.id
+        )
+      ) {
+        return Response.json(
+          {
+            ok: false,
+            error: "unmapped-identity",
+            detail:
+              "That portal patient is not mapped to a profile yet. Map it under Integrations → Patient portals.",
+          },
+          { status: 404 }
+        );
+      }
       reportAccount = account.account;
       if (discovered.length > 0) {
         newlyWaiting = recordDiscoveredIdentities(account.account, discovered);

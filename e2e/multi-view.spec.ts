@@ -1180,3 +1180,116 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
     await page.context().close();
   });
 });
+
+// Cross-profile Undo on the multi-view Biomarkers table (#2104). The delete stamps
+// the ROW's profile onto the capture; the restore used to resolve the ACTING profile,
+// so this exact round trip — delete the non-acting member's reading, tap Undo — always
+// failed ("Couldn't undo") and the capture purged for good in the retention sweep.
+// Spec-OWNED fixture: the E2E_LOGIN_MULTI member holds WRITE on both of its dedicated
+// profiles, and the probe reading is seeded (and swept) by name, so no shared seed row
+// is counted or mutated. Fresh cookie-less context (loginAs) for the member's session.
+test.describe("Cross-profile Undo round trip (#2104)", () => {
+  const UNDO_PROBE_PREFIX = "MV Undo Probe";
+
+  function multiIds(): { ownerId: number; sharedId: number } {
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      const idOf = (name: string): number =>
+        (
+          db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+            id: number;
+          }
+        ).id;
+      return {
+        ownerId: idOf(MULTI_OWNER_PROFILE),
+        sharedId: idOf(MULTI_SHARED_PROFILE),
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  // Sweep any probe rows (and their undo captures) a prior failed run left behind,
+  // then seed THIS run's uniquely-named probe reading on the SHARED (non-acting)
+  // profile. Direct SQLite with a busy timeout, like the sibling fixtures above.
+  function seedProbe(sharedId: number, name: string): void {
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      db.prepare(
+        `DELETE FROM medical_records WHERE name LIKE '${UNDO_PROBE_PREFIX}%'`
+      ).run();
+      db.prepare(
+        `DELETE FROM deleted_rows
+          WHERE kind = 'biomarker-record' AND payload LIKE '%${UNDO_PROBE_PREFIX}%'`
+      ).run();
+      db.prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, unit, canonical_name, value_num)
+         VALUES (?, '2024-05-01', 'lab', ?, '42', 'ng/mL', ?, 42)`
+      ).run(sharedId, name, name);
+    } finally {
+      db.close();
+    }
+  }
+
+  test("delete the non-acting member's reading, then Undo restores it onto THAT member", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { sharedId } = multiIds();
+    const probeName = `${UNDO_PROBE_PREFIX} ${Date.now()}`; // clock-ok: unique probe-name suffix, not a stored timestamp
+    seedProbe(sharedId, probeName);
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Toggle the shared member into view, then open the table filtered to the probe.
+    await openProfileSwitcher(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+    await expectInView(page, 2);
+    await page.goto(`/results/biomarkers?q=${encodeURIComponent(probeName)}`);
+    await expectInView(page, 2);
+
+    // The probe row renders as the SHARED member's (subject chip) with its write menu
+    // — the member holds WRITE on that profile.
+    const row = page.locator("tr", {
+      has: page.getByRole("link", { name: probeName, exact: true }),
+    });
+    await expect(row).toHaveCount(1);
+    await expect(row.getByTestId(`subject-chip-${sharedId}`)).toBeVisible();
+
+    // Delete it — the multi-view delete posts the ROW's profile_id.
+    await row.getByTestId("overflow-menu-trigger").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
+    await expect(page.getByText("Record deleted.")).toBeVisible();
+    await expect(row).toHaveCount(0);
+
+    // Undo actually restores it — the half that was structurally dead before #2104 —
+    // and it comes back as the SHARED member's row (new id, same subject).
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(page.getByText("Restored.")).toBeVisible();
+    await expect(row).toHaveCount(1);
+    await expect(row.getByTestId(`subject-chip-${sharedId}`)).toBeVisible();
+
+    await page.context().close();
+
+    // Leave the shared seed exactly as found: drop this run's probe row.
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      db.prepare("DELETE FROM medical_records WHERE name = ?").run(probeName);
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -27,6 +27,7 @@ import {
   deletePortal,
   deletePortalAccount,
   dismissPendingIdentity,
+  IDENTITY_ALREADY_MAPPED_ERROR,
   identitySyncStatuses,
   ignorePortalIdentity,
   listPendingIdentities,
@@ -456,14 +457,23 @@ describe("identity bindings", () => {
     ).toBe(false);
   });
 
-  it("re-binding REPLACES rather than creating a second answer", () => {
+  it("re-binding the SAME profile replaces in place; a DIFFERENT profile is refused (#2103)", () => {
     bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
-    bindPortalIdentity(defaultAccount, "Jane Doe", strangersProfile);
+    // Same profile again: still one row, one answer — the upsert re-affirms in place.
+    expect(bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile).ok).toBe(
+      true
+    );
+    // A different profile is a RE-POINT — records routed away from one person and onto
+    // another — which is remapPortalIdentity's two-authorization compare-and-swap,
+    // never a side effect of the bind upsert (#2103).
+    expect(
+      bindPortalIdentity(defaultAccount, "Jane Doe", strangersProfile)
+    ).toEqual({ ok: false, error: IDENTITY_ALREADY_MAPPED_ERROR });
     const rows = listPortalIdentities().filter(
       (i) => i.patientLabel === "Jane Doe"
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].profileId).toBe(strangersProfile);
+    expect(rows[0].profileId).toBe(mineProfile);
   });
 
   it("refuses an empty label and an unknown login", () => {
@@ -541,18 +551,29 @@ describe("ignored bindings", () => {
     ).toThrow();
   });
 
-  it("ignoring REPLACES a live binding, and un-ignoring clears the row", () => {
+  it("ignoring a LIVE binding is refused; un-ignoring clears an ignored row (#2103)", () => {
     bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
-    expect(ignorePortalIdentity(defaultAccount, "Jane Doe").ok).toBe(true);
+    // Flipping a live binding to refused would be an unbind that dodged the profile
+    // gate — the same silent-overwrite hole as the re-point above, so the core refuses
+    // it too. The live path is unbind (profile-gated) first, then ignore.
+    expect(ignorePortalIdentity(defaultAccount, "Jane Doe")).toEqual({
+      ok: false,
+      error: IDENTITY_ALREADY_MAPPED_ERROR,
+    });
     expect(resolvePortalIdentity("ochsner-mychart", null, "Jane Doe").ok).toBe(
-      false
+      true
     );
+
+    // An unanswered label ignores cleanly, and the un-ignore path clears it.
+    expect(ignorePortalIdentity(defaultAccount, "Someone Else").ok).toBe(true);
     const row = listPortalIdentities().find(
-      (i) => i.patientLabel === "Jane Doe"
+      (i) => i.patientLabel === "Someone Else"
     )!;
     // The un-ignore path is scoped to ignored = 1, so it can never remove a live binding.
     expect(unignorePortalIdentity(row.id)).toBe(true);
-    expect(listPortalIdentities()).toHaveLength(0);
+    expect(
+      listPortalIdentities().filter((i) => i.patientLabel === "Someone Else")
+    ).toHaveLength(0);
   });
 
   it("un-ignore refuses a LIVE binding — it is not a back door around the profile gate", () => {
@@ -1438,7 +1459,10 @@ describe("account-level run reports", () => {
 
   it("stamps NOTHING when the token may not write the profile the binding names", async () => {
     // The stranger's token resolves a real login, but the binding points at a profile it
-    // cannot write. A refused run must not get to stamp a household's card.
+    // cannot write. A refused run must not get to stamp a household's card. Since #2105
+    // that refusal is the ACCOUNT-LEVEL gate, before any write, answered with the
+    // branch's non-oracular 404 — the stranger cannot even tell the login exists (the
+    // old per-profile 403 fired later and disclosed that the patient was mapped).
     bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
     const res = await SYNC_REPORT(
       report(strangerToken, {
@@ -1447,7 +1471,7 @@ describe("account-level run reports", () => {
         patient: "Jane Doe",
       })
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(reportsFor(defaultAccount)).toHaveLength(0);
     expect(syncEventCount()).toBe(0);
   });

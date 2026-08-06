@@ -325,6 +325,22 @@ export function captureDelete(
   });
 }
 
+// The ONE lookup that RESOLVES which profile a capture belongs to (#2104). An undo
+// token arrives from a CLIENT, and the only profile that means anything for the
+// restore is the one the capture actually carries — the ROW's profile stamped by
+// captureDelete, which on a multi-view surface is NOT the acting profile (deleting
+// Mia's reading while acting as Dad stamps Mia). Filtering by a caller-supplied
+// profile_id here would presuppose the answer; instead the undo action feeds this
+// straight to requireProfileWriteAccess and then passes the SAME id back to
+// restoreDeletedRow, whose `profile_id = ?` filter stays as the anti-replay compare.
+// portalIdentityProfile's shape (#1747), one table over.
+export function deletedRowProfile(undoId: number): number | null {
+  const row = db
+    .prepare(`SELECT profile_id AS profileId FROM deleted_rows WHERE id = ?`)
+    .get(undoId) as { profileId: number } | undefined;
+  return row?.profileId ?? null;
+}
+
 // Restore a captured delete: re-insert the root + children (NEW ids, FKs remapped)
 // and drop the holding row — in ONE transaction. Returns true on success, false if
 // the holding row is gone (already restored, swept, or another profile's). Idempotent

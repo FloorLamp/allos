@@ -532,6 +532,14 @@ export function listPortalIdentities(): PortalIdentity[] {
 export type BindResult =
   { ok: true; id: number } | { ok: false; error: string };
 
+// The refusal writeBinding reports when the (login, label) pair is already LIVE-BOUND to
+// a different profile (#2103). Exported so the action tier and its tests quote the one
+// string instead of restating it. The verb it names is the point: a re-point is
+// remapPortalIdentity's transition — two authorizations and a compare-and-swap — never a
+// side effect of typing a label into the bind form.
+export const IDENTITY_ALREADY_MAPPED_ERROR =
+  "That patient is already mapped to a profile — use Change profile on its row instead.";
+
 // The write core behind both binding and ignoring. Auth-blind by house rule: the caller
 // authorizes `profileId` (or, for an ignore, authorizes nothing because there is nothing
 // to authorize — an ignore names no profile).
@@ -566,7 +574,24 @@ function writeBinding(
     .get(accountId) as { id: number; portalId: number } | undefined;
   if (!account) return { ok: false, error: "Unknown portal login." };
 
-  const id = writeTx((): number => {
+  return writeTx((): BindResult => {
+    // A LIVE binding to a DIFFERENT profile is never overwritten here (#2103). The
+    // ON CONFLICT upsert below would silently re-point it — routing that patient's
+    // every future record onto the new profile — under a caller that authorized only
+    // the TARGET side. That transition is remapPortalIdentity's: two authorizations
+    // and a compare-and-swap. Checked INSIDE the write transaction (writeTx holds the
+    // IMMEDIATE lock), so a bind racing another bind cannot slip past the action's own
+    // pre-resolve; the same guard keeps an ignore from flipping a live binding to
+    // refused through this un-profile-gated path.
+    const current = boundIdentityState(account.id, label);
+    if (
+      current &&
+      !current.ignored &&
+      current.profileId !== null &&
+      current.profileId !== profileId
+    ) {
+      return { ok: false, error: IDENTITY_ALREADY_MAPPED_ERROR };
+    }
     const info = db
       .prepare(
         `INSERT INTO portal_identities
@@ -581,15 +606,15 @@ function writeBinding(
     db.prepare(
       "DELETE FROM pending_portal_identities WHERE account_id = ? AND patient_label = ?"
     ).run(account.id, label);
-    if (info.lastInsertRowid) return Number(info.lastInsertRowid);
+    if (info.lastInsertRowid)
+      return { ok: true, id: Number(info.lastInsertRowid) };
     const row = db
       .prepare(
         "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
       )
       .get(account.id, label) as { id: number };
-    return row.id;
+    return { ok: true, id: row.id };
   });
-  return { ok: true, id };
 }
 
 // Bind a patient label on one LOGIN of a portal to a profile. The caller MUST have
@@ -645,6 +670,32 @@ export function portalIdentityState(
     { profileId: number | null; ignored: number } | undefined;
   if (!row) return null;
   return { profileId: row.profileId ?? null, ignored: row.ignored === 1 };
+}
+
+// Which binding — live, ignored, or none — currently answers a (login, label) pair
+// (#2103). The BIND action's resolve-the-current-owner lookup, keyed on the EXTERNAL
+// identity the caller typed rather than on a surrogate row id, and normalized with the
+// same rule writeBinding applies so the row this resolves is exactly the row the upsert
+// would hit. Same class as portalIdentityState: the caller is asking "who owns this
+// binding so I can gate on them", so a profile_id filter would presuppose the answer.
+// An unrecognizable label matches nothing and resolves to null, exactly like an unbound
+// one — writeBinding still owns the label validation and its typed refusal.
+export function boundIdentityState(
+  accountId: number,
+  patientLabel: string
+): { id: number; profileId: number | null; ignored: boolean } | null {
+  const row = db
+    .prepare(
+      "SELECT id, profile_id AS profileId, ignored FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+    )
+    .get(accountId, normalizePatientLabel(patientLabel)) as
+    { id: number; profileId: number | null; ignored: number } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    profileId: row.profileId ?? null,
+    ignored: row.ignored === 1,
+  };
 }
 
 // Remove a binding, scoped by BOTH its id and the profile it points at.

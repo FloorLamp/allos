@@ -610,9 +610,21 @@ describe("declined — one login, three patients, three answers", () => {
     // One login, two people, and a caregiver token granted only one of them. A per-identity
     // outcome is a write to a profile-owned binding, so it is scoped like every other write
     // here — even though the direction of THIS change (fewer nags) looks harmless.
+    //
+    // The caregiver holds WRITE on the holder, which is what lets the report pass the
+    // #2105 account-level gate at all (a token that can write NO bound profile is
+    // refused before any write — pinned in sync-report-gate.test.ts). The run report is
+    // account-level and stands; the proxy's standing state stays out of reach.
     const f = threePatients("scope");
+    const caregiverLogin = makeLogin(`prov-caregiver-${f.tag}`);
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+    ).run(caregiverLogin, f.holder);
+    const caregiverToken = (
+      await createApiToken(caregiverLogin, "tool", "upload:documents")
+    ).token;
     const res = await SYNC_REPORT(
-      report(readerToken, {
+      report(caregiverToken, {
         status: "failed",
         portal: f.slug,
         message: "no download offered",

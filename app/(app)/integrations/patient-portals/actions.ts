@@ -35,6 +35,7 @@ import {
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import {
   bindPortalIdentity,
+  boundIdentityState,
   createPortal,
   createPortalAccount,
   deletePortal,
@@ -225,6 +226,36 @@ export async function bindIdentityAction(
   if (!Number.isInteger(profileId) || profileId <= 0) {
     return { ok: false, error: "Choose a profile." };
   }
+  // THE (login, label) PAIR MAY ALREADY BE LIVE-BOUND — and then this is not a bind,
+  // it is a RE-POINT (#2103): the "pre-bind a patient by hand" form posts a free-typed
+  // label, so a member typing a household member's label used to re-route that person's
+  // every future clinical document onto themselves through the one-sided target gate.
+  // The current owner is resolved FROM THE ROW server-side (#1747), and the transition
+  // takes remapIdentityAction's exact discipline: write on the profile records are
+  // routed AWAY from, write on the TARGET, and remapPortalIdentity's single
+  // compare-and-swap. The write core backstops this (writeBinding refuses to re-point a
+  // live binding), so a bind racing this resolve cannot slip through the upsert either.
+  const existing = boundIdentityState(accountId, label);
+  if (
+    existing &&
+    !existing.ignored &&
+    existing.profileId !== null &&
+    existing.profileId !== profileId
+  ) {
+    await requireProfileWriteAccess(existing.profileId);
+    await requireProfileWriteAccess(profileId);
+    if (!remapPortalIdentity(existing.id, existing.profileId, profileId)) {
+      // The CAS matched nothing: a concurrent write re-pointed or removed the row
+      // between the resolve above and this statement.
+      return {
+        ok: false,
+        error: "This mapping changed while you were editing — check it again.",
+      };
+    }
+    revalidatePath(CARD);
+    return { ok: true };
+  }
+
   // The gate is on the TARGET profile: you may only route a portal patient onto a
   // profile you could write to yourself. Throws (redirect) if not — so a forged post
   // aborts before the binding is written.

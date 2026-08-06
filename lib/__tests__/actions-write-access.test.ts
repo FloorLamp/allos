@@ -114,7 +114,19 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "bindIdentityAction",
-    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check",
+    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check. When the typed label is already LIVE-BOUND to a different profile the action is a RE-POINT, not a bind (#2103), and it takes remapIdentityAction's discipline: requireProfileWriteAccess on BOTH the current owner (resolved from the row, #1747) and the target, then remapPortalIdentity's compare-and-swap",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/undo-actions.ts",
+    fn: "undoDelete",
+    why: "cross-profile restore (#2104): an undo token's capture carries the ROW's profile — on a multi-view surface not the acting one (the delete stamped it through gateItemProfile) — so the restore resolves that profile FROM THE HOLDING ROW (deletedRowProfile, the portalIdentityProfile shape #1747) and gates it with requireProfileWriteAccess. requireWriteAccess() gated the ACTING profile, which both killed every legitimate cross-profile undo (capture said Mia, restore filtered by Dad, the toast failed and the capture purged) and authorized nothing about the profile actually written. restoreDeletedRow keeps its profile_id filter as the anti-replay compare",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/undo-actions.ts",
+    fn: "undoDeletes",
+    why: "cross-profile restore (#2104): the batch twin of undoDelete — each token's owning profile is resolved from its capture and every DISTINCT owner is gated with requireProfileWriteAccess BEFORE anything restores, so a forged token cannot ride in on a legitimate batch (an auth refusal aborts the whole batch; #202's per-token isolation still covers integrity failures inside the restore itself)",
     gate: "requireProfileWriteAccess",
   },
   {
