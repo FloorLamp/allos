@@ -200,7 +200,7 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     ).toBeUndefined();
   });
 
-  it("deleting a lesion clears its photos first (no FK trip)", async () => {
+  it("deleting a lesion captures its photos and answers with an undo token (#1847)", async () => {
     const { profile } = seedActor();
     await addSkinLesion(
       fd({ label: "Shoulder mole", body_region: "shoulder" })
@@ -213,13 +213,20 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     expect((await uploadLesionPhoto(form)).ok).toBe(true);
 
     const del = await deleteSkinLesion(fd({ id: String(lesionId) }));
-    expect(del.ok).toBe(true);
+    // The useUndoableDelete contract, not FormResult: the surface needs the token.
+    expect(del.error).toBeUndefined();
+    expect(typeof del.undoId).toBe("number");
     expect(getSkinLesions(profile.id)).toHaveLength(0);
     expect(
       db
         .prepare(`SELECT 1 FROM lesion_photos WHERE lesion_id = ?`)
         .get(lesionId)
     ).toBeUndefined();
+    // A second delete of the same (now gone) id refuses with a typed error and no
+    // token, rather than reporting a delete that removed nothing.
+    const again = await deleteSkinLesion(fd({ id: String(lesionId) }));
+    expect(again.undoId).toBeNull();
+    expect(again.error).toBeTruthy();
   });
 
   // The load-bearing #1844 pin: dermatology close-ups were the most sensitive photos

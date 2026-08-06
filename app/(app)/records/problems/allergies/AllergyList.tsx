@@ -4,6 +4,7 @@ import Link from "next/link";
 import AllergyForm from "./AllergyForm";
 import { updateAllergy, deleteAllergy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
@@ -152,6 +153,9 @@ export default function AllergyList({
   recordedAt?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
+  // Undoable since #1847: the shared toast, because an allergy gates the drug-safety
+  // matcher and the emergency card — a mis-tap here used to be unrecoverable.
+  const undoable = useUndoableDelete();
   return (
     <RecordTable
       items={items}
@@ -175,13 +179,15 @@ export default function AllergyList({
       )}
       confirmDelete={(a) => ({
         title: "Delete allergy",
-        message: `Delete the ${a.substance} allergy? This can’t be undone.`,
+        message: `Delete the ${a.substance} allergy? It stops warning about medications until you undo.`,
       })}
       onDelete={async (a) => {
         const fd = new FormData();
         fd.set("id", String(a.id));
         if (multiView) fd.set("profile_id", String(a.subject.profileId));
-        await deleteAllergy(fd);
+        await undoable(deleteAllergy, fd, {
+          deletedMessage: "Allergy deleted.",
+        });
       }}
     />
   );

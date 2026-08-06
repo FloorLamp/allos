@@ -11,14 +11,10 @@ import {
   normalizeSizeMm,
   toFlag,
 } from "@/lib/skin-lesion";
-import {
-  trackSkinFollowUpCore,
-  unlinkFollowUpsForSkinLesion,
-} from "@/lib/followup-write";
+import { trackSkinFollowUpCore } from "@/lib/followup-write";
 import {
   attachLesionPhotoCore,
   deleteLesionPhotoCore,
-  deleteLesionPhotosForLesion,
 } from "@/lib/skin-photo-write";
 import { processPhoto } from "@/lib/photo/ingest";
 import { resolvePhotoDate } from "@/lib/photo/policy";
@@ -27,6 +23,7 @@ import {
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
 import { encounterIdForProfile } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 // Skin-lesion writes (#715). Session-scoped; every mutation is `WHERE id = ? AND
 // profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
@@ -158,24 +155,25 @@ export async function updateSkinLesion(
   return formOk();
 }
 
+// Undoable since #1847. Deleting an observation takes its whole PHOTO SERIES with it,
+// which is what made this delete unrecoverable: the serial "is this mole changing?"
+// comparison a dermatologist reads is the one thing a re-typed row cannot reproduce.
+// captureDelete now owns the whole row-op in ONE transaction — the follow-up unlink
+// (#700), the photo rows (captured, then deleted explicitly because lesion_id is a
+// plain REFERENCES), and the lesion — and it deliberately leaves the FILES on disk so
+// a restored row re-points at them; the retention purge reclaims the photo and its
+// derived thumbnail sibling together. Answers in the useUndoableDelete contract.
 export async function deleteSkinLesion(
   formData: FormData
-): Promise<FormResult> {
+): Promise<{ undoId: number | null; error?: string }> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that record.");
-  // Row-ops side-state (#199-#203, #700): a follow-up may link this lesion as its
-  // SOURCE finding, or a resolution may cite it as the resolving record — both carry a
-  // REFERENCES FK with no ON DELETE. Its photos carry a lesion_id REFERENCES FK too.
-  // Clear all of them FIRST so the delete can't trip an FK.
-  unlinkFollowUpsForSkinLesion(profile.id, id);
-  deleteLesionPhotosForLesion(profile.id, id);
-  db.prepare("DELETE FROM skin_lesions WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  if (!id) return { undoId: null, error: "Couldn't find that record." };
+  const undoId = captureDelete("skin-lesion", profile.id, id);
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that record." };
   revalidateSkin();
-  return formOk();
+  return { undoId };
 }
 
 // Track a skin recheck follow-up (#700/#715 ask 3): creates a linked, OPEN care-plan

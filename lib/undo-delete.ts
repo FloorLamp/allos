@@ -118,6 +118,19 @@ export interface EntitySpec {
   // delete decrements it and the undo increments it back — it is never deleted and
   // re-inserted whole. Mutually exclusive with deleteExplicitly.
   counter?: CounterSpec;
+  // A UNIQUE natural key on the ROOT table that a LIVE row may have re-taken between
+  // the capture and the undo (#1847). The clinical passport tables carry a partial
+  // UNIQUE(profile_id, external_id) and their importer re-inserts with OR IGNORE, so
+  // "delete an imported allergy → reprocess the document → undo" would hit that index
+  // and abort the whole restore. Declared here, restore probes the live table for a
+  // row already occupying the key and ADOPTS it (maps old id → live id, skips the
+  // insert) instead of throwing — the same treatment `liveRowIdForCapturedRoot` gives
+  // a source-owned root's (date, source) / external_id collision (#509), expressed as
+  // registry data because these tables are not sync-tombstoned.
+  //
+  // The probe fires only when EVERY listed column is non-null on the captured row, so
+  // a manual row (external_id IS NULL, outside the partial index) never adopts.
+  uniqueKey?: readonly string[];
 }
 
 export interface KindSpec {
@@ -653,6 +666,192 @@ const KIND_SPECS = {
     entities: [{ entity: "period", table: "cycles", fks: [] }],
   },
 
+  // ── Clinical kinds (#1847) ──────────────────────────────────────────────────
+  // Until now every undoable kind was a LOW-STAKES one — a weigh-in, a workout, a
+  // logged serving — while the medical passport's rows deleted for good. That is the
+  // inversion this block ends: the records a caregiver managing several profiles is
+  // most likely to mis-tap on a phone are the ones a delete could not be taken back.
+  //
+  // Each root carries the same three outward clinical links, and all three point
+  // OUTSIDE the capture, so all three are reconciled (#202/#375/#598 class) rather
+  // than re-inserted verbatim: `document_id` → the source medical_documents row
+  // (profile-owned, probed WITH scope), `encounter_id` → the visit it was recorded at
+  // (#1050, profile-owned), and `provider_id` → the shared clinician registry (GLOBAL:
+  // `providers` has no profile_id, so it is probed by id alone). A link whose target
+  // died inside the undo window restores NULLed: the clinical row comes back, its
+  // provenance is honestly gone.
+
+  // ONE allergy — the highest-value row in this block. `allergies` GATES the
+  // drug-safety matcher (lib/drug-allergy) and prints on the emergency card, so a
+  // mis-deleted penicillin allergy silently removed a safety interlock with no way
+  // back. The capture takes its per-manifestation children with it: `allergy_reactions`
+  // is a real ON DELETE CASCADE child (so the live delete removes them and only the
+  // undo can bring them back), and it is where the severity grades that decide
+  // `isHighCriticality` live — restoring the parent without them would return a
+  // quieter allergy than the one deleted.
+  allergy: {
+    kind: "allergy",
+    ownedTable: "allergies",
+    entities: [
+      {
+        entity: "allergy",
+        table: "allergies",
+        fks: [],
+        externalRefs: [
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          { column: "encounter_id", table: "encounters", onMissing: "null" },
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+        uniqueKey: ["external_id"],
+      },
+      {
+        entity: "reactions",
+        table: "allergy_reactions",
+        fks: [{ column: "allergy_id", ref: "allergy" }],
+        childWhere: "allergy_id = ?",
+        childBinds: 1,
+      },
+    ],
+  },
+
+  // ONE problem-list condition. A single profile-owned row — but two facts about it
+  // make a verbatim re-insert the RIGHT restore rather than an accident:
+  //
+  //  • `edited` (migration 161) is the #133 edit lock. An episode-promoted condition
+  //    the user corrected by hand carries edited = 1, and syncPromotedCondition holds
+  //    out entirely on such a row. Re-inserting the captured snapshot carries the flag
+  //    back with it, so a restored correction is not silently reverted by the next
+  //    episode transition.
+  //  • The episode PROMOTION link is `external_id` + source = 'episode', not an FK.
+  //    syncPromotedCondition only ever UPDATEs an existing row (it returns "none" when
+  //    there is none), so a delete is never resurrected behind the user's back — but a
+  //    re-promotion in the undo window WOULD re-take the external_id, which is exactly
+  //    what `uniqueKey` adopts instead of failing the restore on the unique index.
+  //
+  // The delete's one inbound null-out (`intake_items.indication_condition_id`, #1052)
+  // moves into captureDelete so both delete paths inherit it; like the sibling
+  // protocol/follow-up null-outs it is NOT restored on undo — the condition returns,
+  // the med's "For:" link stays honestly cleared.
+  condition: {
+    kind: "condition",
+    ownedTable: "conditions",
+    entities: [
+      {
+        entity: "condition",
+        table: "conditions",
+        fks: [],
+        externalRefs: [
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          { column: "encounter_id", table: "encounters", onMissing: "null" },
+        ],
+        uniqueKey: ["external_id"],
+      },
+    ],
+  },
+
+  // ONE immunization DOSE. The vaccine → doses shape is derivational, not relational:
+  // `immunizations` holds one row per dose and the vaccine is its `vaccine` CODE, which
+  // several rows share and `immunizationCodesLosingBacking` decomposes for combo shots.
+  // So the undoable unit is the dose row the surface named, and restoring it re-backs
+  // whatever component codes it credited — the series completeness, the due nudge and
+  // the printable record all re-derive from the live rows.
+  //
+  // The delete's dismissal sweep (sweepImmunizationDismissals, #376) is a side effect
+  // undo deliberately does NOT invert, and it is the safe direction: it CLEARS an
+  // `immunization:<code>` suppression whose last backing dose left, so an undone delete
+  // re-backs the code and the nudge is satisfied anyway — while re-inserting the
+  // dismissal would be the system RE-silencing a signal on the user's behalf.
+  immunization: {
+    kind: "immunization",
+    ownedTable: "immunizations",
+    entities: [
+      {
+        entity: "dose",
+        table: "immunizations",
+        fks: [],
+        externalRefs: [
+          { column: "encounter_id", table: "encounters", onMissing: "null" },
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+        uniqueKey: ["external_id"],
+      },
+    ],
+  },
+
+  // ONE skin-lesion observation AND ITS PHOTO SERIES. `lesion_photos.lesion_id` is a
+  // plain REFERENCES with no ON DELETE, so the photos must go first for the lesion
+  // DELETE to land at all — which is why they are `deleteExplicitly` children rather
+  // than a cascade: captureDelete removes exactly the captured rows in the same
+  // transaction, and restore puts them back re-pointed at the lesion's new id.
+  //
+  // THE FILES ARE NOT UNLINKED BY THE DELETE. deleteLesionPhotosForLesion (the
+  // non-undoable path) unlinks the photo and its derived thumbnail sibling; this path
+  // must not, or the row would restore pointing at bytes that no longer exist. The
+  // files are content-named, so they survive the window untouched and a restored row
+  // re-points at the same file — the activity_videos posture (#1224). The purge is
+  // where they are finally reclaimed (see capturedPhotoFiles below, #1290/#1845), and
+  // that unlink has to take the THUMBNAIL with it: since the photo core landed
+  // (#1844 phase 3) a lesion photo's thumbnail is a derived SIBLING of the stored file
+  // (thumbSiblingPath — `lesion_photos` carries no thumb_path column), so a purge that
+  // reclaimed only stored_path would leave every thumbnail behind.
+  //
+  // The lesion's follow-up links (care_plan_items source/resolved_by, #700) are NULLed
+  // by captureDelete before the delete and, like the medical_records sibling, are not
+  // restored: the observation returns, its follow-up linkage stays honestly gone.
+  "skin-lesion": {
+    kind: "skin-lesion",
+    ownedTable: "skin_lesions",
+    entities: [
+      {
+        entity: "lesion",
+        table: "skin_lesions",
+        fks: [],
+        externalRefs: [
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          { column: "encounter_id", table: "encounters", onMissing: "null" },
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+        uniqueKey: ["external_id"],
+      },
+      {
+        entity: "photos",
+        table: "lesion_photos",
+        fks: [{ column: "lesion_id", ref: "lesion" }],
+        childWhere:
+          "lesion_id = ? AND profile_id = (SELECT profile_id FROM skin_lesions WHERE id = ?)",
+        childBinds: 2,
+        deleteExplicitly: true,
+      },
+    ],
+  },
+
   // ONE logged practice session (#2038). Deleting a whole practice has been undoable
   // since the two kinds above it; deleting one of its sessions was permanent, while the
   // structurally identical substance history row was not — an inconsistency that read as
@@ -803,6 +1002,58 @@ export function capturedVideoFiles(payload: Payload): CapturedVideoFile[] {
           typeof row.stored_path === "string" ? row.stored_path : null,
         posterPath:
           typeof row.poster_path === "string" ? row.poster_path : null,
+      });
+    }
+  }
+  return out;
+}
+
+// ── Purge-time PHOTO cleanup (#1847, the #1290 rule one media core over) ───────
+// The clinical block above is the first kind to capture a photo ROW, so the same
+// obligation the clip files carry now applies to `lesion_photos`: the file survives
+// the delete+undo window untouched (a restored row re-points at it), and the purge —
+// the moment the side effect can no longer be inverted — is where it is reclaimed.
+//
+// A photo is (stored file + THUMBNAIL). Since the photo core landed (#1844 phase 3)
+// the lesion/symptom domains carry NO thumb_path column: the thumbnail is a derived
+// SIBLING of the stored path (lib/photo/store thumbSiblingPath). This pure half
+// therefore reports `thumbPath` only when the row actually has one (progress_photos
+// does) and leaves deriving the sibling to the impure sweep, which owns the rule.
+
+// entity.table → the photo domain its files live under (lib/photo/store's DOMAIN_DIRS).
+// Named here rather than imported so this module stays free of fs, exactly like
+// VIDEO_FILE_TABLES. Only `lesion_photos` is captured by a kind today; the other two
+// are declared so a future kind capturing them inherits the purge instead of
+// re-opening the leak.
+export type CapturedPhotoDomain = "progress" | "lesion" | "symptom";
+export const PHOTO_FILE_TABLES: Record<string, CapturedPhotoDomain> = {
+  progress_photos: "progress",
+  lesion_photos: "lesion",
+  symptom_photos: "symptom",
+};
+
+export interface CapturedPhotoFile {
+  domain: CapturedPhotoDomain;
+  storedPath: string | null;
+  // The row's OWN thumbnail column when its table has one; null when the domain
+  // derives the thumbnail from the stored path instead (lesion, symptom).
+  thumbPath: string | null;
+}
+
+// The photo files captured in a payload (empty for a kind with no photo child).
+// Pure — walks the kind spec to map each photo entity's rows to their stored paths.
+export function capturedPhotoFiles(payload: Payload): CapturedPhotoFile[] {
+  const spec = getKindSpec(payload.kind);
+  const out: CapturedPhotoFile[] = [];
+  for (const entity of spec.entities) {
+    const domain = PHOTO_FILE_TABLES[entity.table];
+    if (!domain) continue;
+    for (const row of payload.rows[entity.entity] ?? []) {
+      out.push({
+        domain,
+        storedPath:
+          typeof row.stored_path === "string" ? row.stored_path : null,
+        thumbPath: typeof row.thumb_path === "string" ? row.thumb_path : null,
       });
     }
   }

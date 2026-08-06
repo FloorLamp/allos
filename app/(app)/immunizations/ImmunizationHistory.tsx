@@ -3,6 +3,7 @@
 import ImmunizationForm from "./ImmunizationForm";
 import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import RecordProvenance from "@/components/RecordProvenance";
 import NotesText from "@/components/NotesText";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
@@ -36,6 +37,7 @@ export default function ImmunizationHistory({
   multiView?: ListMultiView;
 }) {
   const fmt = useFormatPrefs();
+  const undoable = useUndoableDelete();
   // Auto "Dose N [of M]" labels, numbered within each stored vaccine's own
   // chronological sequence; a user's explicit dose_label wins (pure helper).
   //
@@ -165,14 +167,17 @@ export default function ImmunizationHistory({
         }
         return {
           title: "Delete immunization",
-          message: `Delete the ${vaccineDisplayName(im.vaccine)} record from ${im.date}${extra}? This can’t be undone.`,
+          message: `Delete the ${vaccineDisplayName(im.vaccine)} record from ${im.date}${extra}?`,
         };
       }}
       onDelete={async (im) => {
         const fd = new FormData();
         fd.set("id", String(im.id));
         if (multiView) fd.set("profile_id", String(im.subject.profileId));
-        await deleteImmunization(fd);
+        // Undoable since #1847 — the standard shared toast.
+        await undoable(deleteImmunization, fd, {
+          deletedMessage: "Immunization deleted.",
+        });
       }}
     />
   );

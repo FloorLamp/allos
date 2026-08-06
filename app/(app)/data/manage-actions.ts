@@ -142,6 +142,21 @@ export async function deleteDatasetRows(
   // returns null and is skipped.
   const kind = undoKindForTable(resolved.table);
   if (kind) {
+    // Same pre-image the plain path takes below (#376): the vaccine codes about to be
+    // un-backed have to be read BEFORE the rows go, and afterDelete's sweep decides
+    // which of them lost their last backing dose. Undoable-kind datasets reach this
+    // branch since #1847 mapped `immunizations`, so an empty list here would have
+    // silently dropped the dismissal sweep for the bulk path.
+    const removedVaccines = resolved.policy.cleanupImmunizations
+      ? (
+          db
+            .prepare(
+              `SELECT DISTINCT vaccine FROM ${resolved.table}
+                 WHERE id IN (${clean.map(() => "?").join(",")}) AND profile_id = ?`
+            )
+            .all(...clean, profile.id) as { vaccine: string }[]
+        ).map((r) => r.vaccine)
+      : [];
     // Intake items (supplements/meds) leave notification dedup markers behind on
     // delete; capture each item's dose ids BEFORE its cascade delete removes them, so
     // we can sweep the per-dose escalation markers + the refill marker afterward —
@@ -161,7 +176,7 @@ export async function deleteDatasetRows(
     for (const { id, doseIds } of sweeps) {
       sweepIntakeItemMarkers(profile.id, id, doseIds);
     }
-    afterDelete(key, resolved.policy, profile.id);
+    afterDelete(key, resolved.policy, profile.id, removedVaccines);
     return { ok: true, deleted: undoIds.length, undoIds };
   }
 
