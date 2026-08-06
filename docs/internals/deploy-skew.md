@@ -150,9 +150,25 @@ missing chunk.
 mode, as the app flipping to a broken light theme. It now reads the **same**
 `localStorage` key the boot script reads and picks inline colours through
 `errorCardPalette()` in `lib/theme.ts` — one theme source, not two. `lib/theme.ts`
-also owns `isDarkTheme()`, which the boot script (a string of source that must run
-before any bundle) interpolates the key into and `components/ThemeToggle.tsx`
-imports outright.
+also owns `isDarkTheme()` and the boot script's own source (`THEME_BOOT_SCRIPT`, a
+string that must run before any bundle, executed against `isDarkTheme()` by a pure
+test so the transcription cannot drift); `components/ThemeToggle.tsx` imports the
+rule outright.
+
+The boot script is single-shot per document, so one hard navigation on which it
+never ran (blocked inline script, a cached offline shell, a hydration-recovery
+root re-render dropping the boot-added class) used to leave the whole SPA session
+light until a manual toggle — `router.push` navigations inherit the document's
+class forever (#2183). `components/ThemeReassert.tsx` (mounted in the root
+layout) re-asserts the class idempotently post-hydration and on every route
+change, importing the same rule; when it finds the poisoned signature (storage
+says dark, class missing) it first logs one structured client-console event —
+route, nonce'd-script presence, SW-controlled flag, any hydration errors seen
+(`themeReassertEvent()` / `isHydrationErrorMessage()`, both pure in
+`lib/theme.ts`) — so the trigger gets pinned instead of guessed. The offline
+shell additionally carries a CSS-only `prefers-color-scheme` base scoped to
+`[data-offline-shell]` in `globals.css`, so even a render in which **no** script
+executes respects OS dark.
 
 `app/(app)/error.tsx` needs none of this: it renders inside the root layout, so its
 Tailwind `dark:` variants already work.

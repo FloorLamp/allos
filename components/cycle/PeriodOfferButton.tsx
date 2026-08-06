@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   cycleOffer,
   type CycleControlState,
@@ -79,7 +80,13 @@ export default function PeriodOfferButton({
   onDone?: () => void;
 }) {
   const toast = useToast();
-  const [pending, startTransition] = useTransition();
+  // The declared one-tap affordance (#2130): `startPeriodAction` is a real
+  // insert guarded only server-side, so the tap runs through the shared ledger
+  // for #2007's double-tap absorption — the second half of a fat-fingered tap is
+  // swallowed client-side, and a deliberate repeat still lands on the core's
+  // typed refusal. No optimistic value: the surface re-renders from the action's
+  // revalidation (the outcome-toast feedback design).
+  const ledger = useOptimisticLedger("period-lifecycle");
   const [error, setError] = useState<string | null>(null);
 
   const offer = cycleOffer(state);
@@ -97,23 +104,25 @@ export default function PeriodOfferButton({
 
   function run() {
     setError(null);
-    startTransition(async () => {
-      let result: { ok: boolean; error?: string };
-      try {
-        result = await action(new FormData());
-      } catch {
+    void ledger.tap({
+      write: () => action(new FormData()),
+      settle: (result) => {
+        if (!result.ok) {
+          // A refusal means this surface was out of date about what is recorded.
+          // The action revalidated, so the control re-renders into the real
+          // state; all that is left to do here is SAY what happened rather than
+          // claim a write. Rollback, so a corrected retry isn't held in cooldown.
+          setError(result.error ?? "Couldn't update the period.");
+          return { kind: "rollback" };
+        }
+        toast(TOASTS[write]);
+        onDone?.();
+        return { kind: "keep" };
+      },
+      onError: () => {
         setError("Couldn't update the period. Try again.");
-        return;
-      }
-      if (!result.ok) {
-        // A refusal means this surface was out of date about what is recorded. The
-        // action revalidated, so the control re-renders into the real state; all that
-        // is left to do here is SAY what happened rather than claim a write.
-        setError(result.error ?? "Couldn't update the period.");
-        return;
-      }
-      toast(TOASTS[write]);
-      onDone?.();
+        return { kind: "rollback" };
+      },
     });
   }
 
@@ -122,12 +131,15 @@ export default function PeriodOfferButton({
       <button
         type="button"
         className={className}
-        disabled={pending}
+        // Disabled through the cooldown too, not just in flight: this control has
+        // no count to move, so the swallowed second tap is made visible instead
+        // of silently ignored (the substance-card posture; lib/one-tap.ts).
+        disabled={ledger.blocked()}
         data-testid={TEST_IDS[write]}
         data-period-write={write}
         onClick={run}
       >
-        {pending ? "Saving…" : offer.label}
+        {ledger.pending() ? "Saving…" : offer.label}
       </button>
       {error && (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">

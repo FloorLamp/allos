@@ -19,7 +19,9 @@ import {
   ANXIETY_CALM_HIGH_LABEL,
   anxietyDisplaySlot,
   anxietyStoredValue,
+  moodBackfillLabel,
 } from "@/lib/mood";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   rateSummary,
   contextGroup,
@@ -58,6 +60,14 @@ export interface TodayMood {
   anxiety: number | null;
   factors: string[];
   notes: string | null;
+}
+
+// One backfill-window day the card can log instead of today (#2128): the
+// profile-local date and its already-logged check-in, if any, so switching the
+// chip re-mirrors the face row to what that day holds.
+export interface MoodBackfillDay {
+  date: string;
+  mood: TodayMood | null;
 }
 
 function ScaleRow({
@@ -108,6 +118,7 @@ export default function HowAreYouCard({
   date,
   mood,
   activeEpisode,
+  earlierDays = [],
   medsSlot = null,
   medsCount = 0,
   situations = null,
@@ -121,6 +132,10 @@ export default function HowAreYouCard({
   // Today's already-logged check-in (null when unlogged). The upsert is per-day,
   // so a re-tap updates it.
   mood: TodayMood | null;
+  // The #2128 backfill window, nearest day first (yesterday, then the day
+  // before): the days the "yesterday" chips offer, each with its logged
+  // check-in so the face row mirrors the selected day. Empty hides the chips.
+  earlierDays?: MoodBackfillDay[];
   // Whether the acting profile has an open illness episode (the hero is up).
   activeEpisode: boolean;
   // Whether the evening reminder is currently AUTO-PAUSED after quiet days (#1668).
@@ -170,8 +185,12 @@ export default function HowAreYouCard({
   // permanent footprint and the symptom bar is absent from the DOM until asked for.
   const [symptomExpanded, setSymptomExpanded] = useState(false);
 
-  // Local mirrors of today's entry for instant feedback; the server row is the
-  // source of truth on the next render (the save action revalidates).
+  // Which day the Rate section is logging (#2128) — today by default; the chips
+  // below switch it within the backfill window.
+  const [selectedDate, setSelectedDate] = useState(date);
+
+  // Local mirrors of the SELECTED day's entry for instant feedback; the server
+  // row is the source of truth on the next render (the save action revalidates).
   const [valence, setValence] = useState<number | null>(mood?.valence ?? null);
   const [energy, setEnergy] = useState<number | null>(mood?.energy ?? null);
   const [anxiety, setAnxiety] = useState<number | null>(mood?.anxiety ?? null);
@@ -179,58 +198,112 @@ export default function HowAreYouCard({
   const [note, setNote] = useState(mood?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  // Persist one check-in (tap, expanded save, or a day-factor toggle while a mood is
-  // logged). A bare tap carries the already-stored expand fields along, so re-tapping
-  // a face never wipes today's detail.
-  function save(next: {
+  // The one-tap valence write, declared (#2130): an idempotent per-(profile, date)
+  // upsert whose optimistic value — the selected face — adopts the server row on
+  // revalidation. The ledger absorbs the second half of a double-tap (#2007 layer
+  // 1); the key is (day, face), so a quick correction onto a different face — or
+  // the same face for a different backfill day — is a new write, never an
+  // absorbed one.
+  const ledger = useOptimisticLedger<number | null>("mood-valence");
+
+  const days: MoodBackfillDay[] = [{ date, mood }, ...earlierDays];
+
+  // Switch which day the Rate section edits (#2128): re-mirror every expand field
+  // to what that day already holds, so the faces never show one day's rating over
+  // another day's chip.
+  function pickDay(day: MoodBackfillDay) {
+    if (day.date === selectedDate) return;
+    setSelectedDate(day.date);
+    setValence(day.mood?.valence ?? null);
+    setEnergy(day.mood?.energy ?? null);
+    setAnxiety(day.mood?.anxiety ?? null);
+    setFactors(day.mood?.factors ?? []);
+    setNote(day.mood?.notes ?? "");
+    setError(null);
+  }
+
+  interface MoodDraft {
     valence: number;
     energy: number | null;
     anxiety: number | null;
     factors: string[];
     note: string;
-  }) {
+  }
+
+  function buildForm(next: MoodDraft): FormData {
+    const fd = new FormData();
+    fd.set("date", selectedDate);
+    fd.set("valence", String(next.valence));
+    if (next.energy != null) fd.set("energy", String(next.energy));
+    if (next.anxiety != null) fd.set("anxiety", String(next.anxiety));
+    for (const f of next.factors) fd.append("factors", f);
+    if (next.note.trim()) fd.set("note", next.note.trim());
+    return fd;
+  }
+
+  // Offline (or a dropped connection): queue the captured fields to replay on
+  // reconnect — idempotent per day, so a double flush can't duplicate. Lands on
+  // the SELECTED day (#2128), which is the day the user was logging.
+  async function queueIfOffline(
+    err: unknown,
+    next: MoodDraft
+  ): Promise<boolean> {
+    if (
+      !shouldQueueOffline(
+        typeof navigator === "undefined" ? true : navigator.onLine,
+        err
+      )
+    ) {
+      return false;
+    }
+    await enqueue("mood", selectedDate, {
+      valence: next.valence,
+      energy: next.energy,
+      anxiety: next.anxiety,
+      factors: next.factors,
+      note: next.note.trim() ? next.note.trim() : null,
+    });
+    toast("Saved offline — will sync when you reconnect.");
+    return true;
+  }
+
+  // Persist an expanded save or a day-factor toggle while a mood is logged. The
+  // one-tap face path is `tap` below, through the declared ledger.
+  function save(next: MoodDraft) {
     setError(null);
     start(async () => {
-      const fd = new FormData();
-      fd.set("date", date);
-      fd.set("valence", String(next.valence));
-      if (next.energy != null) fd.set("energy", String(next.energy));
-      if (next.anxiety != null) fd.set("anxiety", String(next.anxiety));
-      for (const f of next.factors) fd.append("factors", f);
-      if (next.note.trim()) fd.set("note", next.note.trim());
       try {
-        const res = await logMood(fd);
-        if (!res.ok) {
-          setError(res.error);
-          return;
-        }
+        const res = await logMood(buildForm(next));
+        if (!res.ok) setError(res.error);
       } catch (err) {
-        // Offline (or a dropped connection): queue the captured fields to replay
-        // on reconnect — idempotent per day, so a double flush can't duplicate.
-        if (
-          shouldQueueOffline(
-            typeof navigator === "undefined" ? true : navigator.onLine,
-            err
-          )
-        ) {
-          await enqueue("mood", date, {
-            valence: next.valence,
-            energy: next.energy,
-            anxiety: next.anxiety,
-            factors: next.factors,
-            note: next.note.trim() ? next.note.trim() : null,
-          });
-          toast("Saved offline — will sync when you reconnect.");
-          return;
-        }
+        if (await queueIfOffline(err, next)) return;
         setError("Couldn't save that check-in — try again.");
       }
     });
   }
 
   function tap(n: number) {
-    setValence(n);
-    save({ valence: n, energy, anxiety, factors, note });
+    setError(null);
+    const next: MoodDraft = { valence: n, energy, anxiety, factors, note };
+    void ledger.tap({
+      key: `${selectedDate}:${n}`,
+      from: valence,
+      optimistic: n,
+      commit: setValence,
+      write: () => logMood(buildForm(next)),
+      settle: (res) => {
+        // The action revalidates, so the server prop re-renders the truth; the
+        // optimistic face stands in until then.
+        if (res.ok) return { kind: "keep" };
+        setError(res.error);
+        return { kind: "rollback" };
+      },
+      onError: async (err) => {
+        if (await queueIfOffline(err, next)) return { kind: "keep" };
+        setError("Couldn't save that check-in — try again.");
+        return undefined; // rollback
+      },
+    });
   }
 
   // Toggle a today-only day-factor (work/social — the surviving mood factors). Updates
@@ -327,32 +400,75 @@ export default function HowAreYouCard({
         onToggle={() => setRateExpanded((e) => !e)}
         toggleLabel="More detail"
         header={
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <MoodValencePicker
-              value={valence}
-              onChange={tap}
-              disabled={pending}
-            />
-            <span
-              className="text-xs text-slate-500 dark:text-slate-400"
-              data-testid="mood-status"
-            >
-              {rateSummary({ valence, energy, calmDisplay })}
-            </span>
-            {/* Server-truth marker (from the SERVER prop, not local state): appears/
-                updates only once the write committed and the refresh round-tripped —
-                the e2e settle hook on this action-POST-heavy page (see e2e/helpers.ts). */}
-            {mood ? (
-              <span
-                hidden
-                data-testid="mood-server-logged"
-                data-valence={mood.valence}
-                data-energy={mood.energy ?? ""}
-                data-anxiety={mood.anxiety ?? ""}
-                data-factors={mood.factors.join(",")}
-                data-note={mood.notes ?? ""}
-              />
+          <div className="min-w-0 flex-1">
+            {/* The #2128 backfill chips — the #2019 now/earlier pattern, a day at
+                a time: pick WHICH day before the tap, bounded by the dose-log-window
+                convention (lib/mood.ts). Rendered only when the server passed the
+                window, so other mounts of the card are unchanged. */}
+            {earlierDays.length > 0 ? (
+              <div
+                className="mb-1.5 flex flex-wrap items-center gap-1.5"
+                data-testid="mood-day-chips"
+              >
+                {days.map((day, offset) => (
+                  <button
+                    key={day.date}
+                    type="button"
+                    data-testid={`mood-day-${offset}`}
+                    data-date={day.date}
+                    aria-pressed={day.date === selectedDate}
+                    onClick={() => pickDay(day)}
+                    className={`badge cursor-pointer border ${
+                      day.date === selectedDate
+                        ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                        : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {moodBackfillLabel(offset)}
+                  </button>
+                ))}
+              </div>
             ) : null}
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <MoodValencePicker
+                value={valence}
+                onChange={tap}
+                disabled={pending}
+              />
+              <span
+                className="text-xs text-slate-500 dark:text-slate-400"
+                data-testid="mood-status"
+              >
+                {rateSummary({ valence, energy, calmDisplay })}
+              </span>
+              {/* Server-truth marker (from the SERVER prop, not local state): appears/
+                  updates only once the write committed and the refresh round-tripped —
+                  the e2e settle hook on this action-POST-heavy page (see e2e/helpers.ts). */}
+              {mood ? (
+                <span
+                  hidden
+                  data-testid="mood-server-logged"
+                  data-valence={mood.valence}
+                  data-energy={mood.energy ?? ""}
+                  data-anxiety={mood.anxiety ?? ""}
+                  data-factors={mood.factors.join(",")}
+                  data-note={mood.notes ?? ""}
+                />
+              ) : null}
+              {/* The same server-truth markers for the backfill days (#2128), one
+                  per logged earlier day, so a dated write has a settle hook too. */}
+              {earlierDays.map((day, i) =>
+                day.mood ? (
+                  <span
+                    key={day.date}
+                    hidden
+                    data-testid={`mood-server-logged-${i + 1}`}
+                    data-date={day.date}
+                    data-valence={day.mood.valence}
+                  />
+                ) : null
+              )}
+            </div>
           </div>
         }
       >

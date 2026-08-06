@@ -56,6 +56,7 @@ Today's entries:
 
 | table                                         | cores                                                                                                                                                                    | gate                 | offer state         |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------- |
+| `appointments` (`status`)                     | `lib/appointment-status.ts`                                                                                                                                              | —                    | —                   |
 | `cycles`                                      | `lib/cycle-store.ts`                                                                                                                                                     | `lib/cycle-write.ts` | `cycleControlState` |
 | `illness_episodes`                            | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`                                                                                                           | —                    | —                   |
 | `intake_item_logs`                            | `lib/queries/intake/adherence.ts`                                                                                                                                        | —                    | —                   |
@@ -64,6 +65,9 @@ Today's entries:
 | `medication_courses`                          | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
 | `intake_item_doses` (`retired`)               | `lib/queries/intake/dose-lifecycle.ts`                                                                                                                                   | —                    | —                   |
 | `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
+| `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                   |
+| `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                   |
+| `equipment` (`retired`)                       | `lib/equipment.ts`                                                                                                                                                       | —                    | —                   |
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
@@ -169,11 +173,24 @@ it on its own `active && due` read, but that derivation is not extracted.
 Already stateful, no action: dose confirms (typed outcomes, #1779), PRN quick
 log (the #798 redose-window line), mood (`upsertMoodLog` updates same-day),
 preventive done (idempotent per rule+date), the illness front door, cycle
-(#1892), practice/protocol buttons. Appointments have no one-tap affordance —
-completion is form-level. **Weight and food servings are additive by design and
-correctly plain** — which is also why the vitals card's "Log reading" (#1892) is
-a plain button: it opens the measurements form, and a reading is a fact added,
-not a transition.
+(#1892), practice/protocol buttons. **Weight and food servings are additive by
+design and correctly plain** — which is also why the vitals card's "Log reading"
+(#1892) is a plain button: it opens the measurements form, and a reading is a
+fact added, not a transition.
+
+Appointments were this page's own stale claim: an earlier revision said they
+had "no one-tap affordance — completion is form-level", and a lifecycle-machine
+audit (#2134) found the Visits list had meanwhile grown icon-only Mark
+completed / Cancel buttons and a Reopen, all riding a bare `SET status = ?`
+that could not refuse, plus a palette "Mark complete" that toasted success
+unconditionally — while the import path compare-and-swapped the very same
+transition. `appointments` (`status`) is a registry entry now:
+`lib/appointment-status.ts` owns the state-named CAS (typed
+`already-scheduled` / `already-completed` / `already-cancelled` / `not-found`
+refusals the list and the palette render) and the two complete+link swaps —
+"Log this visit" (unlinked-only) and the import auto-complete, whose
+scheduled-only guard keeps the machine from overwriting a manual completion or
+cancellation.
 
 Two defects were fixed by #1893:
 
@@ -196,13 +213,15 @@ The 2026-08-05 lifecycle-machine audit found four stale-actor defects in the
 intake domain and closed them with one shared mechanism plus four entries above.
 
 **The Tx token (`lib/tx.ts`).** `writeTx` hands its callback a `Tx` value only
-`lib/db.ts` can mint, and the in-transaction helpers `readForUpdate(tx, stmt, …)`
-and `casUpdate(tx, stmt, …)` REQUIRE it — so a guard read or compare-and-swap
-written with them cannot typecheck outside the transaction it protects, which is
-exactly the defect #2139 found (pending checked outside, insert inside). The
-helpers take an already-prepared statement, never a SQL string, so both source
-scans still see every statement. The token is evidence, not an async handle: the
-callback-synchronous rule is unchanged, and genuinely additive writes ignore it.
+`lib/db.ts` can mint, and the in-transaction helpers `readForUpdate(tx, stmt, …)`,
+`readAllForUpdate(tx, stmt, …)` (the set-shaped guard read, added for #2140's
+whole-set rewrite) and `casUpdate(tx, stmt, …)` REQUIRE it — so a guard read or
+compare-and-swap written with them cannot typecheck outside the transaction it
+protects, which is exactly the defect #2139 found (pending checked outside, insert
+inside). The helpers take an already-prepared statement, never a SQL string, so
+both source scans still see every statement. The token is evidence, not an async
+handle: the callback-synchronous rule is unchanged, and genuinely additive writes
+ignore it.
 
 The four machines:
 
@@ -228,6 +247,51 @@ The four machines:
   second writer), but the accept now claims `status='pending'` with an
   in-transaction CAS before minting the item, so a double accept mints once.
 
+## The equipment retire machine (#2138)
+
+`equipment.retired` was a lifecycle gate by this registry's own criterion — it
+decides pickers, availability summaries, and workout suggestions (#341) — but the
+flip returned `void` with no changes check and the actions returned `{ ok: true }`
+literals, so a silently-failed retire kept offering sold gear. `setEquipmentRetired`
+is now a state-named CAS over the Tx-token helpers with typed outcomes
+(`applied` / `already` / `not-found`), `deleteEquipment` is row-count-checked (the
+delete itself stays, per the issue's ruling: its confirm names the consequence and
+#1610's compatibility clause governs the detaches), and both surfaces render the
+refusals — the manager through the shared overflow menu's `MenuActionResult`
+plumbing. The registry entry above makes lib/equipment.ts the flag's only writer.
+
+## The lifecycle-hardening batch (#2140) and the outcome-discard guard (#2106)
+
+#2140 registered the two remaining single-active machines and finished the
+changes-checked-outcome sweep the intake issues started:
+
+- **`routines.active`** — a real single-active invariant with a de-facto core:
+  `activateRoutine` deactivates every sibling and replaces the derived training
+  targets in one `writeTx`, and `getActiveRoutine`, the deload cycle, the rotation
+  cursor and the workout nudge all assume at most one active row. The registry
+  entry makes the convention a chokepoint; `deactivateRoutine` is now a CAS with
+  `active = 1` as its expectation (second tap reports `false`).
+- **`situations.active`** — the whole-set rewrite (`setActiveSituations`) that
+  gates situational supplements, opens/closes illness episodes (#856) and appends
+  the dated start/stop event log. Its before-set diff used to be read OUTSIDE the
+  transaction; it now runs inside via `readAllForUpdate`, so the event log can only
+  ever describe transitions that actually happened.
+- **Goal status/archive and care-plan "Mark done"** — the batch's changes-checked
+  outcomes. `setStatus`/`setArchived` CAS on (id, profile) and refuse a forged id;
+  `markCarePlanItemDone` returns a typed `CarePlanDoneOutcome` (completed /
+  already-closed-with-status / not-found) worded once by `carePlanDoneResult`, so a
+  repeat tap says "Already marked done" and a tap over someone else's cancellation
+  refuses by naming what persists.
+
+#2106 closed the outcome-discard half: the household confirm and the attention
+hero declared `outcome-toast` feedback (below) while their actions dropped
+`markDoseTaken`'s outcome and returned void. Both now return the shared
+`DoseConfirmResult` and render through `components/DoseConfirmButton.tsx` (the
+`doseConfirmMessage` wording), the Upcoming row chips render any typed result they
+receive, and a source scan in `lib/__tests__/one-tap.test.ts` fails any module that
+calls `markDoseTaken`/`markDoseSkipped` as a bare statement — a discarded outcome
+is an unconditional confirm waiting to happen.
+
 ## The one-tap feedback family (#2041, #2007)
 
 An additive affordance stays plain (above) — but "plain" was never a licence for
@@ -235,17 +299,25 @@ each one to answer _"did my tap land?"_ its own way, and by the 2026-08-05 surve
 one-tap logging had four unrelated answers and five hand-rolled copies of the
 same optimistic-reconcile code. The decision is recorded here and enforced as
 data in `lib/one-tap.ts` (`ONE_TAP_AFFORDANCES`), which every surface running the
-shared hook must name itself in.
+shared hook must name itself in. Since #2130 the registry has declare-or-argue
+teeth in both directions: a source scan
+(`lib/__tests__/one-tap-call-sites.test.ts`) fails an entry no component wires
+and a call site the registry doesn't know, and the offline queue's
+`OFFLINE_QUEUE_COVERAGE` (`lib/offline/queue.ts`) must map every affordance to a
+queue flow or an argued exclusion at the type level — an idempotent tap (the
+queue's own admission criterion) can no longer ship unqueued-and-unargued. The
+same #2130 mechanism gives the quick-log sheet, the palette, and the Telegram
+vocabulary a per-domain census over `lib/loggable-domains.ts`.
 
 **The four feedback designs.** A new one-tap surface picks one of these; it does
 not invent a fifth.
 
-| design             | when it applies                                                                                           | who uses it                                                    |
-| ------------------ | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `optimistic-count` | there is a number beside the tap that can move now and reconcile after (the #748 item 2 pattern)          | food servings, protein grams, mobility moves, symptom severity |
-| `cooldown`         | no count to move — the figure arrives with the action's revalidation, so the inert window IS the feedback | substance units                                                |
-| `outcome-toast`    | the write can REFUSE, so the tap is answered from its typed outcome and never confirmed unconditionally   | dose confirm/skip, PRN dose, practice session                  |
-| `recency-line`     | additive with a corrupting double-tap: an informational line beside a button that stays enabled (#798)    | mark refilled                                                  |
+| design             | when it applies                                                                                           | who uses it                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `optimistic-count` | there is a number beside the tap that can move now and reconcile after (the #748 item 2 pattern)          | food servings, protein grams, mobility moves, symptom severity, mood valence |
+| `cooldown`         | no count to move — the figure arrives with the action's revalidation, so the inert window IS the feedback | substance units                                                              |
+| `outcome-toast`    | the write can REFUSE, so the tap is answered from its typed outcome and never confirmed unconditionally   | dose confirm/skip, PRN dose, practice session, period offer                  |
+| `recency-line`     | additive with a corrupting double-tap: an informational line beside a button that stays enabled (#798)    | mark refilled                                                                |
 
 **How a second tap is classified.** This is what decides whether a confirm may
 ever appear, and it is declared per affordance rather than inferred:

@@ -74,6 +74,39 @@ describe("setEquipmentRetiredAction", () => {
     await setEquipmentRetiredAction(id, false);
     expect(getEquipment(profile.id).map((e) => e.id)).toContain(id);
   });
+
+  // #2138: the retire is a state-named CAS with typed, changes-checked outcomes —
+  // the action must never confirm a flip that did not land.
+  it("retiring twice reports the already-retired refusal, not success", async () => {
+    seedActor();
+    const created = await createEquipmentAction({
+      name: "Sold Bike",
+      weight_kg: null,
+      category: "Bike",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const id = created.equipment.id;
+
+    expect(await setEquipmentRetiredAction(id, true)).toEqual({ ok: true });
+    const again = await setEquipmentRetiredAction(id, true);
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.error).toMatch(/already retired/);
+
+    // The inverse refusal: restoring a row that is already active.
+    expect(await setEquipmentRetiredAction(id, false)).toEqual({ ok: true });
+    const activeAgain = await setEquipmentRetiredAction(id, false);
+    expect(activeAgain.ok).toBe(false);
+  });
+
+  it("a forged id reports not-found instead of { ok: true }", async () => {
+    seedActor();
+    const res = await setEquipmentRetiredAction(99999, true);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/find that equipment/);
+  });
 });
 
 describe("deleteEquipmentAction", () => {
@@ -100,7 +133,7 @@ describe("deleteEquipmentAction", () => {
        VALUES (?, 'Bench Press', 1, 60, 5, ?)`
     ).run(activityId, equipId);
 
-    await deleteEquipmentAction(equipId);
+    expect(await deleteEquipmentAction(equipId)).toEqual({ ok: true });
 
     expect(
       getEquipment(profile.id, { includeRetired: true }).map((e) => e.id)
@@ -111,5 +144,15 @@ describe("deleteEquipmentAction", () => {
       )
       .get(activityId) as { equipment_id: number | null };
     expect(set.equipment_id).toBeNull();
+  });
+
+  // #2138: the delete is row-count-checked — a forged id (or a second tap racing
+  // the first) reports failure instead of the old unconditional `{ ok: true }`.
+  it("a forged-id delete reports failure instead of { ok: true }", async () => {
+    seedActor();
+    const res = await deleteEquipmentAction(99999);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/find that equipment/);
   });
 });

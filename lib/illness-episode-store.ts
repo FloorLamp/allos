@@ -429,10 +429,17 @@ export function mergeEpisodeRows(
       `UPDATE illness_episodes SET started_at = ?, ended_at = ?
         WHERE id = ? AND profile_id = ?`
     ).run(start, end, keepId, profileId);
+    // Value-sync of the surviving promoted condition — the merge-shaped sibling of
+    // syncPromotedCondition, under the SAME #2137 edit lock: a hand-edited row is a
+    // full hold-out (`AND edited = 0`), receiving nothing from the merge. The
+    // re-anchor above is deliberately NOT gated: repointing external_id is identity
+    // maintenance that keeps a (possibly edited) row attached to the surviving
+    // episode; the lock protects the row's VALUES, not its linkage.
     db.prepare(
       `UPDATE conditions
           SET name = ?, status = ?, onset_date = ?, resolved_date = ?
-        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+        WHERE profile_id = ? AND external_id = ? AND source = 'episode'
+          AND edited = 0`
     ).run(
       keep.situation,
       end ? "resolved" : "active",

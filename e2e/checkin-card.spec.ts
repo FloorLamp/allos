@@ -242,6 +242,70 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(page.getByTestId("metric-latest-value")).toHaveText("5");
     expect(name).toContain("checkincalm");
   });
+
+  // #2128: mood was CORRECT-ONLY — a past rating was editable, a MISSED day
+  // unrecoverable. The yesterday chip is the fix: pick the day, then the same
+  // one-tap flow, and the write lands on THAT day without touching today.
+  test("the yesterday chip backfills a missed day without touching today (#2128)", async ({
+    page,
+  }) => {
+    test.slow();
+    const name = await createProfileViaFamily(page, "checkinyday");
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+
+    // Today leads, pressed; the chips carry their server-resolved dates.
+    const todayChip = card.getByTestId("mood-day-0");
+    const yesterdayChip = card.getByTestId("mood-day-1");
+    await expect(todayChip).toHaveAttribute("aria-pressed", "true");
+    await expect(yesterdayChip).toHaveText("Yesterday");
+    const yesterdayDate = await yesterdayChip.getAttribute("data-date");
+    expect(yesterdayDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // A pure client toggle (no POST to settle on): hydratedClick, then the
+    // pressed state proves the pick landed.
+    await hydratedClick(page, yesterdayChip);
+    await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
+    // The face row mirrors the selected (unlogged) day.
+    await expect(card.getByTestId("mood-status")).toHaveText(
+      "Tap to log your day."
+    );
+
+    // One tap logs YESTERDAY; the settle hook is the dated server marker that
+    // only renders once the write committed and the refresh round-tripped.
+    await expect(async () => {
+      await card.getByTestId("mood-tap-2").click({ timeout: 2_000 });
+      await expect(card.getByTestId("mood-server-logged-1")).toHaveAttribute(
+        "data-valence",
+        "2",
+        { timeout: 4_000 }
+      );
+    }).toPass(); // topass-ok: re-tap until the dated server marker reflects it past the pre-hydration swallow — idempotent per-day upsert, safe to re-drive
+    await expect(card.getByTestId("mood-server-logged-1")).toHaveAttribute(
+      "data-date",
+      yesterdayDate!
+    );
+
+    // Today stays unlogged — the backfill wrote one day, not two.
+    await expect(card.getByTestId("mood-server-logged")).toHaveCount(0);
+
+    // Durable server truth: exactly one row, on yesterday's date.
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      const rows = db
+        .prepare(
+          `SELECT date, valence FROM mood_logs
+            WHERE profile_id = (SELECT id FROM profiles WHERE name = ?)`
+        )
+        .all(name) as { date: string; valence: number }[];
+      expect(rows).toEqual([{ date: yesterdayDate, valence: 2 }]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 // Well-day symptom logging + the reported-burden coaching tilt (#1300). Driven against the

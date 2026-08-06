@@ -10,11 +10,27 @@
 // One computation (#221): the behind decision is exactly the Upcoming practiceItems
 // filter — getFrequencyTargetProgress (which folds range semantics via frequencyRangeState)
 // filtered to practice / !met / !atCeiling / pace "behind". The nudge is a formatter over it.
+//
+// RHYTHM RETIMING (#2188): when a behind practice has an inferred weekly rhythm
+// (inferPracticeSchedule — the workout-schedule shape over practice_logs), the
+// nudge additionally WAITS for the practice's next predicted day and typical hour
+// instead of firing at the first waking tick of the flip day. The decision is the
+// pure practiceNudgeReleased (lib/practice.ts); the tick passes the moment via
+// `timing`. Predicted ≠ due (#1505): retiming only ever DELAYS a send the pace
+// ledger already justified — a caller that passes no timing (manual mode, the
+// legacy tests) gets the untimed gather unchanged, and a practice with no pattern
+// behaves byte-for-byte like today under either call shape. The bus gate, the
+// per-day marker (owned by the tick) and the ceiling silence are untouched.
 
-import { getFrequencyTargetProgress } from "../queries";
+import { getFrequencyTargetProgress, inferPracticeSchedule } from "../queries";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
-import { practiceSignalKey, practiceCadenceText } from "../practice";
+import {
+  practiceSignalKey,
+  practiceCadenceText,
+  practiceNudgeReleased,
+  practiceRhythmDaysText,
+} from "../practice";
 import { today as todayFor } from "../db";
 import { collectRightSizeCandidates } from "../rule-findings";
 import { practiceDoneCallback, rightSizeLowerCallback } from "./callback-data";
@@ -24,6 +40,16 @@ import type { NotificationAction, NotificationMessage } from "./types";
 // Cap the buttons so the keyboard stays tappable; the rest still reads in the body.
 const MAX_PRACTICE_BUTTONS = 4;
 
+// The tick's moment, threaded into the gather so each behind practice's rhythm can
+// hold it for a predicted day (#2188). The week half of the moment
+// (daysLeftInWindow) comes from each target's own progress row, not from here.
+export interface PracticeNudgeTiming {
+  weekday: number; // profile-local today, 0=Sun … 6=Sat
+  minuteOfDay: number; // profile-local minute of day
+  wakingStartHour: number;
+  wakingEndHour: number;
+}
+
 // A behind, non-suppressed practice target ready to nudge — the gather the builder
 // formats and the (test-visible) decision surface.
 export interface BehindPractice {
@@ -32,11 +58,18 @@ export interface BehindPractice {
   count: number;
   floor: number;
   ceiling: number | null;
+  // The practice's inferred rhythm days for the "usually Mon/Wed/Fri" line —
+  // null when no pattern exists (#558: the line then says nothing about days).
+  rhythmDays?: number[] | null;
 }
 
 // Gather the profile's behind, non-suppressed practice targets (the bus-gated pace
-// decision). Exported so the DB-tier builder test can assert the decision directly.
-export function behindPractices(profileId: number): BehindPractice[] {
+// decision), rhythm-retimed when `timing` is supplied (#2188). Exported so the
+// DB-tier builder test can assert the decision directly.
+export function behindPractices(
+  profileId: number,
+  timing?: PracticeNudgeTiming
+): BehindPractice[] {
   const suppressions = getFindingSuppressions(profileId);
   const today = todayFor(profileId);
   return getFrequencyTargetProgress(profileId)
@@ -47,20 +80,37 @@ export function behindPractices(profileId: number): BehindPractice[] {
       const rec = suppressions.get(practiceSignalKey(p.target.id));
       return !(rec != null && isSuppressed(rec, today));
     })
-    .map((p) => ({
-      targetId: p.target.id,
-      name: p.target.scope_value,
-      count: p.count,
-      floor: p.per_week,
-      ceiling: p.per_week_max,
-    }));
+    .map((p) => {
+      const rhythm = inferPracticeSchedule(profileId, p.target.scope_value);
+      return {
+        item: {
+          targetId: p.target.id,
+          name: p.target.scope_value,
+          count: p.count,
+          floor: p.per_week,
+          ceiling: p.per_week_max,
+          rhythmDays: rhythm.hasPattern ? rhythm.weekdays : null,
+        },
+        // Rhythm retiming, per practice: released now, or held for a predicted
+        // day later this week. Without a timing (manual mode) nothing is held.
+        released:
+          timing == null ||
+          practiceNudgeReleased(rhythm, {
+            ...timing,
+            daysLeftInWindow: p.daysLeftInWindow,
+          }),
+      };
+    })
+    .filter((entry) => entry.released)
+    .map((entry) => entry.item);
 }
 
 // One practice's shortfall as a VERDICT rather than a bare ratio (#1722 item 5b) —
 // the workout recap's shape: the numbers, then what they mean. "Meditation — 2 of 3
 // this week, one more to go." Silent about the next step when the remainder isn't a
 // simple count (a range target's ceiling is the calm "that's plenty" case, which the
-// gather has already excluded).
+// gather has already excluded). When a rhythm exists the line also NAMES it
+// ("usually Mon/Wed/Fri") — data, not advice (#2188); no pattern names nothing.
 export function practiceShortfallLine(b: BehindPractice): string {
   const remaining = Math.max(0, b.floor - b.count);
   const next =
@@ -72,18 +122,25 @@ export function practiceShortfallLine(b: BehindPractice): string {
   // The FLOOR is the number the shortfall is measured against; a range target's
   // ceiling is the calm "that's plenty" case the gather has already excluded, so
   // naming it here would read as a second, competing goal.
-  return `${b.name} — ${b.count} of ${b.floor} this week${next}`;
+  const rhythm =
+    b.rhythmDays != null && b.rhythmDays.length > 0
+      ? ` (${practiceRhythmDaysText(b.rhythmDays)})`
+      : "";
+  return `${b.name} — ${b.count} of ${b.floor} this week${next}${rhythm}`;
 }
 
 // Build the practice reminder, or null when nothing is behind (or all behind targets are
-// suppressed). A per-render nonce distinguishes redelivered callbacks; the write core's
-// own semantics own the actual double-log guard, and the button is consumed on tap.
+// suppressed, or — under a supplied `timing` — every behind target's rhythm is holding
+// for a predicted day, #2188). A per-render nonce distinguishes redelivered callbacks;
+// the write core's own semantics own the actual double-log guard, and the button is
+// consumed on tap.
 export function buildPracticeReminder(
   profileId: number,
   nonce: string = Date.now().toString(36),
-  deepLinkBase = ""
+  deepLinkBase = "",
+  timing?: PracticeNudgeTiming
 ): NotificationMessage | null {
-  const behind = behindPractices(profileId);
+  const behind = behindPractices(profileId, timing);
   if (behind.length === 0) return null;
 
   // RIGHT-SIZING RIDE-ALONG (#1670). A practice whose shortfall has been chronic —

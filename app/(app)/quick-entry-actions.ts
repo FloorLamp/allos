@@ -33,11 +33,13 @@ import {
   getFoodMealDays,
   type FoodMealEvent,
   getFoodBarOrder,
+  getMoodOnDate,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
 } from "@/lib/queries";
+import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { FoodGroup } from "@/lib/food-groups";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
@@ -144,6 +146,23 @@ export type QuickEntryData =
       // stale as the page it rode in on.
       form: "cycle";
       state: CycleControlState;
+    }
+  | {
+      // The daily check-in (#2130), with the #2128 backfill window: today first,
+      // then each earlier day the chips may pick, each with its already-logged
+      // check-in so the face row mirrors the selected day. Gathered ON OPEN so a
+      // sheet opened after midnight can't offer yesterday's "today".
+      form: "mood";
+      days: {
+        date: string;
+        mood: {
+          valence: number;
+          energy: number | null;
+          anxiety: number | null;
+          factors: string[];
+          notes: string | null;
+        } | null;
+      }[];
     }
   | {
       // Nothing to gather for the upload form beyond the demo gate the Data page
@@ -263,6 +282,31 @@ export async function loadQuickEntry(
       form: "cycle",
       state: cycleControlState(listCyclePeriods(profile.id), date),
     };
+  }
+
+  if (form === "mood") {
+    // Today plus the #2128 backfill window, through the same read the dashboard
+    // card's server mount uses — one gather shape, two surfaces.
+    const days = Array.from(
+      { length: MOOD_LOG_DATE_WINDOW_DAYS + 1 },
+      (_, offset) => {
+        const day = offset === 0 ? date : shiftDateStr(date, -offset);
+        const logged = getMoodOnDate(profile.id, day);
+        return {
+          date: day,
+          mood: logged
+            ? {
+                valence: logged.valence,
+                energy: logged.energy,
+                anxiety: logged.anxiety,
+                factors: logged.factors,
+                notes: logged.notes,
+              }
+            : null,
+        };
+      }
+    );
+    return { form: "mood", days };
   }
 
   if (form === "document") {

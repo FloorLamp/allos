@@ -3,7 +3,14 @@
 // lib/practice-log.ts and lib/practice-store.ts.
 
 import { db, today as profileToday } from "../db";
+import { cache } from "../request-cache";
+import { tickCached } from "../tick-cache";
 import { buildPracticeHeatmap } from "../practice-heatmap";
+import {
+  inferPracticeRhythm,
+  predictedOnDay,
+  type WeeklyRhythm,
+} from "../weekly-rhythm";
 import type { ProtocolHeatmap } from "../protocol-heatmap";
 import {
   groupPracticeSpellings,
@@ -49,6 +56,11 @@ export interface WellnessPractice {
   sessionCount: number;
   lastUsed: string | null;
   previousDurationMin: number | null;
+  // Whether `asOf` is one of this practice's inferred rhythm days (#2188). False
+  // whenever the inference has no pattern (#558: unknown renders NOTHING — the
+  // card's rhythm note simply doesn't exist). Predicted ≠ due (#1505): this
+  // never feeds pace or adherence, only the calm "usually a session day" note.
+  usuallyToday: boolean;
   sessions: PracticeLog[];
   heatmap: ProtocolHeatmap;
 }
@@ -288,6 +300,18 @@ export function getWellnessPractices(
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
         previousDurationMin: previousPracticeDuration(item.sessions),
+        // The rhythm over the identity's own sessions — already gathered above, so
+        // the aggregate infers in memory over the SAME rows the per-practice query
+        // wrapper (inferPracticeSchedule) scans; the pure core is the one
+        // computation either way (#2188).
+        usuallyToday:
+          predictedOnDay(
+            inferPracticeRhythm(
+              item.sessions.map((s) => ({ date: s.date, time: s.time })),
+              asOf
+            ),
+            asOf
+          ) === true,
         sessions: item.sessions.slice(0, WELLNESS_CARD_SESSION_LIMIT),
         heatmap: buildPracticeHeatmap(
           [...countByDate].map(([date, count]) => ({ date, count })),
@@ -513,6 +537,62 @@ export function getAllPracticeSessions(
 
 export function practiceNameMatches(a: string, b: string): boolean {
   return samePractice(a, b);
+}
+
+// ---- Per-practice weekly rhythm (#2188) ------------------------------------
+
+// The practice sibling of inferWorkoutSchedule (#558): the SAME shared inference
+// core (lib/weekly-rhythm.ts owns the window, the habitual-weekday gate, and the
+// fallback-hour ladder) over this one practice's log history, folded across the
+// identity's stored spellings. Inference reads LOGS ONLY and is recomputed per
+// evaluation — no stored state (#2188 item 5). Rows are ordered so the modal
+// hour's first-max tie-break is deterministic (earliest logged occurrence wins).
+//
+// cache(): the wellness/protocol pages may ask for several practices per request.
+// tickCached beside it (the lib/tick-cache.ts discipline): the notify tick's
+// nudge builder re-gathers per behind practice on EVERY waking tick until the
+// day's send lands, and nothing inside a tick writes practice_logs (session logs
+// arrive via Server Actions and the Telegram tap paths, never tick()).
+export const inferPracticeSchedule = cache(
+  tickCached(
+    "inferPracticeSchedule",
+    (profileId: number, practice: string) =>
+      `${profileId}:${practiceIdentity(practice)}`,
+    inferPracticeScheduleUncached
+  )
+);
+
+function inferPracticeScheduleUncached(
+  profileId: number,
+  practice: string
+): WeeklyRhythm {
+  const asOf = profileToday(profileId);
+  const values = getPracticeSpellings(profileId, practice);
+  const rows =
+    values.length === 0
+      ? []
+      : (db
+          .prepare(
+            `SELECT date, time FROM practice_logs
+              WHERE profile_id = ? AND practice IN (${inClause(values)})
+              ORDER BY date ASC, id ASC`
+          )
+          .all(profileId, ...values) as {
+          date: string;
+          time: string | null;
+        }[]);
+  return inferPracticeRhythm(rows, asOf);
+}
+
+// Tri-state "is `date` a predicted session day for this practice?" — the
+// isPredictedWorkoutDay shape. Null when no rhythm can be inferred (#558), so no
+// consumer can mistake the every-day fallback for "yes".
+export function isPredictedPracticeDay(
+  profileId: number,
+  practice: string,
+  date: string
+): boolean | null {
+  return predictedOnDay(inferPracticeSchedule(profileId, practice), date);
 }
 
 // ---- The Trends wellness lens (#1632) --------------------------------------

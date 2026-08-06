@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
 import type { AvatarProfile } from "@/components/Avatar";
+import DoseConfirmButton from "@/components/DoseConfirmButton";
 import {
   openProfileAction,
   confirmDoseAction,
@@ -184,22 +185,22 @@ function Attention({ data }: { data: HouseholdCardData }) {
                 canWrite && item.doseId != null ? (
                   // Confirm this dose for THIS profile without switching to it —
                   // the hidden profileId targets the action at the card's profile.
-                  <form action={confirmDoseAction}>
-                    <input type="hidden" name="profileId" value={profile.id} />
-                    <input type="hidden" name="dose_id" value={item.doseId} />
-                    <button
-                      type="submit"
-                      data-testid="household-confirm-dose"
-                      className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-                    >
-                      <IconCheck
-                        className="h-3.5 w-3.5"
-                        stroke={2}
-                        aria-hidden="true"
-                      />
-                      {subjectActionLabel("Confirm", subjectName)}
-                    </button>
-                  </form>
+                  // Rendered through the shared outcome-toast confirm (#2106), so a
+                  // refusal (item paused, dose retired) is said out loud instead of
+                  // the row silently re-rendering unchanged.
+                  <DoseConfirmButton
+                    action={confirmDoseAction}
+                    fields={{ profileId: profile.id, dose_id: item.doseId }}
+                    testid="household-confirm-dose"
+                    className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+                  >
+                    <IconCheck
+                      className="h-3.5 w-3.5"
+                      stroke={2}
+                      aria-hidden="true"
+                    />
+                    {subjectActionLabel("Confirm", subjectName)}
+                  </DoseConfirmButton>
                 ) : null
               }
             />

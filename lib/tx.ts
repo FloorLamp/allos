@@ -38,6 +38,19 @@ export function readForUpdate<T>(
   return stmt.get(...params) as T | undefined;
 }
 
+// The SET-shaped guard read (#2140): a whole-set rewrite (the active-situations
+// machine) diffs the CURRENT set against the wanted one before writing, and that
+// before-read is exactly as raceable outside the transaction as a single-row compare —
+// the defect this file exists to make unwritable. Same contract as readForUpdate,
+// returning every matching row.
+export function readAllForUpdate<T>(
+  _tx: Tx,
+  stmt: Statement,
+  ...params: unknown[]
+): T[] {
+  return stmt.all(...params) as T[];
+}
+
 // An in-transaction compare-and-swap: run an UPDATE (or DELETE) whose WHERE carries the
 // expected prior state, and report whether it landed. `applied` carries the change
 // count for set-shaped transitions (closing every open course); a single-row CAS treats

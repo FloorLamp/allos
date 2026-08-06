@@ -226,8 +226,9 @@ const entries: Entry[] = [
   // whose protocol picker shares the same practice targets. Gate = any
   // practice-scope frequency target OR any practice log (logs-only practices are
   // a real state). Cosmetic like Sleep/Progress — direct URLs still work, and
-  // the command palette's always-visible "Wellness practices" action preserves
-  // the first-practice creation path.
+  // the command palette's always-visible "Log practice" action (whose empty
+  // state points here, #2184) plus the /wellness?new=1 deep link preserve the
+  // first-practice creation path.
   {
     href: "/wellness",
     label: "Wellness",

@@ -102,7 +102,7 @@ import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getIllnessHeroUi } from "@/lib/settings";
 import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
-import { isMoodCheckinPaused } from "@/lib/mood";
+import { isMoodCheckinPaused, MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { PageHeader } from "@/components/ui";
@@ -760,6 +760,28 @@ export default async function Dashboard() {
   // Hideable from Customize like any other widget.
   const todayMood = has("symptom-log") ? getMoodOnDate(profile.id, on) : null;
 
+  // The #2128 backfill window for the check-in card's day chips: each recent day
+  // with its logged check-in (if any), nearest first, so the card can offer
+  // "Yesterday" without a second gather and mirror what that day already holds.
+  const moodBackfillDays = has("symptom-log")
+    ? Array.from({ length: MOOD_LOG_DATE_WINDOW_DAYS }, (_, i) => {
+        const day = shiftDateStr(on, -(i + 1));
+        const logged = getMoodOnDate(profile.id, day);
+        return {
+          date: day,
+          mood: logged
+            ? {
+                valence: logged.valence,
+                energy: logged.energy,
+                anxiety: logged.anxiety,
+                factors: logged.factors,
+                notes: logged.notes,
+              }
+            : null,
+        };
+      })
+    : [];
+
   // symptom-log "Anything going on?" situations entrypoint (#1221 part 6): the NON-clinical
   // situation chips (illness types excluded — that lifecycle is the illness door's) over the
   // SAME merged option set the Supplements bar renders (nonIllnessSituationOptions), each with
@@ -1016,6 +1038,7 @@ export default async function Dashboard() {
                 : null
             }
             activeEpisode={activeSick}
+            earlierDays={moodBackfillDays}
             // The evening reminder's auto-pause, surfaced (#1668) — derived from the
             // same ignored streak shouldSendMoodCheckin reads, never a stored flag.
             checkinsPaused={isMoodCheckinPaused({

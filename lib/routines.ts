@@ -15,6 +15,7 @@
 // declared targets and a custom routine's day-derived targets can't fork.
 
 import { db, writeTx, today } from "./db";
+import { casUpdate } from "./tx";
 import { unlinkProtocolsFromTargets } from "./frequency-target-delete";
 import {
   regionForExercise,
@@ -345,6 +346,9 @@ export function getTrainingTargetsToReplace(
 //   3. insert the routine's DERIVED targets (deriveRoutineTargets);
 //   4. set active=1, started_date=today, position=0.
 // Returns false if the routine doesn't exist / isn't the profile's.
+// `routines.active` is a gated column (STATEFUL_WRITE_TABLES, #2140): this module is
+// the registered core, so the single-active invariant every reader assumes cannot be
+// forked by a raw write elsewhere. The guard read runs inside this same writeTx.
 export function activateRoutine(profileId: number, routineId: number): boolean {
   return writeTx(() => {
     const routine = getRoutineWithDays(profileId, routineId);
@@ -632,18 +636,23 @@ export function getFormDeloadContext(
 
 // Deactivate a routine. KEEPS the derived frequency targets (they're now ordinary
 // user-editable targets — the confirm copy in #739 states this). Returns false if the
-// routine doesn't exist / isn't the profile's / wasn't active.
+// routine doesn't exist / isn't the profile's / wasn't active — a compare-and-swap
+// with `active = 1` as the expectation (#2140, the lib/tx.ts discipline), so a stale
+// second tap reports false instead of confirming a transition it did not make.
 export function deactivateRoutine(
   profileId: number,
   routineId: number
 ): boolean {
-  return writeTx(() => {
-    const res = db
-      .prepare(
+  return writeTx((tx) => {
+    const cas = casUpdate(
+      tx,
+      db.prepare(
         `UPDATE routines SET active = 0
            WHERE id = ? AND profile_id = ? AND active = 1`
-      )
-      .run(routineId, profileId);
-    return res.changes > 0;
+      ),
+      routineId,
+      profileId
+    );
+    return cas.kind === "applied";
   });
 }

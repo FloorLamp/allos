@@ -33,6 +33,12 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
+import {
+  arguedExclusion,
+  type ArguedExclusion,
+  type LoggableDomain,
+} from "./loggable-domains";
+import type { MeasurementGroup } from "./measurements-deeplink";
 import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
@@ -45,6 +51,7 @@ export type QuickLogIcon =
   | "heartbeat"
   | "sparkles"
   | "droplet"
+  | "mood"
   | "document";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
@@ -58,8 +65,24 @@ export type QuickLogIcon =
 // `cycle` is the ONE period offer (#1892) — the overlay renders the SAME
 // `cycleControlState` the Cycle page control and the dashboard phase widget render,
 // gathered on open so a sheet opened this morning cannot offer yesterday's verb.
+// `mood` is the daily check-in's face row + backfill day chips (#2130/#2128) —
+// the SAME MoodValencePicker and `logMood` action the dashboard card runs, in a
+// second mounting context.
 export type QuickEntryForm =
-  "food" | "measurements" | "dose" | "practice" | "cycle" | "document";
+  "food" | "measurements" | "dose" | "practice" | "cycle" | "mood" | "document";
+
+// What the CALLER's context implies about the form it opens (#2014): the vitals
+// card's "Log reading" opens Vitals, a palette pick named "Log weight" opens the
+// weight group (#2184), the Nutrition page's promoted food row lands on its
+// group. A context-free open (the sheet's rows) passes nothing and the form
+// falls back to its own memory/default. Lives HERE — beside the form vocabulary —
+// because both quick-entry surfaces (the sheet's overlay host and the palette's
+// registry) speak it; components/QuickEntryProvider.tsx re-exports it for its
+// callers.
+export interface QuickEntryPrefill {
+  foodGroup?: string;
+  measurementGroup?: MeasurementGroup;
+}
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
@@ -121,8 +144,25 @@ export interface QuickLogTime {
   correctionUnit?: QuickLogCorrectionUnit;
 }
 
+// The sheet's id vocabulary, const-asserted so the domain census below can be
+// checked at the type level (#2130): an entry's `id` must come from here, and a
+// census row naming a retired id fails `tsc`. (`lib/__tests__/quick-log.test.ts`
+// pins the reverse — every id here is carried by exactly one entry.)
+export const QUICK_LOG_IDS = [
+  "log-activity",
+  "log-food",
+  "log-dose",
+  "log-measurements",
+  "log-practice",
+  "log-mood",
+  "log-period",
+  "add-document",
+] as const;
+
+export type QuickLogId = (typeof QUICK_LOG_IDS)[number];
+
 export interface QuickLogItem {
-  id: string;
+  id: QuickLogId;
   // The bar button's accessible name AND the sheet row's label — one string, so
   // "the + on Nutrition" and "Log food in the sheet" can never disagree.
   label: string;
@@ -221,6 +261,24 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     time: {
       semantic: "day-only",
       why: "Deliberately not extended (#2019). A practice session counts against a WEEKLY floor; nothing reads when in the day it happened, so capturing an instant would be precision with no consumer — which is exactly how a later reader comes to invent a meaning for it.",
+    },
+  },
+  {
+    id: "log-mood",
+    label: "Log mood",
+    hint: "How are you — today or an earlier day",
+    icon: "mood",
+    // #2130: mood and symptom were the two remaining daily-loop one-tap logs —
+    // each with its own Telegram command, reminder and offline flow — and #1892's
+    // membership argument ("#1506's charter is exactly 'logging actions'")
+    // reaches them both. Mood joins here; symptom's exclusion is argued in the
+    // domain census below. The overlay mounts the SAME MoodValencePicker over the
+    // SAME `logMood` action the dashboard card runs — one write core, a second
+    // mounting context — with the #2128 backfill chips choosing the day.
+    target: { kind: "overlay", form: "mood" },
+    time: {
+      semantic: "day-only",
+      why: "A check-in is about a DAY — the store upserts on UNIQUE(profile_id, date) and nothing reads an instant. The #2128 backfill chips choose WHICH day before the write, which is a statement, not a correction.",
     },
   },
   {
@@ -336,3 +394,36 @@ export function quickLogMenu(
     (i) => !(i.training && restricted) && !(i.cycle && !cycleRelevant)
   );
 }
+
+// ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────
+//
+// The sheet's menu was a membership list with no membership rule: #1892 argued
+// the period row IN on grounds that reached mood and symptom too, and nothing
+// recorded that they were never argued against them. This record is the
+// declare-or-argue fix, type-checked because both sides are const-asserted
+// (#2130 owner direction): every loggable domain maps to the sheet entry that
+// serves it or to an `arguedExclusion(...)` whose reason is structurally
+// required. A new `LoggableDomain` fails `tsc` here until someone decides.
+//
+// Proven on the defect: on the pre-#2130 tree this record has no honest value
+// for `mood` or `symptom` — the audit's exact quick-log gaps — and deleting
+// either row fails typecheck with "Property '<domain>' is missing".
+export const QUICK_LOG_DOMAIN_CENSUS = {
+  activity: "log-activity",
+  food: "log-food",
+  dose: "log-dose",
+  // #1486/#1506: one measurements form is the sheet's single door to all three.
+  weight: "log-measurements",
+  vitals: "log-measurements",
+  temperature: "log-measurements",
+  practice: "log-practice",
+  period: "log-period",
+  mood: "log-mood",
+  symptom: arguedExclusion(
+    "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the hero cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
+  ),
+  substance: arguedExclusion(
+    "Deliberate-access surface by doctrine: substance-use logging lives under Medical → Substance use with its #998 cap verdict rendered beside the tap, and the findings reach policy keeps it off general-purpose quick surfaces. A sheet row would detach the tap from the cap context that makes it honest."
+  ),
+  document: "add-document",
+} as const satisfies Record<LoggableDomain, QuickLogId | ArguedExclusion>;

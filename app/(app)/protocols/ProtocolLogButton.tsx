@@ -18,6 +18,7 @@ export default function ProtocolLogButton({
   today,
   defaultDurationMin = null,
   showDetails = false,
+  usualSessionDay = false,
 }: {
   practice: ProtocolPractice;
   ongoing: boolean;
@@ -27,6 +28,9 @@ export default function ProtocolLogButton({
   today: string;
   defaultDurationMin?: number | null;
   showDetails?: boolean;
+  // Whether today is an inferred rhythm day for the wellness practice (#2188) —
+  // see LogPracticeButton. Only meaningful for the "practice" scope.
+  usualSessionDay?: boolean;
 }) {
   const activityEditor = useActivityEditor();
   const quickEntry = useQuickEntry();
@@ -44,6 +48,7 @@ export default function ProtocolLogButton({
         today={today}
         defaultDurationMin={defaultDurationMin}
         showDetails={showDetails}
+        usualSessionDay={usualSessionDay}
       />
     );
   }

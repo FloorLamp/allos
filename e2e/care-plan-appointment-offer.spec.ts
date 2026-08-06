@@ -84,7 +84,9 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
       .filter({ hasText: ITEM })
       .getByTestId("care-plan-offer-done")
       .click();
-    await expect(page.getByText("Care-plan item marked done")).toBeVisible();
+    // The toast wording comes from the write's typed outcome now (#2140) — the
+    // same carePlanDoneResult phrase the Upcoming "Mark done" chip renders.
+    await expect(page.getByText("Marked done")).toBeVisible();
 
     // The item is now closed on the care-plan page.
     await page.goto("/records/care/overview#care-plan");

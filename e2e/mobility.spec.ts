@@ -95,7 +95,7 @@ test.describe("Mobility (#840)", () => {
     await page.close();
   });
 
-  test("a failed toggle rolls the move back instead of leaving a phantom chip (#2041)", async ({
+  test("a failed OFF toggle rolls the move back instead of dropping it silently (#2041/#2130)", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -108,7 +108,15 @@ test.describe("Mobility (#840)", () => {
     // A move the log-flow test above never touches, so the two are order-independent.
     const chip = page.getByTestId("mobility-move-cat_cow");
     await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("aria-pressed", "false");
+    // Normalize ON (online), so the OFF direction is the one under test. Since
+    // #2130 the ON tap is offline-queueable — a network-dead ON tap queues
+    // rather than rolling back (pinned in offline-mobility.spec.ts) — while the
+    // OFF tap is a removal against live state (the "−" exclusion) and must
+    // still roll back with an honest message.
+    if ((await chip.getAttribute("aria-pressed")) !== "true") {
+      await settledClick(page, chip);
+      await expect(chip).toHaveAttribute("aria-pressed", "true");
+    }
     const total = page.getByTestId("mobility-move-total");
     const before = (await total.textContent())?.trim() ?? "";
 
@@ -121,19 +129,24 @@ test.describe("Mobility (#840)", () => {
     );
     await chip.click();
     await expect(page.getByTestId("toast")).toContainText(
-      "Couldn't save that move"
+      "You're offline — removing a move needs a connection."
     );
-    await expect(chip).toHaveAttribute("aria-pressed", "false");
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
     await expect(total).toHaveText(before);
     await page.unroute(trainingUrl);
 
-    // Nothing was written, so the fixture needs no cleanup — and the reload proves
-    // it rather than trusting the rolled-back chip.
+    // Nothing was written, and the reload proves it rather than trusting the
+    // rolled-back chip: the move is still logged server-side.
     await page.reload();
     await expect(page.getByTestId("mobility-move-cat_cow")).toHaveAttribute(
       "aria-pressed",
-      "false"
+      "true"
     );
+
+    // Cleanup: untap online so the fixture is clean for the next repeat.
+    const chipBack = page.getByTestId("mobility-move-cat_cow");
+    await settledClick(page, chipBack);
+    await expect(chipBack).toHaveAttribute("aria-pressed", "false");
 
     await page.close();
   });

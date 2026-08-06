@@ -42,7 +42,7 @@ import {
 } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
+import type { Appointment, AppointmentStatus } from "@/lib/types";
 
 // The preventive rule name a completed appointment's kind would satisfy (issue
 // #85), or null when the kind is unset / ambiguous. Drives the close-the-loop
@@ -67,13 +67,13 @@ const STATUS_TEXT: Record<AppointmentStatus, string> = {
 
 // Fire a status/delete server action for a row without a full <form> element (so
 // a confirm dialog can gate the destructive delete).
-async function submit(
-  action: (fd: FormData) => Promise<void | FormResult>,
-  id: number
-): Promise<void> {
+async function submit<
+  R extends
+    void | { ok: true; message?: string } | { ok: false; error: string },
+>(action: (fd: FormData) => Promise<R>, id: number): Promise<R> {
   const fd = new FormData();
   fd.set("id", String(id));
-  await action(fd);
+  return action(fd);
 }
 
 // List of a profile's appointments; each row edits in place (expands the shared
@@ -124,10 +124,38 @@ export default function AppointmentList({
     : [];
 
   // Complete a scheduled visit, then offer to schedule the next one prefilled
-  // from it — so recurring visits don't fall off.
+  // from it — so recurring visits don't fall off. Renders the action's typed
+  // outcome (#2134): a stale tap answers honestly ("already completed", or the
+  // cancelled-conflict refusal) instead of confirming a write that didn't land,
+  // and the follow-up offer only opens for the tap that actually completed it.
+  // Every branch repaints via the action's revalidation, so the stale controls
+  // settle to the row's true state.
   async function onComplete(a: Appointment) {
-    await submit(completeAppointment, a.id);
+    const res = await submit(completeAppointment, a.id);
+    if (!res.ok) {
+      toast(res.error, { tone: "error" });
+      return;
+    }
+    if (res.outcome === "already") {
+      toast("Appointment already completed");
+      return;
+    }
     setFollowUpFrom(a);
+  }
+
+  // Cancel / Reopen render the same typed outcome; `already` means the state the
+  // tap promised already stands (another tab got there first) — honest, not an
+  // error.
+  async function onCancel(a: Appointment) {
+    const res = await submit(cancelAppointment, a.id);
+    if (!res.ok) toast(res.error, { tone: "error" });
+    else if (res.outcome === "already") toast("Appointment already cancelled");
+  }
+
+  async function onReopen(a: Appointment) {
+    const res = await submit(reopenAppointment, a.id);
+    if (!res.ok) toast(res.error, { tone: "error" });
+    else if (res.outcome === "already") toast("Appointment is already open");
   }
 
   // Close the loop (issue #85): record the preventive satisfaction a completed,
@@ -151,11 +179,18 @@ export default function AppointmentList({
 
   // Close a matched care-plan item from the completed-appointment offer (issue
   // #658). Marks it done server-side, flips the button locally, then refreshes so
-  // the closed item drops off the offer / Upcoming / the care-plan page.
+  // the closed item drops off the offer / Upcoming / the care-plan page. Answers
+  // from the write's typed outcome (#2140): a refusal (item meanwhile cancelled,
+  // forged id) is toasted instead of the offer confirming it, and the button only
+  // flips when a completed status actually stands.
   async function onCompleteCareItem(item: CarePlanMatchItem) {
-    await submit(completeCarePlanItemFromAppointment, item.id);
+    const result = await submit(completeCarePlanItemFromAppointment, item.id);
+    if (!result.ok) {
+      toast(result.error, { tone: "error" });
+      return;
+    }
     setDoneCareItems((prev) => new Set(prev).add(item.id));
-    toast("Care-plan item marked done");
+    toast(result.message);
   }
 
   async function onDelete(a: Appointment) {
@@ -352,7 +387,7 @@ export default function AppointmentList({
                     </button>
                     <button
                       type="button"
-                      onClick={() => submit(cancelAppointment, a.id)}
+                      onClick={() => onCancel(a)}
                       aria-label="Cancel appointment"
                       title="Cancel"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
@@ -398,7 +433,7 @@ export default function AppointmentList({
                     )}
                     <button
                       type="button"
-                      onClick={() => submit(reopenAppointment, a.id)}
+                      onClick={() => onReopen(a)}
                       className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                     >
                       Reopen

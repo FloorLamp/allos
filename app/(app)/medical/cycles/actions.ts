@@ -169,14 +169,19 @@ export async function saveCycleAction(
   return { ok: true, id: newId };
 }
 
+// Undoable (#2127): the delete captures the row (captureDelete inside the cycle
+// store core) and returns the undo token in the useUndoableDelete contract
+// ({ undoId, error? }), so the surface offers the standard Undo toast. The restore
+// is the shared undoDelete action — no second restore path.
 export async function deleteCycleAction(
   formData: FormData
-): Promise<CycleActionResult> {
+): Promise<{ undoId: number | null; error?: string }> {
   const { profile } = await requireWriteAccess();
   const id = parseId(formData);
-  if (id == null) return { ok: false, error: "Couldn't find that period." };
-  const removed = deleteCycleRow(profile.id, id);
-  if (!removed) return { ok: false, error: "Couldn't find that period." };
+  if (id == null) return { undoId: null, error: "Couldn't find that period." };
+  const outcome = deleteCycleRow(profile.id, id);
+  if (outcome.kind === "not-found")
+    return { undoId: null, error: "Couldn't find that period." };
   revalidateCycle();
-  return { ok: true };
+  return { undoId: outcome.undoId };
 }

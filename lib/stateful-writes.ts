@@ -50,6 +50,17 @@ export interface StatefulWriteTable {
 
 export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   {
+    table: "appointments",
+    columns: ["status"],
+    cores: ["lib/appointment-status.ts"],
+    // No `offerState`, honestly: the list's controls and the palette's hit action
+    // each render from the row's status (scheduled → complete/cancel, closed →
+    // reopen; appointmentHitActions offers "Mark complete" only while scheduled),
+    // but that derivation has not been extracted into one shared pure function.
+    // An honest gap, not a claim.
+    why: "#2134: `status` is the scheduled/completed/cancelled LIFECYCLE flag — it decides Upcoming membership, the preventive scheduled-match, and which controls a row offers. The user-facing one-taps (Mark completed / Cancel / Reopen, and the palette's Mark complete) were a bare `SET status = ?` that could not refuse, while the import path compare-and-swapped the very same transition — one machine, two disciplines. lib/appointment-status.ts now owns every transition: the state-named CAS with typed already-*/not-found refusals, and the two complete+link swaps (\"Log this visit\" and the import auto-complete, whose scheduled-only guard keeps the machine from overwriting a manual completion or cancellation). Column-narrowed: date/provider/title/location/notes/kind edits are ordinary form writes, the create INSERT's literal 'scheduled' is a born row, and DELETE is not a state transition.",
+  },
+  {
     table: "cycles",
     cores: ["lib/cycle-store.ts"],
     gate: "lib/cycle-write.ts",
@@ -105,10 +116,28 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#2131: `retired` decides whether a dose's child ledger rows are still SCHEDULED — the child table (intake_item_logs) was gated (#2074) while this parent flag was raw SQL in a Server Action with no typed outcome and no reopen. dose-lifecycle.ts owns both transitions: retire-or-delete for removed doses (retire keeps the row precisely because deleting would CASCADE away its taken history) and the guarded un-retire (only a retired dose with no conflicting live slot reopens), each bounding dueness through appended schedule versions (#1973) so neither transition ever re-judges a past day. Column-narrowed: amount/time/window edits on a live dose are ordinary form writes (the edit UPDATE's `retired = 0` guard predicate is allowlisted in the scan).",
   },
   {
+    table: "routines",
+    columns: ["active"],
+    cores: ["lib/routines.ts"],
+    why: "#2140: a real single-active invariant with a de-facto core — activateRoutine deactivates every sibling and installs the derived frequency targets in ONE writeTx, and getActiveRoutine, the deload cycle, the rotation cursor and the workout nudge all assume at most one active row. The invariant was enforced only by convention inside lib/routines.ts; a raw `active = 1` from a second module would mint two simultaneously-active routines and silently fork every one of those readers — the identical hazard the cycles entry names. Column-narrowed: name/cycle_weeks/started_date edits are ordinary form writes, and DELETE (deleteRoutine's explicit child sweep) is not a state transition.",
+  },
+  {
+    table: "situations",
+    columns: ["active"],
+    cores: ["lib/settings/profile-attrs.ts"],
+    why: "#2140: the active-situation set is a LIFECYCLE machine — setActiveSituations does a whole-set rewrite (deactivate all, activate wanted) that gates situational supplements, opens/closes illness episodes (#856) and feeds the coaching layer, with the dated start/stop event log appended from the before/after diff. That diff's before-read now runs inside the same writeTx (readAllForUpdate), and gating the column keeps a second module from flipping `active` without the episode sync and the event log — which would desync the #856 'row and flag never disagree' invariant. Column-narrowed: illness_type opt-ins and the get-or-create INSERT's literal initial value are the vocabulary's ordinary writes.",
+  },
+  {
     table: "intake_item_side_effects",
     columns: ["resolved"],
     cores: ["lib/queries/intake/medications.ts"],
     why: "#2133 (sibling): `resolved` is an open/closed lifecycle flag and was a blind `SET resolved = 1 - resolved` toggle, so a stale tab's 'Mark resolved' REOPENED an effect someone else had resolved. medications.ts owns the state-named CAS (setMedicationSideEffectResolved), the stop-time capture, the edit form write and the promote-to-allergy resolution — all in one module already, so the gate just keeps a second toggle from growing elsewhere. Column-narrowed: effect/severity/notes edits are ordinary form writes.",
+  },
+  {
+    table: "equipment",
+    columns: ["retired"],
+    cores: ["lib/equipment.ts"],
+    why: "#2138: `retired` is the lifecycle gate that keeps sold/broken gear out of pickers, availability summaries, and workout suggestions (#341) — a flag by the registry's own criterion, and until #2138 its absence here was silence rather than a decision. lib/equipment.ts owns the state-named CAS (setEquipmentRetired): the caller posts the state its render promised, and a swap that did not land is distinguished under the write lock into already-in-that-state versus row-gone, so a silently-failed retire can no longer keep offering sold gear. Column-narrowed: name/weight/category edits and the create INSERT are ordinary form writes, and DELETE (deleteEquipment's changes-checked detach-then-drop) is not a state transition.",
   },
 ];
 

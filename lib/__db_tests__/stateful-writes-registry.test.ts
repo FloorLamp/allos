@@ -33,7 +33,13 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
   it("registers at least the issue's first entries", () => {
     const tables = STATEFUL_WRITE_TABLES.map((e) => e.table).sort();
     expect(tables).toEqual([
+      // #2134: the scheduled/completed/cancelled flag — appointments' one-tap
+      // status transitions now pass a state-named CAS core.
+      "appointments",
       "cycles",
+      // #2138: the retire flag that gates pickers/availability/suggestions —
+      // equipment's state-named CAS core.
+      "equipment",
       "illness_episodes",
       // The dose SCHEDULE's retired flag, added by #2131 — the parent whose gating the
       // ledger below had and it lacked.
@@ -46,7 +52,12 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "intake_items",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
+      // #2140: the single-active training routine — activation's sibling-deactivate
+      // and the derived-target replacement live in one core.
+      "routines",
       "shared_supplies",
+      // #2140: the active-situation set rewrite + illness-episode sync machine.
+      "situations",
     ]);
   });
 

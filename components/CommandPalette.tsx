@@ -23,7 +23,9 @@ import {
   IconHeartbeat,
   IconHeartHandshake,
   IconMedicalCross,
+  IconMoodSmile,
   IconPill,
+  IconSalad,
   IconScale,
   IconSearch,
   IconSparkles,
@@ -126,6 +128,9 @@ const ACTION_ICONS: Record<
   chart: (p) => <IconChartLine {...p} />,
   camera: (p) => <IconCamera {...p} />,
   sparkles: (p) => <IconSparkles {...p} />,
+  salad: (p) => <IconSalad {...p} />,
+  pill: (p) => <IconPill {...p} />,
+  mood: (p) => <IconMoodSmile {...p} />,
   document: (p) => <IconFileText {...p} />,
 };
 
@@ -366,10 +371,13 @@ export default function CommandPalette({
         openRepeatLast();
       } else if (action.target.kind === "overlay") {
         // In place, exactly as the quick-log sheet opens it (#1468): a palette action
-        // that files a document must leave you on the page you were reading.
-        const form = action.target.form;
+        // that files a document or logs a weight must leave you on the page you were
+        // reading (#2184). The prefill is the context the PICK implies (#2014 — "Log
+        // weight" opens the weight group), overriding the form's last-written-group
+        // memory, which stays for context-free opens (#2068).
+        const { form, prefill } = action.target;
         close();
-        openQuickEntry(form);
+        openQuickEntry(form, prefill);
       } else {
         // A matching data search may already be in flight by the time an action
         // is picked. Its Server Action response can race an App Router push and
@@ -403,7 +411,8 @@ export default function CommandPalette({
   // routes to its prefilled form; a write action (log-dose/refill/complete) submits
   // the entity id to the EXISTING gated Server Action — the same write path the
   // med/appointment pages use, so the auth gate is never bypassed. We answer from
-  // the action's typed outcome (completeAppointment returns void → treated as done).
+  // the action's typed outcome — including the duplicate-style "already" answers —
+  // never with an unconditional success toast (#2134).
   const runHitAction = useCallback(
     async (action: HitAction) => {
       if (action.kind === "add-result") {
@@ -435,8 +444,16 @@ export default function CommandPalette({
           });
           if (!res.ok) return;
         } else {
-          await completeAppointment(fd);
-          toast("Appointment completed", { tone: "success" });
+          const res = await completeAppointment(fd);
+          toast(
+            res.ok
+              ? res.outcome === "already"
+                ? "Appointment already completed"
+                : "Appointment completed"
+              : res.error,
+            { tone: res.ok ? "success" : "error" }
+          );
+          if (!res.ok) return;
         }
         close();
       } finally {

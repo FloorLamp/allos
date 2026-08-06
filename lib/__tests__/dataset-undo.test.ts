@@ -55,5 +55,7 @@ describe("dataset table → undo kind mapping", () => {
     // #2038's kinds, mapped by #2125.
     expect(undoKindForTable("practice_logs")).toBe("practice-session");
     expect(undoKindForTable("substance_log")).toBe("substance-history");
+    // #2127: one period row, same single-entity shape.
+    expect(undoKindForTable("cycles")).toBe("cycle");
   });
 });

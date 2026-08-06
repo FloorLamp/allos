@@ -1,8 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  completeAndLinkEncounterTx,
+  setAppointmentStatus,
+} from "@/lib/appointment-status";
 import { requireWriteAccess } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
+import { readForUpdate } from "@/lib/tx";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
@@ -13,6 +18,7 @@ import {
   satisfiedRuleForCompletedKind,
   APPOINTMENT_KIND_LABELS,
 } from "@/lib/preventive-appointment";
+import { carePlanDoneResult } from "@/lib/care-plan-upcoming";
 import {
   formError,
   formOk,
@@ -104,28 +110,66 @@ export async function updateAppointment(
   return formOk();
 }
 
-// Set the lifecycle status. 'completed'/'cancelled' drop the row off Upcoming;
-// 'scheduled' returns it. Guarded to the known values.
-async function setStatus(formData: FormData, status: AppointmentStatus) {
+// The one-tap status actions' typed result (#2134). `done` is the transition
+// landing; `already` means the state the tap promised ALREADY stands (a second
+// tap, another tab got there first) — an honest answer, not an error. A
+// cross-state conflict (complete a cancelled row, cancel a completed one) and a
+// missing/foreign row are refusals the caller renders.
+export type AppointmentStatusResult =
+  { ok: true; outcome: "done" | "already" } | { ok: false; error: string };
+
+// Set the lifecycle status through the CAS core (lib/appointment-status.ts).
+// 'completed'/'cancelled' drop the row off Upcoming; 'scheduled' returns it.
+// Revalidates on refusals too, so a stale row repaints to its true state and the
+// controls it offers become honest again.
+async function setStatus(
+  formData: FormData,
+  status: AppointmentStatus
+): Promise<AppointmentStatusResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
-  db.prepare(
-    "UPDATE appointments SET status = ? WHERE id = ? AND profile_id = ?"
-  ).run(status, id, profile.id);
+  if (!id) return { ok: false, error: "Couldn't find that appointment." };
+  const outcome = setAppointmentStatus(profile.id, id, status);
   revalidate();
+  switch (outcome.kind) {
+    case "done":
+      return { ok: true, outcome: "done" };
+    case "not-found":
+      return { ok: false, error: "Couldn't find that appointment." };
+    case "already-scheduled":
+    case "already-completed":
+    case "already-cancelled": {
+      // The target state already holds → idempotent success; any other standing
+      // state is a conflict the tap must not overwrite.
+      const current = outcome.kind.slice("already-".length);
+      if (current === status) return { ok: true, outcome: "already" };
+      return {
+        ok: false,
+        error:
+          current === "completed"
+            ? "This appointment was already completed — reopen it first."
+            : "This appointment was cancelled — reopen it first.",
+      };
+    }
+  }
 }
 
-export async function completeAppointment(formData: FormData) {
-  await setStatus(formData, "completed");
+export async function completeAppointment(
+  formData: FormData
+): Promise<AppointmentStatusResult> {
+  return setStatus(formData, "completed");
 }
 
-export async function cancelAppointment(formData: FormData) {
-  await setStatus(formData, "cancelled");
+export async function cancelAppointment(
+  formData: FormData
+): Promise<AppointmentStatusResult> {
+  return setStatus(formData, "cancelled");
 }
 
-export async function reopenAppointment(formData: FormData) {
-  await setStatus(formData, "scheduled");
+export async function reopenAppointment(
+  formData: FormData
+): Promise<AppointmentStatusResult> {
+  return setStatus(formData, "scheduled");
 }
 
 export async function deleteAppointment(
@@ -182,17 +226,22 @@ export async function recordPreventiveFromAppointment(
 // then calls this per accepted item — always confirm-first, never a silent
 // auto-complete. This is just the write behind that offer: mark the item completed
 // (the shared markCarePlanItemDone), profile-scoped so a tampered id can only ever
-// touch the acting profile's own care plan. Idempotent — a re-mark is a no-op.
+// touch the acting profile's own care plan.
+//
+// The result carries the core's typed outcome (#2140): a re-mark of a completed item
+// stays idempotent success, but a forged id or an item meanwhile cancelled answers
+// with the shared refusal wording (carePlanDoneResult) the caller renders instead of
+// the offer confirming a write that never happened.
 export async function completeCarePlanItemFromAppointment(
   formData: FormData
-): Promise<FormResult> {
+): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that care-plan item.");
-  markCarePlanItemDone(profile.id, id);
+  const outcome = markCarePlanItemDone(profile.id, id);
   revalidatePath("/records");
   revalidate();
-  return formOk();
+  return carePlanDoneResult(outcome);
 }
 
 // The encounter type an appointment kind implies for a logged visit — the same
@@ -222,30 +271,31 @@ export async function logVisitFromAppointment(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that appointment.");
-  const row = db
-    .prepare(
-      `SELECT scheduled_at, provider_id, title, notes, kind, encounter_id
-         FROM appointments WHERE id = ? AND profile_id = ?`
-    )
-    .get(id, profile.id) as
-    | {
-        scheduled_at: string;
-        provider_id: number | null;
-        title: string | null;
-        notes: string | null;
-        kind: string | null;
-        encounter_id: number | null;
-      }
-    | undefined;
-  if (!row) return formError("Couldn't find that appointment.");
-  // Already logged — leave the existing linked visit in place (no duplicate).
-  if (row.encounter_id != null) {
-    revalidate();
-    return formOk();
-  }
+  // The guard read, the encounter INSERT, and the complete+link CAS share ONE
+  // writeTx (#2134): a tap racing another tab can no longer insert an orphan
+  // visit — the row is re-read under the write lock, and the appointment UPDATE
+  // goes through the status core so the link swap carries its own expectation.
+  const outcome = writeTx((tx) => {
+    const row = readForUpdate<{
+      scheduled_at: string;
+      provider_id: number | null;
+      title: string | null;
+      notes: string | null;
+      kind: string | null;
+      encounter_id: number | null;
+    }>(
+      tx,
+      db.prepare(
+        `SELECT scheduled_at, provider_id, title, notes, kind, encounter_id
+           FROM appointments WHERE id = ? AND profile_id = ?`
+      ),
+      id,
+      profile.id
+    );
+    if (!row) return { kind: "not-found" as const };
+    // Already logged — leave the existing linked visit in place (no duplicate).
+    if (row.encounter_id != null) return { kind: "already-linked" as const };
 
-  const date = row.scheduled_at.slice(0, 10);
-  writeTx(() => {
     const res = db
       .prepare(
         `INSERT INTO encounters
@@ -254,19 +304,19 @@ export async function logVisitFromAppointment(
       )
       .run(
         profile.id,
-        date,
+        row.scheduled_at.slice(0, 10),
         encounterTypeForKind(row.kind),
         row.title,
         row.notes,
         row.provider_id
       );
-    const encounterId = Number(res.lastInsertRowid);
-    db.prepare(
-      `UPDATE appointments SET status = 'completed', encounter_id = ?
-         WHERE id = ? AND profile_id = ?`
-    ).run(encounterId, id, profile.id);
+    completeAndLinkEncounterTx(tx, profile.id, id, Number(res.lastInsertRowid));
+    return { kind: "done" as const };
   });
 
+  if (outcome.kind === "not-found") {
+    return formError("Couldn't find that appointment.");
+  }
   revalidate();
   revalidatePath("/profile");
   return formOk();

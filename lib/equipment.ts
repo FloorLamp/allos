@@ -1,4 +1,5 @@
 import { db, writeTx } from "./db";
+import { casUpdate, readForUpdate } from "./tx";
 import type { Equipment } from "./types";
 import {
   summarizeEquipmentAvailability,
@@ -112,14 +113,42 @@ export function updateEquipment(
 // delete (issue #341). A retired row drops out of pickers/recency-defaulting but
 // keeps its id, so historical sets that reference it still resolve their implement
 // label. Scoped to the profile so a leaked id can't reach another profile's rows.
+//
+// `retired` is a LIFECYCLE flag gating pickers, availability, and suggestions, so
+// the flip is a state-named CAS with typed outcomes (#2138, the #2133 mechanism):
+// the caller posts the state its render promised, the WHERE carries the inverse as
+// its expectation, and a swap that did not land is distinguished — under the same
+// write lock — into "already in that state" (a stale tab's repeat tap) versus "row
+// gone" (deleted elsewhere). A silent no-op here used to keep offering sold gear.
+export type EquipmentRetireOutcome =
+  { kind: "applied" } | { kind: "already" } | { kind: "not-found" };
+
 export function setEquipmentRetired(
   profileId: number,
   id: number,
   retired: boolean
-): void {
-  db.prepare(
-    `UPDATE equipment SET retired = ? WHERE id = ? AND profile_id = ?`
-  ).run(retired ? 1 : 0, id, profileId);
+): EquipmentRetireOutcome {
+  return writeTx((tx) => {
+    const swap = casUpdate(
+      tx,
+      db.prepare(
+        `UPDATE equipment SET retired = ?
+          WHERE id = ? AND profile_id = ? AND retired = ?`
+      ),
+      retired ? 1 : 0,
+      id,
+      profileId,
+      retired ? 0 : 1
+    );
+    if (swap.kind === "applied") return { kind: "applied" as const };
+    const row = readForUpdate<{ id: number }>(
+      tx,
+      db.prepare(`SELECT id FROM equipment WHERE id = ? AND profile_id = ?`),
+      id,
+      profileId
+    );
+    return row ? { kind: "already" as const } : { kind: "not-found" as const };
+  });
 }
 
 // Delete an equipment row, first detaching it from any row that links to it so
@@ -137,8 +166,20 @@ export function setEquipmentRetired(
 // delete must not have provenance invented for it. Its sets have moved to the
 // unassigned lane in the same transaction, so a goal left pointing at the dead id
 // would measure nothing at all.
-export function deleteEquipment(profileId: number, id: number): void {
-  writeTx(() => {
+//
+// Changes-checked (#2138): a forged or stale id reports `not-found` instead of a
+// silent void — the confirm's promise ("Deleted X") must never outrun the row count.
+// The detaches run first (the FKs carry no ON DELETE action, so the DELETE would
+// otherwise trip them); against a nonexistent id they are no-ops by the same FKs,
+// so ordering them before the check costs nothing.
+export type EquipmentDeleteOutcome =
+  { kind: "deleted" } | { kind: "not-found" };
+
+export function deleteEquipment(
+  profileId: number,
+  id: number
+): EquipmentDeleteOutcome {
+  const outcome = writeTx((): EquipmentDeleteOutcome => {
     db.prepare(
       `UPDATE exercise_sets SET equipment_id = NULL
         WHERE equipment_id = ?
@@ -156,11 +197,13 @@ export function deleteEquipment(profileId: number, id: number): void {
       `UPDATE goals SET equipment_id = NULL
         WHERE equipment_id = ? AND profile_id = ?`
     ).run(id, profileId);
-    db.prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?").run(
-      id,
-      profileId
-    );
+    const removed =
+      db
+        .prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?")
+        .run(id, profileId).changes > 0;
+    return removed ? { kind: "deleted" } : { kind: "not-found" };
   });
+  if (outcome.kind !== "deleted") return outcome;
   // Moving every set off this implement retires its LOAD LANE, and a personal-record
   // celebration's dismissal is keyed on (movement, lane) — so the deleted id's `pr:`
   // suppression rows now point at a lane no set is in (#1931). This is the row-ops
@@ -168,4 +211,5 @@ export function deleteEquipment(profileId: number, id: number): void {
   // too, or a lane id SQLite later reissues inherits the old machine's silence.
   // Outside the transaction (like the other sweeps) so it reads the committed state.
   cleanupOrphanPrDismissals(profileId);
+  return outcome;
 }

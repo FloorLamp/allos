@@ -25,6 +25,114 @@ function cleanup() {
   }
 }
 
+// Palette create actions open the quick-entry overlay IN PLACE (#2184). "Log
+// weight" / "Log vitals" predate the #1486 measurements merge and used to
+// hard-navigate to `/trends?new=…#body` — landing mid-Trends while the quick-log
+// sheet opened the same merged form as a drawer where you stood. Both surfaces
+// now resolve to the ONE overlay form; the palette pick's context picks the
+// GROUP (#2014), overriding the form's last-written-group memory (#2068).
+test.describe("command palette — create actions open the overlay in place (#2184)", () => {
+  test("'Log weight' opens the measurements overlay on the Body group and saves in place", async ({
+    page,
+  }) => {
+    // Deliberately NOT /trends: the bug was being yanked there.
+    await page.goto("/upcoming");
+    const startUrl = page.url();
+
+    const input = await openCommandPalette(page);
+    await input.fill("log weight");
+    await page.getByTestId("palette-action-log-weight").click();
+
+    // The SAME overlay + form the quick-log sheet's "Log measurements" row
+    // mounts — same testids because it is the same component, not a copy.
+    const overlay = page.getByTestId("quick-entry-sheet");
+    await expect(overlay).toBeVisible();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "measurements"
+    );
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    // The pick's context opens Body (m-weight's home) — NOT the Vitals default a
+    // context-free open falls back to — proving the prefill override.
+    await expect(
+      form.getByTestId("measurements-group-body-toggle")
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      form.getByTestId("measurements-group-vitals-toggle")
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(page.url()).toBe(startUrl);
+
+    // Submitting writes through the same shared form the sheet path posts —
+    // one assertion, not a parallel suite: save, toast, still where we were.
+    await overlay.locator("#m-weight").fill("72.5");
+    await settledClick(
+      page,
+      overlay.getByRole("button", { name: "Save measurements" })
+    );
+    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    expect(page.url()).toBe(startUrl);
+  });
+
+  // #2130: the palette's own header promised "everything the sheet has a drawer
+  // form for" (#2184) while food, dose and mood had no entry. Non-mutating on
+  // purpose — each pick proves it opens the SAME overlay form the sheet mounts
+  // (same testids because it is the same component), in place; the write paths
+  // are already covered by the sheet specs over those very forms.
+  test("'Log food', 'Log dose' and 'Log mood' open their sheet forms in place (#2130)", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    const startUrl = page.url();
+
+    const cases = [
+      { query: "log food", action: "log-food", form: "food" },
+      { query: "log dose", action: "log-dose", form: "dose" },
+      { query: "log mood", action: "log-mood", form: "mood" },
+    ] as const;
+    for (const c of cases) {
+      const input = await openCommandPalette(page);
+      await input.fill(c.query);
+      await page.getByTestId(`palette-action-${c.action}`).click();
+      await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
+      await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+        "data-form",
+        c.form
+      );
+      expect(page.url()).toBe(startUrl);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    }
+  });
+
+  test("'Log vitals' opens the same form on the Vitals group, in place", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    const startUrl = page.url();
+
+    const input = await openCommandPalette(page);
+    await input.fill("log vitals");
+    await page.getByTestId("palette-action-log-vitals").click();
+
+    const overlay = page.getByTestId("quick-entry-sheet");
+    await expect(overlay).toBeVisible();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "measurements"
+    );
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(
+      form.getByTestId("measurements-group-vitals-toggle")
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      form.getByTestId("measurements-group-body-toggle")
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(page.url()).toBe(startUrl);
+  });
+});
+
 test.describe("command palette — per-hit actions (#662)", () => {
   // A biomarker hit offers "Add result": a navigate to the Biomarkers add form,
   // name-prefilled with the canonical analyte. Non-mutating, so it runs on the

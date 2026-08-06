@@ -2,7 +2,8 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import { casUpdate } from "@/lib/tx";
 import { sqlNow } from "@/lib/clock";
 import {
   formError,
@@ -387,31 +388,51 @@ export async function updateProgress(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
+// The status flip is a LIFECYCLE transition, so it is changes-checked (#2140): the
+// UPDATE's WHERE (id + profile) is the expectation, and a swap that matched no row —
+// a forged or since-deleted id — returns the refusal for the menu to render instead
+// of an unconditional formOk behind an optimistic "Goal achieved" toast. Re-stating
+// the CURRENT status still matches its row and stays idempotent success.
 export async function setStatus(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const status = String(formData.get("status"));
   if (!id) return formError("Couldn't find that goal.");
   if (!isGoalStatus(status)) return formError("Unknown goal status.");
-  db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?").run(
-    status,
-    id,
-    profile.id
+  const cas = writeTx((tx) =>
+    casUpdate(
+      tx,
+      db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?"),
+      status,
+      id,
+      profile.id
+    )
   );
+  if (cas.kind === "stale") return formError("Couldn't find that goal.");
   revalidatePath("/training");
   revalidatePath("/");
   return formOk();
 }
 
 // Archiving is independent of status, so an achieved goal stays achieved.
+// Changes-checked like setStatus above (#2140).
 export async function setArchived(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that goal.");
   const archived = String(formData.get("archived")) === "1" ? 1 : 0;
-  db.prepare(
-    "UPDATE goals SET archived = ? WHERE id = ? AND profile_id = ?"
-  ).run(archived, id, profile.id);
+  const cas = writeTx((tx) =>
+    casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE goals SET archived = ? WHERE id = ? AND profile_id = ?"
+      ),
+      archived,
+      id,
+      profile.id
+    )
+  );
+  if (cas.kind === "stale") return formError("Couldn't find that goal.");
   revalidatePath("/training");
   revalidatePath("/");
   return formOk();

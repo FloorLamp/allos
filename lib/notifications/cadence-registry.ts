@@ -155,7 +155,7 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
   {
     kind: "practice",
     cadence: "user-schedule",
-    why: "Once per profile-local day inside the waking window, gathered from the targets that are behind their weekly floor. The DAY is the cadence and `notify_last_practice` is the whole of it; the bus gate is applied inside behindPractices, so a dismissed target is simply absent from the gather. Nothing here is spaced from a first send or swept when a subject leaves — the marker re-arms at midnight regardless.",
+    why: "Once per profile-local day inside the waking window, gathered from the targets that are behind their weekly floor. The DAY is the cadence and `notify_last_practice` is the whole of it; the bus gate is applied inside behindPractices, so a dismissed target is simply absent from the gather. A practice with an inferred weekly rhythm additionally holds itself for its next predicted day and typical hour (#2188, practiceNudgeReleased) — a RELEASE refinement inside the gather, only ever later within the week and never more often, with the flip-day rule back once the week's last predicted day passes. Nothing here is spaced from a first send or swept when a subject leaves — the marker re-arms at midnight regardless.",
   },
 
   // ── Exempt: a per-subject clock owns the timing ────────────────────────────
