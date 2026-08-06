@@ -201,8 +201,9 @@ export default function HowAreYouCard({
   // The one-tap valence write, declared (#2130): an idempotent per-(profile, date)
   // upsert whose optimistic value — the selected face — adopts the server row on
   // revalidation. The ledger absorbs the second half of a double-tap (#2007 layer
-  // 1); the key is the FACE, so a quick correction onto a different face is a new
-  // write, never an absorbed one.
+  // 1); the key is (day, face), so a quick correction onto a different face — or
+  // the same face for a different backfill day — is a new write, never an
+  // absorbed one.
   const ledger = useOptimisticLedger<number | null>("mood-valence");
 
   const days: MoodBackfillDay[] = [{ date, mood }, ...earlierDays];
@@ -285,7 +286,7 @@ export default function HowAreYouCard({
     setError(null);
     const next: MoodDraft = { valence: n, energy, anxiety, factors, note };
     void ledger.tap({
-      key: String(n),
+      key: `${selectedDate}:${n}`,
       from: valence,
       optimistic: n,
       commit: setValence,
