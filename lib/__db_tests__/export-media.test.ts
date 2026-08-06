@@ -312,6 +312,33 @@ describe("the opt-in bundle holds exactly this profile's files (#1846)", () => {
     }
   });
 
+  it("refuses a parent FK pointing at another profile's row", () => {
+    // The parent's columns travel into media/index.json (a lesion's label and
+    // region, an activity's date and title), so the joins match the parent's
+    // profile_id as well as its id. Point THEIR photo at MY lesion — the file
+    // itself stays in their own directory, so containment passes and the JOIN is
+    // the only thing standing between my lesion's label and their export.
+    const theirRow = db
+      .prepare(`SELECT lesion_id FROM lesion_photos WHERE id = ?`)
+      .get(theirLesionPhotoId) as { lesion_id: number };
+    db.prepare(`UPDATE lesion_photos SET lesion_id = ? WHERE id = ?`).run(
+      lesionId,
+      theirLesionPhotoId
+    );
+    try {
+      expect(listProfileMediaFiles(theirs)).toEqual([]);
+      // My own export is unaffected — the tampering was on their row.
+      expect(
+        listProfileMediaFiles(mine).map((f) => f.meta.lesion_label)
+      ).toContain("Upper back mole");
+    } finally {
+      db.prepare(`UPDATE lesion_photos SET lesion_id = ? WHERE id = ?`).run(
+        theirRow.lesion_id,
+        theirLesionPhotoId
+      );
+    }
+  });
+
   it("skips a row whose file vanished from disk", () => {
     const before = listProfileMediaFiles(mine);
     const progress = before.find((f) => f.domain === "progress-photos")!;

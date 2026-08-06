@@ -570,7 +570,7 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/export-full.ts",
     expr: "MEDIA_ROW_SELECTS[domain]",
-    why: "the opt-in media bundle (#1846): five hand-authored literals in one Record keyed by MEDIA_DOMAINS, indexed by the loop variable so the scan sees an expression instead of the strings. Every one opens its WHERE with the exporting profile's own `profile_id = ?` — including the two that JOIN (lesion_photos, activity_videos), where the child row carries its OWN profile_id and the join only adds display context. lib/__db_tests__/export-media.test.ts asserts that per declared domain AND proves end-to-end that another profile's files never enter the bundle, which is stronger than this scan's per-literal read.",
+    why: "the opt-in media bundle (#1846): five hand-authored literals in one Record keyed by MEDIA_DOMAINS, indexed by the loop variable so the scan sees an expression instead of the strings. Every one opens its WHERE with the exporting profile's own `profile_id = ?` — including the two that JOIN (lesion_photos, activity_videos), where the child row carries its OWN profile_id and the join matches the parent's profile_id too, so a tampered FK cannot pull another profile's label or title into the bundled index. lib/__db_tests__/export-media.test.ts asserts that per declared domain AND proves end-to-end that neither another profile's files nor its parent-row words ever enter the bundle, which is stronger than this scan's per-literal read.",
   },
   {
     file: "lib/providers-db.ts",

@@ -163,6 +163,14 @@ interface MediaRow {
 // profile_id and the join adds only display context. Ordered stably so the bundle
 // and the index come out deterministic.
 //
+// Those two joins ALSO match the parent's profile_id, not just its id. The parent
+// columns (a lesion's label/region, an activity's date/title) travel into
+// media/index.json, so a child row whose FK pointed at another profile's parent
+// would carry that profile's words into this export. Application writes never
+// create such a row — but that is exactly the argument the path containment below
+// declines to rely on, and a tampered FK deserves the same answer as a tampered
+// stored_path: the row drops out rather than being followed.
+//
 // Exported so lib/__db_tests__/export-media.test.ts can assert that scoping per
 // declared domain: the statement below is prepared from this Record indexed by the
 // loop variable, so the #1208 source scan sees an expression instead of the strings
@@ -172,7 +180,9 @@ export const MEDIA_ROW_SELECTS: Record<MediaDomain, string> = {
        FROM progress_photos WHERE profile_id = ? ORDER BY date, id`,
   "lesion-photos": `SELECT lp.id, lp.stored_path, lp.date, lp.caption,
               lp.lesion_id, sl.label AS lesion_label, sl.body_region
-       FROM lesion_photos lp JOIN skin_lesions sl ON sl.id = lp.lesion_id
+       FROM lesion_photos lp
+            JOIN skin_lesions sl
+              ON sl.id = lp.lesion_id AND sl.profile_id = lp.profile_id
        WHERE lp.profile_id = ? ORDER BY lp.lesion_id, lp.date, lp.id`,
   "symptom-photos": `SELECT id, stored_path, date, symptom, caption
        FROM symptom_photos WHERE profile_id = ? ORDER BY date, id`,
@@ -180,7 +190,9 @@ export const MEDIA_ROW_SELECTS: Record<MediaDomain, string> = {
        FROM symptom_videos WHERE profile_id = ? ORDER BY date, id`,
   "activity-videos": `SELECT av.id, av.stored_path, av.exercise, av.caption, av.kind,
               av.duration_sec, a.date AS activity_date, a.title AS activity_title
-       FROM activity_videos av JOIN activities a ON a.id = av.activity_id
+       FROM activity_videos av
+            JOIN activities a
+              ON a.id = av.activity_id AND a.profile_id = av.profile_id
        WHERE av.profile_id = ? ORDER BY a.date, av.id`,
 };
 
