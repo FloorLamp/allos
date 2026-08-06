@@ -21,7 +21,7 @@ import {
 } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { getTimezone } from "@/lib/settings";
-import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 
 const revalidate = vi.mocked(revalidatePath);
 const DATE = "2026-07-08";
@@ -155,8 +155,11 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
 
     const [event] = events(profile.id);
     expect(event.time_source).toBe("stated");
+    // utcInstant, not toISOString: food_log_events.eaten_at stores the canonical
+    // second-resolution UTC instant (#2205), so the expectation names the same writer
+    // the action uses rather than a second serialization of it.
     expect(event.eaten_at).toBe(
-      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00").toISOString()
+      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00"))
     );
   });
 

@@ -70,6 +70,12 @@ const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "UPDATE integration_backfill_jobs SET status = 'paused', retry_after_at = ?, updated_at = ?",
+    why: "boot recovery for integration backfills: a GLOBAL lease reaper pauses queued/running jobs abandoned by a dead process; each job remains profile-owned and the next profile-scoped hourly pass resumes only its own due rows. Moved here from ALLOW_EXEC by #2205 — the sweep now BINDS its instants instead of interpolating SQLite's bare-shaped clock into a column that stores ISO-8601 UTC with a Z suffix. Same statement, same global reach.",
+  },
+  {
     file: "app/(app)/supplies/actions.ts",
     includes: "SELECT profile_id FROM intake_items WHERE id = ?",
     why: "requireItemWriteAccess (#1374): the ONE lookup that RESOLVES which profile an item belongs to so the action can gate on it — filtering by profile_id here would presuppose the answer. Reads only the id→profile_id mapping and immediately feeds it to requireProfileWriteAccess; the gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
@@ -539,12 +545,6 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
     includes:
       "UPDATE import_jobs SET status = 'failed', error = 'Saving this import was interrupted (server restarted).",
     why: "boot reset of import jobs stranded mid-commit in 'committing' (#323) — GLOBAL maintenance keyed by the stale updated_at lease, deliberately profile-agnostic.",
-  },
-  {
-    file: "lib/migrations/boot-tasks.ts",
-    includes:
-      "UPDATE integration_backfill_jobs SET status = 'paused', retry_after_at = datetime('now')",
-    why: "boot recovery for integration backfills: a GLOBAL lease reaper pauses queued/running jobs abandoned by a dead process; each job remains profile-owned and the next profile-scoped hourly pass resumes only its own due rows.",
   },
 ];
 

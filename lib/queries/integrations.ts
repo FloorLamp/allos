@@ -1,4 +1,5 @@
 import { db, today } from "@/lib/db";
+import { utcSqlString } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import type { IntegrationId, IntegrationSyncEvent } from "@/lib/types";
 import {
@@ -162,7 +163,7 @@ function expiredHealthConnectIssue(
     id: -1,
     profile_id: profileId,
     provider: HEALTH_CONNECT_ID,
-    at: conn?.updated_at ?? new Date().toISOString(),
+    at: conn?.updated_at ?? utcSqlString(),
     ok: 0,
     window_start: null,
     window_end: null,
@@ -177,7 +178,7 @@ function expiredHealthConnectIssue(
     raw_ref: null,
     error:
       "Health Connect token expired — mint a new token on Integrations → Google Health Connect and update the phone exporter.",
-    created_at: conn?.updated_at ?? new Date().toISOString(),
+    created_at: conn?.updated_at ?? utcSqlString(),
   };
 }
 

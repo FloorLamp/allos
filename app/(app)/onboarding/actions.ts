@@ -8,7 +8,7 @@ import {
   requireWriteAccess,
 } from "@/lib/auth";
 import { db, today, writeTx } from "@/lib/db";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, utcInstant } from "@/lib/date";
 import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
@@ -131,7 +131,7 @@ export async function saveOnboardingProfilePath(formData: FormData) {
   const state = getOnboardingState(profile.id) ?? initialOnboardingState();
   setOnboardingState(
     profile.id,
-    onboardingWithProfilePath(state, profilePath, new Date().toISOString())
+    onboardingWithProfilePath(state, profilePath, utcInstant())
   );
   revalidatePath("/");
   revalidatePath("/onboarding");
@@ -141,10 +141,7 @@ export async function saveOnboardingProfilePath(formData: FormData) {
 export async function deferOnboarding() {
   const { profile } = await requireWriteAccess();
   const state = getOnboardingState(profile.id) ?? initialOnboardingState();
-  setOnboardingState(
-    profile.id,
-    onboardingDeferred(state, new Date().toISOString())
-  );
+  setOnboardingState(profile.id, onboardingDeferred(state, utcInstant()));
   revalidatePath("/");
   revalidatePath("/onboarding");
   redirect("/");
@@ -158,7 +155,7 @@ export async function saveOnboardingFocuses(formData: FormData) {
   const next = onboardingWithFocuses(
     state,
     formData.getAll("focus"),
-    new Date().toISOString()
+    utcInstant()
   );
   if (next.focuses.length === 0) {
     onboardingError("Choose one or two outcomes to continue.", 2);
@@ -212,7 +209,7 @@ export async function saveOnboardingDashboard(formData: FormData) {
     ...recommendedOrder.filter((id) => visible.includes(id)),
     ...recommendedOrder.filter((id) => !visible.includes(id)),
   ];
-  const nextState = onboardingWithLayout(state, new Date().toISOString());
+  const nextState = onboardingWithLayout(state, utcInstant());
   writeTx(() => {
     setDashboardLayout(profile.id, {
       order,
@@ -235,7 +232,7 @@ export async function continueOnboardingData() {
   }
   setOnboardingState(
     profile.id,
-    onboardingWithDataReviewed(state, new Date().toISOString())
+    onboardingWithDataReviewed(state, utcInstant())
   );
   revalidatePath("/");
   revalidatePath("/onboarding");
@@ -264,7 +261,7 @@ export async function saveOnboardingNotifications(formData: FormData) {
     );
     setOnboardingState(
       profile.id,
-      onboardingWithNotificationIntent(state, intent, new Date().toISOString())
+      onboardingWithNotificationIntent(state, intent, utcInstant())
     );
   });
   revalidatePath("/");
@@ -314,7 +311,7 @@ export async function saveOnboardingBasics(formData: FormData) {
   const demographicsChanged =
     sex !== getUserSex(profile.id) ||
     birthdate !== getUserBirthdate(profile.id);
-  const nextState = onboardingWithBasics(state, new Date().toISOString());
+  const nextState = onboardingWithBasics(state, utcInstant());
 
   writeTx(() => {
     db.prepare("UPDATE profiles SET name = ? WHERE id = ?").run(
@@ -363,10 +360,7 @@ export async function completeOnboarding() {
     onboardingError("Review the data step before finishing setup.", 4);
   }
 
-  setOnboardingState(
-    profile.id,
-    completeOnboardingState(state, new Date().toISOString())
-  );
+  setOnboardingState(profile.id, completeOnboardingState(state, utcInstant()));
   revalidatePath("/");
   revalidatePath("/onboarding");
   redirect("/");

@@ -4,6 +4,7 @@
 // is lib/food-suggest.ts; this module only assembles its typed inputs from the
 // profile-scoped reads and hands them over.
 
+import { utcInstant } from "../date";
 import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
@@ -593,9 +594,9 @@ export function getMinutesSinceLastFoodLog(
   profileId: number,
   now: Date = clockNow()
 ): number | null {
-  const since = new Date(
-    now.getTime() - FOOD_CHECK_LOOKBACK_MIN * 60_000
-  ).toISOString();
+  const since = utcInstant(
+    new Date(now.getTime() - FOOD_CHECK_LOOKBACK_MIN * 60_000)
+  );
   const row = db
     .prepare(
       `SELECT MAX(COALESCE(eaten_at, logged_at)) AS ate
@@ -624,9 +625,9 @@ export function getRecentFoodTaps(
   profileId: number,
   now: Date = clockNow()
 ): FoodTapRow[] {
-  const since = new Date(
-    now.getTime() - CORRECTION_FRESH_MIN * 60_000
-  ).toISOString();
+  const since = utcInstant(
+    new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
+  );
   const rows = db
     .prepare(
       `SELECT id, group_key, logged_at FROM food_log_events

@@ -15,6 +15,7 @@ import {
   type TokenExpiryChoice,
 } from "@/lib/token-lifecycle";
 import { daysAgoModifier, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
+import { utcInstant } from "@/lib/date";
 import { boundSyncDetailsJson } from "./sync-details";
 import type { ProvenanceEntry } from "./sync-log";
 
@@ -411,7 +412,7 @@ export function generateHealthConnectToken(
     status: "connected",
     config: {
       tokenHash: hashShareToken(token),
-      tokenCreatedAt: new Date(now).toISOString(),
+      tokenCreatedAt: utcInstant(new Date(now)),
       tokenExpiresAt: expiresAtFromChoice(expiry, now),
     },
   });
@@ -427,7 +428,7 @@ export function recordHealthConnectUse(profileId: number): void {
   if (!str(cfg.tokenHash)) return; // env fallback / no token: nothing to stamp
   if (!shouldRecordUse(str(cfg.tokenLastUsedAt), Date.now())) return;
   upsertConnection(profileId, "health-connect", {
-    config: { ...cfg, tokenLastUsedAt: new Date().toISOString() },
+    config: { ...cfg, tokenLastUsedAt: utcInstant() },
   });
 }
 

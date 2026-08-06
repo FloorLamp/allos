@@ -10,6 +10,8 @@
 
 // The optional expiry a user can pick when minting/rotating a token. "never"
 // (default) preserves the historical behaviour — the token never expires.
+import { utcInstant } from "./date";
+
 export type TokenExpiryChoice = "never" | "90d" | "1y";
 
 // Offered in the UI in this order (safest-default first).
@@ -55,7 +57,7 @@ export function expiresAtFromChoice(
 ): string | null {
   if (choice === "never") return null;
   const days = choice === "90d" ? 90 : 365;
-  return new Date(nowMs + days * DAY_MS).toISOString();
+  return utcInstant(new Date(nowMs + days * DAY_MS));
 }
 
 // A token is expired only when it HAS an expiry and that instant is at/before now.

@@ -19,9 +19,9 @@
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
 import { db, writeTx } from "./db";
-import { now as clockNow } from "./clock";
+import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
-import { isRealIsoDate, zonedDateParts } from "./date";
+import { isRealIsoDate, utcInstant, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
 import { foodSlotForProfileEvent } from "./profile-food-slot";
@@ -112,7 +112,7 @@ export function logFoodServingCore(
   // supplied, separately records the consumed window for an honest backfill; callers
   // without an explicit meal retain the legacy timestamp-derived behavior. The instant
   // remains injectable so tests can seed a specific legacy slot.
-  loggedAt: string = clockNow().toISOString(),
+  loggedAt: string = instantNow(),
   mealSlot?: FoodSlot,
   // WHEN IT WAS EATEN (#2019) — a separate fact from `loggedAt`, which stays the tap
   // stamp migration 056 froze. The Telegram button passes its own tap instant with
@@ -567,7 +567,7 @@ export function restampFoodEventsCore(
       const row = byId.get(id);
       if (!row) continue;
       const instant = resolve(row.logged_at);
-      const eatenAt = instant.toISOString();
+      const eatenAt = utcInstant(instant);
       const nextDate = zonedDateParts(tz, instant).date;
       const reDate = nextDate !== row.date && !isProteinNudgeKey(row.group_key);
       if (reDate) {

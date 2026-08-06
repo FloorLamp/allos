@@ -199,9 +199,51 @@ export function zonedWallIsoToUtc(tz: string, wall: string): Date | null {
   return Number.isNaN(inst.getTime()) ? null : inst;
 }
 
+// ---- The stored-instant convention (issue #2205) ---------------------------
+//
+// An INSTANT is "the absolute moment this happened/was recorded". It is a different
+// question from a profile-local `date`, which is a DAY ATTRIBUTION (#94) and is NOT a
+// lesser instant — `date` semantics are untouched by #2205 and must never be folded
+// into these helpers.
+//
+// The CANONICAL serialization of an instant is `utcInstant`'s shape:
+//
+//     2026-07-15T20:02:03Z      UTC · second resolution · explicit `Z`
+//
+// Why this shape and not SQLite's own `datetime('now')` (`utcSqlString` below):
+//   • the `Z` states the zone instead of leaving a reader to assume one — the
+//     assumption that produced two confidently wrong cross-domain analyses;
+//   • second resolution is exactly what SQLite's date functions emit, so a JS-written
+//     value and a `strftime('%Y-%m-%dT%H:%M:%SZ','now')` one are byte-identical and
+//     therefore sort, compare and `date()`-truncate identically;
+//   • SQLite's date/time functions parse it natively, so `date()`, `julianday()` and
+//     `strftime()` keep working unchanged over a converted column.
+//
+// Phase 1 of #2205 does NOT convert every column: it declares the convention, makes
+// these two functions the ONLY way an app write path produces an instant, and moves
+// the columns each migration names. `utcSqlString` remains the writer for the columns
+// still on SQLite's bare shape — a column is on one convention or the other, never on
+// a hand-built string. lib/__tests__/instant-writer-scan.test.ts is the ratchet.
+
+// The canonical stored instant — UTC, second resolution, explicit `Z`. Pure.
+export function utcInstant(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 19) + "Z";
+}
+
+// Re-serialize an already-stored UTC datetime — EITHER convention — as the canonical
+// instant. The one path for handing a bare-shaped value to a canonical-shaped
+// comparison (or field), so a reader never concatenates a "Z" onto a string it has
+// not actually parsed. Null on garbage/absent, like parseUtcSql. Pure.
+export function toUtcInstant(s: string | null | undefined): string | null {
+  const d = parseUtcSql(s);
+  return d ? utcInstant(d) : null;
+}
+
 // Serialize an instant to SQLite's `datetime('now')` shape — "YYYY-MM-DD HH:MM:SS"
 // in UTC, no zone suffix — so a value written from JS sorts and compares (strftime)
-// identically to one written by SQLite. Pure.
+// identically to one written by SQLite. The LEGACY half of the convention above: the
+// columns #2205 has not yet converted still store this shape, and a write to one of
+// them comes from here rather than from a hand-built string. Pure.
 export function utcSqlString(d: Date = new Date()): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }

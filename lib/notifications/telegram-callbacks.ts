@@ -15,7 +15,7 @@ import {
   logAdministration,
 } from "../queries";
 import { today } from "../db";
-import { now as clockNow } from "../clock";
+import { now as clockNow, instantNow } from "../clock";
 import {
   parseCorrectionAtToken,
   parseCorrectionChipToken,
@@ -1018,7 +1018,7 @@ async function handleFoodLog(
   // identity and rebuild only. With a real eating instant on the row, the window the
   // serving belongs to is DERIVED from when it was eaten — so a correction moves the
   // meal along with the time, which an asserted slot would have frozen in place.
-  const tapAt = clockNow().toISOString();
+  const tapAt = instantNow();
   const outcome = logFoodServingCore(
     profileId,
     food.group,
@@ -1076,7 +1076,7 @@ async function handleFoodProtein(
   // contract, the same recorded instant, and the same reason no explicit `meal_slot` is
   // written. The __protein__ ledger row rides the identical columns, which is what makes
   // protein DISTRIBUTION — the actual recommendation — computable from this ledger.
-  const tapAt = clockNow().toISOString();
+  const tapAt = instantNow();
   const outcome = addProteinGramsCore(
     profileId,
     token.date,

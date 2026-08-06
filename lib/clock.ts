@@ -17,7 +17,7 @@
 // from .env.example. A boot-time warning (see lib/migrations/boot-tasks.ts) makes a
 // misconfigured production instance loudly visible.
 
-import { utcSqlString } from "./date";
+import { utcInstant, utcSqlString } from "./date";
 
 // The raw override string, or undefined when unset/blank. Read fresh each call so a
 // test can set/unset it per process without a stale cache.
@@ -59,4 +59,13 @@ export function now(): Date {
 // would have written — the rewrite is inert outside the e2e suite.
 export function sqlNow(): string {
   return utcSqlString(now());
+}
+
+// The app's "now" as the CANONICAL stored instant (`2026-07-15T20:02:03Z`, #2205) —
+// the same seam as sqlNow(), for a column that has been moved onto the UTC+`Z`
+// convention. Which of the two a write site binds is decided by the COLUMN's declared
+// convention, never by the site's taste; the choice between the seam and real time is
+// the unchanged #1534 rule (day-semantic ⇒ seam, duration ⇒ real time).
+export function instantNow(): string {
+  return utcInstant(now());
 }
