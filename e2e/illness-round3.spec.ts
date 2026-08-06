@@ -78,28 +78,33 @@ test.describe("Illness round 3 (#859)", () => {
     ).toBeLessThan(24);
 
     // Item 4: attach a symptom photo via the camera-first input, then see it in the
-    // dated strip.
+    // shared photo gallery the strip renders since #1844 (browse grid + lightbox).
     const strip = page.getByTestId("symptom-photo-strip");
     await expect(strip).toBeVisible();
-    // Count photos by their per-photo delete button (one per attached photo), so the
-    // always-present input/add controls don't inflate the count.
-    const deleteButtons = strip.locator(
-      '[data-testid^="symptom-photo-delete-"]'
-    );
-    // OWN the whole strip state (#907): delete EVERY existing photo so `before` is a
-    // deterministic 0 and no leftover from a failed attempt / prior --repeat-each
-    // iteration can poison the count. settledClick awaits each delete's Server-Action
-    // POST, so the count-drop assertion runs against the applied state, not a race.
-    for (
-      let remaining = await deleteButtons.count();
-      remaining > 0;
-      remaining--
-    ) {
-      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
-      await expect(deleteButtons).toHaveCount(remaining - 1, {
-        timeout: 15_000,
-      });
+    // Count photos by their grid tiles, so the always-present input/add controls
+    // don't inflate the count.
+    const tiles = strip.locator('[data-testid^="photo-gallery-item-"]');
+    const lightbox = page.getByTestId("photo-lightbox");
+
+    // Delete every photo in the strip, whatever it holds. Each delete lives on the
+    // photo's own lightbox, so a pass is: open the first tile, delete, watch the
+    // grid shrink. settledClick awaits the delete's Server-Action POST, so the
+    // count-drop assertion runs against the applied state, not a race.
+    async function emptyTheStrip() {
+      for (let remaining = await tiles.count(); remaining > 0; remaining--) {
+        await tiles.first().click(); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
+        await expect(lightbox).toBeVisible();
+        await settledClick(
+          page,
+          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+        );
+        await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
+      }
     }
+
+    // OWN the whole strip state (#907): start from a deterministic 0 so no leftover
+    // from a failed attempt / prior --repeat-each iteration can poison the count.
+    await emptyTheStrip();
 
     // The logging-area shortcut points to the SAME hidden camera input owned by the
     // gallery. Upload a uniquely-salted PNG through that input.
@@ -128,42 +133,32 @@ test.describe("Illness round 3 (#859)", () => {
       mimeType: "image/png",
       buffer: uniquePng(),
     });
-    await expect(deleteButtons.first()).toBeVisible(); // first-ok: asserts a photo delete button renders before the delete loop — order-agnostic
-
     await expect(page.getByText("Photo attached.")).toBeVisible();
-    const captionedPhoto = strip
-      .locator("figure")
-      .filter({ hasText: "Rash on left forearm" })
-      .last();
-    const addedPhotoTestId = await captionedPhoto.getAttribute("data-testid");
-    expect(addedPhotoTestId).toMatch(/^symptom-photo-\d+$/);
-    const addedPhoto = strip.locator(`[data-testid="${addedPhotoTestId}"]`);
-    await expect(addedPhoto).toContainText("Rash on left forearm");
+    await expect(tiles).toHaveCount(1, { timeout: 15_000 });
+
+    // The caption rides with the photo: the grid shows pixels, the lightbox shows
+    // what the person wrote about them.
+    await tiles.first().click(); // first-ok: the strip was emptied above, so this is the only tile
+    await expect(lightbox).toContainText("Rash on left forearm");
 
     // Existing captions can be corrected without replacing the image.
-    await addedPhoto
-      .getByRole("button", { name: "Edit photo caption" })
+    await lightbox
+      .getByRole("button", { name: "Edit caption", exact: true })
       .click();
-    const captionEditor = addedPhoto.getByLabel("Photo caption", {
-      exact: true,
-    });
-    await captionEditor.fill("Rash improving");
-    await addedPhoto.getByRole("button", { name: "Save" }).click();
-    await expect(addedPhoto).toContainText("Rash improving", {
+    await settledFill(
+      page,
+      lightbox.getByLabel("Photo caption", { exact: true }),
+      "Rash improving"
+    );
+    await settledClick(page, lightbox.getByRole("button", { name: "Save" }));
+    await tiles.first().click(); // first-ok: still the only tile in the emptied strip
+    await expect(lightbox).toContainText("Rash improving", {
       timeout: 15_000,
     });
-    // Clean up every photo we added (a re-driven upload may have landed twice) so
-    // a re-run starts where it began.
-    for (
-      let remaining = await deleteButtons.count();
-      remaining > 0;
-      remaining--
-    ) {
-      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
-      await expect(deleteButtons).toHaveCount(remaining - 1, {
-        timeout: 15_000,
-      });
-    }
-    await expect(deleteButtons).toHaveCount(0);
+    await lightbox.getByTestId("photo-lightbox-close").click();
+
+    // Clean up every photo we added so a re-run starts where it began.
+    await emptyTheStrip();
+    await expect(tiles).toHaveCount(0);
   });
 });

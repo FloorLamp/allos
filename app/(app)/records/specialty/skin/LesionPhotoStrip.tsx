@@ -1,22 +1,25 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import NotesText from "@/components/NotesText";
-import { formatRecordDate } from "@/lib/record-format";
-import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import type { DisplayFormatPrefs } from "@/lib/format-date";
+import PhotoGallery from "@/components/photo/PhotoGallery";
+import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import type { GalleryPhoto } from "@/lib/photo/gallery-model";
 import { uploadLesionPhoto, deleteLesionPhoto } from "./actions";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
 
 // Serial photo strip for ONE lesion (issue #715 ask 2) — the "is this mole changing?"
-// payoff. Renders the lesion's dated photos ADJACENTLY (oldest → newest, left to right)
-// so two dates sit side by side for direct comparison, with an inline upload. Kept
-// deliberately simple: dated thumbnails in a horizontal scroller, no viewer/zoom. New
-// photos attach to `lesionId` (the lesion's latest record). SCOPE: the photos are for
-// the user's own comparison + their dermatologist — nothing here assesses the lesion.
+// payoff, rebuilt on the shared photo core in #1844 (phase 3). The lesion IS the series,
+// so the two sibling views over it (#221) are exactly the two questions a user has:
+// Browse (PhotoGallery — dated thumbnails, lightbox, delete) and Compare (PhotoTimeline
+// — two dates side by side or onion-skinned, which is what "changing?" actually needs
+// and the hand-rolled scroller could never do). The grid reads the ingest thumbnail;
+// the lightbox loads the full image.
+//
+// SCOPE: the photos are for the user's own comparison + their dermatologist — nothing
+// here assesses the lesion, and no caption is ever generated.
 export default function LesionPhotoStrip({
   lesionId,
   photos,
@@ -24,15 +27,25 @@ export default function LesionPhotoStrip({
   lesionId: number;
   photos: LesionPhotoRow[];
 }) {
-  const fmt = useFormatPrefs();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"grid" | "compare">("grid");
 
-  // Oldest → newest so the comparison reads chronologically.
-  const ordered = [...photos].sort((a, b) =>
-    a.date === b.date ? a.id - b.id : a.date < b.date ? -1 : 1
+  const gallery: GalleryPhoto[] = useMemo(
+    () =>
+      photos.map((p) => ({
+        id: p.id,
+        date: p.date,
+        // One lesion is one series: there is nothing to sub-filter within it.
+        seriesKey: null,
+        url: `/api/lesion-photo/${p.id}`,
+        thumbUrl: `/api/lesion-photo/${p.id}?thumb=1`,
+        caption: p.caption,
+        meta: null,
+      })),
+    [photos]
   );
 
   async function handleUpload(formData: FormData) {
@@ -49,52 +62,63 @@ export default function LesionPhotoStrip({
 
   return (
     <div className="space-y-2" data-testid={`lesion-photos-${lesionId}`}>
-      {ordered.length > 0 ? (
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {ordered.map((p) => (
-            <figure
-              key={p.id}
-              className="min-w-32 shrink-0"
-              data-testid={`lesion-photo-${p.id}`}
+      {gallery.length > 1 ? (
+        <div
+          className="flex justify-end gap-1"
+          role="tablist"
+          aria-label="Photo view"
+        >
+          {(["grid", "compare"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
+                view === v
+                  ? "bg-brand-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+              }`}
+              onClick={() => setView(v)}
+              data-testid={`lesion-photo-view-${v}-${lesionId}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/api/lesion-photo/${p.id}`}
-                alt={`Lesion photo from ${formatRecordDate(p.date, "—", fmt)}`}
-                className="h-32 w-32 rounded-lg border border-black/10 object-cover dark:border-white/10"
-              />
-              <figcaption className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-medium">
-                  {formatRecordDate(p.date, "—", fmt)}
-                </span>
-                <NotesText
-                  as="span"
-                  notes={p.caption}
-                  className="ml-1 text-slate-400"
-                />
-                <form
-                  action={async (fd) => {
-                    await deleteLesionPhoto(fd);
-                  }}
-                  className="inline"
-                >
-                  <input type="hidden" name="photo_id" value={p.id} />
-                  <button
-                    type="submit"
-                    className="ml-1 text-slate-400 underline hover:text-rose-600 dark:hover:text-rose-400"
-                    aria-label="Delete photo"
-                  >
-                    remove
-                  </button>
-                </form>
-              </figcaption>
-            </figure>
+              {v === "grid" ? "Browse" : "Compare"}
+            </button>
           ))}
         </div>
-      ) : (
+      ) : null}
+
+      {gallery.length === 0 ? (
         <p className="text-xs text-slate-400">
           No photos yet. Add dated photos to compare this lesion over time.
         </p>
+      ) : view === "grid" ? (
+        <PhotoGallery
+          domains={[
+            { key: "skin", label: "Skin", photos: gallery, series: [] },
+          ]}
+          renderActions={(photo) => (
+            <form
+              action={async (fd) => {
+                await deleteLesionPhoto(fd);
+              }}
+            >
+              <input type="hidden" name="photo_id" value={photo.id} />
+              <button
+                type="submit"
+                className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
+                data-testid={`lesion-photo-delete-${photo.id}`}
+              >
+                Delete photo
+              </button>
+            </form>
+          )}
+        />
+      ) : (
+        <PhotoTimeline
+          photos={gallery}
+          emptyHint="Add at least two photos to compare this lesion over time."
+        />
       )}
 
       {open ? (
@@ -107,7 +131,8 @@ export default function LesionPhotoStrip({
           <input type="hidden" name="lesion_id" value={lesionId} />
           <div>
             <label className="label text-xs" htmlFor={`lp-date-${lesionId}`}>
-              Date
+              Date{" "}
+              <span className="normal-case">(blank = photo’s own date)</span>
             </label>
             <DateField id={`lp-date-${lesionId}`} name="date" />
           </div>
@@ -146,6 +171,10 @@ export default function LesionPhotoStrip({
               {error}
             </p>
           )}
+          <p className="w-full text-xs text-slate-400">
+            Photos are resized and cleaned of camera metadata (location, device)
+            when stored.
+          </p>
         </form>
       ) : (
         <button

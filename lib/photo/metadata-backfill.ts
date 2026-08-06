@@ -72,39 +72,85 @@ export interface PhotoBackfillTally {
   failed: number;
 }
 
+// One stored photo as this pass sees it: where its bytes are, and the hash the row
+// currently claims for them.
+interface StoredRow {
+  id: number;
+  stored_path: string;
+  content_hash: string | null;
+}
+
+// Each domain supplies its three statements as CALLS, not as SQL strings held in a
+// field: every statement below is prepared from a literal the source scanners can
+// read, and each one is profile-scoped. An instance-wide maintenance pass is not a licence to write
+// an unscoped statement — which is exactly why the sweep walks profile by profile.
 interface DomainSpec {
   domain: PhotoDomain;
-  // Statements are written out per domain rather than interpolated so the SQL
-  // scanners can read them, and every one is profile-scoped (#1844 sweeps
-  // profile-by-profile for exactly that reason — an instance-wide maintenance pass
-  // is not a licence to write an unscoped statement).
-  selectRows: string;
-  selectHashOwner: string;
-  updateRow: string;
+  rows: (db: Database.Database, profileId: number) => StoredRow[];
+  hashTakenBy: (
+    db: Database.Database,
+    profileId: number,
+    hash: string,
+    exceptId: number
+  ) => boolean;
+  applyBytes: (
+    db: Database.Database,
+    profileId: number,
+    id: number,
+    mime: string,
+    sizeBytes: number,
+    hash: string | null
+  ) => void;
 }
 
 const DOMAINS: DomainSpec[] = [
   {
     domain: "lesion",
-    selectRows: `SELECT id, stored_path, content_hash FROM lesion_photos
-                  WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''
-                  ORDER BY id`,
-    selectHashOwner: `SELECT id FROM lesion_photos
-                       WHERE profile_id = ? AND content_hash = ? AND id != ?`,
-    updateRow: `UPDATE lesion_photos
-                   SET mime_type = ?, size_bytes = ?, content_hash = ?
-                 WHERE id = ? AND profile_id = ?`,
+    rows: (db, profileId) =>
+      db
+        .prepare(
+          `SELECT id, stored_path, content_hash FROM lesion_photos
+            WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''
+            ORDER BY id`
+        )
+        .all(profileId) as StoredRow[],
+    hashTakenBy: (db, profileId, hash, exceptId) =>
+      db
+        .prepare(
+          `SELECT id FROM lesion_photos
+            WHERE profile_id = ? AND content_hash = ? AND id != ?`
+        )
+        .get(profileId, hash, exceptId) !== undefined,
+    applyBytes: (db, profileId, id, mime, sizeBytes, hash) => {
+      db.prepare(
+        `UPDATE lesion_photos SET mime_type = ?, size_bytes = ?, content_hash = ?
+          WHERE id = ? AND profile_id = ?`
+      ).run(mime, sizeBytes, hash, id, profileId);
+    },
   },
   {
     domain: "symptom",
-    selectRows: `SELECT id, stored_path, content_hash FROM symptom_photos
-                  WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''
-                  ORDER BY id`,
-    selectHashOwner: `SELECT id FROM symptom_photos
-                       WHERE profile_id = ? AND content_hash = ? AND id != ?`,
-    updateRow: `UPDATE symptom_photos
-                   SET mime_type = ?, size_bytes = ?, content_hash = ?
-                 WHERE id = ? AND profile_id = ?`,
+    rows: (db, profileId) =>
+      db
+        .prepare(
+          `SELECT id, stored_path, content_hash FROM symptom_photos
+            WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''
+            ORDER BY id`
+        )
+        .all(profileId) as StoredRow[],
+    hashTakenBy: (db, profileId, hash, exceptId) =>
+      db
+        .prepare(
+          `SELECT id FROM symptom_photos
+            WHERE profile_id = ? AND content_hash = ? AND id != ?`
+        )
+        .get(profileId, hash, exceptId) !== undefined,
+    applyBytes: (db, profileId, id, mime, sizeBytes, hash) => {
+      db.prepare(
+        `UPDATE symptom_photos SET mime_type = ?, size_bytes = ?, content_hash = ?
+          WHERE id = ? AND profile_id = ?`
+      ).run(mime, sizeBytes, hash, id, profileId);
+    },
   },
 ];
 
@@ -133,7 +179,7 @@ async function backfillOne(
   db: Database.Database,
   spec: DomainSpec,
   profileId: number,
-  row: { id: number; stored_path: string; content_hash: string | null }
+  row: StoredRow
 ): Promise<keyof PhotoBackfillTally> {
   const root = path.resolve(photoDomainRoot(spec.domain));
   const abs = path.resolve(process.cwd(), row.stored_path);
@@ -193,9 +239,7 @@ async function backfillOne(
   // photo saved twice with different metadata); the partial unique index would
   // refuse that, so the loser keeps its historical hash — its bytes are clean either
   // way, which is the whole point of the pass.
-  const collision = db
-    .prepare(spec.selectHashOwner)
-    .get(profileId, photo.contentHash, row.id) as { id: number } | undefined;
+  const collision = spec.hashTakenBy(db, profileId, photo.contentHash, row.id);
   if (collision)
     log.info("kept historical content hash (another row now matches)", {
       domain: spec.domain,
@@ -204,13 +248,7 @@ async function backfillOne(
   const hash = collision ? row.content_hash : photo.contentHash;
   runBootTx(
     db.transaction(() => {
-      db.prepare(spec.updateRow).run(
-        photo.mime,
-        photo.sizeBytes,
-        hash,
-        row.id,
-        profileId
-      );
+      spec.applyBytes(db, profileId, row.id, photo.mime, photo.sizeBytes, hash);
     })
   );
   return "processed";
@@ -228,11 +266,7 @@ export async function backfillPhotoMetadata(
   }[];
   for (const spec of DOMAINS) {
     for (const profile of profiles) {
-      const rows = db.prepare(spec.selectRows).all(profile.id) as {
-        id: number;
-        stored_path: string;
-        content_hash: string | null;
-      }[];
+      const rows = spec.rows(db, profile.id);
       for (const row of rows) {
         tally[await backfillOne(db, spec, profile.id, row)] += 1;
       }
