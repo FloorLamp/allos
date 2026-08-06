@@ -985,6 +985,22 @@ reading `hr_minutes.ts` as UTC is the #2096 failure class, and subtracting two
 bare local strings would report wall-clock difference rather than elapsed time
 on a DST night.
 
+**The precondition is named, never guessed.** The reminder's entire schedule is
+the Bedtime slot minute, and that slot is independently switchable — someone who
+takes nothing at bedtime turns it off — so consent plus a disabled slot is a
+reachable state in which the checkbox reads ON and nothing can ever send. A
+checkbox that says on and does nothing is the worst failure a settings page has,
+and worse still for a consent. The fix is at the SURFACE: `ridesSlots` on the
+kind registry entry declares which slot(s) a scheduleless kind fires at,
+`unmetSlotRequirement` is the pure predicate, and the row renders a note naming
+the missing slot and pointing at the Schedule card above it. The checkbox stays
+editable (a consent must always be withdrawable, and turning one on before
+setting a time is a legitimate order to work in). Deliberately NOT a fallback
+hour in the tick: guessing a bedtime for a send the user consented to at _their_
+bedtime is a worse answer than saying what is missing. The mood check-in
+(Evening) and the food nudge (Morning/Midday/Evening) declare the same field and
+get the same note — the defect was never unique to this kind.
+
 **Known grain limit, accepted.** The check runs at the slot minute, so a charger
 placement a few minutes before a late bedtime is missed. #2121's finer ticks and
 a `typicalBedTime` anchor tighten it later; neither is a dependency.

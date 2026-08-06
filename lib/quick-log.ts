@@ -123,11 +123,10 @@ export type QuickLogTimeSemantic = "instant" | "day-only";
 // the admission test is answered out loud rather than left to a reader's guess (the
 // METRIC_KNOWLEDGE discipline: an explicit `none`, with the reason beside it).
 //
-//   • "hour" — the consumer reads HOURS, so an hour is the unit a correction has to
-//              be able to move. The hour chips of lib/correction-time.ts (food, dose)
-//              are one mechanism for that; the practice session's own dated edit form
-//              (#2204) is another, feeding modalHour's hour buckets. The unit names
-//              the GRAIN that matters, not the widget.
+//   • "hour" — the CONSUMER reads hours, so an hour is the unit a correction has to be
+//              able to move. The unit names that grain; it does not name a widget.
+//              Example mechanisms: the hour chips of lib/correction-time.ts (food,
+//              dose), and the practice session's own dated edit form (#2204).
 //   • "day"  — corrected a DAY at a time, through the dated form that owns the
 //              exception (a period start that actually began yesterday).
 //   • "none" — the form STATES the time on entry, so there is no correction affordance
@@ -271,10 +270,13 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
       // file (#2019 §7).
       semantic: "instant",
       why: "#2202: `lib/weekly-rhythm.ts` reads practice_logs.time — modalHour() picks each practice's typical session hour from its logged times, which is what schedules the retimed pace nudge and what the cards' rhythm note is inferred from. A one-tap log is a statement that the session is happening now, so the write core stamps the profile-local tap instant (#450 — the server's zone, never the device's); the expanded form's own time input still wins, and an explicitly emptied one still means no instant.",
-      // Corrected by editing the SESSION, on the Wellness card's history table and the
-      // protocol detail's, whose form owns date + time together. Declared "hour"
-      // because that is the grain the consumer actually reads — modalHour buckets by
-      // hour — not because this entry uses the food/dose chips.
+      // The MECHANISM, named: the session's own dated edit form, on the Wellness card's
+      // history table and the protocol detail's, which owns date and time together
+      // (`editPracticeSession` → `updatePracticeSession`). The UNIT is "hour" because
+      // that is the grain the consumer reads — modalHour buckets by hour — not because
+      // this entry borrows the food/dose chips, which it does not. This is not #2062's
+      // case in reverse: that ruling retired a declared correction affordance that did
+      // not EXIST, and this one does.
       correctionUnit: "hour",
     },
   },

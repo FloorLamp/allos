@@ -60,15 +60,21 @@ export default function LogPracticeButton({
   // re-derived here. Null means blank, and blank is a real answer.
   defaultDurationMin?: number | null;
   showDetails?: boolean;
-  // Render the INLINE duration stepper beside the tap (#2204). Off everywhere the
-  // expanded form is one tap away; on for the quick-log sheet, whose whole reason for
-  // existing is that opening that form is the thing you were avoiding.
+  // Render the INLINE duration stepper beside the tap (#2204). On for the quick-log
+  // sheet — whose whole reason for existing is that opening the expanded form is the
+  // thing you were avoiding — and, by owner ruling, on the Wellness card too: the
+  // card's one-tap button discarded the duration just as silently, and "the modal is
+  // one tap away" answered where the field LIVES, not what the tap WRITES. The two
+  // controls share one `duration` state there, so the modal opens holding whatever the
+  // stepper shows and vice versa.
   //
   // The gate is load-bearing for constraint 2 ("a logged duration must always be one
   // the user saw"): `duration` is seeded from the prefill for the modal's benefit on
   // every mount, so the one-tap write may only send it where the stepper is actually
   // on screen. A surface without the stepper posts no duration at all, exactly as
-  // before.
+  // before. See `stepperShown` below — the render and the write read ONE expression,
+  // and any future condition on the stepper's visibility belongs there rather than in
+  // the JSX, or the two drift and a value nobody saw gets logged.
   inlineDuration?: boolean;
   // The local HH:MM of today's most recent session, when the surface knows it. The
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
@@ -114,6 +120,14 @@ export default function LogPracticeButton({
     setServerDuration(defaultDurationMin);
     setDuration(defaultDurationMin == null ? "" : String(defaultDurationMin));
   }
+
+  // ONE expression, read by BOTH the stepper's render and the tap's write. Constraint
+  // 2 of #2204 — a logged duration must always be one the user saw — is only as strong
+  // as the fact that these two cannot disagree, so a future rule ("hide the stepper at
+  // the weekly ceiling", "hide it on a narrow row") is added HERE and both halves
+  // follow it. Adding it to the JSX alone would leave the tap posting a value that is
+  // no longer on screen, which is precisely the failure the constraint names.
+  const stepperShown = inlineDuration;
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
   // non-numeric input reads as blank rather than NaN.
@@ -171,7 +185,7 @@ export default function LogPracticeButton({
         // may write a duration the user SAW, never the seeded-for-the-modal state.
         // No `time` field is set on any path here — its absence is what tells the
         // write core to stamp the tap instant (#2204 part 2).
-        const mins = inlineDuration ? durationValue() : null;
+        const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
         return logPractice(fd);
       },
@@ -237,7 +251,13 @@ export default function LogPracticeButton({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      {/* The control cluster WRAPS, and stopped being `shrink-0`, once the stepper
+          joined it on a surface that also carries "Log with details" (#2204 + the
+          owner ruling). Three controls in one un-shrinkable row overflowed a 390px
+          phone by ~26px, which `expectNoClippedContent` caught. `justify-end` keeps
+          the cluster right-aligned against the count when it fits on one line, and
+          the details button drops to a second line when it does not. */}
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
         {/* The INLINE duration control (#2204). The standing objection was never to
             the field — it was to stacking a MODAL over a one-tap sheet, and that
             objection holds. This is the other shape: prefilled from the practice's
@@ -245,9 +265,11 @@ export default function LogPracticeButton({
             existed (zero extra taps when the default is right, which is the common
             case), adjusted with two steppers, and cleared by stepping off the bottom.
             Nothing here logs — the value rides the existing tap's FormData. */}
-        {inlineDuration && (
+        {stepperShown && (
+          // shrink-0: the three parts of the stepper stay together and stay legible;
+          // the cluster above is what wraps.
           <div
-            className="flex items-center gap-0.5"
+            className="flex shrink-0 items-center gap-0.5"
             data-testid="practice-inline-duration"
           >
             <button

@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { settledCheck, settledCheckSave, settledFill } from "./helpers";
+import {
+  settledCheck,
+  settledCheckSave,
+  settledFill,
+  settledSelectSave,
+} from "./helpers";
 
 // Settings → Notifications after the login-scoping move (issue #1072). Runs
 // authenticated as admin acting as the seeded profile 1 (shared storageState).
@@ -55,6 +60,26 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     const wearToggle = page.getByTestId("wear-reminder-enabled");
     await expect(wearToggle).not.toBeChecked();
     await settledCheckSave(page, wearToggle, true, kindsCard);
+
+    // The precondition is NAMED, not guessed at. The reminder's whole schedule is the
+    // Bedtime slot minute, and that slot is independently switchable — someone who
+    // takes nothing at bedtime turns it off — so consenting to the reminder with the
+    // slot off would leave a checkbox reading ON that can never send. Turning the slot
+    // off makes the row say so and point at the Schedule card; no fallback hour is
+    // invented, because guessing a bedtime for a send the user consented to at THEIR
+    // bedtime would be the worse answer.
+    const gap = page.getByTestId("kind-slot-gap-wear-reminder");
+    await expect(gap).toHaveCount(0);
+    const bedtimeMode = page.getByLabel("Bedtime reminder mode");
+    await settledSelectSave(page, bedtimeMode, "", kindsCard);
+    await expect(gap).toContainText("Bedtime reminder time");
+    await expect(gap).toContainText("Schedule");
+    // The consent itself is untouched — the note explains, it never rewrites what the
+    // user declared, and the box stays editable so a consent can always be withdrawn.
+    await expect(wearToggle).toBeChecked();
+    await expect(wearToggle).toBeEnabled();
+    await settledSelectSave(page, bedtimeMode, "time", kindsCard);
+    await expect(gap).toHaveCount(0);
 
     // --- Per-(login, profile) mute ---
     const muteToggle = page.getByTestId("profile-notify-mute");

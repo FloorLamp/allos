@@ -7,6 +7,8 @@ import type { NotificationKind } from "@/lib/notifications/types";
 import {
   NOTIFICATION_KIND_REGISTRY,
   isSafetyKind,
+  slotRequirementNote,
+  unmetSlotRequirement,
   type NotificationKindEntry,
 } from "@/lib/notifications/kinds";
 import { serializeDisabledKinds } from "@/lib/notifications/home-assistant-core";
@@ -375,6 +377,24 @@ export default function NotificationPrefs({
     );
   }
 
+  // The slot precondition this kind's send rides, when NONE of the slots it needs is
+  // configured (#2161 review). A kind with no schedule of its own fires at an intake
+  // slot minute, and turning that slot off silences it however its own checkbox reads
+  // — a checkbox that says "on" and does nothing is the worst thing a settings page
+  // can show. So the row NAMES the missing precondition and points at the Schedule
+  // card above it. Deliberately not a disable: the checkbox stays editable, because a
+  // user must always be able to turn a consent OFF, and turning one ON ahead of
+  // setting a time is a legitimate order to do things in. And deliberately not a
+  // fallback hour in the tick: guessing a bedtime for a send the user consented to at
+  // THEIR bedtime is a worse answer than saying what is missing.
+  function slotGap(e: NotificationKindEntry): string | null {
+    const missing = unmetSlotRequirement(
+      e,
+      (slot) => values[SLOT_FIELD[slot]] !== ""
+    );
+    return missing ? slotRequirementNote(missing) : null;
+  }
+
   // Whether the kind itself is on, which decides if its extras are offered.
   function kindEnabled(e: NotificationKindEntry): boolean {
     switch (e.control.type) {
@@ -580,6 +600,14 @@ export default function NotificationPrefs({
                       ? `Sent on the usual training schedule — ${workoutSummary} — when behind on the weekly routine.`
                       : e.blurb}
                   </p>
+                  {slotGap(e) && (
+                    <p
+                      className="mt-1 text-xs text-amber-700 dark:text-amber-400"
+                      data-testid={`kind-slot-gap-${e.kind}`}
+                    >
+                      {slotGap(e)}
+                    </p>
+                  )}
 
                   {e.control.type === "time" && (
                     <div className="mt-2">
