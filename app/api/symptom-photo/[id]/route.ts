@@ -5,6 +5,7 @@ import { getCurrentSession, canAccessProfile } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { SYMPTOM_PHOTO_DIR } from "@/lib/symptom-photo-write";
+import { thumbSiblingPath } from "@/lib/photo/store";
 
 // Serve a stored symptom photo (issue #859 item 4). Session-gated (the Edge middleware
 // only checks cookie presence) and scoped by `id AND an ACCESSIBLE profile`.
@@ -17,6 +18,13 @@ import { SYMPTOM_PHOTO_DIR } from "@/lib/symptom-photo-write";
 // ACCESSIBLE profiles (#879) — so active-profile scoping 404'd every thumbnail on a
 // household member's episode for exactly the same reason. A profile the session has no
 // grant on is refused identically to a nonexistent id.
+//
+// `?thumb=1` serves the ingest-generated thumbnail (#1844 phase 3): the grid reads
+// thumbs, the lightbox reads the original. `symptom_photos` predates the photo core and
+// carries no thumb_path column, so the thumbnail is the DERIVED sibling of the stored
+// file (thumbSiblingPath — one rule, shared with the writer). A photo stored before
+// phase 3 that the metadata backfill has not reached yet has no sibling on disk; it
+// falls back to the full image rather than 404ing.
 
 const UPLOAD_ROOT = path.resolve(SYMPTOM_PHOTO_DIR);
 
@@ -30,7 +38,7 @@ const INLINE_OK = new Set([
 ]);
 
 export async function GET(
-  _req: Request,
+  req: Request,
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
@@ -52,11 +60,18 @@ export async function GET(
   if (!row || !row.stored_path || !canAccessProfile(session, row.profile_id))
     return new Response("Not found", { status: 404 });
 
+  const wantThumb = new URL(req.url).searchParams.get("thumb") === "1";
   const abs = path.resolve(process.cwd(), row.stored_path);
   if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep)) {
     return new Response("Not found", { status: 404 });
   }
   if (!fs.existsSync(abs)) return new Response("File missing", { status: 410 });
+  // The thumbnail is contained by construction (a sibling of an already-contained
+  // path) and is always the core's re-encoded JPEG, whatever the row's mime says.
+  const thumbAbs = wantThumb
+    ? path.resolve(process.cwd(), thumbSiblingPath(row.stored_path))
+    : null;
+  const serveThumb = thumbAbs != null && fs.existsSync(thumbAbs);
 
   // `active_profile_id` keeps its meaning (the acting profile); the SUBJECT rides in
   // `detail` as a bare identifier, so a cross-profile read still names whose photo it was.
@@ -64,13 +79,15 @@ export async function GET(
     loginId: session.login.id,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
-    target: `symptom-photo:${id}`,
+    target: `symptom-photo:${id}${serveThumb ? ":thumb" : ""}`,
     detail: `profile:${row.profile_id}`,
   });
 
-  const mime = row.mime_type || "application/octet-stream";
+  const mime = serveThumb
+    ? "image/jpeg"
+    : row.mime_type || "application/octet-stream";
   const disposition = INLINE_OK.has(mime) ? "inline" : "attachment";
-  const data = fs.readFileSync(abs);
+  const data = fs.readFileSync(serveThumb ? thumbAbs : abs);
   return new Response(data, {
     headers: {
       "Content-Type": mime,

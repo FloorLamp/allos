@@ -14,6 +14,7 @@
 //   • Body Temperature                    → medical_records, category 'vitals',  degF
 //   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
 //   • Heart rate variability (HRV)        → metric_samples,  metric 'hrv_ms',    ms
+//   • Peak expiratory flow                → metric_samples,  metric 'peak_flow_lmin', L/min
 //   • Grip Strength                       → medical_records, category 'vitals',  kg
 //   • 30-Second Chair Stand               → medical_records, category 'vitals',  reps
 //   • Single-Leg Balance                  → medical_records, category 'vitals',  seconds
@@ -25,6 +26,11 @@
 // (°C→°F, mmol/L→mg/dL). BP/SpO2/HRV/sleep have universal entry units.
 
 import { inMetricBounds } from "./ingest-bounds";
+import {
+  PEAK_FLOW_CANONICAL,
+  PEAK_FLOW_UNIT,
+  peakFlowRangeError,
+} from "./peak-flow";
 
 export type TempUnit = "C" | "F";
 export type GlucoseUnit = "mg/dL" | "mmol/L";
@@ -48,6 +54,25 @@ export interface VitalSampleRow {
   value: number;
 }
 
+// A vital submitted BY IDENTITY rather than by table (#2032's write direction,
+// applied here by #1850). The write core hands one of these to `recordReading`,
+// which decides the physical store from the canonical name — so this half of the
+// form names the QUANTITY and never a metric key.
+//
+// It exists because peak flow needs something the per-day sample upsert cannot give
+// it: `at` is the profile-local "HH:MM" the blow was taken, and it becomes the row's
+// own instant, which is what lets a morning and an evening reading on one flare day
+// be TWO readings instead of the evening overwriting the morning. (A temperature
+// solved the same problem in `medical_records` with a clock-time note, #800/#843; the
+// tall store has a real column for it, so the reading keeps a sortable instant.)
+export interface VitalReadingRow {
+  canonical: string;
+  unit: string;
+  value: number;
+  /** The profile-local "HH:MM" the reading was taken, when the form stated one. */
+  at?: string;
+}
+
 export interface VitalsRawInput {
   systolic?: string | null;
   diastolic?: string | null;
@@ -62,6 +87,8 @@ export interface VitalsRawInput {
   gripStrength?: string | null; // kg
   chairStand?: string | null; // reps in 30 s
   balance?: string | null; // single-leg stance seconds
+  peakFlow?: string | null; // L/min
+  peakFlowTime?: string | null; // optional "HH:MM" reading time (#1850 flare monitoring)
 }
 
 // Canonical names/units — the single source of truth shared by the action + tests,
@@ -300,6 +327,7 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     input.gripStrength,
     input.chairStand,
     input.balance,
+    input.peakFlow,
   ].some((v) => !blank(v));
 
   if (!hasSys && !hasDia && !anyOther) {
@@ -383,12 +411,23 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     }
   }
 
+  if (!blank(input.peakFlow)) {
+    const v = numOrNull(input.peakFlow);
+    if (v == null) return "Enter a valid peak flow reading.";
+    // The SAME pure bounds the domain module owns, so the form, the write core and
+    // the personal-best field can never disagree about a plausible blow.
+    const err = peakFlowRangeError(v);
+    if (err) return err;
+  }
+
   return null;
 }
 
 export interface NormalizedVitals {
   medical: VitalMedicalRow[];
   samples: VitalSampleRow[];
+  /** The identity-keyed half (#1850) — written through `recordReading`. */
+  readings: VitalReadingRow[];
 }
 
 // Convert a validated raw form into the canonical rows to persist. Returns a
@@ -403,6 +442,7 @@ export function normalizeVitalsInput(
 
   const medical: VitalMedicalRow[] = [];
   const samples: VitalSampleRow[] = [];
+  const readings: VitalReadingRow[] = [];
 
   const sys = numOrNull(input.systolic);
   const dia = numOrNull(input.diastolic);
@@ -464,5 +504,19 @@ export function normalizeVitalsInput(
     medical.push({ ...VITAL_CANONICAL.balance, value_num: bal });
   }
 
-  return { medical, samples };
+  const peakFlow = numOrNull(input.peakFlow);
+  if (peakFlow != null) {
+    // Rounded to whole L/min: a peak-flow meter's scale is graduated in tens and
+    // reads to about ±20, so a stored 412.4 would claim a precision the instrument
+    // does not have — and the zone percentage is taken against a whole-number best.
+    const at = normalizeClockTime(input.peakFlowTime);
+    readings.push({
+      canonical: PEAK_FLOW_CANONICAL,
+      unit: PEAK_FLOW_UNIT,
+      value: Math.round(peakFlow),
+      ...(at ? { at } : {}),
+    });
+  }
+
+  return { medical, samples, readings };
 }

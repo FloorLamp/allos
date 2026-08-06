@@ -74,6 +74,22 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   "Hearing Threshold, Left Ear 2 kHz": "episodic",
   "Hearing Threshold, Left Ear 4 kHz": "episodic",
   "Hearing Threshold, Left Ear 8 kHz": "episodic",
+  // Respiratory function (#1850) — the domain that splits across the cadence line,
+  // which is exactly why the discriminator is the NAME and not the category.
+  //
+  // Peak flow is CONTINUOUS: a person with asthma blows into a meter once or twice a
+  // day during a flare, so "what is this doing lately?" is the only useful question
+  // and the metric detail page is its renderer. Its destination is real in both
+  // directions — the page charts its `metric_samples` stream AND folds in a
+  // clinic-measured PEF of the same identity (see vitals-reading-surface.test.ts).
+  "Peak Expiratory Flow": "continuous",
+  // Spirometry is EPISODIC: FEV1 / FVC / the ratio are measured on a pulmonology
+  // report a handful of times in a life and read against a band (or, for the two
+  // absolute volumes, against nothing — no predicted equation ships here), which is
+  // the lab cadence and the lab renderer, exactly like an audiogram threshold.
+  FEV1: "episodic",
+  FVC: "episodic",
+  "FEV1/FVC Ratio": "episodic",
 };
 
 describe("reading cadence — the vitals audit", () => {
@@ -91,15 +107,16 @@ describe("reading cadence — the vitals audit", () => {
     expect(readingCadence(name)).toBe(expected);
   });
 
-  it("declares a metric kind for exactly the continuous six", () => {
+  it("declares a metric kind for exactly the continuous seven", () => {
     // Named out loud so the set can't grow or shrink without a deliberate edit here —
-    // and so the one entry whose destination is a STREAM store (Resting Heart Rate,
-    // #2032) is visible rather than folded into a count.
+    // and so the two entries whose destination is a STREAM store (Resting Heart Rate,
+    // #2032; Peak Expiratory Flow, #1850) are visible rather than folded into a count.
     expect(Object.keys(CONTINUOUS_READING_METRIC).sort()).toEqual([
       "Blood Pressure Diastolic",
       "Blood Pressure Systolic",
       "Body Temperature",
       "Oxygen Saturation",
+      "Peak Expiratory Flow",
       "Respiratory Rate",
       "Resting Heart Rate",
     ]);

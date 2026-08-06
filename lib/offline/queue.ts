@@ -171,6 +171,13 @@ export interface VitalsPayload {
   // The optional "HH:MM" reading time a temperature carries for the fever curve
   // (#800/#843) — captured so a replayed reading keeps its clock time.
   temperatureTime?: string | null;
+  // Peak expiratory flow and the clock time it was blown at (#1850). OPTIONAL for the
+  // same backward-compatibility reason as the fitness markers below: an intent queued
+  // before this shipped carries neither, and the server core treats an absent field
+  // exactly as an unfilled one. The TIME is what makes an offline morning blow and an
+  // offline evening blow replay as two readings rather than one.
+  peakFlow?: string | null;
+  peakFlowTime?: string | null;
   // The three #158 functional-fitness markers. OPTIONAL since #1486: they left the
   // daily measurements form for the guided Fitness check (assessment cadence), so a
   // NEW queued intent never carries them — but an intent queued before the upgrade

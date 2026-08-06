@@ -121,6 +121,7 @@ import {
   seedMetricJudgment,
   seedMetricFold,
   seedLongRange,
+  seedPeakFlow,
 } from "./seed/trends";
 
 seedPrelude();
@@ -179,6 +180,7 @@ seedProviderCloseout();
 seedBodyMobile();
 seedMetricJudgment();
 seedMetricFold();
+seedPeakFlow();
 seedRestCard();
 seedSuppressedCenter();
 seedMultiProfile();

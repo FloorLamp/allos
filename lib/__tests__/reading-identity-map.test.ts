@@ -103,11 +103,15 @@ describe("both halves derive from it, and agree in both directions", () => {
       "Blood Pressure Systolic",
       "Body Temperature",
       "Oxygen Saturation",
+      // #1850: the respiratory domain's home-measured half, and the first entry to
+      // carry BOTH halves into the TALL stream store.
+      "Peak Expiratory Flow",
       "Respiratory Rate",
       "Resting Heart Rate",
     ]);
     expect(STREAM_READING_SOURCES.map((s) => s.canonical).sort()).toEqual([
       "Body Fat Percentage",
+      "Peak Expiratory Flow",
       "Resting Heart Rate",
     ]);
   });

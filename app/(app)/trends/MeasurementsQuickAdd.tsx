@@ -293,6 +293,8 @@ export default function MeasurementsQuickAdd({
       temperatureTime: s("temp_time"),
       sleepHours: s("sleep_hours"),
       hrv: s("hrv"),
+      peakFlow: s("peak_flow"),
+      peakFlowTime: s("peak_flow_time"),
     };
     const growth = {
       height: s("height"),
@@ -310,7 +312,8 @@ export default function MeasurementsQuickAdd({
       vitals.spo2 != null ||
       vitals.temperature != null ||
       vitals.sleepHours != null ||
-      vitals.hrv != null;
+      vitals.hrv != null ||
+      vitals.peakFlow != null;
     const hasGrowth = growth.height != null || growth.headCirc != null;
 
     if (!hasBody && !hasVitals && !hasGrowth) {
@@ -644,6 +647,41 @@ export default function MeasurementsQuickAdd({
         </UnitSuffix>
       </Field>
     ),
+    peakFlow: (
+      <Field
+        key="peak-flow"
+        label={BODY_METRIC_META["peak-flow"].title}
+        htmlFor="m-peak-flow"
+      >
+        <UnitSuffix suffix={BODY_METRIC_META["peak-flow"].unit.trim()}>
+          <input
+            id="m-peak-flow"
+            data-testid="measurements-peak-flow"
+            type="number"
+            step="1"
+            min="0"
+            name="peak_flow"
+            className="input pr-14"
+          />
+        </UnitSuffix>
+        {/* Peak flow is monitored once or twice a day during a flare (#1850), so the
+            blow carries the clock time it was taken at — without it the evening
+            reading would correct the morning's instead of joining it. */}
+        <label
+          className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
+          htmlFor="m-peak-flow-time"
+        >
+          Time taken (optional)
+        </label>
+        <input
+          id="m-peak-flow-time"
+          data-testid="measurements-peak-flow-time"
+          type="time"
+          name="peak_flow_time"
+          className="input mt-1"
+        />
+      </Field>
+    ),
     restingHr: (
       <Field
         key="resting-hr"
@@ -685,6 +723,7 @@ export default function MeasurementsQuickAdd({
     hrv: [field.hrv],
     height: [field.height],
     "head-circ": [field.headCirc],
+    "peak-flow": [field.peakFlow],
   };
 
   const groupFields: Record<MeasurementGroup, ReactNode[]> = {
@@ -694,6 +733,7 @@ export default function MeasurementsQuickAdd({
       field.spo2,
       field.temperature,
       field.glucose,
+      field.peakFlow,
     ],
     body: [
       field.weight,

@@ -1,50 +1,37 @@
 // Auth-blind write cores + gather for symptom photos (issue #859 item 4). profileId-
-// first, never imports lib/auth — the Server Action owns the gate + revalidation. Rides
-// the medical-uploads posture (per-profile dirs, sha256 dedup, path-contained serving)
-// but its OWN table + files dir, so a rash photo never enters the medical-document
-// pipeline / passport. A photo binds to a symptom-DAY by `date` (membership-by-date,
-// like every other illness ingredient); `symptom` optionally pins a specific
-// symptom-day. Every statement is profile-scoped.
+// first, never imports lib/auth — the Server Action owns the gate + revalidation. Its
+// OWN table + files dir, so a rash photo never enters the medical-document pipeline /
+// passport. A photo binds to a symptom-DAY by `date` (membership-by-date, like every
+// other illness ingredient); `symptom` optionally pins a specific symptom-day. Every
+// statement is profile-scoped.
+//
+// PHOTO CORE (#1844, phase 3): bytes arrive here ALREADY processed by
+// lib/photo/ingest.ts processPhoto() — magic-byte sniffed, EXIF-harvested-then-
+// STRIPPED, auto-oriented, downscaled, thumbnailed — so this module owns only the
+// domain row, the per-profile dedup on the PROCESSED content hash, and the file store
+// (lib/photo/store.ts). Before phase 3 this domain wrote the uploaded bytes verbatim:
+// a photo of a child's rash kept its GPS and device metadata on disk. The strip is the
+// core's job, not a per-domain one — nothing here may write unprocessed bytes.
 //
 // PHI POSTURE: nothing here is read by the episode share/print path
 // (assembleIllnessEpisode) — the exclusion of photos from shares/printables is
 // structural (the safe default), not a flag.
 
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
 import { db, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
-// The upload byte cap + magic-byte sniff are shared photo-capture policy (#1284) —
-// one definition in lib/photo/policy.ts so this domain, lib/skin-photo-write.ts, and
-// the shared lib/photo/ingest.ts can never disagree on size/type acceptance.
-import { MAX_PHOTO_BYTES, sniffImageMime } from "./photo/policy";
+import type { ProcessedPhoto } from "./photo/ingest";
+import {
+  photoDomainRoot,
+  storeProcessedPhoto,
+  thumbSiblingPath,
+  unlinkPhotoFiles,
+} from "./photo/store";
 
 // The ONLY directory symptom photos are stored under (per-profile subdirs). A served
-// path must resolve inside this dir (the serve route's path-traversal guard).
-export const SYMPTOM_PHOTO_DIR = path.join(
-  process.cwd(),
-  "data",
-  "uploads",
-  "symptom-photos"
-);
-
-function safeName(name: string): string {
-  return (
-    name
-      .replace(/[^a-zA-Z0-9._-]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 120) || "photo"
-  );
-}
-
-const EXT_FOR_MIME: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/heic": ".heic",
-};
+// path must resolve inside this dir (the serve route's path-traversal guard). Read out
+// of the core store's OWN mapping so a dir rename can't leave a containment check
+// silently pointing at the wrong root.
+export const SYMPTOM_PHOTO_DIR = photoDomainRoot("symptom");
 
 export type SymptomPhotoOutcome =
   | { kind: "attached"; id: number }
@@ -61,28 +48,21 @@ export interface SymptomPhotoRow {
   created_at: string;
 }
 
-// Attach a photo to a symptom-day. Validates the date + image bytes, dedups per-profile
-// on the content hash, writes the file under data/uploads/symptom-photos/<profileId>/,
-// and inserts the row. Returns a typed outcome so the caller never unconditionally
-// confirms. `symptom`/`caption` are optional.
+// Attach a processed photo to a symptom-day. Validates the date, dedups per-profile on
+// the PROCESSED content hash, writes the stripped file + its thumbnail under
+// data/uploads/symptom-photos/<profileId>/, and inserts the row. Returns a typed
+// outcome so the caller never unconditionally confirms. `symptom`/`caption` are
+// optional.
 export function attachSymptomPhotoCore(
   profileId: number,
   date: string,
-  buffer: Buffer,
-  originalName: string,
+  photo: ProcessedPhoto,
   symptom: string | null = null,
   caption: string | null = null
 ): SymptomPhotoOutcome {
   if (!isRealIsoDate(date))
     return { kind: "invalid", error: "Enter a valid date." };
-  if (buffer.length === 0) return { kind: "invalid", error: "Empty file." };
-  if (buffer.length > MAX_PHOTO_BYTES)
-    return { kind: "invalid", error: "That image is too large (max 15 MB)." };
-  const mime = sniffImageMime(buffer);
-  if (!mime)
-    return { kind: "invalid", error: "That file isn't a supported image." };
 
-  const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
   const sym = symptom?.trim() ? symptom.trim() : null;
   const cap = caption?.trim() ? caption.trim().slice(0, 500) : null;
 
@@ -101,30 +81,16 @@ export function attachSymptomPhotoCore(
       )?.id ?? null)
     : null;
 
-  // Per-profile dedup: a re-upload of the identical image reuses the existing row.
-  const existing = db
-    .prepare(
-      `SELECT id FROM symptom_photos WHERE profile_id = ? AND content_hash = ?`
-    )
-    .get(profileId, contentHash) as { id: number } | undefined;
-  if (existing) return { kind: "duplicate", id: existing.id };
-
-  const profileDir = path.join(SYMPTOM_PHOTO_DIR, String(profileId));
-  fs.mkdirSync(profileDir, { recursive: true });
-  const ext = EXT_FOR_MIME[mime] ?? "";
-  const base = safeName(originalName.replace(/\.[a-zA-Z0-9]+$/, "")) + ext;
-  const fileName = `${contentHash.slice(0, 16)}-${base}`;
-  const abs = path.join(profileDir, fileName);
-  const storedPath = path.join(
-    "data",
-    "uploads",
-    "symptom-photos",
-    String(profileId),
-    fileName
-  );
-
   return writeTx(() => {
-    fs.writeFileSync(abs, buffer);
+    // Per-profile dedup: a re-upload of the identical image reuses the existing row.
+    const existing = db
+      .prepare(
+        `SELECT id FROM symptom_photos WHERE profile_id = ? AND content_hash = ?`
+      )
+      .get(profileId, photo.contentHash) as { id: number } | undefined;
+    if (existing) return { kind: "duplicate" as const, id: existing.id };
+
+    const { storedPath } = storeProcessedPhoto("symptom", profileId, photo);
     const info = db
       .prepare(
         `INSERT INTO symptom_photos
@@ -137,9 +103,9 @@ export function attachSymptomPhotoCore(
         sym,
         logId,
         storedPath,
-        contentHash,
-        mime,
-        buffer.length,
+        photo.contentHash,
+        photo.mime,
+        photo.sizeBytes,
         cap
       );
     return { kind: "attached" as const, id: Number(info.lastInsertRowid) };
@@ -200,17 +166,10 @@ export function deletePhotosForSymptomLog(
   db.prepare(
     `DELETE FROM symptom_photos WHERE profile_id = ? AND symptom_log_id = ?`
   ).run(profileId, symptomLogId);
-  const root = path.resolve(SYMPTOM_PHOTO_DIR);
-  for (const r of rows) {
-    const abs = path.resolve(process.cwd(), r.stored_path);
-    if (abs.startsWith(root + path.sep) && fs.existsSync(abs)) {
-      try {
-        fs.unlinkSync(abs);
-      } catch {
-        // A missing/locked file must not fail the row delete.
-      }
-    }
-  }
+  unlinkPhotoFiles(
+    "symptom",
+    rows.flatMap((r) => [r.stored_path, thumbSiblingPath(r.stored_path)])
+  );
   return rows.length;
 }
 
@@ -233,8 +192,9 @@ export function updateSymptomPhotoCaptionCore(
   );
 }
 
-// Delete one symptom photo — the row AND its on-disk file (row-op side-state #199).
-// Path-contained: only a file under SYMPTOM_PHOTO_DIR is unlinked. Idempotent.
+// Delete one symptom photo — the row AND its on-disk files (row-op side-state #199):
+// the photo and the thumbnail derived beside it. Path-contained by the core store: a
+// path resolving outside the symptom root is skipped, never followed. Idempotent.
 export function deleteSymptomPhotoCore(profileId: number, id: number): boolean {
   return writeTx(() => {
     const row = db
@@ -246,15 +206,10 @@ export function deleteSymptomPhotoCore(profileId: number, id: number): boolean {
     db.prepare(
       `DELETE FROM symptom_photos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    const abs = path.resolve(process.cwd(), row.stored_path);
-    const root = path.resolve(SYMPTOM_PHOTO_DIR);
-    if (abs.startsWith(root + path.sep) && fs.existsSync(abs)) {
-      try {
-        fs.unlinkSync(abs);
-      } catch {
-        // A missing/locked file must not fail the row delete.
-      }
-    }
+    unlinkPhotoFiles("symptom", [
+      row.stored_path,
+      thumbSiblingPath(row.stored_path),
+    ]);
     return true;
   });
 }

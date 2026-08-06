@@ -6,6 +6,11 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
+import { readJpegExif } from "@/lib/photo/exif";
+import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { thumbSiblingPath } from "@/lib/photo/store";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { resolveSituationId, getProfileSetting } from "@/lib/settings";
@@ -33,11 +38,24 @@ function makeSick(profileId: number, startDaysAgo = 8): number {
   return getOpenEpisodeRow(profileId, "Illness")!.id;
 }
 
-// A minimal valid PNG (signature + a truncated body) — enough for the magic-byte sniff.
-function pngFile(name = "rash.png"): File {
-  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const body = Buffer.concat([sig, Buffer.from("synthetic-fixture-bytes")]);
-  return new File([body], name, { type: "image/png" });
+// Real image bytes: since #1844 the upload runs through the shared photo core, which
+// decodes and re-encodes the file, so a truncated-signature stub is no longer a
+// stand-in for a photo. Each call paints a distinct colour so the per-profile
+// content-hash dedup sees distinct captures.
+let seed = 0;
+async function photoFile(name = "rash.png"): Promise<File> {
+  seed += 1;
+  const bytes = await sharp({
+    create: {
+      width: 120,
+      height: 90,
+      channels: 3,
+      background: { r: (seed * 37) % 255, g: 60, b: (seed * 61) % 255 },
+    },
+  })
+    .png()
+    .toBuffer();
+  return new File([new Uint8Array(bytes)], name, { type: "image/png" });
 }
 
 describe("endStaleEpisodeAction — backdated one-tap close", () => {
@@ -101,7 +119,7 @@ describe("symptom photo attach / delete", () => {
     logSymptomCore(profile.id, "rash", 2, today(profile.id));
 
     const form = new FormData();
-    form.set("photo", pngFile());
+    form.set("photo", await photoFile());
     form.set("date", today(profile.id));
     form.set("symptom", "rash");
     form.set("caption", "left forearm");
@@ -121,7 +139,9 @@ describe("symptom photo attach / delete", () => {
         }
       | undefined;
     expect(row).toBeTruthy();
-    expect(row!.mime_type).toBe("image/png");
+    // The core re-encodes every accepted photo to JPEG on the way in — the stored
+    // mime is the PIPELINE's, never the uploaded container's.
+    expect(row!.mime_type).toBe("image/jpeg");
     expect(row!.caption).toBe("left forearm");
     expect(fs.existsSync(row!.stored_path)).toBe(true);
 
@@ -143,6 +163,76 @@ describe("symptom photo attach / delete", () => {
       db.prepare(`SELECT 1 FROM symptom_photos WHERE id = ?`).get(row!.id)
     ).toBeUndefined();
     expect(fs.existsSync(row!.stored_path)).toBe(false);
+  });
+
+  // The load-bearing #1844 pin: a photo of a child's rash is among the most sensitive
+  // images this app holds, and until phase 3 it went to disk with whatever the phone
+  // wrote into it. The action never trusts the client's bytes.
+  it("stores a metadata-free file even when the upload carries GPS EXIF", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Photo Strip Actor", login.id);
+    actAs(login, profile);
+    const base = await sharp({
+      create: {
+        width: 320,
+        height: 240,
+        channels: 3,
+        background: { r: 200, g: 80, b: 80 },
+      },
+    })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    const tagged = spliceExifIntoJpeg(base, {
+      dateTimeOriginal: "2026:01:20 11:05:00",
+      gps: true,
+    });
+    expect(readJpegExif(tagged).hasGps).toBe(true); // the fixture has teeth
+
+    const form = new FormData();
+    form.set(
+      "photo",
+      new File([new Uint8Array(tagged)], "rash.jpg", { type: "image/jpeg" })
+    );
+    form.set("date", today(profile.id));
+    expect((await uploadSymptomPhotoAction(form)).ok).toBe(true);
+
+    const row = db
+      .prepare(
+        `SELECT id, date, stored_path FROM symptom_photos WHERE profile_id = ?`
+      )
+      .get(profile.id) as { id: number; date: string; stored_path: string };
+    // The episode DAY the strip stands on wins over the EXIF capture date — the
+    // explicit date is the user's answer, the harvest only fills a blank.
+    expect(row.date).toBe(today(profile.id));
+    const stored = fs.readFileSync(
+      path.resolve(process.cwd(), row.stored_path)
+    );
+    const exif = readJpegExif(stored);
+    expect(exif.hasExif).toBe(false);
+    expect(exif.hasGps).toBe(false);
+    // The grid's thumbnail lands beside it (no thumb_path column on this table).
+    expect(
+      fs.existsSync(
+        path.resolve(process.cwd(), thumbSiblingPath(row.stored_path))
+      )
+    ).toBe(true);
+
+    // Dedup still keys on the PROCESSED bytes: the identical capture re-uploaded is a
+    // calm success that adds no second row.
+    const again = new FormData();
+    again.set(
+      "photo",
+      new File([new Uint8Array(tagged)], "rash.jpg", { type: "image/jpeg" })
+    );
+    again.set("date", today(profile.id));
+    expect((await uploadSymptomPhotoAction(again)).ok).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM symptom_photos WHERE profile_id = ?`
+        )
+        .get(profile.id)
+    ).toEqual({ n: 1 });
   });
 
   it("rejects a non-image file", async () => {
@@ -167,7 +257,7 @@ describe("symptom photo attach / delete", () => {
     const actor = createProfile("Photo Editor", login.id);
     actAs(login, owner);
     const form = new FormData();
-    form.set("photo", pngFile("owned.png"));
+    form.set("photo", await photoFile("owned.png"));
     form.set("date", today(owner.id));
     expect((await uploadSymptomPhotoAction(form)).ok).toBe(true);
     const row = db
@@ -200,7 +290,7 @@ describe("symptom photo serve route — accessible-profile access (#1696)", () =
 
     actAs(caregiver, member);
     const form = new FormData();
-    form.set("photo", pngFile("member-rash.png"));
+    form.set("photo", await photoFile("member-rash.png"));
     form.set("date", today(member.id));
     expect((await uploadSymptomPhotoAction(form)).ok).toBe(true);
     const row = db

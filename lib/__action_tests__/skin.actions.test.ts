@@ -7,6 +7,12 @@
 // static source scan can't see across the action boundary; this is the dynamic guard.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
+import { readJpegExif } from "@/lib/photo/exif";
+import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { thumbSiblingPath } from "@/lib/photo/store";
 import { revalidatePath } from "next/cache";
 import {
   addSkinLesion,
@@ -23,11 +29,24 @@ import { seedActor, createProfile, fd } from "./harness";
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
 
-// A minimal valid PNG (signature + a truncated body) — enough for the magic-byte sniff.
-function pngFile(name = "mole.png"): File {
-  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const body = Buffer.concat([sig, Buffer.from("synthetic-fixture-bytes")]);
-  return new File([body], name, { type: "image/png" });
+// Real image bytes: since #1844 the upload runs through the shared photo core, which
+// decodes and re-encodes the file, so a truncated-signature stub is no longer a
+// stand-in for a photo. Each call paints a distinct colour so the per-profile
+// content-hash dedup sees distinct captures.
+let seed = 0;
+async function photoFile(name = "mole.png"): Promise<File> {
+  seed += 1;
+  const bytes = await sharp({
+    create: {
+      width: 120,
+      height: 90,
+      channels: 3,
+      background: { r: (seed * 31) % 255, g: (seed * 57) % 255, b: 90 },
+    },
+  })
+    .png()
+    .toBuffer();
+  return new File([new Uint8Array(bytes)], name, { type: "image/png" });
 }
 
 describe("addSkinLesion", () => {
@@ -159,7 +178,7 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     form.set("lesion_id", String(lesionId));
     form.set("date", "2026-04-01");
     form.set("caption", "baseline");
-    form.set("photo", pngFile());
+    form.set("photo", await photoFile());
     const res = await uploadLesionPhoto(form);
     expect(res.ok).toBe(true);
 
@@ -170,7 +189,9 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
       .get(profile.id) as
       { id: number; lesion_id: number; mime_type: string } | undefined;
     expect(row?.lesion_id).toBe(lesionId);
-    expect(row?.mime_type).toBe("image/png");
+    // The core re-encodes every accepted photo to JPEG on the way in — the stored
+    // mime is the PIPELINE's, never the uploaded container's.
+    expect(row?.mime_type).toBe("image/jpeg");
 
     const del = await deleteLesionPhoto(fd({ photo_id: String(row!.id) }));
     expect(del.ok).toBe(true);
@@ -188,7 +209,7 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     const form = new FormData();
     form.set("lesion_id", String(lesionId));
     form.set("date", "2026-04-01");
-    form.set("photo", pngFile("shoulder.png"));
+    form.set("photo", await photoFile("shoulder.png"));
     expect((await uploadLesionPhoto(form)).ok).toBe(true);
 
     const del = await deleteSkinLesion(fd({ id: String(lesionId) }));
@@ -199,6 +220,74 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
         .prepare(`SELECT 1 FROM lesion_photos WHERE lesion_id = ?`)
         .get(lesionId)
     ).toBeUndefined();
+  });
+
+  // The load-bearing #1844 pin: dermatology close-ups were the most sensitive photos
+  // in the app and, until phase 3, the ONLY thing between their GPS coordinates and
+  // disk was that nobody looked. The action never trusts the client's bytes.
+  it("stores a metadata-free file even when the upload carries GPS EXIF", async () => {
+    const { profile } = seedActor();
+    await addSkinLesion(fd({ label: "Calf mole", body_region: "calf" }));
+    const lesionId = getSkinLesions(profile.id)[0].id;
+    const base = await sharp({
+      create: {
+        width: 300,
+        height: 200,
+        channels: 3,
+        background: { r: 12, g: 200, b: 60 },
+      },
+    })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    const tagged = spliceExifIntoJpeg(base, {
+      dateTimeOriginal: "2026:03:09 07:30:00",
+      gps: true,
+    });
+    expect(readJpegExif(tagged).hasGps).toBe(true); // the fixture has teeth
+
+    const form = new FormData();
+    form.set("lesion_id", String(lesionId));
+    form.set(
+      "photo",
+      new File([new Uint8Array(tagged)], "mole.jpg", { type: "image/jpeg" })
+    );
+    expect((await uploadLesionPhoto(form)).ok).toBe(true);
+
+    const row = db
+      .prepare(
+        `SELECT id, date, stored_path FROM lesion_photos WHERE profile_id = ?`
+      )
+      .get(profile.id) as { id: number; date: string; stored_path: string };
+    // The DATE came out of the EXIF that was harvested before the strip: the form
+    // carried no date, and the capture day is the truth the photo knows.
+    expect(row.date).toBe("2026-03-09");
+    const stored = fs.readFileSync(
+      path.resolve(process.cwd(), row.stored_path)
+    );
+    const exif = readJpegExif(stored);
+    expect(exif.hasExif).toBe(false);
+    expect(exif.hasGps).toBe(false);
+    // The grid's thumbnail lands beside it (no thumb_path column on this table).
+    expect(
+      fs.existsSync(
+        path.resolve(process.cwd(), thumbSiblingPath(row.stored_path))
+      )
+    ).toBe(true);
+
+    // Dedup still keys on the PROCESSED bytes: the identical capture re-uploaded is a
+    // calm success that adds no second row.
+    const again = new FormData();
+    again.set("lesion_id", String(lesionId));
+    again.set(
+      "photo",
+      new File([new Uint8Array(tagged)], "mole.jpg", { type: "image/jpeg" })
+    );
+    expect((await uploadLesionPhoto(again)).ok).toBe(true);
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM lesion_photos WHERE profile_id = ?`)
+        .get(profile.id)
+    ).toEqual({ n: 1 });
   });
 
   it("rejects a non-image upload", async () => {

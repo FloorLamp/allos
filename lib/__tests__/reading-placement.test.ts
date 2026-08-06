@@ -102,6 +102,19 @@ const PLACEMENT_TABLE: {
       canonical: "Body Fat Percentage",
     },
   },
+  // The respiratory domain's home half (#1850) — the first identity whose stream is
+  // the TALL store. A blow typed into the measurements form joins the same
+  // `metric_samples` series the metric page charts; a PEF printed on a spirometry
+  // report arrives with its document, so clause 2 keeps it an observation. Both are
+  // readings of one quantity, which is what puts them on one chart.
+  {
+    identity: "Peak Expiratory Flow",
+    plain: { table: "metric_samples", metric: "peak_flow_lmin" },
+    withProvenance: {
+      table: "medical_records",
+      canonical: "Peak Expiratory Flow",
+    },
+  },
 ];
 
 describe("the placement rule — the decision table", () => {
@@ -129,9 +142,15 @@ describe("the placement rule — the decision table", () => {
     // the table invents nothing the registry doesn't know about — so a new judged metric
     // is a red test here rather than a placement decided by whichever writer got there
     // first.
+    // Both knowledge sources that NAME a canonical entry. A `personal-best` metric
+    // (#1850) has a real identity and therefore a real placement — what it lacks is a
+    // population BAND, which is a different question and not this table's.
     const registered = JUDGED_METRIC_SLUGS.map((slug) => {
       const knowledge = METRIC_KNOWLEDGE[slug];
-      return knowledge.source === "canonical" ? knowledge.canonical : "";
+      return knowledge.source === "canonical" ||
+        knowledge.source === "personal-best"
+        ? knowledge.canonical
+        : "";
     }).sort();
     expect(PLACEMENT_TABLE.map((r) => r.identity).sort()).toEqual(registered);
   });
@@ -182,7 +201,13 @@ describe("the placement rule — clauses 1 and 3", () => {
       "body_fat_pct",
       "resting_hr",
     ]);
-    expect(streamKeysPlacedIn("metric_samples")).toEqual([]);
+    expect(streamKeysPlacedIn("metric_samples")).toEqual(["peak_flow_lmin"]);
+    expect(canonicalForStreamKey("metric_samples", "peak_flow_lmin")).toBe(
+      "Peak Expiratory Flow"
+    );
+    // HRV streams into the same store, but has no canonical entry — so it is not a
+    // reading identity and the policy refuses to place it, rather than inventing one.
+    expect(canonicalForStreamKey("metric_samples", "hrv_ms")).toBeNull();
     expect(canonicalForStreamKey("body_metrics", "resting_hr")).toBe(
       "Resting Heart Rate"
     );

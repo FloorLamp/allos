@@ -27,6 +27,10 @@ export function deepLinkFieldId(
       return "m-height";
     case "weight":
       return "m-weight";
+    // #1850: the respiratory surfaces link here to log a blow (the zone card's own
+    // "Log a reading" affordance), so peak flow gets a focus target like the rest.
+    case "peak-flow":
+      return "m-peak-flow";
   }
   switch (created) {
     case "weight":
@@ -80,6 +84,11 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   "m-temperature": "vitals",
   "m-temp-time": "vitals",
   "m-glucose": "vitals",
+  // Peak expiratory flow (#1850) and the clock time it was blown at. In VITALS
+  // because that is what it is — a measured respiratory vital sign, taken on purpose
+  // and then logged, which is exactly what the group's own copy describes.
+  "m-peak-flow": "vitals",
+  "m-peak-flow-time": "vitals",
   "m-weight": "body",
   "m-body-fat": "body",
   "m-height": "body",
@@ -142,6 +151,7 @@ export function measurementGroupSummary(
       (v) => `${v}°${value("temp_unit") === "C" ? "C" : "F"}`
     );
     add(value("glucose"), (v) => `${v} ${value("glucose_unit") ?? "mg/dL"}`);
+    add(value("peak_flow"), (v) => `${v} L/min`);
   } else if (group === "body") {
     add(value("weight"), (v) => `${v} ${value("weight_unit") ?? "kg"}`);
     add(value("body_fat_pct"), (v) => `${v}% fat`);

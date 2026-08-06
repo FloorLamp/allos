@@ -181,6 +181,13 @@ function upsertManualSample(
 // Sleep and HRV stay on the sample writer: neither has a canonical reading identity, so
 // the policy refuses them by design rather than inventing a placement (the #482
 // exclusion discipline, applied to the write side).
+//
+// PEAK FLOW (#1850) is the first vital whose placement is a STREAM, and it rides the
+// same `recordReading` call the observation half does — which is the point: the caller
+// names "Peak Expiratory Flow" and the policy routes it to `metric_samples`, exactly as
+// it routes a blood pressure to `medical_records`. Its optional "HH:MM" becomes the
+// row's `start_time`, so a second blow the same day is a second reading rather than a
+// correction of the first (the natural key includes the instant).
 export function insertVitals(
   profileId: number,
   date: string,
@@ -189,8 +196,10 @@ export function insertVitals(
   if (!isRealIsoDate(date)) return false;
   const normalized = normalizeVitalsInput(raw);
   if ("error" in normalized) return false;
-  const { medical, samples } = normalized;
-  if (medical.length === 0 && samples.length === 0) return false;
+  const { medical, samples, readings } = normalized;
+  if (medical.length === 0 && samples.length === 0 && readings.length === 0) {
+    return false;
+  }
 
   for (const m of medical) {
     // Only a timed temperature carries a `note` (its "HH:MM" clock time, #800/#843);
@@ -210,6 +219,19 @@ export function insertVitals(
   }
   for (const s of samples) {
     upsertManualSample(profileId, s.metric, date, s.value);
+  }
+  for (const r of readings) {
+    recordReading(profileId, {
+      name: r.canonical,
+      value: r.value,
+      unit: r.unit,
+      date,
+      source: "manual",
+      // Absent when the form stated no time: the core then files the reading at the
+      // day's midnight, so a re-entry with no time CORRECTS that day instead of
+      // stacking a duplicate.
+      measuredAt: r.at ? `${date}T${r.at}:00` : null,
+    });
   }
   return true;
 }
@@ -703,6 +725,8 @@ export function applyIntent(
         gripStrength: p.gripStrength,
         chairStand: p.chairStand,
         balance: p.balance,
+        peakFlow: p.peakFlow,
+        peakFlowTime: p.peakFlowTime,
       });
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).

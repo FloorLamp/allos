@@ -20,6 +20,8 @@ import {
   deleteLesionPhotoCore,
   deleteLesionPhotosForLesion,
 } from "@/lib/skin-photo-write";
+import { processPhoto } from "@/lib/photo/ingest";
+import { resolvePhotoDate } from "@/lib/photo/policy";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
@@ -202,30 +204,41 @@ export async function trackSkinFollowUp(
   return formOk();
 }
 
-// Attach a dated photo to a lesion (#715 serial-photo tracking). Rides the existing
-// upload posture (per-profile dir, sha256 dedup, profile-scoped serving). Server-sniffs
-// the mime; the core re-checks the lesion belongs to the profile.
+// Attach a dated photo to a lesion (#715 serial-photo tracking). The bytes go through
+// the shared photo core FIRST (#1844 phase 3): magic-byte sniff, EXIF harvest, then the
+// STRIP + auto-orient + downscale + thumbnail — a dermatology close-up must never keep
+// the GPS coordinates and device identity its camera wrote. The date defaults from the
+// harvested capture date when the user left it blank, so a mole photographed on Sunday
+// and uploaded on Wednesday files under Sunday. The core re-checks the lesion belongs
+// to the profile.
 export async function uploadLesionPhoto(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const lesionId = Number(formData.get("lesion_id"));
   if (!lesionId) return formError("Couldn't find that lesion.");
-  const date = String(formData.get("date") ?? "").trim() || today(profile.id);
+  const rawDate = String(formData.get("date") ?? "").trim() || null;
   const caption = str(formData, "caption");
   const file = formData.get("photo");
   if (!(file instanceof File) || file.size === 0)
     return formError("Choose a photo to attach.");
   const buffer = Buffer.from(await file.arrayBuffer());
+  const processed = await processPhoto(buffer);
+  if (processed.kind === "invalid") return formError(processed.error);
+  const date = resolvePhotoDate(
+    rawDate,
+    processed.photo.captureDate,
+    today(profile.id)
+  );
   const outcome = attachLesionPhotoCore(
     profile.id,
     lesionId,
     date,
-    buffer,
-    file.name || "photo",
+    processed.photo,
     caption
   );
   if (outcome.kind === "invalid") return formError(outcome.error);
+  // "duplicate" is a success: the identical capture is already on the lesion.
   revalidateSkin();
   return formOk();
 }

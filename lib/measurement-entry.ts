@@ -7,7 +7,8 @@ export type MeasurementEntryMetric =
   | "temperature"
   | "hrv"
   | "height"
-  | "head-circ";
+  | "head-circ"
+  | "peak-flow";
 
 export interface MeasurementEntryGates {
   showBodyFat: boolean;

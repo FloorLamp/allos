@@ -12,6 +12,7 @@ import {
   getMoodLogs,
 } from "./queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
+import { PEAK_FLOW_METRIC } from "./peak-flow";
 import { bmiSeriesDatePaired } from "./growth-series";
 import { moodSeriesPoints } from "./mood";
 import { dispWeight, round } from "./units";
@@ -82,6 +83,12 @@ function streamMetricSeries(
       return biomarkerPoints("Body Temperature", profileId, 1);
     case "hrv":
       return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map(
+        (row) => ({ date: row.date, value: Math.round(row.value) })
+      );
+    case "peak-flow":
+      // Averaged per day by the shared bucket rule (#1850) — a day's blows are
+      // repeat measurements of one quantity, never an additive total.
+      return getMetricDailyTotals(profileId, PEAK_FLOW_METRIC, ALL_ROWS).map(
         (row) => ({ date: row.date, value: Math.round(row.value) })
       );
     case "skin-temp":
