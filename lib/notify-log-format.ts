@@ -118,10 +118,17 @@ export function classifyNotifyLine(e: {
   message: string;
   decision?: "declined" | "proceeded";
 }): NotifyLineKind {
-  if (e.decision === "declined") return "decline";
   const msg = e.message.toLowerCase();
-  if (NOTIFY_DECLINE_MESSAGES.includes(msg)) return "decline";
-  if (NOTIFY_DECLINE_SUBSTRINGS.some((s) => msg.includes(s))) return "decline";
+  // A DECLARATION wins in BOTH directions. Honouring it only for "declined" would
+  // leave a call site that explicitly said "I proceeded" still being read as a
+  // decline by the phrase table below — which is precisely the drift declaring is
+  // supposed to end. The tables only speak when nobody declared.
+  const declaredDecline =
+    e.decision == null
+      ? NOTIFY_DECLINE_MESSAGES.includes(msg) ||
+        NOTIFY_DECLINE_SUBSTRINGS.some((s) => msg.includes(s))
+      : e.decision === "declined";
+  if (declaredDecline) return "decline";
   if (e.level === "warn" || e.level === "error") return "failure";
   if (msg === "sent" || NOTIFY_SEND_SUBSTRINGS.some((s) => msg.includes(s)))
     return "send";
