@@ -1167,8 +1167,7 @@ clock time?" is ONE computation — `arrivalStatistics`
   be `median wake + p90 lag`: a central value of one varying quantity plus a tail
   value of another, biased low whenever wake and lag are not anti-correlated. On
   the measured 13-night sample the true p90 is 07:39.6 and the composition
-  returned 07:10 — half an hour early, turning 12 complete digests out of 13 into
-  8. Since `arrival = wake + lag` per night and both instants are on the row,
+  returned 07:10 — half an hour early, turning 12 complete digests out of 13 into 8. Since `arrival = wake + lag` per night and both instants are on the row,
   nothing needs composing, and `typicalWakeTime` is not read by the digest at all.
 - **The lag survives as the ADMISSION test.** `[0, MAX_ARRIVAL_LAG_MIN]` is the
   right filter for "is this a morning arrival at all" — a negative lag is a

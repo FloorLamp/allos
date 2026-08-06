@@ -66,7 +66,9 @@ const MEASURED_WAKE_MIN = 5 * 60 + 40;
 
 const MEASURED = MEASURED_NIGHTS.map((n, i) => night(n, i));
 const ARRIVALS = MEASURED_NIGHTS.map((n) => n.arrival).sort((a, b) => a - b);
-const WAKES = MEASURED_NIGHTS.map((n) => n.arrival - n.lag).sort((a, b) => a - b);
+const WAKES = MEASURED_NIGHTS.map((n) => n.arrival - n.lag).sort(
+  (a, b) => a - b
+);
 const LAGS = MEASURED_NIGHTS.map((n) => n.lag).sort((a, b) => a - b);
 
 // The old, wrong answer, computed here from the SAME fixture so the regression is
@@ -224,14 +226,9 @@ describe("arrivalStatistics — midnight wrap, stated rather than assumed", () =
     // 00:14 and 23:50 are 24 minutes apart on a clock and 1416 on the number line.
     // A percentile over that describes a distribution that does not exist, so the
     // statistic declines rather than inventing a midday answer.
-    const wrapped = [
-      23 * 60 + 50,
-      23 * 60 + 55,
-      5,
-      10,
-      14,
-      20,
-    ].map((arrival, i) => night({ arrival, lag: 60 }, i));
+    const wrapped = [23 * 60 + 50, 23 * 60 + 55, 5, 10, 14, 20].map(
+      (arrival, i) => night({ arrival, lag: 60 }, i)
+    );
     expect(stat(wrapped)).toEqual({
       available: false,
       nights: 6,
@@ -276,7 +273,12 @@ describe("arrivalStatistics — a DST transition day is dropped, visibly", () =>
 
 describe("digestAutoMinute — strictly past the arrivals, at minute grain (#2121)", () => {
   const withP90 = (p90Minute: number) =>
-    ({ available: true, nights: 13, p90Minute, medianMinute: p90Minute - 30 }) as const;
+    ({
+      available: true,
+      nights: 13,
+      p90Minute,
+      medianMinute: p90Minute - 30,
+    }) as const;
 
   it("the measured profile resolves past the arrivals, not to the wake hour", () => {
     // THE OLD DEFECT, twice over: round(340/60) = 6 put the digest before ALL the
@@ -302,7 +304,9 @@ describe("digestAutoMinute — strictly past the arrivals, at minute grain (#212
   });
 
   it("clamps inside the deferrable range rather than wrapping into the next day", () => {
-    expect(digestAutoMinute(withP90(23 * 60 + 30))).toBe(LAST_DEFERRABLE_MINUTE);
+    expect(digestAutoMinute(withP90(23 * 60 + 30))).toBe(
+      LAST_DEFERRABLE_MINUTE
+    );
   });
 });
 

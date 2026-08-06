@@ -13,7 +13,11 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { getNotifySchedule, setProfileSetting, setTimezone } from "@/lib/settings";
+import {
+  getNotifySchedule,
+  setProfileSetting,
+  setTimezone,
+} from "@/lib/settings";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getSleepArrivals } from "@/lib/queries/metrics";
 import {
