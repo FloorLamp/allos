@@ -66,6 +66,7 @@ Today's entries:
 | `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
 | `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                   |
 | `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                   |
+| `equipment` (`retired`)                       | `lib/equipment.ts`                                                                                                                                                       | —                    | —                   |
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
@@ -231,6 +232,19 @@ The four machines:
 - **`intake_item_suggestions` (#2139)** — not a registry entry (the table has no
   second writer), but the accept now claims `status='pending'` with an
   in-transaction CAS before minting the item, so a double accept mints once.
+
+## The equipment retire machine (#2138)
+
+`equipment.retired` was a lifecycle gate by this registry's own criterion — it
+decides pickers, availability summaries, and workout suggestions (#341) — but the
+flip returned `void` with no changes check and the actions returned `{ ok: true }`
+literals, so a silently-failed retire kept offering sold gear. `setEquipmentRetired`
+is now a state-named CAS over the Tx-token helpers with typed outcomes
+(`applied` / `already` / `not-found`), `deleteEquipment` is row-count-checked (the
+delete itself stays, per the issue's ruling: its confirm names the consequence and
+#1610's compatibility clause governs the detaches), and both surfaces render the
+refusals — the manager through the shared overflow menu's `MenuActionResult`
+plumbing. The registry entry above makes lib/equipment.ts the flag's only writer.
 
 ## The lifecycle-hardening batch (#2140) and the outcome-discard guard (#2106)
 

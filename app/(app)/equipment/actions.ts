@@ -73,21 +73,51 @@ export async function updateEquipmentAction(
   return { ok: true };
 }
 
-export async function deleteEquipmentAction(id: number): Promise<{ ok: true }> {
+// Typed, changes-checked outcomes (#2138): both lifecycle writes below used to
+// return `{ ok: true }` literals, so a silently-failed retire kept offering sold
+// gear while the UI toasted success. Every refusal is rendered by the caller
+// (the shared overflow menu's MenuActionResult plumbing / the detail action row);
+// a refusal still revalidates, because it means the page the tap came from was
+// stale and should re-render into the state that actually holds.
+export async function deleteEquipmentAction(
+  id: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
-  deleteEquipment(profile.id, id);
+  const outcome = deleteEquipment(profile.id, id);
   refresh();
+  if (outcome.kind === "not-found") {
+    return {
+      ok: false,
+      error: "Couldn't find that equipment — it may already be deleted.",
+    };
+  }
   return { ok: true };
 }
 
 // Soft-retire / un-retire (issue #341): the reversible alternative to delete that
-// keeps the row and its set links, just hiding it from pickers.
+// keeps the row and its set links, just hiding it from pickers. `retired` is the
+// state the caller's render promised; the core CASes it and a tap that changed
+// nothing is answered with what actually holds (#2138).
 export async function setEquipmentRetiredAction(
   id: number,
   retired: boolean
-): Promise<{ ok: true }> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
-  setEquipmentRetired(profile.id, id, retired);
+  const outcome = setEquipmentRetired(profile.id, id, retired);
   refresh();
+  if (outcome.kind === "not-found") {
+    return {
+      ok: false,
+      error: "Couldn't find that equipment — it may have been deleted.",
+    };
+  }
+  if (outcome.kind === "already") {
+    return {
+      ok: false,
+      error: retired
+        ? "That equipment is already retired."
+        : "That equipment is already active.",
+    };
+  }
   return { ok: true };
 }

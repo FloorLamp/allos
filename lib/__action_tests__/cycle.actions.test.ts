@@ -252,15 +252,23 @@ describe("cycle actions", () => {
     expect(getCycleRow(profileId, b.id)!.period_start).toBe("2026-02-01");
   });
 
-  it("deleteCycleAction removes a period; a bad id errors", async () => {
+  it("deleteCycleAction removes a period and returns the undo token; a bad id errors", async () => {
     const created = await saveCycleAction(fd({ period_start: "2026-03-01" }));
     if (!created.ok) throw new Error("setup failed");
-    expect(await deleteCycleAction(fd({ id: created.id }))).toEqual({
-      ok: true,
-    });
+    // Undoable since #2127: the action speaks the useUndoableDelete contract.
+    const deleted = await deleteCycleAction(fd({ id: created.id }));
+    expect(deleted.error).toBeUndefined();
+    expect(deleted.undoId).toEqual(expect.any(Number));
     expect(listCyclePeriods(profileId).length).toBe(0);
+    // The capture is in the undo holding table, restorable by the shared core.
+    expect(
+      db
+        .prepare(`SELECT kind FROM deleted_rows WHERE id = ?`)
+        .get(deleted.undoId)
+    ).toEqual({ kind: "cycle" });
     const missing = await deleteCycleAction(fd({ id: 99999 }));
-    expect(missing.ok).toBe(false);
+    expect(missing.undoId).toBeNull();
+    expect(missing.error).toMatch(/find that period/);
   });
 
   it("a read-only grant cannot write", async () => {

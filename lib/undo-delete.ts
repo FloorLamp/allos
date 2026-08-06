@@ -639,6 +639,20 @@ const KIND_SPECS = {
     entities: [{ entity: "entry", table: "substance_log", fks: [] }],
   },
 
+  // ONE recorded period (#2127). Byte-for-byte the substance-history shape: a single
+  // profile-owned row that nothing FKs into (the cycle PHASE and length/variability
+  // trends are DERIVED, per-day cycle symptoms live in symptom_logs), so the capture is
+  // the root row alone — but the row feeds cycle-length history, regularity, and the
+  // next-period forecast, so a mis-tap used to delete both the record and its effect on
+  // every prediction with no way back. Deleting goes through deleteCycleRow in
+  // lib/cycle-store.ts (the registered stateful-write core for `cycles`), which routes
+  // here via captureDelete.
+  cycle: {
+    kind: "cycle",
+    ownedTable: "cycles",
+    entities: [{ entity: "period", table: "cycles", fks: [] }],
+  },
+
   // ONE logged practice session (#2038). Deleting a whole practice has been undoable
   // since the two kinds above it; deleting one of its sessions was permanent, while the
   // structurally identical substance history row was not — an inconsistency that read as

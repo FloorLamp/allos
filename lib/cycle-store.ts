@@ -10,6 +10,7 @@
 // through writeTx (BEGIN IMMEDIATE, #468).
 
 import { db, writeTx } from "./db";
+import { captureDelete } from "./undo-delete-db";
 import { forecastNextPeriod } from "./cycle";
 import type {
   CycleForecast,
@@ -122,15 +123,19 @@ export function updateCycleRow(
   );
 }
 
-// Delete a period row. Nothing FKs into cycles, so this is a plain scoped delete. Opens
-// its own writeTx. Returns true when a row was removed.
-export function deleteCycleRow(profileId: number, id: number): boolean {
-  return writeTx(
-    () =>
-      db
-        .prepare(`DELETE FROM cycles WHERE id = ? AND profile_id = ?`)
-        .run(id, profileId).changes > 0
-  );
+// Delete a period row. Nothing FKs into cycles, so the capture is the single scoped
+// row — but the row feeds cycle-length history, regularity, and the forecast, so the
+// delete is UNDOABLE (#2127): captureDelete snapshots the row into the undo holding
+// table and deletes it in ONE transaction (its own writeTx), returning the undo token
+// the surface's toast offers. This stays the registered stateful-write core for
+// `cycles`; the DELETE now runs through the generic capture machinery's
+// `DELETE FROM ${root.table}`, which the write scan documents as out of its sight.
+export function deleteCycleRow(
+  profileId: number,
+  id: number
+): { kind: "deleted"; undoId: number } | { kind: "not-found" } {
+  const undoId = captureDelete("cycle", profileId, id);
+  return undoId == null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }
 
 // ---- The forecast gather (issue #1679) --------------------------------------

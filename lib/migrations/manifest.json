@@ -158,5 +158,6 @@
   "157-injury-scope.ts": "0d07f2a935718e92053a3c4c93dc27a4c7aa4dbec4c84b3e42aff7a233afb533",
   "158-notify-times-minute-grain.ts": "0be1fdd7b31ffa8e77ad42dd0cb6ffd46de29203f242a522494372a913ff6294",
   "159-cycling-telemetry.ts": "ea9cbab7264f24bf10726669873bd73f46aedb3f1240bc8450c1e2085e8a399c",
-  "160-integration-backfill-jobs.ts": "d1772938245f72b7be4df0b8e4471350becf8660c42226d74863892d695ca2f0"
+  "160-integration-backfill-jobs.ts": "d1772938245f72b7be4df0b8e4471350becf8660c42226d74863892d695ca2f0",
+  "161-condition-edit-lock.ts": "d3d8615a4c7cd5846abc01a720ab708a1cc66fbbb009aec01d888a3933f6df92"
 }

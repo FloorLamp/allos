@@ -319,6 +319,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 144 (#1403) ADD COLUMN guard: a schema-shape PRAGMA (do laterality/severity/stage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
+    file: "lib/migrations/versions/161-condition-edit-lock.ts",
+    includes: "PRAGMA table_info(conditions)",
+    why: "migration 161 (#2137) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 115's guard",
+  },
+  {
     file: "lib/migrations/versions/145-family-history-death-lineage.ts",
     includes: "PRAGMA table_info(family_history)",
     why: "migration 145 (#1407) ADD COLUMN guard: a schema-shape PRAGMA (do age_at_death/cause_of_death/relation_type/lineage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",

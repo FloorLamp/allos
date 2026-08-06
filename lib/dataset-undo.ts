@@ -72,6 +72,10 @@ export const DATASET_UNDO_KIND = {
   // "wellness-practice-history" (which drags every same-practice sibling along).
   practice_logs: "practice-session",
   substance_log: "substance-history",
+  // #2127: one period row, no children — the row-menu delete and the dataset's bulk
+  // delete now speak the same restorable kind (the very hole the type guard exists
+  // to keep closed: an undoable root that is a deletable dataset must be decided).
+  cycles: "cycle",
 } as const satisfies {
   [T in Exclude<DeletableUndoRoot, ExcludedUndoRoot>]: KindsRootedAt<T>;
 };
