@@ -105,6 +105,18 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#2131: `retired` decides whether a dose's child ledger rows are still SCHEDULED — the child table (intake_item_logs) was gated (#2074) while this parent flag was raw SQL in a Server Action with no typed outcome and no reopen. dose-lifecycle.ts owns both transitions: retire-or-delete for removed doses (retire keeps the row precisely because deleting would CASCADE away its taken history) and the guarded un-retire (only a retired dose with no conflicting live slot reopens), each bounding dueness through appended schedule versions (#1973) so neither transition ever re-judges a past day. Column-narrowed: amount/time/window edits on a live dose are ordinary form writes (the edit UPDATE's `retired = 0` guard predicate is allowlisted in the scan).",
   },
   {
+    table: "routines",
+    columns: ["active"],
+    cores: ["lib/routines.ts"],
+    why: "#2140: a real single-active invariant with a de-facto core — activateRoutine deactivates every sibling and installs the derived frequency targets in ONE writeTx, and getActiveRoutine, the deload cycle, the rotation cursor and the workout nudge all assume at most one active row. The invariant was enforced only by convention inside lib/routines.ts; a raw `active = 1` from a second module would mint two simultaneously-active routines and silently fork every one of those readers — the identical hazard the cycles entry names. Column-narrowed: name/cycle_weeks/started_date edits are ordinary form writes, and DELETE (deleteRoutine's explicit child sweep) is not a state transition.",
+  },
+  {
+    table: "situations",
+    columns: ["active"],
+    cores: ["lib/settings/profile-attrs.ts"],
+    why: "#2140: the active-situation set is a LIFECYCLE machine — setActiveSituations does a whole-set rewrite (deactivate all, activate wanted) that gates situational supplements, opens/closes illness episodes (#856) and feeds the coaching layer, with the dated start/stop event log appended from the before/after diff. That diff's before-read now runs inside the same writeTx (readAllForUpdate), and gating the column keeps a second module from flipping `active` without the episode sync and the event log — which would desync the #856 'row and flag never disagree' invariant. Column-narrowed: illness_type opt-ins and the get-or-create INSERT's literal initial value are the vocabulary's ordinary writes.",
+  },
+  {
     table: "intake_item_side_effects",
     columns: ["resolved"],
     cores: ["lib/queries/intake/medications.ts"],

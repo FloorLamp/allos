@@ -46,7 +46,12 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "intake_items",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
+      // #2140: the single-active training routine — activation's sibling-deactivate
+      // and the derived-target replacement live in one core.
+      "routines",
       "shared_supplies",
+      // #2140: the active-situation set rewrite + illness-episode sync machine.
+      "situations",
     ]);
   });
 

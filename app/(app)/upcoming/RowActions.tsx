@@ -12,9 +12,11 @@ import {
 } from "@tabler/icons-react";
 import OverflowMenu, {
   MENU_ITEM,
+  type MenuActionResult,
   type MenuHelpers,
 } from "@/components/OverflowMenu";
 import SubmitButton from "@/components/SubmitButton";
+import { useToast } from "@/components/Toast";
 import {
   SnoozeDismissItems,
   type SnoozeDismissProps,
@@ -59,12 +61,15 @@ export type RowAction =
       label: string;
       icon?: keyof typeof ACTION_ICON;
       testId?: string;
-      // Toast shown when the action is run from the folded menu. (The inline chip
-      // gets its feedback from SubmitButton's pending state + the revalidation.)
+      // Fallback toast when the action resolves void from the folded menu. (A chip
+      // run's default feedback stays SubmitButton's pending state + revalidation.)
       toast: string;
       // Hidden form fields posted with the action — ids only, never objects.
       fields: Record<string, string | number>;
-      action: (formData: FormData) => Promise<void>;
+      // May resolve a MenuActionResult (#2140): a typed refusal toasts its error in
+      // BOTH presentations instead of the row silently re-rendering unchanged, and a
+      // success may carry outcome-named wording. `void` keeps the additive default.
+      action: (formData: FormData) => Promise<MenuActionResult>;
     };
 
 const CHIP =
@@ -92,6 +97,25 @@ export function RowActionChips({
   actions: RowAction[];
   fold: boolean;
 }) {
+  const toast = useToast();
+  // An inline chip's default feedback is the pending state + revalidation, but a
+  // TYPED result is never discarded (#2140): a refusal toasts its error (the row
+  // re-rendering unchanged must not be indistinguishable from a lost tap), and a
+  // success that carries outcome-named wording shows it.
+  const runChipAction = async (a: RowAction & { kind: "submit" }, fd: FormData) => {
+    let result: MenuActionResult;
+    try {
+      result = await a.action(fd);
+    } catch {
+      toast("Couldn't complete that action. Try again.", { tone: "error" });
+      return;
+    }
+    if (result && result.ok === false) {
+      toast(result.error, { tone: "error" });
+      return;
+    }
+    if (result && result.message) toast(result.message);
+  };
   if (actions.length === 0) return null;
   return (
     <div
@@ -115,7 +139,11 @@ export function RowActionChips({
           );
         }
         return (
-          <form key={a.id} action={a.action} className="shrink-0">
+          <form
+            key={a.id}
+            action={(fd) => runChipAction(a, fd)}
+            className="shrink-0"
+          >
             <HiddenFields fields={a.fields} />
             <SubmitButton
               pendingLabel="…"

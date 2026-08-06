@@ -42,7 +42,7 @@ import {
 } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
+import type { Appointment, AppointmentStatus } from "@/lib/types";
 
 // The preventive rule name a completed appointment's kind would satisfy (issue
 // #85), or null when the kind is unset / ambiguous. Drives the close-the-loop
@@ -67,13 +67,12 @@ const STATUS_TEXT: Record<AppointmentStatus, string> = {
 
 // Fire a status/delete server action for a row without a full <form> element (so
 // a confirm dialog can gate the destructive delete).
-async function submit(
-  action: (fd: FormData) => Promise<void | FormResult>,
-  id: number
-): Promise<void> {
+async function submit<
+  R extends void | { ok: true; message?: string } | { ok: false; error: string },
+>(action: (fd: FormData) => Promise<R>, id: number): Promise<R> {
   const fd = new FormData();
   fd.set("id", String(id));
-  await action(fd);
+  return action(fd);
 }
 
 // List of a profile's appointments; each row edits in place (expands the shared
@@ -151,11 +150,18 @@ export default function AppointmentList({
 
   // Close a matched care-plan item from the completed-appointment offer (issue
   // #658). Marks it done server-side, flips the button locally, then refreshes so
-  // the closed item drops off the offer / Upcoming / the care-plan page.
+  // the closed item drops off the offer / Upcoming / the care-plan page. Answers
+  // from the write's typed outcome (#2140): a refusal (item meanwhile cancelled,
+  // forged id) is toasted instead of the offer confirming it, and the button only
+  // flips when a completed status actually stands.
   async function onCompleteCareItem(item: CarePlanMatchItem) {
-    await submit(completeCarePlanItemFromAppointment, item.id);
+    const result = await submit(completeCarePlanItemFromAppointment, item.id);
+    if (!result.ok) {
+      toast(result.error, { tone: "error" });
+      return;
+    }
     setDoneCareItems((prev) => new Set(prev).add(item.id));
-    toast("Care-plan item marked done");
+    toast(result.message);
   }
 
   async function onDelete(a: Appointment) {

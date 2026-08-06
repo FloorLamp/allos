@@ -89,6 +89,7 @@ import {
   dismissMultiviewHintAction,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
+import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import PracticeLogButton from "./PracticeLogButton";
 
 export const dynamic = "force-dynamic";
@@ -952,9 +953,18 @@ function Row({
       label: "Mark taken",
       toast: "Marked taken",
       fields: { dose_id: item.doseId, profile_id: item.profileId },
+      // Answered from markDoseTaken's typed outcome (#2106's rule, applied to this
+      // row too): a refusal — dose retired by an edit, item since paused — surfaces
+      // as an error toast instead of the row silently staying due, and a success
+      // carries the outcome's own wording (doseConfirmMessage, the #1468 formatter).
       action: async (fd) => {
         "use server";
-        await markTaken(fd);
+        const result = await markTaken(fd);
+        if (!result.ok) return { ok: false as const, error: result.error };
+        const msg = doseConfirmMessage(result.outcome);
+        return msg.tone === "error"
+          ? { ok: false as const, error: msg.text }
+          : { ok: true as const, message: msg.text };
       },
     });
   }
@@ -990,9 +1000,12 @@ function Row({
         care_plan_item_id: item.carePlanItemId,
         profile_id: item.profileId,
       },
+      // The action's typed result rides through (#2140): a forged id or an item
+      // meanwhile cancelled toasts the refusal; a repeat tap says "Already marked
+      // done" from the outcome instead of the static success line.
       action: async (fd) => {
         "use server";
-        await markCarePlanDone(fd);
+        return markCarePlanDone(fd);
       },
     });
   }

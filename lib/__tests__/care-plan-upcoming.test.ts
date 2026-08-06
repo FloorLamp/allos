@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  carePlanDoneResult,
   isCarePlanItemOpen,
   isRecognizedCarePlanStatus,
   carePlanItemToUpcomingItem,
@@ -154,5 +155,41 @@ describe("the care-plan entry vocabularies (#1676)", () => {
     for (const c of CARE_PLAN_CATEGORIES) {
       expect(CARE_PLAN_CATEGORY_LABELS[c]).toContain(" — ");
     }
+  });
+});
+
+// The "Mark done" outcome formatter (#2140): every surface that offers the write
+// (the Upcoming inline chip, the completed-appointment offer) words the answer
+// through this one function, so the doctrine — a repeat tap on a COMPLETED item is
+// idempotent success, any other closed status refuses by naming what persists —
+// lives in one place.
+describe("carePlanDoneResult (#2140)", () => {
+  it("confirms a real completion", () => {
+    expect(carePlanDoneResult({ kind: "completed" })).toEqual({
+      ok: true,
+      message: "Marked done",
+    });
+  });
+
+  it("a repeat tap on a completed item is idempotent success, in every spelling", () => {
+    for (const status of ["completed", "Complete", "DONE"]) {
+      expect(carePlanDoneResult({ kind: "already-closed", status })).toEqual({
+        ok: true,
+        message: "Already marked done",
+      });
+    }
+  });
+
+  it("refuses over someone else's close, naming the status that persists", () => {
+    const r = carePlanDoneResult({
+      kind: "already-closed",
+      status: "cancelled",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("cancelled");
+  });
+
+  it("refuses a forged or vanished id", () => {
+    expect(carePlanDoneResult({ kind: "not-found" }).ok).toBe(false);
   });
 });
