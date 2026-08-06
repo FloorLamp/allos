@@ -14,7 +14,11 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { markCarePlanItemDone } from "@/lib/queries/upcoming/plans";
-import { adoptTemplate, activateRoutine, deactivateRoutine } from "@/lib/routines";
+import {
+  adoptTemplate,
+  activateRoutine,
+  deactivateRoutine,
+} from "@/lib/routines";
 import {
   getActiveSituations,
   getSituationEvents,

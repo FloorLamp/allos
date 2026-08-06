@@ -102,7 +102,10 @@ export function RowActionChips({
   // TYPED result is never discarded (#2140): a refusal toasts its error (the row
   // re-rendering unchanged must not be indistinguishable from a lost tap), and a
   // success that carries outcome-named wording shows it.
-  const runChipAction = async (a: RowAction & { kind: "submit" }, fd: FormData) => {
+  const runChipAction = async (
+    a: RowAction & { kind: "submit" },
+    fd: FormData
+  ) => {
     let result: MenuActionResult;
     try {
       result = await a.action(fd);

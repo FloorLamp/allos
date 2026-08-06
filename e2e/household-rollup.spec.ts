@@ -67,8 +67,7 @@ function seedStaleTapItem(): void {
     const existing = db
       .prepare(`SELECT id FROM intake_items WHERE profile_id = ? AND name = ?`)
       .get(Number(SEEDED_PROFILE_2), STALE_TAP_ITEM) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (existing) {
       db.prepare(`DELETE FROM intake_item_logs WHERE item_id = ?`).run(
         existing.id

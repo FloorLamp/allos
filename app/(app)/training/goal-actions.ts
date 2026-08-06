@@ -424,7 +424,9 @@ export async function setArchived(formData: FormData): Promise<FormResult> {
   const cas = writeTx((tx) =>
     casUpdate(
       tx,
-      db.prepare("UPDATE goals SET archived = ? WHERE id = ? AND profile_id = ?"),
+      db.prepare(
+        "UPDATE goals SET archived = ? WHERE id = ? AND profile_id = ?"
+      ),
       archived,
       id,
       profile.id

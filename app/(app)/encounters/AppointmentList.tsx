@@ -68,7 +68,8 @@ const STATUS_TEXT: Record<AppointmentStatus, string> = {
 // Fire a status/delete server action for a row without a full <form> element (so
 // a confirm dialog can gate the destructive delete).
 async function submit<
-  R extends void | { ok: true; message?: string } | { ok: false; error: string },
+  R extends
+    void | { ok: true; message?: string } | { ok: false; error: string },
 >(action: (fd: FormData) => Promise<R>, id: number): Promise<R> {
   const fd = new FormData();
   fd.set("id", String(id));
