@@ -50,6 +50,17 @@ export interface StatefulWriteTable {
 
 export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   {
+    table: "appointments",
+    columns: ["status"],
+    cores: ["lib/appointment-status.ts"],
+    // No `offerState`, honestly: the list's controls and the palette's hit action
+    // each render from the row's status (scheduled → complete/cancel, closed →
+    // reopen; appointmentHitActions offers "Mark complete" only while scheduled),
+    // but that derivation has not been extracted into one shared pure function.
+    // An honest gap, not a claim.
+    why: "#2134: `status` is the scheduled/completed/cancelled LIFECYCLE flag — it decides Upcoming membership, the preventive scheduled-match, and which controls a row offers. The user-facing one-taps (Mark completed / Cancel / Reopen, and the palette's Mark complete) were a bare `SET status = ?` that could not refuse, while the import path compare-and-swapped the very same transition — one machine, two disciplines. lib/appointment-status.ts now owns every transition: the state-named CAS with typed already-*/not-found refusals, and the two complete+link swaps (\"Log this visit\" and the import auto-complete, whose scheduled-only guard keeps the machine from overwriting a manual completion or cancellation). Column-narrowed: date/provider/title/location/notes/kind edits are ordinary form writes, the create INSERT's literal 'scheduled' is a born row, and DELETE is not a state transition.",
+  },
+  {
     table: "cycles",
     cores: ["lib/cycle-store.ts"],
     gate: "lib/cycle-write.ts",

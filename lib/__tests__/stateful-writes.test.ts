@@ -39,6 +39,16 @@ import {
 // allowlist — an entry here is a reviewed exception, not a way to be done with the guard.
 const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
   {
+    file: "app/(app)/encounters/appointment-actions.ts",
+    includes: "INSERT INTO appointments",
+    why: "createAppointment: the booking form's CREATE names `status` only as the born row's literal initial value ('scheduled') — there is no prior state to transition from, the additive case the audit criterion leaves plain (#2134). Every later flip of the flag goes through the registered core.",
+  },
+  {
+    file: "lib/import-persist.ts",
+    includes: "INSERT OR IGNORE INTO appointments",
+    why: "the importer's appointment CREATE (#416) names `status` only as the extracted row's initial value — a born row, deduplicated by external_id, not a transition (#2134). The import path's own completion of a matched appointment goes through the registered core's scheduled-only CAS.",
+  },
+  {
     file: "app/(app)/settings/family/actions.ts",
     includes: "DELETE FROM intake_item_logs WHERE item_id IN",
     why: "deleteProfile's erasure sweep (#2039): removing a whole profile is not a dose TRANSITION — there is no state to refuse into and no supply counter left to keep in lock-step, because the intake_items rows carrying it are erased by the same sweep. Routing it through the per-(dose,date) core would mean walking every log row of every item to delete each one individually. The sweep runs with foreign_keys OFF inside one writeTx and is profile-scoped through the parent item, which is the reason it is written as a set delete in the first place.",

@@ -406,7 +406,8 @@ export default function CommandPalette({
   // routes to its prefilled form; a write action (log-dose/refill/complete) submits
   // the entity id to the EXISTING gated Server Action — the same write path the
   // med/appointment pages use, so the auth gate is never bypassed. We answer from
-  // the action's typed outcome (completeAppointment returns void → treated as done).
+  // the action's typed outcome — including the duplicate-style "already" answers —
+  // never with an unconditional success toast (#2134).
   const runHitAction = useCallback(
     async (action: HitAction) => {
       if (action.kind === "add-result") {
@@ -438,8 +439,16 @@ export default function CommandPalette({
           });
           if (!res.ok) return;
         } else {
-          await completeAppointment(fd);
-          toast("Appointment completed", { tone: "success" });
+          const res = await completeAppointment(fd);
+          toast(
+            res.ok
+              ? res.outcome === "already"
+                ? "Appointment already completed"
+                : "Appointment completed"
+              : res.error,
+            { tone: res.ok ? "success" : "error" }
+          );
+          if (!res.ok) return;
         }
         close();
       } finally {
