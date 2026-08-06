@@ -6,7 +6,8 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import DemoBanner from "@/components/DemoBanner";
 import { getAppVersion } from "@/lib/version";
 import { isDemoMode } from "@/lib/demo";
-import { THEME_STORAGE_KEY } from "@/lib/theme";
+import ThemeReassert from "@/components/ThemeReassert";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -39,23 +40,6 @@ export const viewport: Viewport = {
   ],
 };
 
-// Runs before first paint to set the theme class, avoiding a light-mode flash.
-//
-// This is the one place the rule has to be RETYPED rather than imported: it is a
-// string of source that must execute before any bundle does. The storage key still
-// comes from lib/theme.ts, which is also what components/ThemeToggle.tsx and
-// app/global-error.tsx read — the boundary that cannot use a `dark` class at all,
-// because it replaces this very script (#1906).
-const themeBoot = `
-(function () {
-  try {
-    var t = localStorage.getItem('${THEME_STORAGE_KEY}') || 'system';
-    var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.toggle('dark', dark);
-  } catch (e) {}
-})();
-`;
-
 // Bare html/body shell shared by both the login page (app/(auth)) and the
 // authenticated app (app/(app)). Per-user chrome (nav, calendar, providers that
 // read the DB) lives in app/(app)/layout.tsx behind requireSession(), so the
@@ -85,9 +69,20 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        {/* Runs before first paint to set the theme class, avoiding a
+            light-mode flash. The source lives in lib/theme.ts beside the rule
+            it transcribes; a pure test executes it against isDarkTheme so the
+            two cannot drift (#2183). */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
+        />
       </head>
       <body>
+        {/* The boot script's safety net (#2183): re-asserts the theme class
+            post-hydration and on route changes, so one hard navigation whose
+            boot script never ran cannot poison the whole SPA session. */}
+        <ThemeReassert />
         <ServiceWorkerRegister sha={sha} />
         {isDemoMode() && <DemoBanner />}
         <ToastProvider>{children}</ToastProvider>

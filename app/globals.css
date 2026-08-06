@@ -144,6 +144,50 @@ body::before {
   );
 }
 
+/* Script-less dark base for the OFFLINE SHELL only (#2183).
+
+   The service worker can serve the cached offline page to a document whose
+   inline theme-boot script never runs (blocked or stripped inline scripts, a
+   stale-nonce'd cached shell). With no script there is no `.dark` class, so
+   under OS dark the page was light BY CONSTRUCTION. This media fallback keys the
+   offline shell — and nothing else — off `prefers-color-scheme`, so even a
+   script-less render respects OS dark. Gated on `:root:not(.dark)` and scoped to
+   `[data-offline-shell]` so it can never fight the class-based theme anywhere
+   else. The accepted trade-off: an explicit "light" choice shows a dark offline
+   page under OS dark — for a page whose scripts may not have run, the OS
+   preference is the only signal available, and honoring it is the point.
+   Colour values restate the `:root.dark` body/card rules above and the ink
+   palette (tailwind.config.ts); they cannot be Tailwind `dark:` variants because
+   those key on the class this page may never receive. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.dark) [data-offline-shell] {
+    color-scheme: dark;
+    color: #e2e8f0; /* slate-200 */
+    background:
+      radial-gradient(
+        1100px 520px at 80% -10%,
+        rgba(34, 197, 94, 0.06),
+        transparent 60%
+      ),
+      #090c0b;
+  }
+  :root:not(.dark) [data-offline-shell] .offline-card {
+    background: rgba(7, 10, 9, 0.7); /* ink-950/70 */
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+  :root:not(.dark) [data-offline-shell] h1 {
+    color: #f1f5f9; /* slate-100 */
+  }
+  :root:not(.dark) [data-offline-shell] p {
+    color: #94a3b8; /* slate-400 */
+  }
+  :root:not(.dark) [data-offline-shell] .btn-ghost {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #0f1412; /* ink-850 */
+    color: #e2e8f0; /* slate-200 */
+  }
+}
+
 @layer components {
   /* Border/fill color language (issue #794 clusters 9a + 10a). Two properties,
      two vocabularies — keep them apart:
