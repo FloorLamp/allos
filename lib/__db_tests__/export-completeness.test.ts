@@ -149,10 +149,6 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "illness-episode IDENTITY + annotations (note/outcome) with DERIVED membership (#856). The illness STORY that carries clinical weight — symptoms (symptom_logs), fever readings (medical_records vitals), administrations (intake_item_logs) — is already exported through those datasets; the episode row is a thin date-range + free-text annotation with no independent clinical payload to round-trip.",
   },
   {
-    table: "symptom_photos",
-    why: "symptom-day rash-progression photos (#859 item 4). PHI-cautious by design — photos are EXCLUDED from share-link summaries and the printable by default, so they are intentionally NOT in the full data export either; the images are binary blobs on disk (data/uploads/symptom-photos/<profileId>/) with only a thin date/caption row here, and are unlinked with the profile on delete.",
-  },
-  {
     table: "fitness_assessments",
     why: "fitness-check SESSION rows (#834) — a date + coverage ledger that GROUPS a battery run. The measured VALUES that carry the signal already round-trip through their natural stores: set-based tests via activities/exercise_sets, VO2/grip/etc. via medical_records, body comp via body_metrics — all exported datasets/FHIR. The session row (and its child fitness_assessment_entries) references those, holding no independent clinical payload to export.",
   },
@@ -160,29 +156,35 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "instrument_responses",
     why: "mental-health instrument PER-ITEM answers (#716). The clinically meaningful value — the PHQ-9/GAD-7 total SCORE — is a medical_records biomarker reading that already round-trips through the FHIR Observation export; these rows are the item breakdown behind that score (kept for the item-9 handling), a supporting decomposition with no independent clinical payload to export, exactly like fitness_assessment_entries relative to its natural stores.",
   },
+  // ── The five MEDIA tables (#1846) ────────────────────────────────────────────
+  // These are no longer "excluded, opt-in is a follow-up": the follow-up SHIPPED.
+  // "Include photo & video files" on the export flow (?media=1) puts the exporting
+  // profile's files into the ZIP under media/<domain>/, and media/index.json carries
+  // each file's row context — which for these tables IS the row export, since a thin
+  // date/caption row is only meaningful next to the image or clip it names. They stay
+  // out of DATASETS (not out of the bundle) for that reason, and stay OUT BY DEFAULT
+  // because they are the strictest privacy tier: still excluded from share links, the
+  // printable, and the emergency card, with no stored setting that could make
+  // inclusion the standing default.
   {
-    table: "dental_procedures",
-    why: "structured dental procedures/findings (#705). Dental has NO FHIR structured feed (#708 explicitly excludes it — FHIR is dental-poor), so like imaging_studies it is captured via AI extraction + DocumentReference and has no FHIR export builder yet (a dedicated dental exporter is a documented follow-up). Its trendable periodontal MEASUREMENTS already round-trip through the medical_records biomarker dataset.",
-  },
-  {
-    table: "skin_lesions",
-    why: "structured skin-lesion records (#715). Like imaging_studies/dental_procedures, dermatology-lesion tracking has no FHIR structured feed and is a manual/AI-extracted narrative record type with no FHIR export builder yet (a dedicated exporter is a documented follow-up). The lesion row carries no analyte that round-trips through another dataset.",
+    table: "symptom_photos",
+    why: "symptom-day rash-progression photos (#859 item 4). Strictest privacy tier: excluded from share-link summaries and the printable, and out of the full export UNLESS the download opts in via the #1846 media toggle, which bundles the files under media/symptom-photos/ with their date/symptom/caption row context in media/index.json. The thin row is not a standalone dataset — it is only meaningful beside its image. Files live at data/uploads/symptom-photos/<profileId>/ and are unlinked with the profile on delete.",
   },
   {
     table: "lesion_photos",
-    why: "serial lesion photos (#715). PHI-cautious by design, exactly like symptom_photos — the images are binary blobs on disk (data/uploads/lesion-photos/<profileId>/) with only a thin date/caption row here, intentionally excluded from the full data export, and unlinked with the profile on delete.",
+    why: "serial lesion photos (#715) — the ones a year of mole tracking is made of. Same strictest-tier posture as symptom_photos, and covered by the SAME #1846 opt-in: media/lesion-photos/ plus each photo's date/caption and its parent lesion's label/region in media/index.json, alongside the now-exported skin_lesions dataset the photos belong to. Files live at data/uploads/lesion-photos/<profileId>/ and are unlinked with the profile on delete.",
   },
   {
     table: "progress_photos",
-    why: "physique progress photos (#1119). The STRICTEST privacy tier by design — body photos are excluded from share links, the emergency card, AND the default full export (the issue's product decision; an opt-in export is a documented follow-up); the images are EXIF-stripped binary blobs on disk (data/uploads/progress-photos/<profileId>/) with only a thin date/pose/caption row here, and are unlinked with the profile on delete.",
+    why: "physique progress photos (#1119). Body photos are excluded from share links, the emergency card, and the DEFAULT full export — the #1119 product decision, which #1846 keeps as the default while adding the explicit per-download opt-in: media/progress-photos/ with date/pose/caption in media/index.json. The images are EXIF-stripped blobs at data/uploads/progress-photos/<profileId>/ and are unlinked with the profile on delete.",
   },
   {
     table: "symptom_videos",
-    why: "symptom / episode video clips (#1224). The STRICTEST privacy tier, exactly like symptom_photos/progress_photos — clips are excluded from share links, the emergency card, AND the default full export (the issue's product decision; an opt-in export is a documented follow-up). The clips are binary blobs on disk (data/uploads/symptom-videos/<profileId>/) with only a thin date/caption/duration row here, and are unlinked with the profile on delete.",
+    why: "symptom / episode video clips (#1224). Same strictest tier as the photo domains and the same #1846 opt-in: media/symptom-videos/ with date/symptom/caption/kind/duration in media/index.json. Posters are derived artifacts and are deliberately not bundled — the original capture is the record. Clips live at data/uploads/symptom-videos/<profileId>/ and are unlinked with the profile on delete.",
   },
   {
     table: "activity_videos",
-    why: "training form-check video clips (#1224). Same strictest privacy tier — clips are excluded from share links and the default full export (an opt-in export is a documented follow-up). The clips are binary blobs on disk (data/uploads/activity-videos/<profileId>/) with only a thin activity/exercise/caption row here, and are unlinked with the profile on delete.",
+    why: "training form-check video clips (#1224). Same strictest tier and the same #1846 opt-in (media/activity-videos/, with exercise/caption/duration plus the parent activity's date and title in media/index.json) — with one extra gate: a training-restricted profile's clips are held back exactly like its activities/goals datasets (#471), so the clips can't be the way around the age gate. Clips live at data/uploads/activity-videos/<profileId>/ and are unlinked with the profile on delete.",
   },
 ];
 

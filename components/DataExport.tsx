@@ -1,8 +1,9 @@
-import { IconDownload, IconFileExport } from "@tabler/icons-react";
+import { IconFileExport } from "@tabler/icons-react";
 import { DATASETS, PAGE_SIZE, RESTRICTED_DATASETS } from "@/lib/export";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import DataTableManager from "@/components/DataTableManager";
+import ExportAllDownload from "@/components/ExportAllDownload";
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;
@@ -32,7 +33,9 @@ export default async function DataExport({
       {/* Full-account export (issue #18): one portable bundle for this profile —
           every dataset (JSON + CSV), the clinical passport as a FHIR bundle, the
           profile's medical files, and a manifest. Plain GET download links (each
-          route re-checks the session and scopes strictly to the active profile). */}
+          route re-checks the session and scopes strictly to the active profile).
+          Photos and clips ride the opt-in checkbox in ExportAllDownload (#1846);
+          they stay out of the bundle unless this download asks for them. */}
       <div className="card">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Export everything
@@ -44,16 +47,7 @@ export default async function DataExport({
           portability, not a restore file — rebuilding an instance uses the
           snapshot backups, not this zip.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <a
-            href="/api/export/full"
-            download
-            data-testid="export-all-link"
-            className="btn"
-          >
-            <IconDownload className="h-4 w-4" />
-            Export all my data (.zip)
-          </a>
+        <ExportAllDownload>
           <a
             href="/api/export/fhir"
             download
@@ -63,7 +57,7 @@ export default async function DataExport({
             <IconFileExport className="h-4 w-4" />
             Clinical passport (FHIR)
           </a>
-        </div>
+        </ExportAllDownload>
       </div>
 
       {datasets.map((ds) => {

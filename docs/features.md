@@ -2423,7 +2423,23 @@ as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your
 uploaded files), captured as a consistent point-in-time snapshot; it is a
 **portability artifact you can read or take elsewhere, not the restore path** —
 restoring an instance uses the [server backups](backups.md) (`npm run restore`),
-not this ZIP. Integrations available today are **Google Health Connect**,
+not this ZIP. Every record type you can create by hand is in it, including
+**dental procedures** and **skin lesions** (#1846 — both used to be missing, so a
+year of mole measurements couldn't follow you to a new dermatologist; neither has
+a FHIR resource to ride, which is exactly why each ships as its own dataset,
+with its findings, follow-up intervals and the provider who recorded it).
+
+**Photos and clips** — progress, lesion and symptom photos, plus symptom and
+form-check clips — are the one thing NOT in that ZIP by default. They are the
+most sensitive files in the record, so they stay out of share links, the
+printable and the emergency card entirely, and out of the export unless you tick
+**"Include photo & video files"** next to the download. That opt-in applies to
+the one download you're taking — it isn't a setting, so it can't quietly become
+your standing default. When it's on, the files arrive under `media/` grouped by
+kind, with a `media/index.json` listing each file's date, caption and what it
+belongs to (which lesion, which activity), and the manifest counts them
+separately from your uploaded documents. Integrations available today are
+**Google Health Connect**,
 **Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**, and
 **Weather & UV (Open-Meteo)**; Garmin remains planned.
 

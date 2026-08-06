@@ -32,13 +32,24 @@ export const dynamic = "force-dynamic";
 // export is a PORTABILITY artifact (a readable copy of your data), NOT the restore
 // path — restoring an instance uses the snapshot backups (scripts/restore.ts), not
 // this ZIP.
-export async function GET() {
+//
+// Media (#1846): photos and clips are the strictest privacy tier and are NOT in the
+// archive by default. `?media=1` — set by the "Include photo & video files" toggle
+// beside the download — adds the ACTIVE profile's progress/lesion/symptom photos and
+// symptom/activity clips under media/, with media/index.json for their row context.
+// The opt-in is per download, so it never becomes a standing setting, and the
+// per-file authenticated serve route stays the only other way any of it leaves.
+export async function GET(request: Request) {
   const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }
   const profileId = session.profile.id;
   const profileName = session.profile.name;
+  // Opt-in media bundle (#1846): photos/videos are the strictest privacy tier and
+  // stay OUT of the archive unless this download explicitly asked (?media=1 — the
+  // "Include photo & video files" toggle). Per-download, never a stored setting.
+  const includeMedia = new URL(request.url).searchParams.get("media") === "1";
 
   // Audit the full export up front — the request was made and authorized, and this
   // is exactly the "someone took everything" event the log exists to capture.
@@ -53,7 +64,9 @@ export async function GET() {
   // (from the ZipBuilder), then the central directory + EOCD at the end.
   // Read the whole consistent payload in ONE transaction before streaming (item 1);
   // the bounded JSON is now in hand, medical files are still streamed from disk.
-  const snapshot = collectExportSnapshot(profileId, profileName);
+  const snapshot = collectExportSnapshot(profileId, profileName, {
+    includeMedia,
+  });
 
   function* archive(): Generator<Buffer> {
     const zip = new ZipBuilder();
@@ -107,6 +120,37 @@ export async function GET() {
       }
     }
 
+    // The opt-in media bundle (#1846). Same entry-at-a-time discipline as the
+    // medical files — one clip can be hundreds of megabytes, so the bytes are read
+    // and yielded per file and never accumulated. media/index.json carries each
+    // BUNDLED file's row context (date, caption, which lesion, which activity),
+    // which for these five domains IS the row export: the tables stay out of
+    // DATASETS because a thin date/caption row is only meaningful next to its file.
+    // A media file that vanished between listing and read is absent from both the
+    // archive and the index, and named in the manifest's missing list.
+    let mediaIndex: Record<string, Record<string, unknown>[]> | null = null;
+    let bundledMediaCount = 0;
+    const missingMedia: string[] = [];
+    if (snapshot.media) {
+      mediaIndex = {};
+      for (const m of snapshot.media) {
+        let data: Buffer;
+        try {
+          data = fs.readFileSync(m.absPath);
+        } catch {
+          missingMedia.push(m.zipName);
+          continue;
+        }
+        bundledMediaCount += 1;
+        yield zip.file(m.zipName, data);
+        (mediaIndex[m.domain] ??= []).push({ file: m.zipName, ...m.meta });
+      }
+      yield zip.file(
+        "media/index.json",
+        Buffer.from(JSON.stringify(mediaIndex, null, 2), "utf8")
+      );
+    }
+
     const manifest = buildExportManifest({
       appVersion: pkg.version,
       exportedAt: new Date().toISOString(),
@@ -116,6 +160,9 @@ export async function GET() {
       fhirResourceCount: fhir.entry.length,
       missingFiles,
       profilePhoto: profilePhotoName,
+      media: snapshot.media
+        ? { count: bundledMediaCount, missing: missingMedia }
+        : null,
     });
     yield zip.file(
       "manifest.json",
