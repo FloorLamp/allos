@@ -65,7 +65,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@napi-rs/canvas": "^0.1.100",
     "@tabler/icons-react": "^3.46.0",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.2",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.10.1",
     "next": "^16.2.12",
