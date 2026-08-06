@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { utcInstant } from "../lib/date";
 
 // #1880: flapping is not failing. A provider alternating Failed/Refreshed with a
 // recent success is `intermittent` — a calm amber fact on Review's Connected
@@ -30,13 +31,11 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
-// "YYYY-MM-DD HH:MM:SS" for the run's frozen clock minus N hours — recent enough
-// that weather's 2-day staleness threshold never fires from these fixtures.
+// The run's frozen clock minus N hours, in the sync ledger's own convention
+// ('YYYY-MM-DDTHH:MM:SSZ', #2205 / migration 163) — recent enough that weather's
+// 2-day staleness threshold never fires from these fixtures.
 function at(hoursAgo: number): string {
-  return new Date(frozenNow().getTime() - hoursAgo * 3600000)
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+  return utcInstant(new Date(frozenNow().getTime() - hoursAgo * 3600000));
 }
 
 // One fixed forecast window across every seeded run, so the history's window norm

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcInstant } from "@/lib/date";
 import {
   getSleepArrivalLagMinutes,
   getSleepWaitingState,
@@ -122,8 +122,8 @@ describe("the abandoned device — the case the connection signal cannot see", (
   function stillSyncingSteps(): void {
     db.prepare(
       `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
-       VALUES (?, ?, datetime('now'), 1, 42)`
-    ).run(profileId, PROVIDER);
+       VALUES (?, ?, ?, 1, 42)`
+    ).run(profileId, PROVIDER, utcInstant());
   }
 
   it("stops asking within DAYS of the last night, not the fortnight the wake anchor allows", () => {
@@ -174,7 +174,7 @@ describe("getSleepArrivalLagMinutes", () => {
   // morning. Lag is in minutes from the session END.
   function morning(back: number, arrivalHhmm: string): void {
     const date = shiftDateStr(T, -back);
-    arrival(night(date), `${date} ${arrivalHhmm}:00`);
+    arrival(night(date), `${date}T${arrivalHhmm}:00Z`);
   }
 
   it("is the median arrival lag once the sample gate is met", () => {
@@ -199,7 +199,7 @@ describe("getSleepArrivalLagMinutes", () => {
     for (let i = 1; i <= 5; i++) morning(i, "07:10");
     for (let back = 40; back <= 60; back++) {
       const date = shiftDateStr(T, -back);
-      arrival(night(date), `${T} 12:00:00`);
+      arrival(night(date), `${T}T12:00:00Z`);
     }
     expect(getSleepArrivalLagMinutes(profileId)).toBe(70);
   });
@@ -214,9 +214,9 @@ describe("getSleepArrivalLagMinutes", () => {
       db
         .prepare(
           `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
-           VALUES (?, ?, datetime('now'), 1, 1)`
+           VALUES (?, ?, ?, 1, 1)`
         )
-        .run(other, PROVIDER).lastInsertRowid
+        .run(other, PROVIDER, utcInstant()).lastInsertRowid
     );
     // Point the foreign event at THIS profile's sample: the join must reject it on
     // the event's profile, not merely on the sample's.
@@ -229,7 +229,7 @@ describe("getSleepArrivalLagMinutes", () => {
       `INSERT INTO integration_sync_rows
          (event_id, target_table, target_id, disposition, created_at)
        VALUES (?, 'metric_samples', ?, 'inserted', ?)`
-    ).run(otherEvent, mine.id, `${T} 23:59:00`);
+    ).run(otherEvent, mine.id, `${T}T23:59:00Z`);
     expect(getSleepArrivalLagMinutes(profileId)).toBe(70);
   });
 });

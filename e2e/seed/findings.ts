@@ -414,7 +414,7 @@ export function seedSuppressedCenter(): void {
     ins.run(
       wxId,
       "weather",
-      `${wxToday} 05:00:00`,
+      `${wxToday}T05:00:00Z`,
       1,
       "2026-06-25",
       "2026-07-09",
@@ -430,7 +430,7 @@ export function seedSuppressedCenter(): void {
     ins.run(
       wxId,
       "weather",
-      `${wxToday} 06:00:00`,
+      `${wxToday}T06:00:00Z`,
       1,
       "2026-06-25",
       "2026-07-09",

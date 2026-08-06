@@ -54,7 +54,7 @@ function seedStoppedSync(): void {
     db.prepare(
       `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, updated, unchanged)
        VALUES (?, ?, ?, 1, 0, 0, 24)`
-    ).run(PROFILE_ID, PROVIDER, `${staleSince()} 04:00:00`);
+    ).run(PROFILE_ID, PROVIDER, `${staleSince()}T04:00:00Z`);
   });
 }
 

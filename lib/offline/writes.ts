@@ -12,7 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { isRealIsoDate, zonedDateParts } from "@/lib/date";
+import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
@@ -526,7 +526,7 @@ function applyFoodIntent(
       loggedAt,
       mealSlot,
       stated
-        ? { eatenAt: stated.toISOString(), source: "stated" as const }
+        ? { eatenAt: utcInstant(stated), source: "stated" as const }
         : undefined
     );
     if (outcome.kind === "unknown-group") {

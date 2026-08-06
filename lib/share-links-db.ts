@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "./db";
+import { utcInstant } from "./date";
 import { serializeShareFields, type ShareField } from "./share-links";
 import { hashShareToken } from "./share-token";
 
@@ -153,7 +154,7 @@ export function revokeShareLink(profileId: number, id: number): boolean {
       `UPDATE profile_share_links SET revoked_at = ?
        WHERE id = ? AND profile_id = ? AND revoked_at IS NULL`
     )
-    .run(new Date().toISOString(), id, profileId);
+    .run(utcInstant(), id, profileId);
   return res.changes > 0;
 }
 

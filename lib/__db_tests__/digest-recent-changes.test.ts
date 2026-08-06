@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcInstant } from "@/lib/date";
 import {
   setHomeLocation,
   setStepsDailyTarget,
@@ -96,9 +96,10 @@ function seedSyncArrival(
       .prepare(
         `INSERT INTO integration_sync_events
            (profile_id, provider, at, ok, inserted, updated, unchanged)
-         VALUES (?, ?, datetime('now'), 1, ?, 0, 0)`
+         VALUES (?, ?, ?, 1, ?, 0, 0)`
       )
-      .run(profileId, provider, kinds.length + bareInserted).lastInsertRowid
+      .run(profileId, provider, utcInstant(), kinds.length + bareInserted)
+      .lastInsertRowid
   );
   const link = db.prepare(
     `INSERT INTO integration_sync_rows
@@ -666,11 +667,11 @@ describe("daily step target (#1723 part 2)", () => {
 describe("routine arrivals fold into the content lines they describe (#1913)", () => {
   // The same seeder, but backdated so the sync sits BEFORE the digest's 24h window —
   // which is what makes the next one "routine" rather than a first.
-  function backdateSyncs(profileId: number, modifier: string): void {
+  function backdateSyncs(profileId: number, daysBack: number): void {
     db.prepare(
-      `UPDATE integration_sync_events SET at = datetime('now', ?)
+      `UPDATE integration_sync_events SET at = ?
         WHERE profile_id = ?`
-    ).run(modifier, profileId);
+    ).run(utcInstant(new Date(Date.now() - daysBack * 86_400_000)), profileId);
     // The seeded samples share the natural key with the ones the NEXT seed writes for
     // the same metric, so move them off today the way a real prior night's data is.
     db.prepare(
@@ -687,7 +688,7 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
       { table: "metric_samples", metric: "sleep_min" },
       { table: "metric_samples", metric: "hrv" },
     ]);
-    backdateSyncs(pid, "-3 days");
+    backdateSyncs(pid, 3);
     // This morning: the same kinds again, which is every morning forever.
     seedSyncArrival(pid, "oura", [
       { table: "metric_samples", metric: "sleep_min" },
@@ -703,7 +704,7 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
     seedSyncArrival(pid, "oura", [
       { table: "metric_samples", metric: "sleep_min" },
     ]);
-    backdateSyncs(pid, "-3 days");
+    backdateSyncs(pid, 3);
     // Sleep again (routine) plus blood oxygen for the first time ever.
     seedSyncArrival(pid, "oura", [
       { table: "metric_samples", metric: "sleep_min" },
@@ -721,7 +722,7 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
     seedSyncArrival(pid, "oura", [
       { table: "metric_samples", metric: "sleep_min" },
     ]);
-    backdateSyncs(pid, "-3 days");
+    backdateSyncs(pid, 3);
     // A second provider appears, writing a kind the profile already receives.
     seedSyncArrival(pid, "withings", [
       { table: "metric_samples", metric: "sleep_min" },

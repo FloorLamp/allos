@@ -1,4 +1,5 @@
 import { db, writeTx } from "@/lib/db";
+import { toUtcInstant, utcInstant } from "@/lib/date";
 import { createLogger } from "@/lib/log";
 import type { IntegrationId } from "@/lib/types";
 import { getIntegration } from "./registry";
@@ -46,7 +47,7 @@ export function queueIntegrationBackfill(
     const completed = resume ? Math.max(total - missing, 0) : 0;
     const status: IntegrationBackfillStatus =
       missing === 0 ? "completed" : "queued";
-    const now = new Date().toISOString();
+    const now = utcInstant();
     db.prepare(
       `INSERT INTO integration_backfill_jobs
          (profile_id, provider, kind, label, item_noun, status, total_items,
@@ -101,7 +102,7 @@ export async function runIntegrationBackfillJob(
           WHERE profile_id = ? AND provider = ? AND kind = ?
             AND status IN ('queued','paused')`
       )
-      .run(new Date().toISOString(), profileId, provider, kind)
+      .run(utcInstant(), profileId, provider, kind)
   );
   if (claimed.changes !== 1) {
     return getIntegrationBackfillJob(profileId, provider, kind);
@@ -132,7 +133,7 @@ export async function runIntegrationBackfillJob(
             progress.failed,
             baseRequests + progress.requests,
             activeSeconds,
-            new Date().toISOString(),
+            utcInstant(),
             profileId,
             provider,
             kind
@@ -140,7 +141,7 @@ export async function runIntegrationBackfillJob(
       );
     });
     if ("error" in result) {
-      const now = new Date().toISOString();
+      const now = utcInstant();
       writeTx(() =>
         db
           .prepare(
@@ -161,8 +162,8 @@ export async function runIntegrationBackfillJob(
           ? "paused"
           : "failed";
       const retryAfter = paused
-        ? (result.retryAfterAt ??
-          new Date(now.getTime() + FALLBACK_RETRY_MS).toISOString())
+        ? (toUtcInstant(result.retryAfterAt) ??
+          utcInstant(new Date(now.getTime() + FALLBACK_RETRY_MS)))
         : null;
       const failedCount = Math.max(result.failed, result.remaining);
       const error =
@@ -185,9 +186,9 @@ export async function runIntegrationBackfillJob(
             baseRequests + result.requests,
             baseSeconds + Math.max((Date.now() - batchStarted) / 1000, 0.001),
             retryAfter,
-            status === "paused" ? null : now.toISOString(),
+            status === "paused" ? null : utcInstant(now),
             error,
-            now.toISOString(),
+            utcInstant(now),
             profileId,
             provider,
             kind
@@ -201,7 +202,7 @@ export async function runIntegrationBackfillJob(
       kind,
       err: String(err),
     });
-    const now = new Date().toISOString();
+    const now = utcInstant();
     writeTx(() =>
       db
         .prepare(
@@ -235,7 +236,7 @@ export async function resumeDueIntegrationBackfills(
           ))
         ORDER BY updated_at`
     )
-    .all(profileId, at.toISOString()) as { provider: string; kind: string }[];
+    .all(profileId, utcInstant(at)) as { provider: string; kind: string }[];
   for (const job of due) {
     await runIntegrationBackfillJob(profileId, job.provider, job.kind);
   }

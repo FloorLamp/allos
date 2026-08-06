@@ -206,6 +206,25 @@ calendar, with the payload and level function supplied by the caller; `lensWindo
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
 only the per-lens week caps supplied.
 
+### Instants and days
+
+"When did this happen?" (an INSTANT) and "which day does it count for?" (a
+profile-local `date`) are DIFFERENT questions, and a day is not a lesser instant
+— #94's day attribution is what dose, adherence, cadence and the digest key on,
+and `date` semantics are untouched by the time-model work.
+
+An instant is stored as `2026-07-15T20:02:03Z` — UTC, second resolution,
+explicit `Z` — and `lib/date.ts` is the only place an app write path may produce
+one: `utcInstant` for a column on that convention, `utcSqlString` for one still
+on SQLite's bare shape, with `instantNow`/`sqlNow` as the `lib/clock.ts` seam
+wrappers. Never hand-build a timestamp string and never let SQL's own
+`datetime('now')` write or compare a converted column — comparison is LEXICAL,
+so a bare value and a `Z` value in one column answer wrong while every query
+still looks right. `lib/__tests__/instant-writer-scan.test.ts` is the ratchet;
+its `CANONICAL_INSTANT_COLUMNS` registry is grown by the migration that converts
+a column, in the same change as that column's readers. See
+`docs/internals/time-model.md`.
+
 ### Freshness
 
 "Is this dated reading still current?" is ONE question too. `lib/freshness.ts`

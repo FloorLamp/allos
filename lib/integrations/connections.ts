@@ -14,7 +14,8 @@ import {
   shouldRecordUse,
   type TokenExpiryChoice,
 } from "@/lib/token-lifecycle";
-import { daysAgoModifier, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
+import { cutoffDaysAgo, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
+import { utcInstant } from "@/lib/date";
 import { boundSyncDetailsJson } from "./sync-details";
 import type { ProvenanceEntry } from "./sync-log";
 
@@ -225,11 +226,15 @@ export function recordSyncEvent(
          (profile_id, provider, at, ok, window_start, window_end,
           received, written, inserted, updated, unchanged, suppressed, edited, skipped,
           details, raw_ref, error, portal_id, account_id, patient_label)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
         provider,
+        // The ledger stores UTC with an explicit `Z` (#2205). Real time, not the clock
+        // seam: this stamp is a sync AUDIT time, and lib/clock.ts bars the seam from
+        // owning anything whose calendar day never meets a today()-derived value.
+        utcInstant(),
         ev.ok ? 1 : 0,
         ev.windowStart ?? null,
         ev.windowEnd ?? null,
@@ -302,16 +307,20 @@ export function pruneSyncEvents(
   maxAgeDays = SYNC_EVENTS_RETENTION_DAYS
 ): number {
   try {
+    // The cutoff is BOUND rather than computed by SQLite (#2205): `at` is stored
+    // as 'YYYY-MM-DDTHH:MM:SSZ' and `datetime('now', ?)` renders
+    // 'YYYY-MM-DD HH:MM:SS', and the comparison is lexical — within a day ' ' sorts
+    // before 'T', so every row would have read as older than the cutoff.
     return db
       .prepare(
         `DELETE FROM integration_sync_events
-          WHERE at < datetime('now', ?)
+          WHERE at < ?
             AND id NOT IN (
               SELECT MAX(id) FROM integration_sync_events
                GROUP BY profile_id, provider
             )`
       )
-      .run(daysAgoModifier(maxAgeDays)).changes;
+      .run(utcInstant(cutoffDaysAgo(new Date(), maxAgeDays))).changes;
   } catch (err) {
     log.error("pruneSyncEvents failed", { err: String(err) });
     return 0;
@@ -411,7 +420,7 @@ export function generateHealthConnectToken(
     status: "connected",
     config: {
       tokenHash: hashShareToken(token),
-      tokenCreatedAt: new Date(now).toISOString(),
+      tokenCreatedAt: utcInstant(new Date(now)),
       tokenExpiresAt: expiresAtFromChoice(expiry, now),
     },
   });
@@ -427,7 +436,7 @@ export function recordHealthConnectUse(profileId: number): void {
   if (!str(cfg.tokenHash)) return; // env fallback / no token: nothing to stamp
   if (!shouldRecordUse(str(cfg.tokenLastUsedAt), Date.now())) return;
   upsertConnection(profileId, "health-connect", {
-    config: { ...cfg, tokenLastUsedAt: new Date().toISOString() },
+    config: { ...cfg, tokenLastUsedAt: utcInstant() },
   });
 }
 
@@ -542,13 +551,14 @@ export function recordUnmatchedHealthConnectPush(
   if (rows.length !== 1) return; // can't attribute (0 or many) — skip
   const profileId = rows[0].profile_id;
   // Rate limit: skip if any failure event for this provider landed within the hour.
+  // Same bound-cutoff rule as the retention sweep above (#2205).
   const recent = db
     .prepare(
       `SELECT 1 FROM integration_sync_events
         WHERE profile_id = ? AND provider = 'health-connect' AND ok = 0
-          AND at > datetime('now', '-1 hour') LIMIT 1`
+          AND at > ? LIMIT 1`
     )
-    .get(profileId);
+    .get(profileId, utcInstant(new Date(Date.now() - 3_600_000)));
   if (recent) return;
   markConnectionNeedsReauth(profileId, "health-connect");
   recordSyncEvent(profileId, "health-connect", {

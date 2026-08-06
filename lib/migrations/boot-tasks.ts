@@ -17,6 +17,7 @@ import { seedStandardMetricSaves } from "../standard-metric-seeds";
 import { runPhotoMetadataBackfill } from "../photo/metadata-backfill";
 import { runBootTx } from "./schema-utils";
 import { clockOverride } from "../clock";
+import { utcInstant } from "../date";
 import { createLogger } from "../log";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
@@ -156,7 +157,7 @@ export function seedInstallMarker(db: Database.Database) {
     db.transaction(() => {
       db.prepare(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('install_first_boot_at', ?)"
-      ).run(new Date().toISOString());
+      ).run(utcInstant());
     })
   );
 }
@@ -229,13 +230,21 @@ export function resetInterruptedWork(
         )
         .get("integration_backfill_jobs") != null;
     if (backfillJobsReady) {
-      db.exec(
+      // BOUND, not `datetime('now')` (#2205). integration_backfill_jobs stores its
+      // instants as ISO-8601 UTC with `Z`, written by lib/integrations/backfill-jobs;
+      // SQLite renders 'now' as 'YYYY-MM-DD HH:MM:SS'. Letting this sweep write the
+      // bare shape put two serializations in one column, and the resume query
+      // (`retry_after_at <= ?`, an ISO instant) then compared them LEXICALLY: for a
+      // same-day row ' ' sorts before 'T', so every job this sweep paused looked due
+      // immediately. The `updated_at` cutoff is bound for the same reason.
+      const stamp = utcInstant();
+      const staleBefore = utcInstant(new Date(Date.now() - mins * 60_000));
+      db.prepare(
         `UPDATE integration_backfill_jobs
-           SET status = 'paused', retry_after_at = datetime('now'),
-               updated_at = datetime('now')
+           SET status = 'paused', retry_after_at = ?, updated_at = ?
          WHERE status IN ('queued','running')
-           AND updated_at < datetime('now', '${modifier}')`
-      );
+           AND updated_at < ?`
+      ).run(stamp, stamp, staleBefore);
     }
 
     // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by

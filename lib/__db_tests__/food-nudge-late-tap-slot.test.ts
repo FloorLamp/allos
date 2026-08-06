@@ -34,6 +34,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 });
 
 import { db, today } from "@/lib/db";
+import { utcInstant } from "@/lib/date";
 import {
   currentFoodSlot,
   getFoodServingsOnDate,
@@ -204,7 +205,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     // identity only. What it carries instead is the eating instant the tap measured.
     expect(storedSlots(p.profileId, t, "berries")).toEqual([null]);
     expect(storedEatenAt(p.profileId, t, "berries")).toEqual([
-      new Date(FROZEN).toISOString(),
+      utcInstant(new Date(FROZEN)),
     ]);
     // The window a reader derives for it is the one it was EATEN in — Midday, honestly,
     // rather than the Morning the nudge happened to be titled.
@@ -274,7 +275,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     // food-nudge-protein-slot-count.test.ts, on a nudge whose window is the current one.
     expect(storedSlots(p.profileId, t, PROTEIN_NUDGE_KEY)).toEqual([null]);
     expect(storedEatenAt(p.profileId, t, PROTEIN_NUDGE_KEY)).toEqual([
-      new Date(FROZEN).toISOString(),
+      utcInstant(new Date(FROZEN)),
     ]);
   });
 });

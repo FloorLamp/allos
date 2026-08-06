@@ -39,7 +39,7 @@ let anomalyEventId: number;
 function stamp(minutesFromMidnight: number): string {
   const h = String(Math.floor(minutesFromMidnight / 60)).padStart(2, "0");
   const m = String(minutesFromMidnight % 60).padStart(2, "0");
-  return `2026-07-08 ${h}:${m}:00`;
+  return `2026-07-08T${h}:${m}:00Z`;
 }
 
 function backdate(id: number, at: string): void {

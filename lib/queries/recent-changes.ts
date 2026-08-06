@@ -18,6 +18,7 @@
 
 import { today as todayFor } from "../db";
 import { db } from "../db";
+import { utcInstant, utcSqlString } from "../date";
 import {
   applyRecentChangeDemotion,
   arrivalKind,
@@ -285,9 +286,21 @@ export function collectRecentChanges(
 ): RecentChangesResult {
   const today = opts.today ?? todayFor(profileId);
   const windowStart = recentChangeWindowStart(today, opts.sinceDays);
-  // The import cursor for the two flagged-reading reads: midnight at the window's
-  // first day, in the same "YYYY-MM-DD HH:MM:SS" shape created_at carries.
-  const sinceTs = `${windowStart} 00:00:00`;
+  // ONE window, TWO cursors, because the columns it meets are on two conventions
+  // (#2205 is in the middle of unifying them, one table family per migration).
+  // Getting this wrong is the whole point of that issue: SQLite compares stored
+  // datetimes LEXICALLY, and within a day ' ' (0x20) sorts before 'T' (0x54), so a
+  // bare cursor handed to a `Z` column silently admits everything and a `Z` cursor
+  // handed to a bare column silently admits nothing. Neither errors.
+  //
+  //   sinceTs      — medical_records.created_at and its siblings, still on SQLite's
+  //                  bare 'YYYY-MM-DD HH:MM:SS'.
+  //   sinceInstant — integration_sync_events.at, converted by migration 163.
+  //
+  // Both name the same moment: midnight at the window's first day, UTC. When the
+  // remaining columns convert, the bare one goes and this collapses back to one.
+  const sinceTs = utcSqlString(new Date(`${windowStart}T00:00:00Z`));
+  const sinceInstant = utcInstant(new Date(`${windowStart}T00:00:00Z`));
   const exclude = new Set(opts.exclude ?? []);
   const on = (c: RecentChangeCategory) => !exclude.has(c);
 
@@ -449,7 +462,7 @@ export function collectRecentChanges(
   if (on("mood")) changes.push(...moodChanges(profileId, windowStart, today));
 
   // ── data arrival (#1713) ─────────────────────────────────────────────────────
-  if (on("data")) changes.push(...arrivalChanges(profileId, sinceTs));
+  if (on("data")) changes.push(...arrivalChanges(profileId, sinceInstant));
 
   // Pre-demotion, so the Tune control (#1714) can offer a toggle for a category that
   // IS producing lines this reader has chosen not to see.

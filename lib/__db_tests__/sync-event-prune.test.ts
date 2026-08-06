@@ -14,6 +14,7 @@
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { utcInstant } from "@/lib/date";
 import { db } from "@/lib/db";
 import { pruneSyncEvents } from "@/lib/integrations/connections";
 import { getLatestSyncEventPerProvider } from "@/lib/queries";
@@ -33,9 +34,17 @@ function insertAged(
   ok = true
 ): void {
   db.prepare(
+    // Bound in the column's own convention (#2205, migration 163). Seeding SQLite's
+    // bare `datetime('now', ?)` here would have put a second serialization in the
+    // column the sweep compares, which is the failure this whole issue is about.
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
-       VALUES (?, ?, datetime('now', ?), ?)`
-  ).run(profileId, provider, `-${daysAgo} days`, ok ? 1 : 0);
+       VALUES (?, ?, ?, ?)`
+  ).run(
+    profileId,
+    provider,
+    utcInstant(new Date(Date.now() - daysAgo * 86_400_000)),
+    ok ? 1 : 0
+  );
 }
 
 type Ev = { id: number; profile_id: number; provider: string; at: string };

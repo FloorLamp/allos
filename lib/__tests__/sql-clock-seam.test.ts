@@ -115,8 +115,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "care_plan_items.resolved_at — a 'when was this closed' audit stamp; the follow-up's dates are its planned_date/target_date columns.",
   },
   "lib/integrations/connections.ts": {
-    count: 8,
-    why: "connection last_sync_at/updated_at/refresh_claimed_at, the sync-event feed stamp, its retention sweep, and the 1-hour error-flood guard — audit stamps, claim leases and durations.",
+    count: 5,
+    why: "connection last_sync_at/updated_at/refresh_claimed_at — audit stamps and claim leases. Down from 8: the sync-event feed stamp, its retention sweep and the 1-hour error-flood guard now BIND from utcInstant() because migration 163 moved integration_sync_events.at onto UTC+`Z` (#2205), and SQLite's bare-shaped 'now' cannot be compared to it lexically.",
   },
   "lib/integrations/weather-cache.ts": {
     count: 2,
@@ -127,8 +127,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "processing_started_at on the reserved row — the extraction lease (uploaded_at on the same INSERT is bound from sqlNow).",
   },
   "lib/migrations/boot-tasks.ts": {
-    count: 8,
-    why: "stuck-extraction / stuck-import / integration-backfill boot sweeps — duration cutoffs plus the updated_at and retry audit stamps they write.",
+    count: 5,
+    why: "stuck-extraction / stuck-import boot sweeps — duration cutoffs plus the updated_at audit stamps they write. Down from 8: the integration-backfill sweep's three (retry_after_at, updated_at, and its own cutoff) now BIND from utcInstant() because that table stores ISO-8601 UTC with `Z` and SQLite's bare 'now' put a second serialization in the same column (#2205).",
   },
   "lib/mobility-log-write.ts": {
     count: 3,

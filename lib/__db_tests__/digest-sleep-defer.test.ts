@@ -21,7 +21,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { minuteOfDayInTz, shiftDateStr } from "@/lib/date";
+import { minuteOfDayInTz, shiftDateStr, utcInstant } from "@/lib/date";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -87,7 +87,7 @@ function syncEventId(profileId: number): number {
         `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
          VALUES (?, 'health-connect', ?, 1)`
       )
-      .run(profileId, `${FROZEN_DAY} 04:00:00`).lastInsertRowid
+      .run(profileId, `${FROZEN_DAY}T04:00:00Z`).lastInsertRowid
   );
 }
 
@@ -107,12 +107,13 @@ function recordArrival(
     )
     .get(profileId, start) as { id: number } | undefined;
   if (!row) throw new Error(`no sleep sample for ${wakeDay}`);
-  const arrived = new Date(
-    new Date(`${wakeDay}T${WAKE_HHMM}:00Z`).getTime() + lagMin * 60_000
-  )
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+  // utcInstant, not a hand-rolled bare stamp: integration_sync_rows.created_at is on
+  // the canonical UTC+`Z` convention since migration 163 (#2205).
+  const arrived = utcInstant(
+    new Date(
+      new Date(`${wakeDay}T${WAKE_HHMM}:00Z`).getTime() + lagMin * 60_000
+    )
+  );
   db.prepare(
     `INSERT INTO integration_sync_rows
        (event_id, target_table, target_id, disposition, created_at)

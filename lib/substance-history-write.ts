@@ -3,7 +3,7 @@
 // catalog substance. Alcohol updates its existing food_log counter and reconciles
 // the matching per-tap events, while nicotine/cannabis update substance_log.
 
-import { now as clockNow } from "./clock";
+import { instantNow } from "./clock";
 import { db, today, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
@@ -42,7 +42,7 @@ function appendAlcoholEvents(
   date: string,
   amount: number
 ): void {
-  const loggedAt = clockNow().toISOString();
+  const loggedAt = instantNow();
   const insert = db.prepare(
     `INSERT INTO food_log_events
        (profile_id, group_key, date, logged_at, meal_slot)
@@ -134,14 +134,7 @@ export function addSubstanceHistoryEntryCore(
            (profile_id, date, substance, units, logged_at, notes, edited)
          VALUES (?, ?, ?, ?, ?, ?, 1)`
       )
-      .run(
-        profileId,
-        input.date,
-        substance,
-        input.amount,
-        clockNow().toISOString(),
-        notes
-      );
+      .run(profileId, input.date, substance, input.amount, instantNow(), notes);
     return { kind: "added" as const, id: Number(info.lastInsertRowid) };
   });
 }

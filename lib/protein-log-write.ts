@@ -17,7 +17,7 @@
 // (scoop sizes repeat), so the quick-add can re-offer it next time.
 
 import { db, writeTx } from "./db";
-import { now as clockNow } from "./clock";
+import { instantNow } from "./clock";
 import { proteinDayCounter } from "./day-counter-ledger-db";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
@@ -65,7 +65,7 @@ export function addProteinGramsCore(
   // slots the profile logs protein. Defaults to NOW — logged_at is the TAP time, never
   // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
   // Injectable so tests can seed a specific slot; production passes the default.
-  loggedAt: string = clockNow().toISOString(),
+  loggedAt: string = instantNow(),
   // The explicit consumed WINDOW for the ranking/count event (#1704), mirroring
   // logFoodServingCore's `mealSlot`. Supplied by a caller that already ASSERTS the
   // window — the Telegram nudge's callback token, which baked its slot in at send

@@ -18,6 +18,7 @@ import { POST } from "@/app/api/offline-replay/route";
 import { createLogin, createProfile, actAs } from "./harness";
 import {
   shiftDateStr,
+  utcInstant,
   utcSqlString,
   zonedDateParts,
   zonedWallTimeToUtc,
@@ -803,11 +804,12 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     actAs(admin, profile);
     const date = today(profile.id);
     // Local midnight on the intent's own day: always past, always that day.
-    const eatenAt = zonedWallTimeToUtc(
-      getTimezone(profile.id),
-      date,
-      "00:00"
-    ).toISOString();
+    // The canonical stored instant (#2205) — the shape food_log_events.eaten_at
+    // actually holds, so the round-trip assertion below is an identity and not a
+    // comparison between two serializations.
+    const eatenAt = utcInstant(
+      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")
+    );
 
     const intent = servingIntent(
       profile.id,

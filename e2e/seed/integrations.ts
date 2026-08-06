@@ -85,7 +85,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "health-connect",
-    "2026-07-08 07:00:00",
+    "2026-07-08T07:00:00Z",
     1,
     "2026-07-06",
     "2026-07-08",
@@ -115,7 +115,7 @@ export function seedIntegrationSyncEvents(): void {
       ],
     }),
     PROFILE_ID,
-    "2026-07-08 07:00:00"
+    "2026-07-08T07:00:00Z"
   );
 
   // One-off Fitbit archive import. Unlike the recurring sources below, this belongs
@@ -123,7 +123,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "fitbit-takeout",
-    "2026-07-10 10:00:00",
+    "2026-07-10T10:00:00Z",
     1,
     null,
     null,
@@ -148,7 +148,7 @@ export function seedIntegrationSyncEvents(): void {
       db
         .prepare(
           `SELECT id FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'health-connect' AND at = '2026-07-08 07:00:00'`
+          WHERE profile_id = ? AND provider = 'health-connect' AND at = '2026-07-08T07:00:00Z'`
         )
         .get(PROFILE_ID) as { id: number } | undefined
     )?.id;
@@ -196,7 +196,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "strava",
-    "2026-07-07 22:00:00",
+    "2026-07-07T22:00:00Z",
     0,
     "2026-07-01",
     "2026-07-07",
@@ -215,7 +215,7 @@ export function seedIntegrationSyncEvents(): void {
     ins.run(
       PROFILE_ID,
       "strava",
-      `2026-07-08 ${hour}:00:00`,
+      `2026-07-08T${hour}:00:00Z`,
       1,
       "2026-07-01",
       "2026-07-08",
@@ -239,7 +239,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "strava",
-    "2026-07-08 10:00:00",
+    "2026-07-08T10:00:00Z",
     1,
     "2026-07-01",
     "2026-07-08",
@@ -271,12 +271,12 @@ export function seedIntegrationSyncEvents(): void {
       )
     ),
     PROFILE_ID,
-    "2026-07-08 10:00:00"
+    "2026-07-08T10:00:00Z"
   );
   ins.run(
     PROFILE_ID,
     "strava",
-    "2026-07-09 09:00:00",
+    "2026-07-09T09:00:00Z",
     0,
     null,
     null,
@@ -309,7 +309,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "oura",
-    "2026-07-05 06:00:00",
+    "2026-07-05T06:00:00Z",
     1,
     "2026-07-01",
     "2026-07-05",
@@ -340,7 +340,7 @@ export function seedIntegrationSyncEvents(): void {
   ins.run(
     PROFILE_ID,
     "withings",
-    "2026-07-09 08:30:00",
+    "2026-07-09T08:30:00Z",
     0,
     null,
     null,

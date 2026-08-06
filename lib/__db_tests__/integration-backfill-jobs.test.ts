@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
+import { utcInstant } from "@/lib/date";
 import {
   getIntegrationBackfillJob,
   queueIntegrationBackfill,
@@ -161,15 +162,23 @@ describe("integration backfill jobs", () => {
   });
 
   it("pauses only crash-stranded jobs for automatic recovery", () => {
+    // The fixture ages `updated_at` through the SAME writer production uses
+    // (utcInstant → 'YYYY-MM-DDTHH:MM:SSZ', #2205). It used to seed SQLite's bare
+    // `datetime('now', ?)` shape instead, and the lease comparison is LEXICAL: with a
+    // bound `Z` cutoff, ' ' (0x20) sorts before 'T' (0x54), so every same-day bare row
+    // read as older than any cutoff and the FRESH job got reaped too. Seeding the
+    // column's real shape is what makes this test about the lease and not about which
+    // serialization the fixture happened to pick.
     const insert = db.prepare(
       `INSERT INTO integration_backfill_jobs
          (profile_id, provider, kind, label, item_noun, status, total_items,
           updated_at)
-       VALUES (?, 'strava', ?, 'Test backfill', 'ride', 'running', 2,
-          datetime('now', ?))`
+       VALUES (?, 'strava', ?, 'Test backfill', 'ride', 'running', 2, ?)`
     );
-    insert.run(profileId, "fresh", "-1 minute");
-    insert.run(profileId, "stranded", "-60 minutes");
+    const minutesAgo = (m: number) =>
+      utcInstant(new Date(Date.now() - m * 60_000));
+    insert.run(profileId, "fresh", minutesAgo(1));
+    insert.run(profileId, "stranded", minutesAgo(60));
 
     resetInterruptedWork(db, 30);
 

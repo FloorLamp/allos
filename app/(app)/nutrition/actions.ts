@@ -18,6 +18,7 @@ import {
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
 import { now as clockNow } from "@/lib/clock";
+import { utcInstant } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
@@ -101,7 +102,7 @@ export async function logFoodServing(
     fields.mealSlot,
     // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
     // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
-    eatenAt ? { eatenAt: eatenAt.toISOString(), source: "stated" } : undefined
+    eatenAt ? { eatenAt: utcInstant(eatenAt), source: "stated" } : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
