@@ -211,6 +211,12 @@ Every agent prompt must contain, verbatim where marked:
   conflict. Trust symbol names over line numbers.
 - Checks: npm run format && npm run lint && npm run typecheck && npm test && npm run test:db
   — run format LAST before committing (a late edit after formatting is a known CI breaker)
+- After ANY e2e spec edit — including a spec commit added after the full gate run —
+  re-run `npx vitest run lib/__tests__/e2e-hygiene.test.ts` before pushing. Two
+  consecutive waves (2026-08-06) shipped a late spec commit that tripped the scan
+  in CI (`Date.now()` without `clock-ok`, `.first()` with its `first-ok` comment
+  on the wrong line — the scan requires SAME-LINE markers). The scan is 2 seconds;
+  a CI round trip is 25 minutes.
 - npm run phi-scan before the final push — the pre-commit staged-files hook does
   NOT fire in agent worktrees, and CI's whole-tree scan will red a PR for a
   pattern-shaped literal (a SHA-256 golden's digit substring once formed a
@@ -683,6 +689,60 @@ touching shared source does.
   idle slot alongside a viable queue is an orchestration bug. "No viable
   issues" means everything left is blocked, owner-gated, or awaiting an
   in-flight dependency — say so in the status pulse rather than going quiet.
+- **Parked issues carry the `parked` label (owner ruling, 2026-08-06).** An
+  issue deliberately kept out of the dispatch queue — awaiting an owner
+  decision or green-light, or held for a later phase — gets the `parked` label
+  when it is parked and loses it when it re-enters the queue. The label is the
+  visible register: the status pulse's "parked awaiting owner" list and the
+  label must agree, and an unlabeled parked issue is a bookkeeping bug.
+- **Dependabot minor/patch groups merge on green; majors stay owner-gated
+  (owner ruling, 2026-08-06).** The orchestrator merges a minor-and-patch group
+  PR on green CI without asking. A MAJOR bump is a product decision and stays
+  parked with the `parked` label until the owner rules on it. Two conditions on
+  the merge: the green must be against CURRENT main — a dependabot PR sitting on
+  a stale base has only proved itself against code that is no longer there, so
+  update the branch and let CI re-run before merging — and the review still
+  reads the group's contents, because a "minor" that governs the test harness
+  (a Playwright bump) or a pre-commit hook is worth naming in the merge even
+  when it needs no action.
+- **Never write into a live agent's worktree without telling it first
+  (2026-08-06, learned the hard way).** The orchestrator routinely fixes small
+  defects directly in a worktree rather than spending a round trip — that is
+  correct AFTER the agent has reported completion and stopped. It is NOT correct
+  while the agent is still alive, and "the tree is clean right now" does not
+  mean the agent is done with it: an agent waiting on a blocker (a migration
+  slot, a dependency PR) still owns its worktree, and a `git add -A` from a
+  second writer sweeps whatever it had in flight into someone else's commit.
+  This was caught by the agent, not by the orchestrator, which is the wrong way
+  round. If a fix is urgent on a live agent's branch: message the agent and
+  either ask it to make the change or ask it to stand down from the worktree
+  explicitly, and wait for the acknowledgement.
+- **A count-freezing allowlist goes stale when parallel work merges.** A scan
+  that freezes per-file counts (the instant-writer scan, #2205) is deliberately
+  strict, and the cost is that any PR landing beside it invalidates the
+  snapshot: CI scans the MERGE commit, so the ratchet fires on code the branch
+  has never seen. That is the ratchet working, not a defect in either PR — but
+  the orchestrator owns reconciling it at merge time (re-merge main, re-verify,
+  raise the counts WITH reasons), and should expect it every time such a scan
+  sits behind other landings.
+- **Re-check every open PR's mergeability after each merge.** A merge silently
+  invalidates any open PR touching the same files, and GitHub reports that as
+  `mergeable_state: dirty` long before CI says anything. On 2026-08-06 a PR sat
+  in the CI queue for over three hours against a base that no longer existed AND
+  a conflict that made it unmergeable — the queued run was worthless twice over,
+  and nothing surfaced it because the orchestrator only looked at check status.
+  One `pulls/N` read per open PR after every merge is the whole fix.
+- **`rerun_failed_jobs` CANCELS jobs still in flight.** It re-queues the failed
+  ones and kills the running ones, so firing it at a run that has not settled
+  costs the in-progress shards their work and leaves them `cancelled` — which
+  then looks like a fresh failure. Only rerun a run whose jobs have all
+  completed.
+- **A job can be stamped `failure` with every step green.** During the
+  2026-08-06 Actions incident a `check` job reported failure while format, lint,
+  typecheck, both test tiers and coverage all succeeded and no step failed.
+  Read the job's STEPS before believing its conclusion — a red with no failing
+  step is infrastructure, not a result, and re-running it is the answer rather
+  than diagnosing the branch.
 - Keep a task per cluster (`agent → review → merge`) and update it at each
   stage.
 - Institutionalize every incident into the next dispatch prompt the same day —
