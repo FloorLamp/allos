@@ -14,6 +14,26 @@ import { E2E_LOGIN_CYCLE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // The log/end/delete test is self-contained: it records the starting row count, mutates,
 // then restores it, so --repeat-each stays clean. Interactions settle via settledClick.
 
+// DateField DISPLAYS a friendly date while SUBMITTING the canonical ISO through a
+// hidden input, so settledFill's same-field readback can't express the wait. Fill the
+// visible field and settle on the hidden value instead, then dismiss the calendar
+// popover (the cycle-guards precedent).
+async function fillPeriodDate(
+  page: Page,
+  field: "start" | "end",
+  iso: string
+): Promise<void> {
+  const form = page.getByTestId("cycle-add-form");
+  const input = page.locator(`#cycle-${field}-new`);
+  const hidden = form.locator(`input[type="hidden"][name="period_${field}"]`);
+  await expect(input).toBeVisible();
+  await expect(async () => {
+    await input.fill(iso);
+    await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
+  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
+  await input.press("Escape");
+}
+
 test.describe("menstrual cycle (#714)", () => {
   let page: Page;
 
@@ -120,6 +140,48 @@ test.describe("menstrual cycle (#714)", () => {
     } finally {
       await other.close();
     }
+  });
+
+  test("deleting a period offers Undo, and Undo restores the row (#2127)", async () => {
+    // The row feeds cycle-length history and the forecast, so its delete is
+    // restorable (#2127): the standard useUndoableDelete toast, the shared
+    // undoDelete core — no bespoke path.
+    await page.goto("/medical/cycles");
+    const rows = page.getByTestId("cycle-history-row");
+    const before = await rows.count();
+
+    // A dated period far in the past — clear of the seeded recent history, so the
+    // plausibility gate can't refuse it — marked with a unique note so this test
+    // only ever targets its own fixture row.
+    const note = `e2e undo period ${Date.now()}`; // clock-ok: unique-note suffix, never a stored timestamp
+    const form = page.getByTestId("cycle-add-form");
+    await fillPeriodDate(page, "start", "2024-01-01");
+    await fillPeriodDate(page, "end", "2024-01-05");
+    await form.getByLabel("Note (optional)").fill(note);
+    await settledClick(page, form.getByRole("button", { name: "Add period" }));
+    const row = rows.filter({ hasText: note });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+
+    // Delete it: the toast offers Undo.
+    await settledClick(page, row.getByTestId("cycle-delete-button"));
+    await expect(row).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByText("Period deleted")).toBeVisible();
+
+    // Undo restores the row (new id, same period) and the list re-renders it.
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(page.getByText("Restored.")).toBeVisible({ timeout: 20_000 });
+    await expect(rows.filter({ hasText: note })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(rows).toHaveCount(before + 1);
+
+    // Cleanup: delete the restored row (this test's own fixture data), restoring
+    // the seeded count for --repeat-each.
+    await settledClick(
+      page,
+      rows.filter({ hasText: note }).getByTestId("cycle-delete-button")
+    );
+    await expect(rows).toHaveCount(before, { timeout: 20_000 });
   });
 
   test("Timeline day header shows the cycle phase/period chip", async () => {

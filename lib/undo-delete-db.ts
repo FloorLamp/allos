@@ -64,6 +64,7 @@ const KIND_LABELS: Record<string, string> = {
   "substance-alcohol-history": "substance use history",
   "substance-history": "substance use history",
   "practice-session": "practice session",
+  cycle: "period",
   "food-serving": "food serving",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/

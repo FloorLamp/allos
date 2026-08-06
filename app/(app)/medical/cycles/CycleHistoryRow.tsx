@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useToast } from "@/components/Toast";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -15,7 +15,7 @@ import { saveCycleAction, deleteCycleAction } from "./actions";
 // own bleeding length.
 export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
   const formatPrefs = useFormatPrefs();
-  const toast = useToast();
+  const undoable = useUndoableDelete();
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -26,18 +26,16 @@ export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
     startTransition(async () => {
       const fd = new FormData();
       fd.set("id", String(period.id));
-      let result: { ok: boolean; error?: string };
+      // Undoable (#2127): the standard shared wiring — the action returns the undo
+      // token and the toast offers Undo for the shared window, because the deleted
+      // row feeds cycle-length history and the forecast, not just the list.
       try {
-        result = await deleteCycleAction(fd);
+        await undoable(deleteCycleAction, fd, {
+          deletedMessage: "Period deleted",
+        });
       } catch {
         setError("Couldn't delete this period. Try again.");
-        return;
       }
-      if (!result.ok) {
-        setError(result.error ?? "Couldn't delete this period.");
-        return;
-      }
-      toast("Period deleted");
     });
   }
 
