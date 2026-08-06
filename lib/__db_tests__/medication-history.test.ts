@@ -87,26 +87,26 @@ describe("stop / restart produces separate courses", () => {
     const p = seedProfile("syncflag");
     ensureMedicationCourse(p.profileId, p.medicationId, "2025-01-01");
     // Pause → open course closes.
-    expect(setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-01")).toBe(
-      "paused"
-    );
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-01")
+    ).toBe("paused");
     expect(
       getMedicationCourses(p.profileId).filter((c) => c.stopped_on == null)
     ).toHaveLength(0);
     // A repeated pause is a stale tab's intent — refuse, don't invert (#2133).
-    expect(setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-02")).toBe(
-      "already-paused"
-    );
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 0, "2025-02-02")
+    ).toBe("already-paused");
     // Resume → a fresh open course.
-    expect(setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-10")).toBe(
-      "resumed"
-    );
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-10")
+    ).toBe("resumed");
     expect(
       getMedicationCourses(p.profileId).filter((c) => c.stopped_on == null)
     ).toHaveLength(1);
-    expect(setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-11")).toBe(
-      "already-active"
-    );
+    expect(
+      setMedicationActive(p.profileId, p.medicationId, 1, "2025-02-11")
+    ).toBe("already-active");
   });
 
   it("course transitions answer typed, changes-checked outcomes (#2132)", () => {

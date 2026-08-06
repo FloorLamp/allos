@@ -25,7 +25,8 @@ import type { Tx } from "./db";
 // held when the UPDATE ran — the caller maps it to its domain's typed refusal
 // ("already-accepted", "already-paused", …) rather than confirming a write it did not
 // make.
-export type CasOutcome = { kind: "applied"; changes: number } | { kind: "stale" };
+export type CasOutcome =
+  { kind: "applied"; changes: number } | { kind: "stale" };
 
 // An in-transaction guard read. The token proves the read shares the transaction with
 // the write it guards, so the row cannot change between the check and the swap.

@@ -119,7 +119,8 @@ describe("stop/restart render the course core's refusals (#2132)", () => {
 
     const secondRestart = await restartMedication(fd({ id }));
     expect(secondRestart.ok).toBe(false);
-    if (!secondRestart.ok) expect(secondRestart.error).toMatch(/Already active/);
+    if (!secondRestart.ok)
+      expect(secondRestart.error).toMatch(/Already active/);
     // No second open course was stacked by the refused restart.
     expect(openCourses()).toHaveLength(1);
   });

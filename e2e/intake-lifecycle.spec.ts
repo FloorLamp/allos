@@ -23,7 +23,10 @@ function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
   }
 }
 
-async function addSupplement(page: import("@playwright/test").Page, name: string) {
+async function addSupplement(
+  page: import("@playwright/test").Page,
+  name: string
+) {
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await settledFill(page, addDialog.getByLabel("Name"), name);
@@ -40,7 +43,12 @@ async function deleteSupplement(
   page: import("@playwright/test").Page,
   name: string
 ) {
-  const row = page.getByTestId("supplement-row").filter({ hasText: name });
+  // first-ok: a multi-dose item renders one row per dose; any of ITS rows opens the
+  // same item menu, and the name is unique to this spec's own fixture.
+  const row = page
+    .getByTestId("supplement-row")
+    .filter({ hasText: name })
+    .first();
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
@@ -61,16 +69,18 @@ test("a stale tab's Pause refuses with the typed outcome instead of resuming (#2
 
   // Another device pauses the item while this tab keeps its stale render.
   withDb((db) =>
-    db
-      .prepare("UPDATE intake_items SET active = 0 WHERE name = ?")
-      .run(NAME)
+    db.prepare("UPDATE intake_items SET active = 0 WHERE name = ?").run(NAME)
   );
 
   const row = page.getByTestId("supplement-row").filter({ hasText: NAME });
   await row.getByRole("button", { name: "Supplement actions" }).click();
   // The stale render still offers "Pause" — the tap must refuse, not invert.
   await page.getByRole("menuitem", { name: "Pause" }).click();
-  await expect(page.getByTestId("toast")).toContainText(/Already paused/);
+  // The "added" success toast from the fixture setup may still be on screen, so
+  // match the refusal toast by its own text.
+  await expect(
+    page.getByTestId("toast").filter({ hasText: "Already paused" })
+  ).toBeVisible();
 
   // The wrong write did NOT happen: the item is still paused.
   const active = withDb(
@@ -83,7 +93,10 @@ test("a stale tab's Pause refuses with the typed outcome instead of resuming (#2
   );
   expect(active).toBe(0);
 
+  // Clean up: a fresh render files the paused item under the collapsed "Paused"
+  // disclosure; open it, then delete.
   await page.reload();
+  await page.locator("summary").filter({ hasText: "Paused" }).click();
   await deleteSupplement(page, NAME);
 });
 

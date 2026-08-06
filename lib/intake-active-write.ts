@@ -19,11 +19,7 @@ import { casUpdate, readForUpdate } from "./tx";
 import { setMedicationActive } from "./queries/intake/medications";
 
 export type IntakeActiveOutcome =
-  | "paused"
-  | "resumed"
-  | "already-paused"
-  | "already-active"
-  | "not-found";
+  "paused" | "resumed" | "already-paused" | "already-active" | "not-found";
 
 // What the caller renders per refusal — one vocabulary so the web toast and any future
 // surface say the same thing (#221).

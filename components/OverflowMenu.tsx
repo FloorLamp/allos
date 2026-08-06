@@ -35,9 +35,7 @@ const MARGIN = 8; // keep the panel this far from the viewport edges
 // stale render (#2133): a refusal (`ok: false`) toasts its error in the error tone, and
 // a success may carry the state-named `message` the write actually performed.
 export type MenuActionResult =
-  | void
-  | { ok: true; message?: string }
-  | { ok: false; error: string };
+  void | { ok: true; message?: string } | { ok: false; error: string };
 
 export interface MenuHelpers {
   close: () => void;

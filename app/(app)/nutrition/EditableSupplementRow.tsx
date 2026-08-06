@@ -267,11 +267,7 @@ export default function EditableSupplementRow({
                   }
                 >
                   <input type="hidden" name="id" value={s.id} />
-                  <input
-                    type="hidden"
-                    name="to"
-                    value={s.active ? "0" : "1"}
-                  />
+                  <input type="hidden" name="to" value={s.active ? "0" : "1"} />
                   <button type="submit" role="menuitem" className={MENU_ITEM}>
                     {s.active ? "Pause" : "Resume"}
                   </button>

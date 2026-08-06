@@ -1249,8 +1249,7 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
 }
 
 export type SetItemActiveResult =
-  | { ok: true; state: "paused" | "resumed" }
-  | { ok: false; error: string };
+  { ok: true; state: "paused" | "resumed" } | { ok: false; error: string };
 
 // Pause or resume an intake item (#2133). STATE-NAMED, not a toggle: the form posts the
 // state its render promised (`to`), the auth-blind core (lib/intake-active-write.ts)

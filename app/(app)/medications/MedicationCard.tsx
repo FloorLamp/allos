@@ -1053,7 +1053,8 @@ export default function MedicationCard({
                                 fd.set("to", se.resolved ? "0" : "1");
                                 const res = await setSideEffectResolved(fd);
                                 close();
-                                if (!res.ok) toast(res.error, { tone: "error" });
+                                if (!res.ok)
+                                  toast(res.error, { tone: "error" });
                               }}
                             >
                               {se.resolved

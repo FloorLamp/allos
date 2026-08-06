@@ -473,10 +473,7 @@ function medicationForUpdate(
 }
 
 export type CourseStopOutcome =
-  | "stopped"
-  | "already-stopped"
-  | "synced"
-  | "not-found";
+  "stopped" | "already-stopped" | "synced" | "not-found";
 
 // Stop a medication: close its open course(s) (stopped_on = date + reason, note
 // appended) AND clear the live `active` flag so scheduling/reminders stop, in one
@@ -543,10 +540,7 @@ export function stopMedicationCourses(
 }
 
 export type CourseRestartOutcome =
-  | "restarted"
-  | "already-open"
-  | "synced"
-  | "not-found";
+  "restarted" | "already-open" | "synced" | "not-found";
 
 // Restart a medication: open a NEW course (preserving prior courses) and set `active`
 // back on. Refusals: `not-found`, `already-open` (an open course exists and the med is
@@ -821,11 +815,7 @@ export function updateMedicationSideEffect(
 }
 
 export type SideEffectResolvedOutcome =
-  | "resolved"
-  | "reopened"
-  | "already-resolved"
-  | "already-open"
-  | "not-found";
+  "resolved" | "reopened" | "already-resolved" | "already-open" | "not-found";
 
 // Set a side effect's resolved flag to an INTENDED state (#2133's sibling fix): the old
 // `SET resolved = 1 - resolved` blind toggle inverted a stale tab's tap. The caller
