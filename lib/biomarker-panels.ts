@@ -97,6 +97,7 @@ export const PANEL_IDS = [
   "vision",
   "hearing",
   "dental",
+  "respiratory",
   "mental-health",
   "biological-age",
   "other",
@@ -143,6 +144,7 @@ export const PANEL_LABELS: Record<PanelId, { label: string; order: number }> = {
   vision: { label: "Vision", order: 300 },
   hearing: { label: "Hearing", order: 310 },
   dental: { label: "Dental", order: 320 },
+  respiratory: { label: "Respiratory function", order: 325 },
   "mental-health": { label: "Mental health screens", order: 330 },
   "biological-age": { label: "Biological age", order: 340 },
   other: { label: "Other", order: 9999 },
@@ -520,6 +522,12 @@ export const BIOMARKER_PANELS: Record<
     "Bleeding on Probing",
     "Clinical Attachment Loss",
   ],
+  // Respiratory function (#1850). Peak flow is the home-measured half and the
+  // spirometry trio the clinic-measured half; they arrive at different cadences but
+  // they ARE one order — a pulmonology report prints all four together — so they are
+  // one panel, which is what makes the cross-reference chip on a peak-flow reading
+  // point at the spirometry it was taken alongside.
+  respiratory: ["Peak Expiratory Flow", "FEV1", "FVC", "FEV1/FVC Ratio"],
   "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };

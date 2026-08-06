@@ -37,6 +37,11 @@ export const BODY_METRIC_SLUGS = [
   "hrv",
   "temperature",
   "skin-temp",
+  // Peak expiratory flow (#1850) — the respiratory domain's home-measured half.
+  // A metric slug because it arrives at the metric cadence: a person with asthma
+  // blows once or twice a day during a flare, and "what is this doing lately?" is
+  // the only useful question about it.
+  "peak-flow",
   "weight",
   "body-fat",
   "resting-hr",
@@ -196,6 +201,17 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " \u00b0F",
     color: chartSeries.rose,
     decimals: 1,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  "peak-flow": {
+    slug: "peak-flow",
+    label: "Peak Flow",
+    title: "Peak Expiratory Flow",
+    unit: " L/min",
+    color: chartSeries.sky,
+    decimals: 0,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",

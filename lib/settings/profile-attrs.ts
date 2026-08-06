@@ -11,6 +11,7 @@ import {
   type BloodGroupParts,
   type BloodGroupReading,
 } from "../profile-summary";
+import { personalBestRangeError } from "../peak-flow";
 import {
   parsePackYears,
   parseQuitYear,
@@ -479,6 +480,46 @@ export function setStepsDailyTarget(
     "steps_daily_target",
     String(Math.min(STEPS_TARGET_MAX, Math.round(steps)))
   );
+}
+
+// ---- Peak-flow personal best (issue #1850) — profile scope, no migration --------
+// The best peak expiratory flow this person has ever blown, in L/min — the number an
+// asthma action plan's green/yellow/red zones are a percentage OF.
+//
+// A profile setting, not a column and not a `medical_records` row, because it is a
+// DATA-SUBJECT HEALTH FACT of exactly the shape this tier exists for: one declared
+// scalar per person, no history of its own, no provenance, no flag. It sits beside
+// max-HR override and the steps target, and like both it needs no schema.
+//
+// UNSET IS THE DEFAULT AND A FIRST-CLASS STATE. Nothing derives it and nothing writes
+// it without a user action — `suggestedPersonalBest()` may propose the highest reading
+// on file, but the tap is the write (the attention doctrine's declared-only rule). With
+// it unset, `peakFlowZone()` returns no verdict at all rather than a population one.
+// An implausible stored value is ignored the way the max-HR override ignores one.
+
+export function getPeakFlowPersonalBest(profileId: number): number | null {
+  const raw = getProfileSetting(profileId, "peak_flow_personal_best");
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rounded = Math.round(n);
+  return personalBestRangeError(rounded) == null ? rounded : null;
+}
+
+/** Set, or clear with null/0 — clearing is a first-class state, not an error. */
+export function setPeakFlowPersonalBest(
+  profileId: number,
+  lmin: number | null
+): void {
+  if (lmin == null || !Number.isFinite(lmin) || lmin <= 0) {
+    deleteProfileSetting(profileId, "peak_flow_personal_best");
+    return;
+  }
+  const rounded = Math.round(lmin);
+  // The SAME pure bounds the form and the write core share — an out-of-range value is
+  // refused rather than stored, so no surface can read back a best nobody could blow.
+  if (personalBestRangeError(rounded) != null) return;
+  setProfileSetting(profileId, "peak_flow_personal_best", String(rounded));
 }
 
 // ---- Fitness-check retest cadence (issue #834) — profile scope, no migration ----

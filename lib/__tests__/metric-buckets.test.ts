@@ -38,6 +38,10 @@ describe("metric bucket membership", () => {
         // Signed delta from the device's own baseline — summing two +0.3 °C nights
         // into +0.6 °C would report a deviation neither night had.
         "skin_temp_delta_c",
+        // Peak expiratory flow (#1850) — a flare day's morning and evening blows are
+        // repeat measurements of one quantity; summing them would chart a value
+        // nobody blew, on the surface whose whole job is "is this dropping?".
+        "peak_flow_lmin",
       ].sort()
     );
   });

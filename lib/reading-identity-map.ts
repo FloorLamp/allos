@@ -116,6 +116,32 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
     surface: null,
     stream: { store: "body_metrics", key: "body_fat_pct", unit: "%" },
   },
+  // ── Peak expiratory flow (#1850) — a home-measured stream, both halves set ──
+  //
+  // The respiratory domain's home half. A peak-flow meter is blown once or twice a
+  // day during a flare, which is the CONTINUOUS cadence #1932 routes to the metric
+  // detail surface, and those readings land in the tall stream store (a day can hold
+  // a morning and an evening blow, so the row carries its own instant — the one thing
+  // `body_metrics`, being one row per day, could not have given it).
+  //
+  // Its clinical half is registered too: a spirometry report that prints a PEF is a
+  // reading of THIS identity, so placement clause 2 keeps it in `medical_records` with
+  // its document, and the #1996 fold brings it onto the same chart as the home blows
+  // instead of stranding it on a page the person never opens.
+  //
+  // The knowledge that judges it is NOT a canonical band — see the `personal-best`
+  // declaration in lib/metric-judgment.ts and the argument in lib/peak-flow.ts. This
+  // map answers where readings live and where they render; it does not decide what
+  // judges them, and this entry is where those two questions visibly come apart.
+  {
+    canonical: "Peak Expiratory Flow",
+    surface: "peak-flow",
+    stream: {
+      store: "metric_samples",
+      key: "peak_flow_lmin",
+      unit: "L/min",
+    },
+  },
 ];
 
 /**

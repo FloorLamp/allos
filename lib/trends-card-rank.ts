@@ -104,6 +104,10 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   "diastolic",
   "spo2",
   "respiratory-rate",
+  // Peak expiratory flow (#1850) — a clinical vital, and it sits beside respiratory
+  // rate because that is the family a reader looks for it in. Present-gated like the
+  // rest: a profile with no peak-flow readings never renders the card.
+  "peak-flow",
   "skin-temp",
   "temperature",
   // Synced composition tail.

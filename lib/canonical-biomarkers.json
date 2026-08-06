@@ -4323,6 +4323,54 @@
       "direction": "lower_better",
       "note": "1-hour 50 g glucose challenge (GCT) — gestational-diabetes screen. A value ≥ the lab's cutoff (here 135 mg/dL) prompts the diagnostic 3-hour OGTT. Distinct from fasting/random Glucose.",
       "panel": "glycemic"
+    },
+    {
+      "name": "Peak Expiratory Flow",
+      "category": "vitals",
+      "unit": "L/min",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Peak expiratory flow (PEF) — the fastest speed you can blow out, in litres per minute, from a peak-flow meter. Deliberately carries NO population band: an action plan reads a blow as a percentage of your OWN personal best (green ≥80%, yellow 50–80%, red <50%), so the zone is computed against your recorded best and there is no verdict without one. National Heart, Lung, and Blood Institute / GINA asthma action-plan zones.",
+      "panel": "respiratory"
+    },
+    {
+      "name": "FEV1",
+      "category": "vitals",
+      "unit": "L",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Forced expiratory volume in one second, in litres — the air you can force out in the first second of a full blow, measured by spirometry. No fixed band: normal is a percent of the value predicted for your height, age and sex, so it is trended as an absolute series and read beside the FEV1/FVC ratio. American Thoracic Society / European Respiratory Society.",
+      "panel": "respiratory"
+    },
+    {
+      "name": "FVC",
+      "category": "vitals",
+      "unit": "L",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Forced vital capacity, in litres — the total air you can force out after a full breath in, measured by spirometry. No fixed band, for the same reason as FEV1: normal is a percent of a height/age/sex-predicted value. American Thoracic Society / European Respiratory Society.",
+      "panel": "respiratory"
+    },
+    {
+      "name": "FEV1/FVC Ratio",
+      "category": "vitals",
+      "unit": "%",
+      "ref_low": 70,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "The proportion of your forced vital capacity blown out in the first second, as a percentage. The one spirometry value with a universal cutoff: a post-bronchodilator ratio under 70% is the fixed criterion for persistent airflow obstruction, whatever your height or age. Screening context, not a diagnosis. GOLD / ATS-ERS.",
+      "panel": "respiratory"
     }
   ]
 }

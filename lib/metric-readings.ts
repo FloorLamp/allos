@@ -21,6 +21,7 @@ import {
   type ReadingWriteOutcome,
 } from "@/lib/reading-writes";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
 import type { BodyMetricColumn } from "@/lib/reading-identity-map";
 
@@ -124,6 +125,9 @@ export const METRIC_READING_STORE: Record<
   // It still has REAL rows, which is exactly why it needs a store: a bad import is
   // otherwise unreachable, and delete-with-tombstone is what the table is for.
   "skin-temp": { table: "metric_samples", metric: SKIN_TEMP_DELTA_METRIC },
+  // Peak expiratory flow (#1850). The tall store, not the wide one, because a flare
+  // day holds a morning and an evening blow and `body_metrics` has one row per day.
+  "peak-flow": { table: "metric_samples", metric: PEAK_FLOW_METRIC },
   height: { table: "metric_samples", metric: "height_cm" },
   "head-circ": { table: "metric_samples", metric: "head_circumference_cm" },
   steps: { table: "metric_samples", metric: "steps" },

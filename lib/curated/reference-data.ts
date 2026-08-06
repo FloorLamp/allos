@@ -2173,4 +2173,77 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "lower_better",
     note: "1-hour 50 g glucose challenge (GCT) — gestational-diabetes screen. A value ≥ the lab's cutoff (here 135 mg/dL) prompts the diagnostic 3-hour OGTT. Distinct from fasting/random Glucose.",
   },
+
+  // ── Respiratory function (issue #1850) ─────────────────────────────────────
+  // The fourth specialty domain on the biomarker substrate, after the vision (#697),
+  // periodontal (#705) and audiogram (#713) analytes above: peak flow and spirometry
+  // reuse `medical_records` / `metric_samples` rather than a parallel table, so each
+  // series trends and (where a band exists) flags on the Biomarkers surface for free.
+  //
+  // THE BANDS ARE WHERE THIS DOMAIN DIFFERS, and the difference is deliberate — see
+  // lib/peak-flow.ts and the `personal-best` declaration in lib/metric-judgment.ts:
+  //
+  //   • PEAK EXPIRATORY FLOW curates NO band at all. An asthma action plan reads a
+  //     blow as a percentage of YOUR OWN personal best (green ≥80%, yellow 50–80%,
+  //     red <50%), so 400 L/min is a green day for one adult and a red one for
+  //     another. A population range here would put a green light on a number that is
+  //     red for the person holding the meter, which is worse than no band — so the
+  //     verdict is computed at READ from the profile's recorded best, and with no best
+  //     on file there is no verdict.
+  //   • FEV1 and FVC in LITRES likewise carry no band: "normal" is percent-predicted
+  //     against a height/age/sex/ethnicity equation this app does not ship, and
+  //     borrowing an adult average would mis-judge every child and every tall adult.
+  //     They are trended as an absolute series and read beside the ratio.
+  //   • FEV1/FVC RATIO is the one entry with a real, universal cutoff: a
+  //     post-bronchodilator ratio below 0.70 (70%) is the fixed criterion for
+  //     persistent airflow obstruction (GOLD / ATS-ERS), and it needs no predicted
+  //     equation to apply.
+  //
+  // Captured from an uploaded spirometry or pulmonology report via AI extraction, or
+  // entered manually (peak flow, through the combined measurements quick-add).
+  // INFORMATIONAL, NOT MEDICAL ADVICE — never a diagnosis of asthma or COPD.
+  {
+    name: "Peak Expiratory Flow",
+    category: "vitals",
+    unit: "L/min",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "Peak expiratory flow (PEF) — the fastest speed you can blow out, in litres per minute, from a peak-flow meter. Deliberately carries NO population band: an action plan reads a blow as a percentage of your OWN personal best (green ≥80%, yellow 50–80%, red <50%), so the zone is computed against your recorded best and there is no verdict without one. National Heart, Lung, and Blood Institute / GINA asthma action-plan zones.",
+  },
+  {
+    name: "FEV1",
+    category: "vitals",
+    unit: "L",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "Forced expiratory volume in one second, in litres — the air you can force out in the first second of a full blow, measured by spirometry. No fixed band: normal is a percent of the value predicted for your height, age and sex, so it is trended as an absolute series and read beside the FEV1/FVC ratio. American Thoracic Society / European Respiratory Society.",
+  },
+  {
+    name: "FVC",
+    category: "vitals",
+    unit: "L",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "Forced vital capacity, in litres — the total air you can force out after a full breath in, measured by spirometry. No fixed band, for the same reason as FEV1: normal is a percent of a height/age/sex-predicted value. American Thoracic Society / European Respiratory Society.",
+  },
+  {
+    name: "FEV1/FVC Ratio",
+    category: "vitals",
+    unit: "%",
+    ref_low: 70,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "The proportion of your forced vital capacity blown out in the first second, as a percentage. The one spirometry value with a universal cutoff: a post-bronchodilator ratio under 70% is the fixed criterion for persistent airflow obstruction, whatever your height or age. Screening context, not a diagnosis. GOLD / ATS-ERS.",
+  },
 ];

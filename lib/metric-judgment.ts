@@ -65,6 +65,11 @@ import type { BiomarkerDirection, ReproductiveStatus, Sex } from "./types";
 //                          for a 55-year-old man. Naming it here is what brought the
 //                          functional-fitness markers inside the completeness guard
 //                          (#2086) instead of leaving them one enum out.
+//   • "personal-best"    — a percentage of THIS PROFILE's own recorded best, not a
+//                          population range (#1850). Peak expiratory flow is the only
+//                          member, and it is the one deliberate divergence from the
+//                          three specialty domains that came before it — see the
+//                          declaration below, where the argument is written out.
 //   • "none"             — no clinical band exists for the quantity. The reason is
 //                          mandatory: saying so out loud is the point, and it is
 //                          what stops a future metric from silently inheriting
@@ -73,6 +78,18 @@ export type MetricKnowledge =
   | { source: "canonical"; canonical: string }
   | { source: "growth-percentile"; renderedBy: string }
   | { source: "fitness-norms"; marker: string; renderedBy: string }
+  // A SELF-REFERENTIAL band: the verdict is a function of the reading AND a profile
+  // fact, so it resolves through neither the canonical vocabulary nor a population
+  // dataset. It still names its `canonical` entry, because the quantity has one
+  // (unit, direction, identity, the panel it belongs to) — what it does not have is a
+  // range. `computedBy` names the ONE pure function that decides, so the registry
+  // points at the computation rather than restating its numbers.
+  | {
+      source: "personal-best";
+      canonical: string;
+      computedBy: string;
+      renderedBy: string;
+    }
   | { source: "none"; reason: string };
 
 // The registry. EVERY BodyMetricSlug appears — that is the completeness guard.
@@ -88,6 +105,42 @@ export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
   // while the knowledge is filed under a canonical name (#1996's whole subject).
   "resting-hr": { source: "canonical", canonical: "Resting Heart Rate" },
   "body-fat": { source: "canonical", canonical: "Body Fat Percentage" },
+  // ── THE ONE DIVERGENCE FROM THE THREE SPECIALTY SIBLINGS (#1850) ───────────
+  //
+  // Audiometry (#713/#1600), periodontal probing (#705) and per-eye tonometry (#697)
+  // all reuse the biomarker substrate the same way and are all judged the same way:
+  // a curated POPULATION band (≤25 dB HL, ≤3 mm, 10–21 mmHg) that the value alone
+  // satisfies or fails, so `reconciledFlag()` derives a flag at ingest and stores it
+  // on the row.
+  //
+  // Peak flow is the fourth domain and it breaks exactly one of those properties.
+  // An asthma action plan reads a blow as a percentage of YOUR OWN personal best —
+  // green ≥80%, yellow 50–80%, red <50% — so the same 400 L/min is a green day for
+  // one adult and a red one for another. Two consequences, both load-bearing:
+  //
+  //   • THE VERDICT CANNOT BE A STORED FLAG. A flag is written once and re-derived
+  //     only when the canonical vocabulary changes; a personal best is a user-owned
+  //     fact that moves, and every historical row's verdict moves with it. A stored
+  //     one would be silently stale — the #221 defect, in the safety-adjacent place
+  //     it matters most.
+  //   • SO THE RECONCILIATION PATH IS NOT FORKED. Nothing here teaches
+  //     `reconciledFlag` about profile settings. The canonical entry curates NO band
+  //     (the honest answer: there is no population range for peak flow), so the flag
+  //     engine correctly says nothing, and the zone is computed AT READ by the one
+  //     pure `peakFlowZone()` that every surface formats. Adapting at the READ layer
+  //     rather than inside the flag engine is what keeps the other three domains —
+  //     and every lab analyte — untouched.
+  //
+  // WITH NO PERSONAL BEST THERE IS NO VERDICT, ever: `peakFlowZone()` returns null
+  // and the surface renders the reading bare. Falling back to a population range
+  // would be the #482 borrowed-band failure with a green light on someone's red day.
+  "peak-flow": {
+    source: "personal-best",
+    canonical: "Peak Expiratory Flow",
+    computedBy: "peakFlowZone() (lib/peak-flow.ts)",
+    renderedBy:
+      "the peak-flow zone card on the metric detail page (components/PeakFlowZoneCard.tsx)",
+  },
   // Growth is judged as a percentile-for-age against the WHO/CDC charts, not as a
   // band — a 95 cm three-year-old is not "out of range", they are at a percentile.
   height: {
@@ -287,7 +340,12 @@ export const QUANTITY_KNOWLEDGE: Record<string, MetricKnowledge> = {
 // charts are keyed by measurement, not by a biomarker name).
 const KNOWLEDGE_BY_IDENTITY = new Map<string, MetricKnowledge>([
   ...Object.values(METRIC_KNOWLEDGE).flatMap((k) =>
-    k.source === "canonical"
+    // Both the sources that NAME a canonical entry. A `personal-best` quantity has a
+    // real identity (that is how its readings resolve a unit, a panel and a
+    // placement); what it lacks is a range. Leaving it out here would make the
+    // completeness guard report it as a quantity nobody declared knowledge for —
+    // exactly backwards, since it is the one whose knowledge is argued at length.
+    k.source === "canonical" || k.source === "personal-best"
       ? ([[readingIdentity(k.canonical).toLowerCase(), k]] as const)
       : []
   ),
@@ -318,9 +376,17 @@ export const JUDGED_QUANTITY_IDENTITIES: readonly string[] = [
   ...KNOWLEDGE_BY_IDENTITY.keys(),
 ];
 
-/** The metric slugs that resolve to a canonical identity, for the sweeps. */
+/**
+ * The metric slugs that resolve to a canonical IDENTITY, for the sweeps.
+ *
+ * "Identity", not "band": a `personal-best` metric belongs here because it names a
+ * canonical entry and therefore has a placement, a unit and a panel — the facts the
+ * sweeps check. Whether a RANGE resolves is a separate question each sweep asks for
+ * itself (the placement table pins where its readings land; the judgement test skips
+ * it, because there is deliberately no band to name).
+ */
 export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(
-  (slug) => METRIC_KNOWLEDGE[slug].source === "canonical"
+  (slug) => metricIdentity(slug) != null
 );
 
 /**
@@ -329,7 +395,7 @@ export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(
  */
 export function metricIdentity(slug: BodyMetricSlug): string | null {
   const knowledge = METRIC_KNOWLEDGE[slug];
-  return knowledge.source === "canonical"
+  return knowledge.source === "canonical" || knowledge.source === "personal-best"
     ? readingIdentity(knowledge.canonical)
     : null;
 }
