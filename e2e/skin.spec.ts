@@ -15,11 +15,11 @@ import { workerDbPath } from "./worker-env";
 const DB_PATH = workerDbPath();
 const LABEL = "E2ESkinWatchMole"; // collision-free identity marker (not in seed)
 
-// Smallest valid PNG (1x1 transparent), base64 — a synthetic fixture image (no PHI).
+// A tiny (8x8) solid PNG, base64 — a synthetic fixture image (no PHI).
 // It must DECODE now, not merely pass a magic-byte sniff: since #1844 a lesion photo
 // goes through the shared photo core, which re-encodes it and strips its metadata.
 const PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQBHYh4RAAAAAElFTkSuQmCC",
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWOo0DiBFTEMLQkAFtVaATzGqpoAAAAASUVORK5CYII=",
   "base64"
 );
 

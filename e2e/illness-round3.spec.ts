@@ -13,24 +13,22 @@ import { openTempEntry } from "./symptom-helpers";
 // additive writes only (no exact-count assertions on the shared seed — the #868 hygiene
 // rule): the single-reading temperature red-flag toast + care line (item 3), the
 // school-return countdown line that appears once a fever is logged (item 2), and the
-// symptom-photo strip (item 4). A 1x1 PNG is a synthetic fixture (no PHI).
+// symptom-photo strip (item 4). A tiny generated PNG is a synthetic fixture (no PHI).
 
-// Smallest valid PNG (1x1 transparent), base64 — a synthetic fixture image.
-const PNG_1x1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQBHYh4RAAAAAElFTkSuQmCC",
+// A tiny (8x8) solid PNG, base64 — a synthetic fixture image (no PHI). It must
+// DECODE, not merely pass a magic-byte sniff: since #1844 a symptom photo goes
+// through the shared photo core, which re-encodes it and strips its metadata.
+//
+// That also retires the #907 salt. `symptom_photos` still dedups per-profile on
+// `content_hash`, but the hash is now taken over the PROCESSED bytes, so appending
+// random trailing bytes (which a PNG decoder ignores) no longer makes a distinct
+// row — only different PIXELS would. What keeps a retry / --repeat-each iteration
+// deterministic instead is the discipline below: the strip is emptied FIRST, so the
+// hash this upload will produce is guaranteed free.
+const PHOTO_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWOo0DiBFTEMLQkAFtVaATzGqpoAAAAASUVORK5CYII=",
   "base64"
 );
-
-// A valid 1x1 PNG whose bytes are UNIQUE per call: a PNG decoder stops at the IEND
-// chunk, so random trailing bytes leave a perfectly valid image while changing its
-// content hash. This is the load-bearing #907 fix — `symptom_photos` dedups
-// per-profile on `content_hash` (migration 049's partial UNIQUE index), so a retry
-// (or a --repeat-each iteration) that re-uploaded the byte-identical fixture was a
-// silent no-op, and `toHaveCount(before + 1)` could then NEVER pass. Salting the
-// payload makes every upload a genuinely new row.
-function uniquePng(): Buffer {
-  return Buffer.concat([PNG_1x1, randomBytes(16)]);
-}
 
 test.describe("Illness round 3 (#859)", () => {
   test("red-flag + school-return + photo strip on the episode page", async ({
@@ -131,7 +129,7 @@ test.describe("Illness round 3 (#859)", () => {
     await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
       name: `rash-${randomBytes(6).toString("hex")}.png`,
       mimeType: "image/png",
-      buffer: uniquePng(),
+      buffer: PHOTO_PNG,
     });
     await expect(page.getByText("Photo attached.")).toBeVisible();
     await expect(tiles).toHaveCount(1, { timeout: 15_000 });
