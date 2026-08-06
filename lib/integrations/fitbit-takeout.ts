@@ -1,4 +1,4 @@
-import { zonedDateParts, zonedMinuteStr, zonedWallIsoToUtc } from "@/lib/date";
+import { utcMinute, zonedDateParts, zonedWallIsoToUtc } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { resolveActivityType } from "@/lib/activity-meta";
 import type { ActivityType } from "@/lib/types";
@@ -297,7 +297,7 @@ export function localDate(iso: string | undefined, tz: string): string | null {
 // but offset by exactly one day.
 //
 // So an aggregate's date is its date string, full stop. Only genuinely INSTANTANEOUS
-// families (a weigh-in, an intraday sample) go through localDate/localMinute, where
+// families (a weigh-in, an intraday sample) go through localDate/utcMinuteKey, where
 // the zone conversion is the whole point.
 export function dayLabelDate(iso: string | undefined): string | null {
   if (!iso) return null;
@@ -305,18 +305,19 @@ export function dayLabelDate(iso: string | undefined): string | null {
   return BARE_DAY.test(day) ? day : null;
 }
 
-// The profile-local MINUTE key an instant buckets into — the hr_minutes natural key,
-// identical in shape to what the Health Connect parser writes, so a Takeout minute
-// and a synced minute for the same time collide on the key instead of duplicating.
+// The MINUTE key an instant buckets into — the hr_minutes natural key, identical in
+// shape to what the Health Connect parser writes, so a Takeout minute and a synced
+// minute for the same time collide on the key instead of duplicating.
 //
-// Unlike localDate this accepts ONLY an absolute instant: every intraday CSV stamps
-// one, and a minute bucket derived from an offset-less wall time would silently
-// depend on the server's timezone.
-export function localMinute(iso: string, tz: string): string | null {
+// UTC since #2205 (migration 164), and therefore no longer takes a timezone: the
+// bucket is a property of the sample, not of where the profile was. It still accepts
+// ONLY an absolute instant — every intraday CSV stamps one, and a bucket derived from
+// an offset-less wall time would silently depend on the server's timezone.
+export function utcMinuteKey(iso: string): string | null {
   if (!HAS_OFFSET.test(iso.trim())) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime()) || !inTimeWindow(d.getTime())) return null;
-  return zonedMinuteStr(tz, d);
+  return utcMinute(d);
 }
 
 // The `data source` column, when the family carries one. Absent for the families
@@ -552,7 +553,7 @@ export function parseHeartRateCsv(
       "heart_rate_bpm",
       csvNum(row["beats per minute"])
     );
-    const ts = iso ? localMinute(iso, tz) : null;
+    const ts = iso ? utcMinuteKey(iso) : null;
     if (!ts || bpm == null) {
       skipped++;
       continue;
