@@ -107,7 +107,7 @@ test.describe("Settings IA (#1462) — index and routing", () => {
     expect(resp?.status()).toBe(404);
   });
 
-  test("the Logs & audit group fronts AI logs | Errors | Audit via one sub-page strip", async ({
+  test("the Logs & audit group fronts AI logs | Errors | Notify tick | Audit via one sub-page strip", async ({
     page,
   }) => {
     test.slow();
@@ -121,6 +121,14 @@ test.describe("Settings IA (#1462) — index and routing", () => {
       /\/settings\/errors$/
     );
     await expect(page.getByText(/Unexpected exceptions/)).toBeVisible();
+
+    // The fourth viewer (#2209): the notification tick's own decision record.
+    await followLink(
+      page,
+      subnav.getByRole("link", { name: "Notify tick" }),
+      /\/settings\/notify-log$/
+    );
+    await expect(page.getByTestId("notify-log")).toBeVisible();
 
     await followLink(
       page,

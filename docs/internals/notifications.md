@@ -1891,3 +1891,59 @@ send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
 the escalation gather deliberately reads the unfiltered `collectWindowDoses` —
 the safety tier is structurally never priority-gated. An all-low send is silent
 BY DESIGN.
+
+## The tick's decision record (#2209)
+
+Only `error` used to be durable. Everything the tick said below it — `nothing
+due`, `already sent today`, `no channels configured for profile`, every
+`… nudge skipped: no channel`, every reconcile outcome — went to stdout only,
+and the deploy timer recreates the `allos-notify` sidecar tens of times a day,
+so its working retention is under an hour, permanently.
+
+The asymmetry is one class: the **decline**. A send writes a row
+(`notify_messages` plus a `notify_last_*` marker); a decision _not_ to send
+writes nothing, anywhere. Recoverable without logs: sends, sync outcomes with
+counts, delivery health, errors, AI events. Not recoverable, and all of it below
+`error`: every decline above.
+
+`data/logs/notify.jsonl` (`lib/notify-log.ts`) is the third sink behind the
+shared JSONL substrate (`lib/jsonl-log-file.ts`, #1883), filtered by **scope**
+(`lib/notify-log-format.ts` declares which) rather than by level. The viewer is
+**Settings → Logs & audit → Notify tick**, admin-only.
+
+Rules this record lives under:
+
+- **The tick must not get slower.** The sink is synchronous by design, as the
+  error sink already is, and best-effort throughout — a logging failure never
+  throws into the tick, and a dead disk costs neither an outcome nor a marker.
+- **Scope, not level.** Persisting every `info` from the web app is a different
+  and much larger decision. `debug` is never persisted.
+- **No new chatter.** The tick is already quiet when nothing is due, and the
+  point is to keep what it says rather than to make it say more. Exactly two
+  lines were added, both to make a quiet run visible: `tick started` (once per
+  run) and `profile evaluated` (once per profile per run).
+- **The unit is a RUN.** `beginNotifyRun()` stamps a run id; the profile half
+  rides the `lib/tick-cache.ts` scope the tick already opens per profile,
+  falling back to the `profile` field the call sites already pass. Grouping is
+  keyed on that id, never on a timestamp bucket — a fan-out over several
+  profiles routinely straddles a minute.
+- **A quiet run renders as a ROW, not as absence.** Otherwise "silence because
+  nothing was due" reads identically to "silence because the sidecar is wedged",
+  which is the whole ambiguity the record removes.
+- **Same PHI posture as `errors.jsonl`**: profile names, item names and finding
+  text can appear, so the message and the field bag both go through the shared
+  `redactSecrets`/`buildDetail` chokepoint, and the viewer is admin-only.
+
+`deferDigestForSleep` (#2102) carries an explicit trace. Its **write** policy is
+unchanged — the marker is still set only by a real send, and nothing about the
+deferral stores state — but the decision now names its inputs (the sleep opt-in,
+the newest recorded night, whether last night is in hand, whether the profile is
+still tracking) plus the arrival-side ones #2192 is open about (expected-by, last
+sync, provider health). At most one line per profile per day, on the single
+attempt band where the gate is consulted, and it **declares** its own decision
+rather than being classified from its message text.
+
+This is the OPERATOR record and does not replace #2173, which owns making "this
+profile's reminders reach no one" visible to someone who can fix it, derived at
+read time from DB state. Nor is it a per-tick audit table: `audit_events` is for
+user-attributable writes.

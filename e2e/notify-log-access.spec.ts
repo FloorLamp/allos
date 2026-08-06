@@ -70,8 +70,13 @@ test.describe("Notify tick log (#2209)", () => {
       .first(); // first-ok: newest run first, and this spec owns this profile's rows
 
     // Collapsed by default — the run row is the unit, its lines are the detail.
-    await expect(busyRun.getByTestId("notify-log-line")).toHaveCount(0);
-    await busyRun.getByRole("group").getByText("4", { exact: true }).click();
+    // A <details> keeps its content in the DOM when shut, so the honest assertion
+    // is the disclosure's own state, not the absence of the lines.
+    const disclosure = busyRun.getByRole("group");
+    await expect(disclosure).not.toHaveAttribute("open", /.*/);
+
+    await busyRun.locator("summary").click();
+    await expect(disclosure).toHaveAttribute("open", /.*/);
 
     // Both declines are named, with the reason attached.
     await expect(
@@ -85,8 +90,18 @@ test.describe("Notify tick log (#2209)", () => {
   test("the declines-only filter narrows the view", async ({ page }) => {
     test.slow();
 
+    // Count the TOTAL runs, not the rows on this page: the pager caps a page at 25,
+    // so a per-page count cannot show a filter narrowing anything.
+    const totalRuns = async () =>
+      Number(
+        (await page.getByTestId("notify-log-total").innerText()).replace(
+          /\D+/g,
+          ""
+        )
+      );
+
     await page.goto("/settings/notify-log");
-    const before = await page.getByTestId("notify-log-run").count();
+    const before = await totalRuns();
 
     await page.getByTestId("notify-log-declines-only").check();
     await page.getByRole("button", { name: "Filter" }).click();
@@ -99,8 +114,7 @@ test.describe("Notify tick log (#2209)", () => {
         .getByTestId("notify-log-run")
         .filter({ hasText: NOTIFY_LOG_QUIET_PROFILE })
     ).toHaveCount(0);
-    const after = await page.getByTestId("notify-log-run").count();
-    expect(after).toBeLessThan(before);
+    expect(await totalRuns()).toBeLessThan(before);
   });
 
   test("pagination holds the active filters across pages", async ({ page }) => {
