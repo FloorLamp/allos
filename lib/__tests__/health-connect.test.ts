@@ -304,7 +304,7 @@ describe("parseHealthConnectPayload — heart rate bucketing", () => {
       ],
     });
     expect(out.hrMinutes).toHaveLength(2);
-    const first = out.hrMinutes.find((m) => m.ts === "2026-06-15T08:00")!;
+    const first = out.hrMinutes.find((m) => m.ts === "2026-06-15T08:00:00Z")!;
     expect(first.bpm).toBe(70); // (60 + 80) / 2
     expect(first.bpm_min).toBe(60);
     expect(first.bpm_max).toBe(80);
@@ -332,7 +332,7 @@ describe("parseHealthConnectPayload — heart rate bucketing", () => {
       ],
     });
     expect(out.hrMinutes).toEqual([
-      { ts: "2026-06-15T08:00", bpm: 84, bpm_min: 83, bpm_max: 85, n: 1 },
+      { ts: "2026-06-15T08:00:00Z", bpm: 84, bpm_min: 83, bpm_max: 85, n: 1 },
     ]);
     expect(out.samples).toContainEqual(
       expect.objectContaining({
@@ -863,19 +863,35 @@ describe("parseHealthConnectPayload — timezone attribution", () => {
     expect(ny.activities[0].start_time).toBe("19:30");
   });
 
-  it("buckets heart-rate minutes in the configured zone", () => {
-    const out = parse(
+  it("buckets heart-rate minutes on the SAMPLE's own minute, not the zone's", () => {
+    // The bucket key stopped depending on the profile timezone at #2205 / migration
+    // 164: `hr_minutes.ts` is the sample's own UTC minute, so the same raw samples
+    // bucket identically whatever zone the profile is in. That is the entire point —
+    // a timezone change can no longer re-key the rolling window. The profile-local
+    // day these belong to (the 16th in Tokyo) is derived at READ time instead.
+    const tokyo = parse(
       {
         heart_rate: [
           { time: "2026-06-15T23:00:10Z", bpm: 60 },
           { time: "2026-06-15T23:00:50Z", bpm: 70 },
         ],
       },
-      "Asia/Tokyo" // +9 → 08:00 on the 16th
+      "Asia/Tokyo"
     );
-    expect(out.hrMinutes).toHaveLength(1);
-    expect(out.hrMinutes[0].ts).toBe("2026-06-16T08:00");
-    expect(out.hrMinutes[0].bpm).toBe(65);
+    expect(tokyo.hrMinutes).toHaveLength(1);
+    expect(tokyo.hrMinutes[0].ts).toBe("2026-06-15T23:00:00Z");
+    expect(tokyo.hrMinutes[0].bpm).toBe(65);
+
+    const ny = parse(
+      {
+        heart_rate: [
+          { time: "2026-06-15T23:00:10Z", bpm: 60 },
+          { time: "2026-06-15T23:00:50Z", bpm: 70 },
+        ],
+      },
+      "America/New_York"
+    );
+    expect(ny.hrMinutes[0].ts).toBe(tokyo.hrMinutes[0].ts);
   });
 });
 

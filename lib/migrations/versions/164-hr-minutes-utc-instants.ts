@@ -94,6 +94,13 @@ function timezoneFor(db: Database.Database, profileId: number): string {
 }
 
 export function up(db: Database.Database): void {
+  // OUTSIDE the conversion guard, deliberately. Migration 001 creates this index with
+  // `CREATE INDEX IF NOT EXISTS`, and the non-version-gated migrate() replay re-runs
+  // every up() in order — so on a replay 001 puts the index back before this migration
+  // is reached. Dropping it here unconditionally is what makes the replay converge on
+  // the same schema instead of oscillating. (Both statements are idempotent.)
+  db.exec(`DROP INDEX IF EXISTS idx_hr_minutes_day;`);
+
   if (tableSql(db, "hr_minutes").includes("UTC instant")) return;
 
   const before = (
@@ -192,7 +199,6 @@ export function up(db: Database.Database): void {
   db.exec(`
     DROP TABLE hr_minutes;
     ALTER TABLE hr_minutes__new RENAME TO hr_minutes;
-    DROP INDEX IF EXISTS idx_hr_minutes_day;
   `);
 
   const after = (

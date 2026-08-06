@@ -376,14 +376,14 @@ describe("intraday: heart rate", () => {
     "2026-06-10T16:38:02Z,120.0,Radiance",
   ].join("\n");
 
-  it("buckets per profile-local minute with sum/n/min/max", () => {
+  it("buckets on the sample's own UTC minute with sum/n/min/max", () => {
     const { buckets, skipped, roundTrip } = parseHeartRateCsv(HR, TZ);
     expect(skipped).toBe(0);
     expect(roundTrip).toBe(0);
     // 16:37Z is 12:37 in New York.
     expect(buckets).toEqual([
-      { ts: "2026-06-10T12:37", sum: 270, n: 2, min: 133, max: 137 },
-      { ts: "2026-06-10T12:38", sum: 120, n: 1, min: 120, max: 120 },
+      { ts: "2026-06-10T16:37:00Z", sum: 270, n: 2, min: 133, max: 137 },
+      { ts: "2026-06-10T16:38:00Z", sum: 120, n: 1, min: 120, max: 120 },
     ]);
   });
 
@@ -413,7 +413,7 @@ describe("intraday: heart rate", () => {
     );
     expect(skipped).toBe(1);
     expect(buckets).toEqual([
-      { ts: "2026-06-10T12:37", sum: 70, n: 1, min: 70, max: 70 },
+      { ts: "2026-06-10T16:37:00Z", sum: 70, n: 1, min: 70, max: 70 },
     ]);
   });
 });
