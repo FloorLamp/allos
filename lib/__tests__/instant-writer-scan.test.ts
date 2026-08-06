@@ -99,8 +99,12 @@ const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
     why: "the same day-midnight anchor in the offline replay's manual-sample upsert — deliberately identical to the online path's so a queued tap and a live one land on ONE row. Day attribution, not an instant.",
   },
   "scripts/seed.ts": {
-    count: 18,
-    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
+    count: 22,
+    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); four are the #1850 peak-flow stream's morning/evening `${date}T07:30:00` / `${date}T20:00:00` start_time+end_time pairs, the same profile-local wall-clock instants recordReading writes for a timed reading and the same natural key it dedupes on; the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
+  },
+  "lib/photo/metadata-backfill.ts": {
+    count: 3,
+    why: "the #1844 backfill's claim marker — `claimedAt` / `finishedAt` inside a JSON blob written to `settings.value`, which is an opaque TEXT column, not a datetime one. Nothing compares these in SQL: `photoBackfillDue` parses `claimedAt` with `Date.parse` and compares MILLISECONDS in JS against the stale-claim window, so the lexical hazard rules A–C exist for cannot arise. A datetime column is never bound from here.",
   },
 };
 
