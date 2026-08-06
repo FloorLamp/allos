@@ -14,7 +14,7 @@
 // Deterministic: real (tiny) images built by sharp, a temp DB from setup.ts, and the
 // per-profile upload dirs this suite writes are removed in afterAll.
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -340,6 +340,69 @@ describe("backfillPhotoMetadata — strip in place", () => {
     expect(hashes[0].content_hash).not.toBe(hashes[1].content_hash);
     // The loser kept the hash it arrived with rather than colliding.
     expect(hashes[1].content_hash).toBe(fileB.hash);
+  });
+
+  it("leaves the original bytes intact when a replace fails, so the retry works", async () => {
+    // The stored file is this pass's own resume marker: once it holds clean bytes,
+    // `alreadyClean` skips the row forever. So a half-done photo must never be the
+    // half where the STORED file was replaced — the thumbnail goes first, and this
+    // pins that. Fail the stored file's rename (the thumb's has already succeeded)
+    // and the photo must come out untouched, not silently stranded with byte-derived
+    // columns describing bytes that are no longer there.
+    const profileId = newProfile("Backfill Retry");
+    const lesionId = newLesion(profileId);
+    const tagged = spliceExifIntoJpeg(await jpegBytes(11), {
+      dateTimeOriginal: "2026:05:05 12:00:00",
+      gps: true,
+    });
+    const file = seedLegacyFile("lesion", profileId, "retry.jpg", tagged);
+    const id = insertLesionPhoto(
+      profileId,
+      lesionId,
+      file,
+      "image/jpeg",
+      tagged.length
+    );
+
+    const target = abs(file.storedPath);
+    const thumbTarget = abs(thumbSiblingPath(file.storedPath));
+    const realRename = fs.renameSync;
+    // Fail the THUMBNAIL write specifically. That is the case the ordering exists
+    // for: with the stored file written first, this failure would land AFTER the
+    // photo had already been replaced — clean bytes, an un-updated row, and an
+    // `alreadyClean` skip on every later pass.
+    const spy = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (to === thumbTarget) throw new Error("disk full");
+      return realRename(from, to);
+    });
+    try {
+      await backfillPhotoMetadata(db);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Untouched: still the bytes it arrived with, GPS and all, and the row still
+    // describes them — so nothing downstream is lying about this photo.
+    expect(fs.readFileSync(target)).toEqual(tagged);
+    expect(readJpegExif(fs.readFileSync(target)).hasGps).toBe(true);
+    expect(
+      db.prepare(`SELECT content_hash FROM lesion_photos WHERE id = ?`).get(id)
+    ).toEqual({ content_hash: file.hash });
+
+    // And the very next pass cleans it, because `alreadyClean` still says no.
+    await backfillPhotoMetadata(db);
+    const cleaned = fs.readFileSync(target);
+    expect(readJpegExif(cleaned).hasGps).toBe(false);
+    expect(
+      db
+        .prepare(
+          `SELECT content_hash, mime_type FROM lesion_photos WHERE id = ?`
+        )
+        .get(id)
+    ).toEqual({
+      content_hash: crypto.createHash("sha256").update(cleaned).digest("hex"),
+      mime_type: "image/jpeg",
+    });
   });
 });
 

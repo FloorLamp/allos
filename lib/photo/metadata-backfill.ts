@@ -221,12 +221,19 @@ async function backfillOne(
   const photo = processed.photo;
 
   try {
-    replaceFile(abs, photo.bytes);
-    // The thumbnail the grid reads. Derived name, same rule as the writer.
+    // ORDER MATTERS. The thumbnail (derived name, same rule as the writer) is
+    // written FIRST, because the stored file is this pass's own resume marker: a
+    // failure after it has been replaced looks `alreadyClean` on the next run, so
+    // the row would be SKIPPED with its byte-derived columns still describing the
+    // bytes that used to be there — a re-encoded PNG left claiming image/png,
+    // served under nosniff, and nothing in the tally pointing at it. Writing the
+    // derived artifact first means any failure leaves the original bytes intact
+    // and the next pass simply retries the whole photo.
     replaceFile(
       path.resolve(process.cwd(), thumbSiblingPath(row.stored_path)),
       photo.thumbBytes
     );
+    replaceFile(abs, photo.bytes);
   } catch (err) {
     log.warn("could not replace stored photo", { domain: spec.domain, err });
     return "failed";
