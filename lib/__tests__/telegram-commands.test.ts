@@ -6,8 +6,10 @@
 // impossible. The routing itself is pinned in lib/__db_tests__/telegram-commands.test.ts.
 
 import { describe, it, expect } from "vitest";
+import { isPlannedVerb } from "@/lib/loggable-domains";
 import {
   TELEGRAM_COMMANDS,
+  TELEGRAM_DOMAIN_CENSUS,
   commandsForChat,
   helpBody,
   isCommandAvailable,
@@ -177,5 +179,30 @@ describe("the registered /-menu list", () => {
         seen.add(v);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The #2130 domain census. The `satisfies` in lib/notifications/telegram-commands.ts
+// proves at compile time that every LoggableDomain maps to a shipped verb, a
+// planned verb, or an argued exclusion. The runtime half types cannot see: a
+// PLANNED verb must not name a verb the build already ships — the moment #1895
+// lands one, its census row must flip to the real command name.
+// ---------------------------------------------------------------------------
+
+describe("the domain census (#2130)", () => {
+  it("a planned verb never shadows a shipped one", () => {
+    const shipped = new Set(TELEGRAM_COMMANDS.map((c) => c.name));
+    for (const value of Object.values(TELEGRAM_DOMAIN_CENSUS)) {
+      if (isPlannedVerb(value)) {
+        expect(shipped.has(value.verb), value.verb).toBe(false);
+      }
+    }
+  });
+
+  it("food, practice and weight are decided IN, awaiting #1895", () => {
+    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.food)).toBe(true);
+    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.practice)).toBe(true);
+    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.weight)).toBe(true);
   });
 });

@@ -32,6 +32,7 @@ import { logFoodServingCore } from "@/lib/food-log-write";
 import { acceptEatenAt } from "@/lib/food-eating-time";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
+import { logMobilityMoveCore } from "@/lib/mobility-log-write";
 import { recordReading } from "@/lib/reading-writes";
 import {
   classifyDoseReplay,
@@ -46,6 +47,7 @@ import {
   type MoodPayload,
   type SetPayload,
   type FoodPayload,
+  type MobilityPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -662,6 +664,27 @@ export function applyIntent(
       );
       if (applied.status === "rejected") {
         outcome = applied;
+        return;
+      }
+      ok = true;
+    } else if (intent.flow === "mobility") {
+      // A queued mobility ON tap (#2130) replays through the SAME auth-blind core
+      // the online action uses (set semantics per (profile, date, move)), so the
+      // identical catalog validation applies and a re-replay settles on the same
+      // session row. Only the ON direction ever queues — see queue.ts.
+      const p = intent.payload as MobilityPayload;
+      const slug = typeof p?.move === "string" ? p.move.trim() : "";
+      if (!slug || !isRealIsoDate(intent.date)) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      const applied = logMobilityMoveCore(profileId, slug, intent.date);
+      if (applied.kind === "unknown-move") {
+        outcome = {
+          status: "rejected",
+          reason:
+            "This mobility move is no longer in the catalog, so it wasn't logged.",
+        };
         return;
       }
       ok = true;

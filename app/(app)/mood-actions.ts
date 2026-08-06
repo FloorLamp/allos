@@ -4,7 +4,11 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { today } from "@/lib/db";
 import { upsertMoodLog } from "@/lib/offline/writes";
-import { decideMoodKeep } from "@/lib/mood";
+import {
+  decideMoodKeep,
+  isMoodDateAccepted,
+  MOOD_DATE_OUT_OF_WINDOW_ERROR,
+} from "@/lib/mood";
 import {
   getMoodCheckinIgnored,
   getProfileMoodCheckin,
@@ -29,6 +33,14 @@ export async function logMood(formData: FormData): Promise<FormResult> {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
     ? rawDate
     : today(profile.id);
+  // The #2128 backfill bound — the dose-log-window discipline (lib/dose-log-window.ts):
+  // the day chips supply a recent past date, and a well-formed date outside that
+  // window is refused rather than written, so a stale tab or crafted request can't
+  // land a far-off check-in. (The offline REPLAY path calls upsertMoodLog directly
+  // and deliberately keeps landing on its captured date — see lib/mood.ts.)
+  if (!isMoodDateAccepted(today(profile.id), date)) {
+    return formError(MOOD_DATE_OUT_OF_WINDOW_ERROR);
+  }
 
   const opt = (k: string): string | null => {
     const v = formData.get(k);

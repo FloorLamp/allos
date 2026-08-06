@@ -209,6 +209,9 @@ describe("FLOW_KINDS", () => {
       "set",
       // Additive food quick-adds (#1596): a food-group serving or protein grams.
       "food",
+      // Mobility move tapped ON (#2130): set semantics per (profile, date, move),
+      // the coverage record's newest member — its ON tap is a pure capture.
+      "mobility",
     ]);
   });
 });

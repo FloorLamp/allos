@@ -6,6 +6,7 @@ import {
   IconDroplet,
   IconFileText,
   IconHeartbeat,
+  IconMoodSmile,
   IconPill,
   IconSalad,
   IconScale,
@@ -42,6 +43,7 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   // The glyphs these surfaces already wear: the Wellness nav's sparkles and the
   // search palette's document page.
   sparkles: IconSparkles,
+  mood: IconMoodSmile,
   // The glyph the Cycle nav entry and the dashboard phase card already wear (#1892).
   droplet: IconDroplet,
   document: IconFileText,

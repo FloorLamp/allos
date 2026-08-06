@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   PALETTE_ACTIONS,
+  PALETTE_ACTION_IDS,
   matchPaletteActions,
   FOCUS_PARAM,
 } from "@/lib/palette-actions";
@@ -162,5 +163,38 @@ describe("palette create actions", () => {
     // The same target the quick-log registry's row carries — one encoding of "open
     // this form", not one per surface.
     expect(doc?.target).toEqual(quickLogItem("add-document").target);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The #2130 domain census. The `satisfies` in lib/palette-actions.ts proves at
+// compile time that every LoggableDomain maps to a palette id or an argued
+// exclusion; the id vocabulary's own honesty is the runtime half, pinned here.
+// ---------------------------------------------------------------------------
+
+describe("the domain census (#2130)", () => {
+  it("every declared id is carried by exactly one palette action", () => {
+    for (const id of PALETTE_ACTION_IDS) {
+      expect(
+        PALETTE_ACTIONS.filter((a) => a.id === id),
+        id
+      ).toHaveLength(1);
+    }
+  });
+
+  it("food, dose and mood open the SAME overlay forms as their sheet rows (#2184)", () => {
+    const byId = new Map(PALETTE_ACTIONS.map((a) => [a.id, a]));
+    expect(byId.get("log-food")!.target).toEqual({
+      kind: "overlay",
+      form: "food",
+    });
+    expect(byId.get("log-dose")!.target).toEqual({
+      kind: "overlay",
+      form: "dose",
+    });
+    expect(byId.get("log-mood")!.target).toEqual({
+      kind: "overlay",
+      form: "mood",
+    });
   });
 });

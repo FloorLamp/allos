@@ -9,10 +9,14 @@
 // SCOPE: only these idempotent quick-log flows are queueable — a dose confirm, a
 // dose SKIP (issue #232), a body-metric quick-add, a vitals quick-add, the daily
 // mood check-in (issue #992, idempotent per day), a workout SESSION logged
-// entirely offline ("set" — #28's original "add set" ask, landed by #1596), and a
+// entirely offline ("set" — #28's original "add set" ask, landed by #1596), a
 // food quick-add ("food", #1596: a one-serving food-group tap or a protein-grams
-// tap).
-// Anything with server-derived state stays online-only. Payloads carry the
+// tap), and a mobility move tapped ON ("mobility", #2130: set semantics per
+// (profile, date, move)).
+// Anything with server-derived state stays online-only. The COVERAGE RECORD
+// below (#2130) is this scope sentence with teeth: every ONE_TAP_AFFORDANCES
+// entry is either mapped to its flow or excluded with a written argument, and
+// the mapping is type-checked. Payloads carry the
 // CAPTURED raw fields + date so a late replay lands on the day the user logged it
 // (issue #28, point 5), never the replay date.
 //
@@ -36,15 +40,28 @@
 
 // Type-only (fully erased at build, so this module stays runtime-dependency-free):
 // the dose write cores' typed answer and the activity save core's typed answer,
-// which the replay dispositions below map onto the queue's own vocabulary.
+// which the replay dispositions below map onto the queue's own vocabulary — plus
+// the one-tap registry's key unions, which the coverage record below is checked
+// against.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
-// The one runtime import, and it keeps the contract: lib/sw-update.ts is itself
-// pure and dependency-free (client-safe, DB-free), and the stale-action signature
-// is ITS knowledge — deployment skew's Server Action half — not this module's.
+import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
+// The two runtime imports, and both keep the contract: lib/sw-update.ts and
+// lib/loggable-domains.ts are themselves pure and dependency-free (client-safe,
+// DB-free). The stale-action signature is sw-update's knowledge — deployment
+// skew's Server Action half — and the argued-exclusion brand is the #2130
+// registry vocabulary's.
 import { isStaleActionError } from "@/lib/sw-update";
+import { arguedExclusion, type ArguedExclusion } from "@/lib/loggable-domains";
 
 export type FlowKind =
-  "dose" | "skip-dose" | "body-metric" | "vitals" | "mood" | "set" | "food";
+  | "dose"
+  | "skip-dose"
+  | "body-metric"
+  | "vitals"
+  | "mood"
+  | "set"
+  | "food"
+  | "mobility";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
@@ -54,7 +71,62 @@ export const FLOW_KINDS: readonly FlowKind[] = [
   "mood",
   "set",
   "food",
+  "mobility",
 ];
+
+// ── THE COVERAGE RECORD (#2130) ──────────────────────────────────────────────
+//
+// The queue's scope sentence above and the DELIBERATE EXCLUSIONS block were
+// policy prose with no tooth: nothing connected them to `ONE_TAP_AFFORDANCES`,
+// so three one-tap surfaces (substance units, practice sessions, mobility moves
+// — the last DECLARED idempotent, the queue's own stated admission criterion)
+// were simply unmentioned. This record is the declare-or-argue fix, type-checked
+// rather than scanned because both sides are const-asserted registries (#2130
+// owner direction): every one-tap affordance maps to the flow that captures it
+// or to an `arguedExclusion(...)` whose reason is structurally required. A new
+// affordance — idempotent or otherwise — fails `tsc` here until someone decides.
+//
+// Proven on the defect: with the pre-#2130 tree's nine affordances plus the two
+// #2130 adds, this record without the `substance-unit`, `practice-session`,
+// `mobility-move`, `mood-valence` and `period-lifecycle` rows fails typecheck
+// with "Property '<id>' is missing in type ..." — exactly the audit's gap list.
+//
+// `IdempotentTap` (derived in lib/one-tap.ts) is the owner-specified minimum —
+// `Record<IdempotentTap, FlowKind | ArguedExclusion>` — and the record covers
+// the full `OneTapAffordance` axis, which subsumes it; the compile-time check
+// below pins that the idempotent half stays a subset of what's declared here.
+export const OFFLINE_QUEUE_COVERAGE = {
+  "food-serving": "food",
+  "protein-grams": "food",
+  // The one-tap DOSE resolutions ride two flows: "dose" (set-to-taken) and
+  // "skip-dose" (set-to-skipped); the affordance's row names the confirm flow.
+  "dose-status": "dose",
+  "mood-valence": "mood",
+  // #2130: declared idempotent — the queue's own admission criterion — so it is
+  // a member. The ON tap (set-add) queues; the OFF tap stays online-only under
+  // the existing "−" exclusion above (a removal replayed against state that
+  // moved could drop a move re-added from another device — not a capture).
+  "mobility-move": "mobility",
+  "substance-unit": arguedExclusion(
+    "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. The queue's scope line — anything with server-derived state stays online-only — applies to the surface, not just the write."
+  ),
+  "practice-session": arguedExclusion(
+    "Cadenced, not idempotent: the #2007 layer-3 re-log confirm asks a same-DAY question from the server-known session count, which an offline capture cannot answer honestly — a replay could double-log a day already logged from another device with no confirm ever shown."
+  ),
+  "prn-dose": arguedExclusion(
+    "A PRN administration arms the #798 redose window from its given_at — the safety-relevant instant (#2020). The control renders that advisory from server state at tap time; offline it would be stale, and a queued administration would guard nothing until replay. Deliberately online-only."
+  ),
+  "symptom-severity": arguedExclusion(
+    "Deferred to #1860, which owns the symptom quick-log's offline story; deciding it here would preempt that issue's scope (#2130 excludes it by name)."
+  ),
+  "medication-refill": arguedExclusion(
+    "A refill is stock arithmetic against the server's current supply plus the #1893 recency confirm — an increment applied to a total that may have moved, the same class as the excluded food '−' decrement, not a capture of raw fields."
+  ),
+  "period-lifecycle": arguedExclusion(
+    "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
+  ),
+} as const satisfies Record<OneTapAffordance, FlowKind | ArguedExclusion> &
+  Record<IdempotentTap, FlowKind | ArguedExclusion>;
 
 // A dose confirm ("dose") is a SET-TO-TAKEN intent and a dose skip ("skip-dose",
 // issue #232) is a SET-TO-SKIPPED intent — neither is a toggle: replaying inserts
@@ -177,13 +249,26 @@ export interface FoodPayload {
   eatenAt?: string | null;
 }
 
+// Mobility move tapped ON while offline (#2130 — the coverage record's newest
+// member; `mobility-move` is declared idempotent in ONE_TAP_AFFORDANCES, the
+// queue's own admission criterion). The payload is the captured raw fields: the
+// move's catalog slug (the day rides the intent's own `date`). Set semantics on
+// the server (logMobilityMoveCore ensures the move is present in that day's
+// session), so a double flush or a re-tap replays to the same state. ON-direction
+// only: the un-tap is a removal against whatever session stands at replay time,
+// which is the documented "−" exclusion, not a capture.
+export interface MobilityPayload {
+  move: string;
+}
+
 export type IntentPayload =
   | DosePayload
   | BodyMetricPayload
   | VitalsPayload
   | MoodPayload
   | SetPayload
-  | FoodPayload;
+  | FoodPayload
+  | MobilityPayload;
 
 // The maximum number of intents accepted (server) and sent (client) per replay POST
 // — the SINGLE source of truth for both sides so they can never disagree (issue
@@ -404,6 +489,7 @@ export function describeIntent(intent: QueuedIntent): string {
     mood: "Mood check-in",
     set: "Workout session",
     food: "Food log",
+    mobility: "Mobility move",
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }

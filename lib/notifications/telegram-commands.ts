@@ -27,6 +27,14 @@
 // No DB, no network, no clock here: relevance arrives as facts, so every list and every
 // reply is fixture-testable.
 
+import {
+  arguedExclusion,
+  plannedVerb,
+  type ArguedExclusion,
+  type LoggableDomain,
+  type PlannedVerb,
+} from "@/lib/loggable-domains";
+
 // Which facts about a chat decide whether a verb is offered. Resolved once, at the DB
 // boundary, and passed in — so the gate cannot drift between `/help` and the handler
 // that answers the command.
@@ -55,7 +63,11 @@ export interface TelegramCommand {
   worksUnlinked?: boolean;
 }
 
-export const TELEGRAM_COMMANDS: readonly TelegramCommand[] = [
+// Const-asserted (not just annotated) so the verb names stay literal types: the
+// #2130 domain census below is checked against them, and a census row naming a
+// verb the build doesn't ship fails `tsc`. Re-exported under the wide interface
+// below so every consumer keeps uniform access to the optional fields.
+const COMMANDS = [
   {
     name: "help",
     description: "What this bot can do here",
@@ -83,9 +95,67 @@ export const TELEGRAM_COMMANDS: readonly TelegramCommand[] = [
   {
     name: "mood",
     description: "Check in on how you are",
-    relevant: (ctx) => ctx.moodCheckin,
+    relevant: (ctx: ChatCommandContext) => ctx.moodCheckin,
   },
-];
+] as const satisfies readonly TelegramCommand[];
+
+export const TELEGRAM_COMMANDS: readonly TelegramCommand[] = COMMANDS;
+
+// A verb the build actually ships, as a literal type.
+export type TelegramVerb = (typeof COMMANDS)[number]["name"];
+
+// ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────
+//
+// The vocabulary above was a membership list with no membership rule: food and
+// practice had inline BUTTONS (the reconcile families) but no on-demand verb —
+// loggable only if a nudge happened to arrive, when `/dose` exists precisely to
+// give a domain a door — and substance, weight and period had neither, unargued.
+// This record is the declare-or-argue fix: every loggable domain maps to a
+// shipped verb, a `plannedVerb(...)` (decided IN here; #1895 — which owns the
+// vocabulary surface and is out of #2130's scope — builds it), or an
+// `arguedExclusion(...)`. All three carry their reason structurally; a new
+// `LoggableDomain` fails `tsc` here until someone decides.
+//
+// Proven on the defect: on the pre-#2130 tree this record has no honest value
+// for `food`, `practice`, `weight`, `substance` or `period` — the audit's exact
+// Telegram gaps — and deleting any row fails typecheck with
+// "Property '<domain>' is missing".
+export const TELEGRAM_DOMAIN_CENSUS = {
+  dose: "dose",
+  symptom: "symptom",
+  temperature: "temp",
+  mood: "mood",
+  food: plannedVerb(
+    "food",
+    "Decided IN: the domain already has inline logging buttons (the food-nudge reconcile family), and the /dose precedent is that a chat-loggable domain gets an on-demand door rather than waiting for a nudge. #1895 builds the verb."
+  ),
+  practice: plannedVerb(
+    "practice",
+    "Decided IN: Telegram has offered one-tap practice logging since #1259, nudge-arrival-only. Same /dose precedent as food. #1895 builds the verb."
+  ),
+  weight: plannedVerb(
+    "weight",
+    "Decided IN: the same one-number capture shape as /temp, with the canonical-kg conversion server-side like every boundary. #1895 builds the verb."
+  ),
+  vitals: arguedExclusion(
+    "Multi-field structured entry (a BP pair, SpO2, sleep hours) is a form, not a one-line chat capture; the measurements form owns it, and a partial chat grammar for it would be a second entry vocabulary to drift."
+  ),
+  activity: arguedExclusion(
+    "A workout is a SESSION lifecycle with an editor (the #1428 decision rule), not a one-line capture; the activity editor and dock own it."
+  ),
+  period: arguedExclusion(
+    "The period affordance is ONE offer rendered from server state with typed refusals (#1892). A chat keyboard is stale by construction — the #2018 live-keyboard problem — so the verb on the button could not be trusted to name the write it performs. Deliberately app-only."
+  ),
+  substance: arguedExclusion(
+    "Deliberate-access, sensitive domain: the tap must render beside its #998 cap verdict, and chat delivery can surface on lock screens and shared devices. Off the chat vocabulary by reach policy (docs/internals/findings.md)."
+  ),
+  document: arguedExclusion(
+    "A document is a file ingest, not a slash-verb capture; the #1423 share target is the mobile filing door and the upload form owns the gates."
+  ),
+} as const satisfies Record<
+  LoggableDomain,
+  TelegramVerb | PlannedVerb | ArguedExclusion
+>;
 
 // The list Telegram's `/` menu is registered with — GENERIC by design (see the header).
 // Ordered as declared, so `/help` leads.

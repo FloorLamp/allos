@@ -11,6 +11,7 @@ import {
   IconFileText,
   IconHeartbeat,
   IconMenu2,
+  IconMoodSmile,
   IconPill,
   IconPlus,
   IconSalad,
@@ -97,6 +98,7 @@ const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
   // missing glyph on the bar.
   sparkles: IconSparkles,
   droplet: IconDroplet,
+  mood: IconMoodSmile,
   document: IconFileText,
 };
 

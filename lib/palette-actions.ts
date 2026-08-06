@@ -10,6 +10,11 @@
 // palette component maps `icon`/`target` to real behavior.
 
 import type { AppRoute } from "./hrefs";
+import {
+  arguedExclusion,
+  type ArguedExclusion,
+  type LoggableDomain,
+} from "./loggable-domains";
 import type { QuickEntryForm, QuickEntryPrefill } from "./quick-log";
 
 export type PaletteActionTarget =
@@ -33,8 +38,30 @@ export type PaletteActionTarget =
   // baked into `href` (see components/useFocusFormOnParam).
   | { kind: "navigate"; href: AppRoute };
 
+// The palette's id vocabulary, const-asserted so the domain census below can be
+// checked at the type level (#2130): an entry's `id` must come from here, and a
+// census row naming a retired id fails `tsc`. (`lib/__tests__/palette-actions.test.ts`
+// pins the reverse — every id here is carried by exactly one entry.)
+export const PALETTE_ACTION_IDS = [
+  "log-workout",
+  "start-workout",
+  "repeat-last",
+  "log-weight",
+  "log-vitals",
+  "log-food",
+  "log-dose",
+  "log-mood",
+  "add-appointment",
+  "add-progress-photo",
+  "wellness-practices",
+  "add-document",
+  "add-biomarker",
+] as const;
+
+export type PaletteActionId = (typeof PALETTE_ACTION_IDS)[number];
+
 export interface PaletteAction {
-  id: string;
+  id: PaletteActionId;
   label: string;
   // Extra search terms so "gym" finds "Log workout", "lab" finds biomarkers, etc.
   keywords: string[];
@@ -47,6 +74,9 @@ export interface PaletteAction {
     | "chart"
     | "camera"
     | "sparkles"
+    | "salad"
+    | "pill"
+    | "mood"
     | "document";
   target: PaletteActionTarget;
 }
@@ -116,6 +146,37 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
       form: "measurements",
       prefill: { measurementGroup: "vitals" },
     },
+  },
+  {
+    id: "log-food",
+    // #2130: the palette's own header promised "everything the quick-log sheet
+    // has a drawer form for" (#2184) while food, dose and mood had no entry.
+    // Same overlay form as the sheet's row — one form set, two doors.
+    label: "Log food",
+    keywords: ["nutrition", "meal", "serving", "eat", "snack", "food group"],
+    icon: "salad",
+    target: { kind: "overlay", form: "food" },
+  },
+  {
+    id: "log-dose",
+    label: "Log dose",
+    keywords: ["medication", "medicine", "supplement", "pill", "take", "taken"],
+    icon: "pill",
+    target: { kind: "overlay", form: "dose" },
+  },
+  {
+    id: "log-mood",
+    label: "Log mood",
+    keywords: [
+      "check-in",
+      "checkin",
+      "how are you",
+      "feeling",
+      "energy",
+      "wellbeing",
+    ],
+    icon: "mood",
+    target: { kind: "overlay", form: "mood" },
   },
   {
     id: "add-appointment",
@@ -203,6 +264,41 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     },
   },
 ];
+
+// ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────
+//
+// The palette declares it shares one form set with the sheet (#2184), and this
+// record is that claim with teeth: every loggable domain maps to the palette
+// action that serves it or to an `arguedExclusion(...)` whose reason is
+// structurally required. Type-checked — a new `LoggableDomain`, or a census row
+// naming a retired action id, fails `tsc`.
+//
+// Proven on the defect: on the pre-#2130 tree this record has no honest value
+// for `food`, `dose` or `mood` — #2184's own stated rule, unenforced — and
+// deleting any row fails typecheck with "Property '<domain>' is missing".
+export const PALETTE_DOMAIN_CENSUS = {
+  activity: "log-workout",
+  food: "log-food",
+  dose: "log-dose",
+  // The palette is a SEARCH surface, so weight and vitals are separate intents
+  // landing on different groups of the ONE measurements form (#2014/#2184);
+  // temperature enters through that form's vitals group (lib/measurements-deeplink).
+  weight: "log-weight",
+  vitals: "log-vitals",
+  temperature: "log-vitals",
+  practice: "wellness-practices",
+  period: arguedExclusion(
+    "The palette has no relevance threading: the sheet's menu gates its period row on the #1042 cycle bit, and #1892's rule is that the row may never leak into a surface of a profile the domain does not apply to. Until the palette carries that bit, a period action here would show for every profile; the sheet row + server-gated overlay remain the quick doors."
+  ),
+  mood: "log-mood",
+  symptom: arguedExclusion(
+    "Same argument as the sheet census (lib/quick-log.ts): symptom capture is a state-routed pair (well-day bar vs illness cockpit), and #1860 owns reshaping it; a context-free palette entry would freeze one half."
+  ),
+  substance: arguedExclusion(
+    "Same argument as the sheet census (lib/quick-log.ts): a deliberate-access medical surface whose tap renders beside its #998 cap verdict; off general-purpose quick surfaces by reach policy."
+  ),
+  document: "add-document",
+} as const satisfies Record<LoggableDomain, PaletteActionId | ArguedExclusion>;
 
 // Actions whose label or any keyword contains the (lowercased) query. An empty
 // query returns every action (the palette's "quick actions" resting state).
