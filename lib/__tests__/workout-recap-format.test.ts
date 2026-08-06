@@ -33,10 +33,38 @@ const doseMsg: NotificationMessage = {
 };
 
 describe("recapNudgeLine", () => {
-  it("returns the recap line when enabled and there's work to recap", () => {
+  it("returns the DETAILED recap line — the chat has no card under it (#2172)", () => {
+    // The bare set count is gone from the chat form: a PR (or, without one, the best
+    // vs-last delta) takes that slot, because the message's existence already says the
+    // session happened. The compact form is pinned in session-recap.test.ts.
     expect(recapNudgeLine(recap(), true)).toBe(
-      "Push day done · 47 min · 14 sets · Bench press PR · all targets hit"
+      "Push day done · 47 min · Bench press PR · all targets hit"
     );
+  });
+
+  it("names and quantifies a miss the compact form would have collapsed (#2172)", () => {
+    const line = recapNudgeLine(
+      recap({
+        prExercises: [],
+        targetRollup: "some-missed",
+        exercises: [
+          {
+            exercise: "Lat Pulldown",
+            workingSets: 4,
+            volumeKg: 1500,
+            verdict: "missed",
+            bodyweight: false,
+            e1rmPR: false,
+            weightPR: false,
+            deltaE1rmKg: null,
+            missedSets: 1,
+            shortfall: { reps: 7, target: 8 },
+          },
+        ],
+      }),
+      true
+    );
+    expect(line).toBe("Push day done · 47 min · Lat Pulldown 7/8 on one set");
   });
 
   it("returns null when the toggle is off (kind disabled strips it)", () => {
