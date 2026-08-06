@@ -1,5 +1,5 @@
 import type { ActivityType } from "@/lib/types";
-import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
+import { utcMinute, zonedDateParts } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
@@ -358,7 +358,8 @@ export interface HealthConnectSyncDetails {
 // and minute in the PROFILE's zone, NOT the process TZ — an evening event lands on
 // the right local day even though production Docker runs UTC, and steps/calories/
 // sleep bucket to the same day as activities/doses/digests (issue #94). `date` feeds
-// metric_samples.date; `minute` is the hr_minutes.ts bucket key (see zonedMinuteStr).
+// metric_samples.date. `minute` is the hr_minutes.ts bucket key, which since #2205 is
+// the sample's own UTC minute and takes no timezone at all — only `date` still does.
 
 function parts(
   iso: unknown,
@@ -372,7 +373,7 @@ function parts(
   // null return folds into the caller's existing skip-and-count path.
   if (!inTimeWindow(d.getTime())) return null;
   const { date, hhmm } = zonedDateParts(tz, d);
-  return { date, minute: zonedMinuteStr(tz, d), hhmm };
+  return { date, minute: utcMinute(d), hhmm };
 }
 
 function num(...vals: unknown[]): number | null {

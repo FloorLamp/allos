@@ -451,10 +451,26 @@ describe("Fitbit Takeout import", () => {
       bpm_max: number;
       n: number;
     }[];
-    // 16:37Z is 12:37 in New York; two samples in that minute, one in the next.
+    // The bucket is the SAMPLE's own UTC minute since #2205 / migration 164 — no
+    // longer 12:37 New York time. That is what lets a Takeout minute and a Health
+    // Connect minute for the same instant still collide on the key, and what stops a
+    // timezone change re-keying the rolling window. Two samples in 16:37Z, one in
+    // the next minute.
     expect(hr).toEqual([
-      { ts: "2026-06-10T12:37", bpm: 135, bpm_min: 133, bpm_max: 137, n: 2 },
-      { ts: "2026-06-10T12:38", bpm: 120, bpm_min: 120, bpm_max: 120, n: 1 },
+      {
+        ts: "2026-06-10T16:37:00Z",
+        bpm: 135,
+        bpm_min: 133,
+        bpm_max: 137,
+        n: 2,
+      },
+      {
+        ts: "2026-06-10T16:38:00Z",
+        bpm: 120,
+        bpm_min: 120,
+        bpm_max: 120,
+        n: 1,
+      },
     ]);
   });
 

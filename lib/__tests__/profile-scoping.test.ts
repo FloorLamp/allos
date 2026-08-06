@@ -70,6 +70,16 @@ const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
+    file: "lib/migrations/versions/164-hr-minutes-utc-instants.ts",
+    includes: "SELECT COUNT(*) AS n FROM hr_minutes",
+    why: "migration 164 (#2205) row-accounting guard: counts the WHOLE table before and after the rebuild and throws unless the two balance, which is the migration's own verification step. Deliberately unscoped — a per-profile count could not detect a profile's rows being dropped entirely. Every row it then CONVERTS is read and rewritten under its own profile_id.",
+  },
+  {
+    file: "lib/migrations/versions/164-hr-minutes-utc-instants.ts",
+    includes: "SELECT DISTINCT profile_id AS id FROM hr_minutes ORDER BY id",
+    why: "migration 164 one-shot GLOBAL enumeration: the conversion is per-profile (each row converts under ITS OWN profile's timezone), so it must first learn which profiles have HR at all. profile_id is the value being selected and every subsequent read/write is keyed by it.",
+  },
+  {
     file: "lib/migrations/boot-tasks.ts",
     includes:
       "UPDATE integration_backfill_jobs SET status = 'paused', retry_after_at = ?, updated_at = ?",

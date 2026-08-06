@@ -14,13 +14,19 @@ import {
   type MetricSourceChoice,
   type SourceResolution,
 } from "../metric-source-priority";
-import { getMetricSourcePriority } from "../settings";
-import { getTimezone } from "../settings/display";
+import { getMetricSourcePriority, getTimezone } from "../settings";
+import {
+  localDayOf,
+  localDayRange,
+  localDaySpan,
+  offsetSegments,
+} from "../local-day-window";
 import {
   hhmmToMinutes,
   isDstTransitionDay,
   parseUtcSql,
   zonedDateParts,
+  zonedMinuteStr,
 } from "../date";
 import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
@@ -669,25 +675,149 @@ export function canEditManualSleepOnDate(
   return row == null || row.editable === 1;
 }
 
+// ---- hr_minutes: profile-local days over a UTC instant column (#2205) --------
+//
+// `hr_minutes.ts` is an absolute instant since migration 164; every reader below asks
+// a profile-LOCAL day question. The translation is lib/local-day-window.ts, and it is
+// used two ways:
+//
+//   • a day (or span of days) becomes a half-open UTC RANGE, which the primary key's
+//     own index on (profile_id, ts, source) serves as a plain range scan — this is
+//     why 164 dropped idx_hr_minutes_day rather than replacing it;
+//   • a GROUP BY day stays in SQL as `date(ts, '±HH:MM')`, run once per offset-constant
+//     SEGMENT of the window, so DST is exact and the row work never leaves SQLite
+//     (the #387 bound).
+//
+// A day that CONTAINS a DST transition is the only one that appears in two segments;
+// `mergeHrDayRows` folds those halves back into one row with a count-weighted average.
+
+interface HrDayRow {
+  date: string;
+  source: string | null;
+  avg: number;
+  min: number;
+  max: number;
+  n: number;
+}
+
+// Fold per-segment aggregates into one row per (day, source). `avg` is re-weighted by
+// bucket COUNT — averaging two averages would silently weight a 3-hour DST tail the
+// same as the 21 hours before it.
+function mergeHrDayRows(rows: HrDayRow[]): HrDayRow[] {
+  const byKey = new Map<string, HrDayRow>();
+  for (const r of rows) {
+    const key = `${r.date}\u001f${r.source ?? ""}`;
+    const seen = byKey.get(key);
+    if (!seen) {
+      byKey.set(key, { ...r });
+      continue;
+    }
+    const n = seen.n + r.n;
+    seen.avg = n > 0 ? (seen.avg * seen.n + r.avg * r.n) / n : seen.avg;
+    seen.min = Math.min(seen.min, r.min);
+    seen.max = Math.max(seen.max, r.max);
+    seen.n = n;
+  }
+  return [...byKey.values()];
+}
+
+// Per-(local day, source) HR aggregates over the half-open UTC window, segment by
+// segment. Returns [] for an empty window.
+function hrDayAggregates(
+  profileId: number,
+  tz: string,
+  startUtc: string,
+  endUtc: string
+): HrDayRow[] {
+  const stmt = db.prepare(
+    `SELECT date(ts, ?) AS date, source,
+            AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
+            COUNT(*) AS n
+       FROM hr_minutes
+      WHERE profile_id = ? AND ts >= ? AND ts < ?
+      GROUP BY date(ts, ?), source`
+  );
+  const out: HrDayRow[] = [];
+  for (const seg of offsetSegments(tz, startUtc, endUtc)) {
+    out.push(
+      ...(stmt.all(
+        seg.modifier,
+        profileId,
+        seg.startUtc,
+        seg.endUtc,
+        seg.modifier
+      ) as HrDayRow[])
+    );
+  }
+  return mergeHrDayRows(out);
+}
+
+// A stored instant as the profile-local minute stamp ('YYYY-MM-DDTHH:MM') the pure
+// consumers compare against. The read-time twin of what ingest used to STORE — which
+// is the whole #94 correction: the projection is recomputed from the absolute instant
+// on every read, so changing the profile timezone re-reads history correctly instead
+// of silently re-meaning it. Falls back to the raw stamp if it will not parse, so a
+// surprise row is visible rather than dropped.
+function localMinuteStamp(tz: string, ts: string): string {
+  const d = parseUtcSql(ts);
+  return d ? zonedMinuteStr(tz, d) : ts;
+}
+
+// The profile's newest and oldest stored instants, or null when it has no HR at all.
+// Two indexed seeks — the open-ended readers need real data bounds to build a window
+// from, and scanning to find them would undo the point.
+function hrInstantBounds(
+  profileId: number
+): { first: string; last: string } | null {
+  const row = db
+    .prepare(
+      "SELECT MIN(ts) AS first, MAX(ts) AS last FROM hr_minutes WHERE profile_id = ?"
+    )
+    .get(profileId) as { first: string | null; last: string | null };
+  return row.first && row.last ? { first: row.first, last: row.last } : null;
+}
+
 // The date (YYYY-MM-DD) of the `limitDays`-th most-recent distinct HR day, or null
 // when the profile has no hr_minutes at all. Used as an inclusive `>= cutoff` lower
 // bound so the daily-summary / per-source reads GROUP BY only the recent window
 // instead of all history — hr_minutes is the fastest-growing table (~0.5M rows/year
 // for an all-day wearable), so an unbounded GROUP BY sorts a million rows per Trends
-// render on year two (issue #387). The DISTINCT-days scan is index-supported
-// (idx_hr_minutes_day on (profile_id, substr(ts,1,10))) and stops after limitDays
-// groups, and bounding at this cutoff is EXACT: `>= cutoff` selects precisely the
-// limitDays most-recent distinct days, which is the same window the callers'
-// post-group slice/LIMIT already kept.
+// render on year two (issue #387). Bounding at this cutoff is EXACT: the window it
+// opens holds precisely the limitDays most-recent days-with-data, which is the same
+// window the callers' post-group slice/LIMIT already kept.
+//
+// The walk below replaced a DISTINCT-days scan when #2205 made `ts` a UTC instant.
+// That scan leaned on idx_hr_minutes_day over `substr(ts,1,10)`, which migration 164
+// dropped: a substring of a UTC instant is a UTC day, and every caller wants the
+// profile-local one. Seeking day-by-day costs limitDays indexed lookups instead of
+// one scan, and is exact under DST where a substring never could be.
 function recentHrCutoff(profileId: number, limitDays: number): string | null {
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT substr(ts,1,10) AS date FROM hr_minutes
-        WHERE profile_id = ?
-        ORDER BY date DESC LIMIT ?`
-    )
-    .all(profileId, limitDays) as { date: string }[];
-  return rows.length > 0 ? rows[rows.length - 1].date : null;
+  const bounds = hrInstantBounds(profileId);
+  if (!bounds) return null;
+  const tz = getTimezone(profileId);
+  let day = localDayOf(tz, bounds.last);
+  if (!day) return null;
+  if (limitDays < 0) return localDayOf(tz, bounds.first);
+  // Walk back one day-with-data at a time: from the current day's UTC start, the
+  // newest row STRICTLY BEFORE it is the newest row of the previous day-with-data.
+  // Each step is one indexed seek on (profile_id, ts), so the whole walk is
+  // `limitDays` seeks and never scans the days in between — the #387 bound, kept.
+  // The old DISTINCT-days scan leaned on idx_hr_minutes_day, which 164 dropped
+  // because a substring of a UTC instant is a UTC day, not this one.
+  const prev = db.prepare(
+    `SELECT ts FROM hr_minutes
+      WHERE profile_id = ? AND ts < ?
+      ORDER BY ts DESC LIMIT 1`
+  );
+  for (let seen = 1; seen < limitDays; seen++) {
+    const row = prev.get(profileId, localDayRange(tz, day).startUtc) as
+      { ts: string } | undefined;
+    if (!row) break;
+    const earlier = localDayOf(tz, row.ts);
+    if (!earlier) break;
+    day = earlier;
+  }
+  return day;
 }
 
 // Daily HR summary derived from the 1-minute buckets, oldest→newest. Since the
@@ -703,23 +833,13 @@ export function getHrDailySummary(
   // The JS slice below still picks one source per day over exactly this window.
   const cutoff = recentHrCutoff(profileId, limitDays);
   if (cutoff === null) return [];
-  const rows = db
-    .prepare(
-      `SELECT substr(ts,1,10) AS date, source,
-              AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
-              COUNT(*) AS n
-         FROM hr_minutes
-        WHERE profile_id = ? AND substr(ts,1,10) >= ?
-        GROUP BY substr(ts,1,10), source`
-    )
-    .all(profileId, cutoff) as {
-    date: string;
-    source: string | null;
-    avg: number;
-    min: number;
-    max: number;
-    n: number;
-  }[];
+  const tz = getTimezone(profileId);
+  const bounds = hrInstantBounds(profileId);
+  if (!bounds) return [];
+  const lastDay = localDayOf(tz, bounds.last);
+  if (!lastDay) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, cutoff, lastDay);
+  const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
   const picked = pickRowsOneSourcePerDay(
     rows,
     resolutionFor(profileId, "heart_rate"),
@@ -746,50 +866,17 @@ export function getHrDailySummaryInRange(
 ): { date: string; avg: number; min: number; max: number }[] {
   if (!from && !to) return getHrDailySummary(profileId, -1);
 
-  type HrAggregate = {
-    date: string;
-    source: string | null;
-    avg: number;
-    min: number;
-    max: number;
-    n: number;
-  };
-  let rows: HrAggregate[];
-  if (from && to) {
-    rows = db
-      .prepare(
-        `SELECT substr(ts,1,10) AS date, source,
-                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
-                COUNT(*) AS n
-           FROM hr_minutes
-          WHERE profile_id = ?
-            AND substr(ts,1,10) >= ? AND substr(ts,1,10) <= ?
-          GROUP BY substr(ts,1,10), source`
-      )
-      .all(profileId, from, to) as HrAggregate[];
-  } else if (from) {
-    rows = db
-      .prepare(
-        `SELECT substr(ts,1,10) AS date, source,
-                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
-                COUNT(*) AS n
-           FROM hr_minutes
-          WHERE profile_id = ? AND substr(ts,1,10) >= ?
-          GROUP BY substr(ts,1,10), source`
-      )
-      .all(profileId, from) as HrAggregate[];
-  } else {
-    rows = db
-      .prepare(
-        `SELECT substr(ts,1,10) AS date, source,
-                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
-                COUNT(*) AS n
-           FROM hr_minutes
-          WHERE profile_id = ? AND substr(ts,1,10) <= ?
-          GROUP BY substr(ts,1,10), source`
-      )
-      .all(profileId, to!) as HrAggregate[];
-  }
+  // One window whichever end is open: an absent bound is resolved to the profile's
+  // own first/last day-with-data, so the UTC range is always concrete and the
+  // aggregate is always the same shape.
+  const tz = getTimezone(profileId);
+  const bounds = hrInstantBounds(profileId);
+  if (!bounds) return [];
+  const fromDay = from ?? localDayOf(tz, bounds.first);
+  const toDay = to ?? localDayOf(tz, bounds.last);
+  if (!fromDay || !toDay || fromDay > toDay) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, fromDay, toDay);
+  const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
 
   return pickRowsOneSourcePerDay(
     rows,
@@ -806,23 +893,35 @@ export function getHrDailySummaryInRange(
 export function getLatestHrDay(profileId: number): string | null {
   const row = db
     .prepare(
-      "SELECT substr(ts,1,10) AS date FROM hr_minutes WHERE profile_id = ? ORDER BY ts DESC LIMIT 1"
+      "SELECT ts FROM hr_minutes WHERE profile_id = ? ORDER BY ts DESC LIMIT 1"
     )
-    .get(profileId) as { date: string } | undefined;
-  return row?.date ?? null;
+    .get(profileId) as { ts: string } | undefined;
+  return row ? localDayOf(getTimezone(profileId), row.ts) : null;
 }
 
 // A single day's 1-minute HR buckets, ordered by time. One source per day
 // (issue #14) — same pick as getHrDailySummary — so an intraday chart never
 // zig-zags between two devices' overlapping minutes.
 export function getHrMinutes(profileId: number, date: string): HrMinute[] {
+  // The local day as a half-open UTC range — 23, 24 or 25 hours wide depending on
+  // DST, which is precisely what a `substr` day could not express.
+  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), date);
   const rows = db
     .prepare(
-      "SELECT * FROM hr_minutes WHERE profile_id = ? AND substr(ts,1,10) = ? ORDER BY ts"
+      `SELECT * FROM hr_minutes
+        WHERE profile_id = ? AND ts >= ? AND ts < ?
+        ORDER BY ts`
     )
-    .all(profileId, date) as HrMinute[];
+    .all(profileId, startUtc, endUtc) as HrMinute[];
+  // PROJECT to the profile-local minute on the way out (#2205). The column stores an
+  // absolute instant; every consumer of this shape — the intraday chart, the
+  // training-zone windows, the ride series — compares it against activity times that
+  // are profile-local wall clocks. Storage is UTC, presentation is local, and the
+  // conversion happens HERE, once, instead of each surface guessing.
+  const tz = getTimezone(profileId);
+  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
   return pickRowsOneSourcePerDay(
-    rows,
+    local,
     resolutionFor(profileId, "heart_rate"),
     () => date,
     (r) => r.source
@@ -838,23 +937,28 @@ export function getHrMinutesInRange(
   since: string,
   until?: string
 ): { ts: string; bpm: number }[] {
-  const rows = (
-    until != null
-      ? db
-          .prepare(
-            `SELECT ts, bpm, source FROM hr_minutes
-              WHERE profile_id = ? AND substr(ts,1,10) >= ? AND substr(ts,1,10) <= ?`
-          )
-          .all(profileId, since, until)
-      : db
-          .prepare(
-            `SELECT ts, bpm, source FROM hr_minutes
-              WHERE profile_id = ? AND substr(ts,1,10) >= ?`
-          )
-          .all(profileId, since)
-  ) as { ts: string; bpm: number; source: string | null }[];
+  const tz = getTimezone(profileId);
+  const bounds = hrInstantBounds(profileId);
+  if (!bounds) return [];
+  const lastDay = until ?? localDayOf(tz, bounds.last);
+  if (!lastDay || lastDay < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, lastDay);
+  const rows = db
+    .prepare(
+      `SELECT ts, bpm, source FROM hr_minutes
+        WHERE profile_id = ? AND ts >= ? AND ts < ?`
+    )
+    .all(profileId, startUtc, endUtc) as {
+    ts: string;
+    bpm: number;
+    source: string | null;
+  }[];
+  // Projected to the profile-local minute before anything groups or compares it —
+  // same boundary rule as getHrMinutes above. Once projected, the day is the stamp's
+  // own prefix again and the training-zone windows line up as they always did.
+  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
   return pickRowsOneSourcePerDay(
-    rows,
+    local,
     resolutionFor(profileId, "heart_rate"),
     (r) => r.ts.slice(0, 10),
     (r) => r.source
@@ -1174,19 +1278,17 @@ export function getHrSeriesBySourceInRange(
   from: string | null,
   to: string | null
 ): MetricSourceSeries[] {
-  const rows = db
-    .prepare(
-      `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
-         FROM hr_minutes
-        WHERE profile_id = ?
-          AND substr(ts,1,10) >= COALESCE(?, '0000-00-00')
-          AND substr(ts,1,10) <= COALESCE(?, '9999-12-31')
-        GROUP BY substr(ts,1,10), source`
-    )
-    .all(profileId, from, to) as {
-    date: string;
-    source: string | null;
-    value: number;
-  }[];
+  const tz = getTimezone(profileId);
+  const bounds = hrInstantBounds(profileId);
+  if (!bounds) return [];
+  const fromDay = from ?? localDayOf(tz, bounds.first);
+  const toDay = to ?? localDayOf(tz, bounds.last);
+  if (!fromDay || !toDay || fromDay > toDay) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, fromDay, toDay);
+  const rows = hrDayAggregates(profileId, tz, startUtc, endUtc).map((r) => ({
+    date: r.date,
+    source: r.source,
+    value: r.avg,
+  }));
   return foldSourceSeries(rows);
 }
