@@ -18,7 +18,7 @@ import {
   IconCircleCheck,
   type TablerIcon,
 } from "@tabler/icons-react";
-import SubmitButton from "@/components/SubmitButton";
+import DoseConfirmButton from "@/components/DoseConfirmButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
@@ -138,16 +138,19 @@ function Row({
         >
           {upcomingDueText(item, now)}
         </div>
+        {/* Rendered through the shared outcome-toast confirm (#2106): the hero is
+        exactly the surface most likely to be stale — a dashboard tab open since
+        yesterday — and a tap on a since-paused item or a retired dose must say so
+        instead of silently re-rendering the row. */}
         {item.doseId != null && (
-          <form action={markAttentionDose} className="shrink-0">
-            <input type="hidden" name="dose_id" value={item.doseId} />
-            <SubmitButton
-              pendingLabel="…"
-              className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-            >
-              Mark taken
-            </SubmitButton>
-          </form>
+          <DoseConfirmButton
+            action={markAttentionDose}
+            fields={{ dose_id: item.doseId }}
+            testid="attention-mark-taken"
+            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+          >
+            Mark taken
+          </DoseConfirmButton>
         )}
         {item.doseId == null &&
           item.followUpResolve == null &&

@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   createGoal,
+  setArchived,
   setStatus,
   updateGoal,
 } from "@/app/(app)/training/goal-actions";
@@ -185,8 +186,51 @@ describe("setStatus", () => {
     await createGoal(fd({ kind: "freeform", title: "Do 10 pullups" }));
     const id = goalRows(profile.id)[0].id;
 
-    await setStatus(fd({ id, status: "achieved" }));
+    expect(await setStatus(fd({ id, status: "achieved" }))).toEqual({
+      ok: true,
+    });
     expect(goalRows(profile.id)[0].status).toBe("achieved");
+  });
+
+  // Changes-checked (#2140): the UPDATE's WHERE (id + profile) is the CAS
+  // expectation, so a forged id — or another profile's — refuses instead of the
+  // menu toasting "Goal achieved" over a write that matched nothing.
+  it("refuses a forged id and another profile's goal with a typed error", async () => {
+    const { login, profile: profileA } = seedActor();
+    const profileB = createProfile("StatusB", login.id);
+    actAs(login, profileB);
+    await createGoal(fd({ kind: "freeform", title: "B's goal" }));
+    const bId = goalRows(profileB.id)[0].id;
+
+    actAs(login, profileA);
+    expect((await setStatus(fd({ id: 999999, status: "achieved" }))).ok).toBe(
+      false
+    );
+    expect((await setStatus(fd({ id: bId, status: "achieved" }))).ok).toBe(
+      false
+    );
+    expect(goalRows(profileB.id)[0].status).toBe("active");
+  });
+});
+
+describe("setArchived", () => {
+  it("archives for the acting profile; refuses a forged id (#2140)", async () => {
+    const { profile } = seedActor();
+    await createGoal(fd({ kind: "freeform", title: "Archive me" }));
+    const id = goalRows(profile.id)[0].id;
+
+    expect(await setArchived(fd({ id, archived: "1" }))).toEqual({ ok: true });
+    expect(
+      (
+        db.prepare("SELECT archived FROM goals WHERE id = ?").get(id) as {
+          archived: number;
+        }
+      ).archived
+    ).toBe(1);
+
+    expect((await setArchived(fd({ id: 999999, archived: "1" }))).ok).toBe(
+      false
+    );
   });
 });
 

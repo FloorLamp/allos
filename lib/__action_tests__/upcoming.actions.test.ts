@@ -136,11 +136,21 @@ describe("markCarePlanDone (issue #84)", () => {
       "planned"
     );
 
-    await markCarePlanDone(fd({ care_plan_item_id: id }));
+    // The result carries the typed outcome (#2140): success wording comes from the
+    // write, and a repeat tap reports "already" instead of a fresh confirmation.
+    expect(await markCarePlanDone(fd({ care_plan_item_id: id }))).toEqual({
+      ok: true,
+      message: "Marked done",
+    });
 
     expect(carePlanStatus(id)).toBe("completed");
     expect(revalidate).toHaveBeenCalledWith("/upcoming");
     expect(revalidate).toHaveBeenCalledWith("/records");
+
+    expect(await markCarePlanDone(fd({ care_plan_item_id: id }))).toEqual({
+      ok: true,
+      message: "Already marked done",
+    });
   });
 
   it("ignores a missing id", async () => {
@@ -161,10 +171,26 @@ describe("markCarePlanDone (issue #84)", () => {
     const b = createProfile("CP-B", login.id);
     const bItem = insertCarePlanItem(b.id, "B's plan", "2026-09-01", "planned");
 
-    // Acting as A, a tampered id pointing at B's row is a no-op (WHERE profile_id).
+    // Acting as A, a tampered id pointing at B's row is a no-op (WHERE profile_id)
+    // — and now a stated refusal rather than a silent formOk (#2140).
     actAs(login, a);
-    await markCarePlanDone(fd({ care_plan_item_id: bItem }));
+    const res = await markCarePlanDone(fd({ care_plan_item_id: bItem }));
+    expect(res.ok).toBe(false);
     expect(carePlanStatus(bItem)).toBe("planned");
+  });
+
+  it("refuses over a cancellation, naming the standing status (#2140)", async () => {
+    const { profile } = seedActor();
+    const id = insertCarePlanItem(
+      profile.id,
+      "Cancelled follow-up",
+      "2026-09-01",
+      "cancelled"
+    );
+    const res = await markCarePlanDone(fd({ care_plan_item_id: id }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("cancelled");
+    expect(carePlanStatus(id)).toBe("cancelled");
   });
 });
 

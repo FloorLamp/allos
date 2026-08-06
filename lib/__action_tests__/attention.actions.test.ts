@@ -90,21 +90,58 @@ describe("markAttentionDose", () => {
     const { profile } = seedActor();
     const doseId = seedDose(profile.id);
 
-    await markAttentionDose(fd({ dose_id: doseId }));
+    // The action carries markDoseTaken's typed outcome (#2106) — the hero renders
+    // from it, so the success wording and the idempotent repeat are both stated.
+    expect(await markAttentionDose(fd({ dose_id: doseId }))).toEqual({
+      ok: true,
+      outcome: "logged",
+    });
     expect(getTakenDoseIds(profile.id, today(profile.id)).has(doseId)).toBe(
       true
     );
-    // second call is a no-op (per-day dedup), still safe
-    await markAttentionDose(fd({ dose_id: doseId }));
+    // second call is a no-op (per-day dedup), still safe — and says so
+    expect(await markAttentionDose(fd({ dose_id: doseId }))).toEqual({
+      ok: true,
+      outcome: "already-taken",
+    });
     expect(getTakenDoseIds(profile.id, today(profile.id)).size).toBe(1);
     expect(revalidate).toHaveBeenCalledWith("/");
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
     expect(revalidate).toHaveBeenCalledWith("/medications");
   });
 
-  it("a bogus dose id is a safe no-op", async () => {
+  it("a bogus dose id is a safe no-op that answers stale-dose", async () => {
     const { profile } = seedActor();
-    await markAttentionDose(fd({ dose_id: 999999 }));
+    expect(await markAttentionDose(fd({ dose_id: 999999 }))).toEqual({
+      ok: true,
+      outcome: "stale-dose",
+    });
+    expect(getTakenDoseIds(profile.id, today(profile.id)).size).toBe(0);
+  });
+
+  it("a paused item's dose refuses with `inactive` and logs nothing (#2106)", async () => {
+    const { profile } = seedActor();
+    const doseId = seedDose(profile.id);
+    db.prepare("UPDATE intake_items SET active = 0 WHERE profile_id = ?").run(
+      profile.id
+    );
+    expect(await markAttentionDose(fd({ dose_id: doseId }))).toEqual({
+      ok: true,
+      outcome: "inactive",
+    });
+    expect(getTakenDoseIds(profile.id, today(profile.id)).size).toBe(0);
+  });
+
+  it("a dose retired by a schedule edit refuses with `stale-dose` (#2106)", async () => {
+    const { profile } = seedActor();
+    const doseId = seedDose(profile.id);
+    db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
+      doseId
+    );
+    expect(await markAttentionDose(fd({ dose_id: doseId }))).toEqual({
+      ok: true,
+      outcome: "stale-dose",
+    });
     expect(getTakenDoseIds(profile.id, today(profile.id)).size).toBe(0);
   });
 });

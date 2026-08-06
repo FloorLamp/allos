@@ -14,18 +14,19 @@ import {
   logPracticeByTargetId,
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
+import { carePlanDoneResult } from "@/lib/care-plan-upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore, settleFollowUpCore } from "@/lib/followup-write";
 import {
   formError,
   formOk,
   type FormResult,
-  type DoseTakenOutcome,
   type PracticeLogOutcome,
 } from "@/lib/types";
 import { requireSession } from "@/lib/auth";
 import { dismissMultiviewHint } from "@/lib/settings";
 import { explainFinding } from "@/lib/explain-finding";
+import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 import type { Reason } from "@/lib/reasons";
 
 // Resolve the target profile for a per-item write on the (possibly multi-view)
@@ -114,8 +115,7 @@ export async function explainFindingAction(
 // logs NOTHING). The Telegram tap has answered from the outcome since #280; the
 // in-app confirms now can too. The added field is additive: `ok` still means "the
 // request was understood", and the existing server-form caller ignores it.
-export type MarkTakenResult =
-  { ok: true; outcome: DoseTakenOutcome } | { ok: false; error: string };
+export type MarkTakenResult = DoseConfirmResult;
 
 export async function markTaken(formData: FormData): Promise<MarkTakenResult> {
   const pid = await gateItemProfile(formData);
@@ -153,17 +153,26 @@ export async function markPreventiveDone(
 // profile_id, so a tampered id can't touch another profile's row) — the same fast
 // path as a dose "mark taken" — so the item drops off Upcoming and the /care-plan
 // page reflects the completion.
+//
+// The result carries the write's TYPED OUTCOME (#2140, the markTaken shape above):
+// the core is changes-checked now, so a forged id or a stale tap on an item someone
+// meanwhile cancelled answers with the refusal instead of an unconditional formOk —
+// the "never confirm success unconditionally" rule. Success wording also comes from
+// the outcome (a repeat tap says "Already marked done").
+export type MarkCarePlanDoneResult =
+  { ok: true; message: string } | { ok: false; error: string };
+
 export async function markCarePlanDone(
   formData: FormData
-): Promise<FormResult> {
+): Promise<MarkCarePlanDoneResult> {
   const pid = await gateItemProfile(formData);
   const id = Number(formData.get("care_plan_item_id"));
   if (!id) return formError("Couldn't find that care-plan item.");
-  markCarePlanItemDone(pid, id);
+  const outcome = markCarePlanItemDone(pid, id);
   revalidatePath("/upcoming");
   revalidatePath("/records");
   revalidatePath("/");
-  return formOk();
+  return carePlanDoneResult(outcome);
 }
 
 // Override a preventive rule as declined (an informed opt-out) or not applicable

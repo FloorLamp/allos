@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { markDoseTaken } from "@/lib/queries";
+import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 
 // Switch the current session's active profile to the clicked household card and
 // jump to that profile's dashboard — the same "set active profile + navigate" the
@@ -31,14 +32,25 @@ export async function openProfileAction(formData: FormData) {
 // — it verifies the dose belongs to the target profile via its parent supplement
 // and logs it once — so a tampered dose_id from another profile is dropped even
 // past the access gate.
-export async function confirmDoseAction(formData: FormData) {
+//
+// The result CARRIES markDoseTaken's typed outcome (#2106): this surface's own
+// one-tap registry entry declares `outcome-toast`, and the action had been dropping
+// the outcome and returning void — so a tap on a dose whose item was meanwhile
+// paused, or whose dose row a schedule edit retired, logged nothing and said
+// nothing, on a medication-adherence surface. The card's confirm button renders
+// every branch through doseConfirmMessage.
+export async function confirmDoseAction(
+  formData: FormData
+): Promise<DoseConfirmResult> {
   const profileId = Number(formData.get("profileId"));
   const doseId = Number(formData.get("dose_id"));
-  if (!profileId || !doseId) return;
+  if (!profileId || !doseId)
+    return { ok: false, error: "Couldn't find that dose." };
   await requireProfileWriteAccess(profileId);
-  markDoseTaken(profileId, doseId, null, today(profileId));
+  const outcome = markDoseTaken(profileId, doseId, null, today(profileId));
   revalidatePath("/household");
   revalidatePath("/nutrition");
   revalidatePath("/medications");
   revalidatePath("/");
+  return { ok: true, outcome };
 }

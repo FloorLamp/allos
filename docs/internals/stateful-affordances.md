@@ -64,6 +64,8 @@ Today's entries:
 | `medication_courses`                          | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
 | `intake_item_doses` (`retired`)               | `lib/queries/intake/dose-lifecycle.ts`                                                                                                                                   | —                    | —                   |
 | `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
+| `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                   |
+| `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                   |
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
@@ -196,13 +198,15 @@ The 2026-08-05 lifecycle-machine audit found four stale-actor defects in the
 intake domain and closed them with one shared mechanism plus four entries above.
 
 **The Tx token (`lib/tx.ts`).** `writeTx` hands its callback a `Tx` value only
-`lib/db.ts` can mint, and the in-transaction helpers `readForUpdate(tx, stmt, …)`
-and `casUpdate(tx, stmt, …)` REQUIRE it — so a guard read or compare-and-swap
-written with them cannot typecheck outside the transaction it protects, which is
-exactly the defect #2139 found (pending checked outside, insert inside). The
-helpers take an already-prepared statement, never a SQL string, so both source
-scans still see every statement. The token is evidence, not an async handle: the
-callback-synchronous rule is unchanged, and genuinely additive writes ignore it.
+`lib/db.ts` can mint, and the in-transaction helpers `readForUpdate(tx, stmt, …)`,
+`readAllForUpdate(tx, stmt, …)` (the set-shaped guard read, added for #2140's
+whole-set rewrite) and `casUpdate(tx, stmt, …)` REQUIRE it — so a guard read or
+compare-and-swap written with them cannot typecheck outside the transaction it
+protects, which is exactly the defect #2139 found (pending checked outside, insert
+inside). The helpers take an already-prepared statement, never a SQL string, so
+both source scans still see every statement. The token is evidence, not an async
+handle: the callback-synchronous rule is unchanged, and genuinely additive writes
+ignore it.
 
 The four machines:
 
@@ -227,6 +231,38 @@ The four machines:
 - **`intake_item_suggestions` (#2139)** — not a registry entry (the table has no
   second writer), but the accept now claims `status='pending'` with an
   in-transaction CAS before minting the item, so a double accept mints once.
+
+## The lifecycle-hardening batch (#2140) and the outcome-discard guard (#2106)
+
+#2140 registered the two remaining single-active machines and finished the
+changes-checked-outcome sweep the intake issues started:
+
+- **`routines.active`** — a real single-active invariant with a de-facto core:
+  `activateRoutine` deactivates every sibling and replaces the derived training
+  targets in one `writeTx`, and `getActiveRoutine`, the deload cycle, the rotation
+  cursor and the workout nudge all assume at most one active row. The registry
+  entry makes the convention a chokepoint; `deactivateRoutine` is now a CAS with
+  `active = 1` as its expectation (second tap reports `false`).
+- **`situations.active`** — the whole-set rewrite (`setActiveSituations`) that
+  gates situational supplements, opens/closes illness episodes (#856) and appends
+  the dated start/stop event log. Its before-set diff used to be read OUTSIDE the
+  transaction; it now runs inside via `readAllForUpdate`, so the event log can only
+  ever describe transitions that actually happened.
+- **Goal status/archive and care-plan "Mark done"** — the batch's changes-checked
+  outcomes. `setStatus`/`setArchived` CAS on (id, profile) and refuse a forged id;
+  `markCarePlanItemDone` returns a typed `CarePlanDoneOutcome` (completed /
+  already-closed-with-status / not-found) worded once by `carePlanDoneResult`, so a
+  repeat tap says "Already marked done" and a tap over someone else's cancellation
+  refuses by naming what persists.
+
+#2106 closed the outcome-discard half: the household confirm and the attention
+hero declared `outcome-toast` feedback (below) while their actions dropped
+`markDoseTaken`'s outcome and returned void. Both now return the shared
+`DoseConfirmResult` and render through `components/DoseConfirmButton.tsx` (the
+`doseConfirmMessage` wording), the Upcoming row chips render any typed result they
+receive, and a source scan in `lib/__tests__/one-tap.test.ts` fails any module that
+calls `markDoseTaken`/`markDoseSkipped` as a bare statement — a discarded outcome
+is an unconditional confirm waiting to happen.
 
 ## The one-tap feedback family (#2041, #2007)
 

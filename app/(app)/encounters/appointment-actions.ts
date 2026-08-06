@@ -13,6 +13,7 @@ import {
   satisfiedRuleForCompletedKind,
   APPOINTMENT_KIND_LABELS,
 } from "@/lib/preventive-appointment";
+import { carePlanDoneResult } from "@/lib/care-plan-upcoming";
 import {
   formError,
   formOk,
@@ -182,17 +183,22 @@ export async function recordPreventiveFromAppointment(
 // then calls this per accepted item — always confirm-first, never a silent
 // auto-complete. This is just the write behind that offer: mark the item completed
 // (the shared markCarePlanItemDone), profile-scoped so a tampered id can only ever
-// touch the acting profile's own care plan. Idempotent — a re-mark is a no-op.
+// touch the acting profile's own care plan.
+//
+// The result carries the core's typed outcome (#2140): a re-mark of a completed item
+// stays idempotent success, but a forged id or an item meanwhile cancelled answers
+// with the shared refusal wording (carePlanDoneResult) the caller renders instead of
+// the offer confirming a write that never happened.
 export async function completeCarePlanItemFromAppointment(
   formData: FormData
-): Promise<FormResult> {
+): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that care-plan item.");
-  markCarePlanItemDone(profile.id, id);
+  const outcome = markCarePlanItemDone(profile.id, id);
   revalidatePath("/records");
   revalidate();
-  return formOk();
+  return carePlanDoneResult(outcome);
 }
 
 // The encounter type an appointment kind implies for a logged visit — the same

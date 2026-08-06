@@ -54,6 +54,46 @@ export function isCarePlanItemOpen(status: string | null | undefined): boolean {
   return !CARE_PLAN_CLOSED_STATUSES.has(status.trim().toLowerCase());
 }
 
+// ---- "Mark done" typed outcome (#2140) --------------------------------------
+//
+// What markCarePlanItemDone actually did. The write used to be a bare UPDATE with an
+// unconditional formOk() behind it, so a forged id, a stale tap on an item someone
+// had meanwhile cancelled, and a real completion all confirmed identically. The
+// transition now answers from state; `already-closed` carries the status that
+// actually persists so the caller can name it (#280's rule).
+export type CarePlanDoneOutcome =
+  | { kind: "completed" }
+  | { kind: "already-closed"; status: string }
+  | { kind: "not-found" };
+
+// The statuses a repeat "Mark done" tap may treat as ITS OWN prior success — the
+// completed-family spellings. Every other closed status (cancelled, revoked, …) is
+// someone else's decision, and confirming over it would silently overwrite it.
+const COMPLETED_STATUSES = new Set(["completed", "complete", "done"]);
+
+// One formatter over the outcome for every "Mark done" surface (the Upcoming inline
+// chip and the completed-appointment offer), so a refusal is worded once. A repeat
+// tap on a completed item is idempotent success ("already"); any OTHER closed status
+// is a refusal that names what persists rather than confirming a write that never
+// happened.
+export function carePlanDoneResult(
+  outcome: CarePlanDoneOutcome
+): { ok: true; message: string } | { ok: false; error: string } {
+  switch (outcome.kind) {
+    case "completed":
+      return { ok: true, message: "Marked done" };
+    case "already-closed":
+      return COMPLETED_STATUSES.has(outcome.status.trim().toLowerCase())
+        ? { ok: true, message: "Already marked done" }
+        : {
+            ok: false,
+            error: `Not marked — this item is ${outcome.status.trim().toLowerCase()}.`,
+          };
+    case "not-found":
+      return { ok: false, error: "Couldn't find that care-plan item." };
+  }
+}
+
 // ---- The status / category ENTRY vocabularies (issue #1676) -----------------
 //
 // `care_plan_items.status` is deliberately free-form TEXT (no DB CHECK, see

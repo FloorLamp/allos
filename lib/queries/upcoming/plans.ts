@@ -225,15 +225,50 @@ export function carePlanItems(profileId: number): UpcomingItem[] {
 // Mark a care-plan item completed (issue #84) — the write behind the Upcoming
 // "Mark done" fast path. Sets status = 'completed' so the pure adapter drops it
 // from the due-list on the next read. Profile-scoped (WHERE id AND profile_id), so
-// a tampered id for another profile is a no-op.
-export function markCarePlanItemDone(profileId: number, id: number): void {
-  db.prepare(
-    "UPDATE care_plan_items SET status = 'completed' WHERE id = ? AND profile_id = ?"
-  ).run(id, profileId);
+// a tampered id for another profile answers `not-found`.
+//
+// A changes-checked LIFECYCLE transition (#2140): the guard read and the CAS share
+// one writeTx (lib/tx.ts), with the read status as the swap's expectation, so a
+// forged id and a stale tap on an item meanwhile closed each get a typed outcome
+// instead of an unconditional confirm. Only an OPEN item (isCarePlanItemOpen — the
+// same predicate that decides whether the surface offers the tap) transitions;
+// a closed one reports the status that actually persists.
+export function markCarePlanItemDone(
+  profileId: number,
+  id: number
+): CarePlanDoneOutcome {
+  return writeTx((tx) => {
+    const row = readForUpdate<{ status: string | null }>(
+      tx,
+      db.prepare(
+        "SELECT status FROM care_plan_items WHERE id = ? AND profile_id = ?"
+      ),
+      id,
+      profileId
+    );
+    if (!row) return { kind: "not-found" };
+    if (!isCarePlanItemOpen(row.status))
+      return { kind: "already-closed", status: row.status! };
+    casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE care_plan_items SET status = 'completed' WHERE id = ? AND profile_id = ? AND status IS ?"
+      ),
+      id,
+      profileId,
+      row.status
+    );
+    return { kind: "completed" };
+  });
 }
 import { isTrainingRestricted } from "../../age-gate";
-import { carePlanUpcomingItems } from "../../care-plan-upcoming";
-import { db, today } from "../../db";
+import {
+  carePlanUpcomingItems,
+  isCarePlanItemOpen,
+  type CarePlanDoneOutcome,
+} from "../../care-plan-upcoming";
+import { db, today, writeTx } from "../../db";
+import { casUpdate, readForUpdate } from "../../tx";
 import { getActiveEndurancePlans } from "../../endurance-plans";
 import {
   frequencyScopeLabel,

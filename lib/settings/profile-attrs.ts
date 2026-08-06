@@ -1,4 +1,5 @@
 import { db, today, writeTx } from "../db";
+import { readAllForUpdate } from "../tx";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import { normalizeExcludedGroups } from "../dietary-preferences";
 import type { Sex, ReproductiveStatus } from "../types";
@@ -983,7 +984,6 @@ export function getActiveSituations(profileId: number): string[] {
 // not previously seen becomes a new row. The dated start/stop transitions are still
 // logged (Trends annotations) for chartability.
 export function setActiveSituations(profileId: number, situations: string[]) {
-  const before = getActiveSituations(profileId);
   const distinct = [
     ...new Map(
       situations
@@ -992,8 +992,21 @@ export function setActiveSituations(profileId: number, situations: string[]) {
         .map((s) => [s.toLowerCase(), s])
     ).values(),
   ];
-  const events = diffSituations(before, distinct, today(profileId));
-  writeTx(() => {
+  writeTx((tx) => {
+    // The before-read and its diff run INSIDE the transaction (#2140, the lib/tx.ts
+    // discipline): this is a whole-set rewrite, and a before-set snapshotted outside
+    // the write lock could diff against a state a concurrent writer (endProtocol's
+    // side of #2135) had already replaced — appending start/stop events that never
+    // happened. readAllForUpdate's Tx token makes that ordering unwritable.
+    const before = readAllForUpdate<{ name: string }>(
+      tx,
+      db.prepare(
+        `SELECT name FROM situations
+          WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
+      ),
+      profileId
+    ).map((r) => r.name);
+    const events = diffSituations(before, distinct, today(profileId));
     const wanted = new Set<number>();
     for (const name of distinct) {
       const id = resolveSituationId(profileId, name);
