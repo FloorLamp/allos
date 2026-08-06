@@ -294,6 +294,22 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["GAD 7", "GAD-7"],
   ["Generalized Anxiety Disorder-7", "GAD-7"],
   ["Generalized Anxiety Disorder 7", "GAD-7"],
+  // Respiratory function (#1850) — the spellings a peak-flow meter's leaflet and a
+  // spirometry report actually print, routed onto the curated entries so an extracted
+  // reading joins the series it belongs to instead of coining a fourth "PEFR".
+  // DISCIPLINE HELD: nothing here merges the ABSOLUTE volume with a PERCENT-PREDICTED
+  // one ("FEV1 % Predicted" is a different quantity in a different unit and is left
+  // surfaced rather than folded onto the litres entry), and FEV1 / FVC / the ratio stay
+  // three distinct identities — a normal FVC must never mark an obstructed ratio fine.
+  ["PEF", "Peak Expiratory Flow"],
+  ["PEFR", "Peak Expiratory Flow"],
+  ["Peak Flow", "Peak Expiratory Flow"],
+  ["Peak Expiratory Flow Rate", "Peak Expiratory Flow"],
+  ["FEV-1", "FEV1"],
+  ["FEV 1", "FEV1"],
+  ["Forced Expiratory Volume in 1 Second", "FEV1"],
+  ["Forced Vital Capacity", "FVC"],
+  ["FEV1/FVC", "FEV1/FVC Ratio"],
   // NOT aliased, on purpose:
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.

@@ -19,6 +19,11 @@ export const AVERAGED_METRICS = new Set([
   // as +0.6 °C, a deviation neither night had. It is also the one metric here that
   // can be NEGATIVE, which is why it must never reach the additive default.
   "skin_temp_delta_c",
+  // Peak expiratory flow (#1850). A flare day holds a morning and an evening blow,
+  // and two 300 L/min readings SUMMED would chart a 600 L/min day nobody blew — the
+  // most misleading possible number on a surface whose whole job is "is this
+  // dropping?". It is a point measure, so the day averages.
+  "peak_flow_lmin",
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,

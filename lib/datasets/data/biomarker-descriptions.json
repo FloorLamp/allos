@@ -1533,6 +1533,30 @@
       "abbreviation": "Hb Electrophoresis",
       "full_name": "Hemoglobin Electrophoresis",
       "description": "A test that separates the types of hemoglobin to screen for sickle-cell and thalassemia traits. Reported as a normal or abnormal variant pattern."
+    },
+    {
+      "name": "Peak Expiratory Flow",
+      "abbreviation": "PEF",
+      "full_name": "Peak Expiratory Flow",
+      "description": "The fastest speed you can blow air out of your lungs, measured in litres per minute with a small handheld peak-flow meter. It reflects how open the large airways are, so it drops when they narrow. It is read against your own personal best rather than a population range, because a normal peak flow varies widely with height, age, and sex."
+    },
+    {
+      "name": "FEV1",
+      "abbreviation": "FEV1",
+      "full_name": "Forced Expiratory Volume in One Second",
+      "description": "The volume of air you can force out of your lungs in the first second of a full, hard breath out, measured by spirometry in litres. It is the single most-used measure of airflow, and it falls when the airways are narrowed or obstructed. Whether a given value is normal depends on a predicted value for your height, age, and sex."
+    },
+    {
+      "name": "FVC",
+      "abbreviation": "FVC",
+      "full_name": "Forced Vital Capacity",
+      "description": "The total volume of air you can force out after taking the deepest breath you can, measured by spirometry in litres. It reflects how much your lungs can hold and move, and it falls in conditions that restrict lung expansion. Like FEV1, it is interpreted against a value predicted for your height, age, and sex."
+    },
+    {
+      "name": "FEV1/FVC Ratio",
+      "abbreviation": "FEV1/FVC",
+      "full_name": "FEV1 to FVC Ratio",
+      "description": "The proportion of your total forced breath out that leaves in the first second, as a percentage. It is the one spirometry number with a universal cutoff: a value under about 70 percent after a bronchodilator is the standard criterion for persistent airflow obstruction. Informational and part of a clinical picture, not a diagnosis on its own."
     }
   ]
 }

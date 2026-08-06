@@ -87,6 +87,10 @@ import BodyTrendCharts, {
 import MetricReadingsTable, {
   type MetricReadingRow,
 } from "@/components/MetricReadingsTable";
+import PeakFlowZoneCard from "@/components/PeakFlowZoneCard";
+import { getPeakFlowPersonalBest } from "@/lib/settings";
+import { suggestedPersonalBest } from "@/lib/peak-flow";
+import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
 import MetricMeasurementPanel from "./MetricMeasurementPanel";
 import {
@@ -122,6 +126,7 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
   "resting-hr": "resting-hr",
   height: "height",
   "head-circ": "head-circ",
+  "peak-flow": "peak-flow",
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
@@ -449,6 +454,20 @@ export default async function BodyMetricDetailPage(props: {
     bpCtx || latest == null
       ? null
       : getMetricJudgment(profile.id, kind, latest.value, latest.date);
+  // THE ZONE (#1850) — the respiratory domain's judgement, which is not a band.
+  // Resolved here beside `judgment` because it answers the same question for its
+  // metric; it is a different LOOKUP because the knowledge is a profile fact rather
+  // than a canonical range (METRIC_KNOWLEDGE says so, in `personal-best`). Null for
+  // every other metric, so nothing else grows a respiratory card.
+  const peakFlow =
+    kind === "peak-flow"
+      ? {
+          personalBest: getPeakFlowPersonalBest(profile.id),
+          // Offered as a SUGGESTION only when it would actually raise the declared
+          // best; nothing here writes it.
+          highest: suggestedPersonalBest(fullSeries.map((p) => p.value)),
+        }
+      : null;
   const latestDisplay =
     latest == null
       ? null
@@ -536,6 +555,25 @@ export default async function BodyMetricDetailPage(props: {
             reading's identity, so it reaches a metric whose readings stream into
             body_metrics as readily as one stored as observations. */}
         <MetricJudgmentCard judgment={judgment} unit={unit} />
+
+        {/* Peak flow's zone (#1850) — a percentage of THIS profile's own best, the
+            one deliberate divergence from the population bands the card above
+            renders. With no personal best on file it states that instead of
+            borrowing a range peak flow does not have. */}
+        {peakFlow && (
+          <PeakFlowZoneCard
+            latest={latest?.value ?? null}
+            personalBest={peakFlow.personalBest}
+            suggestedBest={
+              peakFlow.highest != null &&
+              (peakFlow.personalBest == null ||
+                peakFlow.highest > peakFlow.personalBest)
+                ? peakFlow.highest
+                : null
+            }
+            action={savePeakFlowPersonalBest}
+          />
+        )}
 
         {/* The SAME shared range + event-control composition as the Trends hub.
             BodyTrendCharts registers the annotation kinds it actually draws; the

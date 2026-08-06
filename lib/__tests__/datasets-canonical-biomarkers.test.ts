@@ -81,9 +81,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // bands are UNCHANGED — only the name changed — so the signature moves (name is
 // part of it) but no stored record re-flags. Migration 093 rewrites stored
 // canonical_name so existing rows keep matching their (renamed) entry.
+// Updated for the respiratory domain (#1850): four `vitals` entries — Peak Expiratory
+// Flow, FEV1 and FVC are RANGELESS (no population band exists for any of them, which
+// is the whole argument in lib/peak-flow.ts), so they add no flag-relevant band; the
+// FEV1/FVC Ratio's ref_low 70 is the one real cutoff and is what a stored ratio row
+// now re-flags against. The signature moves because names are part of it.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "83851fcdafca4c6a966dd925d6491c8b5775afe2dd977d11d0a23f08816f33d2"; // phi-scan-ok
+  "d970afa49ba80f52877c50ae1c1b1a90e729204bb1a4200854d7b6825b14d1be"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

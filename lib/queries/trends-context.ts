@@ -28,6 +28,7 @@ import { isGrowthTracked } from "../life-stage";
 import { isGoalLive } from "../goals";
 import { getHomeLocation, getUserAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
+import { PEAK_FLOW_METRIC } from "../peak-flow";
 import {
   conditionMonitorTags,
   presenceLevel,
@@ -60,6 +61,9 @@ const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
   bmr: "bmr_kcal",
   hydration: "hydration_l",
   calories: "nutrition_kcal",
+  // Peak expiratory flow (#1850) — a home stream in the tall store, so its presence
+  // is counted exactly like HRV's rather than needing a reader of its own.
+  "peak-flow": PEAK_FLOW_METRIC,
 };
 
 // Card → the canonical biomarker its chart plots (`getBiomarkerSeries`, which

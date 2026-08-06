@@ -1500,6 +1500,52 @@ become more specific, never more insistent. Informational and never
 prescriptive throughout. Hearing aids are tracked in the **Equipment** registry
 rather than a second medical-device table.
 
+### Respiratory function
+
+Asthma had inhalers, a rescue-dose ledger and an ICD-10 code, and nothing to
+correlate them against. **Peak flow and spirometry** (#1850) are the fourth
+specialty domain on the biomarker substrate, and like the three before them they
+mint **no table and no migration** — but they split across the cadence line,
+which is why they render in two places:
+
+- **Peak expiratory flow** is a home-measured number, blown into a plastic meter
+  once or twice a day during a flare. That is the continuous cadence, so it is a
+  registered stream (`metric_samples`) with its own metric page at
+  **`/trends/metric/peak-flow`** — a windowed chart, trailing period stats and
+  the readings table — and it is logged through the **same combined "Log
+  measurements" form** every other vital uses, with an optional clock time so a
+  morning and an evening blow on one flare day stay **two readings** rather than
+  the evening correcting the morning.
+- **Spirometry** — FEV1, FVC and the FEV1/FVC ratio — arrives on a pulmonology
+  report the document-extraction pipeline already ingests, and lands as
+  `medical_records` readings that trend and flag on Results → Biomarkers exactly
+  like an audiogram threshold or a probing depth. All four share one
+  **Respiratory function** panel, so a peak-flow reading's cross-reference points
+  at the spirometry it was measured alongside.
+
+**The bands are where this domain deliberately differs from its three siblings.**
+Audiometry has the WHO ≤25 dB HL band, periodontal probing the AAP ≤3 mm band,
+tonometry the 10–21 mmHg band — all **population** ranges the value alone
+satisfies or fails, so a flag can be derived once and stored on the row. An
+asthma action plan is not read that way: a blow is a percentage of **your own
+personal best** (green ≥80%, yellow 50–80%, red <50%), so the same 400 L/min is a
+green day for one adult and a red one for another. The verdict therefore
+**cannot be a stored flag** — a personal best moves, and every historical
+reading's verdict moves with it — so the canonical entry curates **no band at
+all**, the flag reconcile correctly says nothing, and the zone is computed at
+read by one pure function on the card that shows it. **With no personal best on
+file there is no verdict**: the card says so plainly and keeps every reading
+visible, rather than borrowing a range peak flow has never had. Your best is a
+declared profile health fact — the card offers your highest recorded reading as a
+suggestion, and your typing is the write.
+
+FEV1 and FVC in litres carry no band either, for the honest reason: "normal" is a
+percent of a value predicted from height, age and sex, and no predicted-value
+equation ships here. The **FEV1/FVC ratio** is the one respiratory value with a
+universal cutoff (under 70% after a bronchodilator), so it is the one that flags.
+Informational throughout — never a diagnosis of asthma or COPD, and never a
+substitute for the action plan a clinician gave you.
+
 ### The problem list and family history carry their clinical detail
 
 A problem is more than a name. A condition records its **side** (left / right /

@@ -225,3 +225,33 @@ export const LONG_RANGE_PROFILE = "Long Range (e2e)";
 // aggregation threshold at 1Y while leaving the 90-day default window dense with
 // raw points — the pair of states the spec contrasts.
 export const LONG_RANGE_DAYS = 240;
+
+// ── Respiratory function: peak flow with NO personal best (issue #1850) ──────
+// A dedicated ADULT profile whose peak-flow readings arrive as a home stream and
+// who has NOT declared a personal best. That absence IS the fixture: the zone card
+// must state that there is no verdict rather than reaching for a population band
+// peak flow does not have, and no shared profile can hold "readings but no declared
+// best" without another spec's writes filling it in.
+// Read-only in its spec, so --repeat-each stays clean.
+export const E2E_LOGIN_PEAK_FLOW = "e2e_peak_flow";
+export const PEAK_FLOW_PROFILE = "Peak Flow (e2e)";
+// The most recent blow, in L/min. Distinctive so the readings table row is
+// addressable by its value, and low enough that a borrowed "normal adult" band —
+// if anything ever tried to supply one — would visibly call it something.
+export const PEAK_FLOW_LATEST_LMIN = 437;
+// How many daily blows the fixture seeds, ending yesterday.
+export const PEAK_FLOW_DAYS = 6;
+
+// ── Respiratory function: the logging path (issue #1850) ─────────────────────
+// The write half's own profile, seeded EMPTY of peak-flow readings so the blow the
+// spec logs is the only one on file — which is what makes the resulting zone an
+// exact, assertable percentage rather than an average over whatever else happens to
+// be there. Its writes are idempotent (a fixed date + clock time upserts on the
+// stream's natural key; a fixed personal best re-saves to the same value), so
+// --repeat-each stays clean.
+export const E2E_LOGIN_PEAK_FLOW_LOG = "e2e_peak_flow_log";
+export const PEAK_FLOW_LOG_PROFILE = "Peak Flow Log (e2e)";
+// The blow the spec logs, and the best it declares: 480 of 600 is exactly 80% —
+// the GREEN FLOOR, the band edge a reader would most easily get wrong.
+export const PEAK_FLOW_LOG_BLOW_LMIN = 480;
+export const PEAK_FLOW_LOG_BEST_LMIN = 600;

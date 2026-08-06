@@ -74,6 +74,7 @@ export async function addMeasurements(formData: FormData) {
     "temperature",
     "sleep_hours",
     "hrv",
+    "peak_flow",
   ].some(filled);
   if (anyVital) {
     wrote =
@@ -88,6 +89,11 @@ export async function addMeasurements(formData: FormData) {
         temperatureTime: str("temp_time"),
         sleepHours: str("sleep_hours"),
         hrv: str("hrv"),
+        // Peak expiratory flow (#1850) — a vital like the rest, carried by the same
+        // form and the same core. Its optional clock time rides along so a second
+        // blow the same day lands as a second reading.
+        peakFlow: str("peak_flow"),
+        peakFlowTime: str("peak_flow_time"),
         // The three #158 functional-fitness markers (grip / chair stand /
         // single-leg balance) are DELIBERATELY absent: they are
         // assessment-cadence measures and moved to the guided Fitness check on
