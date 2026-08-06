@@ -43,12 +43,10 @@ async function deleteSupplement(
   page: import("@playwright/test").Page,
   name: string
 ) {
-  // first-ok: a multi-dose item renders one row per dose; any of ITS rows opens the
-  // same item menu, and the name is unique to this spec's own fixture.
   const row = page
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first();
+    .first(); // first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
