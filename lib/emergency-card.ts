@@ -1,5 +1,9 @@
 import type { AllergyCriticality, Sex } from "./types";
 import type { EmergencyEpisodeSection } from "./illness-episode-format";
+import {
+  hasAdvanceDirectives,
+  type AdvanceDirectives,
+} from "./advance-directives";
 
 // Pure assembly + (de)serialization for the offline Emergency Card (issue #42).
 // The card is a deliberately terse, printable snapshot of the facts a stranger or
@@ -54,6 +58,11 @@ export interface EmergencyCard {
   // formatter over the ONE assembly (emergencyEpisodeSection), so it can't disagree
   // with the episode page.
   activeEpisode?: EmergencyEpisodeSection | null;
+  // The advance-directive summary (issue #1848): code status, healthcare proxy,
+  // organ-donor status, documents-on-file line. Optional so an offline copy cached
+  // by an older build still parses (absent means "this copy predates the field",
+  // which is NOT "nothing is recorded" — the next online visit refreshes it).
+  directives?: AdvanceDirectives | null;
   // ISO timestamp the snapshot was assembled — drives the "as of" staleness note
   // so a reader knows how fresh the offline copy is.
   generatedAt: string;
@@ -78,6 +87,9 @@ export interface EmergencyCardInput {
   } | null;
   // The active-episode section, when an episode is open, else null (issue #859 item 6).
   activeEpisode?: EmergencyEpisodeSection | null;
+  // The stored advance-directive summary (issue #1848), already normalized by
+  // buildAdvanceDirectives at the settings boundary.
+  directives?: AdvanceDirectives | null;
   generatedAt: string;
 }
 
@@ -168,6 +180,11 @@ export function buildEmergencyCard(input: EmergencyCardInput): EmergencyCard {
     conditions,
     contact,
     activeEpisode: input.activeEpisode ?? null,
+    // Kept only when something was actually recorded, so the card never renders an
+    // empty "Advance directives" scaffold (#1848).
+    directives: hasAdvanceDirectives(input.directives ?? null)
+      ? (input.directives ?? null)
+      : null,
     generatedAt: input.generatedAt,
   };
 }
@@ -182,7 +199,12 @@ export function isEmergencyCardEmpty(card: EmergencyCard): boolean {
     card.conditions.length === 0 &&
     !card.bloodType &&
     !card.contact &&
-    !card.activeEpisode
+    !card.activeEpisode &&
+    // A recorded code status / proxy / donor status is content in its own right
+    // (#1848): a card carrying only "DNR · proxy 555-0100" is the opposite of
+    // empty, and the empty-state copy enumerates what the card can hold, so the
+    // two must stay in step.
+    !hasAdvanceDirectives(card.directives ?? null)
   );
 }
 

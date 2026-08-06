@@ -1,5 +1,9 @@
 import { getProfileSummary } from "./profile-summary-load";
-import { getBloodType, getEmergencyContact } from "./settings";
+import {
+  getAdvanceDirectives,
+  getBloodType,
+  getEmergencyContact,
+} from "./settings";
 import { buildEmergencyCard, type EmergencyCard } from "./emergency-card";
 import { openEpisodeForProfile } from "./illness-episode";
 import { emergencyEpisodeSection } from "./illness-episode-format";
@@ -69,6 +73,10 @@ export function getEmergencyCard(
       relation: contact.relation || null,
     },
     activeEpisode,
+    // The advance-directive summary (#1848) — code status, healthcare proxy,
+    // organ-donor status, documents-on-file line. Read from the SAME
+    // profile_settings tier the passport reads, so card and passport agree.
+    directives: getAdvanceDirectives(profileId),
     generatedAt,
   });
 }

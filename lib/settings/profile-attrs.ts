@@ -34,6 +34,11 @@ import {
   resolveProteinGoalLevel,
   type ProteinGoalLevel,
 } from "../protein";
+import {
+  buildAdvanceDirectives,
+  type AdvanceDirectives,
+  type AdvanceDirectivesInput,
+} from "../advance-directives";
 import { zipToHome } from "../home-location";
 import { parseSkinType, type FitzpatrickType } from "../uv-dose";
 import { getHomeLocation, setHomeLocation } from "./location";
@@ -845,6 +850,53 @@ export function setEmergencyContact(
     set("emergency_contact_name", contact.name);
     set("emergency_contact_phone", contact.phone);
     set("emergency_contact_relation", contact.relation);
+  });
+}
+
+// The profile's ADVANCE-DIRECTIVE SUMMARY (issue #1848) — code status, healthcare
+// proxy, organ-donor status, and where the signed paperwork lives. Data-subject
+// health facts, so they ride the profile_settings tier beside the blood type and
+// emergency contact (no schema change); the pure model, the enums and their
+// normalizers live in lib/advance-directives.ts. Deliberately NOT storage of the
+// directive DOCUMENT — that is an uploaded medical document; this is the
+// at-a-glance summary the emergency card exists to carry.
+export function getAdvanceDirectives(profileId: number): AdvanceDirectives {
+  return buildAdvanceDirectives({
+    codeStatus: getProfileSetting(profileId, "code_status"),
+    codeStatusEffective: getProfileSetting(profileId, "code_status_effective"),
+    codeStatusNote: getProfileSetting(profileId, "code_status_note"),
+    proxyName: getProfileSetting(profileId, "healthcare_proxy_name"),
+    proxyRelation: getProfileSetting(profileId, "healthcare_proxy_relation"),
+    proxyPhone: getProfileSetting(profileId, "healthcare_proxy_phone"),
+    organDonor: getProfileSetting(profileId, "organ_donor"),
+    documentsAt: getProfileSetting(profileId, "directive_documents_at"),
+  });
+}
+
+// Write the summary. Every field is optional and a blank CLEARS its key rather
+// than storing an empty string, so "not recorded" stays distinguishable from a
+// recorded blank. Enum values are normalized first — an unrecognized code status
+// or donor status clears rather than persisting something the card can't render.
+// The free-text lines are capped like every other profile_settings string.
+export function setAdvanceDirectives(
+  profileId: number,
+  input: AdvanceDirectivesInput
+): void {
+  const directives = buildAdvanceDirectives(input);
+  writeTx(() => {
+    const set = (key: string, value: string | null) => {
+      const v = (value ?? "").trim().slice(0, 500);
+      if (v) setProfileSetting(profileId, key, v);
+      else deleteProfileSetting(profileId, key);
+    };
+    set("code_status", directives.codeStatus);
+    set("code_status_effective", directives.codeStatusEffective);
+    set("code_status_note", directives.codeStatusNote);
+    set("healthcare_proxy_name", directives.proxy?.name ?? null);
+    set("healthcare_proxy_relation", directives.proxy?.relation ?? null);
+    set("healthcare_proxy_phone", directives.proxy?.phone ?? null);
+    set("organ_donor", directives.organDonor);
+    set("directive_documents_at", directives.documentsAt);
   });
 }
 

@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import {
+  getAdvanceDirectives,
   getBloodType,
   getDisplayFormatPrefs,
   getEmergencyCardEnabled,
@@ -19,6 +20,7 @@ import EmergencyCardView from "@/components/EmergencyCardView";
 import EmergencyCardCacher from "@/components/EmergencyCardCacher";
 import EmergencyPrintButton from "@/components/EmergencyPrintButton";
 import EmergencyCardSettings from "@/app/(app)/medical/background/EmergencyCardSettings";
+import AdvanceDirectivesSettings from "@/app/(app)/medical/background/AdvanceDirectivesSettings";
 
 // The profile summary / "medical passport": a single read view of a
 // profile's latest, most relevant health facts — with the offline Emergency
@@ -63,6 +65,7 @@ export default async function ProfilePage() {
   const emergencyEnabled = getEmergencyCardEnabled(profile.id);
   const bloodType = getBloodType(profile.id);
   const emergencyContact = getEmergencyContact(profile.id);
+  const directives = getAdvanceDirectives(profile.id);
   const card = emergencyEnabled
     ? getEmergencyCard(
         profile.id,
@@ -112,8 +115,8 @@ export default async function ProfilePage() {
             </h2>
             <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               A terse, printable summary — allergies, medications, conditions,
-              blood type, and who to call — that stays readable offline when it
-              matters most.
+              blood type, code status, and who to call — that stays readable
+              offline when it matters most.
             </div>
           </div>
           {emergencyEnabled && card ? <EmergencyPrintButton /> : null}
@@ -133,11 +136,12 @@ export default async function ProfilePage() {
               Turn it on below to keep an offline-readable copy of{" "}
               {profile.name}
               &rsquo;s allergies, active medications, conditions, blood type,
-              and emergency contact on this device — so it&rsquo;s available the
-              moment it&rsquo;s needed, even with no signal. It&rsquo;s off by
-              default: the copy is readable on this device without logging in
-              (that&rsquo;s the point in an emergency, but also the trade-off if
-              the phone is lost while unlocked).
+              code status, healthcare proxy, and emergency contact on this
+              device — so it&rsquo;s available the moment it&rsquo;s needed,
+              even with no signal. It&rsquo;s off by default: the copy is
+              readable on this device without logging in (that&rsquo;s the point
+              in an emergency, but also the trade-off if the phone is lost while
+              unlocked).
             </p>
           </div>
         )}
@@ -151,6 +155,9 @@ export default async function ProfilePage() {
             bloodType={bloodType}
             contact={emergencyContact}
           />
+          {/* Code status / healthcare proxy / organ donor (#1848) — edited beside
+              the card that prints them, on the same profile_settings tier. */}
+          <AdvanceDirectivesSettings directives={directives} />
         </div>
       </section>
     </div>

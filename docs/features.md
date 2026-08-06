@@ -2431,8 +2431,9 @@ not this ZIP. Integrations available today are **Google Health Connect**,
 
 The emergency card is a terse, printable summary of the facts a first responder
 needs when you can't speak for yourself: allergies (worst first), active
-medications with doses, major conditions, blood type, and an emergency contact —
-with an "as of" date so a reader knows how fresh it is. It lives as the
+medications with doses, major conditions, blood type, an emergency contact, and
+your **code status and directives** — with an "as of" date so a reader knows how
+fresh it is. It lives as the
 **Emergency Card section of the Passport page** (**Medical → Passport**,
 `/profile#emergency`; the old `/emergency` route was removed in #1635).
 It reuses the same records as the Passport, so it never disagrees with them.
@@ -2455,6 +2456,35 @@ it refreshes on your next online visit so a medication or allergy change
 propagates. Set your blood type and emergency contact right there on **Medical →
 Passport** (`/profile#emergency`, inline with the card) — the blood type there
 overrides one derived from lab records.
+
+### Code status, healthcare proxy, organ donor
+
+The first questions an emergency department asks about a patient who can't speak
+are not on the problem list: **what is the code status**, **who may decide**, and
+**is this person a donor**. The card carries all three, edited inline on **Medical
+→ Passport** (`/profile#emergency` → **Code status & directives**) and stored as
+per-profile health facts:
+
+- **Code status** — one of Full code, DNR, DNR / DNI, Limited / selective
+  treatment, or Comfort-focused care only, with an optional **effective date**
+  and a free-text **qualifier** for anything five options are too coarse for
+  ("DNR, but intubate for a reversible cause"). The qualifier prints verbatim
+  beneath the status.
+- **Healthcare proxy** — name, relationship, and phone (a minor's legal guardian
+  fits the same three fields); the phone is tap-to-call on screen.
+- **Organ donation** — registered donor / not a donor. Left blank the card says
+  nothing at all, because an unanswered question and a declared "no" are
+  different answers.
+- **Documents on file at** — where the signed paperwork physically is ("POLST on
+  the fridge; copy with Dr. Reed").
+
+Every field is optional, and the section is skipped entirely when nothing is
+recorded. All of it renders on the card (screen, print, and the offline copy) and
+on the passport, where it is its **own share-link section** — so a passport shared
+with a coach or for a school form need not carry it, and a link created before
+the field existed never exposes it. This is a **summary, not document storage**:
+the signed directive itself is an uploaded medical document, and the app says so
+on the card rather than implying it holds the legal instrument.
 
 ## Offline quick-log queue
 
