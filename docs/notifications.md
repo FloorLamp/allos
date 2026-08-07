@@ -159,8 +159,9 @@ marker, so a wrong URL / unreachable HA surfaces on **Settings → Server**.
   channel exactly as they do for Telegram — a suppressed reminder never reaches
   HA either.
 
-Sending is driven by a tick that runs **every 15 minutes** in the default
-Docker setup. Reminder times are minute-precise (#2121): each tick sends
+Sending is driven by a tick that runs **every 5 minutes** in the default
+Docker setup (`TICK_SECONDS` in `docker-notify.sh` is the operator's knob;
+offered values are the divisors of 60 minutes — #2216). Reminder times are minute-precise (#2121): each tick sends
 whatever is scheduled at or just before the current profile-local minute
 (supplement windows at their configured times; the workout reminder on your
 inferred training days/time) and not already sent today, deduped per day/slot
@@ -171,7 +172,7 @@ new profiles inherit the **Settings → Server** instance default), defaulting t
 UTC until set.
 
 **Docker (default):** the `allos-notify` service in `docker-compose.yml` runs
-the tick every 15 minutes automatically — no host crontab needed — and keeps the
+the tick every 5 minutes automatically — no host crontab needed — and keeps the
 Telegram button-tap poller running alongside it (idle unless polling mode is
 selected). It shares the app's image and database; bring it up with the rest of
 the stack (`docker compose up -d`). Remove that service if you'd rather drive
@@ -181,12 +182,15 @@ the tick yourself.
 observes its own cadence, so any steady rhythm works:
 
 ```cron
-*/15 * * * * cd /app && npm run notify
+*/5 * * * * cd /app && npm run notify
 ```
 
 An hourly `0 * * * *` entry also still works exactly as before — but reminder
 times set between the hours will then fire at the next hour (up to ~an hour
 late), and Settings → Notifications shows a warning naming the affected times.
+The time picker's steps follow the cadence the scheduler is OBSERVED to keep, so
+it offers the minutes your server can actually hit — and a typed off-grid time
+is still saved and still fires, just at the next tick (#2216).
 Run exactly one tick scheduler (the Docker sidecar OR a crontab, never both).
 
 Manual sends for testing:

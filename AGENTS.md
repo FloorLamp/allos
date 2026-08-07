@@ -335,7 +335,8 @@ See `docs/internals/integrations-sync.md`.
 
 ### Notifications
 
-The notification tick (every 15 minutes in the Docker sidecar; any steady rhythm
+The notification tick (every 5 minutes in the Docker sidecar — an operator
+choice, offered in divisors of 60; any steady rhythm
 up to hourly works — it observes its own cadence) can deliver through Telegram,
 Web Push, Home Assistant, and email (login-scoped, content-free by default —
 see `docs/internals/email.md`). It evaluates dates and slots in each profile's

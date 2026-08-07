@@ -1,9 +1,21 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 import {
   settledCheckSave,
   settledFillSave,
   settledSelectSave,
 } from "./helpers";
+
+function withDb<T>(fn: (db: Database.Database) => T): T {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
 
 // Wake-aware mornings (issue #1117) at minute grain (#2121): the wake-derived
 // "Auto" state on the Morning intake slot, a manual minute-precise time, the
@@ -116,5 +128,94 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
       "",
       kindsCard
     );
+  });
+
+  // #2216: the time picker's grid follows the scheduler's OBSERVED cadence — as
+  // guidance (the input's step), never validation (a typed off-grid time is
+  // saved, and the warning names it rather than any control refusing it).
+  // BLAST RADIUS: `notify_tick_interval_min` (global settings; restored to its
+  // prior state in the finally) and the Morning slot (reset to Auto).
+  test("picker grid follows the observed cadence; an off-grid typed time saves and warns", async ({
+    page,
+  }) => {
+    test.slow(); // local `next dev` compiles the route on first hit
+
+    // The scheduler RECORDS its observed cadence each tick; the grid reads that
+    // record — never TICK_SECONDS — so this is exactly how a live 5-minute
+    // sidecar presents.
+    const prev = withDb(
+      (db) =>
+        db
+          .prepare("SELECT value FROM settings WHERE key = ?")
+          .get("notify_tick_interval_min") as { value: string } | undefined
+    );
+    withDb((db) =>
+      db
+        .prepare(
+          `INSERT INTO settings (key, value) VALUES ('notify_tick_interval_min', '5')
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        )
+        .run()
+    );
+    try {
+      await page.goto("/settings/notifications");
+      const scheduleCard = page.getByTestId("notify-schedule");
+      await expect(scheduleCard).toBeVisible();
+
+      await settledSelectSave(
+        page,
+        page.getByTestId("supp-morning-hour"),
+        "time",
+        scheduleCard
+      );
+      const morningTime = page.getByTestId("supp-morning-hour-time");
+      // The observed 5-minute cadence renders a 5-minute grid (step is seconds).
+      await expect(morningTime).toHaveAttribute("step", "300");
+
+      // A typed off-grid time is SAVED — it round-trips a reload — and the
+      // warning then NAMES it, with the grid the steps copy points at.
+      await settledFillSave(page, morningTime, "07:42", scheduleCard);
+      await page.reload();
+      await expect(page.getByTestId("supp-morning-hour-time")).toHaveValue(
+        "07:42"
+      );
+      await expect(page.getByTestId("supp-morning-hour-time")).toHaveAttribute(
+        "step",
+        "300"
+      );
+      const warning = page.getByTestId("sub-hourly-tick-warning");
+      await expect(warning).toContainText("07:42");
+      await expect(warning).toContainText("5-minute steps");
+
+      // A grid-aligned minute is silent: the cadence can hit 07:40 exactly.
+      await settledFillSave(
+        page,
+        page.getByTestId("supp-morning-hour-time"),
+        "07:40",
+        scheduleCard
+      );
+      await expect(page.getByTestId("sub-hourly-tick-warning")).toHaveCount(0);
+
+      // Reset the shared fixture: Morning back to Auto (profile 1's default).
+      await settledSelectSave(
+        page,
+        page.getByTestId("supp-morning-hour"),
+        "auto",
+        scheduleCard
+      );
+    } finally {
+      withDb((db) => {
+        if (prev === undefined) {
+          db.prepare("DELETE FROM settings WHERE key = ?").run(
+            "notify_tick_interval_min"
+          );
+        } else {
+          db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(
+            prev.value,
+            "notify_tick_interval_min"
+          );
+        }
+      });
+    }
   });
 });

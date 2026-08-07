@@ -17,7 +17,6 @@ import {
   digestTimeSuggestionLine,
   digestTimeSuggestionSuppressed,
   parseDigestTimeEpisodeKey,
-  proposalGridMinutes,
   snapProposalMinute,
   DIGEST_TIME_MATERIAL_MOVE_MIN,
   DIGEST_TIME_PREFIX,
@@ -29,6 +28,7 @@ import {
   type ArrivalNight,
   type ArrivalStatistics,
 } from "@/lib/notifications/digest-schedule";
+import { tickGridMinutes } from "@/lib/notifications/schedule";
 import { tierForDedupeKey } from "@/lib/rule-finding-prefixes";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import type { SuppressionRecord } from "@/lib/upcoming-suppress";
@@ -184,28 +184,18 @@ describe("the four ways there is nothing to say", () => {
 });
 
 describe("grid snapping (#2216) — never a minute the tick cannot hit", () => {
-  it("offers only divisors of 60, coarsening a non-divisor cadence", () => {
-    expect(proposalGridMinutes(5)).toBe(5);
-    expect(proposalGridMinutes(15)).toBe(15);
-    expect(proposalGridMinutes(1)).toBe(1);
-    // 7 and 23 are perfectly valid tick rates and have no stable minute-of-hour grid,
-    // so the proposal coarsens to one the scheduler can keep rather than inventing one.
-    expect(proposalGridMinutes(7)).toBe(6);
-    expect(proposalGridMinutes(23)).toBe(20);
-    // Unknown / slower-than-hourly reads as hourly, like everything else in the
-    // scheduling layer.
-    expect(proposalGridMinutes(0)).toBe(60);
-    expect(proposalGridMinutes(600)).toBe(60);
-  });
+  // The grid itself (offered divisors, coarsening a non-divisor cadence, the
+  // hourly fallback) is pinned where it lives: lib/__tests__/schedule.test.ts.
+  // Here: only what the PROPOSAL adds on top of it.
 
   it("snaps UP, never down — the proposal is never earlier than the p90", () => {
     for (const tick of [1, 2, 5, 15, 30, 60, 7]) {
       for (let m = 0; m < 1440; m += 7) {
         const snapped = snapProposalMinute(m, tick);
         expect(snapped).toBeGreaterThanOrEqual(
-          Math.min(m, 1440 - proposalGridMinutes(tick))
+          Math.min(m, 1440 - tickGridMinutes(tick))
         );
-        expect(snapped % proposalGridMinutes(tick)).toBe(0);
+        expect(snapped % tickGridMinutes(tick)).toBe(0);
         expect(snapped).toBeLessThan(1440);
       }
     }

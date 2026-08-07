@@ -14,6 +14,8 @@ import {
   WAKING_START_HOUR,
   WAKING_END_HOUR,
   DEFAULT_TICK_MINUTES,
+  OFFERED_TICK_MINUTES,
+  tickGridMinutes,
 } from "@/lib/notifications/schedule";
 
 const m = (h: number, min = 0) => h * 60 + min;
@@ -115,24 +117,125 @@ describe("clampTickMinutes / observedTickMinutes", () => {
     expect(observedTickMinutes(now - 4 * 3600000, now)).toBe(60); // outage clamps
     expect(observedTickMinutes(now + 1000, now)).toBe(60); // clock skew
   });
+
+  it("stays permissive: every integer in [1, 60], non-divisors included (#2216)", () => {
+    // The divisor constraint belongs on what the app OFFERS, never on what it
+    // TOLERATES — clampTickMinutes measures reality, and reality includes `*/7`.
+    for (let n = 1; n <= 60; n++) {
+      expect(clampTickMinutes(n), `cadence ${n}`).toBe(n);
+    }
+  });
 });
 
-describe("subHourlySlotsAtRisk — the operator honesty check (#2121 constraint 4)", () => {
-  it("flags sub-hourly times under an hourly scheduler and none under a 15-minute one", () => {
+describe("OFFERED_TICK_MINUTES / tickGridMinutes — the operator cadences and their grid (#2216)", () => {
+  it("offers exactly the divisors of 60 — the epoch-aligned loop has a stable minute-of-hour grid only for those", () => {
+    const divisors = Array.from({ length: 60 }, (_, i) => i + 1).filter(
+      (n) => 60 % n === 0
+    );
+    expect([...OFFERED_TICK_MINUTES]).toEqual(divisors);
+  });
+
+  it("derives the grid from the observed cadence: an offered cadence is its own grid", () => {
+    for (const tick of OFFERED_TICK_MINUTES) {
+      expect(tickGridMinutes(tick), `cadence ${tick}`).toBe(tick);
+    }
+  });
+
+  it("degrades with the observation: a wedged/hourly scheduler reads as the hourly grid", () => {
+    // A sidecar CONFIGURED for 5 but observed at 20 must imply the 20-minute
+    // grid, and an unknown or slower-than-hourly observation the hourly one.
+    expect(tickGridMinutes(20)).toBe(20);
+    expect(tickGridMinutes(60)).toBe(60);
+    expect(tickGridMinutes(0)).toBe(60);
+    expect(tickGridMinutes(600)).toBe(60);
+  });
+
+  it("coarsens a tolerated non-divisor cadence to the largest divisor below it", () => {
+    // 7 and 23 are valid tick rates with no stable minute-of-hour grid of their
+    // own; the grid is never finer than the scheduler that has to honour it.
+    expect(tickGridMinutes(7)).toBe(6);
+    expect(tickGridMinutes(23)).toBe(20);
+    expect(tickGridMinutes(59)).toBe(30);
+  });
+
+  it("resolves a grid-aligned slot to attempt offset 0 at its cadence — exact, not approximate", () => {
+    // The "every slot fires exactly on time" claim: under epoch-aligned ticks at
+    // an offered cadence, the FIRST due tick for a grid-aligned slot is the slot
+    // minute itself.
+    for (const tick of OFFERED_TICK_MINUTES) {
+      const slot = m(7, 0) + tickGridMinutes(tick); // grid-aligned, sub-hourly for tick < 60
+      const firstDue = [];
+      for (let now = 0; now < 1440; now += tick) {
+        if (slotAttempt(slot, now, tick) === "first") firstDue.push(now);
+      }
+      expect(firstDue[0], `cadence ${tick}`).toBe(slot);
+    }
+  });
+
+  it("keeps an off-grid stored time valid at every cadence — late-but-correct, never refused", () => {
+    // The grid steers the picker; it NEVER validates a stored time. 07:39 at a
+    // 5-minute cadence still gets its two attempt bands, first firing 07:40.
+    for (const [tick, firstTick] of [
+      [5, m(7, 40)],
+      [15, m(7, 45)],
+      [60, m(8, 0)],
+    ] as const) {
+      const due = [];
+      for (let now = 0; now < 1440; now += tick) {
+        if (slotDue(m(7, 39), now, tick)) due.push(now);
+      }
+      expect(due.length, `cadence ${tick}`).toBe(2);
+      expect(due[0], `cadence ${tick}`).toBe(firstTick);
+    }
+  });
+});
+
+describe("subHourlySlotsAtRisk — the operator honesty check (#2121 constraint 4, derived rule #2216)", () => {
+  it("flags sub-hourly times under an hourly scheduler and grid-aligned ones never", () => {
     expect(subHourlySlotsAtRisk([m(7, 30), m(13), null], 60)).toEqual([
       m(7, 30),
     ]);
     expect(subHourlySlotsAtRisk([m(7, 30), m(13)], 15)).toEqual([]);
   });
 
-  it("never flags on-the-hour times at any cadence", () => {
-    expect(subHourlySlotsAtRisk([m(7), m(23)], 60)).toEqual([]);
+  it("warns for exactly the off-grid times at the observed cadence", () => {
+    // The tolerance is DERIVED, not declared: a time warns iff the observed
+    // cadence cannot hit it exactly. 07:40 sits on the 5-minute grid and off the
+    // 15-minute one.
+    expect(subHourlySlotsAtRisk([m(7, 40)], 5)).toEqual([]);
+    expect(subHourlySlotsAtRisk([m(7, 40)], 15)).toEqual([m(7, 40)]);
+    // 07:35: exact at 5, 10 minutes late at 15 — named, never refused.
+    expect(subHourlySlotsAtRisk([m(7, 35)], 5)).toEqual([]);
+    expect(subHourlySlotsAtRisk([m(7, 35)], 15)).toEqual([m(7, 35)]);
+    // A minute nothing but the 1-minute cadence can hit.
+    expect(subHourlySlotsAtRisk([m(7, 39)], 1)).toEqual([]);
+    expect(subHourlySlotsAtRisk([m(7, 39)], 5)).toEqual([m(7, 39)]);
   });
 
-  it("flags a time past the day's last tick even at a fine cadence", () => {
-    // 23:50 under 15-minute ticks: last tick is 23:45 and slots never wrap.
+  it("never flags on-the-hour times at any cadence", () => {
+    for (let tick = 1; tick <= 60; tick++) {
+      expect(
+        subHourlySlotsAtRisk([m(7), m(23)], tick),
+        `cadence ${tick}`
+      ).toEqual([]);
+    }
+  });
+
+  it("judges a tolerated non-divisor cadence by the grid it degrades to", () => {
+    // A 7-minute tick lands on different minutes each hour; its stable grid is
+    // 6 minutes, so 07:30 is exact and 07:35 is not.
+    expect(subHourlySlotsAtRisk([m(7, 30)], 7)).toEqual([]);
+    expect(subHourlySlotsAtRisk([m(7, 35)], 7)).toEqual([m(7, 35)]);
+  });
+
+  it("flags a time past the day's last tick even when it sits on the grid", () => {
+    // 23:50 under 15-minute ticks is off-grid AND past the last tick (23:45).
     expect(subHourlySlotsAtRisk([m(23, 50)], 15)).toEqual([m(23, 50)]);
-    expect(subHourlySlotsAtRisk([m(23, 40)], 15)).toEqual([]);
+    // At an offered (divisor) cadence every grid point has a tick, so the
+    // no-band case needs a tolerated non-divisor: at a 50-minute cadence the
+    // day's last tick is 23:20, stranding a grid-aligned (30-minute) 23:30.
+    expect(subHourlySlotsAtRisk([m(23, 30)], 50)).toEqual([m(23, 30)]);
+    expect(subHourlySlotsAtRisk([m(23, 45)], 15)).toEqual([]);
   });
 });
 
