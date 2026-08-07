@@ -241,6 +241,20 @@ caller that genuinely wants the best available instant calls `bestKnownInstant`,
 which reports which column it used. `localDayOf` stays the single instant→day
 path.
 
+INGESTING one is a third question, asked at the door before any destination is
+known. `lib/source-time.ts` owns it: both clinical-document parsers return a
+`SourceTime` — `day`, `instant` (a time AND an offset), or `local` (a time with
+NO offset, which a `string | null` return can never express) — and the
+DESTINATION narrows, through `sourceDay` or `sourceInstant`. Preserve at the
+source's own grain; narrow per the grain the destination declares. A day-grained
+destination takes the source's own stated digits and never the offset:
+`20260101003000+0900` is the day 2026-01-01 AND the instant 2025-12-31T15:30:00Z,
+and both are right. A `local` source leaves an instant column NULL — never
+resolve a zoneless clinical clock against the profile's timezone.
+`lib/__tests__/ingest-narrowing-scan.test.ts` is the ratchet: a frozen ledger of
+the ingest parsers that still narrow, each with a reason, whose count may only
+shrink.
+
 ### Freshness
 
 "Is this dated reading still current?" is ONE question too. `lib/freshness.ts`
