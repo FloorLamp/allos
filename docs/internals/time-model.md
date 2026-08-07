@@ -1,7 +1,7 @@
 # The time model
 
-Status: partial (phase 1 shipping — storage and the writer chokepoint; the
-column-name vocabulary and the row-level readers are phases 2 and 3 of #2205)
+Status: partial (phases 1 and 3 shipped — storage, the writer chokepoint, the declared
+column index and the row-level readers. Phase 2, the column-name vocabulary, is open.)
 
 Two questions look the same and are not:
 
@@ -94,6 +94,32 @@ Known gaps, stated rather than implied:
 - Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
   from source. A converted table's `DEFAULT` is pinned by its own migration test.
 
+## One reader per question (phase 3)
+
+`lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
+about a ROW — "when did this dose happen", "which day does this serving count for" — and
+until phase 3 nothing owned it, so `COALESCE(given_at, taken_at)` was hand-rolled in six
+places and food paired `eaten_at ?? logged_at` in four more.
+
+`lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
+asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
+`bestKnownInstant`, `rowLocalDay`. A surface names a quantity, never a column, so phase
+2's renames reach it through one registry entry.
+
+Two rules are worth repeating here:
+
+- **`eventInstant` never falls back.** A row with no event instant — a web-logged serving
+  nobody stated an eating time for, a quick-path practice tick — comes back as an explicit
+  absence with a reason. Answering it with the record instant is how a distribution of
+  eating times becomes a distribution of tapping times. `bestKnownInstant` still offers the
+  substitution and reports which column it used.
+- **`localDayOf` (`lib/local-day-window.ts`) stays the single instant→day path.** Phase 3
+  adds no synonym for it; `rowLocalDay` routes through it and prefers a row's stored `date`
+  whenever it has one, because a day attribution is a decision the app already made (#94).
+
+See `docs/internals/time-columns.md` for the per-column index and the entries that most
+reward reading before writing SQL.
+
 ## The day-midnight anchor
 
 Three write paths file a day-only reading at `` `${date}T00:00:00` ``
@@ -111,4 +137,6 @@ dedupe. Folding the three into one helper is phase-3 work.
 - #1534 / `lib/__tests__/sql-clock-seam.test.ts` — the sibling ratchet: WHICH
   clock a now-read comes from. This one is about WHAT SHAPE the value is stored
   in. A write site usually has to satisfy both.
+- `docs/internals/time-columns.md` — the per-column index (generated from
+  `lib/time-columns.ts`) and the row-level readers over it.
 - `docs/versioned-migrations-spec.md` — how a converting migration ships.

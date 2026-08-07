@@ -25,6 +25,14 @@ import {
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const DECLARATION = "lib/side-state.ts";
 
+// The OTHER schema census: lib/time-columns.ts (#2205) names every temporal column in
+// the database, so a column NAMED `dismissed_at` appearing there is data ABOUT the
+// schema, not a side-state key being used. Excluded for the same reason the census
+// excludes its own declaration above — which keeps NON_SIDE_STATE_KEYS empty by
+// construction rather than "empty except where argued", a property only worth having
+// while it is absolute.
+const SCHEMA_CENSUS = "lib/time-columns.ts";
+
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -55,7 +63,8 @@ function sourceFiles(): { rel: string; text: string }[] {
   for (const d of ["lib", "scripts"]) {
     for (const full of walk(path.join(REPO, d))) {
       const r = rel(full);
-      if (r === DECLARATION) continue; // the census may spell its own shapes
+      // The census may spell its own shapes; the schema census may name its columns.
+      if (r === DECLARATION || r === SCHEMA_CENSUS) continue;
       out.push({ rel: r, text: fs.readFileSync(full, "utf8") });
     }
   }
