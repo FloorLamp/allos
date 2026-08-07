@@ -46,7 +46,7 @@ export interface HouseholdEpisodeItem {
   episodeId: number;
   situation: string;
   start: string | null; // inclusive first active day (null = before the log)
-  end: string | null; // EXCLUSIVE end (null = ongoing)
+  end: string | null; // inclusive last active day (null = ongoing)
   firstDay: string | null;
   lastActiveDay: string | null;
   ongoing: boolean;
@@ -144,17 +144,18 @@ export function gatherHouseholdHistory(
 export const HOUSEHOLD_RECENTLY_SICK_DAYS = 14;
 
 // PURE recency check for one profile: is it currently sick (an episode covers today),
-// or did its most recent episode close within `windowDays` of today? Split out so the
-// boundary is unit-testable without a DB.
+// or was its most recent episode's LAST ACTIVE day (#2232: the inclusive end_date)
+// within `windowDays` of today? Split out so the boundary is unit-testable without a
+// DB.
 export function isRecentlySickOn(
   hasOpenToday: boolean,
-  closedEndDate: string | null,
+  closedLastActiveDay: string | null,
   todayStr: string,
   windowDays: number = HOUSEHOLD_RECENTLY_SICK_DAYS
 ): boolean {
   if (hasOpenToday) return true;
-  if (!closedEndDate) return false;
-  const ago = daysBetweenDateStr(closedEndDate, todayStr);
+  if (!closedLastActiveDay) return false;
+  const ago = daysBetweenDateStr(closedLastActiveDay, todayStr);
   return ago != null && ago >= 0 && ago <= windowDays;
 }
 
@@ -172,7 +173,7 @@ export function isHouseholdRecentlySick(
     const hasOpenToday = getEpisodeRowForDate(pid, day) != null;
     const closed = mostRecentClosedEpisodeRow(pid);
     if (
-      isRecentlySickOn(hasOpenToday, closed?.ended_at ?? null, day, windowDays)
+      isRecentlySickOn(hasOpenToday, closed?.end_date ?? null, day, windowDays)
     ) {
       return true;
     }

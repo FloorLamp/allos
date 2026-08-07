@@ -26,7 +26,7 @@
 // only, not medical advice or diagnosis, and never a contraceptive method.
 
 import { daysBetweenDateStr, shiftDateStr } from "./date";
-import { rangeContainsDate, INCLUSIVE_END } from "./date-range";
+import { rangeContainsDate } from "./date-range";
 
 export type CyclePhase = "menstrual" | "follicular" | "luteal";
 export type FlowLevel = "light" | "medium" | "heavy";
@@ -120,7 +120,7 @@ export function openPeriodClaimEnd(periodStart: string): string {
 
 // A recorded period as the chassis's DateRange (issue #943). The cycle domain's declared
 // end-bound is INCLUSIVE — `period_end` is the last bleeding day — so bleeding-day
-// membership is `rangeContainsDate(periodRange(p), date, INCLUSIVE_END)`.
+// membership is `rangeContainsDate(periodRange(p), date)`.
 //
 // An OPEN period (null `period_end`) no longer means "onward forever" (#1682 fix a): its
 // claim is CAPPED at openPeriodClaimEnd, so a forgotten "Period ended" tap stops reading
@@ -161,7 +161,7 @@ export function periodOnDate(
   const p = sorted[idx];
   // `idx` is the latest-started period on-or-before `date`; it covers `date` when the
   // date is within its inclusive [period_start, period_end] window (the chassis check).
-  return rangeContainsDate(periodRange(p), date, INCLUSIVE_END) ? p : null;
+  return rangeContainsDate(periodRange(p), date) ? p : null;
 }
 
 // The cycle PHASE on `date`, or null when it can't be derived (before the first recorded
@@ -200,7 +200,7 @@ export function cyclePhaseOnDate(
   // Menstrual — within the recorded period's inclusive [start, end] window (`idx`
   // already guarantees period_start ≤ date). An ongoing period (null end) covers its
   // plausible window only — only ever the latest cycle.
-  if (rangeContainsDate(periodRange(p), date, INCLUSIVE_END))
+  if (rangeContainsDate(periodRange(p), date))
     return "menstrual";
 
   // Post-period.

@@ -333,15 +333,20 @@ export interface CoachingInput {
 // keys on, so they can't drift (#221).
 
 // How many days after an episode closes the ease-back re-entry rec replaces the
-// immediately-resumed gap nags — a short ramp, then normal coaching resumes. Day 0
-// is the close day (first well day); the window is [0, EASE_BACK_RAMP_DAYS).
+// immediately-resumed gap nags — a short ramp, then normal coaching resumes. The ramp
+// is anchored on the episode's LAST ACTIVE day (#2232: `endDate` is the inclusive
+// end_date): it covers the EASE_BACK_RAMP_DAYS days after it, i.e. elapsed ∈
+// [1, EASE_BACK_RAMP_DAYS] — the same three post-illness days as before the #2232
+// conversion. Elapsed 0 (today IS the last active day) never reaches here: the closed
+// row still covers today, so the mode reads "held".
 export const EASE_BACK_RAMP_DAYS = 3;
 
 export interface IllnessCoachingContext {
   // An open flagged-illness episode currently covers today → hold coaching nags.
   openEpisode: boolean;
   // The most-recently CLOSED flagged-illness episode (its stable row id + its
-  // exclusive end / first-well day, YYYY-MM-DD), for the ease-back ramp. Null when
+  // inclusive last active day, YYYY-MM-DD — the stored end_date), for the ease-back
+  // ramp. Null when
   // the profile has never had a closed episode. Ignored while openEpisode is true.
   // `startDate` (#1722 item 7) lets the ease-back note say how long the person was
   // down ("Back after 6 days —"); absent for a row with no recorded start.
@@ -372,14 +377,16 @@ export function illnessCoachingMode(
   if (ctx.openEpisode) return { mode: "held", easeBackEpisodeId: null };
   if (ctx.lastClosed) {
     const ago = daysSince(ctx.lastClosed.endDate, today);
-    if (ago >= 0 && ago < EASE_BACK_RAMP_DAYS) {
+    if (ago >= 0 && ago <= EASE_BACK_RAMP_DAYS) {
       const span = ctx.lastClosed.startDate
         ? daysSince(ctx.lastClosed.startDate, ctx.lastClosed.endDate)
         : null;
       return {
         mode: "ease-back",
         easeBackEpisodeId: ctx.lastClosed.episodeId,
-        // Inclusive of both ends: a same-day episode is one day.
+        // Inclusive of both ends: a same-day episode is one day. (`endDate` is the
+        // last active day since #2232, so span + 1 IS the day count — the old
+        // exclusive input overcounted by one.)
         easeBackEpisodeDays: span != null && span >= 0 ? span + 1 : null,
       };
     }

@@ -547,18 +547,18 @@ export const TIME_COLUMNS = {
   ],
   illness_episodes: [
     {
-      column: "started_at",
+      column: "start_date",
       semantic: "window-start",
       grain: "day",
       convention: "n/a",
-      note: "A DAY despite the `_at` suffix: the inclusive first active day, NULL when the episode predates the log.",
+      note: "The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 168 (#2232).",
     },
     {
-      column: "ended_at",
+      column: "end_date",
       semantic: "window-end",
       grain: "day",
       convention: "n/a",
-      note: "A DAY, and EXCLUSIVE — the first INACTIVE day, NULL while ongoing. Comparing it as an instant, or as an inclusive end, is wrong twice.",
+      note: "The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 168 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day).",
     },
   ],
   imaging_studies: [

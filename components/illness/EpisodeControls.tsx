@@ -44,8 +44,8 @@ export default function EpisodeControls({
   // page — the action then uses the active profile (requireWriteAccess).
   profileId?: number;
   editor?: {
-    startedAt: string | null;
-    endedAt: string | null;
+    startDate: string | null;
+    endDate: string | null;
     note: string | null;
     outcome: string | null;
   };
@@ -272,8 +272,8 @@ export default function EpisodeControls({
         <EpisodeEditor
           episodeId={episodeId}
           ongoing={ongoing}
-          startedAt={editor.startedAt}
-          endedAt={editor.endedAt}
+          startDate={editor.startDate}
+          endDate={editor.endDate}
           note={editor.note}
           outcome={editor.outcome}
           profileId={profileId}

@@ -901,20 +901,20 @@ function skinHits(profileId: number, query: string): SearchHit[] {
 function episodeHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, situation, started_at, ended_at, outcome
+      `SELECT id, situation, start_date, end_date, outcome
          FROM illness_episodes
         WHERE profile_id = ?
           AND (situation LIKE ? ESCAPE '\\'
                OR note LIKE ? ESCAPE '\\'
                OR outcome LIKE ? ESCAPE '\\')
-        ORDER BY COALESCE(started_at, '') DESC, id DESC
+        ORDER BY COALESCE(start_date, '') DESC, id DESC
         LIMIT ?`
     )
     .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
     id: number;
     situation: string;
-    started_at: string | null;
-    ended_at: string | null;
+    start_date: string | null;
+    end_date: string | null;
     outcome: string | null;
   }[];
   return rows.map((r) => ({
@@ -923,7 +923,7 @@ function episodeHits(profileId: number, like: string): SearchHit[] {
     ...episodeHitText(r),
     // The episode detail page (#856) — its ledger, fever curve, and linked visits.
     href: episodeHref(r.id),
-    date: isoDate(r.started_at),
+    date: isoDate(r.start_date),
   }));
 }
 
