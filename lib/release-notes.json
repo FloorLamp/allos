@@ -37,6 +37,27 @@
           "body": "When the notification tick declines to send something, that decision is now recorded and readable on its own operator page, so a digest that went out late or empty can be explained instead of guessed at.",
           "kind": "feature",
           "issues": [2209]
+        },
+        {
+          "pr": 2252,
+          "title": "The app tells you when your digest is going out too early",
+          "body": "If your morning digest usually sends before last night’s sleep has finished syncing, Settings → Notifications now says so and offers the measured time in one tap — “Last night’s sleep usually lands by 07:40.” The same line rides the digest itself, so you see it without going looking. Nothing moves until you tap, and dismissing it keeps it away unless your sleep starts landing much later.",
+          "kind": "feature",
+          "issues": [2217]
+        },
+        {
+          "pr": 2251,
+          "title": "Imported clinical documents keep the time they stated",
+          "body": "The C-CDA and FHIR importers used to cut every timestamp back to a bare date at the door, so a lab drawn at 14:30 was stored as “that day” and the time was gone. They now keep whatever the document actually said. A document that states a time without a timezone stores the day only rather than guessing at an hour. Re-importing a document you already have recovers the times it originally carried.",
+          "kind": "fix",
+          "issues": [2243]
+        },
+        {
+          "pr": 2250,
+          "title": "A garbled time is refused instead of quietly becoming midnight",
+          "body": "A malformed clock value used to resolve to midnight on the stated date rather than failing, which could put a dose, a corrected meal time, or a fever reading at the wrong hour. It is now refused: a workout whose start time can’t be read no longer shows as in progress with an invented duration, and an unreadable fever time is left out of the return-to-school countdown rather than guessed at noon.",
+          "kind": "fix",
+          "issues": [2245]
         }
       ]
     },
