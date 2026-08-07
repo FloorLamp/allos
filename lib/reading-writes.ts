@@ -233,11 +233,12 @@ export interface ReadingWriteInput {
    */
   measuredAt?: string | null;
   /**
-   * The STATED event instant for `body_metrics.occurred_at` (#2235) — any ISO
-   * shape, normalized to the canonical `utcInstant` form after the acceptance
-   * gate. `undefined` = no statement (leave an existing value alone), `null` =
-   * explicit clear. Descriptive only: never part of a dedupe key, and it does not
-   * move a reading's `date`. See `resolveStatedOccurredAt`.
+   * The STATED event instant for the destination's `occurred_at` column —
+   * `body_metrics` (#2235) and `medical_records` (#2154) — any ISO shape,
+   * normalized to the canonical `utcInstant` form after the acceptance gate.
+   * `undefined` = no statement (leave an existing value alone; NULL on a fresh
+   * row), `null` = explicit clear. Descriptive only: never part of a dedupe key,
+   * and it does not move a reading's `date`. See `resolveStatedOccurredAt`.
    */
   occurredAt?: string | null;
   /** The row's `source` stamp: an integration id, 'manual', `document:<id>`, or null. */
@@ -437,16 +438,27 @@ export function recordReading(
         // The name the SOURCE printed, when it differs from the canonical — the row's
         // `name` column has always carried that, with the canonical beside it.
         const reported = p?.reportedName?.trim();
+        // The stated instant (#2154), through the SAME acceptance gate the
+        // body_metrics branch runs: a refused statement costs the statement,
+        // never the reading. An observation is always a fresh INSERT, so
+        // "no statement" and "explicit clear" both land as honest NULL.
+        const stated = resolveStatedOccurredAt(
+          profileId,
+          input.date,
+          input.occurredAt
+        );
         const info = db
           .prepare(
             `INSERT INTO medical_records
-               (profile_id, date, category, name, value, value_num, unit, canonical_name,
+               (profile_id, date, occurred_at, category, name, value, value_num, unit, canonical_name,
                 source, external_id, notes, reference_range, encounter_id, provider_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
           )
           .run(
             profileId,
             input.date,
+            // Bound, never defaulted (#2205): the stated instant or honest NULL.
+            stated ?? null,
             input.category ?? "lab",
             reported || placement.canonical,
             String(input.value),

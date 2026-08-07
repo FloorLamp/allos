@@ -16,7 +16,13 @@ import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
-import { normalizeVitalsInput, type VitalsRawInput } from "@/lib/vitals-input";
+import {
+  normalizeClockTime,
+  normalizeVitalsInput,
+  VITAL_CANONICAL,
+  type VitalsRawInput,
+} from "@/lib/vitals-input";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
@@ -255,13 +261,31 @@ function upsertManualSample(
 // PEAK FLOW (#1850) is the first vital whose placement is a STREAM, and it rides the
 // same `recordReading` call the observation half does — which is the point: the caller
 // names "Peak Expiratory Flow" and the policy routes it to `metric_samples`, exactly as
-// it routes a blood pressure to `medical_records`. Its optional "HH:MM" becomes the
-// row's `start_time`, so a second blow the same day is a second reading rather than a
+// it routes a blood pressure to `medical_records`. Its "HH:MM" becomes the row's
+// `start_time`, so a second blow the same day is a second reading rather than a
 // correction of the first (the natural key includes the instant).
+//
+// THE SITTING'S STATED TIME (#2154). `occurredAt` is the one WhenControl statement
+// the measurements form posts for the whole sitting, on the exact contract the
+// body-metrics core declares: `undefined` = no statement, `null` = explicitly no
+// time, a string = the stated instant. Every observation this submission writes
+// (BP, glucose, SpO₂, temperature) carries it into `medical_records.occurred_at`
+// through `recordReading`'s acceptance gate — a refused statement (future, or off
+// the row's day) costs the statement, never the reading — and the peak-flow blow
+// derives its profile-local `start_time` from the SAME accepted instant, so one
+// sitting states one "when" everywhere it lands.
+//
+// LEGACY per-measure times: an intent queued before the fold carries
+// `temperatureTime` / `peakFlowTime` ("HH:MM") instead. Those are the user's own
+// wall clock on the profile's own day, so — unlike a zoneless clinical clock —
+// resolving them against the profile's timezone is exactly what the WhenControl
+// itself would have done (`statedInstantOnDate`); the temperature time lands on
+// the temperature row only, as it always did, and never writes a note again.
 export function insertVitals(
   profileId: number,
   date: string,
-  raw: VitalsRawInput
+  raw: VitalsRawInput,
+  occurredAt?: string | null
 ): boolean {
   if (!isRealIsoDate(date)) return false;
   const normalized = normalizeVitalsInput(raw);
@@ -271,12 +295,31 @@ export function insertVitals(
     return false;
   }
 
+  const tz = getTimezone(profileId);
+  // The sitting statement, resolved ONCE through the shared boundary so the
+  // peak-flow derivation below can only ever use an instant the gate accepted.
+  const stated = resolveStatedOccurredAt(profileId, date, occurredAt);
+  // A pre-fold temperature "HH:MM" (a queued intent, or a stale pre-fold tab whose
+  // sitting Time was left empty), as an instant on the row's own day — only
+  // consulted when the submission carries no sitting INSTANT, because in the
+  // pre-fold form an empty sitting Time said nothing about the temperature's own
+  // time field. A new client never posts the field, so this path never fires.
+  const legacyTempAt =
+    occurredAt == null
+      ? (() => {
+          const hhmm = normalizeClockTime(raw.temperatureTime);
+          return hhmm
+            ? (statedInstantOnDate(date, hhmm, tz)?.toISOString() ?? undefined)
+            : undefined;
+        })()
+      : undefined;
+
   for (const m of medical) {
-    // Only a timed temperature carries a `note` (its "HH:MM" clock time, #800/#843);
-    // every other vital passes null, so the row is exactly as before. `source` is
-    // 'manual' and `external_id` stays NULL, so a same-window Health Connect push never
-    // matches it. The core registers the canonical name and re-derives the
-    // reference-range flag, exactly as this function used to do in a batch.
+    // `source` is 'manual' and `external_id` stays NULL, so a same-window Health
+    // Connect push never matches it. The core registers the canonical name and
+    // re-derives the reference-range flag, exactly as this function used to do in
+    // a batch — and binds the sitting's stated instant onto the row's occurred_at
+    // (#2154; the legacy temperature time reaches only its own row).
     recordReading(profileId, {
       name: m.canonical,
       value: m.value_num,
@@ -284,23 +327,30 @@ export function insertVitals(
       date,
       source: "manual",
       category: m.category,
-      notes: m.note ?? null,
+      occurredAt:
+        m.canonical === VITAL_CANONICAL.temperature.canonical &&
+        legacyTempAt !== undefined
+          ? legacyTempAt
+          : occurredAt,
     });
   }
   for (const s of samples) {
     upsertManualSample(profileId, s.metric, date, s.value);
   }
   for (const r of readings) {
+    // The blow's clock time: the sitting's accepted statement, rendered on the
+    // profile's own wall clock (the metric_samples convention); a pre-fold intent's
+    // `at` is already that wall clock. Absent both, the core files the reading at
+    // the day's midnight so a re-entry with no time CORRECTS the day instead of
+    // stacking a duplicate.
+    const at = stated ? zonedDateParts(tz, new Date(stated)).hhmm : r.at;
     recordReading(profileId, {
       name: r.canonical,
       value: r.value,
       unit: r.unit,
       date,
       source: "manual",
-      // Absent when the form stated no time: the core then files the reading at the
-      // day's midnight, so a re-entry with no time CORRECTS that day instead of
-      // stacking a duplicate.
-      measuredAt: r.at ? `${date}T${r.at}:00` : null,
+      measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
   return true;
@@ -786,22 +836,32 @@ export function applyIntent(
       ok = true;
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
-      ok = insertVitals(profileId, intent.date, {
-        systolic: p.systolic,
-        diastolic: p.diastolic,
-        glucose: p.glucose,
-        glucoseUnit: p.glucoseUnit,
-        spo2: p.spo2,
-        temperature: p.temperature,
-        tempUnit: p.tempUnit,
-        sleepHours: p.sleepHours,
-        hrv: p.hrv,
-        gripStrength: p.gripStrength,
-        chairStand: p.chairStand,
-        balance: p.balance,
-        peakFlow: p.peakFlow,
-        peakFlowTime: p.peakFlowTime,
-      });
+      ok = insertVitals(
+        profileId,
+        intent.date,
+        {
+          systolic: p.systolic,
+          diastolic: p.diastolic,
+          glucose: p.glucose,
+          glucoseUnit: p.glucoseUnit,
+          spo2: p.spo2,
+          temperature: p.temperature,
+          tempUnit: p.tempUnit,
+          sleepHours: p.sleepHours,
+          hrv: p.hrv,
+          gripStrength: p.gripStrength,
+          chairStand: p.chairStand,
+          balance: p.balance,
+          peakFlow: p.peakFlow,
+          // Pre-fold intents' per-measure times (#2154 keeps replaying them).
+          temperatureTime: p.temperatureTime,
+          peakFlowTime: p.peakFlowTime,
+        },
+        // The sitting's stated time (#2154), carried through the queue exactly as
+        // the body-metric flow carries its own. An intent queued before the fold
+        // has `undefined` here — no statement, and the legacy fields above apply.
+        p.occurredAt
+      );
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).
       outcome = { status: "rejected" };
