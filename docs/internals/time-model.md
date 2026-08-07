@@ -1,13 +1,15 @@
 # The time model
 
 Status: partial (phases 1 and 3 shipped — storage, the writer chokepoint, the declared
-column index and the row-level readers. Phase 2, the column-name vocabulary, is open.)
+column index and the row-level readers. Phase 2, the column-name vocabulary, is open:
+wave 1 landed `occurred_at` on the three observation stores (migration 165); the
+`given_at` → `recorded_at` rename is still to come.)
 
 Two questions look the same and are not:
 
 | question                               | stored as                  | example                                              |
 | -------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| **When did this happen?** (INSTANT)    | UTC, absolute              | `intake_item_logs.given_at`, `activities.end_time`   |
+| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `activities.end_time` |
 | **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_log.date`, dose adherence |
 
 A day is **not** a lesser instant. It is the answer to a different question
@@ -72,12 +74,23 @@ about the comparison. So the convention is a **scan**, not prose.
 - **C** — no module that writes SQL may hand-build an instant
   (`.toISOString()`, a `` `${day} 00:00:00` `` template).
 
-`CANONICAL_INSTANT_COLUMNS` in that file is the registry of converted columns.
-An entry is added by the **migration that converts the column**, in the same
-change as its readers — never speculatively, because A and B are enforced
-against it immediately. Everything not listed is still on SQLite's bare shape
-and is written through `utcSqlString`/`sqlNow`; that is a phase, not a
-free-for-all.
+`CANONICAL_INSTANT_COLUMNS` in that file is the registry of columns on the
+convention, and there are exactly two ways in:
+
+- **Converted** — the migration that moves an existing column onto the
+  convention adds its entry, in the same change as its readers. Never
+  speculatively: A and B are enforced immediately, so claiming a column is
+  canonical before its values are would fail the statements that are still
+  correct.
+- **Born on it** — a brand-new nullable column with no rows and no writer yet
+  (`occurred_at`, migration 165). There is nothing to convert: the column is
+  empty, so the claim cannot be false, and listing it is what keeps it true —
+  rule A forces the _first_ writer to bind `utcInstant()` instead of choosing a
+  serialization at the call site. This applies only to a column that has never
+  held a value.
+
+Everything not listed is still on SQLite's bare shape and is written through
+`utcSqlString`/`sqlNow`; that is a phase, not a free-for-all.
 
 Allowlist entries in either the registry or the rule-C ledger **require a stated
 reason**, the same discipline as `profile-scoping` and `sql-clock-seam`. A
@@ -129,6 +142,16 @@ simultaneously the `metric_samples` natural key that makes a re-entry a
 correction rather than a duplicate. It is allowlisted, not converted: moving it
 would change a day attribution — out of scope by definition — and break the
 dedupe. Folding the three into one helper is phase-3 work.
+
+The three observation stores spell the same absence differently, **on purpose**.
+`medical_records`, `body_metrics` and `intake_item_logs` leave `occurred_at`
+NULL for an untimed reading (migration 165) rather than anchoring it at
+midnight, because each carries a real `date` column and keys on it, so it can
+afford honest absence. `metric_samples` cannot: its `start_time` is part of the
+natural key, and a NULL there would make a re-entry a duplicate instead of a
+correction. Two stores say NULL, one says midnight; that difference is real and
+an eventual readings merge has to resolve it, which is why it is named here
+rather than hidden behind a uniform-looking anchor.
 
 ## Related
 
