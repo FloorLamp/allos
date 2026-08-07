@@ -20,7 +20,8 @@ export interface EpisodeEncounterRef {
 }
 export interface EpisodeAppointmentRef {
   id: number;
-  scheduledAt: string;
+  date: string; // YYYY-MM-DD (the appointments.date column, #2234)
+  timeOfDay: string | null; // "HH:MM" wall clock; null for a day-only booking
   title: string | null;
 }
 export interface EpisodeCourseRef {
@@ -72,9 +73,9 @@ export function getEpisodeInRangeEvents(
 
   const appointments = db
     .prepare(
-      `SELECT id, scheduled_at AS scheduledAt, title FROM appointments
-        WHERE profile_id = ? AND date(scheduled_at) >= ? AND date(scheduled_at) <= ?
-        ORDER BY scheduled_at ASC, id ASC`
+      `SELECT id, date, time_of_day AS timeOfDay, title FROM appointments
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        ORDER BY date ASC, time_of_day ASC, id ASC`
     )
     .all(profileId, from, to) as EpisodeAppointmentRef[];
 

@@ -87,7 +87,7 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO care_plan_items (profile_id, description, provider_id) VALUES (?, 'Follow up', ?)`
   ).run(profileId, providerId);
   db.prepare(
-    `INSERT INTO appointments (profile_id, scheduled_at, provider_id) VALUES (?, '2030-01-01', ?)`
+    `INSERT INTO appointments (profile_id, date, provider_id) VALUES (?, '2030-01-01', ?)`
   ).run(profileId, providerId);
   // Imaging studies carry TWO provider links (ordering + reading) — one row each so
   // there is exactly one referencing row per PROVIDER_LINK_COLUMNS entry (#702).

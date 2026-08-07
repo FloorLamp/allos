@@ -99,12 +99,8 @@ export default function VisitsSection({
   // the active list stays actionable. getAppointments returns soonest-first.
   const scheduled = appointments.filter((a) => a.status === "scheduled");
   const settled = appointments.filter((a) => a.status !== "scheduled");
-  const upcomingScheduled = scheduled.filter(
-    (a) => a.scheduled_at.slice(0, 10) >= now
-  );
-  const overdueScheduled = scheduled.filter(
-    (a) => a.scheduled_at.slice(0, 10) < now
-  );
+  const upcomingScheduled = scheduled.filter((a) => a.date >= now);
+  const overdueScheduled = scheduled.filter((a) => a.date < now);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>

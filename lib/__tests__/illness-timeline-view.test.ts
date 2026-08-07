@@ -18,7 +18,8 @@ const care: EpisodeInRangeEvents = {
   appointments: [
     {
       id: 8,
-      scheduledAt: "2026-07-16 10:30:00",
+      date: "2026-07-16",
+      timeOfDay: "10:30",
       title: "Follow-up",
     },
   ],

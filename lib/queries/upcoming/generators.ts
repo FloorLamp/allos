@@ -542,8 +542,8 @@ function appointmentItems(
 ): UpcomingItem[] {
   const shareFull = opts.shared ? getMentalHealthShareFull(profileId) : true;
   return getScheduledAppointments(profileId).map((a) => {
-    // scheduled_at may be a datetime; the banding is calendar-day, so use the date.
-    const dueDate = a.scheduled_at.slice(0, 10);
+    // The banding is calendar-day, which is exactly what the row's date column is.
+    const dueDate = a.date;
     const minimal =
       opts.shared === true &&
       sharedSurfaceDetail(a.kind, "full", {

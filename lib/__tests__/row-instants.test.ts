@@ -16,7 +16,7 @@ import {
   resolveInstant,
   rowLocalDay,
 } from "@/lib/row-instants";
-import { timeColumn } from "@/lib/time-columns";
+import { timeColumn, type TimeColumn } from "@/lib/time-columns";
 
 const NY = "America/New_York";
 
@@ -248,8 +248,17 @@ describe("pattern 4 — windows", () => {
   });
 
   it("refuses a mixed-grain column instead of picking a shape", () => {
-    const col = timeColumn("appointments", "planned")!;
-    expect(col.grain).toBe("mixed");
+    // No registry column is mixed-grained anymore (#2234 split the last one,
+    // appointments.scheduled_at), but resolveInstant's refusal arm must stay
+    // right for the next column that declares it — so a synthetic declaration
+    // exercises it.
+    const col: TimeColumn = {
+      column: "scheduled_at",
+      semantic: "planned",
+      grain: "mixed",
+      convention: "n/a",
+      note: "synthetic fixture: a column claiming to hold more than one shape",
+    };
     expect(resolveInstant(col, { scheduled_at: "2026-03-10" })).toEqual({
       known: false,
       why: "ambiguous",

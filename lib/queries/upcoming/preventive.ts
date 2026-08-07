@@ -146,7 +146,7 @@ export function getInferredPreventiveSatisfactions(
         [a.title, appointmentKindInferenceText(a.kind)]
           .filter(Boolean)
           .join(" ") || null,
-      date: a.scheduled_at.slice(0, 10),
+      date: a.date,
       allow: a.kind === "mental_health" ? ["visit", "screening"] : ["visit"],
     });
   }

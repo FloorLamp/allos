@@ -117,7 +117,7 @@ export default function AppointmentList({
           kind: followUpFrom.kind,
           title: followUpFrom.title,
           notes: followUpFrom.notes,
-          scheduledAt: followUpFrom.scheduled_at,
+          date: followUpFrom.date,
         },
         carePlanItems
       )
@@ -197,7 +197,7 @@ export default function AppointmentList({
     const ok = await confirm({
       title: "Delete appointment",
       message: `Delete this appointment from ${formatRecordDate(
-        a.scheduled_at.slice(0, 10),
+        a.date,
         "—",
         fmt
       )}? This can’t be undone.`,
@@ -341,7 +341,7 @@ export default function AppointmentList({
                   </span>
                 </div>
                 <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {formatRecordDateTime(a.scheduled_at, "—", fmt)}
+                  {formatRecordDateTime(a.date, a.time_of_day, "—", fmt)}
                   {a.provider_name ? ` · ${a.provider_name}` : ""}
                   {a.location ? ` · ${a.location}` : ""}
                   {a.location ? (

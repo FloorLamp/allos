@@ -58,27 +58,25 @@ export function formatRecordDate(
   });
 }
 
-// Format a stored datetime ("YYYY-MM-DD HH:MM", the shape appointments store in
-// `scheduled_at`) as "Mon D, YYYY, <clock>". The wall-clock digits render exactly
-// as stored (no viewer-timezone shift). Falls back to formatRecordDate for a plain
-// date, and to `fallback` for null/empty. Pref-aware (#964): the date follows the
-// login's shape and the time the login's 12h/24h clock; the DEFAULT (24h, the
-// dominant clock) renders "Jan 5, 2026, 16:02". This replaces the old
-// implicit-locale toLocaleString call that leaked the server locale for BOTH the
-// date shape and the (formerly always-12h) clock.
+// Format a calendar day plus an optional wall-clock time (the two halves an
+// appointment stores, #2234) as "Mon D, YYYY, <clock>" — or just the date when
+// `timeOfDay` is null (a day-only booking). The wall-clock digits render exactly
+// as stored (no viewer-timezone shift), and the caller passes the halves it
+// holds — this formatter no longer sniffs a mixed string to decide what it was
+// handed. Pref-aware (#964): the date follows the login's shape and the time the
+// login's 12h/24h clock; the DEFAULT (24h, the dominant clock) renders
+// "Jan 5, 2026, 16:02".
 export function formatRecordDateTime(
-  value: string | null,
+  date: string | null,
+  timeOfDay: string | null,
   fallback = "—",
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): string {
-  if (!value) return fallback;
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value);
-  if (!m) return formatRecordDate(value, fallback, prefs);
-  const datePart = formatDateShape(prefs.dateFormat, +m[1], +m[2], +m[3], {
-    monthStyle: "short",
-    year: true,
-  });
-  const timePart = formatClock(prefs.timeFormat, +m[4], +m[5], "upper-space");
+  const datePart = formatRecordDate(date, fallback, prefs);
+  if (!date || timeOfDay == null) return datePart;
+  const m = /^(\d{2}):(\d{2})$/.exec(timeOfDay);
+  if (!m) return datePart;
+  const timePart = formatClock(prefs.timeFormat, +m[1], +m[2], "upper-space");
   return `${datePart}, ${timePart}`;
 }
 

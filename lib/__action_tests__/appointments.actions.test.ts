@@ -45,7 +45,7 @@ describe("logVisitFromAppointment (#288)", () => {
     const id = await book(
       {
         title: "Annual physical",
-        scheduled_at: "2026-03-10",
+        date: "2026-03-10",
         provider: "Dr. Rivera",
         kind: "physical",
         notes: "fasting labs",
@@ -79,7 +79,7 @@ describe("logVisitFromAppointment (#288)", () => {
   it("is idempotent — a second call adds no duplicate visit", async () => {
     const { profile } = seedActor();
     const id = await book(
-      { title: "Dental cleaning", scheduled_at: "2026-04-01", kind: "dental" },
+      { title: "Dental cleaning", date: "2026-04-01", kind: "dental" },
       profile.id
     );
 
@@ -101,7 +101,7 @@ describe("logVisitFromAppointment (#288)", () => {
     const profileB = createProfile("ApptB", login.id);
     actAs(login, profileB);
     const bId = await book(
-      { title: "B visit", scheduled_at: "2026-05-05" },
+      { title: "B visit", date: "2026-05-05" },
       profileB.id
     );
 
@@ -135,7 +135,7 @@ describe("completeCarePlanItemFromAppointment — close the care-plan loop (#658
 
     // Book + complete the matching colonoscopy appointment.
     const apptId = await book(
-      { title: "Colonoscopy", scheduled_at: "2026-03-15", kind: "screening" },
+      { title: "Colonoscopy", date: "2026-03-15", kind: "screening" },
       profile.id
     );
     await completeAppointment(fd({ id: apptId }));
@@ -147,7 +147,7 @@ describe("completeCarePlanItemFromAppointment — close the care-plan loop (#658
         kind: appt.kind,
         title: appt.title,
         notes: appt.notes,
-        scheduledAt: appt.scheduled_at,
+        date: appt.date,
       },
       getCarePlanItems(profile.id).map((c) => ({
         id: c.id,
@@ -195,7 +195,7 @@ describe("row-ops: appointment ↔ encounter link side-state (#288)", () => {
   it("deleting the linked encounter nulls the appointment link but keeps the appointment", async () => {
     const { profile } = seedActor();
     const id = await book(
-      { title: "Eye exam", scheduled_at: "2026-06-01", kind: "vision" },
+      { title: "Eye exam", date: "2026-06-01", kind: "vision" },
       profile.id
     );
     await logVisitFromAppointment(fd({ id }));
@@ -215,7 +215,7 @@ describe("row-ops: appointment ↔ encounter link side-state (#288)", () => {
   it("a plain complete (no log) leaves the link null", async () => {
     const { profile } = seedActor();
     const id = await book(
-      { title: "Check-up", scheduled_at: "2026-07-01" },
+      { title: "Check-up", date: "2026-07-01" },
       profile.id
     );
     await completeAppointment(fd({ id }));

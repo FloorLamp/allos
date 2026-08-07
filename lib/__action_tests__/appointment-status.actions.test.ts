@@ -20,7 +20,7 @@ import { seedActor, createProfile, actAs, fd } from "./harness";
 
 // Book a scheduled appointment via the real action and return its id.
 async function book(profileId: number, title: string): Promise<number> {
-  await createAppointment(fd({ title, scheduled_at: "2026-06-01" }));
+  await createAppointment(fd({ title, date: "2026-06-01" }));
   const rows = getAppointments(profileId);
   return rows[rows.length - 1].id;
 }

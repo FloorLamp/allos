@@ -311,9 +311,9 @@ export function getProviderRelationship(
 
   const nextAppt = db
     .prepare(
-      `SELECT MIN(scheduled_at) AS d FROM appointments
+      `SELECT MIN(date) AS d FROM appointments
          WHERE profile_id = ? AND provider_id = ?
-           AND status = 'scheduled' AND scheduled_at >= ?`
+           AND status = 'scheduled' AND date >= ?`
     )
     .get(profileId, providerId, todayDate) as { d: string | null };
 
@@ -491,19 +491,19 @@ export function getProviderAppointments(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, scheduled_at, title, status FROM appointments
+      `SELECT id, date, title, status FROM appointments
          WHERE profile_id = ? AND provider_id = ?
-         ORDER BY scheduled_at DESC, id DESC`
+         ORDER BY date DESC, time_of_day DESC, id DESC`
     )
     .all(profileId, providerId) as {
     id: number;
-    scheduled_at: string;
+    date: string;
     title: string | null;
     status: string;
   }[];
   return rows.map((r) => ({
     id: r.id,
-    date: r.scheduled_at,
+    date: r.date,
     label: r.title || "Appointment",
     sublabel: r.status,
     href: "/records/history/visits",

@@ -35,10 +35,10 @@ function seedAppointment(profileId: number, date: string): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-         VALUES (?, ?, 'Test Clinic annual physical', 'scheduled')`
+        `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+         VALUES (?, ?, '10:00', 'Test Clinic annual physical', 'scheduled')`
       )
-      .run(profileId, `${date} 10:00`).lastInsertRowid
+      .run(profileId, date).lastInsertRowid
   );
 }
 

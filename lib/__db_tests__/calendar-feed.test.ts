@@ -29,7 +29,8 @@ function newProfile(name: string): number {
 
 function addAppointment(
   profileId: number,
-  scheduledAt: string,
+  date: string,
+  timeOfDay: string | null,
   title: string,
   location: string | null,
   status = "scheduled"
@@ -38,10 +39,10 @@ function addAppointment(
     db
       .prepare(
         `INSERT INTO appointments
-           (profile_id, scheduled_at, title, location, status)
-         VALUES (?, ?, ?, ?, ?)`
+           (profile_id, date, time_of_day, title, location, status)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(profileId, scheduledAt, title, location, status).lastInsertRowid
+      .run(profileId, date, timeOfDay, title, location, status).lastInsertRowid
   );
 }
 
@@ -69,14 +70,16 @@ describe("calendar feed — token resolution + cross-profile isolation", () => {
     // and a completed one (must be excluded from the feed).
     addAppointment(
       pa,
-      `${shiftDateStr(now, 3)} 14:30`,
+      shiftDateStr(now, 3),
+      "14:30",
       "AAA Cardiology",
       "Heart Center"
     );
-    addAppointment(pa, shiftDateStr(now, 5), "AAA Dermatology", null);
+    addAppointment(pa, shiftDateStr(now, 5), null, "AAA Dermatology", null);
     addAppointment(
       pa,
       shiftDateStr(now, 4),
+      null,
       "AAA Cancelled",
       null,
       "cancelled"
@@ -84,6 +87,7 @@ describe("calendar feed — token resolution + cross-profile isolation", () => {
     addAppointment(
       pa,
       shiftDateStr(now, -40),
+      null,
       "AAA Old done",
       null,
       "completed"
@@ -91,7 +95,8 @@ describe("calendar feed — token resolution + cross-profile isolation", () => {
     // Profile B: its own visit, distinctly titled, to prove no bleed.
     addAppointment(
       pb,
-      `${shiftDateStr(now, 2)} 09:00`,
+      shiftDateStr(now, 2),
+      "09:00",
       "BBB Neurology",
       "Brain Center"
     );
@@ -179,7 +184,8 @@ describe("calendar feed — content customization", () => {
     // A scheduled appointment (default category) ...
     addAppointment(
       pid,
-      `${shiftDateStr(now, 2)} 10:00`,
+      shiftDateStr(now, 2),
+      "10:00",
       "OPT Visit",
       "Clinic X"
     );

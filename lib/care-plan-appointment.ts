@@ -36,7 +36,7 @@ export interface AppointmentMatchInput {
   kind: AppointmentKind | null;
   title: string | null;
   notes?: string | null;
-  scheduledAt: string; // YYYY-MM-DD or "YYYY-MM-DD HH:MM"
+  date: string; // YYYY-MM-DD (the appointments.date column, #2234)
 }
 
 // The minimal care-plan item shape the matcher reads (a structural subset of
@@ -155,6 +155,6 @@ export function matchCarePlanItemsForAppointment(
 ): CarePlanMatchItem[] {
   const needles = appointmentMatchNeedles(appt);
   if (needles.length === 0) return [];
-  const visitDate = appt.scheduledAt.slice(0, 10);
+  const visitDate = appt.date;
   return items.filter((i) => itemMatches(needles, i, visitDate, windowDays));
 }

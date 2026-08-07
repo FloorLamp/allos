@@ -293,8 +293,8 @@ test("the next-appointment card renders the visit's clock time and links to the 
   try {
     handle
       .prepare(
-        `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
-         VALUES (2, '2026-12-15 14:30', ?, 'Downtown Clinic', 'scheduled')`
+        `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
+         VALUES (2, '2026-12-15', '14:30', ?, 'Downtown Clinic', 'scheduled')`
       )
       .run(TIMED_APPOINTMENT);
     handle.close();

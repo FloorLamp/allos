@@ -185,8 +185,8 @@ test("an imported appointment uses an explicit source-document link", async ({
     db
       .prepare(
         `INSERT INTO appointments
-           (profile_id, scheduled_at, title, status, document_id, source)
-         VALUES (1, '2026-08-10 09:00', ?, 'scheduled', 908, 'document:908')`
+           (profile_id, date, time_of_day, title, status, document_id, source)
+         VALUES (1, '2026-08-10', '09:00', ?, 'scheduled', 908, 'document:908')`
       )
       .run(title).lastInsertRowid
   );

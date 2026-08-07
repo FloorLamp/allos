@@ -16,9 +16,10 @@ import type { Appointment, FormResult } from "@/lib/types";
 // mode: pass the row + `onDone` (renders a hidden id + a Cancel button). `prefill`
 // seeds a NEW (create) form from a completed visit for a follow-up — same
 // provider/reason/location, blank (defaultDate) date — and is ignored in edit
-// mode. The date is required; the optional time is folded into scheduled_at
-// ("YYYY-MM-DD HH:MM") on submit. Provider is a create-on-type ProviderCombobox
-// (#1176) over the section's shared registry rows.
+// mode. The date is required; the optional time submits as its own `time` field
+// beside `date` (#2234 — the two columns the row stores, never folded into one
+// string). Provider is a create-on-type ProviderCombobox (#1176) over the
+// section's shared registry rows.
 export default function AppointmentForm({
   action,
   appointment,
@@ -66,24 +67,19 @@ export default function AppointmentForm({
   // a tense flip; otherwise the field is uncontrolled and seeded from defaultDate.
   const controlledDate = !editing && date !== undefined;
 
-  // Split any stored "YYYY-MM-DD HH:MM" back into its date + time parts for edit.
-  const storedDate = appointment?.scheduled_at?.slice(0, 10) ?? defaultDate;
-  const storedTime =
-    appointment?.scheduled_at && appointment.scheduled_at.length > 10
-      ? appointment.scheduled_at.slice(11, 16)
-      : "";
+  // The stored halves seed the edit fields directly (#2234).
+  const storedDate = appointment?.date ?? defaultDate;
+  const storedTime = appointment?.time_of_day ?? "";
 
   const uid = appointment?.id ?? "new";
 
   async function handle(formData: FormData) {
     setError(null);
     const date = String(formData.get("date") ?? "").trim();
-    const time = String(formData.get("time") ?? "").trim();
     if (!date) {
       setError("Pick a date for this appointment.");
       return;
     }
-    formData.set("scheduled_at", time ? `${date} ${time}` : date);
     let result: FormResult;
     try {
       result = await action(formData);

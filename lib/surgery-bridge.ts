@@ -106,7 +106,7 @@ export type SurgeryPhase = "pre" | "post";
 export interface SurgeryVisitInput {
   visitId: number;
   title: string;
-  // The surgery DATE (YYYY-MM-DD — the date part of the appointment's scheduled_at).
+  // The surgery DATE (YYYY-MM-DD — the appointment's own date column).
   scheduledDate: string;
 }
 

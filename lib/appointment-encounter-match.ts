@@ -28,8 +28,10 @@ export interface MatchEncounter {
 
 export interface MatchAppointment {
   id: number;
-  // "YYYY-MM-DD" or "YYYY-MM-DD HH:MM".
-  scheduledAt: string;
+  // The appointment's calendar day, "YYYY-MM-DD" (#2234).
+  date: string;
+  // The wall-clock "HH:MM", or null for a day-only booking — the tie-break signal.
+  timeOfDay: string | null;
   providerId: number | null;
   status: string;
   // The appointment's existing encounter link; a non-null value means it's already
@@ -42,10 +44,12 @@ function dayOf(s: string): string {
   return s.slice(0, 10);
 }
 
-// Minutes-since-midnight for a "YYYY-MM-DD HH:MM"-shaped string, or null when the
-// string carries no parseable HH:MM time component (a date-only value).
-function minuteOfDay(s: string): number | null {
-  const m = /^\d{4}-\d{2}-\d{2}[ T](\d{2}):(\d{2})/.exec(s);
+// Minutes-since-midnight for an "HH:MM" wall clock (optionally trailing a
+// "YYYY-MM-DD[ T]" prefix, the encounter side's shape), or null when the value
+// carries no parseable time component.
+function minuteOfDay(s: string | null): number | null {
+  if (s == null) return null;
+  const m = /^(?:\d{4}-\d{2}-\d{2}[ T])?(\d{2}):(\d{2})/.exec(s);
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
@@ -69,7 +73,7 @@ export function matchAppointmentForEncounter(
       a.encounterId == null &&
       a.providerId != null &&
       a.providerId === encounter.providerId &&
-      dayOf(a.scheduledAt) === encDay
+      a.date === encDay
   );
 
   if (candidates.length === 0) return null;
@@ -84,7 +88,7 @@ export function matchAppointmentForEncounter(
   let bestDist = Infinity;
   let tie = false;
   for (const a of candidates) {
-    const apptMinute = minuteOfDay(a.scheduledAt);
+    const apptMinute = minuteOfDay(a.timeOfDay);
     if (apptMinute == null) continue; // no comparable time → not a disambiguator
     const dist = Math.abs(apptMinute - encMinute);
     if (dist < bestDist) {

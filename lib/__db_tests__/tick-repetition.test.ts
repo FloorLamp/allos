@@ -440,9 +440,9 @@ describe("evaluateSyncRequests — two calls in the same hour ≡ one (#2121 ite
     );
     // A visit yesterday makes the higher-salience post-visit creator fire too.
     db.prepare(
-      `INSERT INTO appointments (profile_id, title, scheduled_at, status)
-       VALUES (?, 'Synthetic visit', ?, 'scheduled')`
-    ).run(f.profileId, `${shiftDateStr(f.anchor, -1)}T09:00:00`);
+      `INSERT INTO appointments (profile_id, title, date, time_of_day, status)
+       VALUES (?, 'Synthetic visit', ?, '09:00', 'scheduled')`
+    ).run(f.profileId, shiftDateStr(f.anchor, -1));
 
     evaluateSyncRequests(todayFor);
     const settled = listSyncRequests().find(

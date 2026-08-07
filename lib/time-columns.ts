@@ -220,11 +220,18 @@ export const TIME_COLUMNS = {
   ],
   appointments: [
     {
-      column: "scheduled_at",
+      column: "date",
       semantic: "planned",
-      grain: "mixed",
+      grain: "day",
       convention: "n/a",
-      note: "A user-entered string that is EITHER a bare day (YYYY-MM-DD) or a local datetime, depending on what the form was given. Read it through the date part unless you have handled both.",
+      note: "The CLINIC-local calendar day of the visit (#2234) — NOT a profile-local day: the clinic is frequently not in the profile's zone, and the value is never resolved against the profile timezone. NOT NULL.",
+    },
+    {
+      column: "time_of_day",
+      semantic: "planned",
+      grain: "time-of-day",
+      convention: "n/a",
+      note: "The CLINIC-local wall clock (HH:MM), NULL for a day-only booking — a real product state, not a missing time. Resolving it to an instant needs the row's date AND the clinic's zone, which the app does not store (#2243 owns that question); it is never resolved against the profile timezone.",
     },
     {
       column: "created_at",

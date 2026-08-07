@@ -466,8 +466,9 @@ export function collectFhirExportInput(
 
   const appointments = db
     .prepare(
-      `SELECT scheduled_at, status, title, location, notes, kind
-         FROM appointments WHERE profile_id = ? ORDER BY scheduled_at DESC, id DESC`
+      `SELECT date, time_of_day, status, title, location, notes, kind
+         FROM appointments WHERE profile_id = ?
+        ORDER BY date DESC, time_of_day DESC, id DESC`
     )
     .all(profileId) as FhirExportAppointment[];
 

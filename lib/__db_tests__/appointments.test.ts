@@ -27,17 +27,18 @@ function newProfile(name: string): number {
 
 function addAppointment(
   profileId: number,
-  scheduledAt: string,
+  date: string,
   title: string,
-  status = "scheduled"
+  status = "scheduled",
+  timeOfDay: string | null = null
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(profileId, scheduledAt, title, status).lastInsertRowid
+      .run(profileId, date, timeOfDay, title, status).lastInsertRowid
   );
 }
 
@@ -95,6 +96,39 @@ describe("appointments — profile scoping + Upcoming surfacing", () => {
   it("collectUpcoming never leaks another profile's appointment", () => {
     const items = collectUpcoming(pa, now);
     expect(items.some((i) => i.title.includes("BBB"))).toBe(false);
+  });
+});
+
+// THE #2234 ORDERING PIN (decision 4). Before the split, `ORDER BY scheduled_at`
+// put a day-only row before same-day timed rows because '2026-08-07' sorts
+// lexically before '2026-08-07 09:00'. After it, `ORDER BY date, time_of_day`
+// must keep that exact relative order in BOTH directions — SQLite sorts NULL
+// first ASC and last DESC, which is what makes the split behavior-preserving.
+describe("appointments — day-only vs timed ordering on one date (#2234)", () => {
+  let pid: number;
+  const DAY = "2030-05-20";
+
+  beforeAll(() => {
+    pid = newProfile("APPT-ORDER");
+    addAppointment(pid, DAY, "ORD timed late", "scheduled", "16:45");
+    addAppointment(pid, DAY, "ORD day-only", "scheduled", null);
+    addAppointment(pid, DAY, "ORD timed early", "scheduled", "08:15");
+  });
+
+  it("ASC (getAppointments): the day-only row leads its date, then times ascend", () => {
+    const titles = getAppointments(pid).map((r) => r.title);
+    expect(titles).toEqual(["ORD day-only", "ORD timed early", "ORD timed late"]);
+  });
+
+  it("DESC (the export read): times descend, the day-only row trails its date", () => {
+    const titles = db
+      .prepare(
+        `SELECT title FROM appointments WHERE profile_id = ?
+          ORDER BY date DESC, time_of_day DESC, id DESC`
+      )
+      .all(pid)
+      .map((r) => (r as { title: string }).title);
+    expect(titles).toEqual(["ORD timed late", "ORD timed early", "ORD day-only"]);
   });
 });
 
