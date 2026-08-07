@@ -83,6 +83,7 @@ import {
   parsePrnLogCallback,
   parseOfferTailCallback,
   parseTuneCallback,
+  parseDigestTimeCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
   parsePracticeLogCallback,
@@ -165,6 +166,7 @@ import {
   handlePrnLogTap,
   handleOfferTailTap,
   handleTuneTap,
+  handleDigestTimeTap,
   handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
@@ -336,6 +338,16 @@ export async function handleCallbackQuery(
   const tune = parseTuneCallback(cq.data);
   if (tune) {
     await handleTuneTap(cq, tune);
+    return;
+  }
+
+  // The digest time suggestion's exits (#2217): Use HH:MM / As soon as it's ready /
+  // Not now. Parsed alongside the other digest-riding controls, and before the log
+  // tokens, for the same reason they are: these buttons write a SETTING, and a tap on
+  // one must never be mistaken for anything that writes to the profile's records.
+  const digestTime = parseDigestTimeCallback(cq.data);
+  if (digestTime) {
+    await handleDigestTimeTap(cq, digestTime);
     return;
   }
 

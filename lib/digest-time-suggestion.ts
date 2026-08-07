@@ -48,6 +48,7 @@ import type {
   ArrivalStatistics,
   DigestMode,
 } from "./notifications/digest-schedule";
+import type { NotificationAction } from "./notifications/types";
 
 // The dedupeKey namespace, registered in RULE_FINDING_REGISTRY.
 export const DIGEST_TIME_PREFIX = "digest-time:";
@@ -350,6 +351,81 @@ export function digestTimeSuggestionLine(s: DigestTimeSuggestion): string {
 
 /** The digest section's heading. Declared here so the gather and the tests agree. */
 export const DIGEST_TIME_SECTION_HEADING = "Digest timing";
+
+// ── The in-digest keyboard ───────────────────────────────────────────────────
+//
+// The escape hatch belongs on the surface that raised the question, not only on a
+// settings page you visit later (#1505's Take/Skip/Demote precedent, #1714's ⚙️ Tune
+// one control over). So the same three exits ride the message.
+//
+// Token namespaces are declared here, beside the copy, so the parser and the renderer
+// can never disagree about the wire format. Each carries the profile id as a CROSS-CHECK
+// only and the digest's own DATE, so a tap on yesterday's message is refused rather
+// than acted on from rolled-over context — and neither carries the proposed minute,
+// because the handler re-resolves the live suggestion before writing anything.
+
+export const DIGEST_TIME_USE_PREFIX = "dgtuse";
+export const DIGEST_TIME_DYNAMIC_PREFIX = "dgtdyn";
+export const DIGEST_TIME_DISMISS_PREFIX = "dgtno";
+
+export function digestTimeUseToken(profileId: number, date: string): string {
+  return `${DIGEST_TIME_USE_PREFIX}:${profileId}:${date}`;
+}
+
+export function digestTimeDynamicToken(
+  profileId: number,
+  date: string
+): string {
+  return `${DIGEST_TIME_DYNAMIC_PREFIX}:${profileId}:${date}`;
+}
+
+export function digestTimeDismissToken(
+  profileId: number,
+  date: string
+): string {
+  return `${DIGEST_TIME_DISMISS_PREFIX}:${profileId}:${date}`;
+}
+
+/**
+ * The three buttons, in reach order: the write the line is about, the other mode that
+ * solves the same problem, then declining. A Telegram button has ~30 usable characters
+ * beside its icon, so the middle label is the picker's own words trimmed of the verb.
+ */
+export function digestTimeActions(
+  profileId: number,
+  date: string,
+  s: DigestTimeSuggestion
+): NotificationAction[] {
+  return [
+    {
+      label: `🕘 Use ${formatNotifyTime(s.proposedMinute)}`,
+      data: digestTimeUseToken(profileId, date),
+      row: "digest-time",
+    },
+    {
+      label: "⏳ As soon as it’s ready",
+      data: digestTimeDynamicToken(profileId, date),
+      row: "digest-time",
+    },
+    {
+      label: "🔕 Not now",
+      data: digestTimeDismissToken(profileId, date),
+      row: "digest-time-decline",
+    },
+  ];
+}
+
+/** What each tap says back. States the CONSEQUENCE, in the same words as the copy. */
+export function digestTimeUseAnswer(minute: number): string {
+  return `Your digest now sends at ${formatNotifyTime(minute)}.`;
+}
+
+export function digestTimeDynamicAnswer(minute: number): string {
+  return `Your digest now sends as soon as last night’s sleep lands, never before ${formatNotifyTime(minute)}.`;
+}
+
+export const DIGEST_TIME_DISMISS_ANSWER =
+  "Left as it is. This won’t come back unless your sleep starts landing much later.";
 
 /**
  * What one of the three exits did. TYPED, because each of them can legitimately

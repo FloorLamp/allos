@@ -7,6 +7,7 @@ import {
   type DigestTimeSuggestion,
 } from "@/lib/digest-time-suggestion";
 import { formatNotifyTime } from "@/lib/notifications/schedule";
+import { Notice } from "@/components/Notice";
 import {
   applyDigestTimeSuggestion,
   switchDigestToDynamic,
@@ -57,16 +58,14 @@ export default function DigestTimeSuggestionRow({
   }
 
   return (
-    <div
-      className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
-      data-testid="digest-time-suggestion"
-    >
-      <p className="text-sm text-slate-700 dark:text-slate-200">
+    // SLATE, not amber. The tone map's tinted tones read as warnings, and a send time
+    // that predates its data is neither a warning nor a failure — toning it as one
+    // would be exactly the editorialising the tone contract forbids (#992/#716).
+    <Notice tone="slate" testid="digest-time-suggestion" className="mt-2">
+      <p>
         {copy.headline} {copy.detail}
       </p>
-      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-        {copy.evidence}
-      </p>
+      <p className="mt-0.5 text-xs opacity-80">{copy.evidence}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <button
           type="button"
@@ -101,13 +100,10 @@ export default function DigestTimeSuggestionRow({
         </button>
       </div>
       {refusal && (
-        <p
-          className="mt-2 text-xs text-slate-600 dark:text-slate-300"
-          data-testid="digest-time-refusal"
-        >
+        <p className="mt-2 text-xs" data-testid="digest-time-refusal">
           {refusal}
         </p>
       )}
-    </div>
+    </Notice>
   );
 }
