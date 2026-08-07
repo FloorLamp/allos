@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { settledClick, settledSelect } from "./helpers";
+import { frozenNow } from "./worker-env";
+import { shiftDateStr } from "@/lib/date";
 
 // The ⋯ row actions on the food log: CORRECT a logged serving (#1934) and REMOVE one
 // (#1963).
@@ -308,6 +310,100 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length);
   expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+});
+
+test("the sheet corrects a serving's eating time; Meal follows the hour until touched; Not stated clears (#2227)", async ({
+  page,
+}) => {
+  test.slow(); // the nutrition route compiles on first hit
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  await page.getByTestId("food-slot-morning").click();
+  await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
+  await revealFoodGroup(page, "legumes");
+  const idsBefore = await loggedIds(page);
+
+  // An UNSTATED serving — the row this test will teach an eating time to.
+  await page.getByTestId("log-legumes").click();
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
+  const eventId = await newRowId(page, idsBefore);
+  const row = page.getByTestId(`food-logged-${eventId}`);
+
+  await row.getByRole("button", { name: /serving logged at/ }).click();
+  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
+  await expect(page.getByTestId("food-correct-provenance")).toContainText(
+    "No eating time recorded"
+  );
+
+  // Move the pair's DAY to yesterday first: every hour of a past day is offerable,
+  // so the hour choices below don't depend on what o'clock the frozen run is.
+  const yesterday = shiftDateStr(frozenNow().toISOString().slice(0, 10), -1);
+  const dateInput = page.getByTestId("food-correct-time-date");
+  await dateInput.fill(yesterday);
+  // Close the calendar panel the focus opened; the wrapper stops the Escape from
+  // reaching the modal.
+  await dateInput.press("Escape");
+
+  // Decision 4: choosing an hour drags the Meal select with it (the seeded profile
+  // has no custom schedule, so the default 11:00/15:00 boundaries hold)…
+  const timeSelect = page.getByTestId("food-correct-time-time");
+  const isoAt = async (hhmm: string) => {
+    const iso = await timeSelect
+      .locator("option", { hasText: new RegExp(`^${hhmm}$`) })
+      .getAttribute("value");
+    expect(iso, `the ${hhmm} option is offered`).toBeTruthy();
+    return iso!;
+  };
+  await settledSelect(page, timeSelect, await isoAt("19:00"));
+  await expect(page.getByTestId("food-correct-slot")).toHaveValue("Evening");
+  await settledSelect(page, timeSelect, await isoAt("12:00"));
+  await expect(page.getByTestId("food-correct-slot")).toHaveValue("Midday");
+
+  // …until Meal is set BY HAND — from then on the hour stops moving it.
+  await settledSelect(page, page.getByTestId("food-correct-slot"), "Morning");
+  await settledSelect(page, timeSelect, await isoAt("19:00"));
+  await expect(page.getByTestId("food-correct-slot")).toHaveValue("Morning");
+  // Restore the coherent pairing before saving.
+  await settledSelect(page, page.getByTestId("food-correct-slot"), "Evening");
+
+  await settledClick(page, page.getByTestId("food-correct-save"));
+  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
+
+  // The serving followed its corrected day; the LIST ROW now shows the eating time
+  // (the row renders eatenAt ?? loggedTime, and this row now has an eatenAt).
+  await page.getByTestId("food-day-yesterday").click();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Evening · 19:00");
+
+  // Reopen: the sheet opens on the "Ate at" line and the select shows the hour.
+  await row.getByRole("button", { name: /serving eaten at 19:00/ }).click();
+  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
+  await expect(page.getByTestId("food-correct-provenance")).toContainText(
+    "Ate at 19:00."
+  );
+
+  // Decision 6: "Not stated" is the select's first option and choosing it CLEARS —
+  // the honest default stays reachable, not a one-way ratchet into a guess.
+  await settledSelect(page, timeSelect, "");
+  await settledClick(page, page.getByTestId("food-correct-save"));
+  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
+  // Back on the logged time: the row shows the tap clock again…
+  await expect(row).toContainText(/Evening · \d{2}:\d{2}/);
+  // …and the sheet reopens on the honest opening line.
+  await row.getByRole("button", { name: /serving logged at/ }).click();
+  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
+  await expect(page.getByTestId("food-correct-provenance")).toContainText(
+    /No eating time recorded — logged at \d{2}:\d{2}\./
+  );
+  await page.getByTestId("food-correct-cancel").click();
+  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
+
+  // Leave the fixture as found (still on the Yesterday view, where the row lives).
+  await removeServingRow(page, eventId);
 });
 
 test("the correction sheet names the time it shows: eating time when stated, logged time otherwise (#2227)", async ({
