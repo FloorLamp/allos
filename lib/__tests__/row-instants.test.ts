@@ -258,13 +258,13 @@ describe("pattern 4 — windows", () => {
   });
 
   it("refuses a day-grained column rather than inventing a midnight", () => {
-    // illness_episodes.started_at is a DAY despite its name, and ended_at is exclusive.
+    // illness_episodes.start_date is a profile-local DAY (#2232) — never an instant.
     const col = timeColumn("illness_episodes", "window-start")!;
     expect(col.grain).toBe("day");
-    expect(resolveInstant(col, { started_at: "2026-03-01" })).toEqual({
+    expect(resolveInstant(col, { start_date: "2026-03-01" })).toEqual({
       known: false,
       why: "day-only",
-      column: "started_at",
+      column: "start_date",
     });
   });
 });

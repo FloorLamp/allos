@@ -4,11 +4,19 @@
 // flagged on→off range from the situation change-log; the derived assembly is identical
 // pre/post the model swap; and the flagged-situation toggle opens/closes rows in ONE
 // writeTx so the active set and the open row never disagree. Deterministic :memory: DB.
+//
+// The frozen 046/062 helpers run against the PRE-168 schema (`started_at`/`ended_at`),
+// so the tests that drive them build that legacy shape in their own :memory: database
+// — the live db here is migrated past 168 and no longer has those columns.
 
+import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { backfillIllnessEpisodes } from "@/lib/migrations/versions/046-illness-episodes";
 import { stabilizeEpisodeConditions } from "@/lib/migrations/versions/062-stable-episode-conditions";
+import { up as up168 } from "@/lib/migrations/versions/168-illness-episode-day-window";
+import { shiftDateStr } from "@/lib/date";
+import { createEpisodeRow } from "@/lib/illness-episode-store";
 import {
   episodeForProfileDate,
   assembleIllnessEpisode,
@@ -51,32 +59,67 @@ function seedLog(p: number, active: boolean, events: SituationEvent[]) {
   );
 }
 
+// The pre-168 illness_episodes shape the frozen 046/062 helpers were written against,
+// plus whatever sibling tables each helper reads.
+function legacyEpisodeDb(): Database.Database {
+  const mem = new Database(":memory:");
+  mem.exec(`
+    CREATE TABLE profiles (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE illness_episodes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      situation  TEXT NOT NULL,
+      started_at TEXT,
+      ended_at   TEXT,
+      note       TEXT,
+      outcome    TEXT
+    );
+  `);
+  mem.pragma("foreign_keys = OFF");
+  return mem;
+}
+
 describe("stable episode-condition migration (#856 corrective)", () => {
   it("re-anchors a legacy promotion and repairs its resolved range", () => {
-    const p = newProfile("legacy episode condition");
+    const mem = legacyEpisodeDb();
+    mem.exec(`
+      CREATE TABLE conditions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT,
+        onset_date TEXT,
+        resolved_date TEXT,
+        source TEXT,
+        external_id TEXT
+      );
+      INSERT INTO profiles (id, name) VALUES (1, 'Legacy');
+    `);
     const episodeId = Number(
-      db
+      mem
         .prepare(
           `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, 'Illness', '2026-04-01', '2026-04-05')`
+           VALUES (1, 'Illness', '2026-04-01', '2026-04-05')`
         )
-        .run(p).lastInsertRowid
+        .run().lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO conditions
-         (profile_id, name, status, onset_date, resolved_date, source, external_id)
-       VALUES (?, 'Illness', 'active', '2026-04-01', NULL, 'episode',
-               'episode:illness:2026-04-01')`
-    ).run(p);
+    mem
+      .prepare(
+        `INSERT INTO conditions
+           (profile_id, name, status, onset_date, resolved_date, source, external_id)
+         VALUES (1, 'Illness', 'active', '2026-04-01', NULL, 'episode',
+                 'episode:illness:2026-04-01')`
+      )
+      .run();
 
-    stabilizeEpisodeConditions(db);
+    stabilizeEpisodeConditions(mem);
 
-    const condition = db
+    const condition = mem
       .prepare(
         `SELECT status, onset_date, resolved_date, external_id
-           FROM conditions WHERE profile_id = ? AND source = 'episode'`
+           FROM conditions WHERE profile_id = 1 AND source = 'episode'`
       )
-      .get(p) as {
+      .get() as {
       status: string;
       onset_date: string;
       resolved_date: string;
@@ -85,14 +128,36 @@ describe("stable episode-condition migration (#856 corrective)", () => {
     expect(condition.external_id).toBe(`illness-episode:${episodeId}`);
     expect(condition.status).toBe("resolved");
     expect(condition.onset_date).toBe("2026-04-01");
+    // 062 ran against the EXCLUSIVE ended_at era, so it resolved on end-1 — the value
+    // migration 168 later carries forward unchanged (conditions are not rewritten).
     expect(condition.resolved_date).toBe("2026-04-04");
   });
 });
 
-describe("illness_episodes backfill (#856 item 0)", () => {
-  it("reconstructs one row per historical flagged on→off range", () => {
-    const p = newProfile("backfill");
-    // Two closed ranges + one open (currently active). Exclusive end = the stop date.
+describe("illness_episodes backfill (#856 item 0) through the #2232 conversion", () => {
+  it("046's stop-day rows land as inclusive last-active days after 168", () => {
+    // 046's backfill writes the change-log's stop-event shape into a pre-168 schema;
+    // 168 then converts every non-NULL end to the inclusive last active day. The two
+    // are tested TOGETHER because that pairing is exactly why episodesForSituation
+    // must keep emitting the stop day (a from-scratch replay runs both).
+    const mem = legacyEpisodeDb();
+    mem.exec(`
+      CREATE TABLE situations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 0,
+        illness_type INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE profile_settings (
+        profile_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+        PRIMARY KEY (profile_id, key)
+      );
+      INSERT INTO profiles (id, name) VALUES (1, 'Backfill');
+      INSERT INTO situations (profile_id, name, active, illness_type)
+        VALUES (1, 'Illness', 1, 1);
+    `);
+    // Two closed ranges + one open (currently active).
     const events: SituationEvent[] = [
       { date: "2026-01-05", situation: "Illness", change: "start" },
       { date: "2026-01-10", situation: "Illness", change: "stop" },
@@ -100,24 +165,30 @@ describe("illness_episodes backfill (#856 item 0)", () => {
       { date: "2026-03-04", situation: "Illness", change: "stop" },
       { date: "2026-06-01", situation: "Illness", change: "start" },
     ];
-    seedLog(p, true, events);
-    // No rows created by the (empty-at-migration-time) backfill; drive it now.
-    backfillIllnessEpisodes(db);
+    mem
+      .prepare(
+        `INSERT INTO profile_settings (profile_id, key, value)
+         VALUES (1, 'situation_events', ?)`
+      )
+      .run(serializeSituationEvents([], events));
 
-    const rows = listEpisodeRows(p);
-    // Derived enumeration is the reference.
-    const derived = episodesForSituation("Illness", events, true);
-    expect(rows.length).toBe(derived.length);
-    // Rows carry the SAME (start, end) as the derivation (identity, oldest→newest).
-    const rowRanges = rows
-      .map((r) => `${r.started_at ?? "null"}..${r.ended_at ?? "open"}`)
-      .sort();
-    const derivedRanges = derived
-      .map((d) => `${d.start ?? "null"}..${d.end ?? "open"}`)
-      .sort();
-    expect(rowRanges).toEqual(derivedRanges);
+    backfillIllnessEpisodes(mem);
+    up168(mem);
+
+    const rows = mem
+      .prepare(
+        `SELECT start_date, end_date FROM illness_episodes
+          WHERE profile_id = 1 ORDER BY start_date`
+      )
+      .all() as { start_date: string | null; end_date: string | null }[];
+    // The reference: each run's stop day, converted to the inclusive last active day.
+    const expected = episodesForSituation("Illness", events, true).map((d) => ({
+      start_date: d.start,
+      end_date: d.end == null ? null : shiftDateStr(d.end, -1),
+    }));
+    expect(rows).toEqual(expected);
     // Exactly one open row (the ongoing range).
-    expect(rows.filter((r) => r.ended_at == null).length).toBe(1);
+    expect(rows.filter((r) => r.end_date == null).length).toBe(1);
   });
 
   it("episodeForProfileDate matches the pure derivation for the same log", () => {
@@ -127,7 +198,16 @@ describe("illness_episodes backfill (#856 item 0)", () => {
       { date: "2026-02-07", situation: "Illness", change: "stop" },
     ];
     seedLog(p, false, events);
-    backfillIllnessEpisodes(db);
+    // The stored rows a 046→168 replay would produce: the run's stop day, converted
+    // to the inclusive last active day.
+    for (const run of episodesForSituation("Illness", events, false)) {
+      createEpisodeRow(
+        p,
+        "Illness",
+        run.start,
+        run.end == null ? null : shiftDateStr(run.end, -1)
+      );
+    }
 
     for (const date of ["2026-02-02", "2026-02-05", "2026-02-06"]) {
       const rowEp = episodeForProfileDate(p, date);
@@ -148,7 +228,7 @@ describe("illness_episodes backfill (#856 item 0)", () => {
         expect(a).toEqual(b);
       }
     }
-    // 2026-02-07 is the exclusive stop day → inactive → no episode.
+    // 2026-02-07 is the stop day — the first inactive day → no episode.
     expect(episodeForProfileDate(p, "2026-02-07")).toBeNull();
   });
 });
@@ -162,7 +242,7 @@ describe("toggle opens/closes rows in one write path (#856 item 0)", () => {
     setActiveSituations(p, ["Illness"]);
     const open = getOpenEpisodeRow(p, "Illness");
     expect(open).not.toBeNull();
-    expect(open!.ended_at).toBeNull();
+    expect(open!.end_date).toBeNull();
 
     // Re-activating (no change) does not open a second row.
     setActiveSituations(p, ["Illness"]);
@@ -173,7 +253,7 @@ describe("toggle opens/closes rows in one write path (#856 item 0)", () => {
     expect(getOpenEpisodeRow(p, "Illness")).toBeNull();
     const rows = listEpisodeRows(p);
     expect(rows.length).toBe(1);
-    expect(rows[0].ended_at).not.toBeNull();
+    expect(rows[0].end_date).not.toBeNull();
 
     // A fresh activation opens a NEW distinct row (flap = two episodes).
     setActiveSituations(p, ["Illness"]);

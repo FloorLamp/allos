@@ -80,18 +80,22 @@ describe("illnessCoachingMode — the hold/ease-back decision (#837)", () => {
     expect(illnessCoachingMode(ctx, TODAY).mode).toBe("held");
   });
 
-  it("eases back on the close day and through the ramp window", () => {
-    // Day 0 (close day = first well day), day 1, day 2 are all within the ramp.
+  it("eases back through the ramp window after the last active day", () => {
+    // `endDate` is the inclusive last active day (#2232); the ramp covers the
+    // EASE_BACK_RAMP_DAYS days after it (elapsed 1..3 — the same three post-illness
+    // days as before the conversion). Elapsed 0 (today IS the last active day) only
+    // reaches ease-back when the row somehow doesn't cover today; it stays in-ramp.
     for (const [endDate, ago] of [
       [TODAY, 0],
       ["2026-07-07", 1],
       ["2026-07-06", 2],
+      ["2026-07-05", 3],
     ] as const) {
       const ctx: IllnessCoachingContext = {
         openEpisode: false,
         lastClosed: { episodeId: 42, endDate },
       };
-      expect(ago).toBeLessThan(EASE_BACK_RAMP_DAYS);
+      expect(ago).toBeLessThanOrEqual(EASE_BACK_RAMP_DAYS);
       expect(illnessCoachingMode(ctx, TODAY)).toEqual({
         mode: "ease-back",
         easeBackEpisodeId: 42,
@@ -103,10 +107,11 @@ describe("illnessCoachingMode — the hold/ease-back decision (#837)", () => {
   });
 
   it("resumes normal coaching once the ramp window has passed", () => {
-    // ago === EASE_BACK_RAMP_DAYS (3) is the first day OUTSIDE the ramp.
+    // ago > EASE_BACK_RAMP_DAYS (3) is outside the ramp — the fourth day after the
+    // last active day.
     const ctx: IllnessCoachingContext = {
       openEpisode: false,
-      lastClosed: { episodeId: 42, endDate: "2026-07-05" }, // 3 days ago
+      lastClosed: { episodeId: 42, endDate: "2026-07-04" }, // 4 days ago
     };
     expect(illnessCoachingMode(ctx, TODAY).mode).toBe("normal");
   });
@@ -175,7 +180,7 @@ describe("recommendCoaching — the situation-aware hold (#837)", () => {
       input({
         illness: {
           openEpisode: false,
-          lastClosed: { episodeId: 7, endDate: "2026-07-05" }, // 3 days ago
+          lastClosed: { episodeId: 7, endDate: "2026-07-04" }, // 4 days ago
         },
       })
     );

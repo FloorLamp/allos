@@ -43,14 +43,15 @@ function makeSick(profileId: number): number {
   ).run(profileId);
   const start = shiftDateStr(today(profileId), -2);
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profileId, start);
   logSymptomCore(profileId, "cough", 2, today(profileId));
   return getOpenEpisodeRow(profileId, "Illness")!.id;
 }
 
-// Insert a CLOSED episode row directly; return its id.
+// Insert a CLOSED episode row directly; return its id. `end` is the inclusive last
+// active day (#2232).
 function createEpisodeRowFor(
   profileId: number,
   start: string,
@@ -59,7 +60,7 @@ function createEpisodeRowFor(
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, 'Illness', ?, ?)`
       )
       .run(profileId, start, end).lastInsertRowid
@@ -153,9 +154,9 @@ describe("endEpisodeAction", () => {
     expect(res.ok).toBe(true);
 
     const row = db
-      .prepare(`SELECT ended_at FROM illness_episodes WHERE id = ?`)
-      .get(episodeId) as { ended_at: string | null };
-    expect(row.ended_at).toBe(shiftDateStr(today(profile.id), 1));
+      .prepare(`SELECT end_date FROM illness_episodes WHERE id = ?`)
+      .get(episodeId) as { end_date: string | null };
+    expect(row.end_date).toBe(today(profile.id));
     // The situation is deactivated (no open row remains).
     expect(getOpenEpisodeRow(profile.id, "Illness")).toBeNull();
     const condition = db
@@ -187,7 +188,7 @@ describe("endEpisodeAction", () => {
     const res = await reopenEpisodeAction(fd({ episodeId }));
     expect(res.ok).toBe(true);
     expect(getOpenEpisodeRow(profile.id, "Illness")?.id).toBe(episodeId);
-    expect(getEpisodeRow(profile.id, episodeId)?.ended_at).toBeNull();
+    expect(getEpisodeRow(profile.id, episodeId)?.end_date).toBeNull();
     const condition = db
       .prepare(
         `SELECT status, resolved_date FROM conditions
@@ -214,7 +215,7 @@ describe("endEpisodeAction", () => {
       error:
         "This illness ended too long ago to reopen. Start a new episode instead.",
     });
-    expect(getEpisodeRow(profile.id, episodeId)?.ended_at).toBe(
+    expect(getEpisodeRow(profile.id, episodeId)?.end_date).toBe(
       shiftDateStr(today(profile.id), -8)
     );
     expect(getOpenEpisodeRow(profile.id, "Illness")).toBeNull();
@@ -232,16 +233,16 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
     const res = await editEpisodeAction(
       fd({
         episodeId: newId,
-        startedAt: "2026-04-30",
-        endedAt: "2026-05-05",
+        startDate: "2026-04-30",
+        endDate: "2026-05-05",
         note: "pediatrician said rest",
         outcome: "self-resolved",
       })
     );
     expect(res.ok).toBe(true);
     const row = getEpisodeRow(profile.id, newId)!;
-    expect(row.started_at).toBe("2026-04-30");
-    expect(row.ended_at).toBe("2026-05-05");
+    expect(row.start_date).toBe("2026-04-30");
+    expect(row.end_date).toBe("2026-05-05");
     expect(row.note).toBe("pediatrician said rest");
     expect(row.outcome).toBe("self-resolved");
     const condition = db
@@ -255,7 +256,8 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
       external_id: string;
     };
     expect(condition.onset_date).toBe("2026-04-30");
-    expect(condition.resolved_date).toBe("2026-05-04");
+    // The inclusive end IS the last active day, so the condition resolves ON it.
+    expect(condition.resolved_date).toBe("2026-05-05");
     expect(condition.external_id).toBe(`illness-episode:${newId}`);
 
     // Correcting the start did not detach the promotion or allow a duplicate.
@@ -277,15 +279,20 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
     ).toBe(0);
   });
 
-  it("rejects an end on-or-before the start", async () => {
+  it("rejects an end before the start, allows a one-day episode (end == start)", async () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile("Bad Range", login.id);
     actAs(login, profile);
     const newId = createEpisodeRowFor(profile.id, "2026-05-01", "2026-05-06");
     const res = await editEpisodeAction(
-      fd({ episodeId: newId, startedAt: "2026-05-05", endedAt: "2026-05-05" })
+      fd({ episodeId: newId, startDate: "2026-05-05", endDate: "2026-05-04" })
     );
     expect(res.ok).toBe(false);
+    const oneDay = await editEpisodeAction(
+      fd({ episodeId: newId, startDate: "2026-05-05", endDate: "2026-05-05" })
+    );
+    expect(oneDay.ok).toBe(true);
+    expect(getEpisodeRow(profile.id, newId)!.end_date).toBe("2026-05-05");
   });
 
   it("keeps an OPEN episode's end null (the toggle owns closing it)", async () => {
@@ -294,9 +301,9 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
     actAs(login, profile);
     const episodeId = makeSick(profile.id);
     await editEpisodeAction(
-      fd({ episodeId, startedAt: "2026-05-01", endedAt: "2026-05-04" })
+      fd({ episodeId, startDate: "2026-05-01", endDate: "2026-05-04" })
     );
-    expect(getEpisodeRow(profile.id, episodeId)!.ended_at).toBeNull();
+    expect(getEpisodeRow(profile.id, episodeId)!.end_date).toBeNull();
   });
 });
 
@@ -308,15 +315,15 @@ describe("createEpisodeAction + mergeEpisodesAction (retro + flap-merge, item 1)
     const res = await createEpisodeAction(
       fd({
         situation: "Illness",
-        startedAt: "2026-03-01",
-        endedAt: "2026-03-05",
+        startDate: "2026-03-01",
+        endDate: "2026-03-05",
       })
     );
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const row = getEpisodeRow(profile.id, res.id)!;
-    expect(row.started_at).toBe("2026-03-01");
-    expect(row.ended_at).toBe("2026-03-05");
+    expect(row.start_date).toBe("2026-03-01");
+    expect(row.end_date).toBe("2026-03-05");
   });
 
   it("merges a flap-split pair into the union range, deleting the loser", async () => {
@@ -329,8 +336,8 @@ describe("createEpisodeAction + mergeEpisodesAction (retro + flap-merge, item 1)
     const res = await mergeEpisodesAction(fd({ keepId: a, dropId: b }));
     expect(res.ok).toBe(true);
     const keeper = getEpisodeRow(profile.id, a)!;
-    expect(keeper.started_at).toBe("2026-02-01");
-    expect(keeper.ended_at).toBe("2026-02-06");
+    expect(keeper.start_date).toBe("2026-02-01");
+    expect(keeper.end_date).toBe("2026-02-06");
     expect(getEpisodeRow(profile.id, b)).toBeNull();
     expect(listEpisodeRows(profile.id).length).toBe(1);
     const condition = db
@@ -345,7 +352,8 @@ describe("createEpisodeAction + mergeEpisodesAction (retro + flap-merge, item 1)
     };
     expect(condition.external_id).toBe(`illness-episode:${a}`);
     expect(condition.onset_date).toBe("2026-02-01");
-    expect(condition.resolved_date).toBe("2026-02-05");
+    // Resolved ON the union's inclusive last active day.
+    expect(condition.resolved_date).toBe("2026-02-06");
   });
 });
 

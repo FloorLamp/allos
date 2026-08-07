@@ -3,9 +3,9 @@
 // What earns a test here is the DECISION each projection makes, not the string
 // concatenation: which attribute distinguishes two otherwise-identical rows (two
 // studies of the same modality, two lesions in the same place, two same-named
-// providers), and the end-bound semantics of a stored window — a protocol's end_date
-// is its LAST day while an illness episode's ended_at is the first day it was OVER,
-// an off-by-one no reader could catch. Synthetic values only (no PHI).
+// providers), and the end-bound semantics of a stored window — every stored day
+// window's end (a protocol's end_date, an illness episode's end_date since #2232) is
+// its inclusive LAST day. Synthetic values only (no PHI).
 
 import { describe, expect, it } from "vitest";
 import {
@@ -24,7 +24,6 @@ import {
   skinHitText,
   snippet,
 } from "@/lib/search-projections";
-import { EXCLUSIVE_END, INCLUSIVE_END } from "@/lib/date-range";
 import type {
   DentalProcedure,
   GenomicVariant,
@@ -55,34 +54,27 @@ describe("snippet", () => {
   });
 });
 
-describe("rangeText — the end-bound convention is explicit", () => {
-  it("shows an INCLUSIVE end as itself (a protocol's last day)", () => {
-    expect(
-      rangeText({ start: "2026-03-01", end: "2026-04-15" }, INCLUSIVE_END)
-    ).toBe("2026-03-01 → 2026-04-15");
-  });
-
-  it("shows an EXCLUSIVE end as the day BEFORE it (an episode's last active day)", () => {
-    // ended_at = the first inactive day, so the window's last day is the 7th.
-    expect(
-      rangeText({ start: "2026-03-01", end: "2026-03-08" }, EXCLUSIVE_END)
-    ).toBe("2026-03-01 → 2026-03-07");
+describe("rangeText — every stored day window's end is its inclusive last day", () => {
+  it("shows the end as itself (a protocol's or episode's last day)", () => {
+    expect(rangeText({ start: "2026-03-01", end: "2026-04-15" })).toBe(
+      "2026-03-01 → 2026-04-15"
+    );
   });
 
   it("reads an open window as 'since', a start-less one as 'until'", () => {
-    expect(rangeText({ start: "2026-03-01", end: null }, INCLUSIVE_END)).toBe(
+    expect(rangeText({ start: "2026-03-01", end: null })).toBe(
       "since 2026-03-01"
     );
-    expect(rangeText({ start: null, end: "2026-03-09" }, EXCLUSIVE_END)).toBe(
+    expect(rangeText({ start: null, end: "2026-03-08" })).toBe(
       "until 2026-03-08"
     );
-    expect(rangeText({ start: null, end: null }, INCLUSIVE_END)).toBeNull();
+    expect(rangeText({ start: null, end: null })).toBeNull();
   });
 
-  it("collapses a single-day window to one date", () => {
-    expect(
-      rangeText({ start: "2026-03-01", end: "2026-03-02" }, EXCLUSIVE_END)
-    ).toBe("2026-03-01");
+  it("collapses a single-day window (end == start) to one date", () => {
+    expect(rangeText({ start: "2026-03-01", end: "2026-03-01" })).toBe(
+      "2026-03-01"
+    );
   });
 });
 
@@ -292,19 +284,19 @@ describe("episodeHitText", () => {
     expect(
       episodeHitText({
         situation: "Head cold",
-        started_at: "2026-03-01",
-        ended_at: null,
+        start_date: "2026-03-01",
+        end_date: null,
         outcome: null,
       }).subtitle
     ).toBe("Ongoing · since 2026-03-01");
   });
 
-  it("renders a closed episode under the EXCLUSIVE end bound, with its outcome", () => {
+  it("renders a closed episode through its inclusive last active day, with its outcome", () => {
     expect(
       episodeHitText({
         situation: "Flu",
-        started_at: "2026-03-01",
-        ended_at: "2026-03-08",
+        start_date: "2026-03-01",
+        end_date: "2026-03-07",
         outcome: "Resolved without antibiotics",
       }).subtitle
     ).toBe("2026-03-01 → 2026-03-07 · Resolved without antibiotics");
@@ -312,7 +304,7 @@ describe("episodeHitText", () => {
 });
 
 describe("protocolHitText", () => {
-  it("renders a finished protocol under the INCLUSIVE end bound", () => {
+  it("renders a finished protocol through its inclusive last day", () => {
     expect(
       protocolHitText({
         name: "Sauna block",

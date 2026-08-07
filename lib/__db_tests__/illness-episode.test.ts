@@ -97,7 +97,7 @@ function logAdmin(
   ).run(doseId, itemId, date, `${date} 15:30:00`, amount);
 }
 
-// A closed 5-day episode 2026-06-01 .. 2026-06-05 (end EXCLUSIVE = 2026-06-06).
+// A closed 5-day episode 2026-06-01 .. 2026-06-05 (inclusive end_date = 2026-06-05).
 function seedFiveDayEpisode(profileId: number) {
   // Symptoms: cough all five days (easing), fever peaking mid-episode, one custom.
   logSymptomCore(profileId, "cough", 3, "2026-06-01");
@@ -126,7 +126,7 @@ function seedFiveDayEpisode(profileId: number) {
 const CLOSED: IllnessEpisode = {
   situation: "Illness",
   start: "2026-06-01",
-  end: "2026-06-06", // exclusive
+  end: "2026-06-05", // inclusive last active day (#2232)
 };
 
 describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
@@ -135,7 +135,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     seedFiveDayEpisode(p);
     const a = assembleIllnessEpisode(p, CLOSED);
 
-    // Window: inclusive last active day = end-1; day count = 5.
+    // Window: the inclusive end IS the last active day; day count = 5.
     expect(a.firstDay).toBe("2026-06-01");
     expect(a.lastActiveDay).toBe("2026-06-05");
     expect(a.dayCount).toBe(5);
@@ -236,8 +236,8 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, 'Illness', '2026-06-01', '2026-06-06')`
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'Illness', '2026-06-01', '2026-06-05')`
         )
         .run(p).lastInsertRowid
     );
@@ -261,7 +261,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(row.name).toBe("Illness");
     expect(row.status).toBe("resolved");
     expect(row.onset_date).toBe("2026-06-01");
-    expect(row.resolved_date).toBe("2026-06-05"); // end-1 (last active day)
+    expect(row.resolved_date).toBe("2026-06-05"); // the inclusive last active day
     expect(row.source).toBe("episode");
     expect(row.external_id).toBe(`illness-episode:${episodeId}`);
 
@@ -298,7 +298,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
            VALUES (?, 'Illness', '2026-06-01', NULL)`
         )
         .run(p).lastInsertRowid
@@ -335,7 +335,7 @@ function makeCurrentlySick(p: number) {
   // #856: the open episode is now a ROW (identity + annotations); membership stays
   // derived. Open one starting `start` so currentEpisodeForProfile resolves it.
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(p, start);
   logSymptomCore(p, "cough", 2, today(p));
@@ -407,7 +407,7 @@ describe("openEpisodeForProfile", () => {
     const p = newProfile("just-activated");
     const start = shiftDateStr(today(p), 0);
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
        VALUES (?, 'Illness', ?, NULL)`
     ).run(p, start);
     expect(currentEpisodeForProfile(p)).toBeNull();
@@ -423,8 +423,8 @@ describe("openEpisodeForProfile", () => {
 
     const closed = newProfile("closed-episode");
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-       VALUES (?, 'Illness', '2026-05-01', '2026-05-06')`
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'Illness', '2026-05-01', '2026-05-05')`
     ).run(closed);
     expect(openEpisodeForProfile(closed)).toBeNull();
   });
@@ -440,7 +440,7 @@ describe("resolveEpisodeAcrossProfiles (#879)", () => {
     return Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
            VALUES (?, 'Illness', ?, NULL)`
         )
         .run(p, shiftDateStr(today(p), -1)).lastInsertRowid
