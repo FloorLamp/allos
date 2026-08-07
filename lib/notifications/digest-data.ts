@@ -17,10 +17,9 @@ import {
   getSleepSignal,
   getSleepRegularity,
   getSleepSessions,
-  // The #2209 deferral trace's arrival-side inputs (#2192): when last night was
-  // expected to land, and when the source was last contacted.
-  typicalWakeTime,
-  getSleepArrivalLagMinutes,
+  // The #2209 deferral trace's arrival-side inputs (#2192): the arrival sample the
+  // #2214 statistic is computed over, and when the source was last contacted.
+  getSleepArrivals,
   latestSleepSyncAt,
   getMetricDailyTotals,
   getEffectiveActiveSituations,
@@ -42,7 +41,7 @@ import {
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
-import { shouldDeferDigest } from "./digest-schedule";
+import { arrivalStatistics, shouldDeferDigest } from "./digest-schedule";
 import {
   countSituationalDue,
   doseDueOn,
@@ -767,12 +766,25 @@ function logDigestDeferral(
   trace: DigestSleepPendingTrace,
   deferred: boolean
 ): void {
-  const wakeMinutes = typicalWakeTime(profileId);
-  const arrivalLagMin = getSleepArrivalLagMinutes(profileId);
-  const expectedByMin =
-    wakeMinutes == null || arrivalLagMin == null
-      ? null
-      : (wakeMinutes + arrivalLagMin) % (24 * 60);
+  // #2214's statistic, NOT a composition. This line answers "was the waiting-window
+  // predictor wrong?", so it has to quote the predictor the SCHEDULE actually uses.
+  // It used to compute `typicalWakeTime + getSleepArrivalLagMinutes` — a central value
+  // of one varying quantity plus a value of another, which is not the percentile of
+  // anything and measured about half an hour low on the sample #2214 was built from.
+  // Quoting it here would have handed an operator a number computed by the method
+  // that was disproven, to diagnose a scheduler that no longer uses it.
+  //
+  // Both minutes are profile-local minutes of day over arrival CLOCK TIMES, from one
+  // admitted sample in one pass — so `expectedByMin` (what the send time clears) and
+  // `typicalArrivalMin` (what an ordinary morning looks like) can never describe two
+  // different distributions. When the statistic has no answer, its REASON is logged
+  // rather than a null: `dispersed` and `thin-sample` are different operator
+  // situations and #2192 needs to tell them apart.
+  const stats = arrivalStatistics(getSleepArrivals(profileId));
+  const expectedByMin = stats.available ? stats.p90Minute : null;
+  const typicalArrivalMin = stats.available ? stats.medianMinute : null;
+  const arrivalNights = stats.nights;
+  const arrivalUnavailable = stats.available ? null : stats.reason;
   log.info(
     deferred ? "digest deferred for sleep" : "digest deferral evaluated",
     {
@@ -786,9 +798,10 @@ function logDigestDeferral(
       newestWakeDay: trace.newestWakeDay,
       hasLastNight: trace.hasLastNight,
       tracking: trace.tracking,
-      wakeMinutes,
-      arrivalLagMin,
       expectedByMin,
+      typicalArrivalMin,
+      arrivalNights,
+      arrivalUnavailable,
       lastSyncAt: latestSleepSyncAt(profileId),
       providerHealthy: getIntegrationAttention(profileId).length === 0,
     }
