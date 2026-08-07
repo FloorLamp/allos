@@ -192,9 +192,10 @@ surface that still narrows below its source's grain, with a stated reason and a 
 count that may only shrink. A new narrowing fails; converting one lowers the count.
 
 It currently holds **one** entry, total count 1: `appointmentDateTime` keeps the wall
-clock `Appointment.start` printed and drops the offset, because `appointments.
-scheduled_at` is a zoneless local datetime with no companion column for a zone (#2234
-owns that question). The parser preserves the offset; the drop happens at the MAPPER,
+clock `Appointment.start` printed and drops the offset, because
+`appointments.scheduled_at` is declared `grain: "mixed"` — a bare day or a **zoneless**
+local datetime — with no companion column for a zone anywhere (#2234 owns that
+question). The parser preserves the offset; the drop happens at the MAPPER,
 which knows the destination, rather than at the parser, which does not.
 
 ## The day-midnight anchor

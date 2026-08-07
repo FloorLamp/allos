@@ -664,8 +664,9 @@ export function clinicalStatusFromEntryRelationships(obs: any): string | null {
 }
 
 // effectiveTime as a period: low → start, high → end, each at the SOURCE'S OWN grain.
-// Falls back to a bare @_value on the element for start. `hl7PeriodDays` below is the
-// day-grained view every current caller takes.
+// Falls back to a bare @_value on the element for start. Every current caller wants a
+// day and wraps each end in `sourceDay(...)`; a future instant-grained period reads
+// `sourceInstant` off the same result without this having to change.
 export function hl7Period(t: any): {
   start: SourceTime | null;
   end: SourceTime | null;

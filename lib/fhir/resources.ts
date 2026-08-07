@@ -616,18 +616,19 @@ const FHIR_APPOINTMENT_STATUS: Record<string, AppointmentStatus> = {
 // manual booking stores); a date-only value stays "YYYY-MM-DD". Null when the date
 // portion isn't a real calendar date.
 //
-// THE ONE DELIBERATE NARROWING LEFT IN EITHER CLINICAL PARSER (#2243 decision 5 — it
-// is the single entry in the narrowing ledger, lib/__tests__/ingest-narrowing-scan.
-// test.ts). `fhirTime` PRESERVED the offset: `Appointment.start` is typed `instant`,
-// so an offset-bearing value arrives here as `grain: "instant"` with the absolute
-// moment in hand. This mapper drops it, on purpose and with somewhere to point:
-// `appointments.scheduled_at` is a zoneless local datetime (lib/time-columns.ts) and
-// the app has no column for an appointment's zone. Storing the UTC instant instead
-// would silently reschedule every offset-bearing import — "14:30-05:00" would start
-// rendering as 19:30. #2234 splits that column by grain and explicitly leaves the zone
-// question open; until it is answered, the wall clock the source printed is the honest
-// value, and the drop happens HERE, at the mapper that knows the destination, rather
-// than at the parser where no destination is known yet.
+// THE ONE DELIBERATE NARROWING LEFT IN EITHER CLINICAL PARSER (#2243 decision 5 — the
+// single entry in the narrowing ledger, `lib/__tests__/ingest-narrowing-scan.test.ts`).
+// `fhirTime` PRESERVED the offset: `Appointment.start` is typed `instant`, so an
+// offset-bearing value arrives here as `grain: "instant"` with the absolute moment in
+// hand. This mapper drops it, on purpose and with somewhere to point:
+// `appointments.scheduled_at` is declared `grain: "mixed"` — a bare day OR a ZONELESS
+// local datetime (lib/time-columns.ts) — and the app has no column for an appointment's
+// zone anywhere. Storing the UTC instant instead would silently reschedule every
+// offset-bearing import: "14:30-05:00" would start rendering as 19:30. #2234 splits
+// that column by grain and explicitly leaves the zone question open; until it is
+// answered, the wall clock the source printed is the honest value, and the drop happens
+// HERE, at the mapper that knows the destination, rather than at the parser where no
+// destination is known yet.
 function appointmentDateTime(v: unknown): string | null {
   const t = fhirTime(v);
   if (!t) return null;
