@@ -18,7 +18,7 @@ import {
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
 import { now as clockNow } from "@/lib/clock";
-import { utcInstant } from "@/lib/date";
+import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
@@ -157,13 +157,20 @@ export type FoodEventEditResult =
   | { ok: true; from: FoodEventPlacement; to: FoodEventPlacement }
   | { ok: false; error: string };
 
-// Correct one already-logged serving's group, day, and/or meal window (issue #1934).
-// The surfaces where logging is a TAP got create + delete and never got correction, and
-// delete-and-re-log is not equivalent — a re-log stamps the CURRENT instant and window.
-// This action owns the gate + validation + revalidation; the ledger/counter move is the
-// auth-blind core (updateFoodLogEventCore) in ONE IMMEDIATE transaction. The core's
-// statements are id + profile_id scoped, so another profile's event id answers
-// "not-found" and writes nothing.
+// Correct one already-logged serving's group, day, meal window (issue #1934), and/or
+// eating time (issue #2227). The surfaces where logging is a TAP got create + delete
+// and never got correction, and delete-and-re-log is not equivalent — a re-log stamps
+// the CURRENT instant and window. This action owns the gate + validation +
+// revalidation; the ledger/counter move is the auth-blind core (updateFoodLogEventCore)
+// in ONE IMMEDIATE transaction. The core's statements are id + profile_id scoped, so
+// another profile's event id answers "not-found" and writes nothing.
+//
+// The `eaten_at` field has three wire values (#2227): absent/empty = unchanged, "none"
+// = clear (back to the honest "nobody said"), "HH:MM" = state that local wall time on
+// the submitted day. `acceptEatenAt`'s POSTURE INVERTS here relative to the log path,
+// deliberately: at log time an unusable instant costs the statement and never the
+// serving, but in a correction the statement IS the whole submission, so a refused
+// instant is an error the user sees — never a silent clear.
 export async function updateFoodLogEvent(
   formData: FormData
 ): Promise<FoodEventEditResult> {
@@ -172,7 +179,12 @@ export async function updateFoodLogEvent(
   if (!Number.isInteger(eventId) || eventId <= 0)
     return formError("That serving is no longer available.");
 
-  const patch: { groupKey?: string; date?: string; mealSlot?: FoodSlot } = {};
+  const patch: {
+    groupKey?: string;
+    date?: string;
+    mealSlot?: FoodSlot;
+    eatenAt?: Date | null;
+  } = {};
   const rawGroup = String(formData.get("group_key") ?? "").trim();
   if (rawGroup) {
     if (!isValidFoodGroup(rawGroup)) return formError("Unknown food group.");
@@ -189,12 +201,32 @@ export async function updateFoodLogEvent(
     if (!isFoodSlot(rawMealSlot)) return formError("Unknown meal.");
     patch.mealSlot = rawMealSlot;
   }
+  const rawEatenAt = String(formData.get("eaten_at") ?? "").trim();
+  if (rawEatenAt === "none") {
+    patch.eatenAt = null;
+  } else if (rawEatenAt) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(rawEatenAt))
+      return formError("Enter a valid time.");
+    // A wall time is only meaningful ON a day; the sheet always submits its day
+    // alongside. Resolved in the profile's timezone against the SUBMITTED day, then
+    // gated — the same acceptEatenAt every eaten_at write passes, with the inverted
+    // consequence described above (the core re-checks against the final date too).
+    if (!patch.date) return formError("Enter a valid date.");
+    const tz = getTimezone(profile.id);
+    const instant = zonedWallTimeToUtc(tz, patch.date, rawEatenAt);
+    const accepted =
+      instant && acceptEatenAt(instant, tz, patch.date, clockNow());
+    if (!accepted) return formError("That time isn't on the selected day.");
+    patch.eatenAt = accepted;
+  }
 
   const outcome = updateFoodLogEventCore(profile.id, eventId, patch);
   if (outcome.kind === "not-found")
     return formError("That serving is no longer available.");
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   if (outcome.kind === "invalid-date") return formError("Enter a valid date.");
+  if (outcome.kind === "invalid-eaten-at")
+    return formError("That time isn't on the selected day.");
   if (outcome.kind === "not-correctable")
     return formError("Protein logs are corrected from the protein total.");
   revalidatePath("/nutrition");

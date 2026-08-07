@@ -27,6 +27,7 @@ import {
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
+import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { FoodGroup } from "@/lib/food-groups";
 import {
   assessProteinAdequacy,
@@ -354,6 +355,10 @@ export default async function FoodTab() {
               proteinRankBySlot={proteinRankBySlot}
               excludedGroups={excludedGroups}
               slot={slot}
+              // The same boundaries the tallies derive windows from, so the correction
+              // sheet's follow-the-hour Meal default (#2227 d4) can never disagree with
+              // the window the server will count the corrected serving in.
+              slotBoundaries={profileFoodSlotBoundaries(profile.id)}
               eatingTimeOptions={eatingTimeOptions}
               nutrientSummaryByDate={mobileNutrients}
               proteinQuickAdd={

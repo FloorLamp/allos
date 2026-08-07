@@ -1211,7 +1211,15 @@ chip the write would refuse is never on screen. The statement is sticky across t
 one meal, hidden on a backfill day (where "now" is meaningless), and rides the **offline
 queue**: an offline tap carries the chosen instant into replay, which validates it —
 future, or a profile-local date that isn't the row's own day, costs the STATEMENT and never
-the serving. The nudge's ranking
+the serving. The web's ⋯ **correction sheet** answers the same question after the fact
+(#2227): it opens naming which time it shows ("Ate at 19:40." vs "No eating time recorded
+— logged at 23:40.") and carries the day + eating-time pair as one control — the hours of
+the SELECTED day at hour grain, "Not stated" first (choosing it clears back to the honest
+NULL), and the Meal select following the chosen hour until Meal is set by hand, so the
+window the tally counts and the minute the ranking weights move together. A refused time
+is an error the user sees there — in a correction the statement IS the submission — while
+the log path keeps its validate-never-drop posture. `logged_at` stays the uneditable audit
+instant on every surface. The nudge's ranking
 now weights each serving by how near it was eaten to the window it is ranking for,
 which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling
 that let editing a supplement reminder hour move which meal a historical serving
