@@ -4,6 +4,67 @@
       "date": "2026-08-07",
       "entries": [
         {
+          "pr": 2260,
+          "title": "Reminders land on the minute",
+          "body": "The notification scheduler now ticks every 5 minutes by default (was 15), and time pickers in Settings → Notifications step through the minutes your server can actually hit. A time off that grid still saves — Settings names it in a warning instead of refusing it. Operators: TICK_SECONDS in docker-notify.sh is the knob (divisors of 60 offered); the finer default costs about 3× the tick's CPU (~35s → ~105s per day).",
+          "kind": "feature",
+          "issues": [2216]
+        },
+        {
+          "pr": 2256,
+          "title": "Practice trends live on their Wellness cards",
+          "body": "Each tracked practice's 26-week view — weeks in range, cadence against your declared band, session length — now sits beside its logging and history on Wellness, collapsed by default. Trends Overview returns to digest → starred grid → body census.",
+          "kind": "feature",
+          "issues": [2151]
+        },
+        {
+          "pr": 2256,
+          "title": "The daily check-in card is content-led",
+          "body": "Rows appear only when they have something to say: rating first, context and reports earn their place, and a quiet one-line door covers \"not feeling well?\" on an ordinary day.",
+          "kind": "feature",
+          "issues": [2181]
+        },
+        {
+          "pr": 2256,
+          "title": "Photo capture recovers from camera trouble",
+          "body": "A blocked, missing, or busy camera now gets a specific explanation and platform-matched recovery steps — and a device without a live camera opens the native picker in one tap.",
+          "kind": "fix",
+          "issues": [2182]
+        },
+        {
+          "pr": 2256,
+          "title": "Phones stay tiles-only on Trends Overview",
+          "body": "At every range, including 1D — the full chart is one tap away on each metric's page, and empty starred tiles keep their saved slot and stay reorderable. Adding a tile is now a compact disclosure inside the grid.",
+          "kind": "fix",
+          "issues": [2152, 2153]
+        },
+        {
+          "pr": 2259,
+          "title": "Appointments keep their time through export and re-import",
+          "body": "Appointments now store their day and optional clinic-local time as separate fields, fixing a silent bug where exporting and re-importing a timed appointment dropped the time. Day-only appointments remain first-class and still export as all-day calendar events.",
+          "kind": "fix",
+          "issues": [2234]
+        },
+        {
+          "pr": 2257,
+          "title": "Food log and dose history say which time they show",
+          "body": "The food correction sheet now opens with \"Ate at 19:40.\" when an eating time was recorded — or \"No eating time recorded — logged at 23:40.\" when it wasn't — and dose history (medications, supplements, illness timeline, school-return note) marks a filing-time clock as \"recorded 7:02am\" instead of presenting it as when the dose was taken.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2261,
+          "title": "One shared control for \"when did this happen?\"",
+          "body": "Stating an earlier PRN dose on the dashboard now uses an absolute time with a one-tap Now — the drifting \"30 min ago / 1 hr ago\" chips are gone. The same control rolls out to food, dose, and measurement corrections next.",
+          "kind": "feature",
+          "issues": [2236]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-07",
+      "entries": [
+        {
           "pr": 2248,
           "title": "Your morning digest can wait for last night's sleep",
           "body": "The digest now has two modes. “Same time every day” is what you have today. “As soon as it’s ready” treats your time as the earliest it may send and holds the digest until last night’s sleep has actually synced, with a deadline so it never waits indefinitely. Existing digests keep their time and stay on the same-time-every-day mode; the new one is opt-in under Settings → Notifications.",
