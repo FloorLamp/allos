@@ -175,9 +175,7 @@ export default async function EncounterDetailPage(props: {
   // Provenance chain (#1350): scheduling origin (the appointment this visit was booked
   // as) + the source document link (below) + the timeline day.
   const appointment = appointmentForEncounter(profile.id, encounter.id);
-  const scheduledDate = appointment?.scheduled_at
-    ? appointment.scheduled_at.slice(0, 10)
-    : null;
+  const scheduledDate = appointment?.date ?? null;
 
   // Same-provider / same-kind-this-year context (#1350).
   const context = visitContextClauses(

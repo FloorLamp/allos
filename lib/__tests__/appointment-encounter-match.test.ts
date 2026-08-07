@@ -8,7 +8,8 @@ import {
 function appt(over: Partial<MatchAppointment> = {}): MatchAppointment {
   return {
     id: 1,
-    scheduledAt: "2026-03-10",
+    date: "2026-03-10",
+    timeOfDay: null,
     providerId: 7,
     status: "scheduled",
     encounterId: null,
@@ -28,7 +29,7 @@ describe("matchAppointmentForEncounter (#288)", () => {
   it("matches when the appointment carries a time and the encounter is date-only", () => {
     expect(
       matchAppointmentForEncounter({ date: "2026-03-10", providerId: 7 }, [
-        appt({ id: 42, scheduledAt: "2026-03-10 09:30" }),
+        appt({ id: 42, date: "2026-03-10", timeOfDay: "09:30" }),
       ])
     ).toBe(42);
   });
@@ -79,8 +80,8 @@ describe("matchAppointmentForEncounter (#288)", () => {
     const id = matchAppointmentForEncounter(
       { date: "2026-03-10 10:00", providerId: 7 },
       [
-        appt({ id: 1, scheduledAt: "2026-03-10 09:45" }),
-        appt({ id: 2, scheduledAt: "2026-03-10 14:00" }),
+        appt({ id: 1, date: "2026-03-10", timeOfDay: "09:45" }),
+        appt({ id: 2, date: "2026-03-10", timeOfDay: "14:00" }),
       ]
     );
     expect(id).toBe(1);
@@ -91,8 +92,8 @@ describe("matchAppointmentForEncounter (#288)", () => {
       matchAppointmentForEncounter(
         { date: "2026-03-10 10:00", providerId: 7 },
         [
-          appt({ id: 1, scheduledAt: "2026-03-10 09:00" }),
-          appt({ id: 2, scheduledAt: "2026-03-10 11:00" }),
+          appt({ id: 1, date: "2026-03-10", timeOfDay: "09:00" }),
+          appt({ id: 2, date: "2026-03-10", timeOfDay: "11:00" }),
         ]
       )
     ).toBeNull();

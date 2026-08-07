@@ -30,7 +30,6 @@ import { parseBodyView } from "./body-view";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
-import PracticesSection from "./PracticesSection";
 import SectionHashScroll from "./SectionHashScroll";
 import StreamedCensus from "./StreamedCensus";
 import TrendsSectionShell, {
@@ -246,7 +245,7 @@ export default async function TrendsPage(props: {
       case "overview":
       default:
         return (
-          <div className="space-y-10" data-testid="trends-overview">
+          <div className="space-y-6" data-testid="trends-overview">
             {/* A `#starred` / `#body` deep link has to survive the census
                 streaming in below the head — see the component for why the
                 native fragment scroll can't do it alone. */}
@@ -259,20 +258,9 @@ export default async function TrendsPage(props: {
               <StarredSection range={range} />
             </TrendsSectionShell>
 
-            {/* 3. The wellness lens (#1632) — practice consistency, which had no
-                Trends presence in any tab. Inline rather than streamed: two
-                bounded reads, and it renders NOTHING for a profile with no
-                tracked practice, so the head pays for it only where it speaks.
-                It carries its OWN section shell for exactly that reason — an
-                empty heading band would be worse than no section. */}
-            <PracticesSection range={range} />
-
-            {/* 4. The census, streamed so the head never waits on it. */}
-            <TrendsSectionShell
-              id="body"
-              heading="Body"
-              description="Today's readings, vitals, composition, and every synced daily metric over the selected window."
-            >
+            {/* 3. The census, streamed so the head never waits on it. Practice
+                trends moved to each /wellness card by the #2151 owner ruling. */}
+            <TrendsSectionShell id="body" heading="Body" quietHeading>
               <Suspense fallback={<TrendsSectionSkeleton label="Body" />}>
                 <StreamedCensus>
                   <BodySection

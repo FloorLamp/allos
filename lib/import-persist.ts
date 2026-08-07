@@ -972,9 +972,9 @@ function insertImportRows(
   // registry id for the attending clinician; location is a plain facility string.
   const insAppointment = db.prepare(
     `INSERT OR IGNORE INTO appointments
-       (scheduled_at, provider_id, title, location, notes, kind, status,
+       (date, time_of_day, provider_id, title, location, notes, kind, status,
         source, document_id, external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
   // Structured medications (#1178): an imported prescription is the SINGLE
@@ -1360,8 +1360,12 @@ function insertImportRows(
     );
   }
   for (const a of input.appointments) {
+    // The parsed transport value is "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the FHIR
+    // mapper's documented shapes); the DESTINATION splits it into the two columns
+    // the table stores (#2234) — the day prefix and, when present, the HH:MM.
     insAppointment.run(
-      a.scheduled_at,
+      a.scheduled_at.slice(0, 10),
+      a.scheduled_at.length > 10 ? a.scheduled_at.slice(11, 16) : null,
       providerIdFor(a.provider),
       a.title,
       a.location,

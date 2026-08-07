@@ -288,10 +288,10 @@ describe("card ⊂ page — the strict subset invariant (issue #524)", () => {
     const apptId = Number(
       db
         .prepare(
-          `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-           VALUES (?, ?, 'Far-future physical', 'scheduled')`
+          `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+           VALUES (?, ?, '10:00', 'Far-future physical', 'scheduled')`
         )
-        .run(pid, `${shiftDateStr(td, 45)} 10:00`).lastInsertRowid
+        .run(pid, shiftDateStr(td, 45)).lastInsertRowid
     );
 
     // On the Upcoming due-signal collector AND the full model (the page shows it)…
@@ -320,13 +320,13 @@ describe("card ⊂ page — the strict subset invariant (issue #524)", () => {
       flag: "low",
     });
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-       VALUES (?, ?, 'Overdue follow-up', 'scheduled')`
-    ).run(pid, `${shiftDateStr(td, -3)} 09:00`);
+      `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+       VALUES (?, ?, '09:00', 'Overdue follow-up', 'scheduled')`
+    ).run(pid, shiftDateStr(td, -3));
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-       VALUES (?, ?, 'Annual physical', 'scheduled')`
-    ).run(pid, `${shiftDateStr(td, 40)} 09:00`);
+      `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+       VALUES (?, ?, '09:00', 'Annual physical', 'scheduled')`
+    ).run(pid, shiftDateStr(td, 40));
 
     const model = collectAttentionModel(pid, td);
     const card = attentionCardItems(model, td);

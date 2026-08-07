@@ -126,7 +126,7 @@ export function satisfiedRuleForCompletedKind(
 // lifecycle status. The query layer maps its rows into this before calling in.
 export interface KindedAppointment {
   kind: AppointmentKind | null;
-  scheduledAt: string; // YYYY-MM-DD or "YYYY-MM-DD HH:MM"
+  date: string; // YYYY-MM-DD (the appointments.date column, #2234)
   status: string;
 }
 
@@ -146,7 +146,7 @@ export function scheduledMatchForRule(
   for (const a of appointments) {
     if (a.status !== "scheduled") continue;
     if (a.kind == null || a.kind !== kind) continue; // NULL never matches
-    const date = a.scheduledAt.slice(0, 10);
+    const date = a.date;
     if (date < today) continue; // must be today or future
     if (soonest == null || date < soonest) soonest = date;
   }

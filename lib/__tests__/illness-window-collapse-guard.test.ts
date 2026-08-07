@@ -30,7 +30,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib", "scripts", "e2e"];
 
 // Where the retired pair may legitimately appear next to illness_episodes:
-//   • the versioned migrations — 046 created them, 062 reads them, 168 is the
+//   • the versioned migrations — 046 created them, 062 reads them, 169 is the
 //     conversion itself. All frozen or self-describing.
 //   • the DB specs that rebuild a HISTORICAL illness_episodes schema from the frozen
 //     migrations and must therefore speak that schema's vocabulary.
@@ -91,7 +91,7 @@ describe("the illness day-window conversion stays converted (#2232)", () => {
       offenders,
       `#2232 renamed illness_episodes.started_at/ended_at to start_date/end_date ` +
         `(end INCLUSIVE). The old columns survive in the schema ONLY so replayed ` +
-        `pre-168 migrations still prepare — they are dead storage. Read/write ` +
+        `pre-169 migrations still prepare — they are dead storage. Read/write ` +
         `start_date/end_date instead:\n` +
         offenders.join("\n")
     ).toEqual([]);

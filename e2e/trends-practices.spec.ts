@@ -1,16 +1,14 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { followLink } from "./helpers";
 
-// Issue #1632, the rendered half: wellness practices finally have a Trends presence.
+// Issue #2151 reverses #1632's placement: each wellness practice card owns its
+// fixed 26-week trend, and Trends Overview has no practices section.
 //
-// `/trends` gains a **Practices** part between the starred grid and the body census:
-// per-practice weeks-in-range cells, cadence against the declared min–max band, and a
-// session-length chart for the modalities that record minutes. What this spec pins:
+// Per-practice weeks-in-range cells, cadence against the declared min–max band, and
+// a session-length chart sit beside logging and history. What this spec pins:
 //
-//   • the lens is an anchored part of the landing surface (`/trends#practices`), not
-//     a fifth tab;
+//   • the fixed lens is collapsed by default on the practice card;
 //   • the weeks-in-range strip renders the practice domain's OWN three verdicts —
 //     at ceiling, floor met, under floor — over a ledger this spec owns end to end;
 //   • the consistency headline states exactly what those cells show — a RATE over
@@ -19,7 +17,7 @@ import { followLink } from "./helpers";
 //     practice does not;
 //   • an UNTRACKED practice (sessions, no weekly cadence) stays out — it has no range
 //     to be in;
-//   • every card taps back through to /wellness (#1620).
+//   • Trends has no practices section even for a tracked-practice profile.
 //
 // Fixture hygiene (#868): unique practice names, every row deleted in `finally`, and
 // no assertion about a shared-seed practice — profile 1 seeds a red-light target of
@@ -120,17 +118,15 @@ test("the wellness lens renders each practice's completed weeks in range (#1632)
     for (const back of DENSE) logSession(db, RANGED, back, 20);
     logSession(db, RANGED, LONE, null);
 
-    await page.goto("/trends#practices");
+    await page.goto("/wellness");
 
-    // An anchored part of the landing surface, reached by its own fragment.
-    const section = page.locator("section#practices");
-    await expect(section).toHaveCount(1);
-    await expect(section).toBeInViewport();
-    await expect(section.getByTestId("trends-practices")).toBeVisible();
-
-    const card = page
-      .getByTestId("practice-cadence-card")
+    const practiceCard = page
+      .getByTestId("wellness-practice-card")
       .filter({ hasText: RANGED });
+    const trends = practiceCard.getByTestId("wellness-practice-trends");
+    await expect(trends).not.toHaveAttribute("open");
+    await trends.locator("summary").click();
+    const card = trends.getByTestId("practice-cadence-card");
     await expect(card).toBeVisible();
     // The declared cadence is the headline, in the practice domain's own phrasing.
     await expect(card.getByTestId("chart-card-headline")).toHaveText(
@@ -165,6 +161,10 @@ test("the wellness lens renders each practice's completed weeks in range (#1632)
     await expect(legend).toContainText("At weekly maximum");
     await expect(legend).toContainText("Floor met");
     await expect(legend).toContainText("Under floor");
+
+    await page.goto("/trends");
+    await expect(page.locator("section#practices")).toHaveCount(0);
+    await expect(page.getByTestId("trends-practices")).toHaveCount(0);
   } finally {
     cleanUp(db, targets);
     db.close();
@@ -185,19 +185,30 @@ test("session length is charted only for the practices that record minutes (#163
       logSession(db, FLOOR_ONLY, back, null);
     }
 
-    await page.goto("/trends#practices");
+    await page.goto("/wellness");
 
+    const ranged = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: RANGED });
+    await ranged
+      .getByTestId("wellness-practice-trends")
+      .locator("summary")
+      .click();
+    await expect(ranged.getByTestId("practice-duration-card")).toBeVisible();
+
+    const floorPractice = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: FLOOR_ONLY });
+    await floorPractice
+      .getByTestId("wellness-practice-trends")
+      .locator("summary")
+      .click();
     await expect(
-      page.getByTestId("practice-duration-card").filter({ hasText: RANGED })
-    ).toBeVisible();
-    await expect(
-      page.getByTestId("practice-duration-card").filter({ hasText: FLOOR_ONLY })
+      floorPractice.getByTestId("practice-duration-card")
     ).toHaveCount(0);
     // The one-tap practice still gets its cadence card — only the minutes chart is
     // withheld, because a zero-filled duration line would invent minutes.
-    const floorOnly = page
-      .getByTestId("practice-cadence-card")
-      .filter({ hasText: FLOOR_ONLY });
+    const floorOnly = floorPractice.getByTestId("practice-cadence-card");
     await expect(floorOnly).toBeVisible();
     await expect(floorOnly.getByTestId("chart-card-headline")).toHaveText(
       "1×/week"
@@ -212,7 +223,7 @@ test("session length is charted only for the practices that record minutes (#163
   }
 });
 
-test("an untracked practice stays out, and a card taps back to Wellness (#1632)", async ({
+test("an untracked practice keeps history but has no cadence trend", async ({
   page,
 }) => {
   const db = openDb();
@@ -225,26 +236,21 @@ test("an untracked practice stays out, and a card taps back to Wellness (#1632)"
       logSession(db, UNTRACKED, back, null);
     }
 
-    await page.goto("/trends#practices");
+    await page.goto("/wellness");
 
-    const card = page
-      .getByTestId("practice-cadence-card")
+    const tracked = page
+      .getByTestId("wellness-practice-card")
       .filter({ hasText: RANGED });
-    await expect(card).toBeVisible();
-    // The untracked practice appears nowhere on the lens.
-    await expect(
-      page.getByTestId("trends-practices").getByText(UNTRACKED)
-    ).toHaveCount(0);
-
-    // The lens is an entry point back to the page that owns the habit (#1620).
-    await followLink(
-      page,
-      card.getByTestId("chart-card-header-link"),
-      /\/wellness$/
+    await expect(tracked.getByTestId("wellness-practice-trends")).toHaveCount(
+      1
     );
-    await expect(
-      page.getByTestId("wellness-practice-card").filter({ hasText: RANGED })
-    ).toBeVisible();
+    const untracked = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: UNTRACKED });
+    await expect(untracked).toBeVisible();
+    await expect(untracked.getByTestId("wellness-practice-trends")).toHaveCount(
+      0
+    );
   } finally {
     cleanUp(db, targets);
     db.close();

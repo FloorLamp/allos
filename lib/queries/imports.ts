@@ -633,13 +633,13 @@ export function getDocumentDentalProcedures(profileId: number, docId: number) {
 export function getDocumentAppointments(profileId: number, docId: number) {
   return db
     .prepare(
-      `SELECT id, scheduled_at, title, location, status FROM appointments
+      `SELECT id, date, title, location, status FROM appointments
         WHERE profile_id = ? AND document_id = ?
-        ORDER BY scheduled_at DESC, id DESC`
+        ORDER BY date DESC, time_of_day DESC, id DESC`
     )
     .all(profileId, docId) as {
     id: number;
-    scheduled_at: string;
+    date: string;
     title: string | null;
     location: string | null;
     status: string;

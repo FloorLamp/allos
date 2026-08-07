@@ -137,8 +137,11 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   string writes no SQL of its own. Migration 167 (#2233) normalized it onto the
   canonical instant and the writer now binds `instantNow()`. Nothing compares it in
   SQL today.
-- **`appointments.scheduled_at`** is either a bare day or a local datetime, depending on
-  what the form was given.
+- **`appointments.date` + `appointments.time_of_day`** are the CLINIC's local day and
+  optional wall clock (#2234's split of the old mixed-grain `scheduled_at`). A NULL
+  `time_of_day` IS the day-only grain, and neither half is ever resolved against the
+  profile timezone — the clinic's zone is not stored anywhere (#2243 owns that
+  question).
 
 ## The index
 
@@ -160,7 +163,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `api_tokens` | `created_at` | bookkeeping | instant | bare |  |
 | `api_tokens` | `last_used_at` | lifecycle | instant | bare |  |
 | `api_tokens` | `revoked_at` | lifecycle | instant | bare |  |
-| `appointments` | `scheduled_at` | planned | mixed | n/a | A user-entered string that is EITHER a bare day (YYYY-MM-DD) or a local datetime, depending on what the form was given. Read it through the date part unless you have handled both. |
+| `appointments` | `date` | planned | day | n/a | The CLINIC-local calendar day of the visit (#2234) — NOT a profile-local day: the clinic is frequently not in the profile's zone, and the value is never resolved against the profile timezone. NOT NULL. |
+| `appointments` | `time_of_day` | planned | time-of-day | n/a | The CLINIC-local wall clock (HH:MM), NULL for a day-only booking — a real product state, not a missing time. Resolving it to an instant needs the row's date AND the clinic's zone, which the app does not store (#2243 owns that question); it is never resolved against the profile timezone. |
 | `appointments` | `created_at` | record | instant | bare |  |
 | `audit_events` | `ts` | record | instant | bare |  |
 | `body_metrics` | `date` | day | day | n/a |  |

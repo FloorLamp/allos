@@ -200,9 +200,9 @@ export function seedHouseholdRollup(): void {
     "DELETE FROM appointments WHERE profile_id = ? AND title = 'Pediatric checkup'"
   ).run(childId);
   db.prepare(
-    `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
-   VALUES (?, ?, 'Pediatric checkup', 'Springfield Pediatrics', 'scheduled')`
-  ).run(childId, `${soonDate} 10:00`);
+    `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
+   VALUES (?, ?, '10:00', 'Pediatric checkup', 'Springfield Pediatrics', 'scheduled')`
+  ).run(childId, soonDate);
 
   console.log(
     `e2e: seeded a second profile (${CHILD_NAME}, id=${childId}) with an upcoming appointment for the family-calendar feed`

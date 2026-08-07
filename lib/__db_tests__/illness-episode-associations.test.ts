@@ -33,7 +33,7 @@ describe("getEpisodeInRangeEvents (#856 items 7-8)", () => {
 
     // In-range appointment.
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, title) VALUES (?, '2026-06-04 09:00:00', 'Follow-up')`
+      `INSERT INTO appointments (profile_id, date, time_of_day, title) VALUES (?, '2026-06-04', '09:00', 'Follow-up')`
     ).run(p);
 
     // Medication course started in-range (reaches profile via intake_items).

@@ -46,6 +46,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
     });
     try {
       await page.goto("/trends");
+      await page.getByTestId("save-trend-picker-toggle").click();
       const picker = page.getByTestId("save-trend-picker");
       await expect(picker).toBeVisible();
 

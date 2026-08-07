@@ -335,7 +335,9 @@ export interface ImportedOpticalPrescription {
 // the facility is a plain `location` string (the appointments table stores location
 // as text, not a provider FK). `kind` is best-effort from the FHIR service/type
 // codings (null when not clearly one of the app's kinds — a null kind never matches a
-// preventive rule). scheduled_at preserves the source's date (and time when present).
+// preventive rule). scheduled_at preserves the source's date (and time when present)
+// as a TRANSPORT value; the persist boundary splits it into the appointments table's
+// `date` + `time_of_day` columns (#2234).
 export interface ImportedAppointment {
   scheduled_at: string; // YYYY-MM-DD or "YYYY-MM-DDTHH:MM"
   status: AppointmentStatus;

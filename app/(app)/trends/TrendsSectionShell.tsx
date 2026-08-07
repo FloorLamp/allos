@@ -29,7 +29,7 @@ export default function TrendsSectionShell({
       id={id}
       // Clear the sticky tab strip (and, on a phone, the app chrome above it) so a
       // `#body` deep link lands the heading in view rather than under the strip.
-      className="scroll-mt-28 space-y-4"
+      className={quietHeading ? "scroll-mt-28" : "scroll-mt-28 space-y-4"}
       data-testid={`trends-section-${id}`}
       aria-labelledby={`trends-section-${id}-heading`}
     >

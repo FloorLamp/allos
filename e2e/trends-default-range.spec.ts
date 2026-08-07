@@ -109,6 +109,7 @@ test("a sparse saved biomarker shows its latest reading and age, not 'No data'",
   page,
 }) => {
   await page.goto("/trends");
+  await page.getByTestId("save-trend-picker-toggle").click();
   const picker = page.getByTestId("save-trend-picker");
   // The picker is the shared Combobox since #1675 (a ranked, group-headed list), so
   // the analyte is chosen by its LABEL through the app's own fuzzy search.

@@ -1569,13 +1569,15 @@ const drPatelDup = addProvider("Dr. Anita Patel MD", "individual", {
 // ── Appointments ──────────────────────────────────────────────────────
 // One completed (history) plus scheduled rows spread so the Upcoming urgency
 // bands each get a hit: a past-and-still-scheduled row → Overdue, one today, one
-// this week, one further out → Later.
+// this week, one further out → Later. A mix of timed and day-only bookings
+// (time_of_day NULL) so both real product states render (#2234).
 const apptIns = db.prepare(
-  `INSERT INTO appointments (profile_id, scheduled_at, provider_id, title, location, notes, status)
-   VALUES (1,?,?,?,?,?,?)`
+  `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, title, location, notes, status)
+   VALUES (1,?,?,?,?,?,?,?)`
 );
 apptIns.run(
   daysAgo(35),
+  "08:30",
   drPatel,
   "Annual physical",
   "Northside Family Medicine",
@@ -1584,6 +1586,7 @@ apptIns.run(
 );
 apptIns.run(
   daysAgo(6),
+  null,
   drLee,
   "Cardiology follow-up",
   "Heart Center",
@@ -1592,6 +1595,7 @@ apptIns.run(
 ); // past + scheduled → Overdue
 apptIns.run(
   daysAgo(0),
+  "15:00",
   drPatel,
   "Lab results review",
   "Northside Family Medicine",
@@ -1600,6 +1604,7 @@ apptIns.run(
 ); // Today
 apptIns.run(
   daysAgo(-4),
+  "10:15",
   drLee,
   "Echocardiogram",
   "Heart Center",
@@ -1608,6 +1613,7 @@ apptIns.run(
 ); // This week
 apptIns.run(
   daysAgo(-45),
+  null,
   drPatel,
   "Physical exam",
   "Northside Family Medicine",
@@ -1620,10 +1626,11 @@ apptIns.run(
 // appointment", not "Therapy — Dr Okafor" — even though other kinds show full
 // detail; the profile's own pages still show the full title. Synthetic provider.
 db.prepare(
-  `INSERT INTO appointments (profile_id, scheduled_at, provider_id, title, location, notes, status, kind)
-   VALUES (1,?,?,?,?,?,?,?)`
+  `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, title, location, notes, status, kind)
+   VALUES (1,?,?,?,?,?,?,?,?)`
 ).run(
   daysAgo(-8),
+  "11:00",
   null,
   "Therapy session — Dr. Okafor",
   "Telehealth",
@@ -2491,9 +2498,9 @@ upsertProfileSetting.run(
 
 // #856: illness episodes are now stored ROWS (identity + annotations), reconstructed
 // from the change-log by migration 046's backfill and converted to the day-window
-// vocabulary by migration 168 (#2232). The seed writes situation_events directly
+// vocabulary by migration 169 (#2232). The seed writes situation_events directly
 // (above), which the boot-time migrations can't see (they ran on the empty DB before
-// seeding), so reconstruct the rows here the way a 046→168 replay would: one row per
+// seeding), so reconstruct the rows here the way a 046→169 replay would: one row per
 // change-log run, its end converted from the stop day to the inclusive last active
 // day. Clear first for a re-seed.
 db.prepare("DELETE FROM illness_episodes WHERE profile_id = 1").run();

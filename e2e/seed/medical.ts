@@ -662,8 +662,8 @@ export function seedVisitLinking(): void {
       );
       // A completed appointment booked for the subject visit → scheduling origin.
       db.prepare(
-        `INSERT INTO appointments (profile_id, scheduled_at, provider_id, status, encounter_id, title)
-       VALUES (?, '2026-06-10 09:30:00', ?, 'completed', ?, 'Sick visit')`
+        `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, status, encounter_id, title)
+       VALUES (?, '2026-06-10', '09:30', ?, 'completed', ?, 'Sick visit')`
       ).run(enId, enProviderId, subjectId);
       // An illness episode spanning the subject visit, NO linked visit yet → the
       // encounter-side "Link an illness episode?" suggestion.

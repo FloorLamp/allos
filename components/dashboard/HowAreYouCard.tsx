@@ -26,16 +26,17 @@ import {
   rateSummary,
   contextGroup,
   contextGroupHasChips,
+  contextGroupHasContent,
   contextSummary,
   reportSummary,
   actSummary,
 } from "@/lib/checkin-sections";
 import MoodValencePicker from "@/components/MoodValencePicker";
 
-// The recomposed daily check-in card (issue #1314, over #992). The card's four
-// intents ARE its structure now, in fixed order under ONE CheckInSection grammar
-// (components/dashboard/CheckInSection.tsx) — each section renders a glanceable
-// one-liner at rest and opens only for input:
+// The recomposed daily check-in card (issue #1314, over #992). Its four possible
+// intents share ONE CheckInSection grammar (components/dashboard/CheckInSection.tsx).
+// #2181 keeps the resting card content-led: Rate is always present; the other rows
+// appear only when they have something to say, in this fixed order:
 //
 //   1. Rate    — the hero face row (one tap still completes the check-in) plus the
 //                expansion: Energy, the relevance-gated Calm (#1313), and a note.
@@ -359,6 +360,149 @@ export default function HowAreYouCard({
     })),
   });
   const showContext = contextGroupHasChips(group);
+  const hasContextContent =
+    contextGroupHasContent(group) ||
+    (situations?.derivedLines?.length ?? 0) > 0;
+  const hasReportContent = activeEpisode || symptomCount > 0;
+  const rateText = rateSummary({ valence, energy, calmDisplay });
+
+  const contextEditor = (
+    <div className="space-y-3">
+      {group.sticky.length > 0 ? (
+        <div>
+          <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Ongoing
+          </p>
+          <div
+            className="flex flex-wrap items-center gap-1.5"
+            data-testid="checkin-context-sticky"
+          >
+            {group.sticky.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                data-testid={`checkin-situation-${c.key}`}
+                aria-pressed={c.active}
+                disabled={sitPending}
+                onClick={() => toggleSit(c.key)}
+                className={`badge cursor-pointer disabled:opacity-60 ${
+                  c.active
+                    ? "bg-brand-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {situations?.activationLine ? (
+            <p
+              className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="checkin-situation-activation"
+            >
+              {situations.activationLine}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {situations?.derivedLines && situations.derivedLines.length > 0 ? (
+        <div className="space-y-1" data-testid="checkin-derived-situations">
+          {situations.derivedLines.map((line, i) => (
+            <div
+              key={i}
+              className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+            >
+              <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                Auto
+              </span>
+              <span>{line}</span>
+            </div>
+          ))}
+          {situations.poorSleepOverridable ? (
+            <button
+              type="button"
+              data-testid="checkin-poor-sleep-override"
+              disabled={sitPending}
+              onClick={overridePoorSleep}
+              className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
+            >
+              Not today
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {group.day.length > 0 ? (
+        <div>
+          <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Just today
+          </p>
+          <div
+            className="flex flex-wrap items-center gap-1.5"
+            data-testid="checkin-context-day"
+          >
+            {group.day.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                data-testid={`checkin-day-factor-${c.key}`}
+                aria-pressed={c.active}
+                onClick={() => toggleDayFactor(c.key)}
+                className={`badge cursor-pointer border ${
+                  c.active
+                    ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                    : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const wellActions = !activeEpisode ? (
+    <div className="space-y-2" data-testid="checkin-well-actions">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <span>Not feeling well?</span>
+        <button
+          type="button"
+          data-testid="feeling-sick-activate"
+          disabled={sickPending}
+          onClick={() =>
+            startSick(async () => {
+              await activateIllnessForSymptoms();
+            })
+          }
+          className="font-medium text-brand-700 hover:underline disabled:opacity-50 dark:text-brand-300"
+        >
+          {sickPending ? "Starting…" : "I'm feeling sick"}
+        </button>
+        {symptomSlot ? (
+          <>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              data-testid="checkin-symptom-toggle"
+              aria-expanded={symptomExpanded}
+              onClick={() => setSymptomExpanded((e) => !e)}
+              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+            >
+              {symptomExpanded
+                ? "Hide symptom log"
+                : symptomCount > 0
+                  ? "Edit symptoms"
+                  : "Log a symptom"}
+            </button>
+          </>
+        ) : null}
+      </div>
+      {symptomExpanded && symptomSlot ? (
+        <div data-testid="checkin-symptom-log">{symptomSlot}</div>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <div className="card" data-testid="how-are-you-card">
@@ -391,14 +535,15 @@ export default function HowAreYouCard({
         </div>
       )}
 
-      {/* RATE — the hero face row stays first in DOM; one tap completes the check-in,
-          and "More detail" reveals Energy, the gated Calm, and a note. */}
+      {/* RATE — the hero face row stays first in DOM; one tap completes the check-in.
+          Details owns the optional scales, note, and empty Context editor so the
+          resting card does not spend separate sections on invitations. */}
       <CheckInSection
         id="rate"
         first
         expanded={rateExpanded}
         onToggle={() => setRateExpanded((e) => !e)}
-        toggleLabel="More detail"
+        toggleLabel="Details"
         header={
           <div className="min-w-0 flex-1">
             {/* The #2128 backfill chips — the #2019 now/earlier pattern, a day at
@@ -435,12 +580,14 @@ export default function HowAreYouCard({
                 onChange={tap}
                 disabled={pending}
               />
-              <span
-                className="text-xs text-slate-500 dark:text-slate-400"
-                data-testid="mood-status"
-              >
-                {rateSummary({ valence, energy, calmDisplay })}
-              </span>
+              {rateText ? (
+                <span
+                  className="text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="mood-status"
+                >
+                  {rateText}
+                </span>
+              ) : null}
               {/* Server-truth marker (from the SERVER prop, not local state): appears/
                   updates only once the write committed and the refresh round-tripped —
                   the e2e settle hook on this action-POST-heavy page (see e2e/helpers.ts). */}
@@ -521,6 +668,17 @@ export default function HowAreYouCard({
               {pending ? "Saving…" : "Save"}
             </button>
           </div>
+          {showContext && !hasContextContent ? (
+            <div
+              className="border-t border-black/5 pt-2 dark:border-white/5"
+              data-testid="checkin-context-in-details"
+            >
+              <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                What&rsquo;s going on?
+              </p>
+              {contextEditor}
+            </div>
+          ) : null}
         </div>
       </CheckInSection>
 
@@ -530,10 +688,9 @@ export default function HowAreYouCard({
         </p>
       ) : null}
 
-      {/* CONTEXT — the merged "What's going on?" chip group (#1311): ONE group, two
-          write paths (sticky situations vs today-only day factors), the stickiness
-          difference made VISIBLE by the "Ongoing / Just today" split. */}
-      {showContext ? (
+      {/* Empty Context is edited inside Details. It earns its own collapsed section
+          only when selected or derived context gives it something to summarize. */}
+      {hasContextContent ? (
         <CheckInSection
           id="context"
           label="What's going on?"
@@ -541,173 +698,36 @@ export default function HowAreYouCard({
           expanded={contextExpanded}
           onToggle={() => setContextExpanded((e) => !e)}
         >
-          <div className="space-y-3">
-            {group.sticky.length > 0 ? (
-              <div>
-                <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Ongoing
-                </p>
-                <div
-                  className="flex flex-wrap items-center gap-1.5"
-                  data-testid="checkin-context-sticky"
-                >
-                  {group.sticky.map((c) => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      data-testid={`checkin-situation-${c.key}`}
-                      aria-pressed={c.active}
-                      disabled={sitPending}
-                      onClick={() => toggleSit(c.key)}
-                      className={`badge cursor-pointer disabled:opacity-60 ${
-                        c.active
-                          ? "bg-brand-600 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-                {situations?.activationLine ? (
-                  <p
-                    className="mt-2 text-xs text-slate-500 dark:text-slate-400"
-                    data-testid="checkin-situation-activation"
-                  >
-                    {situations.activationLine}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            {/* DERIVED context (#1292/#1298): computed, non-toggleable state lines with
-                a distinct "Auto" tag, plus the poor-sleep "Not today" override. */}
-            {situations?.derivedLines && situations.derivedLines.length > 0 ? (
-              <div
-                className="space-y-1"
-                data-testid="checkin-derived-situations"
-              >
-                {situations.derivedLines.map((line, i) => (
-                  <div
-                    key={i}
-                    className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                      Auto
-                    </span>
-                    <span>{line}</span>
-                  </div>
-                ))}
-                {situations.poorSleepOverridable ? (
-                  <button
-                    type="button"
-                    data-testid="checkin-poor-sleep-override"
-                    disabled={sitPending}
-                    onClick={overridePoorSleep}
-                    className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
-                  >
-                    Not today
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {group.day.length > 0 ? (
-              <div>
-                <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Just today
-                </p>
-                <div
-                  className="flex flex-wrap items-center gap-1.5"
-                  data-testid="checkin-context-day"
-                >
-                  {group.day.map((c) => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      data-testid={`checkin-day-factor-${c.key}`}
-                      aria-pressed={c.active}
-                      onClick={() => toggleDayFactor(c.key)}
-                      className={`badge cursor-pointer border ${
-                        c.active
-                          ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                          : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+          {contextEditor}
         </CheckInSection>
       ) : null}
 
-      {/* REPORT — the illness door as this section's escalation, PLUS the well-day symptom
-          quick-log (#1300). Non-expandable: the door (or the defer-to-hero note) renders
-          inline at rest. The well-day symptom log sits behind its own "Log a symptom"
-          reveal so the symptom bar is absent from the DOM until asked for — logging a
-          symptom never requires, implies, or activates any illness/situation. */}
-      <CheckInSection
-        id="report"
-        label="Report"
-        summary={reportSummary(activeEpisode, symptomCount)}
-        expandable={false}
-      >
-        {activeEpisode ? (
-          <p
-            className="text-xs text-slate-500 dark:text-slate-400"
-            data-testid="mood-episode-note"
-          >
-            Illness episode active — symptoms and temperature are tracked above.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Not feeling well? Start tracking symptoms and temperature.
-              </p>
-              <button
-                type="button"
-                data-testid="feeling-sick-activate"
-                disabled={sickPending}
-                onClick={() =>
-                  startSick(async () => {
-                    await activateIllnessForSymptoms();
-                  })
-                }
-                className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-              >
-                {sickPending ? "Starting…" : "I'm feeling sick"}
-              </button>
-            </div>
-            {/* Well-day symptom quick-log (#1300): a symptom (cramps, a headache) with no
-                illness required. Behind a reveal so the everyday well card stays calm; the
-                bar's own suggest-only "Mark as illness" bridge renders after a log. */}
-            {symptomSlot ? (
-              <div>
-                <button
-                  type="button"
-                  data-testid="checkin-symptom-toggle"
-                  aria-expanded={symptomExpanded}
-                  onClick={() => setSymptomExpanded((e) => !e)}
-                  className="text-xs text-brand-600 hover:underline dark:text-brand-400"
-                >
-                  {symptomExpanded
-                    ? "Hide symptom log"
-                    : symptomCount > 0
-                      ? "Edit symptoms"
-                      : "Log a symptom"}
-                </button>
-                {symptomExpanded ? (
-                  <div className="mt-2" data-testid="checkin-symptom-log">
-                    {symptomSlot}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        )}
-      </CheckInSection>
+      {/* The quiet illness/symptom door is one line at rest. A Report section only
+          appears when an episode or logged symptoms give it content (#2181). */}
+      {hasReportContent ? (
+        <CheckInSection
+          id="report"
+          label="Report"
+          summary={reportSummary(activeEpisode, symptomCount)}
+          expandable={false}
+        >
+          {activeEpisode ? (
+            <p
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="mood-episode-note"
+            >
+              Illness episode active — symptoms and temperature are tracked
+              above.
+            </p>
+          ) : (
+            wellActions
+          )}
+        </CheckInSection>
+      ) : (
+        <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
+          {wellActions}
+        </div>
+      )}
 
       {/* ACT — the folded PRN quick-log (issue #1221). Shown only on a well day with
           active PRN meds; a calm expandable keeps the everyday check-in uncluttered. */}

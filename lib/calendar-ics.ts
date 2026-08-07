@@ -23,7 +23,8 @@ export type IcsDetail = "minimal" | "full";
 // full Appointment type) so tests can construct minimal fixtures.
 export interface AppointmentLike {
   id: number;
-  scheduled_at: string; // "YYYY-MM-DD" (all-day) or "YYYY-MM-DD HH:MM" (timed)
+  date: string; // "YYYY-MM-DD" — the visit's calendar day
+  time_of_day: string | null; // "HH:MM" wall clock; null = all-day (#2234)
   status: "scheduled" | "completed" | "cancelled";
   title: string | null;
   location: string | null;
@@ -102,8 +103,6 @@ export function zonedWallTimeToUtc(
 
 // ---- Appointment → event mapping (pure) ------------------------------------
 
-const DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/;
-
 function trimOrNull(s: string | null | undefined): string | null {
   const v = s?.trim();
   return v ? v : null;
@@ -133,25 +132,22 @@ export function appointmentToIcsEvent(
   const detail = sharedSurfaceDetail(a.kind, opts.detail, {
     sensitiveShareFull: opts.mentalHealthShareFull,
   });
-  const m = DATETIME_RE.exec(a.scheduled_at.trim());
 
-  let allDay = true;
+  // The stored halves ARE the grain (#2234): a null time_of_day is an all-day
+  // event, a present one is timed — no string probing left.
+  const allDay = a.time_of_day == null;
   let start: Date;
   let end: Date;
-  if (m && m[4] != null && m[5] != null) {
+  if (!allDay) {
     // Timed: interpret the wall clock in the profile timezone.
-    allDay = false;
-    const [y, mo, d, h, mi] = [+m[1], +m[2], +m[3], +m[4], +m[5]];
+    const [y, mo, d] = a.date.split("-").map(Number);
+    const [h, mi] = (a.time_of_day as string).split(":").map(Number);
     start = zonedWallTimeToUtc(y, mo, d, h, mi, opts.tz);
     end = new Date(start.getTime() + (opts.defaultDurationMin ?? 60) * 60_000);
   } else {
     // All-day: anchor to UTC midnight; DTEND is the exclusive next day.
-    const dateStr = (m ? `${m[1]}-${m[2]}-${m[3]}` : a.scheduled_at).slice(
-      0,
-      10
-    );
-    start = new Date(dateStr + "T00:00:00Z");
-    end = new Date(shiftDateStr(dateStr, 1) + "T00:00:00Z");
+    start = new Date(a.date + "T00:00:00Z");
+    end = new Date(shiftDateStr(a.date, 1) + "T00:00:00Z");
   }
 
   const location = trimOrNull(a.location);
@@ -210,9 +206,8 @@ export function selectFeedAppointments(
       : null;
   return appts.filter((a) => {
     if (a.status === "completed") return false;
-    const day = a.scheduled_at.slice(0, 10);
-    if (day < cutoff) return false;
-    if (horizon != null && day > horizon) return false;
+    if (a.date < cutoff) return false;
+    if (horizon != null && a.date > horizon) return false;
     return true;
   });
 }
@@ -276,7 +271,7 @@ function formatPreviewTime(h: number, mi: number): string {
 
 // Project one appointment to its preview row. Composes `appointmentToIcsEvent`
 // (so summary/location/cancelled/reminder exactly match the feed at this detail
-// level) and reads the date/time labels from the original wall-clock string.
+// level) and reads the date/time labels from the row's own stored halves.
 export function appointmentToPreviewRow(
   a: AppointmentLike,
   opts: {
@@ -287,13 +282,16 @@ export function appointmentToPreviewRow(
   }
 ): CalendarFeedPreviewRow {
   const ev = appointmentToIcsEvent(a, opts);
-  const m = DATETIME_RE.exec(a.scheduled_at.trim());
-  const dateStr = m ? `${m[1]}-${m[2]}-${m[3]}` : a.scheduled_at.slice(0, 10);
-  const timed = !ev.allDay && m != null && m[4] != null && m[5] != null;
   return {
     uid: ev.uid,
-    dateLabel: formatPreviewDate(dateStr),
-    timeLabel: timed ? formatPreviewTime(+m![4], +m![5]) : null,
+    dateLabel: formatPreviewDate(a.date),
+    timeLabel:
+      a.time_of_day != null
+        ? formatPreviewTime(
+            +a.time_of_day.slice(0, 2),
+            +a.time_of_day.slice(3, 5)
+          )
+        : null,
     summary: ev.summary,
     location: ev.location ?? null,
     cancelled: ev.status === "CANCELLED",
@@ -688,7 +686,7 @@ export function composeFeedPreviewRows(input: {
       rows.push({
         uid: base.uid,
         category: "appointment",
-        dateKey: a.scheduled_at.slice(0, 10),
+        dateKey: a.date,
         dateLabel: base.dateLabel,
         timeLabel: base.timeLabel,
         summary: base.summary,

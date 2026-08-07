@@ -225,9 +225,9 @@ export function seedNowStrip(): void {
     ).run(finishedId, finishedId);
     // One appointment TODAY → a due-today attention item, so the hero has a count.
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
-     VALUES (?, ?, ?, 'Test Clinic (e2e)', 'scheduled')`
-    ).run(nowStripId, `${today(nowStripId)} 16:00`, NOW_STRIP_APPOINTMENT);
+      `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
+     VALUES (?, ?, '16:00', ?, 'Test Clinic (e2e)', 'scheduled')`
+    ).run(nowStripId, today(nowStripId), NOW_STRIP_APPOINTMENT);
 
     // A bodyweight + a couple of protein-bearing servings today, so the
     // `nutrition-today` widget has real content rather than its onboarding CTA.

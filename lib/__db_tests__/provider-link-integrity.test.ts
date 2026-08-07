@@ -79,7 +79,7 @@ beforeAll(() => {
     `INSERT INTO encounters (profile_id, date, provider_id, location_provider_id) VALUES (?, '2020-01-01', ?, ?)`
   ).run(profileId, providerId, providerId);
   db.prepare(
-    `INSERT INTO appointments (profile_id, scheduled_at, provider_id) VALUES (?, '2030-01-01', ?)`
+    `INSERT INTO appointments (profile_id, date, provider_id) VALUES (?, '2030-01-01', ?)`
   ).run(profileId, providerId);
 });
 
@@ -96,7 +96,7 @@ describe("provider links never dangle", () => {
     const bad = Number(
       db
         .prepare(
-          `INSERT INTO appointments (profile_id, scheduled_at, provider_id) VALUES (?, '2030-02-02', 999999)`
+          `INSERT INTO appointments (profile_id, date, provider_id) VALUES (?, '2030-02-02', 999999)`
         )
         .run(profileId).lastInsertRowid
     );

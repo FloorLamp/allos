@@ -34,15 +34,15 @@ function newProfile(name: string): number {
 
 function addAppointment(
   profileId: number,
-  scheduledAt: string,
+  date: string,
   title: string | null,
   status: string,
   kind: string | null
 ): void {
   db.prepare(
-    `INSERT INTO appointments (profile_id, scheduled_at, title, status, kind)
+    `INSERT INTO appointments (profile_id, date, title, status, kind)
      VALUES (?, ?, ?, ?, ?)`
-  ).run(profileId, scheduledAt, title, status, kind);
+  ).run(profileId, date, title, status, kind);
 }
 
 describe("#997 — a completed mental_health visit satisfies depression + anxiety screenings", () => {

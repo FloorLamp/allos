@@ -265,7 +265,7 @@ export function getContrastSafetyWarnings(
       sourceId: a.id,
       text: [a.title, a.notes].filter(Boolean).join(" "),
       label: a.title?.trim() || "Scheduled imaging",
-      date: a.scheduled_at.slice(0, 10),
+      date: a.date,
     });
     if (s) studies.push(s);
   }

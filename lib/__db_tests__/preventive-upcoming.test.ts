@@ -210,7 +210,7 @@ describe("preventive inference from existing records", () => {
     ).toBe(true);
 
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, title, status)
+      `INSERT INTO appointments (profile_id, date, title, status)
          VALUES (?, ?, 'Annual physical exam', 'completed')`
     ).run(inferId, now);
 

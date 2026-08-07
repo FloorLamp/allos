@@ -63,7 +63,7 @@ function scheduleAppointment(
     db
       .prepare(
         `INSERT INTO appointments
-           (profile_id, scheduled_at, provider_id, title, kind, status)
+           (profile_id, date, provider_id, title, kind, status)
          VALUES (?, ?, ?, 'Annual physical', ?, 'scheduled')`
       )
       .run(profileId, DATE, providerId, kind).lastInsertRowid

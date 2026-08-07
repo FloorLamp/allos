@@ -219,7 +219,7 @@ describe("pickNextAppointment", () => {
     expect(chosen?.key).toBe("appointment:2");
   });
 
-  it("keeps the first item on a same-day tie (feeds ordered by scheduled_at)", () => {
+  it("keeps the first item on a same-day tie (feeds ordered by date, time)", () => {
     const chosen = pickNextAppointment([
       appt(5, "2026-07-15"),
       appt(6, "2026-07-15"),
@@ -229,17 +229,18 @@ describe("pickNextAppointment", () => {
 
   // Fixture-parity guard for issue #303: the dashboard needs-attention hero and the
   // household card must select the SAME appointment from the same source. Both derive
-  // from getScheduledAppointments (ordered scheduled_at ASC, id ASC) — the household
-  // maps each row to an UpcomingItem { dueDate }, the dashboard to { appt, dueDate } —
-  // so this pins that pickNextAppointment picks the identical row from either shape.
+  // from getScheduledAppointments (ordered date ASC, time_of_day ASC, id ASC) — the
+  // household maps each row to an UpcomingItem { dueDate }, the dashboard to
+  // { appt, dueDate } — so this pins that pickNextAppointment picks the identical
+  // row from either shape.
   describe("dashboard vs household parity", () => {
     // Raw scheduled appointments in getScheduledAppointments order, with the
     // issue's disagreement case (an overdue visit alongside a future one) plus a
     // same-day pair to exercise the tie-break.
     const rawScheduled = [
-      { id: 10, scheduled_at: "2026-06-27T09:00:00" }, // overdue, ~2 weeks ago
-      { id: 11, scheduled_at: "2026-07-18T14:30:00" }, // next week
-      { id: 12, scheduled_at: "2026-07-18T08:00:00" }, // same day, earlier slot
+      { id: 10, date: "2026-06-27", time_of_day: "09:00" }, // overdue, ~2 weeks ago
+      { id: 12, date: "2026-07-18", time_of_day: "08:00" }, // next week, earlier slot
+      { id: 11, date: "2026-07-18", time_of_day: "14:30" }, // same day, later slot
     ];
 
     // Household surface: appointmentItems maps rows to UpcomingItems keyed by id.
@@ -248,13 +249,13 @@ describe("pickNextAppointment", () => {
       domain: "appointment",
       title: `Visit ${a.id}`,
       href: "/records/history/visits",
-      dueDate: a.scheduled_at.slice(0, 10),
+      dueDate: a.date,
     }));
 
     // Dashboard surface: the page wraps each row with its calendar dueDate.
     const dashboardItems = rawScheduled.map((a) => ({
       appt: a,
-      dueDate: a.scheduled_at.slice(0, 10),
+      dueDate: a.date,
     }));
 
     it("both surfaces pick the same appointment id", () => {

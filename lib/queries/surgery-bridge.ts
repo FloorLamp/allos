@@ -68,7 +68,7 @@ export function getSurgeryBridgeSuggestions(
       {
         visitId: appt.id,
         title: appt.title,
-        scheduledDate: appt.scheduled_at.slice(0, 10),
+        scheduledDate: appt.date,
       },
       td,
       { presurgery: presurgeryActive, postop: postopActive }

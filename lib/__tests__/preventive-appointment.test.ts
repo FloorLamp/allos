@@ -79,20 +79,13 @@ describe("satisfiedRuleForCompletedKind", () => {
 describe("scheduledMatchForRule", () => {
   const appt = (over: Partial<KindedAppointment>): KindedAppointment => ({
     kind: "physical",
-    scheduledAt: "2026-08-01",
+    date: "2026-08-01",
     status: "scheduled",
     ...over,
   });
 
   it("matches a future scheduled appointment of the rule's kind", () => {
-    const appts = [appt({ kind: "physical", scheduledAt: "2026-08-01" })];
-    expect(scheduledMatchForRule("adult_physical", appts, "2026-07-10")).toBe(
-      "2026-08-01"
-    );
-  });
-
-  it("matches a datetime-valued appointment by its calendar day", () => {
-    const appts = [appt({ scheduledAt: "2026-08-01 09:30" })];
+    const appts = [appt({ kind: "physical", date: "2026-08-01" })];
     expect(scheduledMatchForRule("adult_physical", appts, "2026-07-10")).toBe(
       "2026-08-01"
     );
@@ -100,9 +93,9 @@ describe("scheduledMatchForRule", () => {
 
   it("returns the soonest of several matches", () => {
     const appts = [
-      appt({ scheduledAt: "2026-09-01" }),
-      appt({ scheduledAt: "2026-08-15" }),
-      appt({ scheduledAt: "2026-08-20" }),
+      appt({ date: "2026-09-01" }),
+      appt({ date: "2026-08-15" }),
+      appt({ date: "2026-08-20" }),
     ];
     expect(scheduledMatchForRule("adult_physical", appts, "2026-07-10")).toBe(
       "2026-08-15"
@@ -125,9 +118,9 @@ describe("scheduledMatchForRule", () => {
 
   it("ignores past-dated and non-scheduled appointments", () => {
     const appts = [
-      appt({ scheduledAt: "2026-07-01" }), // past
-      appt({ scheduledAt: "2026-08-01", status: "completed" }),
-      appt({ scheduledAt: "2026-08-01", status: "cancelled" }),
+      appt({ date: "2026-07-01" }), // past
+      appt({ date: "2026-08-01", status: "completed" }),
+      appt({ date: "2026-08-01", status: "cancelled" }),
     ];
     expect(
       scheduledMatchForRule("adult_physical", appts, "2026-07-10")
@@ -135,14 +128,14 @@ describe("scheduledMatchForRule", () => {
   });
 
   it("treats a today-dated scheduled appointment as a match", () => {
-    const appts = [appt({ scheduledAt: "2026-07-10" })];
+    const appts = [appt({ date: "2026-07-10" })];
     expect(scheduledMatchForRule("adult_physical", appts, "2026-07-10")).toBe(
       "2026-07-10"
     );
   });
 
   it("matches any screening rule from a generic screening booking (coarse bucket)", () => {
-    const appts = [appt({ kind: "screening", scheduledAt: "2026-08-01" })];
+    const appts = [appt({ kind: "screening", date: "2026-08-01" })];
     expect(scheduledMatchForRule("hepatitis_c", appts, "2026-07-10")).toBe(
       "2026-08-01"
     );

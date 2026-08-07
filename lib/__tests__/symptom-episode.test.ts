@@ -105,7 +105,7 @@ describe("episodeContainingDate", () => {
 describe("episodesForSituation (the frozen migration-046 pairing)", () => {
   // Its `end` is the STOP EVENT day (the pre-#2232 stored shape), NOT the inclusive
   // IllnessEpisode.end — migration 046's backfill wrote this value into `ended_at`
-  // and migration 168 converts it, so the pairing must keep emitting it.
+  // and migration 169 converts it, so the pairing must keep emitting it.
   it("pairs consecutive start→stop, leaves an unclosed start ongoing", () => {
     const events = [
       ev("Illness", "2026-01-01", "start"),

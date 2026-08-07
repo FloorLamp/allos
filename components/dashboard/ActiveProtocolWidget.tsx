@@ -8,6 +8,7 @@ import {
 } from "@/lib/dashboard-widgets";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
 import ProtocolLogButton from "@/app/(app)/protocols/ProtocolLogButton";
+import { dedupeProtocolAdherenceLabel } from "@/lib/protocol-practice";
 
 // Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
 // experiment as a compact row: days elapsed, this-week practice adherence, and the
@@ -81,7 +82,10 @@ export default function ActiveProtocolWidget({
                   count={p.adherence.count}
                   perWeek={p.adherence.perWeek}
                   perWeekMax={p.adherence.perWeekMax}
-                  label={p.adherence.label}
+                  label={dedupeProtocolAdherenceLabel(
+                    p.name,
+                    p.adherence.label
+                  )}
                   noun={p.adherence.noun}
                   pace={p.adherence.pace}
                   atCeiling={p.adherence.atCeiling}
@@ -105,6 +109,8 @@ export default function ActiveProtocolWidget({
                 // silently thrown away.
                 defaultDurationMin={p.practicePreviousDurationMin}
                 inlineDuration
+                compact
+                primaryTone="neutral"
               />
             )}
 

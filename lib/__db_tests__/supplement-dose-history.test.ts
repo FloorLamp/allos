@@ -133,6 +133,12 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(history).toHaveLength(1);
     expect(history[0].amount).toBe("800 mg");
     expect(history[0].date).toBe(date);
+    // The row carries `occurred_at` (the stated event instant, migration 165) so the
+    // panel call sites can ask the row-level question (#2228 decision 1a). Nothing
+    // writes it yet — the backfill's stated time lands in `given_at` until the write
+    // half of #2228 — so it is NULL here, and the display tier renders the record
+    // chain marked "recorded" rather than as a bare administration time.
+    expect(history[0].occurred_at).toBeNull();
     const logId = history[0].id;
 
     // AMEND: a new wall time and a corrected amount, same day.

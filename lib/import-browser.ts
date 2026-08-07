@@ -521,7 +521,7 @@ export function dentalProcedureItem(row: {
 
 export function appointmentItem(row: {
   id: number;
-  scheduled_at: string;
+  date: string;
   title: string | null;
   location: string | null;
   status: string;
@@ -530,8 +530,8 @@ export function appointmentItem(row: {
     id: row.id,
     title: row.title ?? "Appointment",
     detail: detailLine(row.location ?? row.status),
-    // The scheduled date (drop any time portion for the listing's date column).
-    date: row.scheduled_at.slice(0, 10),
+    // The scheduled calendar day — the listing's date column.
+    date: row.date,
     href: "/records/history/visits",
   };
 }

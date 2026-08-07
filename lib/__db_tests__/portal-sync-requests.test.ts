@@ -315,8 +315,8 @@ describe("post-visit — mapped profiles only", () => {
     const f = fixture("visit");
     reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, -1));
 
     expect(evaluatePostVisitRequests(todayFor)).toBeGreaterThanOrEqual(1);
     const req = openSyncRequests().find((r) => r.accountId === f.mom.id);
@@ -327,8 +327,8 @@ describe("post-visit — mapped profiles only", () => {
     const f = fixture("visit-unmapped");
     // Dad has a visit, but Dad is bound to no portal login.
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Dermatology', 'completed')"
-    ).run(f.dadProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Dermatology', 'completed')"
+    ).run(f.dadProfile, shiftDateStr(f.anchor, -1));
 
     evaluatePostVisitRequests(todayFor);
     expect(openSyncRequests().filter((r) => r.portalId === f.portalId)).toEqual(
@@ -342,8 +342,8 @@ describe("post-visit — mapped profiles only", () => {
     // is "install the tool", which the card already makes in its own words.
     const f = fixture("prerun-visit");
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, -1));
 
     evaluatePostVisitRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
@@ -361,8 +361,8 @@ describe("post-visit — mapped profiles only", () => {
     const f = fixture("visit-cancelled");
     reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'cancelled')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Cardiology', 'cancelled')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, -1));
     evaluatePostVisitRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
       false
@@ -373,11 +373,11 @@ describe("post-visit — mapped profiles only", () => {
     const f = fixture("visit-window");
     reportedRun(f.mom, stamp(shiftDateStr(f.anchor, -2)));
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Old', 'completed')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -30)));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Old', 'completed')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, -30));
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Future', 'scheduled')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, 5)));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Future', 'scheduled')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, 5));
     evaluatePostVisitRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
       false
@@ -679,8 +679,8 @@ describe("the ever-ran fact rides the existing join (#2064)", () => {
     // Never run: the setup carve-out keeps BOTH creators silent even though the
     // login is mapped, has no check clock at all, and has a visit yesterday.
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
-    ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.momProfile, shiftDateStr(f.anchor, -1));
     evaluateSyncRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
       false

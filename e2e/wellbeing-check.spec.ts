@@ -69,9 +69,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     // State 1 — the unified shell: mood row + the quiet illness branch.
     const card = page.getByTestId("how-are-you-card");
     await expect(card).toBeVisible();
-    await expect(card.getByTestId("mood-status")).toHaveText(
-      "Tap to log your day."
-    );
+    await expect(card.getByTestId("mood-status")).toHaveCount(0);
     await expect(card.getByTestId("feeling-sick-activate")).toBeVisible();
     await expect(page.getByTestId("symptom-log-bar")).toHaveCount(0);
     await expect(card.getByTestId("mood-server-logged")).toHaveCount(0);

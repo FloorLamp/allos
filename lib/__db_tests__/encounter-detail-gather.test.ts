@@ -78,16 +78,16 @@ describe("encounter-detail gathers (#1350)", () => {
     // Episode active 2026-06-15 .. 2026-06-22 (end_date is the inclusive last day).
     const ep = newEpisode(A, "sinus infection", "2026-06-15", "2026-06-22");
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, provider_id, status, encounter_id, title)
-       VALUES (?, '2026-06-10 09:00:00', ?, 'completed', ?, 'Follow-up')`
+      `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, status, encounter_id, title)
+       VALUES (?, '2026-06-10', '09:00', ?, 'completed', ?, 'Follow-up')`
     ).run(A, patel, subject);
 
     // Profile B: an overlapping episode + its own visit — must NEVER leak into A.
     const bVisit = newEncounter(B, "2026-06-18", null, "AMB");
     newEpisode(B, "flu", "2026-06-15", "2026-06-23");
     db.prepare(
-      `INSERT INTO appointments (profile_id, scheduled_at, status, encounter_id, title)
-       VALUES (?, '2026-06-01 09:00:00', 'completed', ?, 'B appt')`
+      `INSERT INTO appointments (profile_id, date, time_of_day, status, encounter_id, title)
+       VALUES (?, '2026-06-01', '09:00', 'completed', ?, 'B appt')`
     ).run(B, bVisit);
 
     // Before any link: no trail, but the in-range episode is suggested.
@@ -99,7 +99,7 @@ describe("encounter-detail gathers (#1350)", () => {
 
     // Scheduling origin: the completed appointment booked for this visit.
     const appt = appointmentForEncounter(A, subject);
-    expect(appt?.scheduled_at.slice(0, 10)).toBe("2026-06-10");
+    expect(appt?.date).toBe("2026-06-10");
 
     // Visit context: 2nd visit with Dr. Patel (prior 2026-03-02), 2nd Office Visit
     // this year.

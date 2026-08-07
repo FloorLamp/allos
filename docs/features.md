@@ -357,12 +357,11 @@ second weekly reminder.
 **Wellness practices** (`/wellness`) manage named modalities such as sauna,
 meditation, breathwork, and light exposure independently of a protocol. Each
 practice can carry a weekly floor and optional ceiling, log multiple detailed
-sessions per day, and retain editable session history. **Stop tracking** removes
-the weekly target and its reminders without deleting logged sessions; any
-protocol using that target is explicitly unlinked.
-
-Consistency over time is on **Trends → Practices** (see [Trends](#trends)):
-weeks in range, cadence against your declared band, and session length.
+sessions per day, and retain editable session history. Its collapsed **26-week
+trend** keeps the completed-week cells, cadence against the declared band, and
+session-length trend on the same practice card. **Stop tracking** removes the
+weekly target and its reminders without deleting logged sessions; any protocol
+using that target is explicitly unlinked.
 
 A tracked practice is one tap away from anywhere: the quick-actions menu's **Log
 practice** overlay lists each one with this week's standing, and the command
@@ -830,8 +829,8 @@ Charts and analysis live in four tabs:
 - **Overview** is the landing surface, and answers "how am I doing" in one
   scroll: the **"what's trending" digest**, then your **starred grid** — your own
   cross-domain set of saved, drag-orderable tiles, the one curated area where
-  nothing appears unless you put it there — then the **Practices** lens, and
-  finally the **body census**: vitals, acute temperature, sleep and outdoor-time
+  nothing appears unless you put it there — then the **body census**: vitals,
+  acute temperature, sleep and outdoor-time
   signals, body composition, and the shared **Log measurements** form — which
   groups its fields into **Vitals**, **Body** and **Sleep & recovery**, opening the
   one your entry point implies (and the one a deep link names) with the rest a tap
@@ -845,18 +844,11 @@ Charts and analysis live in four tabs:
 - **Insights** combines comparison tools with daily analysis and weekly/monthly
   recap narratives.
 
-**Practices** (`/trends#practices`) is the wellness lens: for each practice you
-have given a weekly cadence, one cell per completed week — at your weekly
-maximum, floor met, or under floor — a consistency line stating how many of those
-weeks met the floor, sessions per week charted against the min–max band you
-declared, and an average session length for the modalities that record minutes.
-The consistency line is a rate and nothing else — it counted an "N-week streak"
-until #1966 retired that, on the same reasoning as the rest of the streak family:
-one missed week made a real habit read as zero. It renders only where you
-track a practice, is calm by design (an under-floor week is a neutral cell, never
-a warning), and every card taps through to **Wellness**, which still owns
-logging, editing, and the full session history. A practice with sessions but no
-weekly cadence has no range to be in and stays on Wellness.
+Practice consistency lives on each **Wellness** practice card rather than in the
+middle of Overview (#2151). The fixed, today-anchored 26-week disclosure shows
+the same completed-week verdicts, cadence band, consistency rate, and optional
+session-length trend beside logging, editing, and session history. The retired
+`/trends#practices` fragment has no shim.
 
 The body census **streams in below** the digest and starred grid, so the landing
 surface paints as fast as it did when Body was its own tab. Links that used to

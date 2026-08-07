@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — migration 168 (#2232): illness_episodes joins the day-window
+// DB INTEGRATION TIER — migration 169 (#2232): illness_episodes joins the day-window
 // vocabulary. `started_at`/`ended_at` become `start_date`/`end_date`, and the stored
 // end converts from the EXCLUSIVE first inactive day to the INCLUSIVE last active day
 // (the house convention every other stored day-window end already uses).
@@ -18,7 +18,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { up } from "@/lib/migrations/versions/168-illness-episode-day-window";
+import { up } from "@/lib/migrations/versions/169-illness-episode-day-window";
 import { db } from "@/lib/db";
 import {
   createEpisodeRow,
@@ -28,7 +28,7 @@ import {
 import { assembleIllnessEpisode } from "@/lib/illness-episode";
 import { episodeRowToDerived, getEpisodeRow } from "@/lib/illness-episode-store";
 
-// The pre-168 shape, as migration 046 created it.
+// The pre-169 shape, as migration 046 created it.
 function legacyDb(): Database.Database {
   const mem = new Database(":memory:");
   mem.exec(`
@@ -82,7 +82,7 @@ function rows(mem: Database.Database) {
   }[];
 }
 
-describe("migration 168 — illness_episodes start_date/end_date, inclusive end", () => {
+describe("migration 169 — illness_episodes start_date/end_date, inclusive end", () => {
   it("renames the columns and converts a closed episode's end to its last active day", () => {
     const mem = legacyDb();
     // Sick 2026-03-01 .. 2026-03-07 under the old convention (ended_at = 03-08, the
@@ -141,7 +141,7 @@ describe("migration 168 — illness_episodes start_date/end_date, inclusive end"
   it("translates a replayed 046-shaped legacy insert onto the live columns", () => {
     const mem = legacyDb();
     up(mem);
-    // What backfillIllnessEpisodes writes on a post-168 replay: the legacy column
+    // What backfillIllnessEpisodes writes on a post-169 replay: the legacy column
     // pair, end = the change-log's stop day.
     mem
       .prepare(

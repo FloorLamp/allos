@@ -580,8 +580,8 @@ describe("declined — one login, three patients, three answers", () => {
 
     // The declined proxy's visit really happened — and raises nothing.
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
-    ).run(f.proxy, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Cardiology', 'completed')"
+    ).run(f.proxy, shiftDateStr(f.anchor, -1));
     evaluatePostVisitRequests(todayFor);
     expect(openSyncRequests().some((r) => r.accountId === f.account.id)).toBe(
       false
@@ -598,8 +598,8 @@ describe("declined — one login, three patients, three answers", () => {
     );
     backdateReport(f.account.id, stamp(shiftDateStr(f.anchor, -10)));
     db.prepare(
-      "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Dermatology', 'completed')"
-    ).run(f.holder, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
+      "INSERT INTO appointments (profile_id, date, title, status) VALUES (?, ?, 'Dermatology', 'completed')"
+    ).run(f.holder, shiftDateStr(f.anchor, -1));
     expect(evaluatePostVisitRequests(todayFor)).toBeGreaterThanOrEqual(1);
     expect(openSyncRequests().some((r) => r.accountId === f.account.id)).toBe(
       true

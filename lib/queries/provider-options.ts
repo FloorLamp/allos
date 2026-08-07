@@ -44,7 +44,7 @@ function providerUses(profileId: number): ProviderUse[] {
          WHERE profile_id = ? AND provider_id IS NOT NULL
            AND planned_date IS NOT NULL
        UNION ALL
-       SELECT provider_id, substr(scheduled_at, 1, 10) FROM appointments
+       SELECT provider_id, date FROM appointments
          WHERE profile_id = ? AND provider_id IS NOT NULL
        UNION ALL
        SELECT ordering_provider_id, study_date FROM imaging_studies

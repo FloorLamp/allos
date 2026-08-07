@@ -29,10 +29,14 @@ const LEAD_CHIPS = 3;
 // reference range) and ranks them. Renders the top few as compact chips. Nothing
 // renders when nothing is meaningfully moving.
 //
-// #1455 B: the card shows the TOP THREE inline and puts the rest behind a
+// #1455 B: the digest shows the TOP THREE inline and puts the rest behind a
 // "Show all N" disclosure. The list is already ranked, so the leading three are
 // the ones worth the phone screen; the full set stays one tap away, and the
 // charts below move up by the ~4 chip-rows this used to spend.
+//
+// DATA-FIRST OVERVIEW: this is a compact inline status row, not a card. The shared
+// range controls directly above already say which period is active, so a heading
+// band repeating "over this window" only delayed the charts.
 export default async function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
@@ -79,7 +83,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
       item.direction === "up" ? IconArrowUpRight : IconArrowDownRight;
     const inner = (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${toneClass(
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${toneClass(
           item
         )}`}
       >
@@ -127,14 +131,12 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   const overflow = items.slice(LEAD_CHIPS);
 
   return (
-    <div className="card" data-testid="trending-digest">
-      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-        What&rsquo;s trending{" "}
-        <span className="font-normal text-slate-500 dark:text-slate-400">
-          over this window
-        </span>
-      </h2>
-      <div className="flex flex-wrap gap-2">
+    <div
+      className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
+      data-testid="trending-digest"
+    >
+      <h2 className="section-label shrink-0">Trending</h2>
+      <div className="flex flex-wrap items-center gap-1.5">
         {lead.map(renderChip)}
         {overflow.length > 0 && (
           <DigestOverflow total={items.length}>

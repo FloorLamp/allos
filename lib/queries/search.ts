@@ -494,7 +494,7 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
   // Match the appointment title/location/notes and the provider's name.
   const rows = db
     .prepare(
-      `SELECT a.id, a.title, a.location, a.scheduled_at, a.status, p.name AS provider
+      `SELECT a.id, a.title, a.location, a.date, a.status, p.name AS provider
          FROM appointments a
          LEFT JOIN providers p ON p.id = a.provider_id
         WHERE a.profile_id = ?
@@ -502,25 +502,21 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
                OR a.location LIKE ? ESCAPE '\\'
                OR a.notes LIKE ? ESCAPE '\\'
                OR p.name LIKE ? ESCAPE '\\')
-        ORDER BY a.scheduled_at DESC
+        ORDER BY a.date DESC, a.time_of_day DESC
         LIMIT ?`
     )
     .all(profileId, like, like, like, like, CANDIDATE_LIMIT) as {
     id: number;
     title: string | null;
     location: string | null;
-    scheduled_at: string;
+    date: string;
     status: string;
     provider: string | null;
   }[];
   return rows.map((r) => {
     const title = r.title || r.provider || "Appointment";
     const subtitle =
-      [
-        r.provider !== title ? r.provider : null,
-        r.location,
-        isoDate(r.scheduled_at),
-      ]
+      [r.provider !== title ? r.provider : null, r.location, r.date]
         .filter(Boolean)
         .join(" · ") || r.status;
     return {
@@ -529,7 +525,7 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
       title,
       subtitle,
       href: "/records/history/visits",
-      date: isoDate(r.scheduled_at),
+      date: r.date,
       // "Mark complete" on a still-scheduled appointment (#662).
       actions: appointmentHitActions(r.id, r.status),
     };

@@ -199,10 +199,10 @@ export function seedSuppressedCenter(): void {
     const scApptId = Number(
       db
         .prepare(
-          `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-         VALUES (?, ?, 'E2E Suppressed Appointment', 'scheduled')`
+          `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+         VALUES (?, ?, '10:00', 'E2E Suppressed Appointment', 'scheduled')`
         )
-        .run(scId, `${shiftDateStr(scToday, 5)} 10:00`).lastInsertRowid
+        .run(scId, shiftDateStr(scToday, 5)).lastInsertRowid
     );
 
     // The three suppression rows (the spec re-asserts these per test). The

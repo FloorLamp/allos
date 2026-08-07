@@ -26,16 +26,6 @@ export interface IllnessTimelineDayGroup {
   events: IllnessTimelineDisplayEvent[];
 }
 
-function appointmentParts(value: string): {
-  date: string;
-  time: string | null;
-} {
-  const normalized = value.replace(" ", "T");
-  const [date, rest] = normalized.split("T");
-  const time = /^\d{2}:\d{2}/.test(rest ?? "") ? rest.slice(0, 5) : null;
-  return { date: date.slice(0, 10), time };
-}
-
 export function illnessCareTimelineEvents(
   care: EpisodeInRangeEvents
 ): IllnessCareTimelineEvent[] {
@@ -51,13 +41,13 @@ export function illnessCareTimelineEvents(
       href: encounterHref(event.id),
     })),
     ...care.appointments.map((event) => {
-      const { date, time } = appointmentParts(event.scheduledAt);
+      // The row's own halves (#2234) — no string sniffing left to do.
       return {
         kind: "appointment" as const,
         id: `appointment:${event.id}`,
-        date,
-        time,
-        time24: time,
+        date: event.date,
+        time: event.timeOfDay,
+        time24: event.timeOfDay,
         label: "Appointment",
         detail: event.title || "Appointment scheduled",
         href: "/appointments" as AppRoute,

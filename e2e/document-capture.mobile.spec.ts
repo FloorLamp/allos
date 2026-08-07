@@ -95,16 +95,20 @@ test.describe("Document capture on a phone (issue #1993)", () => {
   }) => {
     await page.goto("/data?section=import");
 
-    // Re-click until the capture modal opens — a pre-hydration click on the
-    // trigger is swallowed (#500-class), no single expect can both re-click and
-    // await the modal, and opening is idempotent.
+    // No getUserMedia in CI: one tap reaches the chooser directly (#2182).
     const fallback = page.getByTestId("photo-capture-file");
     await expect(async () => {
-      if (!(await fallback.isVisible())) {
-        await page.getByTestId("medical-upload-camera").click();
-      }
-      await expect(fallback).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: pre-hydration click swallow on the capture trigger (the progress-photos precedent)
+      const chooserPromise = page.waitForEvent("filechooser", {
+        timeout: 1_000,
+      });
+      await page.getByTestId("medical-upload-camera").click();
+      const chooser = await chooserPromise;
+      await chooser.setFiles({
+        name: `${PREFIX}snap.png`,
+        mimeType: "image/png",
+        buffer: PNG_1X1,
+      });
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-drive the idempotent trigger until hydration delivers the one chooser activation
 
     // The camera path stays IMAGE-ONLY and keeps `capture`, on an input that is not
     // the picker — the whole reason there are two inputs at all.
@@ -115,11 +119,8 @@ test.describe("Document capture on a phone (issue #1993)", () => {
       /.*/
     );
 
-    await fallback.setInputFiles({
-      name: `${PREFIX}snap.png`,
-      mimeType: "image/png",
-      buffer: PNG_1X1,
-    });
+    await expect(fallback).toHaveClass(/sr-only/);
+    await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
     await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
     // "Use photo" posts NOTHING — it hands the File to the form, which stores it in
     // the real input. The single submit comes later, which is the invariant.

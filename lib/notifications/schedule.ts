@@ -15,6 +15,45 @@ export const MINUTES_PER_DAY = 1440;
 // late — which is what keeps an operator on `0 * * * *` working unchanged.
 export const DEFAULT_TICK_MINUTES = 60;
 
+// ── The OFFERED tick cadences (#2216) ────────────────────────────────────────
+//
+// The cadence is an operator choice: TICK_SECONDS in docker-notify.sh (or the
+// crontab rhythm), defaulting to 5 minutes. What the app OFFERS — docs, comments,
+// any operator-facing hint — is exactly the divisors of 60, because the sidecar
+// loop is epoch-aligned (`next = (now / TICK_SECONDS + 1) * TICK_SECONDS`): a
+// divisor cadence lands on the same minutes of every hour, which is the stable
+// minute-of-hour grid the time picker renders. A 7-minute tick is perfectly
+// well-defined but lands on different minutes each hour, so there is nothing
+// stable to show for it. Non-divisors stay SUPPORTED, never offered: the divisor
+// constraint belongs on what the app offers, not on what clampTickMinutes below
+// tolerates — that function measures reality, and reality includes `*/7`.
+export const OFFERED_TICK_MINUTES: readonly number[] = [
+  1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60,
+];
+
+// The minute-of-hour grid the OBSERVED cadence can hit exactly: the largest
+// offered (divisor-of-60) cadence at or below the clamped tick. 1 divides 60, so
+// this is always defined; a non-divisor observation falls back to the largest
+// divisor below it — a grid is never finer than the scheduler that has to honour
+// it.
+//
+// OBSERVED drives the UI; declared drives the scheduler (#2216). Everything grid
+// shaped — the picker's steps and quick options, the off-grid warning
+// (subHourlySlotsAtRisk), the #2217 proposal snap — derives from the cadence the
+// scheduler actually keeps (`notify_tick_interval_min`, written each tick from
+// the `notify_tick_last_run_at` watermark), never from TICK_SECONDS: a sidecar
+// configured for 5 minutes but wedged at 20 must not imply a 5-minute grid it
+// cannot deliver. And the grid STEERS, it never VALIDATES: the observed interval
+// moves (first tick ever reads hourly, a skipped tick doubles it, an outage
+// widens it until it self-heals), so a stored off-grid time stays valid and
+// keeps firing on its late-but-correct attempt bands whatever the grid says.
+export function tickGridMinutes(observedTickMin: number): number {
+  const tick = clampTickMinutes(observedTickMin);
+  let grid = 1;
+  for (const d of OFFERED_TICK_MINUTES) if (d <= tick) grid = d;
+  return grid;
+}
+
 // How long after the first attempt the one retry attempt runs. An hour, exactly as
 // it has always been — see the retry-budget block at slotAttempt.
 export const SLOT_RETRY_DELAY_MIN = 60;
@@ -137,27 +176,33 @@ export function slotDue(
   return slotAttempt(slotMinute, nowMinute, tickMinutes) !== null;
 }
 
-// The sub-hourly slot times the observed tick cadence cannot land on time —
-// "cannot honour" made checkable (#2121 constraint 4). A slot is at risk when the
-// scheduler's real cadence would deliver it more than `toleranceMin` late (an
-// hourly tick fires a 07:30 slot at 08:00), or when it sits past the day's last
-// tick and would never fire at all (23:50 under hourly ticks — see the no-wrap
-// rule above). Hour-aligned slots are never at risk: every supported cadence
-// lands on :00. The default tolerance accepts the 15-minute sidecar cadence
-// (worst case 14 minutes late) as honouring a sub-hourly time — the warning is
-// for the hourly-crontab shape, not for ordinary tick quantisation. Returns the
-// offending minutes so the caller can name them.
+// The sub-hourly slot times the observed tick cadence cannot land on EXACTLY —
+// "cannot honour" made checkable (#2121 constraint 4). A slot is at risk when it
+// sits off the observed cadence's minute-of-hour grid (an hourly tick fires a
+// 07:30 slot at 08:00; a 15-minute tick fires 07:40 at 07:45), or when it sits
+// past the day's last tick and would never fire at all (23:50 under hourly ticks
+// — see the no-wrap rule above). Hour-aligned slots are never at risk: every
+// supported cadence lands on :00.
+//
+// The rule is DERIVED, not declared (#2216): the old `toleranceMin = 15`
+// constant existed to forgive tick quantisation, and with a grid-aligned picker
+// there is usually nothing to forgive — so the warning is exact (off-grid)
+// rather than tolerant, and is precisely how a typed off-grid time is told the
+// truth. GUIDANCE, NEVER VALIDATION: an at-risk time stays stored and keeps
+// firing late-but-correctly on its attempt bands; this only names it, so a
+// scheduler hiccup can never strand a time somebody deliberately chose. Returns
+// the offending minutes so the caller can name them.
 export function subHourlySlotsAtRisk(
   slotMinutes: readonly (number | null)[],
-  observedTickMin: number,
-  toleranceMin = 15
+  observedTickMin: number
 ): number[] {
   const tick = clampTickMinutes(observedTickMin);
+  const grid = tickGridMinutes(tick);
   return slotMinutes.filter((m): m is number => {
     if (m == null || m % 60 === 0) return false;
-    // Worst-case lateness of the first attempt: the slot just misses a tick and
-    // waits out the full interval (ticks are epoch-aligned, minute-resolution).
-    if (tick - 1 > toleranceMin) return true;
+    // Off the grid: no tick lands on this minute, so the first attempt is late
+    // by up to one interval (ticks are epoch-aligned, minute-resolution).
+    if (m % grid !== 0) return true;
     // Past the day's final tick there is no band left to fire in.
     const lastTick = MINUTES_PER_DAY - (MINUTES_PER_DAY % tick || tick);
     return m > lastTick;

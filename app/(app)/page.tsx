@@ -528,29 +528,30 @@ export default async function Dashboard() {
   let nextAppt: NextAppointment | null = null;
   let hasScheduledAppt = false;
   if (has("next-appointment")) {
-    // getScheduledAppointments already orders by scheduled_at ASC, id ASC, so the
-    // picker's same-day tie-break lands on the earliest slot — matching the household
-    // card, which feeds the same source ordering.
+    // getScheduledAppointments already orders by date ASC, time_of_day ASC, id ASC,
+    // so the picker's same-day tie-break lands on the earliest slot — matching the
+    // household card, which feeds the same source ordering.
     const scheduled = getScheduledAppointments(profile.id).map((a) => ({
       appt: a,
-      dueDate: a.scheduled_at.slice(0, 10),
+      dueDate: a.date,
     }));
     hasScheduledAppt = scheduled.length > 0;
     const soonest = pickNextAppointment(scheduled)?.appt;
     if (soonest) {
-      const d = soonest.scheduled_at.slice(0, 10);
+      const d = soonest.date;
       const detailParts = [soonest.provider_name, soonest.location].filter(
         Boolean
       );
-      // Render date AND clock time through the login's prefs (#1215) — a stored
-      // "YYYY-MM-DD HH:MM" shows the wall-clock; a date-only value degrades to the
-      // long date. The card links to the resulting encounter once one exists, else
-      // the visits list (the same target the header uses).
+      // Render date AND clock time through the login's prefs (#1215) — a timed
+      // row shows the wall-clock; a day-only one degrades to the long date. The
+      // card links to the resulting encounter once one exists, else the visits
+      // list (the same target the header uses).
       const visitsHref: AppRoute = "/records/history/visits";
       nextAppt = {
         title: soonest.title?.trim() || soonest.provider_name || "Appointment",
         whenLabel: formatRecordDateTime(
-          soonest.scheduled_at,
+          soonest.date,
+          soonest.time_of_day,
           formatLongDate(d, formatPrefs),
           formatPrefs
         ),

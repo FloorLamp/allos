@@ -57,12 +57,8 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import {
-  lastNDates,
-  parseUtcSql,
-  shiftDateStr,
-  zonedDateParts,
-} from "@/lib/date";
+import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
+import { bestKnownInstant, instantDate } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
 import type { DoseHistoryEntry } from "@/components/intake/DoseHistoryPanel";
 import {
@@ -306,13 +302,27 @@ export default async function SupplementsTab({
   );
   const historyFor = (s: Supplement): DoseHistoryEntry[] =>
     (doseHistoryByItem.get(s.id) ?? []).map((row) => {
-      const stored = row.given_at ?? row.taken_at;
-      const instant = parseUtcSql(stored);
+      // The row-level time question, asked once (#2205 phase 3): the stated event
+      // instant (`occurred_at`) when somebody named one, else the record chain
+      // (given_at → taken_at) — with the answer saying WHICH it was. The panel IS
+      // the clinical record (#2228 decision 4), so a record-chain clock renders as
+      // "recorded 7:02am", never as a bare clock claiming an administration time
+      // the row does not state.
+      const when = bestKnownInstant("intake_item_logs", row);
+      const instant = instantDate(when);
+      const clock = formatGivenAtClock(
+        tz,
+        when.known ? when.at : null,
+        formatPrefs.timeFormat
+      );
       return {
         id: row.id,
         doseId: row.dose_id,
         date: row.date,
-        time: formatGivenAtClock(tz, stored, formatPrefs.timeFormat),
+        time:
+          clock && when.known && when.semantic === "record"
+            ? `recorded ${clock}`
+            : clock,
         timeValue: instant ? zonedDateParts(tz, instant).hhmm : "",
         amount: row.amount,
         product: row.product,

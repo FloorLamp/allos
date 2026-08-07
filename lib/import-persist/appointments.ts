@@ -28,7 +28,7 @@ export function autoCompleteAppointmentsFromEncounters(
   if (encounters.length === 0) return;
 
   const readScheduled = db.prepare(
-    `SELECT id, scheduled_at AS scheduledAt, provider_id AS providerId,
+    `SELECT id, date, time_of_day AS timeOfDay, provider_id AS providerId,
             status, encounter_id AS encounterId, kind
        FROM appointments
       WHERE profile_id = ? AND status = 'scheduled' AND encounter_id IS NULL`
@@ -38,7 +38,8 @@ export function autoCompleteAppointmentsFromEncounters(
     for (const encounter of encounters) {
       const candidates = readAllForUpdate<{
         id: number;
-        scheduledAt: string;
+        date: string;
+        timeOfDay: string | null;
         providerId: number | null;
         status: string;
         encounterId: number | null;

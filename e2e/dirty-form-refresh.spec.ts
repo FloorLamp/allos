@@ -67,10 +67,14 @@ function seedAppointmentBehindThePage() {
   try {
     handle
       .prepare(
-        `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-         VALUES (1, ?, ?, 'scheduled')`
+        `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+         VALUES (1, ?, ?, ?, 'scheduled')`
       )
-      .run(when.toISOString().slice(0, 19).replace("T", " "), BEHIND);
+      .run(
+        when.toISOString().slice(0, 10),
+        when.toISOString().slice(11, 16),
+        BEHIND
+      );
   } finally {
     handle.close();
   }

@@ -816,7 +816,8 @@ export function planProfileDigestTick(
 // after #2211 means a DYNAMIC re-check tick: at or past the floor, before the
 // deadline, with no failed attempt on record. That bounds the volume at
 // `(deadline − floor) / tick` lines per profile per day — at most four at a
-// 15-minute tick, and fewer whenever the data lands early, because the first
+// 15-minute tick, proportionally more at the 5-minute default (#2216), and
+// fewer whenever the data lands early, because the first
 // non-pending answer sends the digest and ends the window. A Static profile writes
 // none at all, which is the honest reading: Static never asks the question.
 //

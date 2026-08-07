@@ -134,8 +134,12 @@ quotas, and is held to a per-provider cadence declared in the integrations regis
 [`integrations-sync.md`](./integrations-sync.md). The consequence for this document:
 **a finer tick multiplies due evaluations and not provider API calls**, which is
 what made taking the tick below the hour a scheduler-shape change rather than a
-quota decision. `docker-notify.sh` now fires every 15 minutes; a host crontab may
-run any steady rhythm from 1-minute to hourly, because the tick OBSERVES its own
+quota decision. `docker-notify.sh` now fires every 5 minutes by default —
+`TICK_SECONDS` is the operator's one knob (#2216), and the OFFERED values are the
+divisors of 60 minutes, because the epoch-aligned loop has a stable minute-of-hour
+grid only for those; any other rhythm from 1-minute to hourly stays supported,
+just not offered. A host crontab may run any steady rhythm too (`*/5 * * * *`
+matches the sidecar), because the tick OBSERVES its own
 cadence (the `notify_tick_last_run_at` watermark → `observedTickMinutes`) and
 sizes its slot windows from what the scheduler actually does, not from a config
 claim.
@@ -162,10 +166,16 @@ recovery on the retry band, the no-midnight-wrap rule and its cost — is spelle
 at `slotAttempt` itself. The tick learns its own cadence by observation
 (`notify_tick_last_run_at` → `observedTickMinutes`, clamped to [1, 60] so an
 outage can never widen the window), and Settings → Notifications warns when the
-observed cadence cannot honour a configured sub-hourly time
-(`subHourlySlotsAtRisk`): a sub-hourly slot under an hourly crontab fires up to
-~an hour late, and a slot after the day's last tick (e.g. 23:50 under hourly
-ticks) never fires at all, because slots never wrap into the next day.
+observed cadence cannot hit a configured sub-hourly time EXACTLY
+(`subHourlySlotsAtRisk` — the tolerance is derived, not declared, since #2216: a
+time warns iff it sits off `tickGridMinutes`' grid for the OBSERVED cadence): a
+sub-hourly slot under an hourly crontab fires up to ~an hour late, 07:40 under a
+15-minute cadence fires at 07:45, and a slot after the day's last tick (e.g.
+23:50 under hourly ticks) never fires at all, because slots never wrap into the
+next day. The same grid steers the time picker's steps (#2216) — as guidance,
+never validation: a stored off-grid time stays valid and keeps firing
+late-but-correctly, so a scheduler hiccup can never strand a time somebody
+deliberately chose.
 
 **The email channel (#1855).** Email is the fourth channel: login-scoped like
 Telegram/push (the address is `logins.email` — the auth address; the enable,
@@ -184,7 +194,8 @@ notification channel".
 
 **Notifications** (`lib/notifications/`) are delivered over four channels —
 Telegram, Web Push, an outbound Home Assistant webhook, and email — driven by a tick
-(`npm run notify` / the `notify` Docker service, every 15 minutes; slot times are
+(`npm run notify` / the `notify` Docker service, every 5 minutes by default
+since #2216; slot times are
 minute-precise since #2121, stored as "HH:MM" by migration 158). Sends are deduped per
 day/slot; timing follows the DB-stored timezone
 (Settings → Health profile → Timezone). Inbound
@@ -1411,10 +1422,11 @@ BOTH surfaces.
   a floor that "loses" is doing its job, and none of the four no-answer states can
   carry a percentile.
 - **The proposal is grid-snapped UP** onto the picker grid #2216 derives from the
-  OBSERVED tick cadence (`proposalGridMinutes` — divisors of 60 only, coarsening a
-  non-divisor cadence), so the app never proposes a minute this instance's tick
-  cannot hit, and never a minute earlier than the p90. 07:40 at a 5-minute tick;
-  07:45 at the 15-minute sidecar.
+  OBSERVED tick cadence (`tickGridMinutes`, `lib/notifications/schedule.ts` —
+  divisors of 60 only, coarsening a non-divisor cadence; `snapProposalMinute` is
+  the consumer-side snap), so the app never proposes a minute this instance's
+  tick cannot hit, and never a minute earlier than the p90. 07:40 at a 5-minute
+  tick; 07:45 at a 15-minute one.
 - **Two surfaces, ONE finding, one episode key.** Settings → Notifications beside
   the digest time (a rendered aggregate on a page the user opened — class 2, no
   consent question), and ONE line inside the digest itself, below its content. Both
@@ -1451,8 +1463,9 @@ persisted and readable at Settings → Logs & audit), written by `logDigestTick`
 from the SAME `digestSleepPendingTrace` the decision itself consumed, so the trace
 can never describe a decision other than the one taken. It is written only on a
 tick that actually consulted the predicate — a Dynamic re-check — which bounds it
-at `(deadline − floor) / tick` lines per profile per day, at most four at a
-15-minute tick and fewer whenever the data lands early. A Static profile writes
+at `(deadline − floor) / tick` lines per profile per day — at most four at a
+15-minute tick, proportionally more at the 5-minute default (#2216) — and fewer
+whenever the data lands early. A Static profile writes
 none, which is the honest reading: Static never asks the question.
 
 **When to send vs what to print stay separate.** This decides only WHEN. #2099

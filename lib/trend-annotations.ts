@@ -69,7 +69,7 @@ export interface MedCourseInput {
 }
 
 // A scheduled/completed appointment (cancelled ones are dropped upstream). `date`
-// is the calendar day (scheduled_at sliced to YYYY-MM-DD).
+// is the calendar day (the appointments.date column).
 export interface AppointmentInput {
   date: string | null;
   title: string | null;

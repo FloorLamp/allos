@@ -6,7 +6,7 @@
 //
 // This module is the auth-blind (profileId-first, never imports lib/auth — #319) DB
 // read/write for those rows. Every statement is profile-scoped. `start_date`/`end_date`
-// (#2232, migration 168 — day-window vocabulary, both bounds INCLUSIVE) carry the SAME
+// (#2232, migration 169 — day-window vocabulary, both bounds INCLUSIVE) carry the SAME
 // semantics as the derived IllnessEpisode (lib/symptom-episode.ts):
 //   start_date = inclusive first active day (YYYY-MM-DD; NULL = active before the log)
 //   end_date   = inclusive LAST active day (NULL = open/ongoing)

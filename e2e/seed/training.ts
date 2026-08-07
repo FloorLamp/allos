@@ -531,13 +531,9 @@ export function seedActivityFormPaths(): void {
       .run().lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO appointments (profile_id, scheduled_at, provider_id, title, location, status)
-   VALUES (?, ?, ?, 'E2E dermatology visit', 'E2E Skin Clinic', 'scheduled')`
-  ).run(
-    PROFILE_ID,
-    `${shiftDateStr(today(PROFILE_ID), 4)} 09:30`,
-    apptProviderId
-  );
+    `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, title, location, status)
+   VALUES (?, ?, '09:30', ?, 'E2E dermatology visit', 'E2E Skin Clinic', 'scheduled')`
+  ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), 4), apptProviderId);
 
   console.log(
     `e2e: seeded an equipment-delete link fixture, an open care-plan item, and a future appointment on profile ${PROFILE_ID} (#391)`

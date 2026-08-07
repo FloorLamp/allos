@@ -48,6 +48,8 @@ export default function LogPracticeButton({
   inlineDuration = false,
   lastLoggedTime = null,
   usualSessionDay = false,
+  compact = false,
+  primaryTone = "brand",
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -85,6 +87,10 @@ export default function LogPracticeButton({
   // only formats. No pattern → the caller passes false and the note renders NOWHERE
   // (#558). Data, not dueness (#1505) — it never changes the button or the counts.
   usualSessionDay?: boolean;
+  // Dashboard protocol rows collapse the redundant TODAY / no-sessions chrome.
+  compact?: boolean;
+  // A may-tier practice is a secondary dashboard action, never the page's loudest.
+  primaryTone?: "brand" | "neutral";
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -225,32 +231,38 @@ export default function LogPracticeButton({
 
   return (
     <div
-      className="flex flex-wrap items-start justify-between gap-3"
+      className={`flex flex-wrap justify-between gap-3 ${
+        compact ? "items-center" : "items-start"
+      }`}
       data-testid="practice-log-control"
     >
-      <div className="min-w-0">
-        <div className="section-label">Today</div>
-        <div
-          className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200"
-          data-testid="practice-today-count"
-        >
-          {count === 0
-            ? "No sessions yet"
-            : count === 1
-              ? "1 session logged"
-              : `${count} sessions logged`}
-          {atCeiling ? " · weekly maximum reached" : ""}
-          {/* The rhythm note (#2188): only on a predicted day with nothing logged
+      {!compact || count > 0 || usualSessionDay || atCeiling ? (
+        <div className="min-w-0">
+          {!compact ? <div className="section-label">Today</div> : null}
+          <div
+            className={`${compact ? "" : "mt-1 "}text-sm font-medium text-slate-700 dark:text-slate-200`}
+            data-testid="practice-today-count"
+          >
+            {count === 0
+              ? compact
+                ? null
+                : "No sessions yet"
+              : count === 1
+                ? "1 session logged"
+                : `${count} sessions logged`}
+            {atCeiling ? " · weekly maximum reached" : ""}
+            {/* The rhythm note (#2188): only on a predicted day with nothing logged
               yet, and NEVER at the ceiling — a dose-limited practice done for the
               week must not be handed a reason for more (#998's posture). */}
-          {count === 0 && usualSessionDay && !atCeiling && (
-            <span data-testid="practice-rhythm-note">
-              {" · "}
-              {PRACTICE_USUAL_DAY_TEXT}
-            </span>
-          )}
+            {count === 0 && usualSessionDay && !atCeiling && (
+              <span data-testid="practice-rhythm-note">
+                {" · "}
+                {PRACTICE_USUAL_DAY_TEXT}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
       {/* The control cluster WRAPS, and stopped being `shrink-0`, once the stepper
           joined it on a surface that also carries "Log with details" (#2204 + the
           owner ruling). Three controls in one un-shrinkable row overflowed a 390px
@@ -322,7 +334,9 @@ export default function LogPracticeButton({
               ? `Log a ${practice} session for today`
               : `Log another ${practice} session — ${count} already logged today`
           }
-          className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
+          className={`${DOSE_ACTION_LABEL} ${
+            primaryTone === "neutral" ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
+          }`}
         >
           <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
           {count === 0 ? "Log now" : "Log another"}

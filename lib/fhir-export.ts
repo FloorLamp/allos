@@ -15,6 +15,11 @@ import type { AppointmentKind, AppointmentStatus } from "./types";
 //     carried as `text` and the importer re-derives a catalog slug from the name.
 //   - medications carry no authored/effective date in the app, so the export uses
 //     the row's own recorded date (created_at) as the FHIR authoredOn.
+//   - appointments store the CLINIC's local wall clock with no zone (#2234), so
+//     `Appointment.start` carries a zoneless `YYYY-MM-DDTHH:MM` (or a bare date
+//     for a day-only booking) — a deviation from FHIR's offset-bearing `instant`
+//     type. The importer reads the same wall clock back verbatim, so the
+//     round-trip is exact; only an external consumer expecting an instant loses.
 // The clinical identity that matters for re-import — coded name, status, dates,
 // values — round-trips cleanly.
 
@@ -209,7 +214,8 @@ export interface FhirExportCareGoal {
 // exporter symmetric with the importer's Appointment mapper — full-fidelity
 // portability rides on the dataset.
 export interface FhirExportAppointment {
-  scheduled_at: string;
+  date: string; // YYYY-MM-DD — the visit's clinic-local calendar day (#2234)
+  time_of_day: string | null; // "HH:MM" clinic-local wall clock; null = day-only
   status: AppointmentStatus;
   title: string | null;
   location: string | null;
@@ -520,10 +526,14 @@ const APPOINTMENT_STATUS_TO_FHIR: Record<AppointmentStatus, string> = {
 function appointmentResource(
   a: FhirExportAppointment
 ): Record<string, unknown> {
+  // `start` composes the stored halves with the `T` separator the importer's
+  // `appointmentDateTime` requires (#2234 — the space-form export used to lose
+  // the time on re-import); a day-only booking emits the bare date, which
+  // `isoDate` accepts, so the resource is kept rather than dropped.
   const r: Record<string, unknown> = {
     resourceType: "Appointment",
     status: APPOINTMENT_STATUS_TO_FHIR[a.status] ?? "booked",
-    start: a.scheduled_at,
+    start: a.time_of_day != null ? `${a.date}T${a.time_of_day}` : a.date,
   };
   if (a.title && a.title.trim()) r.description = a.title.trim();
   if (a.notes && a.notes.trim()) r.comment = a.notes.trim();

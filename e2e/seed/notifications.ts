@@ -84,7 +84,7 @@ export function seedNotifSweep(): void {
 export function seedNotifyTickLog(): void {
   // Writes data/logs/notify.jsonl DIRECTLY, exactly as seedPrelude() does for
   // errors.jsonl and for the same two reasons: the spec should not have to provoke a
-  // real 15-minute tick, and the file is NOT reset between e2e runs, so a second
+  // real scheduler tick, and the file is NOT reset between e2e runs, so a second
   // appended copy would break the spec's strict-mode assertions. WRITE, never append.
   //
   // The shape seeded here is the issue's thesis in miniature:

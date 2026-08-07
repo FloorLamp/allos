@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import type { NotifySchedule } from "@/lib/settings";
-import { formatNotifyTime } from "@/lib/notifications/schedule";
+import {
+  formatNotifyTime,
+  tickGridMinutes,
+} from "@/lib/notifications/schedule";
 import {
   describeDigestSchedule,
   DIGEST_DEFAULT_MINUTE,
@@ -128,11 +131,19 @@ function timeValue(minute: number | null, auto: boolean): string {
 // Switching to "At time" seeds the previous concrete time (or the slot's shared
 // default) so the change saves a real value immediately; a cleared/incomplete
 // time input is ignored rather than saved as off — Off is the select's job.
+//
+// `stepMinutes` is the grid of the scheduler's OBSERVED cadence (#2216,
+// tickGridMinutes): it sets the native input's step so the spinner and quick
+// options walk the minutes a tick can actually land on. GUIDANCE, NEVER
+// VALIDATION: a typed off-grid time still fires onChange and is saved — nothing
+// here submits a form or consults validity — and the sub-hourly warning names
+// it rather than any control refusing it.
 function TimeControl({
   value,
   onChange,
   autoOption,
   seed,
+  stepMinutes,
   label,
   testId,
   selectClassName,
@@ -141,6 +152,7 @@ function TimeControl({
   onChange: (v: string) => void;
   autoOption: string | null;
   seed: string;
+  stepMinutes: number;
   label: string;
   testId?: string;
   selectClassName?: string;
@@ -167,6 +179,7 @@ function TimeControl({
         <input
           type="time"
           value={value}
+          step={stepMinutes * 60}
           onChange={(e) => {
             // An empty value is a half-edited input (or a cleared picker) — never
             // save it as "off"; the mode select owns Off.
@@ -262,6 +275,9 @@ function DigestControl({
           <input
             type="time"
             value={time}
+            // The observed-cadence grid steers the picker (#2216); a typed
+            // off-grid time still saves — see TimeControl.
+            step={tickGridMinutes(tickMinutes) * 60}
             onChange={(e) => {
               // An empty value is a half-edited input — never save it as "off"; the
               // mode select owns Off.
@@ -418,6 +434,12 @@ export default function NotificationPrefs({
     wakeMinute == null
       ? "Auto (wake time)"
       : `Auto (~${formatNotifyTime(wakeMinute)})`;
+
+  // The minute grid of the scheduler's OBSERVED cadence (#2216) — what every time
+  // input's step walks, so the picker offers the minutes a tick can actually land
+  // on. Derived from the observed figure, never from TICK_SECONDS: a sidecar
+  // configured for 5 minutes but wedged at 20 must not imply a 5-minute grid.
+  const gridMinutes = tickGridMinutes(tickMinutes);
 
   function set(field: string, v: string) {
     setMany({ [field]: v });
@@ -600,9 +622,9 @@ export default function NotificationPrefs({
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             Reminders go out at these times, in this profile&rsquo;s timezone.
           </p>
-          {/* Sub-hourly honesty (#2121): the scheduler reports its observed
-              cadence; a time it cannot land on is named rather than delivered
-              late silently. */}
+          {/* Sub-hourly honesty (#2121/#2216): the scheduler reports its
+              observed cadence; a time it cannot land on exactly is named rather
+              than delivered late silently — and only named, never refused. */}
           {subHourlyAtRisk && (
             <p
               className="mb-2 text-xs text-amber-700 dark:text-amber-400"
@@ -611,8 +633,11 @@ export default function NotificationPrefs({
               This server&rsquo;s notification scheduler runs about every{" "}
               {subHourlyAtRisk.intervalMin} minutes, so{" "}
               {subHourlyAtRisk.times.join(", ")} may be delivered late (or, in
-              the last hour of the day, not at all). Use on-the-hour times, or
-              run the scheduler more often.
+              the last hour of the day, not at all).{" "}
+              {gridMinutes === 60
+                ? "Use on-the-hour times"
+                : `Use times in ${gridMinutes}-minute steps`}
+              , or run the scheduler more often.
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -630,6 +655,7 @@ export default function NotificationPrefs({
                       /* The Morning slot can follow the profile's wake time (#1117). */
                       autoOption={w === "Morning" ? autoLabel : null}
                       seed={SLOT_SEED[field]}
+                      stepMinutes={gridMinutes}
                       label={`${w} reminder`}
                       testId={w === "Morning" ? "supp-morning-hour" : undefined}
                     />
@@ -794,6 +820,7 @@ export default function NotificationPrefs({
                         }
                         autoOption={e.control.auto ? autoLabel : null}
                         seed={SLOT_SEED[e.control.field] ?? "08:00"}
+                        stepMinutes={gridMinutes}
                         label={e.label}
                         testId={e.controlTestId ?? `kind-time-${e.kind}`}
                         selectClassName="input sm:w-40"
@@ -847,6 +874,7 @@ export default function NotificationPrefs({
                         <input
                           type="time"
                           value={values[e.control.timeField]}
+                          step={gridMinutes * 60}
                           onChange={(ev) => {
                             if (ev.target.value !== "")
                               set(

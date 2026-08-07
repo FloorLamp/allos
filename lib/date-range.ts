@@ -12,7 +12,7 @@
 // THE ONE SEMANTIC THIS OWNS is the END-BOUND convention, and since #2232 there is
 // exactly one: `end` is the INCLUSIVE last member day. Menstrual cycles always stored
 // it that way (`period_end` is the last bleeding day, #714); illness episodes joined
-// with migration 168, which converted the old exclusive `ended_at` (the first
+// with migration 169, which converted the old exclusive `ended_at` (the first
 // NON-member day) to the inclusive `end_date`. The chassis used to carry a
 // RangeEndBound axis so the two live conventions could each be declared honestly;
 // with both consumers inclusive the axis was retired — an exclusive end can no longer

@@ -130,7 +130,7 @@ export function goalHighlights(
 // wins when none are overdue. Items missing a dueDate sort last (treated as far
 // future) so a dated visit always wins; null for an empty list. Ties (same calendar
 // day) keep the first item, so a caller that feeds appointments already ordered by
-// scheduled_at ASC, id ASC gets the earliest same-day slot. Generic over `{ dueDate }`
+// date ASC, time_of_day ASC, id ASC gets the earliest same-day slot. Generic over `{ dueDate }`
 // so the household UpcomingItem set and the dashboard's raw scheduled-appointment set
 // resolve to the identical row (see the fixture-parity test). Kept here (not inline in
 // the DB helper) so it stays unit-tested.

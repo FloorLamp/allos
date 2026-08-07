@@ -40,9 +40,9 @@
 import type { Finding } from "./findings";
 import { isSuppressed, type SuppressionRecord } from "./upcoming-suppress";
 import {
-  clampTickMinutes,
   formatNotifyTime,
   MINUTES_PER_DAY,
+  tickGridMinutes,
 } from "./notifications/schedule";
 import type {
   ArrivalStatistics,
@@ -55,29 +55,12 @@ export const DIGEST_TIME_PREFIX = "digest-time:";
 
 // ── The picker grid (#2216) ──────────────────────────────────────────────────
 //
-// The app must never propose a minute the instance's tick cannot hit. #2216's picker
-// grid follows the OBSERVED tick cadence and offers only DIVISORS OF 60, because the
-// notify loop is epoch-aligned: a 15-minute tick lands on :00/:15/:30/:45 every hour,
-// a 7-minute tick lands on different minutes each hour and has no stable
-// minute-of-hour grid for anything to snap to.
-//
-// So the proposal snaps UP to the coarsest offered grid the tick can actually keep,
-// and a non-divisor cadence falls back to the largest divisor at or below it — a
-// proposal is never FINER-GRAINED than the scheduler that has to honour it.
-export const PICKER_GRID_DIVISORS: readonly number[] = [
-  1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60,
-];
-
-/**
- * The picker grid for an observed tick cadence: the largest divisor of 60 at or below
- * the clamped tick. 1 is a divisor, so this is always defined.
- */
-export function proposalGridMinutes(tickMinutes: number): number {
-  const tick = clampTickMinutes(tickMinutes);
-  let grid = 1;
-  for (const d of PICKER_GRID_DIVISORS) if (d <= tick) grid = d;
-  return grid;
-}
+// The app must never propose a minute the instance's tick cannot hit, so the
+// proposal snaps onto the SAME grid the picker offers and the off-grid warning
+// checks: `tickGridMinutes` (lib/notifications/schedule.ts) over the OBSERVED
+// cadence — one grid, derived once, for every consumer. The snap lives HERE, at
+// the consumer, not inside #2214's statistic: the statistic answers "when does
+// the data land", and quantising that answer is this proposal's own concern.
 
 /**
  * Snap a proposed minute UP onto the picker grid — never earlier than the minute it
@@ -91,7 +74,7 @@ export function snapProposalMinute(
   minute: number,
   tickMinutes: number
 ): number {
-  const grid = proposalGridMinutes(tickMinutes);
+  const grid = tickGridMinutes(tickMinutes);
   const snapped = Math.ceil(Math.max(0, minute) / grid) * grid;
   const lastOfDay = MINUTES_PER_DAY - grid;
   return Math.min(snapped, lastOfDay);

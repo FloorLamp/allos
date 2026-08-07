@@ -5,16 +5,16 @@
 // pre/post the model swap; and the flagged-situation toggle opens/closes rows in ONE
 // writeTx so the active set and the open row never disagree. Deterministic :memory: DB.
 //
-// The frozen 046/062 helpers run against the PRE-168 schema (`started_at`/`ended_at`),
+// The frozen 046/062 helpers run against the PRE-169 schema (`started_at`/`ended_at`),
 // so the tests that drive them build that legacy shape in their own :memory: database
-// — the live db here is migrated past 168 and no longer has those columns.
+// — the live db here is migrated past 169 and no longer has those columns.
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { backfillIllnessEpisodes } from "@/lib/migrations/versions/046-illness-episodes";
 import { stabilizeEpisodeConditions } from "@/lib/migrations/versions/062-stable-episode-conditions";
-import { up as up168 } from "@/lib/migrations/versions/168-illness-episode-day-window";
+import { up as up168 } from "@/lib/migrations/versions/169-illness-episode-day-window";
 import { shiftDateStr } from "@/lib/date";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import {
@@ -59,7 +59,7 @@ function seedLog(p: number, active: boolean, events: SituationEvent[]) {
   );
 }
 
-// The pre-168 illness_episodes shape the frozen 046/062 helpers were written against,
+// The pre-169 illness_episodes shape the frozen 046/062 helpers were written against,
 // plus whatever sibling tables each helper reads.
 function legacyEpisodeDb(): Database.Database {
   const mem = new Database(":memory:");
@@ -129,15 +129,15 @@ describe("stable episode-condition migration (#856 corrective)", () => {
     expect(condition.status).toBe("resolved");
     expect(condition.onset_date).toBe("2026-04-01");
     // 062 ran against the EXCLUSIVE ended_at era, so it resolved on end-1 — the value
-    // migration 168 later carries forward unchanged (conditions are not rewritten).
+    // migration 169 later carries forward unchanged (conditions are not rewritten).
     expect(condition.resolved_date).toBe("2026-04-04");
   });
 });
 
 describe("illness_episodes backfill (#856 item 0) through the #2232 conversion", () => {
-  it("046's stop-day rows land as inclusive last-active days after 168", () => {
-    // 046's backfill writes the change-log's stop-event shape into a pre-168 schema;
-    // 168 then converts every non-NULL end to the inclusive last active day. The two
+  it("046's stop-day rows land as inclusive last-active days after 169", () => {
+    // 046's backfill writes the change-log's stop-event shape into a pre-169 schema;
+    // 169 then converts every non-NULL end to the inclusive last active day. The two
     // are tested TOGETHER because that pairing is exactly why episodesForSituation
     // must keep emitting the stop day (a from-scratch replay runs both).
     const mem = legacyEpisodeDb();
@@ -173,7 +173,7 @@ describe("illness_episodes backfill (#856 item 0) through the #2232 conversion",
       .run(serializeSituationEvents([], events));
 
     backfillIllnessEpisodes(mem);
-    up168(mem);
+    up169(mem);
 
     const rows = mem
       .prepare(
@@ -198,7 +198,7 @@ describe("illness_episodes backfill (#856 item 0) through the #2232 conversion",
       { date: "2026-02-07", situation: "Illness", change: "stop" },
     ];
     seedLog(p, false, events);
-    // The stored rows a 046→168 replay would produce: the run's stop day, converted
+    // The stored rows a 046→169 replay would produce: the run's stop day, converted
     // to the inclusive last active day.
     for (const run of episodesForSituation("Illness", events, false)) {
       createEpisodeRow(
@@ -279,7 +279,7 @@ describe("summarizeEpisodesForProfile hoists getConditions once (#886)", () => {
       { date: "2026-06-01", situation: "Illness", change: "start" },
     ];
     seedLog(p, true, events);
-    // The stored rows a 046→168 replay would produce (see the parity test above).
+    // The stored rows a 046→169 replay would produce (see the parity test above).
     for (const run of episodesForSituation("Illness", events, true)) {
       createEpisodeRow(
         p,

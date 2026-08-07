@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 168 (issue #2232): illness_episodes joins the day-window vocabulary —
+// Migration 169 (issue #2232): illness_episodes joins the day-window vocabulary —
 // `started_at`/`ended_at` become `start_date`/`end_date`, and the stored end becomes
 // the INCLUSIVE last active day.
 //
@@ -40,7 +40,7 @@ import type { Migration } from "../runner";
 // `episodesForSituation` pairing, whose output deliberately stays on the change-log's
 // stop-event shape (end = the stop day, i.e. the old exclusive end) precisely so a
 // from-scratch replay writes 046-era values that THIS migration (or its trigger, on a
-// post-168 replay) then converts. Do not "fix" that function to emit inclusive ends —
+// post-169 replay) then converts. Do not "fix" that function to emit inclusive ends —
 // it would make fresh replays subtract a day twice.
 //
 // Rebuild, not ALTER: the 124/163 pattern (CREATE __new, INSERT…SELECT with the
@@ -168,7 +168,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 168,
-  name: "168-illness-episode-day-window",
+  id: 169,
+  name: "169-illness-episode-day-window",
   up,
 };

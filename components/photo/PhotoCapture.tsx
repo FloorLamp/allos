@@ -16,6 +16,15 @@ import {
   PHOTO_MAX_EDGE,
   PHOTO_CLIENT_QUALITY,
 } from "@/lib/photo/policy";
+import {
+  CAMERA_RECOVERY_INSTRUCTIONS,
+  cameraDialogVariant,
+  cameraRecoveryPlatform,
+  cameraStartDecision,
+  type CameraDialogVariant,
+  type CameraKnowledge,
+  type CameraRecoveryPlatform,
+} from "@/lib/photo/camera-fallback";
 
 // The shared in-app capture surface of the photo core (#1119 phase 1) — every
 // photo domain (physique now; skin/symptom in phase 3; video in #1224 rides the
@@ -69,8 +78,15 @@ export interface PhotoCaptureProps {
 type Stage =
   | { kind: "closed" }
   | { kind: "camera" }
-  | { kind: "fallback" }
+  | {
+      kind: "fallback";
+      variant: CameraDialogVariant;
+      reloadOffered?: boolean;
+    }
   | { kind: "confirm"; blob: Blob; url: string };
+
+const CAMERA_KNOWLEDGE_KEY = "allos:camera-knowledge";
+const CAMERA_FAILURE_KEY = "allos:camera-failure";
 
 export default function PhotoCapture({
   triggerLabel = "Add photo",
@@ -93,6 +109,11 @@ export default function PhotoCapture({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraKnowledgeRef = useRef<CameraKnowledge>("unknown");
+  const lastFailureRef = useRef<CameraDialogVariant>("unknown");
+  const permissionStateRef = useRef<PermissionState | null>(null);
+  const [recoveryPlatform, setRecoveryPlatform] =
+    useState<CameraRecoveryPlatform>("generic");
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -108,26 +129,149 @@ export default function PhotoCapture({
     setError(null);
   }, [stopStream]);
 
-  // Open: try the camera; fall back to the file input when it's missing/denied.
-  const open = useCallback(async () => {
-    setError(null);
-    const md =
-      typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
-    if (!md?.getUserMedia) {
-      setStage({ kind: "fallback" });
-      return;
-    }
-    try {
-      const stream = await md.getUserMedia({
-        video: { facingMode: facing },
-        audio: false,
+  const rememberCamera = useCallback(
+    (knowledge: CameraKnowledge, failure?: CameraDialogVariant) => {
+      cameraKnowledgeRef.current = knowledge;
+      if (failure) lastFailureRef.current = failure;
+      try {
+        sessionStorage.setItem(CAMERA_KNOWLEDGE_KEY, knowledge);
+        if (failure) sessionStorage.setItem(CAMERA_FAILURE_KEY, failure);
+      } catch {
+        // Storage can be unavailable in private contexts; the in-memory session
+        // still prevents every capture from paying the first-failure tax.
+      }
+    },
+    []
+  );
+
+  const attemptCamera = useCallback(
+    async (retry = false) => {
+      setError(null);
+      const md = navigator.mediaDevices;
+      if (!md?.getUserMedia) {
+        rememberCamera("failed", "not-found");
+        setStage({ kind: "fallback", variant: "not-found" });
+        return;
+      }
+      try {
+        const stream = await md.getUserMedia({
+          video: { facingMode: facing },
+          audio: false,
+        });
+        streamRef.current = stream;
+        rememberCamera("granted");
+        setStage({ kind: "camera" });
+      } catch (cause) {
+        const variant = cameraDialogVariant(
+          cause instanceof DOMException || cause instanceof Error
+            ? cause.name
+            : null,
+          permissionStateRef.current
+        );
+        rememberCamera(variant === "blocked" ? "denied" : "failed", variant);
+        setStage({
+          kind: "fallback",
+          variant,
+          reloadOffered: retry && variant === "blocked",
+        });
+      }
+    },
+    [facing, rememberCamera]
+  );
+
+  // A real tap may synchronously open the native picker for a known fallback.
+  // autoOpen deliberately cannot: it has no transient user activation, so it
+  // always opens the dialog and waits for one (#2182 follow-up).
+  const open = useCallback(
+    async (userInitiated: boolean) => {
+      setError(null);
+      const hasGetUserMedia = Boolean(navigator.mediaDevices?.getUserMedia);
+      const decision = cameraStartDecision({
+        userInitiated,
+        hasGetUserMedia,
+        knowledge: cameraKnowledgeRef.current,
       });
-      streamRef.current = stream;
-      setStage({ kind: "camera" });
-    } catch {
-      setStage({ kind: "fallback" });
+      if (decision === "direct-picker") {
+        fileInputRef.current?.click();
+        return;
+      }
+      if (decision === "show-fallback") {
+        const variant = !hasGetUserMedia
+          ? "not-found"
+          : cameraKnowledgeRef.current === "denied"
+            ? "blocked"
+            : lastFailureRef.current;
+        setStage({ kind: "fallback", variant });
+        return;
+      }
+      await attemptCamera();
+    },
+    [attemptCamera]
+  );
+
+  // Prime the synchronous tap decision before it is needed. Permissions is best
+  // effort (Safari may not expose camera); the remembered last outcome is the
+  // portable fallback. A permission change updates the same cache.
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(CAMERA_KNOWLEDGE_KEY);
+      if (
+        stored === "unknown" ||
+        stored === "granted" ||
+        stored === "denied" ||
+        stored === "failed"
+      ) {
+        cameraKnowledgeRef.current = stored;
+      }
+      const failure = sessionStorage.getItem(CAMERA_FAILURE_KEY);
+      if (
+        failure === "blocked" ||
+        failure === "not-found" ||
+        failure === "in-use" ||
+        failure === "unknown"
+      ) {
+        lastFailureRef.current = failure;
+      }
+    } catch {}
+
+    setRecoveryPlatform(
+      cameraRecoveryPlatform({
+        userAgent: navigator.userAgent,
+        standalone: window.matchMedia("(display-mode: standalone)").matches,
+      })
+    );
+
+    let disposed = false;
+    let permission: PermissionStatus | null = null;
+    const permissions = navigator.permissions;
+    if (permissions?.query) {
+      void permissions
+        .query({ name: "camera" as PermissionName })
+        .then((status) => {
+          if (disposed) return;
+          permission = status;
+          const update = () => {
+            permissionStateRef.current = status.state;
+            if (status.state === "granted") rememberCamera("granted");
+            if (status.state === "denied") {
+              rememberCamera("denied", "blocked");
+              setStage((current) =>
+                current.kind === "fallback" && current.variant === "unknown"
+                  ? { kind: "fallback", variant: "blocked" }
+                  : current
+              );
+            }
+          };
+          update();
+          status.onchange = update;
+        })
+        .catch(() => {});
     }
-  }, [facing]);
+    return () => {
+      disposed = true;
+      if (permission) permission.onchange = null;
+    };
+  }, [rememberCamera]);
 
   // Attach the stream once the <video> exists.
   useEffect(() => {
@@ -144,7 +288,7 @@ export default function PhotoCapture({
   useEffect(() => {
     if (autoOpen && !disabled && !autoOpened.current) {
       autoOpened.current = true;
-      void open();
+      void open(false);
     }
   }, [autoOpen, disabled, open]);
 
@@ -205,10 +349,17 @@ export default function PhotoCapture({
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
       }
-    } catch {
-      setStage({ kind: "fallback" });
+    } catch (cause) {
+      const variant = cameraDialogVariant(
+        cause instanceof DOMException || cause instanceof Error
+          ? cause.name
+          : null,
+        permissionStateRef.current
+      );
+      rememberCamera(variant === "blocked" ? "denied" : "failed", variant);
+      setStage({ kind: "fallback", variant });
     }
-  }, [facing, stopStream]);
+  }, [facing, stopStream, rememberCamera]);
 
   const confirm = useCallback(() => {
     if (stage.kind !== "confirm") return;
@@ -232,13 +383,28 @@ export default function PhotoCapture({
       <button
         type="button"
         className={className ?? "btn"}
-        onClick={open}
+        onClick={() => void open(true)}
         disabled={disabled}
         data-testid={triggerTestId}
       >
         <IconCamera size={18} aria-hidden />
         {triggerLabel}
       </button>
+
+      {/* Always mounted so a known fallback can click it synchronously inside the
+          original user gesture. Native input chrome never becomes visible. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        data-testid="photo-capture-file"
+        onChange={(e) => {
+          void onFilePicked(e.target.files?.[0] ?? null);
+          e.currentTarget.value = "";
+        }}
+      />
 
       {stage.kind !== "closed" ? (
         <ModalShell title={triggerLabel} onClose={close}>
@@ -292,7 +458,7 @@ export default function PhotoCapture({
                     className="btn-ghost ml-auto"
                     onClick={() => {
                       stopStream();
-                      setStage({ kind: "fallback" });
+                      setStage({ kind: "fallback", variant: "unknown" });
                     }}
                   >
                     <IconUpload size={16} aria-hidden /> Upload a file instead
@@ -302,22 +468,74 @@ export default function PhotoCapture({
             ) : null}
 
             {stage.kind === "fallback" ? (
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+              <div className="space-y-3" data-testid="photo-capture-fallback">
+                {stage.variant === "blocked" ? (
+                  <div
+                    className="space-y-2"
+                    data-testid="photo-capture-blocked-guidance"
+                  >
+                    <p className="font-medium text-slate-800 dark:text-slate-100">
+                      Camera access is blocked for this app
+                    </p>
+                    <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                      {CAMERA_RECOVERY_INSTRUCTIONS[recoveryPlatform].map(
+                        (instruction) => (
+                          <li key={instruction}>{instruction}</li>
+                        )
+                      )}
+                    </ol>
+                  </div>
+                ) : stage.variant === "in-use" ? (
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    The camera is in use. Close other camera apps and try again.
+                  </p>
+                ) : stage.variant === "not-found" ? (
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    A live camera is not available here. You can use the device
+                    camera picker instead.
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    The live camera could not open. You can try again or use the
+                    device camera picker.
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {stage.variant !== "not-found" ? (
+                    stage.reloadOffered ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => window.location.reload()}
+                        data-testid="photo-capture-reload-retry"
+                      >
+                        <IconRefresh size={16} aria-hidden /> Reload and retry
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => void attemptCamera(true)}
+                        data-testid="photo-capture-camera-retry"
+                      >
+                        <IconRefresh size={16} aria-hidden /> Try again
+                      </button>
+                    )
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="photo-capture-picker-open"
+                  >
+                    <IconCamera size={18} aria-hidden /> Open camera
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Choose a photo to add. It is resized and cleaned of camera
                   metadata (location, device info) before it is stored.
                 </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="block text-sm"
-                  data-testid="photo-capture-file"
-                  onChange={(e) =>
-                    void onFilePicked(e.target.files?.[0] ?? null)
-                  }
-                />
               </div>
             ) : null}
 
@@ -348,7 +566,7 @@ export default function PhotoCapture({
                     onClick={() => {
                       URL.revokeObjectURL(stage.url);
                       setError(null);
-                      void open(); // re-decides camera vs fallback
+                      void open(true); // re-decides camera vs known fallback
                     }}
                     data-testid="photo-capture-retake"
                   >

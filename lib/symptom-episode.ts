@@ -132,7 +132,7 @@ export interface SituationRun {
 // FROZEN OUTPUT CONVENTION (#2232): the returned `end` is the stop event's own day —
 // the exclusive first-inactive day — because this function's only production caller
 // is the FROZEN migration 046 backfill, which wrote that shape into `ended_at`;
-// migration 168 then converts those values to the inclusive `end_date`. Changing this
+// migration 169 then converts those values to the inclusive `end_date`. Changing this
 // to emit inclusive ends would make a from-scratch replay subtract a day twice. Live
 // code reads stored rows (lib/illness-episode-store.ts), never this pairing.
 export function episodesForSituation(
