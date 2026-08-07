@@ -103,8 +103,9 @@ export default function PracticeTrends({
           headline={weekly}
           description="Days logged per completed week against your weekly range."
           note={practiceConsistencyText(practice.consistency)}
-          // detail-none: this chart already lives on the practice's detail card.
-          detailHref={null}
+          detailHref={
+            null
+          } /* detail-none: this chart already lives on the practice's detail card. */
           surfaceClass={embeddedSurface}
           plotHeightClass="sm:h-48"
           footer={<WeeksInRange practice={practice} />}
@@ -135,8 +136,9 @@ export default function PracticeTrends({
             title="Session length"
             headingLevel="h3"
             description="Average recorded minutes per day you practised."
-            // detail-none: this chart already lives on the practice's detail card.
-            detailHref={null}
+            detailHref={
+              null
+            } /* detail-none: this chart already lives on the practice's detail card. */
             surfaceClass={embeddedSurface}
             plotHeightClass="sm:h-48"
           >
