@@ -59,7 +59,7 @@ function night(
   lagMin: number,
   minutes = 420
 ): { sampleId: number; arrivedAt: Date } {
-  const arrivedAt = zonedWallTimeToUtc(TZ, date, hhmm(arrivalMinute));
+  const arrivedAt = zonedWallTimeToUtc(TZ, date, hhmm(arrivalMinute))!;
   const end = new Date(arrivedAt.getTime() - lagMin * 60_000);
   const start = new Date(end.getTime() - minutes * 60_000);
   const sampleId = Number(

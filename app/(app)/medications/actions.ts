@@ -225,8 +225,13 @@ function resolveGivenAt(
     case "1h":
       return new Date(Date.now() - 60 * 60 * 1000);
     case "custom": {
-      if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return "invalid";
-      return zonedWallTimeToUtc(getTimezone(profileId), today(profileId), time);
+      if (!time) return "invalid";
+      // The shape check IS the helper's refusal (#2245): it reads a real wall clock
+      // or returns null, so an unreadable offset is "invalid" rather than midnight.
+      return (
+        zonedWallTimeToUtc(getTimezone(profileId), today(profileId), time) ??
+        "invalid"
+      );
     }
     case "now":
     default:

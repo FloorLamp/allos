@@ -218,13 +218,10 @@ export async function updateEpisodeDoseAction(
     String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 120) || null;
-  const updated = updateAdministrationLog(
-    profileId,
-    id,
-    date,
-    zonedWallTimeToUtc(getTimezone(profileId), date, time),
-    amount
-  );
+  const givenAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
+  if (!givenAt)
+    return { ok: false, error: "Enter a date and time within this episode." };
+  const updated = updateAdministrationLog(profileId, id, date, givenAt, amount);
   if (!updated)
     return { ok: false, error: "That dose is no longer available." };
   revalidateEpisodeEvents();

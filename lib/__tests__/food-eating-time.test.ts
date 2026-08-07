@@ -66,13 +66,13 @@ describe("resolving a choice to an instant (#2053)", () => {
 
   it("`now` is the caller's own now — the server's clock on the online path", () => {
     expect(
-      resolveEatingTimeChoice({ kind: "now" }, now, UTC).toISOString()
+      resolveEatingTimeChoice({ kind: "now" }, now, UTC)!.toISOString()
     ).toBe(now.toISOString());
   });
 
   it("an absolute hour resolves to that wall time today", () => {
     expect(
-      resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, now, UTC)
+      resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, now, UTC)!
     ).toEqual(new Date("2026-03-10T13:00:00Z"));
   });
 
@@ -83,15 +83,17 @@ describe("resolving a choice to an instant (#2053)", () => {
         { kind: "at", hhmm: "20:00" },
         justAfterMidnight,
         UTC
-      )
+      )!
     ).toEqual(new Date("2026-03-09T20:00:00Z"));
   });
 
   it("does not drift with the delay between rendering and choosing", () => {
     const later = new Date(now.getTime() + 7 * 60_000);
     expect(
-      resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, later, UTC)
-    ).toEqual(resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, now, UTC));
+      resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, later, UTC)!
+    ).toEqual(
+      resolveEatingTimeChoice({ kind: "at", hhmm: "13:00" }, now, UTC)!
+    );
   });
 });
 

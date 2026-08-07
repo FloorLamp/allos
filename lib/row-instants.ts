@@ -176,12 +176,12 @@ export function resolveInstant(
   // the row's own `date` — not today, and not the record instant's day.
   const day = dayColumn ? cell(row, dayColumn) : null;
   if (day === null) return absent("not-recorded", dayColumn ?? col.column);
-  if (!/^\d{2}:\d{2}$/.test(raw.trim()))
-    return absent("unreadable", col.column);
-  const d = zonedWallTimeToUtc(tz, day, raw.trim());
-  return Number.isNaN(d.getTime())
-    ? absent("unreadable", col.column)
-    : { known: true, at: utcInstant(d), column: col.column, derived: true };
+  // The shape check IS zonedWallTimeToUtc's refusal (#2245) — it reads a wall clock or
+  // nothing, so this reader no longer pre-screens with a regex of its own.
+  const d = zonedWallTimeToUtc(tz, day, raw);
+  return d
+    ? { known: true, at: utcInstant(d), column: col.column, derived: true }
+    : absent("unreadable", col.column);
 }
 
 // A table may declare a CHAIN for a semantic — more than one column, in priority

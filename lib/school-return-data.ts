@@ -53,7 +53,12 @@ export function schoolReturnStatusFor(
     if (t.flag !== "high") continue;
     // A day-granular reading with no clock time is anchored at local noon (a neutral
     // mid-day instant) — the countdown is informational and hour-granular.
-    const ms = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00").getTime();
+    // An unreadable clock is SKIPPED, not anchored at noon: the countdown this
+    // feeds is a return-to-school clearance, and a fabricated fever instant would
+    // move it (#2245).
+    const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
+    if (!at) continue;
+    const ms = at.getTime();
     if (lastFeverAtMs == null || ms >= lastFeverAtMs) {
       lastFeverAtMs = ms;
       lastFeverDegF = t.degF;

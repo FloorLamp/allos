@@ -83,8 +83,8 @@ export function seedSleep(): void {
     // Stage rows are grouped by the stored `date` column (getSleepStageDailyTotals),
     // not by the window, so tz placement doesn't affect them; still build the window
     // through the profile tz for consistency.
-    const start = iso(zonedWallTimeToUtc(sleepTz, bedDay, "23:00"));
-    const end = iso(zonedWallTimeToUtc(sleepTz, wakeDay, "07:00"));
+    const start = iso(zonedWallTimeToUtc(sleepTz, bedDay, "23:00")!);
+    const end = iso(zonedWallTimeToUtc(sleepTz, wakeDay, "07:00")!);
     // deterministic light jitter so the stacked areas aren't perfectly flat
     const jitter = (i * 5) % 20;
     const stages: [string, number][] = [
@@ -106,11 +106,11 @@ export function seedSleep(): void {
   // `today` in the profile tz; mainSleepSession keeps the 5h overnight and the nap is
   // a separate figure. Idempotent by the exact tz-correct windows.
   const overnightStart = iso(
-    zonedWallTimeToUtc(sleepTz, COACH_YESTERDAY, "23:00")
+    zonedWallTimeToUtc(sleepTz, COACH_YESTERDAY, "23:00")!
   );
-  const overnightEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "04:00"));
-  const napStart = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:00"));
-  const napEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:45"));
+  const overnightEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "04:00")!);
+  const napStart = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:00")!);
+  const napEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:45")!);
   const sleepSessionInsert = db.prepare(
     `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
@@ -263,8 +263,8 @@ function seedWaitingNights(profileId: number, wakeHhmm: string): void {
     insert.run(
       profileId,
       wakeDay,
-      zonedWallTimeToUtc(tz, bedDay, "23:30").toISOString(),
-      zonedWallTimeToUtc(tz, wakeDay, wakeHhmm).toISOString()
+      zonedWallTimeToUtc(tz, bedDay, "23:30")!.toISOString(),
+      zonedWallTimeToUtc(tz, wakeDay, wakeHhmm)!.toISOString()
     );
   }
 }

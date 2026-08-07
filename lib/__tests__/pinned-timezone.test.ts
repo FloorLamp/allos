@@ -79,8 +79,8 @@ describe("pinned zone × fixture sleep instants (#2159 band)", () => {
       const frozen = `${today}T${String(h).padStart(2, "0")}:37:00.000Z`;
       const { zone } = pinnedTimezone(frozen);
       const session = {
-        start: zonedWallTimeToUtc(zone, prevNight, "23:00").toISOString(),
-        end: zonedWallTimeToUtc(zone, today, "04:00").toISOString(),
+        start: zonedWallTimeToUtc(zone, prevNight, "23:00")!.toISOString(),
+        end: zonedWallTimeToUtc(zone, today, "04:00")!.toISOString(),
         value: 300,
       };
       const nights = mainSleepNights([session], zone);

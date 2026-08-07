@@ -145,8 +145,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | table | column | semantic | grain | convention | notes |
 | ----- | ------ | -------- | ----- | ---------- | ----- |
 | `activities` | `date` | day | day | n/a |  |
-| `activities` | `start_time` | window-start | instant | mixed | Vendor ISO-with-milliseconds from lib/integrations/normalize.ts, a profile-local wall-clock instant from a finished live workout, and NULL for a hand-entered activity that stated only a day. Phase 1 left it: the stored string is part of the import dedupe. |
-| `activities` | `end_time` | window-end | instant | mixed | The same three shapes as start_time, and NULL for a hand-entered activity that stated only a day. |
+| `activities` | `start_time` | window-start | time-of-day | n/a | A profile-local HH:MM, optional (a hand-entered activity may state only a day). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone. Every writer agrees — `NormActivity.start_time` is declared HH:MM for all integrations, the editor's field is a `type="time"` input, and the AI extractor's ISO shape is folded to HH:MM at the persist boundary (`activityClockHHMM`, #2245). |
+| `activities` | `end_time` | window-end | time-of-day | n/a | The same profile-local HH:MM as start_time, and NULL both for a hand-entered activity that stated only a day and while a live session is unfinished. |
 | `activities` | `created_at` | record | instant | bare |  |
 | `activities` | `updated_at` | bookkeeping | instant | bare |  |
 | `activity_telemetry` | `snapshot_at` | record | instant | unverified | Supplied by the Strava sync as a caller argument; its serialization is whatever that path produced. Nothing compares it in SQL, so phase 1 left it unclaimed. |

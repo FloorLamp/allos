@@ -484,7 +484,7 @@ export function seedIntradayPanel(): void {
   //
   // Timezone discipline (#1417): the profile INHERITS the run's pinned instance timezone
   // (frozen local ~13:00), so every absolute instant here is built through
-  // zonedWallTimeToUtc(getTimezone(id), …). hr_minutes.ts is a UTC INSTANT since migration 164 (#2205), so its minutes convert through the same helper; by design
+  // zonedWallTimeToUtc(getTimezone(id), …)!. hr_minutes.ts is a UTC INSTANT since migration 164 (#2205), so its minutes convert through the same helper; by design
   // (#94), so those are seeded as wall-clock minute strings — exactly what the ingest
   // writes. Idempotent: this profile's fixture rows are cleared first.
   {
@@ -494,9 +494,9 @@ export function seedIntradayPanel(): void {
     const idPrev = shiftDateStr(idToday, -1);
     const idQuiet = shiftDateStr(idToday, -3);
     const idInstant = (day: string, hhmm: string) =>
-      utcSqlString(zonedWallTimeToUtc(idTz, day, hhmm));
+      utcSqlString(zonedWallTimeToUtc(idTz, day, hhmm)!);
     const idIso = (day: string, hhmm: string) =>
-      zonedWallTimeToUtc(idTz, day, hhmm).toISOString();
+      zonedWallTimeToUtc(idTz, day, hhmm)!.toISOString();
 
     db.prepare("DELETE FROM hr_minutes WHERE profile_id = ?").run(idId);
     db.prepare("DELETE FROM metric_samples WHERE profile_id = ?").run(idId);
@@ -519,7 +519,7 @@ export function seedIntradayPanel(): void {
           `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
             minute % 60
           ).padStart(2, "0")}`
-        )
+        )!
       );
     for (let m = 0; m < 7 * 60; m += 5) {
       insIdHr.run(idId, idHrStamp(m), 52, 48, 57);
@@ -699,7 +699,7 @@ export function seedVitalsToday(): void {
     const vdTz = getTimezone(vdId);
     const vdToday = today(vdId);
     const vdIso = (hhmm: string) =>
-      zonedWallTimeToUtc(vdTz, vdToday, hhmm).toISOString();
+      zonedWallTimeToUtc(vdTz, vdToday, hhmm)!.toISOString();
 
     db.prepare("DELETE FROM hr_minutes WHERE profile_id = ?").run(vdId);
     db.prepare("DELETE FROM medical_records WHERE profile_id = ?").run(vdId);
@@ -727,7 +727,7 @@ export function seedVitalsToday(): void {
             `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
               m % 60
             ).padStart(2, "0")}`
-          )
+          )!
         ),
         bpm,
         bpm - 3,

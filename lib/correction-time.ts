@@ -232,9 +232,19 @@ export function pickerHourOptions(now: Date, tz: string): string[] {
 // Independent of the delay between render and tap: the answer is an absolute wall time,
 // so two minutes of hesitation move nothing. That is the property the relative form fails
 // and the reason the picker is absolute at all.
-export function statedHourInstant(hhmm: string, now: Date, tz: string): Date {
+//
+// Null when `hhmm` is not a wall clock at all. Every caller reaches this through the
+// picker's own vocabulary, so that is a shape nobody can currently produce — but the
+// alternative is the helper inventing an hour from a string it could not read, and
+// what this function stamps is a corrected administration or eating instant (#2245).
+export function statedHourInstant(
+  hhmm: string,
+  now: Date,
+  tz: string
+): Date | null {
   const local = zonedDateParts(tz, now);
   const sameDay = zonedWallTimeToUtc(tz, local.date, hhmm);
+  if (!sameDay) return null;
   if (sameDay.getTime() <= now.getTime()) return sameDay;
   return zonedWallTimeToUtc(tz, shiftDateStr(local.date, -1), hhmm);
 }

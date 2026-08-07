@@ -1106,11 +1106,14 @@ export async function logHistoricalDose(
     return formError("Enter a valid dose date and time.");
   }
 
+  const givenAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+  if (!givenAt) return formError("Enter a valid dose date and time.");
+
   const outcome = logHistoricalDoseCore(
     profile.id,
     itemId,
     doseId,
-    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    givenAt,
     strOrNull(formData.get("amount")),
     formData.get("adjust_supply") === "1"
   );
@@ -1148,11 +1151,14 @@ export async function updateHistoricalDose(
     return formError("Enter a valid dose date and time.");
   }
 
+  const givenAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+  if (!givenAt) return formError("Enter a valid dose date and time.");
+
   const outcome = updateHistoricalDoseCore(
     profile.id,
     itemId,
     logId,
-    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    givenAt,
     strOrNull(formData.get("amount"))
   );
   if (outcome.kind === "logged") {

@@ -220,11 +220,13 @@ export async function handleFoodTimeAt(
   // WHICH hours are legal is a function of the current time, so it is decided here from
   // the same computation that rendered the keyboard — a stale picker offering 06:00 five
   // hours later must not stamp it.
-  if (!isOfferedHour(hhmm, r.now, r.tz)) {
+  const instant = isOfferedHour(hhmm, r.now, r.tz)
+    ? statedHourInstant(hhmm, r.now, r.tz)
+    : null;
+  if (!instant) {
     await answerCallbackQuery(cq.id, UNOFFERED_TEXT);
     return;
   }
-  const instant = statedHourInstant(hhmm, r.now, r.tz);
   const outcome = restampFoodEventsCore(
     r.profileId,
     token.fromId,
@@ -363,11 +365,13 @@ export async function handleDoseTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  if (!isOfferedHour(hhmm, r.now, r.tz)) {
+  const instant = isOfferedHour(hhmm, r.now, r.tz)
+    ? statedHourInstant(hhmm, r.now, r.tz)
+    : null;
+  if (!instant) {
     await answerCallbackQuery(cq.id, UNOFFERED_TEXT);
     return;
   }
-  const instant = statedHourInstant(hhmm, r.now, r.tz);
   const outcome = restampDoseLogsCore(r.profileId, token.fromId, () => instant);
   await answerCallbackQuery(cq.id, doseRestampText(outcome, hhmm));
   await rebuildDose(r, anchorOf(outcome));
