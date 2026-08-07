@@ -105,14 +105,22 @@ export function hhmmToMinutes(hhmm: string): number {
 }
 
 // The minute-resolution wall-clock stamp ('YYYY-MM-DDTHH:MM') of an instant in the
-// given IANA timezone — the profile-local minute an absolute timestamp is
-// attributed to. This is the identity of an `hr_minutes.ts` bucket: intraday HR is
-// keyed by the minute string derived here at ingest, so the stamp is
-// profile-local-at-ingest and carries no zone of its own (issue #94). A later
-// profile-timezone change therefore re-labels which local minute a *new* push of
-// the same raw sample lands on; historical rows keep the minute they were written
-// with. Pure (formats a concrete zone; reads no DB/env), so it's unit-testable in
-// isolation from ingest.
+// given IANA timezone — the profile-local minute an absolute timestamp is attributed
+// to.
+//
+// A READ-TIME PROJECTION, not a storage key (#2205 changed this). It used to be the
+// identity of an `hr_minutes.ts` bucket: intraday HR was keyed by the minute derived
+// here AT INGEST, so the stored stamp was profile-local-at-ingest and carried no zone
+// of its own — which meant a later timezone change silently re-meant every historical
+// row, the weakness #94's own comment documented. Migration 164 made that column an
+// absolute instant (`utcMinute` below is what ingest keys on now), and this function
+// moved to the READ boundary: lib/queries/metrics.ts projects each stored instant
+// through it so the pure consumers — training-zone windows, the ride series, the
+// intraday chart — keep comparing profile-local wall clocks. Because the projection is
+// recomputed on every read, changing the timezone now re-reads history correctly
+// instead of re-labelling it.
+//
+// Pure (formats a concrete zone; reads no DB/env), so it's unit-testable in isolation.
 export function zonedMinuteStr(tz: string, d: Date): string {
   const { date, hhmm } = zonedDateParts(tz, d);
   return `${date}T${hhmm}`;
@@ -228,6 +236,20 @@ export function zonedWallIsoToUtc(tz: string, wall: string): Date | null {
 // The canonical stored instant — UTC, second resolution, explicit `Z`. Pure.
 export function utcInstant(d: Date = new Date()): string {
   return d.toISOString().slice(0, 19) + "Z";
+}
+
+// The canonical stored instant TRUNCATED TO ITS MINUTE — the `hr_minutes.ts` bucket
+// key since migration 164. Seconds are always '00', so it is an ordinary canonical
+// instant and every rule in the convention above applies unchanged.
+//
+// It takes NO timezone, and that is the entire point: the bucket a raw sample lands in
+// is now a property of the sample, not of wherever the profile happened to be when it
+// was pushed. Two consequences fall straight out — a timezone change no longer re-keys
+// the rolling window (so the ingest sweep that existed to paper over that is gone), and
+// a Fitbit Takeout minute and a Health Connect minute for the same instant still
+// collide on the key instead of duplicating.
+export function utcMinute(d: Date): string {
+  return d.toISOString().slice(0, 16) + ":00Z";
 }
 
 // Re-serialize an already-stored UTC datetime — EITHER convention — as the canonical

@@ -7,7 +7,8 @@ import "../../scripts/load-env";
 
 import path from "node:path";
 import { db, today } from "../../lib/db";
-import { shiftDateStr } from "../../lib/date";
+import { shiftDateStr, utcMinute, zonedWallTimeToUtc } from "../../lib/date";
+import { localDayRange } from "../../lib/local-day-window";
 import {
   E2E_LOGIN_FORM_DELOAD,
   E2E_LOGIN_FORM_PLATEAU,
@@ -31,7 +32,7 @@ import {
   LAB_GOAL_IN_RANGE,
   LAB_GOAL_TARGET,
 } from "../fixture-logins";
-import { setUserBirthdate, setUserSex } from "../../lib/settings";
+import { getTimezone, setUserBirthdate, setUserSex } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
@@ -171,7 +172,11 @@ export function seedJournalCard(): void {
       const mm = String(clockMinute % 60).padStart(2, "0");
       insertRideHr.run(
         PROFILE_ID,
-        `${ride.date}T${hh}:${mm}`,
+        // hr_minutes.ts is a UTC instant since migration 164 (#2205); the fixture
+        // converts its local wall clock the same way the ingest does.
+        utcMinute(
+          zonedWallTimeToUtc(getTimezone(PROFILE_ID), ride.date, `${hh}:${mm}`)
+        ),
         135 + Math.floor(minute / 8)
       );
     }
@@ -241,13 +246,19 @@ export function seedTrainingZones(): void {
   // model is Karvonen (max 180, resting 55): Zone 2 ≈ 130–142 bpm, Zone 4 ≈ 155–167.
   // Relative dates so it never goes stale. Idempotent: clear any prior fixture rows.
   const zoneDate = shiftDateStr(today(PROFILE_ID), -2);
+  const zoneTz = getTimezone(PROFILE_ID);
 
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:zone-ride'`
   ).run(PROFILE_ID);
-  db.prepare(
-    `DELETE FROM hr_minutes WHERE profile_id = ? AND substr(ts,1,10) = ?`
-  ).run(PROFILE_ID, zoneDate);
+  {
+    // The day as a half-open UTC range — `substr(ts,1,10)` is the UTC day now, not
+    // the profile-local one this fixture means (#2205).
+    const { startUtc, endUtc } = localDayRange(zoneTz, zoneDate);
+    db.prepare(
+      `DELETE FROM hr_minutes WHERE profile_id = ? AND ts >= ? AND ts < ?`
+    ).run(PROFILE_ID, startUtc, endUtc);
+  }
 
   db.prepare(
     `INSERT INTO activities
@@ -269,11 +280,14 @@ export function seedTrainingZones(): void {
   // 10 hard, an ~83/17 balanced split (below the hard-heavy nudge threshold).
   for (let m = 0; m < 60; m++) {
     const mm = String(m).padStart(2, "0");
-    insHr.run(`${zoneDate}T08:${mm}`, m < 50 ? 135 : 160);
+    insHr.run(
+      utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, `08:${mm}`)),
+      m < 50 ? 135 : 160
+    );
   }
   // A resting bucket at noon, OUTSIDE any activity window — proves the aggregation
   // scopes to workout windows (this all-day wear minute must not count as training).
-  insHr.run(`${zoneDate}T12:00`, 62);
+  insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, "12:00")), 62);
 
   console.log(
     `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`
