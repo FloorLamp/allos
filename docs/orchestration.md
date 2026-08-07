@@ -134,7 +134,7 @@ and in-flight agent call. Everything here was learned by losing work to it.
    issues actually closed (close manually with a comment if not), update the task
    list, and update the release notes.
 
-## Release notes (owner directive, 2026-07-24; revised 2026-07-29, 2026-08-05)
+## Release notes (owner directive, 2026-07-24; revised 2026-08-05)
 
 `lib/release-notes.json` (#1421), checked in and rendered at `/whats-new` (it ships WITH
 the image, so `docker compose pull` shows its own notes offline). Curated by the
@@ -149,8 +149,6 @@ internal jargon.
 - Purely-internal merges (spec fixes, CI plumbing) are OMITTED. Operator-facing
   notes (auto-applying migrations, behavior a self-hoster must know) go in the
   entry body.
-- **This file is the only release-notes surface.** Do not publish notes anywhere
-  else.
 
 ## Dispatch prompt template
 
