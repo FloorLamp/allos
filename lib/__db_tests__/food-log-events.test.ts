@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
@@ -187,5 +187,41 @@ describe("getFoodBarOrder slot-aware blend (#950)", () => {
     );
     const overall = getFoodBarOrder(profileId).groups.map((g) => g.slug);
     expect(evening).toEqual(overall);
+  });
+});
+
+describe("getFoodMealDays event times (#2227 decision 7)", () => {
+  it("carries the eating time and the tap time as separate facts", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("food-eaten-at")
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'timezone', 'America/New_York')`
+    ).run(profileId);
+    const anchor = today(profileId);
+    const tap = zonedWallTimeToUtc("America/New_York", anchor, "23:40")!;
+    const eaten = zonedWallTimeToUtc("America/New_York", anchor, "19:40")!;
+
+    // A serving nobody timed: only the tap instant exists, so eatenAt is NULL —
+    // never the tap time wearing the eating time's name.
+    logFoodServingCore(profileId, "berries", anchor, utcInstant(tap));
+    // A serving with a stated eating time carries BOTH facts.
+    logFoodServingCore(profileId, "fatty_fish", anchor, utcInstant(tap), undefined, {
+      eatenAt: utcInstant(eaten),
+      source: "stated",
+    });
+
+    const [day] = getFoodMealDays(profileId, [anchor]);
+    const bySlug = new Map(day.events.map((e) => [e.groupKey, e]));
+    expect(bySlug.get("berries")).toMatchObject({
+      eatenAt: null,
+      loggedTime: "23:40",
+    });
+    expect(bySlug.get("fatty_fish")).toMatchObject({
+      eatenAt: "19:40",
+      loggedTime: "23:40",
+    });
   });
 });

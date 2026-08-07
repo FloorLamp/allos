@@ -178,6 +178,12 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
       "Children's oral suspension (100 mg / 5 mL)",
       "Children's oral suspension (100 mg / 5 mL)",
     ]);
+    // #2228 decision 4: every clock here came from the record chain (given_at;
+    // occurred_at is unwritten), so each point is marked — the timeline renders
+    // "recorded 15:30", never a filing timestamp claiming an administration time.
+    expect(
+      a.medications[0].administrations.map((x) => x.timeRecorded)
+    ).toEqual([true, true, true]);
 
     // Notes carry the symptom note.
     expect(a.notes).toContainEqual({
@@ -228,6 +234,23 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     const a = assembleIllnessEpisode(p, CLOSED);
 
     expect(a.medications[0].administrations[0].amount).toBe("200 mg");
+  });
+
+  it("a stated occurred_at supplies the clock unmarked; the record chain is marked (#2228)", () => {
+    const p = newProfile("occurred-at-stated");
+    const { itemId, doseId } = newPrnMed(p, "Ibuprofen");
+    // A row whose intake time WAS stated: occurred_at carries the event instant,
+    // given_at stays the (later) filing stamp.
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, occurred_at, given_at, amount, status)
+       VALUES (?, ?, '2026-06-02', '2026-06-02T15:30:00Z', '2026-06-02 22:05:00', '200 mg', 'taken')`
+    ).run(doseId, itemId);
+
+    const a = assembleIllnessEpisode(p, CLOSED);
+    const point = a.medications[0].administrations[0];
+    expect(point.time).toBe("15:30");
+    expect(point.timeRecorded).toBe(false);
   });
 
   it("promote-to-condition bridges the range; undo removes only the episode-sourced row", () => {
