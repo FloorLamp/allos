@@ -33,13 +33,35 @@ persisted there with its logger scope, message, and a redacted, size-capped
 detail (any stack), tagged with the acting profile when a request context is in
 scope. Clients still get a generic error (the real cause never leaves this log);
 the file self-trims by size/line count so a crash loop can't fill the disk, and
-a Clear button empties it. Both JSONL logs share one append + self-trim
+a Clear button empties it. All three JSONL logs share one append + self-trim
 chokepoint (`lib/jsonl-log-file.ts`), because the `allos-notify` sidecar is a
 separate OS process writing to the same `DATA_DIR`: the trim holds an advisory
 lock across the whole append-then-trim sequence and swaps the rewritten file in
 with an atomic rename, so a concurrent append is never overwritten and a reader
 never sees a half-written file. This generalizes the "failures surface in the UI"
 pattern (the notification-delivery marker, backup health) to everything.
+
+The **third** sink is the notification tick's own decision record (issue #2209),
+`data/logs/notify.jsonl`, surfaced under **Settings → Logs & audit → Notify
+tick** (admin only). It is filtered by **scope** rather than by level — the
+`notify` and `notifications` scopes, at `info` and above — because the class it
+exists to keep is the **decline**: a send writes a row (`notify_messages` plus a
+`notify_last_*` marker), while a decision _not_ to send wrote nothing anywhere
+and lived only in a container stdout the deploy timer deletes tens of times a
+day. Persisting every `info` from the whole web app is a deliberately different
+and larger decision; `debug` is never persisted.
+
+The tick stamps a **run id** (`beginNotifyRun()`) so the viewer groups by
+**(run, profile)** — one row per profile per run, expandable to its lines —
+rather than bucketing by timestamp, which splits any run that straddles a
+minute. A **quiet** run still renders as a row saying it decided nothing: an
+empty screen would make "nothing was due" indistinguishable from "the sidecar is
+wedged", which is the ambiguity the log exists to remove. The read is paginated
+over runs and bounded to the newest window of the file, following the Audit
+page's pattern rather than the Errors page's whole-file read. Redaction, the
+size/line self-trim, and the admin-only Clear button are identical to
+`errors.jsonl`, and the sink is best-effort throughout: a logging failure never
+throws into the tick.
 
 For debugging integration syncs, each sync can capture the raw provider payload
 (the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout

@@ -15,6 +15,10 @@ import { db } from "@/lib/db";
 import { commitImportJob } from "@/app/(app)/data/actions";
 import type { ImportResult } from "@/app/(app)/data/actions";
 import { seedActor, type TestLogin, type TestProfile } from "./harness";
+import {
+  computeWorkoutPresence,
+  type PresenceActivityRow,
+} from "@/lib/workout-presence";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -277,6 +281,94 @@ describe("commitImportJob — save a ready paste import", () => {
     expect(names).not.toContain("Height");
     // Documentless: every kept record carries a NULL document_id (manual-like).
     expect(recs.every((r) => r.document_id === null)).toBe(true);
+  });
+
+  it("folds an extracted ISO clock to the column's HH:MM, digits verbatim (#2245)", async () => {
+    // The extractor's contract accepts "HH:MM" OR an ISO timestamp from a source
+    // document; `activities.start_time` is a profile-local HH:MM and nothing else
+    // (lib/time-columns.ts). The persist boundary is where the two meet.
+    //
+    // The `Z` and the `-05:00` are the model's invention — it transcribed "14:30"
+    // and "15:20" off a log that stated no zone — so the digits are taken VERBATIM.
+    // A row stamped 19:30 here would be a session moved five hours by a punctuation
+    // mark nobody typed.
+    const set = {
+      exercise: "Bench Press",
+      weight: 100,
+      weight_unit: "kg" as const,
+      reps: 5,
+      duration_sec: null,
+      weight_right: null,
+      reps_right: null,
+      equipment: null,
+      target_reps: null,
+      to_failure: null,
+    };
+    const jobId = seedReadyJob(profile.id, {
+      ok: true,
+      type: "workouts",
+      workouts: [
+        {
+          date: "2026-01-06",
+          title: "ISO Day",
+          notes: null,
+          intensity: null,
+          start_time: "2026-01-06T14:30:00Z",
+          end_time: "2026-01-06T15:20:00-05:00",
+          duration_min: 50,
+          sets: [set],
+        },
+        {
+          date: "2026-01-07",
+          title: "Garbage Day",
+          notes: null,
+          intensity: null,
+          start_time: "sometime after lunch",
+          end_time: "1520",
+          duration_min: 50,
+          sets: [{ ...set }],
+        },
+      ],
+    });
+
+    expect((await commitImportJob(jobId)).ok).toBe(true);
+
+    const rows = db
+      .prepare(
+        `SELECT id, title, date, start_time, end_time, duration_min, source
+           FROM activities WHERE profile_id = ? ORDER BY date`
+      )
+      .all(profile.id) as PresenceActivityRow[];
+    expect(rows.map((r) => [r.title, r.start_time, r.end_time])).toEqual([
+      ["ISO Day", "14:30", "15:20"],
+      // Not a clock at all, so nothing is stored — an invented time would be worse
+      // than a missing one.
+      ["Garbage Day", null, null],
+    ]);
+
+    // …and the stored row now answers the presence question identically to one a
+    // person typed "14:30" into, which is the whole point of folding at the
+    // boundary rather than teaching every reader a second shape.
+    const nativeRow: PresenceActivityRow = {
+      ...rows[0],
+      start_time: "14:30",
+      end_time: "15:20",
+      created_at: null,
+      updated_at: null,
+      source: null,
+      type: "strength",
+    };
+    const imported: PresenceActivityRow = {
+      ...nativeRow,
+      start_time: rows[0].start_time,
+      end_time: rows[0].end_time,
+    };
+    const now = new Date("2026-01-06T20:40:00Z"); // 15:40 in New York
+    const args = [now, "America/New_York", "2026-01-06"] as const;
+    expect(computeWorkoutPresence([imported], ...args)).toEqual(
+      computeWorkoutPresence([nativeRow], ...args)
+    );
+    expect(computeWorkoutPresence([imported], ...args).state).toBe("finished");
   });
 
   it("refuses to re-commit a job already claimed as 'committing'", async () => {

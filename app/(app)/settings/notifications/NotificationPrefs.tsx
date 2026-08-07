@@ -3,10 +3,18 @@
 import { useState } from "react";
 import type { NotifySchedule } from "@/lib/settings";
 import { formatNotifyTime } from "@/lib/notifications/schedule";
+import {
+  describeDigestSchedule,
+  DIGEST_DEFAULT_MINUTE,
+  parseDigestMode,
+  type ArrivalStatistics,
+} from "@/lib/notifications/digest-schedule";
 import type { NotificationKind } from "@/lib/notifications/types";
 import {
   NOTIFICATION_KIND_REGISTRY,
   isSafetyKind,
+  slotRequirementNote,
+  unmetSlotRequirement,
   type NotificationKindEntry,
 } from "@/lib/notifications/kinds";
 import { serializeDisabledKinds } from "@/lib/notifications/home-assistant-core";
@@ -19,6 +27,8 @@ import {
 } from "@/lib/notifications/matrix-bulk";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
+import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
+import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
@@ -90,7 +100,7 @@ const SLOT_SEED: Record<string, string> = {
   supp_midday_hour: "13:00",
   supp_evening_hour: "20:00",
   supp_bedtime_hour: "22:00",
-  digest_hour: "08:00",
+  digest_hour: formatNotifyTime(DIGEST_DEFAULT_MINUTE),
   recap_hour: "09:00",
 };
 const WEEKDAYS = [
@@ -171,6 +181,135 @@ function TimeControl({
   );
 }
 
+// The morning digest's mode + time (#2211). THREE STATES, NO SENTINELS: Off, "Same
+// time every day", "As soon as it's ready". Two stored fields — `digest_hour` carries
+// "" (off) or "HH:MM", `digest_mode` carries the mode — so no third meaning is
+// multiplexed onto the time (#2205).
+//
+// LABELLED BY INTENT, NOT BY MECHANISM. The earlier design was a wait TOGGLE beside
+// `auto`, whose four cells expressed the same outcomes but named the machinery and
+// left two of them unreachable without understanding it. And not "Smart": the tone
+// contract is numbers not adjectives, and it implies the alternative is dumb.
+//
+// OFF IS THE ABSENCE OF A TIME, so switching Off writes `digest_hour: ""` and leaves
+// `digest_mode` alone — a mode is not contact and there is nothing to be gained by
+// clearing it. Switching back ON re-asks for the mode (the select collapses Off and
+// mode into one control) and seeds the declared 07:00 pre-fill. A pre-fill, never an
+// `auto` binding: it does not move on its own, and #2217 is what proposes moving it.
+//
+// The summary below the control is `describeDigestSchedule` — the SAME pure result
+// any other surface explaining this schedule formats, so a mode and a surface can
+// never describe the send time two different ways (#221).
+function DigestControl({
+  mode,
+  time,
+  onChange,
+  onApplied,
+  timeSuggestion,
+  sleepSectionEnabled,
+  arrivalStats,
+  tickMinutes,
+  label,
+  testId,
+}: {
+  mode: string;
+  time: string;
+  onChange: (patch: Record<string, string>) => void;
+  // Fold a one-field write this control did NOT make into the form's local bag,
+  // without re-saving — see NotificationPrefs.mergeLocal.
+  onApplied: (patch: Record<string, string>) => void;
+  // The live #2217 suggestion, or null when it is not firing (Dynamic, off, no
+  // statistic, the configured time already winning, or a dismissed episode).
+  timeSuggestion: DigestTimeSuggestion | null;
+  sleepSectionEnabled: boolean;
+  arrivalStats: ArrivalStatistics;
+  tickMinutes: number;
+  label: string;
+  testId: string;
+}) {
+  const off = time === "";
+  const seed = time === "" ? formatNotifyTime(DIGEST_DEFAULT_MINUTE) : time;
+  const summary = off
+    ? null
+    : describeDigestSchedule({
+        mode: parseDigestMode(mode),
+        floorMinute: hhmmToMinuteOfDay(time),
+        sleepSectionEnabled,
+        stats: arrivalStats,
+        tickMinutes,
+      });
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={off ? "" : mode}
+          onChange={(e) => {
+            const v = e.target.value;
+            // Off leaves `digest_mode` alone on purpose — a mode is not contact, and
+            // remembering it means turning the digest back on restores the choice.
+            if (v === "") onChange({ digest_hour: "" });
+            else onChange({ digest_mode: v, digest_hour: seed });
+          }}
+          className="input sm:w-56"
+          aria-label={`${label} mode`}
+          data-testid={testId}
+        >
+          <option value="">Off</option>
+          <option value="static">Same time every day</option>
+          <option value="dynamic">As soon as it’s ready</option>
+        </select>
+        {!off && (
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => {
+              // An empty value is a half-edited input — never save it as "off"; the
+              // mode select owns Off.
+              if (e.target.value !== "")
+                onChange({ digest_hour: e.target.value });
+            }}
+            className="input w-auto"
+            aria-label={
+              mode === "dynamic" ? `${label} earliest time` : `${label} time`
+            }
+            data-testid={`${testId}-time`}
+          />
+        )}
+      </div>
+      {summary && (
+        <p
+          className="mt-1.5 text-xs text-slate-600 dark:text-slate-300"
+          data-testid={`${testId}-summary`}
+        >
+          {summary.headline}
+          {summary.detail && (
+            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
+              {summary.detail}
+            </span>
+          )}
+        </p>
+      )}
+      {/* The digest time suggestion (#2217), BELOW the schedule summary: the fact
+          about the schedule comes first, and the proposal is a response to it. It
+          renders only while it is firing — nothing occupies this space on an
+          ordinary schedule. */}
+      {timeSuggestion && (
+        <DigestTimeSuggestionRow
+          suggestion={timeSuggestion}
+          onApplied={onApplied}
+        />
+      )}
+    </div>
+  );
+}
+
+// "HH:MM" → minute of day. The control only ever holds a value the time input or the
+// seed produced, so a malformed string is not reachable; 0 is the honest degenerate.
+function hhmmToMinuteOfDay(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return Number.isInteger(h) && Number.isInteger(m) ? h * 60 + m : 0;
+}
+
 export default function NotificationPrefs({
   schedule,
   workoutSummary,
@@ -179,7 +318,11 @@ export default function NotificationPrefs({
   moodCheckinEnabled,
   moodRecapEnabled,
   sleepDigestEnabled,
+  wearReminderEnabled,
   wakeMinute,
+  arrivalStats,
+  timeSuggestion,
+  tickMinutes,
   subHourlyAtRisk,
   telegramDisabled,
   pushDisabled,
@@ -197,9 +340,26 @@ export default function NotificationPrefs({
   moodCheckinEnabled: boolean;
   moodRecapEnabled: boolean;
   sleepDigestEnabled: boolean;
-  // The profile's typical wake minute of day that "Auto" resolves to, or null
-  // when there isn't enough sleep data yet (#1117).
+  // #2161: the user-owned consent for the bedtime wear reminder. Profile tier — it is
+  // a fact about the data subject's habits, not about a device — and off by default,
+  // so an absent setting renders unchecked and sends nothing.
+  wearReminderEnabled: boolean;
+  // The profile's typical wake minute of day that the Morning slot's "Auto"
+  // resolves to, or null when there isn't enough sleep data yet (#1117). The DIGEST
+  // no longer reads it — #2211 removed `auto` from the digest entirely.
   wakeMinute: number | null;
+  // The measured sleep-arrival distribution (#2214), or its stated no-answer. Passed
+  // whole rather than pre-formatted so the Dynamic summary re-renders as the user
+  // moves the floor, with no round trip — and still through the one pure
+  // `describeDigestSchedule`, so there is no second copy of the copy.
+  arrivalStats: ArrivalStatistics;
+  // The live digest time suggestion (#2217), or null when it is not firing. Resolved
+  // ONCE on the server, by the same function the digest line reads, so the two
+  // surfaces are one finding with one episode key.
+  timeSuggestion: DigestTimeSuggestion | null;
+  // The scheduler's OBSERVED tick cadence — the same figure the sub-hourly warning
+  // reads. The Dynamic deadline is floored at one tick past the floor.
+  tickMinutes: number;
   // Sub-hourly times the scheduler's OBSERVED tick cadence cannot land on time
   // (#2121 constraint 4), or null when everything configured is honoured.
   subHourlyAtRisk: { times: string[]; intervalMin: number } | null;
@@ -220,6 +380,7 @@ export default function NotificationPrefs({
     mood_checkin_enabled: moodCheckinEnabled ? "1" : "0",
     mood_recap_enabled: moodRecapEnabled ? "1" : "0",
     digest_sleep_enabled: sleepDigestEnabled ? "1" : "0",
+    wear_reminder_enabled: wearReminderEnabled ? "1" : "0",
     supp_morning_hour: timeValue(
       schedule.supplementMinutes.Morning,
       schedule.morningAuto
@@ -228,7 +389,11 @@ export default function NotificationPrefs({
     supp_evening_hour: timeValue(schedule.supplementMinutes.Evening, false),
     supp_bedtime_hour: timeValue(schedule.supplementMinutes.Bedtime, false),
     workout_enabled: schedule.workoutEnabled ? "1" : "0",
-    digest_hour: timeValue(schedule.digestMinute, schedule.digestAuto),
+    digest_hour:
+      schedule.digestMinute == null
+        ? ""
+        : formatNotifyTime(schedule.digestMinute),
+    digest_mode: schedule.digestMode,
     recap_day:
       schedule.weeklyRecapDay == null ? "" : String(schedule.weeklyRecapDay),
     recap_hour: formatNotifyTime(schedule.weeklyRecapMinute ?? 9 * 60),
@@ -255,7 +420,22 @@ export default function NotificationPrefs({
       : `Auto (~${formatNotifyTime(wakeMinute)})`;
 
   function set(field: string, v: string) {
-    const next = { ...values, [field]: v };
+    setMany({ [field]: v });
+  }
+
+  // The whole values bag is posted on every save, so a control that owns two fields
+  // (the digest's mode + time) writes both in ONE save rather than two racing ones.
+  // A field the FORM did not write: one of the #2217 exits already stored it through
+  // its own single-field action, so the bag is reconciled to what is now on the server
+  // without posting the whole schedule back. Saving here would be a second write the
+  // user never asked for — and would turn a deliberate one-field action into a
+  // whole-schedule rewrite, which is the thing it exists to avoid.
+  function mergeLocal(patch: Record<string, string>) {
+    setValues((prev) => ({ ...prev, ...patch }));
+  }
+
+  function setMany(patch: Record<string, string>) {
+    const next = { ...values, ...patch };
     setValues(next);
     runSave(async () => {
       const fd = new FormData();
@@ -369,6 +549,24 @@ export default function NotificationPrefs({
     );
   }
 
+  // The slot precondition this kind's send rides, when NONE of the slots it needs is
+  // configured (#2161 review). A kind with no schedule of its own fires at an intake
+  // slot minute, and turning that slot off silences it however its own checkbox reads
+  // — a checkbox that says "on" and does nothing is the worst thing a settings page
+  // can show. So the row NAMES the missing precondition and points at the Schedule
+  // card above it. Deliberately not a disable: the checkbox stays editable, because a
+  // user must always be able to turn a consent OFF, and turning one ON ahead of
+  // setting a time is a legitimate order to do things in. And deliberately not a
+  // fallback hour in the tick: guessing a bedtime for a send the user consented to at
+  // THEIR bedtime is a worse answer than saying what is missing.
+  function slotGap(e: NotificationKindEntry): string | null {
+    const missing = unmetSlotRequirement(
+      e,
+      (slot) => values[SLOT_FIELD[slot]] !== ""
+    );
+    return missing ? slotRequirementNote(missing) : null;
+  }
+
   // Whether the kind itself is on, which decides if its extras are offered.
   function kindEnabled(e: NotificationKindEntry): boolean {
     switch (e.control.type) {
@@ -378,6 +576,10 @@ export default function NotificationPrefs({
         return values[e.control.field] === "1";
       case "time":
         return values[e.control.field] !== "";
+      // The digest is on when it has a time; the MODE is remembered across an Off
+      // and never decides on/off by itself.
+      case "digest-mode":
+        return values[e.control.timeField] !== "";
       case "day-time":
         return values[e.control.dayField] !== "";
     }
@@ -574,6 +776,14 @@ export default function NotificationPrefs({
                       ? `Sent on the usual training schedule — ${workoutSummary} — when behind on the weekly routine.`
                       : e.blurb}
                   </p>
+                  {slotGap(e) && (
+                    <p
+                      className="mt-1 text-xs text-amber-700 dark:text-amber-400"
+                      data-testid={`kind-slot-gap-${e.kind}`}
+                    >
+                      {slotGap(e)}
+                    </p>
+                  )}
 
                   {e.control.type === "time" && (
                     <div className="mt-2">
@@ -587,6 +797,25 @@ export default function NotificationPrefs({
                         label={e.label}
                         testId={e.controlTestId ?? `kind-time-${e.kind}`}
                         selectClassName="input sm:w-40"
+                      />
+                    </div>
+                  )}
+
+                  {e.control.type === "digest-mode" && (
+                    <div className="mt-2">
+                      <DigestControl
+                        mode={values[e.control.modeField]}
+                        time={values[e.control.timeField]}
+                        onChange={setMany}
+                        onApplied={mergeLocal}
+                        timeSuggestion={timeSuggestion}
+                        sleepSectionEnabled={
+                          values["digest_sleep_enabled"] === "1"
+                        }
+                        arrivalStats={arrivalStats}
+                        tickMinutes={tickMinutes}
+                        label={e.label}
+                        testId={e.controlTestId ?? `kind-time-${e.kind}`}
                       />
                     </div>
                   )}

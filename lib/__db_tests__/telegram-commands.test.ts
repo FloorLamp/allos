@@ -35,7 +35,13 @@ const sendMock = vi.mocked(sendMessageRaw);
 
 const CHAT = "5550520";
 const UNLINKED_CHAT = "5559999";
+// A second chat mapping to TWO profiles — the family case every command has to answer
+// without guessing whose data it is (#1995).
+const SHARED_CHAT = "5550521";
+const PRACTICE_NAME = "Sauna";
 let p: SeededProfile;
+let ada: SeededProfile;
+let ben: SeededProfile;
 
 function say(text: string, chatId: string = CHAT) {
   return handleIncomingMessage({
@@ -52,22 +58,39 @@ function replyBody(): string {
   return `${msg.title}\n${String(msg.body)}`;
 }
 
+// One tracked wellness practice — the frequency target `/practice` logs against.
+function seedPractice(profileId: number, name: string): void {
+  db.prepare(
+    `INSERT INTO frequency_targets
+       (profile_id, scope_kind, scope_value, scope_identity, per_week)
+     VALUES (?, 'practice', ?, ?, 3)`
+  ).run(profileId, name, name.toLowerCase());
+}
+
 beforeAll(() => {
   p = seedProfile("commands");
   seedLoginTelegram(p.profileId, CHAT);
   setProfileSetting(p.profileId, "mood_checkin_enabled", "1");
+  setProfileSetting(p.profileId, "food_telegram_enabled", "1");
+  seedPractice(p.profileId, PRACTICE_NAME);
   db.prepare(
     `INSERT INTO intake_items (profile_id, name, kind, obligation, active)
      VALUES (?, 'Ibuprofen', 'medication', 'may', 1)`
   ).run(p.profileId);
+
+  ada = seedProfile("Ada");
+  ben = seedProfile("Ben");
+  seedLoginTelegram(ada.profileId, SHARED_CHAT);
+  seedLoginTelegram(ben.profileId, SHARED_CHAT);
 });
 
 beforeEach(() => {
   sendMock.mockClear();
-  db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(
-    p.profileId
-  );
-  db.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(p.profileId);
+  for (const pid of [p.profileId, ada.profileId, ben.profileId]) {
+    db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(pid);
+    db.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(pid);
+  }
+  db.prepare("DELETE FROM practice_logs WHERE profile_id = ?").run(p.profileId);
 });
 
 describe("discoverability (#1895 half 1)", () => {
@@ -192,6 +215,241 @@ describe("/mood on demand (#1895 half 2)", () => {
   });
 
   it("a repeated /mood supersedes its predecessor (one live keyboard, #1898)", async () => {
+    await say("/mood");
+    const live = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM notify_messages
+          WHERE profile_id = ? AND chat_id = ? AND kind = 'mood'`
+      )
+      .get(p.profileId, CHAT) as { n: number };
+    expect(live.n).toBe(1);
+
+    await say("/mood");
+    const after = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM notify_messages
+          WHERE profile_id = ? AND chat_id = ? AND kind = 'mood'`
+      )
+      .get(p.profileId, CHAT) as { n: number };
+    expect(after.n).toBe(1);
+  });
+});
+
+// ── The three verbs #2130 decided IN and #1895 built ────────────────────────
+//
+// Each is a RE-RENDER of an existing builder or a re-use of an existing write core
+// (#221) reached through the ONE dispatcher — never a second engine, and never a new
+// send: every message below is a reply to something the user typed one second earlier.
+
+describe("/food on demand (#1895)", () => {
+  it("renders the food keyboard from the SAME builder the tick uses", async () => {
+    await say("/food");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const msg = sendMock.mock.calls[0][1] as {
+      actions?: { data?: string }[];
+      kind?: string;
+    };
+    expect(msg.kind).toBe("food");
+    const tokens = (msg.actions ?? []).map((a) => a.data ?? "");
+    expect(tokens.length).toBeGreaterThan(0);
+    // The send renderer's own token shape: food:<pid>:<window>:<date>:<group>.
+    expect(
+      tokens.some((t) =>
+        new RegExp(
+          `^food:${p.profileId}:(Morning|Midday|Evening):${today(p.profileId)}:`
+        ).test(t)
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT require the food-nudge opt-in — a typed verb is access, not contact", async () => {
+    // The opt-in decides whether the TICK may send; this message exists because the
+    // user asked for it.
+    setProfileSetting(p.profileId, "food_telegram_enabled", "");
+    await say("/food");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(
+      (sendMock.mock.calls[0][1] as { actions?: unknown[] }).actions?.length
+    ).toBeGreaterThan(0);
+  });
+
+  it("a second /food strips the first — one live food keyboard (#947/#1898)", async () => {
+    await say("/food");
+    await say("/food");
+    const live = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM notify_messages
+          WHERE profile_id = ? AND chat_id = ? AND kind = 'food'`
+      )
+      .get(p.profileId, CHAT) as { n: number };
+    expect(live.n).toBe(1);
+  });
+});
+
+describe("/practice on demand (#1895)", () => {
+  it("lists the tracked practices with the shared line and an inert log button", async () => {
+    await say("/practice");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const msg = sendMock.mock.calls[0][1] as {
+      body: unknown;
+      actions?: { data?: string; label?: string }[];
+      kind?: string;
+    };
+    expect(msg.kind).toBe("practice-list");
+    expect(String(msg.body)).toContain(PRACTICE_NAME);
+    const tokens = (msg.actions ?? []).map((a) => a.data ?? "");
+    expect(
+      tokens.some((t) => new RegExp(`^plog:${p.profileId}:\\d+:`).test(t))
+    ).toBe(true);
+  });
+
+  it("offers a practice that is ON TRACK too — it is a logger, not a nudge", async () => {
+    // The pace nudge only names what is behind. A verb the user typed answers with
+    // everything they track, met or not.
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)`
+    ).run(p.profileId, PRACTICE_NAME, today(p.profileId));
+    await say("/practice");
+    const msg = sendMock.mock.calls[0][1] as {
+      actions?: { label?: string }[];
+    };
+    expect(
+      (msg.actions ?? []).some((a) => a.label?.includes(PRACTICE_NAME))
+    ).toBe(true);
+  });
+
+  it("a repeated /practice supersedes its predecessor (#1898)", async () => {
+    await say("/practice");
+    await say("/practice");
+    const live = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM notify_messages
+          WHERE profile_id = ? AND chat_id = ? AND kind = 'practice-list'`
+      )
+      .get(p.profileId, CHAT) as { n: number };
+    expect(live.n).toBe(1);
+  });
+});
+
+describe("/weight on demand (#1895)", () => {
+  it("prompts with a per-profile reply marker", async () => {
+    await say("/weight");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const msg = sendMock.mock.calls[0][1] as { body: unknown; kind?: string };
+    expect(msg.kind).toBe("weight");
+    expect(String(msg.body)).toContain(`(#weight:${p.profileId})`);
+  });
+
+  it("the REPLY lands through the shared core, in canonical kg", async () => {
+    const before = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND date = ?"
+      )
+      .get(p.profileId, today(p.profileId)) as { n: number };
+
+    await handleIncomingMessage({
+      message_id: 2,
+      chat: { id: CHAT },
+      text: "82.5",
+      reply_to_message: {
+        text: `Reply with weight (#weight:${p.profileId})`,
+      },
+    });
+
+    const row = db
+      .prepare(
+        `SELECT weight_kg FROM body_metrics
+          WHERE profile_id = ? AND date = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(p.profileId, today(p.profileId)) as { weight_kg: number };
+    expect(row.weight_kg).toBeCloseTo(82.5, 5);
+    const after = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND date = ?"
+      )
+      .get(p.profileId, today(p.profileId)) as { n: number };
+    expect(after.n).toBe(before.n + 1);
+    expect(replyBody()).toContain("82.5 kg");
+  });
+
+  it("an explicit lb reply converts at the boundary", async () => {
+    await handleIncomingMessage({
+      message_id: 3,
+      chat: { id: CHAT },
+      text: "180 lb",
+      reply_to_message: {
+        text: `Reply with weight (#weight:${p.profileId})`,
+      },
+    });
+    const row = db
+      .prepare(
+        `SELECT weight_kg FROM body_metrics
+          WHERE profile_id = ? AND date = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(p.profileId, today(p.profileId)) as { weight_kg: number };
+    expect(row.weight_kg).toBeCloseTo(81.6, 1);
+  });
+
+  it("an unreadable reply is REFUSED, never confirmed", async () => {
+    await handleIncomingMessage({
+      message_id: 4,
+      chat: { id: CHAT },
+      text: "quite heavy today",
+      reply_to_message: {
+        text: `Reply with weight (#weight:${p.profileId})`,
+      },
+    });
+    expect(replyBody()).toMatch(/not logged/i);
+  });
+
+  it("an implausible number is refused with the FORM's own message", async () => {
+    await handleIncomingMessage({
+      message_id: 5,
+      chat: { id: CHAT },
+      text: "9000",
+      reply_to_message: {
+        text: `Reply with weight (#weight:${p.profileId})`,
+      },
+    });
+    expect(replyBody()).toMatch(/too high to be real/i);
+  });
+});
+
+describe("a multi-profile chat never guesses (#1995)", () => {
+  it("/weight prompts each profile by name, each with its own marker", async () => {
+    await say("/weight", SHARED_CHAT);
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    const bodies = sendMock.mock.calls.map((c) =>
+      String((c[1] as { body: unknown }).body)
+    );
+    expect(bodies.some((b) => b.includes(`(#weight:${ada.profileId})`))).toBe(
+      true
+    );
+    expect(bodies.some((b) => b.includes(`(#weight:${ben.profileId})`))).toBe(
+      true
+    );
+    expect(bodies.some((b) => b.includes("Ada"))).toBe(true);
+    expect(bodies.some((b) => b.includes("Ben"))).toBe(true);
+  });
+
+  it("/food sends one keyboard PER profile — the food rebuild reads one subject", async () => {
+    await say("/food", SHARED_CHAT);
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    for (const call of sendMock.mock.calls) {
+      const msg = call[1] as { actions?: { data?: string }[] };
+      const owners = new Set(
+        (msg.actions ?? [])
+          .map((a) => a.data?.split(":")[1])
+          .filter((x): x is string => x != null)
+      );
+      // Exactly one profile's tokens per message.
+      expect(owners.size).toBe(1);
+    }
+  });
+});
+
+describe("legacy /mood re-issue", () => {
+  it("stays one live keyboard", async () => {
     await say("/mood");
     const live = db
       .prepare(

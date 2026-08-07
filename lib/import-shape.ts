@@ -127,6 +127,12 @@ export interface PersistRecord {
   value_num: number | null;
   unit: string | null;
   date: string; // YYYY-MM-DD (already resolved — no today() fallback downstream)
+  // The absolute moment the SOURCE stated (#2243), canonical UTC, destined for
+  // medical_records.occurred_at. Non-null only when the document carried BOTH a clock
+  // time and a zone — a zoneless clinical clock is never resolved against the profile's
+  // timezone. Never re-derive `date` from it: the two legitimately disagree across a
+  // day boundary and the day attribution (#94) is the one the source stated.
+  occurred_at?: string | null;
   reference_range: string | null;
   flag: MedicalFlag | null;
   panel: string | null;
@@ -1079,6 +1085,8 @@ export function healthRecordToPersistInput(
     value_num: r.value_num,
     unit: r.unit,
     date: r.date,
+    // The absolute moment the document stated (#2243), when it stated one with a zone.
+    occurred_at: r.occurred_at ?? null,
     // The source lab's own range + interpretation (#761 follow-up), when the CCD
     // stated them; reconcileFlags then refines a mapped lab's flag against the
     // canonical band and leaves an unmapped lab's source flag intact.

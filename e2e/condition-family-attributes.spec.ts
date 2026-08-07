@@ -1,20 +1,23 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledFill, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  openCareOverviewSection,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 
 // The Care › Overview sections are <details> disclosures (#1804). A save
 // revalidates the server tree, and the re-rendered <details> comes back CLOSED —
 // which hides the add toggle and every row inside it. So each interaction re-opens
-// the section instead of assuming the previous step left it open. The open state is
-// read off the element, never waited out.
+// the section instead of assuming the previous step left it open.
+//
+// OPENING it is the shared helper's job (#2231): this page is reached at
+// `#family-history`, and the disclosure's hash-reveal effect writes `open` too, so a
+// read-once-then-click here raced that effect into clicking the section SHUT. What
+// stays local is the signal THIS spec depends on — the add toggle the section holds.
 async function openFamilySection(page: Page) {
-  const section = page.getByTestId("records-family-history");
-  await expect(section).toBeVisible();
-  const isOpen = await section.evaluate(
-    (el) => (el as HTMLDetailsElement).open
-  );
-  // Native <details> — no JS, no POST; the toggle it reveals is the signal.
-  if (!isOpen) await section.locator("summary").click();
+  const section = await openCareOverviewSection(page, "records-family-history");
   await expect(
     page.getByTestId("add-family-history-panel-toggle")
   ).toBeVisible();

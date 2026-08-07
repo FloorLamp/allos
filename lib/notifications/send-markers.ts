@@ -295,6 +295,19 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
       "None needed. Hard per-day dedup so a bug cannot spam a family chat at 7am; the day rolling over is the re-arm.",
   },
   {
+    key: "notify_digest_attempt",
+    fixed: true,
+    markerClass: "profile-fixed",
+    cadence: "per-day",
+    store: "profile_settings",
+    shape: "none — one key per profile",
+    value:
+      "`<profile-local date>|<attempts>|<minute of day>` — the Dynamic digest's FAILED attempts today and when the last one ran. It is the retry ANCHOR (#2211 rule 2: a Dynamic send fires at whatever tick the data landed on, so its retry band is `attempt + SLOT_RETRY_DELAY_MIN`, not `floor + 60`, which would already be in the past), and by its presence it is also what distinguishes a DECLINE (nothing written) from a FAILURE. Delivery is still `notify_last_digest`.",
+    writer: "lib/notifications/digest-data.ts, gated by scripts/notify.ts",
+    retention:
+      "None needed. The stored date IS the key's lifetime: a record for any other day parses as absent (parseDigestAttempt), so the day rolling over re-arms both the attempt budget and the decline/failure distinction. Static never writes it.",
+  },
+  {
     key: "notify_last_weekly_recap",
     fixed: true,
     markerClass: "profile-fixed",
@@ -342,6 +355,19 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     writer: "scripts/notify.ts, through TICK_SLOT_MARKER_KEYS below",
     retention:
       "None needed. Auto-pause is a separate mechanism (mood_checkin_ignored), not this marker.",
+  },
+  {
+    key: "notify_last_wear_reminder",
+    fixed: true,
+    markerClass: "profile-fixed",
+    cadence: "per-day",
+    store: "profile_settings",
+    shape: "none — one key per profile",
+    value:
+      "the profile-local date the opt-in bedtime wear reminder was delivered (#2161)",
+    writer: "scripts/notify.ts, through TICK_SLOT_MARKER_KEYS below",
+    retention:
+      "None needed — the standard date rollover IS the sweep. The value is a date, so a new profile-local day re-arms the signal and a stale value can only ever match a past night. There is nothing recyclable in the key, and turning the opt-in off simply stops the builder returning a message, which leaves the last marker inert rather than stranded. One send per night, no escalation, no repeat.",
   },
   {
     key: "notify_preventive_assessed",
@@ -563,11 +589,14 @@ export const TICK_SLOT_MARKER_KEYS = {
   workout: "notify_last_workout",
   mood_checkin: "notify_last_mood_checkin",
   practice: "notify_last_practice",
+  wear_reminder: "notify_last_wear_reminder",
 } as const;
 
 export type TickSlot = keyof typeof TICK_SLOT_MARKER_KEYS;
 
 /** The morning digest's per-day send marker. */
 export const DIGEST_MARKER_KEY = "notify_last_digest";
+/** The Dynamic digest's per-day FAILED-attempt record (#2211) — see the entry above. */
+export const DIGEST_ATTEMPT_KEY = "notify_digest_attempt";
 /** The weekly recap's per-day send marker. */
 export const WEEKLY_RECAP_MARKER_KEY = "notify_last_weekly_recap";

@@ -12,6 +12,7 @@ import {
 import { extractionToPersistInput } from "@/lib/import-shape";
 import { toKg } from "@/lib/units";
 import { ALL_LIFT_NAMES, suggestTitle } from "@/lib/lifts";
+import { activityClockHHMM } from "@/lib/activity-meta";
 import { getEquipment } from "@/lib/equipment";
 import { createLogger } from "@/lib/log";
 import {
@@ -476,8 +477,13 @@ export async function commitWorkouts(
           title,
           w.notes ?? null,
           w.intensity ?? null,
-          w.start_time ?? null,
-          w.end_time ?? null,
+          // The extractor's contract deliberately accepts "HH:MM" OR an ISO timestamp
+          // from a source document — a training log legitimately contains either. The
+          // COLUMN takes one shape, a profile-local HH:MM (lib/time-columns.ts), so
+          // the fold happens here at the persist boundary rather than by narrowing
+          // what a document may say; anything else lands NULL (#2245).
+          activityClockHHMM(w.start_time),
+          activityClockHHMM(w.end_time),
           w.duration_min ?? null,
           profile.id
         ).lastInsertRowid

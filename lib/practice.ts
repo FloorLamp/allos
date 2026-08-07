@@ -126,13 +126,58 @@ export function practiceDisplayName(input: {
   );
 }
 
-// The expanded log form defaults duration from the immediately previous session.
-// A prior row with no recorded duration intentionally yields no default — old null
-// rows are never treated as if a duration had been captured.
-export function previousPracticeDuration(
-  sessions: readonly { duration_min: number | null }[]
+// ---- Duration prefill (#2204) ---------------------------------------------
+//
+// THE ONE answer to "what does this practice's duration control start at?", shared by
+// the quick sheet's inline stepper and the Wellness card's expanded form. Two surfaces
+// showing the same default is exactly the "one question, one computation" case, and
+// they had already begun to diverge: the quick path showed nothing and wrote null.
+//
+// The order is stated in full, including the leg nothing supplies yet:
+//
+//   1. the practice's own LAST LOGGED session — its `duration_min`, whatever it is.
+//      Note "whatever it is": a last session that carried NO duration prefills BLANK.
+//      That is deliberate and it is what makes constraint 4 of #2204 hold — the
+//      prefill teaches from what was WRITTEN, never from what was merely shown, so
+//      clearing the stepper once sticks instead of being re-suggested forever.
+//   2. a DECLARED default for the practice — a protocol/target-level "a sauna session
+//      is 20 minutes". No store declares one today; the parameter exists so the order
+//      is written down rather than guessed at by the first caller that needs it (the
+//      METRIC_KNOWLEDGE posture: an explicit absence, named).
+//   3. blank. The app does not invent a duration for a practice with no history and
+//      no declared default (#2204 constraint 2).
+//
+// `sessions` is newest-first, the order every practice reader already gathers in.
+export function practiceDurationPrefill(
+  sessions: readonly { duration_min: number | null }[],
+  declaredDefaultMin: number | null = null
 ): number | null {
-  return sessions[0]?.duration_min ?? null;
+  // Leg 1 — a session exists, so ITS duration is the answer even when that is null.
+  if (sessions.length > 0) return sessions[0].duration_min ?? null;
+  // Leg 2 — no history at all; a declared default may speak. Guarded so a zero or a
+  // negative declaration degrades to blank rather than seeding an impossible session.
+  if (declaredDefaultMin != null && declaredDefaultMin > 0)
+    return Math.round(declaredDefaultMin);
+  // Leg 3.
+  return null;
+}
+
+// One tap of the inline stepper's − / +. Pure so the sheet, and anything that later
+// mounts the same control, step identically.
+//
+// Two edges worth stating: stepping UP from blank starts at one step (the control is
+// how you say "about 20 minutes", so it must be reachable without typing), and
+// stepping DOWN past the first step CLEARS rather than clamping at 1 — "no duration"
+// is a legitimate destination and a stepper that can only be escaped by selecting the
+// text and deleting it is not a one-tap surface.
+export const PRACTICE_DURATION_STEP_MIN = 5;
+
+export function stepPracticeDuration(
+  current: number | null,
+  delta: number
+): number | null {
+  const next = (current ?? 0) + delta;
+  return next >= 1 ? next : null;
 }
 
 export type PracticeCadenceError =

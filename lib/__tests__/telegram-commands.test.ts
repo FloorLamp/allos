@@ -22,9 +22,19 @@ import {
   type ChatCommandContext,
 } from "@/lib/notifications/telegram-commands";
 
-const LINKED: ChatCommandContext = { linked: true, moodCheckin: true };
-const NO_MOOD: ChatCommandContext = { linked: true, moodCheckin: false };
-const UNLINKED: ChatCommandContext = { linked: false, moodCheckin: false };
+const LINKED: ChatCommandContext = {
+  linked: true,
+  moodCheckin: true,
+  foodLogging: true,
+  practiceTargets: true,
+};
+const NO_MOOD: ChatCommandContext = { ...LINKED, moodCheckin: false };
+const UNLINKED: ChatCommandContext = {
+  linked: false,
+  moodCheckin: false,
+  foodLogging: false,
+  practiceTargets: false,
+};
 
 describe("parseCommand", () => {
   it("reads a bare command", () => {
@@ -114,7 +124,12 @@ describe("/help is the per-chat-honest list", () => {
 
   it("a linked chat with every logging verb gated gets a sentence, not an empty list", () => {
     // Structurally reachable, so it must not render as a blank message.
-    const nothing: ChatCommandContext = { linked: true, moodCheckin: false };
+    const nothing: ChatCommandContext = {
+      linked: true,
+      moodCheckin: false,
+      foodLogging: false,
+      practiceTargets: false,
+    };
     const gated = commandsForChat(nothing).filter(
       (c) => c.name !== "help" && c.name !== "start"
     );
@@ -128,6 +143,45 @@ describe("/help is the per-chat-honest list", () => {
     // later.
     expect(startBody(LINKED)).toContain("/dose");
     expect(startBody(UNLINKED)).toBe(UNLINKED_BODY);
+  });
+});
+
+// The three verbs #2130 decided IN and #1895 built. Each is gated by the DASHBOARD's
+// relevance rule, so /help never advertises a verb that would then answer with an
+// explanation instead of a keyboard.
+describe("the on-demand loggers (#1895 half 2)", () => {
+  it("/food follows food-logging relevance", () => {
+    expect(helpBody(LINKED)).toContain("/food");
+    expect(helpBody({ ...LINKED, foodLogging: false })).not.toContain("/food");
+    expect(isCommandAvailable("food", { ...LINKED, foodLogging: false })).toBe(
+      false
+    );
+  });
+
+  it("/practice is offered only where a practice is tracked", () => {
+    expect(helpBody(LINKED)).toContain("/practice");
+    expect(helpBody({ ...LINKED, practiceTargets: false })).not.toContain(
+      "/practice"
+    );
+  });
+
+  it("/practices routes to /practice, and the menu lists one row", () => {
+    expect(parseCommand("/practices")?.name).toBe("practice");
+    expect(registrableCommands().map((c) => c.command)).not.toContain(
+      "practices"
+    );
+  });
+
+  it("/weight needs no relevance bit — everyone has a weight", () => {
+    expect(
+      helpBody({
+        ...LINKED,
+        moodCheckin: false,
+        foodLogging: false,
+        practiceTargets: false,
+      })
+    ).toContain("/weight");
+    expect(isCommandAvailable("weight", UNLINKED)).toBe(false);
   });
 });
 
@@ -200,9 +254,22 @@ describe("the domain census (#2130)", () => {
     }
   });
 
-  it("food, practice and weight are decided IN, awaiting #1895", () => {
-    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.food)).toBe(true);
-    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.practice)).toBe(true);
-    expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS.weight)).toBe(true);
+  it("food, practice and weight are SHIPPED — #1895 built what #2130 decided", () => {
+    // The rows flipped from plannedVerb(...) to the real command names in the same
+    // change that routed the handlers, which is what the pin above exists to force.
+    expect(TELEGRAM_DOMAIN_CENSUS.food).toBe("food");
+    expect(TELEGRAM_DOMAIN_CENSUS.practice).toBe("practice");
+    expect(TELEGRAM_DOMAIN_CENSUS.weight).toBe("weight");
+    for (const domain of ["food", "practice", "weight"] as const) {
+      expect(isPlannedVerb(TELEGRAM_DOMAIN_CENSUS[domain])).toBe(false);
+    }
+  });
+
+  it("nothing is left planned — every decided-IN domain has a shipped verb", () => {
+    expect(
+      Object.entries(TELEGRAM_DOMAIN_CENSUS)
+        .filter(([, v]) => isPlannedVerb(v))
+        .map(([k]) => k)
+    ).toEqual([]);
   });
 });

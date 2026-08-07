@@ -15,6 +15,7 @@ import {
   sectionIs,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // Map one Procedures-section entry (a Procedure Activity — procedure / act /
 // observation flavor) to an ImportedProcedure, or null when it carries no usable
@@ -31,7 +32,7 @@ function mapProcedure(
   if (!name) return null;
   const { code, system } = pickCode(node?.code);
   const { start } = hl7Period(node?.effectiveTime);
-  const date = start ?? effTime(node?.effectiveTime);
+  const date = sourceDay(start ?? effTime(node?.effectiveTime));
   const provider = providerFromPerformer(node, "individual");
   return {
     name,

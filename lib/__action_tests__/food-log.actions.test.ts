@@ -159,7 +159,7 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     // second-resolution UTC instant (#2205), so the expectation names the same writer
     // the action uses rather than a second serialization of it.
     expect(event.eaten_at).toBe(
-      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00"))
+      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!)
     );
   });
 

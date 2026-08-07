@@ -586,6 +586,229 @@ export async function handleMoodCommand(
   );
 }
 
+// `/food` command (#1895): the food-log keyboard for the CURRENT slot, on demand. The
+// domain has had inline logging buttons since #682, but only if a nudge happened to
+// arrive — an opted-out profile, a slot whose send was hours ago, or a nudge that
+// scrolled away all left the chat with no door.
+//
+// A RE-RENDER, never a second engine (#221): `buildFoodNudge` is the builder the tick
+// calls, the reconcile rebuilds with, and every tap re-renders through, so the ranked
+// buttons, the day counts, the protein line and the eating-time chips are whatever the
+// send renderer says they are — for the slot the profile is IN right now
+// (`currentFoodSlot`, the same derivation the Food tab's chip reads).
+//
+// ONE MESSAGE PER PROFILE, not one merged keyboard (the `/temp` shape, not `/dose`'s):
+// the food family's reconciler REBUILDS a nudge from its first `food:` token, so two
+// profiles' buttons in one message would have every rebuild silently render one
+// profile's nudge over the other's. Each message therefore declares its own subject
+// (#1995) and rotates its own #947 pointer.
+//
+// It is deliberately NOT gated on the food_telegram_enabled opt-in: that flag governs
+// whether the tick may CONTACT someone, and this is a reply to a message they just sent.
+// Nothing here sends anything nobody asked for.
+export async function handleFoodCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("food", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const skipped: string[] = [];
+  for (const pid of profileIds) {
+    const built = buildFoodNudge(pid, currentFoodSlot(pid), today(pid));
+    // Null is the life-stage gate (an infant logs no food groups, #591) — answered
+    // honestly below rather than with an empty keyboard.
+    if (!built) {
+      skipped.push(getProfileNameById(pid) ?? "Profile");
+      continue;
+    }
+    // Attribution through the ONE derivation (#429), never a hand-built "[Name] ":
+    // the sweep's rebuild re-applies `prefixForProfile` at the chokepoint (#377), so a
+    // prefix minted by any other rule would silently appear or vanish the first time
+    // this nudge is rebuilt.
+    await sendTelegramMessage(
+      chatId,
+      prefixMessage(built, prefixForProfile(pid)),
+      pid
+    );
+  }
+
+  if (skipped.length === profileIds.length) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🍽️ Log food",
+        body: "Food-group logging doesn't apply here yet. Everything else is in the app.",
+        kind: "food",
+      },
+      CHAT_WIDE
+    );
+  }
+}
+
+// `/practice` command (#1895): the tracked wellness practices as one-tap buttons.
+// Telegram has offered practice logging since #1259 but ONLY on the pace nudge, so a
+// practice you are on track with had no chat door at all.
+//
+// ONE MESSAGE, per-profile prefixed buttons — the `/dose` shape, since the list's
+// buttons carry their own profile id and nothing rebuilds the message from a single
+// token. CHAT_WIDE (#1995) keeps the (chat, kind) supersede slot stable, so a second
+// `/practice` re-issues THE list rather than stacking a second one (#1898).
+export async function handlePracticeCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("practice", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  const nonce = crypto.randomBytes(4).toString("hex");
+  const actions: NotificationAction[] = [];
+  const lines: string[] = [];
+  for (const pid of profileIds) {
+    const name = getProfileNameById(pid) ?? "Profile";
+    const built = buildPracticeList(pid, nonce);
+    if (!built) continue;
+    lines.push(
+      multi ? `${name}\n${plainBody(built.body)}` : plainBody(built.body)
+    );
+    for (const a of built.actions ?? []) {
+      actions.push({
+        ...a,
+        label: multi ? `${name}: ${a.label}` : a.label,
+        row: multi ? `practice-${pid}` : a.row,
+      });
+    }
+  }
+
+  if (actions.length === 0) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "🧘 Log a practice",
+        body: "No wellness practices are tracked yet. Add one under Practices in the app.",
+        kind: "practice-list",
+      },
+      CHAT_WIDE
+    );
+    return;
+  }
+
+  await sendTelegramMessage(
+    chatId,
+    {
+      title: "🧘 Log a practice",
+      body: lines.join("\n"),
+      actions,
+      kind: "practice-list",
+    },
+    CHAT_WIDE
+  );
+}
+
+// `/weight` command (#1895): the `/temp` prompt-reply shape, one quantity over. A
+// weight is a single number, which is exactly the capture a chat does well and exactly
+// what a keyboard cannot do — so the prompt asks for a reply and carries a marker that
+// attributes it, with no server-side pending state. A multi-profile chat gets one named
+// prompt each, never a guess about whose weigh-in this is.
+export async function handleWeightCommand(
+  message: TelegramMessage
+): Promise<void> {
+  if (!isCommandText("weight", message.text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) return;
+
+  const multi = profileIds.length > 1;
+  for (const pid of profileIds) {
+    const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "Log a weight",
+        body:
+          `Reply to this message with ${who}weight — e.g. 82.5, or 180 lb ` +
+          `(kg unless you say otherwise). ${weightReplyMarker(pid)}`,
+        kind: "weight",
+      },
+      pid
+    );
+  }
+}
+
+// A reply to a `/weight` prompt (#1895) — the `/temp` reply handler's twin: resolve the
+// profile from the prompt's marker, parse the number through the SAME grammar the
+// palette's `weight 82.5` uses, write through the SAME `insertBodyMetric` core every
+// weight entry goes through (canonical kg conversion server-side, at the boundary), and
+// answer from what the write actually returned. Returns whether the message was a weight
+// reply, so the dispatcher can stop. Never confirms unconditionally.
+export async function handleWeightReply(
+  message: TelegramMessage
+): Promise<boolean> {
+  const chatId = message.chat?.id;
+  const markedProfile = parseWeightReplyMarker(message.reply_to_message?.text);
+  if (chatId == null || markedProfile == null) return false;
+
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (!profileIds.includes(markedProfile)) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "⚖️ Weight not logged",
+        body: "That profile isn't linked to this chat anymore.",
+      },
+      CHAT_WIDE
+    );
+    return true;
+  }
+
+  // kg by default: a chat carries no login unit preference (#857 lives on the login,
+  // and several logins with different preferences can watch one profile), so the
+  // notification unit policy applies — canonical kg, with an explicit lb still honored.
+  const parsed = parseWeightEntry((message.text ?? "").trim(), "kg");
+  if (parsed.error || !Number.isFinite(parsed.value)) {
+    await sendTelegramMessage(
+      chatId,
+      {
+        title: "⚖️ Weight not logged",
+        body:
+          parsed.error ??
+          "Couldn't read a weight there — reply with a number like 82.5.",
+      },
+      markedProfile
+    );
+    return true;
+  }
+
+  const wrote = insertBodyMetric(markedProfile, {
+    date: today(markedProfile),
+    weight: String(parsed.value),
+    weightUnit: parsed.unit,
+    bodyFatPct: null,
+    restingHr: null,
+    notes: null,
+  });
+  await sendTelegramMessage(
+    chatId,
+    wrote
+      ? {
+          title: `⚖️ Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
+          body: "Recorded for today.",
+        }
+      : {
+          title: "⚖️ Weight not logged",
+          body: "Couldn't record that weight — try again in the app.",
+        },
+    markedProfile
+  );
+  return true;
+}
+
 // The ONE inbound text-message dispatcher (webhook + poller both call this), and since
 // #1895 the ONE router for the command vocabulary too.
 //
@@ -607,6 +830,10 @@ export async function handleIncomingMessage(
   message: TelegramMessage
 ): Promise<void> {
   if (await handleTempReply(message)) return;
+  // The second prompt-reply flow (#1895). Same arm, same reason: a REPLY to a prompt is
+  // not a command and must not be re-parsed as one. Each marker is its own, so the two
+  // cannot claim each other's replies.
+  if (await handleWeightReply(message)) return;
 
   const parsed = parseCommand(message.text);
   if (!parsed) {
@@ -658,6 +885,15 @@ export async function handleIncomingMessage(
       return;
     case "mood":
       await handleMoodCommand(message);
+      return;
+    case "food":
+      await handleFoodCommand(message);
+      return;
+    case "practice":
+      await handlePracticeCommand(message);
+      return;
+    case "weight":
+      await handleWeightCommand(message);
       return;
     default:
       // A verb declared in TELEGRAM_COMMANDS with no route here. Unreachable while the
@@ -781,6 +1017,18 @@ import {
   logPracticeByTargetId,
 } from "../queries";
 import { practiceLogOutcomeText } from "../practice";
+import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";
+import {
+  DIGEST_TIME_DISMISS_ANSWER,
+  DIGEST_TIME_STALE_TEXT,
+  digestTimeDismissToken,
+  digestTimeDynamicAnswer,
+  digestTimeDynamicToken,
+  digestTimeUseAnswer,
+  digestTimeUseToken,
+} from "../digest-time-suggestion";
+import { setDigestMinute, setDigestMode } from "../settings";
+import { dismissFinding } from "../queries/upcoming/suppressions";
 import { today } from "../db";
 import {
   getMoodCheckinIgnored,
@@ -791,7 +1039,16 @@ import {
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
+import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
+import { buildFoodNudge } from "./food";
+import { currentFoodSlot } from "../queries";
+import { buildPracticeList } from "./practices";
+import { plainBody } from "./rich-text";
+import { parseWeightEntry } from "../palette-quick-log";
+import { insertBodyMetric } from "../offline/writes";
+import { fmtWeight } from "../units";
+import { toKg } from "../units";
 import { isCommandText, parseCommand } from "./telegram-commands";
 import {
   chatCommandContext,
@@ -834,12 +1091,15 @@ import {
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
+  parseWeightReplyMarker,
   removeButton,
   replacementWithTitle,
   resolveTapProfile,
   SYMPTOM_SEVERITY_LABELS,
   tempReplyMarker,
+  weightReplyMarker,
   OUTDATED_MESSAGE_TEXT,
+  type DigestTimeCallback,
   type MoodCheckinCallback,
   type MoodKeepCallback,
   type PracticeDoneCallback,
@@ -858,7 +1118,7 @@ import {
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
-import type { NotificationAction } from "./types";
+import { prefixMessage, type NotificationAction } from "./types";
 
 // An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
@@ -1135,4 +1395,75 @@ export async function handleTuneTap(
     })
   );
   await answerCallbackQuery(cq.id, answer);
+}
+
+// The digest time suggestion's three exits (#2217), tapped from the digest itself.
+//
+// WHY THE MESSAGE CARRIES THEM AT ALL. This suggestion exists for the person whose
+// digest is silently incomplete and who does not reopen Settings — reaching only
+// surfaces you must open to see inverts the purpose of a feature whose whole job is to
+// run without you (#1685). The LINE is the reach; these are the exits beside it.
+//
+// EVERY TAP RE-RESOLVES THE LIVE SUGGESTION before it writes. The token carries no
+// minute on purpose: a digest sits in a chat for as long as the reader leaves it there,
+// and the statistic behind the proposal moves. So `getDigestTimeSuggestion` is asked
+// again at tap time and its answer — not the button's memory — is what gets written,
+// or the tap is refused and says so (the #1670 ride-along's rule, one control over).
+//
+// ONE FINDING, ONE EPISODE KEY (constraint 5): 🔕 Not now writes the same suppression
+// row the Settings row's "Not now" writes, so declining here also clears the Settings
+// row. Two surfaces asking one question twice is exactly the noise this is bounded
+// against.
+//
+// THE ROW IS CONSUMED on any successful tap — all three exits answer the same question,
+// so leaving the other two live would invite a second answer to a question already
+// answered. A refused tap leaves the keyboard alone.
+export async function handleDigestTimeTap(
+  cq: TelegramCallbackQuery,
+  token: DigestTimeCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  // A tap on YESTERDAY's digest is about a message whose content has rolled over.
+  // Refuse plainly rather than writing a send time from stale context.
+  if (token.date !== today(profileId)) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const suggestion = getDigestTimeSuggestion(profileId);
+  if (!suggestion) {
+    await answerCallbackQuery(cq.id, DIGEST_TIME_STALE_TEXT);
+    return;
+  }
+
+  let answer: string;
+  if (token.action === "use") {
+    setDigestMinute(profileId, suggestion.proposedMinute);
+    answer = digestTimeUseAnswer(suggestion.proposedMinute);
+  } else if (token.action === "dynamic") {
+    setDigestMode(profileId, "dynamic");
+    answer = digestTimeDynamicAnswer(suggestion.configuredMinute);
+  } else {
+    dismissFinding(profileId, suggestion.dedupeKey);
+    answer = DIGEST_TIME_DISMISS_ANSWER;
+  }
+  await answerCallbackQuery(cq.id, answer);
+
+  if (chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  const consumed = [
+    digestTimeUseToken(profileId, token.date),
+    digestTimeDynamicToken(profileId, token.date),
+    digestTimeDismissToken(profileId, token.date),
+  ].reduce(removeButton, rows);
+  await updateMessageKeyboard(chatId, messageId, consumed);
 }

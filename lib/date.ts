@@ -163,17 +163,65 @@ function settleWallUtc(naiveUtc: number, tz: string): Date {
   return new Date(naiveUtc - tzOffsetMs(tz, first));
 }
 
+// A bare profile-local wall clock — what `<input type="time">` writes and what a
+// `time-of-day` column (lib/time-columns.ts) stores. The hour may be unpadded so a
+// hand-written "9:30" is still a clock; nothing else is.
+const WALL_HHMM = /^(\d{1,2}):(\d{2})$/;
+
 // The UTC instant whose wall-clock time in `tz` is `dateStr` (YYYY-MM-DD) at
 // `hhmm` (HH:MM). The inverse of zonedDateParts: turns a user-entered local time
 // ("gave it at 4:02pm today") into the absolute instant to store. Pure (Intl only).
+//
+// It REFUSES rather than guessing — the same discipline zonedWallIsoToUtc states
+// below, and for the same reason: returning a plausible Date for a string that is not
+// a wall clock lets a caller store an instant it never derived. This used to read
+// `h || 0`, so an ISO timestamp reaching it (`"2026-08-07T14:30:00Z"` splits to a NaN
+// hour, and `NaN || 0` is `0`) became a silent 00:30 on that date — a plausible wrong
+// answer in dose logging, the food-correction window, the school-return note, the
+// episode timeline and the live-workout presence gate (#2245). Null on anything but a
+// real calendar date at a real clock time; the caller decides what a refusal means.
 export function zonedWallTimeToUtc(
   tz: string,
   dateStr: string,
   hhmm: string
-): Date {
-  const [h, m] = hhmm.split(":").map(Number);
+): Date | null {
+  const m = WALL_HHMM.exec(String(hhmm).trim());
+  if (!m) return null;
+  const [hour, minute] = [Number(m[1]), Number(m[2])];
+  // Range-checked because Date.UTC ROLLS OVER: "25:00" would become 01:00 the NEXT
+  // day, turning garbage into a plausible instant instead of a refusal.
+  if (hour > 23 || minute > 59) return null;
+  if (!isRealIsoDate(dateStr)) return null;
   const [y, mo, d] = dateStr.split("-").map(Number);
-  return settleWallUtc(Date.UTC(y, mo - 1, d, h || 0, m || 0, 0), tz);
+  const inst = settleWallUtc(Date.UTC(y, mo - 1, d, hour, minute, 0), tz);
+  return Number.isNaN(inst.getTime()) ? null : inst;
+}
+
+// How many minutes long a profile-local calendar day actually is in `tz` — 1440 on
+// an ordinary day, 1380 or 1500 on the two days a year the zone changes offset.
+// Measured rather than table-driven: the distance between this local midnight and
+// the next one already carries the transition, whichever direction and hour it
+// happens at (some zones shift at 00:00, some at 01:00, some at 02:00, and the
+// southern hemisphere shifts the other way round the year).
+export function localDayMinutes(tz: string, dateStr: string): number {
+  // Refused rather than guessed: an unparseable date would reach Intl as an Invalid
+  // Date and throw. Report the ORDINARY day, so a caller keying an EXCLUSION on this
+  // drops nothing on a garbage date.
+  if (!isRealIsoDate(dateStr)) return 1440;
+  const start = zonedWallTimeToUtc(tz, dateStr, "00:00");
+  const next = zonedWallTimeToUtc(tz, shiftDateStr(dateStr, 1), "00:00");
+  if (!start || !next) return 1440;
+  const minutes = (next.getTime() - start.getTime()) / 60000;
+  return Number.isFinite(minutes) ? minutes : 1440;
+}
+
+// Whether a profile-local calendar date contains a UTC-offset change. A clock-time
+// statistic computed across one mixes two offsets — the same wall-clock minute means
+// two different instants either side of the shift — so a consumer that cares
+// (lib/notifications/digest-schedule.ts's arrival statistic) EXCLUDES the day rather
+// than quietly averaging over the seam. Pure (Intl only).
+export function isDstTransitionDay(tz: string, dateStr: string): boolean {
+  return localDayMinutes(tz, dateStr) !== 1440;
 }
 
 // A ZONELESS wall-clock timestamp ("2026-07-25T23:14:30.000" — the shape a vendor

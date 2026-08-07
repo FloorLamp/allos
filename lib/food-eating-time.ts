@@ -91,7 +91,7 @@ export function resolveEatingTimeChoice(
   choice: EatingTimeChoice,
   now: Date,
   tz: string
-): Date {
+): Date | null {
   return choice.kind === "now"
     ? new Date(now.getTime())
     : statedHourInstant(choice.hhmm, now, tz);
@@ -115,6 +115,7 @@ export function eatingTimeOptions(
     EATING_TIME_LAST_HOURS_BACK
   )) {
     const instant = statedHourInstant(hhmm, now, tz);
+    if (!instant) continue;
     if (dateStrInTz(tz, instant) !== date) continue;
     out.push({ hhmm, iso: instant.toISOString() });
   }

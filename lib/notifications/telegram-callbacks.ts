@@ -83,8 +83,10 @@ import {
   parsePrnLogCallback,
   parseOfferTailCallback,
   parseTuneCallback,
+  parseDigestTimeCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
+  parsePracticeLogCallback,
   parseRightSizeLowerCallback,
   parseRefillCallback,
   parseSkipCallback,
@@ -164,6 +166,7 @@ import {
   handlePrnLogTap,
   handleOfferTailTap,
   handleTuneTap,
+  handleDigestTimeTap,
   handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
@@ -338,6 +341,16 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // The digest time suggestion's exits (#2217): Use HH:MM / As soon as it's ready /
+  // Not now. Parsed alongside the other digest-riding controls, and before the log
+  // tokens, for the same reason they are: these buttons write a SETTING, and a tap on
+  // one must never be mistaken for anything that writes to the profile's records.
+  const digestTime = parseDigestTimeCallback(cq.data);
+  if (digestTime) {
+    await handleDigestTimeTap(cq, digestTime);
+    return;
+  }
+
   // PRN administration logging (#797): a "💊 <med>" button from the /dose command
   // logs one as-needed administration NOW.
   const prn = parsePrnLogCallback(cq.data);
@@ -351,6 +364,16 @@ export async function handleCallbackQuery(
   const practiceDone = parsePracticeDoneCallback(cq.data);
   if (practiceDone) {
     await handlePracticeDoneTap(cq, practiceDone);
+    return;
+  }
+
+  // The same tap from the on-demand `/practice` list (#1895). A different PREFIX,
+  // because the two messages claim different things to the sweep (see callback-data),
+  // and deliberately the SAME handler and write core — a second logging path for one
+  // button is how two answers to "did that log?" come about.
+  const practiceLog = parsePracticeLogCallback(cq.data);
+  if (practiceLog) {
+    await handlePracticeDoneTap(cq, practiceLog);
     return;
   }
 

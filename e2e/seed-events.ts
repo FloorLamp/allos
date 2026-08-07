@@ -106,6 +106,7 @@ import {
   seedEmailNotify,
   seedHaConfig,
   seedNotifSweep,
+  seedNotifyTickLog,
 } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
 import {
@@ -222,3 +223,6 @@ seedPortalHouseholds();
 // fixture's row ids stay exactly where they were.
 seedBiomarkerPickerRank();
 seedDayOneAverages();
+// Appended LAST (#2209): two new profiles plus a direct write of data/logs/
+// notify.jsonl, so every existing fixture's row ids stay exactly where they were.
+seedNotifyTickLog();

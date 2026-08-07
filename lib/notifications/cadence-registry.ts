@@ -157,6 +157,11 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
     cadence: "user-schedule",
     why: "Once per profile-local day inside the waking window, gathered from the targets that are behind their weekly floor. The DAY is the cadence and `notify_last_practice` is the whole of it; the bus gate is applied inside behindPractices, so a dismissed target is simply absent from the gather. A practice with an inferred weekly rhythm additionally holds itself for its next predicted day and typical hour (#2188, practiceNudgeReleased) — a RELEASE refinement inside the gather, only ever later within the week and never more often, with the flip-day rule back once the week's last predicted day passes. Nothing here is spaced from a first send or swept when a subject leaves — the marker re-arms at midnight regardless.",
   },
+  {
+    kind: "wear-reminder",
+    cadence: "user-schedule",
+    why: "One opt-in ask riding the profile's Bedtime slot minute, deduped by `notify_last_wear_reminder` for the night. There is no episode and no subject: the marker re-arms at midnight, and every silencing condition — the consent flag, the expected-active gate, the provider-health deference, the quiet-stream tolerance — is evaluated fresh at the slot and reported as a null build, which leaves the marker UNSET rather than spending the night. The shared planner's candidate/freeze/sweep vocabulary has nothing to attach to here.",
+  },
 
   // ── Exempt: a per-subject clock owns the timing ────────────────────────────
   {
@@ -207,6 +212,16 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
     kind: "temp",
     cadence: "on-demand",
     why: "The prompt a `/temp` command answers with (#859). It asks for a reading the user just said they wanted to record; nothing decides WHEN it goes out except the command itself.",
+  },
+  {
+    kind: "practice-list",
+    cadence: "on-demand",
+    why: "The reply to a `/practice` command (#1895) — the tracked practices as one-tap buttons. Nothing schedules it, and nothing may delay it: the pace NUDGE is the scheduled member of this domain (kind `practice`, which carries its own cadence entry), and keeping the two kinds apart is what stops a cadence rule written for the nag from throttling an answer.",
+  },
+  {
+    kind: "weight",
+    cadence: "on-demand",
+    why: "The prompt a `/weight` command answers with (#1895) — the `temp` prompt one quantity over, and the same reasoning: the command itself is the only thing that decides when it goes out.",
   },
   {
     kind: "test",

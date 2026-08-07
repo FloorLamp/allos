@@ -108,6 +108,7 @@ import {
   keyboardTokens,
   messageBodyHash,
   parseProseGatherRecord,
+  type ClosingTally,
   type ReconcileDecision,
   reconcileClosingText,
   stripTokens,
@@ -154,6 +155,16 @@ interface FamilyReconciler {
     tokens: readonly string[],
     p: MessagePointer
   ): Set<string>;
+  // HOW the claims resolved, for the closing line (#2170). Consulted ONLY when every
+  // claim died — i.e. for a `resolved` close — and answered from the SAME ledger read
+  // `dead` just asked, so the counts are the decision's own inputs restated rather than
+  // a second adherence computation. A family with nothing countable declares none and
+  // keeps today's sentence.
+  tally?(
+    profileId: number,
+    tokens: readonly string[],
+    p: MessagePointer
+  ): ClosingTally | null;
   // Optional whole-message re-render from CURRENT state, used instead of
   // button-stripping. Returning null means "there is no message left to show".
   rebuild?(
@@ -196,6 +207,54 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
   const out = new Set<number>(getTakenDoseIds(profileId, date));
   for (const id of getSkippedDoseIds(profileId, date)) out.add(id);
   return out;
+}
+
+// The dose message's OUTCOME TALLY (#2170) — the same two ledger reads `resolvedDoseIds`
+// splits a resolution out of, counted apart instead of unioned. Reached only on a
+// `resolved` close, so every dose named here is one this pass just proved resolved.
+//
+// The doses are the ones the KEYBOARD claimed, taken from its own take/skip tokens and
+// deduplicated: a dose carries one confirm button and one skip button, and it is one
+// dose either way. Tokens with no dose id (`all`, `demote`, the time-correction chips)
+// carry no per-dose outcome and are ignored — the doses they cover are already named by
+// the take/skip pair beside them.
+function doseClosingTally(
+  profileId: number,
+  tokens: readonly string[],
+  prefixes: readonly string[]
+): ClosingTally | null {
+  const byDate = new Map<
+    string,
+    { taken: Set<number>; skipped: Set<number> }
+  >();
+  const seen = new Set<string>();
+  let logged = 0;
+  let skipped = 0;
+  for (const t of tokens) {
+    const f = fields(t);
+    if (!prefixes.includes(f[0])) continue;
+    const doseId = Number(f[2]);
+    const date = f[4];
+    if (!doseId || !date) continue;
+    const key = `${date}:${doseId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let ledger = byDate.get(date);
+    if (!ledger) {
+      ledger = {
+        taken: new Set(getTakenDoseIds(profileId, date)),
+        skipped: new Set(getSkippedDoseIds(profileId, date)),
+      };
+      byDate.set(date, ledger);
+    }
+    // Each dose is counted as what the ledger SAYS it is. A dose in neither set is
+    // unreachable on a resolved close (that is what "every claim died" means) and is
+    // counted as neither rather than inferred into one — a tally that guesses is worse
+    // than the sentence it replaces.
+    if (ledger.taken.has(doseId)) logged++;
+    else if (ledger.skipped.has(doseId)) skipped++;
+  }
+  return logged + skipped > 0 ? { logged, skipped } : null;
 }
 
 // ── intake-dose ──────────────────────────────────────────────────────────────
@@ -244,6 +303,11 @@ const intakeDose: FamilyReconciler = {
       }
     }
     return dead;
+  },
+  // "5 logged, 1 skipped" (#2170) — the resolution facts this family just established,
+  // restated. Nothing new is read that `dead` did not already ask.
+  tally(profileId, tokens) {
+    return doseClosingTally(profileId, tokens, ["take", "skip"]);
   },
   // Rebuild through the identical computation the TAP rebuild uses
   // (slotSessionForKeyboard → renderMergedIntakeMessage), so a partially reconciled
@@ -302,6 +366,13 @@ const escalation: FamilyReconciler = {
       if (resolved.has(doseId)) dead.add(t);
     }
     return dead;
+  },
+  // Same tally, one message class over (#2170): an escalation closes on exactly the
+  // dose ledger the reminder does, and a caregiver's chat is the last place a bare
+  // "handled in the app" belongs. `escack` carries no dose outcome, so it is not a
+  // counting prefix — the take/skip pair beside it names the same dose.
+  tally(profileId, tokens) {
+    return doseClosingTally(profileId, tokens, ["esctake", "escskip"]);
   },
 };
 
@@ -952,9 +1023,21 @@ function planEdit(
     // title line at send time, attribution prefix included, so replacing the whole text
     // no longer leaves an orphan bubble in a shared chat. A pointer without one (recorded
     // before migration 139) degrades to the bare closing line.
+    //
+    // AND IT STATES THE OUTCOME (#2170). A fully-resolved close erased everything the
+    // message knew, leaving the chat history less informative than the reminder was.
+    // The tally is asked for ONLY on the `resolved` arm — the date closes below resolve
+    // nothing, so a count there would be answering a question nobody's ledger was asked
+    // — and it is a SNAPSHOT: this claim deletes the pointer, so a later in-app edit
+    // makes the line historical rather than wrong, which is what "closing is forgetting"
+    // has always meant.
+    const tally =
+      decision.reason === "resolved"
+        ? (reconciler?.tally?.(profileId, tokens, pointer) ?? null)
+        : null;
     return {
       kind: "close",
-      text: reconcileClosingText(decision.reason, pointer.title),
+      text: reconcileClosingText(decision.reason, pointer.title, tally),
     };
   }
   if (decision.action === "strip-all") {

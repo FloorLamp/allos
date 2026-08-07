@@ -470,7 +470,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
     // Local midnight of the log's own day: unambiguously inside DATE in the profile
     // timezone and (except for the first instant of the day) hours before "now", so
     // the stored given_at could not have come from datetime('now').
-    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00");
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00")!;
 
     expect(
       applyIntent(

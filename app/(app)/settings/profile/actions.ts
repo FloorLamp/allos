@@ -23,6 +23,7 @@ import {
   setProfileMoodRecap,
   resetMoodCheckinIgnored,
   setProfileSleepDigest,
+  setProfileWearReminder,
   setNotifySchedule,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
@@ -46,7 +47,12 @@ import {
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
   setProfileHouseholdRound,
+  setDigestMinute,
+  setDigestMode,
 } from "@/lib/settings";
+import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
+import { dismissFinding } from "@/lib/queries/upcoming/suppressions";
+import type { DigestTimeExitResult } from "@/lib/digest-time-suggestion";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { buildHouseholdRound } from "@/lib/notifications/household-round";
 import { dispatch } from "@/lib/notifications";
@@ -65,6 +71,7 @@ import {
   WAKING_END_HOUR,
   parseNotifyTime,
 } from "@/lib/notifications/schedule";
+import { parseDigestMode } from "@/lib/notifications/digest-schedule";
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
@@ -380,6 +387,17 @@ export async function saveNotificationPrefs(formData: FormData) {
     setProfileMoodRecap(profile.id, v === "on" || v === "1");
   }
 
+  // Bedtime wear reminder (#2161): per-profile OPT-IN, off by default. Presence-gated
+  // like its neighbours so a form that doesn't render it can't wipe the setting — and
+  // note what that gate also guarantees: this action is the ONLY writer, reached only
+  // from the Settings checkbox the user ticked. Nothing in the tick, the gather, or
+  // any detector may enable it on the user's behalf (the contact-consent rule: a
+  // contact INCREASE needs the user's own declaration).
+  if (formData.has("wear_reminder_enabled")) {
+    const v = formData.get("wear_reminder_enabled");
+    setProfileWearReminder(profile.id, v === "on" || v === "1");
+  }
+
   // Morning-digest sleep summary (#1117): per-profile opt-in, presence-gated like
   // the mood toggle so a form that omits it can't wipe the setting.
   if (formData.has("digest_sleep_enabled")) {
@@ -404,13 +422,13 @@ export async function saveNotificationPrefs(formData: FormData) {
       ? n
       : fallback;
   };
-  // Wake-aware "auto" state (#1117): the Morning intake slot and the digest can
-  // follow the profile's wake time. "auto" is a distinct field value the reader
+  // Wake-aware "auto" state (#1117): the Morning intake slot can follow the
+  // profile's wake time. "auto" is a distinct field value the reader
   // (getNotifySchedule) resolves — the write path just records the intent so an
-  // unchanged re-save never freezes the resolved hour as a manual pick.
+  // unchanged re-save never freezes the resolved hour as a manual pick. The DIGEST
+  // has no `auto` any more (#2211): it has a mode and a concrete time.
   const morningAuto =
     String(formData.get("supp_morning_hour") ?? "") === "auto";
-  const digestAuto = String(formData.get("digest_hour") ?? "") === "auto";
   setNotifySchedule(profile.id, {
     supplementMinutes: {
       Morning: morningAuto ? null : time("supp_morning_hour"),
@@ -422,9 +440,12 @@ export async function saveNotificationPrefs(formData: FormData) {
     workoutEnabled:
       formData.get("workout_enabled") === "on" ||
       formData.get("workout_enabled") === "1",
-    // Morning digest: "auto" → follow wake time; "" / "off" → off; else the time.
-    digestMinute: digestAuto ? null : time("digest_hour"),
-    digestAuto,
+    // Morning digest (#2211): "" / "off" → off; else the concrete time, which is the
+    // send time in Static and the floor in Dynamic. The mode is user-owned and is
+    // only ever written by a tap — an unrecognised value reads as Static rather than
+    // silently enabling the mode that waits.
+    digestMinute: time("digest_hour"),
+    digestMode: parseDigestMode(String(formData.get("digest_mode") ?? "")),
     // Weekly recap (#32): weekday 0-6, "" / "off" → off.
     weeklyRecapDay: (() => {
       const raw = String(formData.get("recap_day") ?? "").trim();
@@ -448,6 +469,52 @@ export async function saveNotificationPrefs(formData: FormData) {
     wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
   revalidatePath("/settings/notifications");
+}
+
+// ---- The digest time suggestion's three exits (#2217) ----------------------
+//
+// The engine DETECTS and SUGGESTS; the tap is the write (#1505). Each of these is one
+// tap and one explicit write, and none of them is reachable except from a tap.
+//
+// THE PROPOSED MINUTE IS NEVER READ OFF THE BUTTON. Each action re-resolves the live
+// suggestion server-side and writes what the detector says NOW — the #1670 ride-along's
+// rule, and the reason a stale tab, a replayed form post or a forged field cannot write
+// a time the detector would not currently propose. A tap on a suggestion that has since
+// stopped firing writes NOTHING and says so.
+
+// "Use 07:40" — write exactly the digest's send time, and nothing else.
+export async function applyDigestTimeSuggestion(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  setDigestMinute(profile.id, suggestion.proposedMinute);
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.proposedMinute };
+}
+
+// The other exit: #2211's Dynamic mode, which solves the same problem by WAITING for
+// the arrival instead of by scheduling past it. Writes the mode and nothing else — the
+// stored minute stays exactly where it is and becomes the floor.
+export async function switchDigestToDynamic(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  setDigestMode(profile.id, "dynamic");
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.configuredMinute };
+}
+
+// Declining is a FIRST-CLASS OUTCOME, not a deferral: a dismissed suggestion is
+// dismissed. One row on the shared suppression bus, under the episode key BOTH surfaces
+// resolve, so this silences the Settings row and the in-digest line together
+// (constraint 5).
+export async function dismissDigestTimeSuggestion(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  dismissFinding(profile.id, suggestion.dedupeKey);
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.configuredMinute };
 }
 
 // The Telegram "send test" is login-scoped as of #1072 (sendTestNotification in

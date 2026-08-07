@@ -499,6 +499,42 @@ function isDetachedElementError(err: Error): boolean {
   return /not attached|is detached|element was detached/i.test(err.message);
 }
 
+// Open one of Care › Overview's <details> disclosures and return it (issue #2231).
+//
+// The four sections are native `<details>` (#1804), so a spec that wants anything
+// inside one has to open it — and each save revalidates the server tree, which comes
+// back CLOSED, so it has to re-open it every time.
+//
+// The hazard is that "is this section open?" has TWO writers. Besides the summary,
+// CareOverviewDisclosure opens the section the URL hash names, imperatively, from an
+// effect that runs at HYDRATION. So a spec that reads `open` once and then clicks is
+// racing that effect: the read says closed, the effect flips `open` true while the
+// click is still running its actionability checks, and the click's native toggle then
+// CLOSES what the effect just opened. The spec is left asserting against a collapsed
+// section for the whole timeout — the #2231 flake, which hit two unrelated branches
+// ~14h apart, neither of which touched the spec.
+//
+// No POST and no navigation, so there is nothing to settle on: decision-tree case 4,
+// the visibility-guarded retry loop (openMobileDrawer's shape). A `<details>` is a
+// real TOGGLE, so the loop is only safe BECAUSE it is guarded on the element's own
+// `open` — an already-open section is never clicked shut. The hydration effect is
+// one-shot, so losing that race can cost at most one extra iteration.
+export async function openCareOverviewSection(
+  page: Page,
+  testId: string
+): Promise<Locator> {
+  const section = page.getByTestId(testId);
+  await expect(section).toBeVisible();
+  await expect(async () => {
+    const open = await section.evaluate(
+      (el) => (el as HTMLDetailsElement).open
+    );
+    if (!open) await section.locator("summary").click();
+    await expect(section).toHaveJSProperty("open", true, { timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose hash-reveal effect races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open section is never clicked shut
+  return section;
+}
+
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
 // Playwright project's one shared interaction). The drawer is the phone shell's
 // only route to the app's navigation: below `md` the desktop sidebar is hidden and

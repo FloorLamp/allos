@@ -31,6 +31,7 @@ export type NotificationKind =
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary
   | "milestone" // milestone reached
+  | "wear-reminder" // opt-in bedtime "watch still on the charger?" nudge (#2161)
   // ── On-demand command replies (#1895's vocabulary, kinded for #1898) ───────
   // These are RE-ISSUABLE: the user asks for the keyboard, so asking again must
   // re-issue THE keyboard rather than stack another one in the chat. They carry a
@@ -40,6 +41,8 @@ export type NotificationKind =
   | "prn-list" // the /dose as-needed medication list (#797)
   | "symptom" // the /symptom grid + its severity picker (#859)
   | "temp" // the /temp reply prompt (#859)
+  | "practice-list" // the /practice tracked-practice list (#1895)
+  | "weight" // the /weight reply prompt (#1895)
   | "test" // a send-test from Settings
   | "other"; // unclassified / default
 

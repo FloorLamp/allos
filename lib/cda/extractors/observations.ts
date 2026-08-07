@@ -37,6 +37,7 @@ import {
   truthyNegation,
   unitFromEntryRelationships,
 } from "../normalize";
+import { sourceDay, sourceInstant } from "../../source-time";
 
 // ── Source-stated reference range + abnormal flag (CDA labs) ────────────────
 // A CCD lab observation carries its OWN normal range (<referenceRange>) and the lab's
@@ -122,7 +123,11 @@ export function mapObservation(
   allowCategoryOverride = true
 ): ImportedRecord | null {
   if (!obs || truthyNegation(obs["@_negationInd"])) return null;
-  const date = effTime(obs.effectiveTime);
+  // The source time at ITS OWN grain (#2243): `date` is the day the document stated
+  // (never shifted by the offset — #94), `occurred_at` the absolute moment, which is
+  // null unless the document stated both a clock time and a zone.
+  const time = effTime(obs.effectiveTime);
+  const date = sourceDay(time);
   if (!date) return null;
   const code = obs.code;
   // LOINC may be the top-level coding, a <translation> child, or flagged only by
@@ -207,6 +212,7 @@ export function mapObservation(
     value_num: stored.value_num,
     unit: stored.unit,
     date,
+    occurred_at: sourceInstant(time),
     loinc: loinc ?? null,
     reference_range,
     flag,
@@ -345,7 +351,7 @@ function mapImagingStudy(obs: any): ImportedImagingStudy | null {
   if (!isRadiologyStudyObs(obs) || truthyNegation(obs?.["@_negationInd"]))
     return null;
   const { start } = hl7Period(obs?.effectiveTime);
-  const date = start ?? effTime(obs?.effectiveTime);
+  const date = sourceDay(start ?? effTime(obs?.effectiveTime));
   const idExt = firstObsIdExt(obs);
   // Nothing to key on → can't dedup a re-import, so drop rather than mint an
   // unstable row.
@@ -479,7 +485,8 @@ function mapReportRecord(
   const val = edValue(obs);
   if (!val || truthyNegation(obs?.["@_negationInd"])) return null;
   if (!isReportNarrativeObs(obs)) return null;
-  const date = effTime(obs.effectiveTime);
+  const time = effTime(obs.effectiveTime);
+  const date = sourceDay(time);
   // A record row is date-anchored (medical_records.date is NOT NULL) and a report with
   // no body carries nothing to store — drop rather than mint an empty row.
   if (!date) return null;
@@ -506,6 +513,7 @@ function mapReportRecord(
     value_num: null,
     unit: null,
     date,
+    occurred_at: sourceInstant(time),
     loinc: loinc ?? null,
     notes: capNarrative(body.trim()),
     external_id: idExt

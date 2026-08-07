@@ -506,6 +506,18 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(todayLine).toContainText("No sessions yet");
   await expect(button).toHaveText("Log now");
 
+  // #2204, owner ruling: the CARD carries the inline stepper too, alongside the
+  // expanded form rather than instead of it. "The modal is one tap away" answered
+  // where the duration field lives; it never answered what the one-tap button wrote,
+  // which was nothing. A brand-new practice has no history and no declared default,
+  // so the stepper starts blank — the app does not invent a duration.
+  const cardDuration = card.getByTestId("practice-duration-input");
+  await expect(cardDuration).toHaveValue("");
+  await expect(card.getByTestId("practice-log-details-trigger")).toBeVisible();
+  for (let i = 0; i < 4; i++)
+    await hydratedClick(page, card.getByTestId("practice-duration-up"));
+  await expect(cardDuration).toHaveValue("20");
+
   // Layer 1 — the fat-finger double. The second tap lands inside the post-success
   // cooldown and is absorbed: no dialog, and no second session.
   await button.click();
@@ -527,6 +539,15 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(
     reloaded.getByTestId("practice-session-history").locator("tbody tr")
   ).toHaveCount(1);
+
+  // ...carrying the duration the stepper was showing when it was tapped, and the
+  // stepper now starts from that LOGGED value, so accepting it again costs no taps.
+  await expect(reloaded.getByTestId("practice-session-history")).toContainText(
+    "20 min"
+  );
+  await expect(reloaded.getByTestId("practice-duration-input")).toHaveValue(
+    "20"
+  );
 
   // Layer 3 — a deliberate second session of the same day ASKS, naming the practice.
   // Cancelling writes nothing: the confirm is a question, not a gate on the write.

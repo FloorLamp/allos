@@ -54,16 +54,42 @@ const SCAN_DIRS = ["lib", "app", "scripts"];
 
 // ---- The canonical-convention registry --------------------------------------
 //
-// Every column here stores `YYYY-MM-DDTHH:MM:SSZ` (lib/date.ts's utcInstant). An
-// entry is added by the migration that converts the column, in the same change as its
-// readers — never speculatively, because rules A and B are enforced against it
-// immediately. The rest of the schema's instants remain on SQLite's bare shape and
-// are written through utcSqlString / sqlNow; they are not a free-for-all, they are
-// simply not yet converted.
+// Every column here stores `YYYY-MM-DDTHH:MM:SSZ` (lib/date.ts's utcInstant). The
+// rest of the schema's instants remain on SQLite's bare shape and are written through
+// utcSqlString / sqlNow; they are not a free-for-all, they are simply not yet
+// converted.
+//
+// TWO WAYS IN, and only two:
+//
+//   CONVERTED — the migration that moves an existing column onto the convention adds
+//   its entry in the same change as its readers. Never speculatively, because rules A
+//   and B are enforced against it immediately: claiming a column is canonical before
+//   its values are would fail the very statements that are still correct.
+//
+//   BORN ON IT — a BRAND-NEW nullable column with no rows and no writer yet
+//   (`occurred_at`, migration 165). There is nothing to convert and nothing to get
+//   wrong: the column is empty, so the claim cannot be false, and listing it here is
+//   what makes it stay true — rule A forces the FIRST writer that lands to bind
+//   utcInstant()/instantNow() instead of deciding a serialization at the call site.
+//   Leaving it out until a writer existed would mean the writer's PR chooses the shape
+//   and this file follows, which is the wrong order. This is the growth rule #2235
+//   constraint 4 names; it applies ONLY to a column that has never held a value.
 const CANONICAL_INSTANT_COLUMNS: Record<
   string,
   { columns: string[]; why: string }
 > = {
+  medical_records: {
+    columns: ["occurred_at"],
+    why: "migration 165 (#2154) — BORN canonical: the nullable event instant a vitals reading carries when somebody stated a time. No rows hold a value and nothing writes it yet, so the entry exists to bind the first writer rather than to record a conversion. `created_at` beside it stays bare and is NOT claimed here.",
+  },
+  body_metrics: {
+    columns: ["occurred_at"],
+    why: "migration 165 (#2235) — BORN canonical: the day's weigh-in instant. Same rule as medical_records, and the table's only instant column.",
+  },
+  intake_item_logs: {
+    columns: ["occurred_at"],
+    why: "migration 165 (#2229's owner ruling) — BORN canonical: this table's first event instant, filled only when a user states when a dose was actually taken. `given_at` and `taken_at` beside it are the bare-shaped RECORD chain and are NOT claimed here; the rename that settles their names is a later slot.",
+  },
   integration_sync_events: {
     columns: ["at", "created_at"],
     why: "migration 163 — the sync ledger's own instants. `at` is the timestamp #2205 names: it is joined and compared against columns that carry `Z` (metric_samples' instants, a caller's ISO cursor), and it defaulted to SQLite's bare shape.",
@@ -83,8 +109,8 @@ const CANONICAL_INSTANT_COLUMNS: Record<
 // shape the column did not declare" — say why.
 const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 2,
-    why: "the dose-burst reader re-serializes an ALREADY-STORED given_at (parseUtcSql → toISOString) into the in-memory `tapAt` the pure burst grouping compares. Nothing writes it: the value never reaches a bind parameter, and the burst's own output is ids plus a label.",
+    count: 4,
+    why: "the dose-burst reader and the restamp core each re-serialize ALREADY-STORED stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` the pure burst grouping compares — `taken_at` for identity and freshness, `given_at` for the instant the row stands at (#2206). Nothing writes them: the values never reach a bind parameter, the write itself re-serializes through utcSqlString, and the burst's own output is ids plus a label.",
   },
   "lib/reading-writes.ts": {
     count: 1,
@@ -404,6 +430,15 @@ describe("stored-instant convention (issue #2205, phase 1)", () => {
   });
 
   it("B. no statement touching a canonical instant table carries a raw SQL now-read", () => {
+    // The rule is TABLE-scoped on purpose — a bare cutoff anywhere in a statement can
+    // meet a canonical column through a join or an ORDER BY, so the safe unit is the
+    // statement, not the column. Note the consequence for a MIXED table
+    // (medical_records, body_metrics, intake_item_logs, whose occurred_at is canonical
+    // while their other instants are still bare): a now-read is refused there even
+    // when the column it meets happens to be a bare one. That is deliberate — the
+    // sibling ratchet in lib/__tests__/sql-clock-seam.test.ts already requires a
+    // reasoned allowlist entry for any new raw now-read, so the marginal cost is nil
+    // and binding the cutoff is what that scan would have asked for anyway.
     const tables = Object.keys(CANONICAL_INSTANT_COLUMNS);
     const violations: string[] = [];
     if (tables.length > 0) {

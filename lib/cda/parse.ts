@@ -46,7 +46,8 @@ import {
   visitDiagnosesFromSections,
 } from "./extractors";
 import { decideImportedConditionStatus } from "../clinical-parse";
-import { asArray, effTime, hl7Date, parser, textOf } from "./normalize";
+import { asArray, effTime, hl7Time, parser, textOf } from "./normalize";
+import { sourceDay } from "../source-time";
 
 // Detect a CCD/CDA XML string (vs a SMART Health Card / other).
 export function looksLikeCda(text: string): boolean {
@@ -112,7 +113,7 @@ function mapDemographics(cd: any): ImportDemographics | null {
     .find((pr: any) => pr?.patient);
   const patient = patientRole?.patient;
   if (!patient) return null;
-  const birthdate = hl7Date(patient?.birthTime?.["@_value"]);
+  const birthdate = sourceDay(hl7Time(patient?.birthTime?.["@_value"]));
   const g = patient?.administrativeGenderCode?.["@_code"];
   const sex = g === "M" ? "male" : g === "F" ? "female" : null;
   const name = cdaName(patient);
@@ -197,7 +198,7 @@ export function parseCcdaDocument(xml: string): {
   return {
     sections,
     demographics: mapDemographics(cd),
-    documentDate: effTime(cd?.effectiveTime),
+    documentDate: sourceDay(effTime(cd?.effectiveTime)),
     encompassingEncounter: encompassingEncounterInfo(cd),
     serviceEventProviders: serviceEventProviders(cd),
   };

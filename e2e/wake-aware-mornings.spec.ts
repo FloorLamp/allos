@@ -6,9 +6,10 @@ import {
 } from "./helpers";
 
 // Wake-aware mornings (issue #1117) at minute grain (#2121): the wake-derived
-// "Auto" state on the Morning intake slot + the morning digest, a manual
-// minute-precise time, the sub-hourly honesty warning, and the sleep-summary
-// opt-in, on Settings → Notifications. Runs as admin acting as the seeded profile
+// "Auto" state on the Morning intake slot, a manual minute-precise time, the
+// sub-hourly honesty warning, and the sleep-summary opt-in, on Settings →
+// Notifications. The DIGEST no longer has an Auto — #2211 replaced it with two
+// modes, covered by digest-modes.spec.ts. Runs as admin acting as the seeded profile
 // 1 (shared storageState). As of #1072 the schedule is per-SUBJECT and always
 // visible; #1462 §6 split it into a "Schedule" card (slot times, quiet hours) and
 // a "Message kinds" card (one row per kind: enable + config + channel routing),
@@ -31,15 +32,16 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     await expect(kindsCard).toBeVisible();
 
     const morning = page.getByTestId("supp-morning-hour");
-    const digest = page.getByTestId("digest-hour");
 
-    // The wake-aware option is offered on both the Morning slot and the digest.
+    // The wake-aware option is offered on the Morning intake slot. It is NOT offered
+    // on the digest any more (#2211) — that slot needs you awake, the digest needs
+    // your tracker synced, and welding the two together is the defect #2214 measured.
     await expect(morning.getByRole("option", { name: /^Auto \(/ })).toHaveCount(
       1
     );
-    await expect(digest.getByRole("option", { name: /^Auto \(/ })).toHaveCount(
-      1
-    );
+    await expect(
+      page.getByTestId("digest-hour").getByRole("option", { name: /^Auto/ })
+    ).toHaveCount(0);
 
     // Pick a concrete Morning time at MINUTE precision → it persists as a manual
     // choice. Switching the mode to "At time" reveals the time input seeded with
@@ -61,8 +63,9 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
       "09:15"
     );
 
-    // Switch the Morning slot + the digest to Auto, and set the sleep summary on (it's the
-    // opt-out default as of #1378; check() pins that it round-trips as an explicit "1").
+    // Switch the Morning slot back to Auto and turn the digest on, then set the sleep
+    // summary (it's the opt-out default as of #1378; check() pins that it round-trips
+    // as an explicit "1").
     await settledSelectSave(
       page,
       page.getByTestId("supp-morning-hour"),
@@ -72,7 +75,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     await settledSelectSave(
       page,
       page.getByTestId("digest-hour"),
-      "auto",
+      "static",
       kindsCard
     );
     // Back on the hour: the warning clears with the sub-hourly time.
@@ -96,7 +99,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     // All three round-trip across a reload.
     await page.reload();
     await expect(page.getByTestId("supp-morning-hour")).toHaveValue("auto");
-    await expect(page.getByTestId("digest-hour")).toHaveValue("auto");
+    await expect(page.getByTestId("digest-hour")).toHaveValue("static");
     await expect(page.getByTestId("digest-sleep-enabled")).toBeChecked();
 
     // Reset the shared fixture: Morning back to Auto (its default), digest off,

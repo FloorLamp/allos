@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  isDstTransitionDay,
+  localDayMinutes,
   tzOffsetMs,
   zonedWallTimeToUtc,
   zonedWallIsoToUtc,
@@ -20,19 +22,52 @@ describe("tzOffsetMs", () => {
 describe("zonedWallTimeToUtc", () => {
   it("turns a local wall time into the correct absolute instant", () => {
     // 16:02 wall time in New York (EDT) == 20:02 UTC.
-    const d = zonedWallTimeToUtc("America/New_York", "2026-07-15", "16:02");
+    const d = zonedWallTimeToUtc("America/New_York", "2026-07-15", "16:02")!;
     expect(d.toISOString()).toBe("2026-07-15T20:02:00.000Z");
   });
   it("is identity-shaped for UTC", () => {
-    const d = zonedWallTimeToUtc("UTC", "2026-07-15", "09:30");
+    const d = zonedWallTimeToUtc("UTC", "2026-07-15", "09:30")!;
     expect(d.toISOString()).toBe("2026-07-15T09:30:00.000Z");
   });
   it("round-trips through zonedDateParts (the wall time comes back)", () => {
     const tz = "America/Los_Angeles";
-    const d = zonedWallTimeToUtc(tz, "2026-12-25", "07:45"); // PST (winter)
+    const d = zonedWallTimeToUtc(tz, "2026-12-25", "07:45")!; // PST (winter)
     const { date, hhmm } = zonedDateParts(tz, d);
     expect(date).toBe("2026-12-25");
     expect(hhmm).toBe("07:45");
+  });
+
+  it("reads an unpadded hour — a wall clock is still a wall clock", () => {
+    expect(zonedWallTimeToUtc("UTC", "2026-07-15", "9:30")?.toISOString()).toBe(
+      "2026-07-15T09:30:00.000Z"
+    );
+  });
+
+  it("REFUSES a malformed clock instead of substituting zero (#2245)", () => {
+    const TZ = "America/New_York";
+    // THE REGRESSION PIN. This used to split to a NaN hour, and `NaN || 0` is `0`,
+    // so a 14:30 session silently became 00:30 on that date — a plausible instant
+    // manufactured from a string that is not a clock at all. An ISO timestamp is
+    // already absolute; the caller decides what to do with it, and one of the things
+    // it must not be is re-read as a wall clock.
+    expect(
+      zonedWallTimeToUtc(TZ, "2026-08-07", "2026-08-07T14:30:00Z")
+    ).toBeNull();
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "")).toBeNull();
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "1430")).toBeNull();
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "half past two")).toBeNull();
+    // Out of range would ROLL OVER through Date.UTC — "25:00" becoming 01:00 the
+    // NEXT day — which is the same manufacture wearing a different hat.
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "25:00")).toBeNull();
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "14:75")).toBeNull();
+    // The DATE half gets the same discipline: an impossible day is not a day.
+    expect(zonedWallTimeToUtc(TZ, "2026-13-45", "14:30")).toBeNull();
+    expect(zonedWallTimeToUtc(TZ, "not-a-date", "14:30")).toBeNull();
+    // …and the well-formed case still resolves, so the refusals above are not a
+    // helper that stopped working.
+    expect(zonedWallTimeToUtc(TZ, "2026-08-07", "14:30")?.toISOString()).toBe(
+      "2026-08-07T18:30:00.000Z"
+    );
   });
 });
 
@@ -117,5 +152,35 @@ describe("utcSqlString / parseUtcSql", () => {
   it("returns null for missing/garbage", () => {
     expect(parseUtcSql(null)).toBeNull();
     expect(parseUtcSql("nope")).toBeNull();
+  });
+});
+
+describe("localDayMinutes / isDstTransitionDay", () => {
+  it("measures an ordinary local day as 24 hours", () => {
+    expect(localDayMinutes("UTC", "2026-07-15")).toBe(1440);
+    expect(localDayMinutes("America/New_York", "2026-07-15")).toBe(1440);
+    expect(isDstTransitionDay("America/New_York", "2026-07-15")).toBe(false);
+    // A zone with no DST at all never has one.
+    expect(isDstTransitionDay("Asia/Tokyo", "2026-03-08")).toBe(false);
+  });
+
+  it("finds the two days a year the offset moves, in both hemispheres", () => {
+    // US spring forward 2026-03-08 (23h) and fall back 2026-11-01 (25h).
+    expect(localDayMinutes("America/New_York", "2026-03-08")).toBe(23 * 60);
+    expect(localDayMinutes("America/New_York", "2026-11-01")).toBe(25 * 60);
+    expect(isDstTransitionDay("America/New_York", "2026-03-08")).toBe(true);
+    expect(isDstTransitionDay("America/New_York", "2026-11-01")).toBe(true);
+    // Southern hemisphere, the other way round the year: Sydney 2026-04-05 (25h).
+    expect(localDayMinutes("Australia/Sydney", "2026-04-05")).toBe(25 * 60);
+    expect(isDstTransitionDay("Australia/Sydney", "2026-04-05")).toBe(true);
+    // The days either side are ordinary — the flag marks the seam, not the season.
+    expect(isDstTransitionDay("America/New_York", "2026-03-07")).toBe(false);
+    expect(isDstTransitionDay("America/New_York", "2026-03-09")).toBe(false);
+  });
+
+  it("reports the ordinary day for unparseable input rather than a transition", () => {
+    // A caller keying an EXCLUSION on this must drop nothing on a garbage date.
+    expect(localDayMinutes("UTC", "not-a-date")).toBe(1440);
+    expect(isDstTransitionDay("UTC", "")).toBe(false);
   });
 });

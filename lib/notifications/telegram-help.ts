@@ -16,7 +16,10 @@
 import {
   getProfileMoodCheckin,
   getProfilesByTelegramChatId,
+  getUserAge,
 } from "../settings";
+import { isFoodLoggingRelevant } from "../life-stage";
+import { getPracticeTargets } from "../queries";
 import {
   HELP_TITLE,
   START_TITLE,
@@ -41,6 +44,18 @@ export function chatCommandContext(
   return {
     linked: profileIds.length > 0,
     moodCheckin: profileIds.some((pid) => getProfileMoodCheckin(pid)),
+    // The DASHBOARD's gate, not the nudge's (#1895): food-group logging is hidden for
+    // an infant (isFoodLoggingRelevant, #591) and offered to everyone else. The
+    // food_telegram_enabled opt-in is deliberately NOT consulted — it decides whether
+    // the tick may CONTACT this profile, and a verb the user types is access.
+    foodLogging: profileIds.some((pid) =>
+      isFoodLoggingRelevant(getUserAge(pid))
+    ),
+    // A cheap existence read, not the weekly progress rollup: this runs on every inbound
+    // slash command, and "is there anything to log" needs only the targets.
+    practiceTargets: profileIds.some(
+      (pid) => getPracticeTargets(pid).length > 0
+    ),
   };
 }
 

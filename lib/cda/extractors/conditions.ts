@@ -23,12 +23,13 @@ import {
   clinicalStatusFromEntryRelationships,
   codedDisplayName,
   effTime,
-  hl7Date,
+  hl7Time,
   pickCode,
   resolveNarrativeText,
   sectionIs,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // The problem's SEVERITY (#1403): a nested Severity Observation (template 4.8),
 // whose <value> codes the SNOMED mild/moderate/severe grade. Walks
@@ -122,12 +123,12 @@ export function mapCondition(
         ? toConditionStatus(clinicalStatus)
         : sectionDefaultStatus
       : toConditionStatus(clinicalStatus ?? concernStatus);
-  const onset = effTime(obs.effectiveTime);
+  const onset = sourceDay(effTime(obs.effectiveTime));
   // effectiveTime high = resolution date (only meaningful once resolved).
   const highRaw = asArray(obs.effectiveTime)
     .map((t: any) => t?.high?.["@_value"])
     .find(Boolean);
-  const resolved = status === "resolved" ? hl7Date(highRaw) : null;
+  const resolved = status === "resolved" ? sourceDay(hl7Time(highRaw)) : null;
   // Import intelligence (#590): downgrade a birth-event or stale self-limited
   // active row to resolved. An EXPLICIT clinical-status observation (template 4.6)
   // is authoritative — flag it so the decision leaves it untouched. Onset is left

@@ -15,7 +15,7 @@ import {
   buildNarrativeIdMap,
   collectText,
   effTime,
-  hl7Date,
+  hl7Time,
   providerFromAssignedEntity,
   providerFromPerformer,
   resolveNarrativeText,
@@ -23,6 +23,7 @@ import {
   textOf,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // A medication's effective/therapy period(s), for course derivation.
 // A med's effectiveTime is typically an array of an IVL_TS therapy period
@@ -34,13 +35,13 @@ function medEffectivePeriods(
 ): { low: string | null; high: string | null }[] {
   const out: { low: string | null; high: string | null }[] = [];
   for (const e of asArray(t)) {
-    const low = hl7Date(e?.low?.["@_value"]);
-    const high = hl7Date(e?.high?.["@_value"]);
+    const low = sourceDay(hl7Time(e?.low?.["@_value"]));
+    const high = sourceDay(hl7Time(e?.high?.["@_value"]));
     if (low || high) {
       out.push({ low, high });
       continue;
     }
-    const point = hl7Date(e?.["@_value"]);
+    const point = sourceDay(hl7Time(e?.["@_value"]));
     if (point) out.push({ low: point, high: null });
   }
   return out;
@@ -116,7 +117,7 @@ export function mapMedication(
     mat?.code?.["@_displayName"] ||
     narrativeDrugName(mat?.code?.originalText, narrativeIds) ||
     textOf(sa?.text);
-  const date = effTime(sa.effectiveTime);
+  const date = sourceDay(effTime(sa.effectiveTime));
   // A med-list entry commonly carries a name but NO effectiveTime (#Fix 2). Rather
   // than drop the whole medication, fall back to the CONTEXT date (the document's
   // visit date when the header carries one, else the document date) for the record

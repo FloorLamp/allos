@@ -22,7 +22,7 @@ import {
   collectBlockNarrative,
   collectText,
   effTime,
-  hl7Date,
+  hl7Time,
   hl7Period,
   otherIdentifier,
   pickCode,
@@ -34,6 +34,7 @@ import {
   textOf,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // The HL7 v3 ActEncounterCode class (AMB / IMP / EMER / …) carried as a
 // <translation> on the encounter <code> alongside the CPT/local type code.
@@ -196,7 +197,7 @@ function mapEncounter(
 ): ImportedEncounter | null {
   if (!enc || truthyNegation(enc["@_negationInd"])) return null;
   const { start, end } = hl7Period(enc?.effectiveTime);
-  const date = start ?? effTime(enc?.effectiveTime);
+  const date = sourceDay(start ?? effTime(enc?.effectiveTime));
   if (!date) return null;
   const type = codedDisplayName(enc?.code, ids);
   const { code, system } = encounterTypeCode(enc?.code);
@@ -216,7 +217,7 @@ function mapEncounter(
       ).toLowerCase()}:#${index}`;
   return {
     date,
-    end_date: end,
+    end_date: sourceDay(end),
     type,
     code,
     code_system: system,
@@ -347,7 +348,7 @@ function encompassingLocation(ee: any): ImportedProvider | null {
 // XDM merge.
 function mapEncompassingEncounter(ee: any): ImportedEncounter | null {
   const { start, end } = hl7Period(ee?.effectiveTime);
-  const date = start ?? effTime(ee?.effectiveTime);
+  const date = sourceDay(start ?? effTime(ee?.effectiveTime));
   if (!date) return null;
   const { code, system } = encounterTypeCode(ee?.code);
   const classCode = encounterClassCode(ee?.code);
@@ -361,7 +362,7 @@ function mapEncompassingEncounter(ee: any): ImportedEncounter | null {
   const idExt = firstEncounterId(ee);
   return {
     date,
-    end_date: end,
+    end_date: sourceDay(end),
     type,
     code,
     code_system: system,
@@ -391,8 +392,8 @@ export function encompassingEncounterInfo(
   const { start, end } = hl7Period(ee?.effectiveTime);
   return {
     externalId: idExt ? `ccda:encounter:${idExt}` : null,
-    start: start ?? effTime(ee?.effectiveTime),
-    end,
+    start: sourceDay(start ?? effTime(ee?.effectiveTime)),
+    end: sourceDay(end),
     activity: mapEncompassingEncounter(ee),
   };
 }
@@ -541,7 +542,7 @@ export function visitDiagnosesFromSections(
               name,
               code,
               code_system: system,
-              onset_date: effTime(node.effectiveTime),
+              onset_date: sourceDay(effTime(node.effectiveTime)),
             });
           }
         }
@@ -642,7 +643,7 @@ export function clinicalNotesFromSections(
         "individual"
       ),
       title: s.title?.trim() || null,
-      date: hl7Date(authorNode?.time?.["@_value"]),
+      date: sourceDay(hl7Time(authorNode?.time?.["@_value"])),
     });
   }
   return out;

@@ -1,13 +1,15 @@
 # The time model
 
-Status: partial (phase 1 shipping — storage and the writer chokepoint; the
-column-name vocabulary and the row-level readers are phases 2 and 3 of #2205)
+Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
+chokepoint, the declared column index and the row-level readers. Phase 2, the
+column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
+stores (migration 165); the `given_at` → `recorded_at` rename is still to come.)
 
 Two questions look the same and are not:
 
 | question                               | stored as                  | example                                              |
 | -------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| **When did this happen?** (INSTANT)    | UTC, absolute              | `intake_item_logs.given_at`, `activities.end_time`   |
+| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `activities.end_time` |
 | **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_log.date`, dose adherence |
 
 A day is **not** a lesser instant. It is the answer to a different question
@@ -72,12 +74,23 @@ about the comparison. So the convention is a **scan**, not prose.
 - **C** — no module that writes SQL may hand-build an instant
   (`.toISOString()`, a `` `${day} 00:00:00` `` template).
 
-`CANONICAL_INSTANT_COLUMNS` in that file is the registry of converted columns.
-An entry is added by the **migration that converts the column**, in the same
-change as its readers — never speculatively, because A and B are enforced
-against it immediately. Everything not listed is still on SQLite's bare shape
-and is written through `utcSqlString`/`sqlNow`; that is a phase, not a
-free-for-all.
+`CANONICAL_INSTANT_COLUMNS` in that file is the registry of columns on the
+convention, and there are exactly two ways in:
+
+- **Converted** — the migration that moves an existing column onto the
+  convention adds its entry, in the same change as its readers. Never
+  speculatively: A and B are enforced immediately, so claiming a column is
+  canonical before its values are would fail the statements that are still
+  correct.
+- **Born on it** — a brand-new nullable column with no rows and no writer yet
+  (`occurred_at`, migration 165). There is nothing to convert: the column is
+  empty, so the claim cannot be false, and listing it is what keeps it true —
+  rule A forces the _first_ writer to bind `utcInstant()` instead of choosing a
+  serialization at the call site. This applies only to a column that has never
+  held a value.
+
+Everything not listed is still on SQLite's bare shape and is written through
+`utcSqlString`/`sqlNow`; that is a phase, not a free-for-all.
 
 Allowlist entries in either the registry or the rule-C ledger **require a stated
 reason**, the same discipline as `profile-scoping` and `sql-clock-seam`. A
@@ -94,6 +107,97 @@ Known gaps, stated rather than implied:
 - Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
   from source. A converted table's `DEFAULT` is pinned by its own migration test.
 
+## One reader per question (phase 3)
+
+`lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
+about a ROW — "when did this dose happen", "which day does this serving count for" — and
+until phase 3 nothing owned it, so `COALESCE(given_at, taken_at)` was hand-rolled in six
+places and food paired `eaten_at ?? logged_at` in four more.
+
+`lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
+asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
+`bestKnownInstant`, `rowLocalDay`. A surface names a quantity, never a column, so phase
+2's renames reach it through one registry entry.
+
+Two rules are worth repeating here:
+
+- **`eventInstant` never falls back.** A row with no event instant — a web-logged serving
+  nobody stated an eating time for, a quick-path practice tick — comes back as an explicit
+  absence with a reason. Answering it with the record instant is how a distribution of
+  eating times becomes a distribution of tapping times. `bestKnownInstant` still offers the
+  substitution and reports which column it used.
+- **`localDayOf` (`lib/local-day-window.ts`) stays the single instant→day path.** Phase 3
+  adds no synonym for it; `rowLocalDay` routes through it and prefers a row's stored `date`
+  whenever it has one, because a day attribution is a decision the app already made (#94).
+
+See `docs/internals/time-columns.md` for the per-column index and the entries that most
+reward reading before writing SQL.
+
+## The ingest boundary (phase 0)
+
+Everything above is about a value the app already holds. **Phase 0 is about how one
+gets in.** Until #2243, the clinical-document parsers answered a narrower question than
+they were asked: `hl7Date` truncated an HL7 v3 TS at its eighth character and `isoDate`
+did `v.slice(0, 10)`, so a C-CDA `effectiveTime` of `20260807143000-0500` arrived as a
+bare day — three layers before any destination column was chosen. 21% of production's
+`medical_records` came in that way. Nothing was wrong at any destination; the value had
+already been destroyed at the door.
+
+The rule, stated once:
+
+> **Preserve at the source's own grain; narrow at the destination, per the grain that
+> destination declares.**
+
+`lib/source-time.ts` is the boundary. Both parsers return a `SourceTime` — three arms,
+because the source genuinely has three cases:
+
+| arm       | the source stated               | reachable destinations                          |
+| --------- | ------------------------------- | ----------------------------------------------- |
+| `day`     | a calendar day and nothing more | day only                                        |
+| `instant` | a time **and** an offset        | day (`sourceDay`) and instant (`sourceInstant`) |
+| `local`   | a time with **no** offset       | day only — the instant column stays NULL        |
+
+The third arm is the point: a `string | null` return can never express "a clock with no
+zone", so the old signature had to guess, and guessing meant either dropping the time or
+resolving it against a timezone nobody supplied.
+
+Three consequences worth stating separately:
+
+- **A day-grained destination reads `sourceDay` and nothing else** — never the offset,
+  never a UTC re-derivation. `20260101003000+0900` states the day `2026-01-01` and _is_
+  `2025-12-31T15:30:00Z`. Both are right; the day attribution (#94) is the one the
+  document stated, and shifting it would be a #2205-constraint-4 regression. The pin
+  lives in `lib/__tests__/source-time.test.ts` and again, end to end, in
+  `lib/__db_tests__/ccda-source-time.test.ts`.
+- **A `local` source leaves an instant destination NULL.** The facility's zone is not
+  the patient's, and "usually the same country" is how correct-looking code produces a
+  confidently wrong moment. The day is still stored, so nothing that was ever _stated_
+  is lost. Facility-zone inference is a separate decision needing its own evidence.
+- **Repair is by reprocess, not by migration.** The discarded times were never in the
+  database, so there is nothing for a migration to move — but `lib/medical-pipeline.ts`
+  retains the source document, so re-parsing the file the app still holds recovers them
+  through the affordance that already exists.
+
+Device integrations are untouched: their destinations always wanted instants, so they
+already preserved them (`lib/integrations/oura.ts` writes one straight into
+`metric_samples.start_time`). #2096 tracks the one device path with the same class of
+problem.
+
+### The narrowing ledger
+
+`lib/__tests__/ingest-narrowing-scan.test.ts` is phase 0's ratchet, and it is a
+**registry, not a dataflow scan** — a scan cannot follow a value from a parser to a
+column. It is the same shape as `HANDBUILT_ALLOW`: every place in the clinical-ingest
+surface that still narrows below its source's grain, with a stated reason and a frozen
+count that may only shrink. A new narrowing fails; converting one lowers the count.
+
+It currently holds **one** entry, total count 1: `appointmentDateTime` keeps the wall
+clock `Appointment.start` printed and drops the offset, because
+`appointments.scheduled_at` is declared `grain: "mixed"` — a bare day or a **zoneless**
+local datetime — with no companion column for a zone anywhere (#2234 owns that
+question). The parser preserves the offset; the drop happens at the MAPPER,
+which knows the destination, rather than at the parser, which does not.
+
 ## The day-midnight anchor
 
 Three write paths file a day-only reading at `` `${date}T00:00:00` ``
@@ -104,11 +208,27 @@ correction rather than a duplicate. It is allowlisted, not converted: moving it
 would change a day attribution — out of scope by definition — and break the
 dedupe. Folding the three into one helper is phase-3 work.
 
+The three observation stores spell the same absence differently, **on purpose**.
+`medical_records`, `body_metrics` and `intake_item_logs` leave `occurred_at`
+NULL for an untimed reading (migration 165) rather than anchoring it at
+midnight, because each carries a real `date` column and keys on it, so it can
+afford honest absence. `metric_samples` cannot: its `start_time` is part of the
+natural key, and a NULL there would make a re-entry a duplicate instead of a
+correction. Two stores say NULL, one says midnight; that difference is real and
+an eventual readings merge has to resolve it, which is why it is named here
+rather than hidden behind a uniform-looking anchor.
+
 ## Related
 
 - #2205 — the umbrella issue, its phasing, and its constraints.
 - #94 — the day-attribution decision this deliberately does not revisit.
+- #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
+  `SourceTime`, and the narrowing ledger.
+- #2234 / #2096 — the two open narrowings phase 0 names but does not close: an
+  appointment's zone, and zoneless Fitbit Takeout timestamps.
 - #1534 / `lib/__tests__/sql-clock-seam.test.ts` — the sibling ratchet: WHICH
   clock a now-read comes from. This one is about WHAT SHAPE the value is stored
   in. A write site usually has to satisfy both.
+- `docs/internals/time-columns.md` — the per-column index (generated from
+  `lib/time-columns.ts`) and the row-level readers over it.
 - `docs/versioned-migrations-spec.md` — how a converting migration ships.

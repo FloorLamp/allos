@@ -502,21 +502,30 @@ export interface FoodTapRow extends TapEvent {
 //   no-burst  — the anchor row is gone or belongs to another profile (a forged or
 //               long-stale token). Nothing is written and the caller says so rather
 //               than confirming a correction that did not happen.
+//   out-of-range — the resolver refused at least one row (a chip that would walk the
+//               burst past the floor, #2206). ALL-OR-NOTHING: a burst is one error, so
+//               moving part of it would leave the ledger in a state no tap asked for.
 export type FoodRestampOutcome =
   | { kind: "restamped"; count: number; movedDays: number }
-  | { kind: "no-burst" };
+  | { kind: "no-burst" }
+  | { kind: "out-of-range" };
 
 // Re-stamp a whole burst's eating time (issue #2019).
 //
-// `resolve` maps each row's OWN tap instant to the instant it should now carry, which is
-// what keeps a burst's internal spread intact: four servings tapped across six minutes
-// stay six minutes apart after a −2h chip instead of collapsing onto one instant. The
-// picker's resolver ignores its argument and returns one absolute instant for the burst,
-// which is the correct shape there — the user answered for the meal, not per serving.
+// `resolve` maps each row — its immutable tap stamp AND the instant it currently stands
+// at — to the instant it should now carry, which is what keeps a burst's internal spread
+// intact: four servings tapped across six minutes stay six minutes apart after a chip
+// instead of collapsing onto one instant. The picker's resolver ignores its argument and
+// returns one absolute instant for the burst, which is the correct shape there — the user
+// answered for the meal, not per serving. Returning null REFUSES the whole write.
 //
-// IDEMPOTENT BY CONSTRUCTION. Every offer is anchored to `logged_at`, which nothing ever
-// edits, so the same chip tapped twice writes the same instant. Two people tapping the
-// same message cannot walk a serving four hours into the past.
+// REPEAT TAPS COMPOSE (#2206). The chip resolver counts back from `eaten_at`, so a second
+// −1h means two hours back rather than landing on the same instant — the row now SHOWS
+// its result, and "tap again to go further" is the only reading a visibly-moving value
+// supports. The compose is race-safe without any versioning of its own: every tap reads
+// its base inside this IMMEDIATE transaction, so a second callback arriving against the
+// same burst reads what the first one committed. What used to be idempotence is now the
+// resolver's floor — see `chipTarget`.
 //
 // CROSS-MIDNIGHT RE-DATING FALLS OUT. `eaten_at` decides the row's calendar day, so a
 // correction that crosses local midnight moves the event's `date` AND the `food_log`
@@ -535,7 +544,7 @@ export type FoodRestampOutcome =
 export function restampFoodEventsCore(
   profileId: number,
   fromEventId: number,
-  resolve: (tapAt: string) => Date
+  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null
 ): FoodRestampOutcome {
   return writeTx(() => {
     // The burst is re-derived from the LEDGER at tap time, from the anchor id forward —
@@ -543,7 +552,7 @@ export function restampFoodEventsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, group_key, date, logged_at FROM food_log_events
+        `SELECT id, group_key, date, logged_at, eaten_at FROM food_log_events
           WHERE profile_id = ? AND id >= ?
           ORDER BY logged_at, id
           LIMIT 200`
@@ -553,20 +562,37 @@ export function restampFoodEventsCore(
       group_key: string;
       date: string;
       logged_at: string;
+      eaten_at: string | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const burst = burstFrom(
-      rows.map((r) => ({ id: r.id, tapAt: r.logged_at, label: r.group_key })),
+      rows.map((r) => ({
+        id: r.id,
+        tapAt: r.logged_at,
+        statedAt: r.eaten_at,
+        label: r.group_key,
+      })),
       fromEventId
     );
     if (!burst) return { kind: "no-burst" as const };
+
+    // RESOLVE EVERY ROW BEFORE WRITING ANY (#2206). One refusal refuses the burst, so a
+    // chip that has run out of room cannot half-move a meal.
+    const targets = new Map<number, Date>();
+    for (const id of burst.ids) {
+      const row = byId.get(id);
+      if (!row) continue;
+      const instant = resolve({ tapAt: row.logged_at, statedAt: row.eaten_at });
+      if (!instant) return { kind: "out-of-range" as const };
+      targets.set(id, instant);
+    }
 
     const tz = getTimezone(profileId);
     let movedDays = 0;
     for (const id of burst.ids) {
       const row = byId.get(id);
-      if (!row) continue;
-      const instant = resolve(row.logged_at);
+      const instant = targets.get(id);
+      if (!row || !instant) continue;
       const eatenAt = utcInstant(instant);
       const nextDate = zonedDateParts(tz, instant).date;
       const reDate = nextDate !== row.date && !isProteinNudgeKey(row.group_key);

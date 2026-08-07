@@ -311,7 +311,7 @@ export function seedCycleAndDerived(): void {
     // (derived-situations.spec red 18:00–23:59 UTC; the #1417 census).
     const dsTz = getTimezone(dsId);
     const dsSleepIso = (day: string, hm: string) =>
-      zonedWallTimeToUtc(dsTz, day, hm).toISOString();
+      zonedWallTimeToUtc(dsTz, day, hm)!.toISOString();
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'`
     ).run(dsId);

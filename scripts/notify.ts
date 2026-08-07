@@ -47,6 +47,7 @@ import {
   intakeSlotMarkerKey,
 } from "../lib/notifications/send-markers";
 import { buildMoodCheckin } from "../lib/notifications/mood";
+import { buildWearReminder } from "../lib/notifications/wear-reminder";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
@@ -87,12 +88,14 @@ import { runFollowUpNudges } from "../lib/notifications/followup";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import {
-  deferDigestForSleep,
+  planProfileDigestTick,
+  recordDigestAttempt,
   refreshDigestOfferTail,
   runDigest,
 } from "../lib/notifications/digest-data";
 import { reconcileProfileMessages } from "../lib/notifications/reconcile";
 import { runInTickScope } from "../lib/tick-cache";
+import { beginNotifyRun } from "../lib/notify-log";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -425,6 +428,31 @@ async function tickProfile(
         markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
         build: () => buildMoodCheckin(profile.id, date),
         onDelivered: () => bumpMoodCheckinIgnored(profile.id),
+      });
+  }
+  // Bedtime wear reminder (#2161): OPT-IN per profile, off by default, riding the
+  // BEDTIME supplement slot minute — no schedule of its own, exactly as the mood
+  // check-in rides Evening.
+  //
+  // The gate here is only "is the slot due"; every other condition — the consent flag
+  // itself, the expected-active gate, the provider-health deference, and the quiet-
+  // stream predicate — lives in buildWearReminder, which returns null for all of them.
+  // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
+  // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
+  // spends the night's single send.
+  //
+  // Cadence is the tick's own per-day marker discipline, NOT planNudgeCadence: there
+  // is one profile-fixed key with no subject to strand, so there is no candidate set
+  // to freeze and no self-healing sweep to run — the date rollover is the whole
+  // lifecycle. Reaching for the episode planner here would add a vocabulary the
+  // signal does not have.
+  {
+    const slotMinute = sched.supplementMinutes.Bedtime;
+    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+      dueSlots.push({
+        slot: "wear_reminder",
+        markerKey: TICK_SLOT_MARKER_KEYS.wear_reminder,
+        build: () => buildWearReminder(profile.id),
       });
   }
   if (sched.workoutEnabled) {
@@ -768,42 +796,47 @@ async function tickProfile(
     }
   }
 
-  // Morning digest: ONE merged summary per profile per day at digest_hour (this
-  // profile's timezone), hard-deduped so a bug can't spam a family chat at 7am. As
-  // of #1108 the "what's due" list is the digest's Today section — one message, one
-  // due-today computation (collectUpcoming), one per-day marker (notify_last_digest);
-  // the old separate upcoming digest + its notify_last_upcoming marker are retired.
+  // Morning digest: ONE merged summary per profile per day, hard-deduped so a bug
+  // can't spam a family chat at 7am. As of #1108 the "what's due" list is the
+  // digest's Today section — one message, one due-today computation
+  // (collectUpcoming), one per-day marker (notify_last_digest); the old separate
+  // upcoming digest + its notify_last_upcoming marker are retired.
   //
-  // ONE DEFERRAL (#2102). `slotDue` is already two attempt bands paired with a hard
-  // per-day marker, so the FIRST attempt is free to decline: when last night's
-  // sleep is pending but expected, this tick is skipped and the retry attempt —
-  // an hour later, at every tick rate — sends the digest with the Sleep section in
-  // it. It can only ever happen once — deferDigestForSleep returns false the moment
-  // this tick is not the slot's "first" band — so the retry attempt sends whether
-  // or not the sleep ever landed, and the digest's other sections are never held
-  // hostage. Nothing is written by the decline: the marker is still set only by a
-  // real send, so a deferred-then-sent digest records its pointer, stamp and cursor
-  // exactly as an on-time one does.
-  if (
-    sched.digestMinute != null &&
-    slotDue(sched.digestMinute, minute, tickMinutes) &&
-    getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date &&
-    !deferDigestForSleep(
-      profile.id,
-      sched.digestMinute,
-      minute,
-      tickMinutes,
-      sched.digestAuto
-    )
-  ) {
+  // TWO MODES (#2211), and the whole decision is one call. STATIC is unchanged, to
+  // the minute: `slotAttempt`'s two slot-anchored bands, send on either, sleep
+  // pending or not. DYNAMIC re-checks from its floor onward, sends the moment last
+  // night lands, and sends unconditionally at a deadline derived from the arrival
+  // distribution (#2214) rather than from `floor + SLOT_RETRY_DELAY_MIN`.
+  //
+  // A DECLINE ("wait") WRITES NOTHING — the condition is simply re-asked next tick.
+  // A FAILED SEND writes `notify_digest_attempt`, which is both the Dynamic retry's
+  // anchor (attempt + SLOT_RETRY_DELAY_MIN, not a floor-anchored band already in the
+  // past) and, by its presence, what tells the two apart. Attempts stay at two per
+  // profile per day in either mode: re-checks re-evaluate a CONDITION, they never
+  // re-attempt a delivery (#2121 item 3).
+  if (getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date) {
     try {
-      const dg = await runDigest(
-        profile.id,
-        profile.name,
-        date,
-        coachingInput()
-      );
-      if (dg.failed) anyFailed = true;
+      if (
+        planProfileDigestTick(profile.id, sched, minute, tickMinutes, date) ===
+        "send"
+      ) {
+        const dg = await runDigest(
+          profile.id,
+          profile.name,
+          date,
+          coachingInput()
+        );
+        if (dg.failed) {
+          // ONLY DYNAMIC writes the record. Static's two attempts are the
+          // slot-anchored bands `slotAttempt` already gives it, and it never reads
+          // this key — writing one for a Static profile would put a row in
+          // `profile_settings` that nothing ever consults, and make the
+          // SEND_MARKER_REGISTRY entry's "Static never writes it" untrue.
+          if (sched.digestMode === "dynamic")
+            recordDigestAttempt(profile.id, date, minute);
+          anyFailed = true;
+        }
+      }
     } catch (e) {
       log.error("digest failed", {
         profile: profile.id,
@@ -915,6 +948,19 @@ async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
 
+  // THE RUN (#2209). One id for this whole invocation, stamped onto every line the
+  // persisted tick log keeps, so the admin viewer can group by (run, profile)
+  // instead of guessing from timestamps — a fan-out over several profiles routinely
+  // straddles a minute, and a bucketing heuristic splits exactly those runs.
+  //
+  // The line below is the run's own marker and the ONE new global line this issue
+  // adds. It earns its place by being the thing that makes a QUIET tick visible: a
+  // run that decided nothing must still render as a row, or "silence because nothing
+  // was due" stays indistinguishable from "silence because the sidecar is wedged" —
+  // which is the ambiguity the log exists to kill.
+  const run = beginNotifyRun();
+  log.info("tick started", { run, profiles: profiles.length });
+
   // THE OBSERVED TICK CADENCE (#2121). The attempt bands in slotDue are one tick
   // wide, so the tick must know how often it really runs — not how often a config
   // claims it runs, because a mismatch in either direction mis-sizes the bands
@@ -963,9 +1009,19 @@ async function tick() {
       // assessment and the medication-family state — each collapse to ONE
       // evaluation for this profile. The scope closes with the profile, and nothing
       // inside it writes what those gathers read (lib/tick-cache.ts states the rule).
-      if (await runInTickScope(() => tickProfile(p, tickMinutes))) {
-        anyFailed = true;
-      }
+      //
+      // The scope also DECLARES its subject (#2209), which is what lets the persisted
+      // tick log attribute a line to a profile without threading an id through every
+      // log call site in lib/notifications/**.
+      const failed = await runInTickScope(() => tickProfile(p, tickMinutes), {
+        profileId: p.id,
+      });
+      if (failed) anyFailed = true;
+      // The per-profile run marker — the second and last new line this issue adds.
+      // One row per profile per run is exactly the viewer's unit, and without it a
+      // profile the tick evaluated and had nothing to say about would leave no trace
+      // at all: the quiet-tick ambiguity again, one level down.
+      log.info("profile evaluated", { profile: p.id, failed });
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,

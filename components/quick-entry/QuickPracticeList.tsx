@@ -56,11 +56,20 @@ export default function QuickPracticeList({
                 is deliberately not repeated on the button's today line — one row, one
                 "that's plenty". No `showDetails`: the expanded date/time/duration form
                 is a modal, and stacking one over this sheet is not what a one-tap
-                surface is for; the Wellness card keeps that path. */}
+                surface is for; the Wellness card keeps that path.
+
+                `inlineDuration` is the OTHER answer to the same objection (#2204). "20
+                min sauna" vs "5 min" is most of what a practice log means, and the one
+                surface that promised the fastest way to record one was the surface that
+                threw it away. The stepper arrives already holding this practice's last
+                logged duration, so accepting it costs nothing and the tap is still one
+                tap; it is a control, not a form, and it opens nothing. */}
             <LogPracticeButton
               practice={practice.name}
               todayCount={practice.todayCount}
               today={today}
+              defaultDurationMin={practice.previousDurationMin}
+              inlineDuration
             />
           </div>
         </li>

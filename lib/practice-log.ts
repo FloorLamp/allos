@@ -5,7 +5,7 @@
 // profile-owned table, enforced by the profile-scoping test). The pure range/pace
 // decisions live in lib/practice.ts.
 
-import { db, today } from "./db";
+import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import { daysBetweenDateStr, isRealIsoDate } from "./date";
 import { normalizePracticeName } from "./practice";
@@ -50,11 +50,45 @@ function inClause(values: readonly string[]): string {
   return values.map(() => "?").join(", ");
 }
 
+// The profile-local HH:MM a TAP happened at, or null when the row being written is
+// not about today (see logPracticeSession's `time` contract). Reads the clock seam
+// through `zonedMinuteStr`, so a frozen e2e instant stamps the frozen minute.
+function tapInstant(profileId: number, date: string): string | null {
+  return date === today(profileId) ? nowTime(profileId) : null;
+}
+
 // One-tap log a practice session. NOT idempotent — multi-session days are the point
 // (#797 ledger model), so each accepted call appends a NEW row and returns the day's
-// running count. `time`/`duration_min`/`notes` are optional (the one-tap paths pass
-// none; the expanded form / Telegram tap supply time). Returns a typed outcome — the
+// running count. `duration_min`/`notes` are optional. Returns a typed outcome — the
 // caller answers from it, never unconditionally confirms.
+//
+// ---- `time`, and why the one-tap paths now carry one (#2204 part 2) -------------
+//
+// `time` is deliberately THREE-valued, and the three values are three different
+// statements a caller can make:
+//
+//   • a "HH:MM" string — this session happened THEN. The expanded form's time input.
+//   • `null`          — this session has NO instant, and that is a decision. The
+//                       expanded form posts this when its time input is left empty,
+//                       including on a backdated correction where "now" would be a lie.
+//   • omitted         — the caller is a TAP and has no opinion. The write core stamps
+//                       the profile-local instant of the tap, which is the truth it
+//                       actually has.
+//
+// The omitted case is new. Until #2202 nothing read `practice_logs.time`, so
+// `lib/quick-log.ts` correctly declared the practice entry `day-only`: an instant with
+// no consumer is precision that a later reader invents a meaning for. `lib/weekly-rhythm.ts`
+// is now that consumer — `modalHour()` picks each practice's typical session hour and
+// the retimed pace nudge fires at it — which inverted the old omission into a real
+// defect: every quick-sheet tap and every Telegram "Done ✓" wrote a null time, so the
+// FASTER a path was, the more it starved the inference that reschedules its own nudge.
+// Stamping here rather than at each call site is what makes that one fix instead of
+// three, and keeps the timezone authority server-side (#450) — a device clock is not
+// the profile's clock.
+//
+// The stamp is bounded to the profile's TODAY. A late correction inside the 30-day
+// window is a statement about a past day, and "now" is not that day's instant; those
+// rows stay null rather than acquiring a fabricated one.
 export function logPracticeSession(
   profileId: number,
   practice: string,
@@ -69,7 +103,9 @@ export function logPracticeSession(
   if (!name || !isPracticeDateAccepted(profileId, date)) {
     return { kind: "invalid-date" };
   }
-  const time = opts.time && /^\d{2}:\d{2}$/.test(opts.time) ? opts.time : null;
+  const stated =
+    opts.time === undefined ? tapInstant(profileId, date) : (opts.time ?? null);
+  const time = stated && /^\d{2}:\d{2}$/.test(stated) ? stated : null;
   const durationMin =
     opts.durationMin != null &&
     Number.isFinite(opts.durationMin) &&
@@ -125,7 +161,14 @@ export function updatePracticeSession(
 // #1259): resolve the target's practice NAME under profile scope, then log for TODAY.
 // A deleted / cross-profile / non-practice target answers `stale-target` (the frozen-
 // snapshot contract — the message may be stale) — nothing is written. The `date` is the
-// profile-local today (the tap's day; Telegram stamps its own time-of-day for free).
+// profile-local today (the tap's day).
+//
+// It passes NO `time`, which now means "stamp the tap" (#2204). It used to say that
+// "Telegram stamps its own time-of-day for free" — which was never true of the ROW:
+// the chat message carries a timestamp, `practice_logs.time` was written null, and
+// #2202 then retimed this very nudge onto a typical-hour inference that this path was
+// feeding nothing. A one-tap Done ✓ is a statement that the session is happening now,
+// and that is what the row records.
 export function logPracticeByTargetId(
   profileId: number,
   targetId: number
