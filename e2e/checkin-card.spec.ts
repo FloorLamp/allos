@@ -17,7 +17,7 @@ import {
 import { workerDbPath } from "./worker-env";
 
 // The recomposed "How are you today?" check-in card (issues #1314 / #1311 / #1313).
-// Covers the four-section CheckInSection grammar, the merged "What's going on?" chip
+// Covers the content-led CheckInSection grammar, the merged "What's going on?" chip
 // group (sticky situations vs today-only day factors, two write paths), and the
 // relevance-gated Calm scale (silent gate; the Settings opt-in reveals it).
 //
@@ -57,7 +57,7 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
-  test("four-section grammar: sections render with collapsed summaries; expanding Rate edits and the summary updates", async ({
+  test("content-led grammar: empty rows collapse; expanding Rate edits and the summary updates", async ({
     page,
   }) => {
     test.slow();
@@ -67,24 +67,23 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     const card = page.getByTestId("how-are-you-card");
     await expect(card).toBeVisible();
 
-    // Rate (hero, first in DOM) + Context + Report render; Act is absent (no PRN meds).
+    // At rest only Rate plus the one quiet escalation door render. Empty Context,
+    // Report, and Act sections do not spend dashboard height.
     await expect(card.getByTestId("checkin-section-rate")).toBeVisible();
-    await expect(card.getByTestId("checkin-section-context")).toBeVisible();
-    await expect(card.getByTestId("checkin-section-report")).toBeVisible();
+    await expect(card.getByTestId("checkin-section-context")).toHaveCount(0);
+    await expect(card.getByTestId("checkin-section-report")).toHaveCount(0);
     await expect(card.getByTestId("checkin-section-act")).toHaveCount(0);
 
-    // Collapsed-informative summaries at rest.
-    await expect(card.getByTestId("mood-status")).toHaveText(
-      "Tap to log your day."
+    await expect(card.getByTestId("mood-status")).toHaveCount(0);
+    await expect(card).not.toContainText("Nothing noted.");
+    await expect(card).not.toContainText("Feeling well.");
+    await expect(card.getByTestId("checkin-well-actions")).toContainText(
+      "Not feeling well?"
     );
-    await expect(
-      card.getByTestId("checkin-section-context-summary")
-    ).toHaveText("Nothing noted.");
-    await expect(card.getByTestId("checkin-section-report-summary")).toHaveText(
-      "Feeling well."
-    );
-    // Report's escalation door is inline at rest (it's a report, not a sibling).
     await expect(card.getByTestId("feeling-sick-activate")).toBeVisible();
+    await expect(card.getByTestId("checkin-symptom-toggle")).toHaveText(
+      "Log a symptom"
+    );
 
     // One tap completes the check-in without any expansion (the hero contract).
     await tapMood(page, card, 4);
@@ -93,6 +92,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Expand Rate → the detail edits, and the collapsed summary is a formatter over it.
     await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
+    await expect(card.getByTestId("checkin-context-in-details")).toBeVisible();
     // A ScaleRow chip: onPick only calls setEnergy, and it TOGGLES (a second tap
     // clears it), so this is hydratedClick — one click, after the handler exists.
     // mood-status re-renders from that same state, which the next line asserts.
@@ -110,7 +110,8 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     const card = page.getByTestId("how-are-you-card");
     // Log a mood first so the day-factor write has a valence to attach to.
     await tapMood(page, card, 3);
-    await card.getByTestId("checkin-section-context-toggle").click();
+    await card.getByTestId("checkin-section-rate-toggle").click();
+    await expect(card.getByTestId("checkin-context-in-details")).toBeVisible();
 
     // The day-factor (today-only) half writes to the mood log's factors. The chip fires
     // a Server Action whose RESULT the next assertion reads, so it goes through
@@ -269,9 +270,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await hydratedClick(page, yesterdayChip);
     await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
     // The face row mirrors the selected (unlogged) day.
-    await expect(card.getByTestId("mood-status")).toHaveText(
-      "Tap to log your day."
-    );
+    await expect(card.getByTestId("mood-status")).toHaveCount(0);
 
     // One tap logs YESTERDAY; the settle hook is the dated server marker that
     // only renders once the write committed and the refresh round-tripped.

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { expectNoClippedContent, followLink } from "./helpers";
+import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import {
@@ -124,15 +124,14 @@ test.describe("the 1D pill is scoped to the surface that owns the census (B)", (
   });
 });
 
-test.describe("1D swaps in the intraday charts (B + C)", () => {
-  test("the heart-rate plot spans the viewport and the daily cards step aside", async ({
+test.describe("1D keeps Overview tiles-only on mobile (#2152)", () => {
+  test("the intraday full charts stay off Overview and the tiles remain", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
     const member = await vitalsDayPage(browser);
     try {
-      // `view=all` is intentionally ignored on phones: an ordinary range stays on
-      // tiles, while 1D replaces that grid with the dedicated intraday lens.
+      // `view=all` is intentionally ignored on phones at every range.
       await member.goto("/trends?view=all");
       await expandTrendsContext(member);
       // The windowed daily view is what 1D replaces.
@@ -144,38 +143,17 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
         /from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/
       );
 
-      // The swap: intraday cards in, the daily windowed ones out.
-      await expect(member.getByTestId("vitals-intraday-hr")).toBeVisible();
-      await expect(member.getByTestId("vitals-intraday-bp")).toBeVisible();
-      await expect(member.getByTestId("vitals-intraday-spo2")).toBeVisible();
-      await expect(member.getByTestId("body-metric-tiles")).toHaveCount(0);
-
-      // C — full-bleed: the plot box spans the whole viewport (not the gutter-inset
-      // content column), and doing so widens nothing (no horizontal page scroll).
-      const plot = member.getByTestId("vitals-intraday-hr-plot");
-      await expect(plot).toBeVisible();
-      const geometry = await plot.evaluate((el) => {
-        const box = el.getBoundingClientRect();
-        return {
-          left: Math.round(box.left),
-          width: Math.round(box.width),
-          inner: window.innerWidth,
-        };
-      });
-      expect(geometry.left).toBe(0);
-      expect(geometry.width).toBe(geometry.inner);
-      // "…and widens nothing" is an ELEMENT-level claim (#1543): the shell clips
-      // horizontal overflow, so a page-level width comparison would pass even if
-      // the full-bleed plot spilled a hundred pixels past the right edge.
-      await expectNoClippedContent(member);
-
-      // And it is a real chart, taller than the standard h-48 windowed cards.
-      const chart = plot.locator(".recharts-responsive-container");
-      await expect(chart).toBeVisible();
-      const height = await chart.evaluate((el) =>
-        Math.round(el.getBoundingClientRect().height)
-      );
-      expect(height).toBeGreaterThan(192);
+      await expect(member.getByTestId("vitals-intraday-hr")).not.toBeVisible();
+      await expect(member.getByTestId("vitals-intraday-bp")).not.toBeVisible();
+      await expect(
+        member.getByTestId("vitals-intraday-spo2")
+      ).not.toBeVisible();
+      await expect(member.getByTestId("body-metric-tiles")).toBeVisible();
+      await expect(
+        member
+          .getByTestId("trends-overview")
+          .locator('[data-testid="chart-card-plot"]:visible')
+      ).toHaveCount(0);
     } finally {
       await member.context().close();
     }

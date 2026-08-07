@@ -63,6 +63,10 @@ const nextConfig = {
   // build dir (playwright.config.ts sets NEXT_DIST_DIR=.next-demo, dev only —
   // CI's two `next start` instances share the one .next build and take no lock).
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // The workstation's nginx virtual hosts proxy the development server on port
+  // 3000. Allow those origins so Next's HMR WebSocket works through the proxy;
+  // ordinary page requests already carry the same preserved Host header.
+  allowedDevOrigins: ["allos.agent.wang.team", "allos.agent.nortonwang.com"],
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },

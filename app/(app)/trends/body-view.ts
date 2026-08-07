@@ -6,8 +6,10 @@
 //   "tiles"   → tiles on every viewport.
 //   "all"     → still TILES on mobile; the classic STACK on desktop.
 //
-// Mobile deliberately has no layout choice: the full stack duplicates the tiles as
-// a very long page, while each tile already links to its focused metric detail.
+// Mobile deliberately has no layout choice at any range (#2152): the full stack
+// duplicates the tiles as a very long page, while each tile already links to its
+// focused metric detail. A `?view=all` URL silently remains tiles on a phone because
+// viewport safety outranks the persisted desktop presentation.
 // Both layouts remain server-rendered (one gather feeds both, #221); CSS enforces
 // the viewport rule without client JS or viewport sniffing.
 

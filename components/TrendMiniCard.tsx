@@ -41,13 +41,10 @@ import type { AppRoute } from "@/lib/hrefs";
 //     The sparkline shortened with them (h-32 → h-20): with the value promoted to a
 //     headline, the plot's job is the SHAPE of the move, not its magnitude.
 //
-// COMPACT VARIANT (#1485 A): a tile with nothing to show at all — a saved analyte
-// that has never been measured — renders as a ONE-LINE row instead of a ~300px
-// card of whitespace. It is still a `TrendMiniCard` (same testid, same menu), so
-// the #1456 guarantee that a saved item's unstar control stays reachable holds;
-// this is compaction, not omission. The caller decides (it also sinks those rows
-// below the populated tiles) — the sparse fallback below is NOT compacted, because
-// it carries a real number.
+// The old COMPACT VARIANT (#1485 A) remains available to non-grid callers, but the
+// saved Overview grid no longer uses it: #2153 keeps an empty tile in its saved
+// slot at the same minimum geometry as every other card. The sparse fallback below
+// is also full-size because it carries a real number.
 //
 // The change badge is driven by robustSeriesSummary — the SAME robust-endpoint
 // computation the "what's trending" digest above uses (#398) — so the tile's arrow
@@ -266,7 +263,7 @@ export default function TrendMiniCard({
     );
 
   return (
-    <div className="card flex h-full flex-col" data-testid={testid}>
+    <div className="card flex h-full min-h-48 flex-col" data-testid={testid}>
       <div className="-mx-4 -mt-4 flex items-start sm:-mx-5 sm:-mt-5">
         <Link
           href={href}

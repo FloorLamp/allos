@@ -36,11 +36,7 @@ import {
   seedStandardMetricSaves,
 } from "@/lib/standard-metric-seeds";
 import { getSavedItems } from "@/lib/queries/saved";
-import {
-  metricSeriesKey,
-  partitionOverviewTiles,
-  savedRefFromSeriesKey,
-} from "@/lib/saved-items";
+import { metricSeriesKey, savedRefFromSeriesKey } from "@/lib/saved-items";
 import {
   buildMetricSeries,
   buildSavedBiomarkerTile,
@@ -289,11 +285,10 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
     expect(overviewTileKeys(p, 1, {})).toEqual([]);
   });
 
-  it("sinks a tile with nothing to show below the populated ones, keeping saved-order indexes", () => {
-    // #1485 A, over the real composition: a never-measured saved analyte compacts to
-    // a one-line row at the bottom, while its slot in the SAVED order (what the
-    // reorder controls move within) is unchanged.
-    const p = newProfile("Empty Sink");
+  it("keeps a tile with nothing to show in its saved slot", () => {
+    // #2153 reverses #1485 A over the real composition: a never-measured saved
+    // analyte stays first because it was saved first, with its empty data intact.
+    const p = newProfile("Empty Slot");
     star(p, "biomarker", "Ferritin"); // never measured on this profile
     seedStandardMetricSaves(db, p);
     db.prepare(
@@ -314,11 +309,9 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
         tiles.push(buildSavedBiomarkerTile(p, ref.key, {}, today(p)));
       }
     }
-    const { populated, empty } = partitionOverviewTiles(tiles);
-    expect(populated.map((s) => s.tile.key)).toEqual(["metric:weight"]);
-    // Ferritin is saved first (a real star, ahead of the epoch seeds) but draws last.
-    expect(empty[0].tile.key).toBe("bio:Ferritin");
-    expect(empty[0].index).toBe(0);
+    expect(tiles[0].key).toBe("bio:Ferritin");
+    expect(tiles[0].points).toEqual([]);
+    expect(tiles[1].key).toBe("metric:weight");
   });
 
   it("seeds every standard metric, in tile order, after existing curation", () => {

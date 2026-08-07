@@ -62,6 +62,11 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await expect(page.getByTestId("body-view-toggle")).not.toBeVisible();
     await expect(page.getByTestId("chart-jump-menu")).not.toBeVisible();
     await expect(page.getByTestId("body-charts-all")).not.toBeVisible();
+    await expect(
+      page
+        .getByTestId("trends-overview")
+        .locator('[data-testid="chart-card-plot"]:visible')
+    ).toHaveCount(0);
 
     // Tiles use the shared range rather than a hidden fixed 30-day window.
     const weightTile = page.getByTestId("body-tile-weight");
@@ -73,17 +78,13 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     expect(tileHeaderBox).not.toBeNull();
     expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(44);
     expect(tileHeaderBox!.width).toBeGreaterThan(tileBox!.width * 0.75);
-    const tileHeaderBackground = await tileHeader.evaluate(
-      (element) => getComputedStyle(element).backgroundColor
-    );
-    await tileHeader.hover();
-    await expect
-      .poll(() =>
-        tileHeader.evaluate(
-          (element) => getComputedStyle(element).backgroundColor
-        )
-      )
-      .not.toBe(tileHeaderBackground);
+    // The full chart is one tap away on its metric detail page, never inline on
+    // mobile Overview (#2152). Following the header proves the whole tap target;
+    // its hover paint is deliberately not part of the phone contract.
+    await followLink(page, tileHeader, /\/trends\/metric\/weight/);
+    await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId("body-tiles-view")).toBeVisible();
 
     // With the redundant controls gone, the tiles follow the Today card directly
     // without reintroducing horizontal clipping.
@@ -97,9 +98,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
       );
     }
 
-    // 1D is the one exception to the ordinary-range tiles-only rule: it is a
-    // dedicated intraday lens, so it replaces daily tiles instead of rendering
-    // misleading single-day empty cards.
+    // 1D follows the same phone rule: no full chart exception on Overview.
     await expandTrendsContext(page);
     await followLink(
       page,
@@ -110,8 +109,13 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     expect(oneDayUrl.searchParams.get("from")).toBe(
       oneDayUrl.searchParams.get("to")
     );
-    await expect(page.getByTestId("body-intraday-view")).toBeVisible();
-    await expect(page.getByTestId("body-metric-tiles")).toHaveCount(0);
+    await expect(page.getByTestId("body-intraday-view")).not.toBeVisible();
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+    await expect(
+      page
+        .getByTestId("trends-overview")
+        .locator('[data-testid="chart-card-plot"]:visible')
+    ).toHaveCount(0);
     await expectNoClippedContent(page);
   });
 

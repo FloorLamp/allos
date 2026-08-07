@@ -44,6 +44,33 @@ export function protocolPracticeNoun(
   return "session";
 }
 
+// The dashboard already prints the protocol name one line above its adherence.
+// When the adherence label repeats that same leading phrase, keep only the useful
+// remainder ("Red light therapy" + "Red light therapy sessions" → "Sessions").
+// A shorter shared word-prefix handles protocol names with a suffix such as
+// "Strength baseline" beside "Strength sessions" without changing the model.
+export function dedupeProtocolAdherenceLabel(
+  protocolName: string,
+  adherenceLabel: string
+): string | undefined {
+  const nameWords = protocolName.trim().split(/\s+/);
+  const labelWords = adherenceLabel.trim().split(/\s+/);
+  let shared = 0;
+  while (
+    shared < nameWords.length &&
+    shared < labelWords.length &&
+    nameWords[shared].localeCompare(labelWords[shared], undefined, {
+      sensitivity: "base",
+    }) === 0
+  ) {
+    shared += 1;
+  }
+  if (shared === 0) return adherenceLabel;
+  const remainder = labelWords.slice(shared).join(" ");
+  if (!remainder) return undefined;
+  return remainder[0].toUpperCase() + remainder.slice(1);
+}
+
 // The activity types a practice can target — the same coarse type set
 // frequency_targets already supports for scope_kind='type' (strength/cardio/sport).
 // A recovery session (sauna, plunge) is logged as a custom-named cardio/sport

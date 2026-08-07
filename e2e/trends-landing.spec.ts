@@ -9,11 +9,8 @@ import { type Page } from "@playwright/test";
 //
 //   • COMPOSITION — digest first, grid second, census LAST, in DOM order. The
 //     reading order IS the design (what changed → what you curated → the whole
-//     domain); nothing else states it. #1632 added the wellness lens between the
-//     grid and the census: it is CONDITIONAL (nothing renders without a tracked
-//     practice), so it is asserted positionally like the digest rather than for
-//     presence — what must hold is that it never displaces the census's place at
-//     the end.
+//     domain); #2151 restores the two-anchor surface by moving practice charts to
+//     /wellness.
 //   • CURATION — the grid is still the only curated area: it renders the saved set
 //     and the census below it renders everything. A census card leaking into the
 //     grid (or a second picker appearing in the census) is the #1487 contract
@@ -44,23 +41,12 @@ test("the landing surface reads digest → starred grid → body census", async 
   await page.goto("/trends");
 
   const order = (await landingOrder(page)).filter(Boolean);
-  // The anchored parts, in reading order, with the census last. The wellness lens
-  // (#1632) renders only where the profile tracks a practice, so it is filtered to
-  // whichever parts are actually present and the ORDER is what's asserted.
+  // The two anchored parts, in reading order, with the census last.
   const parts = order.filter((id) => id.startsWith("trends-section-"));
   expect(
     parts,
     "the landing surface's anchored parts, in reading order"
-  ).toEqual(
-    [
-      "trends-section-starred",
-      "trends-section-practices",
-      "trends-section-body",
-    ].filter((id) => parts.includes(id))
-  );
-  expect(parts, "the grid and the census always render").toEqual(
-    expect.arrayContaining(["trends-section-starred", "trends-section-body"])
-  );
+  ).toEqual(["trends-section-starred", "trends-section-body"]);
   expect(parts[parts.length - 1], "the census reads last").toBe(
     "trends-section-body"
   );
@@ -97,11 +83,13 @@ test("the curated grid stays the only curated area", async ({ page }) => {
   // to them is the grid's, not the census's.
   const grid = page.getByTestId("trends-section-starred");
   await expect(grid.getByTestId("saved-tiles")).toBeVisible();
-  await expect(grid.getByTestId("save-trend-picker")).toBeVisible();
+  await expect(grid.getByTestId("save-trend-picker-toggle")).toBeVisible();
+  await expect(grid.getByTestId("save-trend-picker")).not.toBeVisible();
   // The census renders its domain unconditionally and offers no second curation
   // surface — the ★ it honours is written one scroll up (#1643).
   const census = page.getByTestId("trends-section-body");
   await expect(census.getByTestId("saved-tiles")).toHaveCount(0);
+  await expect(census.getByTestId("save-trend-picker-toggle")).toHaveCount(0);
   await expect(census.getByTestId("save-trend-picker")).toHaveCount(0);
 });
 

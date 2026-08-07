@@ -63,6 +63,15 @@ hop — a canvas re-encode has no EXIF and `fitWithin` (the same pure sizing
 computation the server tests pin) caps the upload at capture time — but the
 server pipeline runs REGARDLESS. Never trust the client.
 
+The native fallback preserves transient user activation (#2182): a real tap goes
+straight to the hidden camera input when `getUserMedia` is absent or a denied /
+failed outcome is already cached. Only an unknowable first async failure opens
+the fallback dialog; that dialog uses a styled **Open camera** button, diagnoses
+blocked / missing / busy cameras, and gives best-effort permission recovery text.
+`autoOpen` deep links always use the dialog because a mount effect has no user
+activation. A recovered live camera restores the onion-skin path, while every
+picked file still runs the same client and server strip/downscale pipeline.
+
 ## Store / serve — `lib/photo/store.ts`
 
 - `PhotoDomain` is `progress` / `lesion` / `symptom`; `DOMAIN_DIRS` maps each to

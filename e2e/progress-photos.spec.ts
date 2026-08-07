@@ -78,22 +78,21 @@ async function addPhoto(
   bytes: Buffer,
   opts: { date: string; caption?: string }
 ): Promise<void> {
-  // Re-click until the capture modal opens — a pre-hydration click on the
-  // trigger is swallowed (#500-class), no single expect can both re-click and
-  // await the modal, and opening is idempotent (toPass: the commented last
-  // resort, mirroring nav-consolidation's drawer pattern).
+  // CI has no getUserMedia, so one real tap must synchronously open the native
+  // chooser — no intermediate fallback dialog (#2182).
   const fileInput = page.getByTestId("photo-capture-file");
   await expect(async () => {
-    if (!(await fileInput.isVisible())) {
-      await page.getByTestId("photo-capture-open").click();
-    }
-    await expect(fileInput).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: pre-hydration click swallow on the modal trigger — re-click + await can't be one retrying expect (the drawer precedent in nav-consolidation.spec)
-  await fileInput.setInputFiles({
-    name: "capture.jpg",
-    mimeType: "image/jpeg",
-    buffer: bytes,
-  });
+    const chooserPromise = page.waitForEvent("filechooser", { timeout: 1_000 });
+    await page.getByTestId("photo-capture-open").click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: "capture.jpg",
+      mimeType: "image/jpeg",
+      buffer: bytes,
+    });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-drive the idempotent trigger until hydration delivers the one chooser activation
+  await expect(fileInput).toHaveClass(/sr-only/);
+  await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
   await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
   await page.locator("#progress-date").fill(opts.date);
   if (opts.caption)
@@ -218,6 +217,78 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(items).toHaveCount(1);
   } finally {
     await page.context().close();
+  }
+});
+
+test("a denied auto-open explains recovery, while missing hardware stays picker-only", async ({
+  browser,
+}) => {
+  const denied = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await denied.addInitScript(() => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: () =>
+            Promise.reject(
+              new DOMException("Camera permission denied", "NotAllowedError")
+            ),
+        },
+      });
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: {
+          query: async () => ({ state: "denied", onchange: null }),
+        },
+      });
+    });
+    await denied.goto("/progress?new=1");
+    await expect(
+      denied.getByTestId("photo-capture-blocked-guidance")
+    ).toBeVisible();
+    await expect(
+      denied.getByTestId("photo-capture-camera-retry")
+    ).toBeVisible();
+    await expect(denied.getByTestId("photo-capture-picker-open")).toBeVisible();
+  } finally {
+    await denied.context().close();
+  }
+
+  const missing = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await missing.addInitScript(() => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: () =>
+            Promise.reject(new DOMException("No camera", "NotFoundError")),
+        },
+      });
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: { query: async () => ({ state: "prompt", onchange: null }) },
+      });
+    });
+    await missing.goto("/progress");
+    await missing.getByTestId("photo-capture-open").click();
+    await expect(missing.getByTestId("photo-capture-fallback")).toBeVisible();
+    await expect(
+      missing.getByTestId("photo-capture-blocked-guidance")
+    ).toHaveCount(0);
+    await expect(missing.getByTestId("photo-capture-camera-retry")).toHaveCount(
+      0
+    );
+    await expect(
+      missing.getByTestId("photo-capture-picker-open")
+    ).toBeVisible();
+  } finally {
+    await missing.context().close();
   }
 });
 

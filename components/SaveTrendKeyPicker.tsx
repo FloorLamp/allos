@@ -39,7 +39,9 @@ export default function SaveTrendKeyPicker({
     <button
       type="submit"
       disabled={enhanced && !picked}
-      className="btn-ghost inline-flex items-center gap-1 py-1.5 disabled:opacity-50"
+      className={`btn-ghost items-center gap-1 py-1.5 disabled:opacity-50 ${
+        enhanced && !picked ? "hidden sm:inline-flex" : "inline-flex"
+      }`}
     >
       <span aria-hidden>☆</span>
       Star
@@ -51,7 +53,7 @@ export default function SaveTrendKeyPicker({
       <>
         <label
           htmlFor="star-trend"
-          className="text-slate-500 dark:text-slate-400"
+          className="hidden text-slate-500 sm:inline dark:text-slate-400"
         >
           Add to your overview:
         </label>
@@ -59,7 +61,7 @@ export default function SaveTrendKeyPicker({
           id="star-trend"
           name="key"
           defaultValue={options[0]?.key}
-          className="input h-9 max-w-[16rem] py-1"
+          className="input h-9 min-w-0 w-full max-w-none py-1 sm:max-w-[16rem]"
         >
           {SERIES_PICKER_GROUP_ORDER.map((group) => {
             const rowsInGroup = options.filter((o) => o.group === group);
@@ -84,14 +86,18 @@ export default function SaveTrendKeyPicker({
     <>
       <label
         htmlFor="star-trend"
-        className="text-slate-500 dark:text-slate-400"
+        className="hidden text-slate-500 sm:inline dark:text-slate-400"
       >
         Add to your overview:
       </label>
       {/* The posted field. The combobox itself is unnamed so a half-typed query can
           never be submitted as a key — only a real pick reaches the action. */}
       <input type="hidden" name="key" value={picked?.key ?? ""} />
-      <div className="w-full max-w-[16rem]">
+      <div
+        className={`min-w-0 w-full max-w-none sm:max-w-[16rem] ${
+          picked ? "" : "col-span-2 sm:col-span-1"
+        }`}
+      >
         <Combobox
           id="star-trend"
           ariaLabel="Add to your overview"
