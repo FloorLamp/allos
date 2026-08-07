@@ -1,10 +1,11 @@
 // SERVER-ACTION TIER — the PRN quick-log write path (logMedicationAdministration,
 // #797). Drives the real Server Action (its auth gate + offset parsing) against the
-// in-memory DB, mirroring the harness auth mock. Covers: a "now" log, retro offsets
-// (30m/1h), the custom same-day time path, the double-tap dedup, and the invalid-
-// custom-time / stale-item error returns. The core's own semantics (multiples,
-// supply, window guard) are pinned in the DB tier; this tier proves the ACTION wires
-// the offset → given_at → core correctly and returns the right FormResult.
+// in-memory DB, mirroring the harness auth mock. Covers: a "now" log, the custom
+// same-day time path (the shared when-control's wire, #2236 — the relative 30m/1h
+// offsets are retired), the double-tap dedup, and the invalid-custom-time /
+// stale-item error returns. The core's own semantics (multiples, supply, window
+// guard) are pinned in the DB tier; this tier proves the ACTION wires the offset →
+// given_at → core correctly and returns the right FormResult.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -68,18 +69,46 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(revalidate).toHaveBeenCalledWith("/");
   });
 
-  it("logs a retro offset (30m ago) as a distinct administration", async () => {
+  it("logs a stated earlier time as a distinct administration (#2236)", async () => {
     const { profile } = seedActor();
     const itemId = seedPrnMed(profile.id);
-    // now, then 30m-ago → two rows (well outside the dedup window).
-    expect(
-      (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
-    ).toBe(true);
-    expect(
-      (await logMedicationAdministration(fd({ id: itemId, offset: "30m" }))).ok
-    ).toBe(true);
+    // Frozen at midday so "now" and the stated 00:01 are hours apart — a real run
+    // straddling midnight could otherwise land both inside the dedup window.
+    const prev = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = `${today(profile.id)}T12:00:00Z`;
+    try {
+      expect(
+        (await logMedicationAdministration(fd({ id: itemId, offset: "now" })))
+          .ok
+      ).toBe(true);
+      expect(
+        (
+          await logMedicationAdministration(
+            fd({ id: itemId, offset: "custom", time: "00:01" })
+          )
+        ).ok
+      ).toBe(true);
+    } finally {
+      if (prev == null) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = prev;
+    }
     expect(adminRows(itemId)).toBe(2);
     expect(onHand(itemId)).toBe(8);
+  });
+
+  it("a legacy relative offset is no vocabulary: it resolves as 'now' (#2236)", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    // The rendered page states absolute times; "30m" no longer names an offset, so
+    // a stale client submitting one gets the default "now" semantics — and a second
+    // one inside the dedup window collapses instead of minting a back-dated row.
+    await logMedicationAdministration(fd({ id: itemId, offset: "now" }));
+    const legacy = await logMedicationAdministration(
+      fd({ id: itemId, offset: "30m" })
+    );
+    expect(legacy).toEqual({ ok: true, outcome: "duplicate" });
+    expect(adminRows(itemId)).toBe(1);
+    expect(onHand(itemId)).toBe(9);
   });
 
   it("logs a custom same-day time via the wall-time → instant conversion", async () => {

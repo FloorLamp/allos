@@ -40,7 +40,7 @@ describe("statedHoursOnDate (#2236 / #2227's day-hours offer)", () => {
     );
   });
 
-  it('"today" is the profile\'s local day, not the runner\'s', () => {
+  it("\"today\" is the profile's local day, not the runner's", () => {
     // 01:30Z on Aug 8 is 21:30 on Aug 7 in New York, so Aug 7's offer is
     // truncated at 21:00 — while a UTC profile would get all of Aug 7.
     const now = new Date("2026-08-08T01:30:00Z");

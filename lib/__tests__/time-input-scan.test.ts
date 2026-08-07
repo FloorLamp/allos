@@ -247,9 +247,9 @@ function scanRepo(): Map<string, number[]> {
 const HOW = [
   'A raw <input type="time"> asks "when did this happen?" without the shared',
   "rules that question carries. Render <WhenControl> (components/WhenControl",
-  ".tsx) instead — it owns the date+time pair, the null = \"not stated\" value,",
+  '.tsx) instead — it owns the date+time pair, the null = "not stated" value,',
   'the never-default-to-now rule and the one-tap "now". A time that states a',
-  "PLAN rather than an observation may be allowlisted here as kind: \"plan\",",
+  'PLAN rather than an observation may be allowlisted here as kind: "plan",',
   "with the reason said.",
 ].join("\n");
 

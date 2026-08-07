@@ -105,7 +105,10 @@ export default function WhenControl({
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
-    onChange({ date, statedAt: reanchorStatedAt(value.statedAt, date, tz, now) });
+    onChange({
+      date,
+      statedAt: reanchorStatedAt(value.statedAt, date, tz, now),
+    });
   };
 
   const setHhmm = (hhmm: string) => {
@@ -125,11 +128,12 @@ export default function WhenControl({
     // only offered while the chosen day is today, so the pair rule holds.
     onChange({
       date: value.date,
-      statedAt: statedInstantOnDate(
-        value.date,
-        zonedDateParts(tz, now).hhmm,
-        tz
-      )?.toISOString() ?? null,
+      statedAt:
+        statedInstantOnDate(
+          value.date,
+          zonedDateParts(tz, now).hhmm,
+          tz
+        )?.toISOString() ?? null,
     });
   };
 
