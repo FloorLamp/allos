@@ -1,4 +1,4 @@
-import { isRealIsoDate } from "../date";
+import { hl7SourceTime, type SourceTime } from "../source-time";
 import { nuccLabel } from "../nucc-taxonomy";
 import type { ImportedProvider } from "../health-import";
 import type { CodedValue } from "../social-history";
@@ -47,20 +47,24 @@ export const MAX_XML_WALK_DEPTH = 500;
 export const asArray = <T>(x: T | T[] | undefined | null): T[] =>
   x == null ? [] : Array.isArray(x) ? x : [x];
 
-// HL7 date/time (YYYYMMDD[hhmmss][±zzzz]) → YYYY-MM-DD, or null.
-export function hl7Date(v: unknown): string | null {
-  if (v == null) return null;
-  const m = /^(\d{4})(\d{2})(\d{2})/.exec(String(v));
-  if (!m) return null;
-  const iso = `${m[1]}-${m[2]}-${m[3]}`;
-  return isRealIsoDate(iso) ? iso : null;
+// An HL7 v3 TS (YYYYMMDD[HHMMSS][±ZZZZ]) → what the document ACTUALLY said, at its
+// own grain (issue #2243). This used to stop at the eighth character, so a document
+// stating a clock time and an explicit offset arrived as a bare day and neither
+// survived to reach a destination that wanted them.
+//
+// A day-grained destination wraps the result in `sourceDay(...)` — deliberately, so
+// the narrowing is VISIBLE at the destination that wants a day instead of being a
+// property of the parser that no destination can undo. An instant-grained one reads
+// `sourceInstant`, which is null unless the source stated BOTH a time and an offset.
+export function hl7Time(v: unknown): SourceTime | null {
+  return hl7SourceTime(v);
 }
 
 // effectiveTime may be a single value, an interval { low }, or an array of both
-// a period and a frequency (medications). Take the first usable date.
-export function effTime(t: any): string | null {
+// a period and a frequency (medications). Take the first usable time.
+export function effTime(t: any): SourceTime | null {
   for (const e of asArray(t)) {
-    const d = hl7Date(e?.["@_value"] ?? e?.low?.["@_value"]);
+    const d = hl7Time(e?.["@_value"] ?? e?.low?.["@_value"]);
     if (d) return d;
   }
   return null;
@@ -659,16 +663,18 @@ export function clinicalStatusFromEntryRelationships(obs: any): string | null {
   return null;
 }
 
-// effectiveTime as a period: low → start date, high → end date. Falls back to a
-// bare @_value on the element for start. Both YYYY-MM-DD or null.
+// effectiveTime as a period: low → start, high → end, each at the SOURCE'S OWN grain.
+// Falls back to a bare @_value on the element for start. Every current caller wants a
+// day and wraps each end in `sourceDay(...)`; a future instant-grained period reads
+// `sourceInstant` off the same result without this having to change.
 export function hl7Period(t: any): {
-  start: string | null;
-  end: string | null;
+  start: SourceTime | null;
+  end: SourceTime | null;
 } {
   const e = Array.isArray(t) ? t[0] : t;
   return {
-    start: hl7Date(e?.low?.["@_value"] ?? e?.["@_value"]),
-    end: hl7Date(e?.high?.["@_value"]),
+    start: hl7Time(e?.low?.["@_value"] ?? e?.["@_value"]),
+    end: hl7Time(e?.high?.["@_value"]),
   };
 }
 

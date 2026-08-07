@@ -12,10 +12,11 @@ import {
   truthyNegation,
   vaccineCodeFrom,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 export function mapImmunization(sa: any): ImportedImmunization | null {
   if (!sa || truthyNegation(sa["@_negationInd"])) return null;
-  const date = effTime(sa.effectiveTime);
+  const date = sourceDay(effTime(sa.effectiveTime));
   const mat = sa?.consumable?.manufacturedProduct?.manufacturedMaterial;
   if (!date || !mat?.code) return null;
   const catalog = codeFromVaccineCode(vaccineCodeFrom(mat.code));

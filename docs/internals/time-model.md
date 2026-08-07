@@ -1,9 +1,9 @@
 # The time model
 
-Status: partial (phases 1 and 3 shipped — storage, the writer chokepoint, the declared
-column index and the row-level readers. Phase 2, the column-name vocabulary, is open:
-wave 1 landed `occurred_at` on the three observation stores (migration 165); the
-`given_at` → `recorded_at` rename is still to come.)
+Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
+chokepoint, the declared column index and the row-level readers. Phase 2, the
+column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
+stores (migration 165); the `given_at` → `recorded_at` rename is still to come.)
 
 Two questions look the same and are not:
 
@@ -133,6 +133,71 @@ Two rules are worth repeating here:
 See `docs/internals/time-columns.md` for the per-column index and the entries that most
 reward reading before writing SQL.
 
+## The ingest boundary (phase 0)
+
+Everything above is about a value the app already holds. **Phase 0 is about how one
+gets in.** Until #2243, the clinical-document parsers answered a narrower question than
+they were asked: `hl7Date` truncated an HL7 v3 TS at its eighth character and `isoDate`
+did `v.slice(0, 10)`, so a C-CDA `effectiveTime` of `20260807143000-0500` arrived as a
+bare day — three layers before any destination column was chosen. 21% of production's
+`medical_records` came in that way. Nothing was wrong at any destination; the value had
+already been destroyed at the door.
+
+The rule, stated once:
+
+> **Preserve at the source's own grain; narrow at the destination, per the grain that
+> destination declares.**
+
+`lib/source-time.ts` is the boundary. Both parsers return a `SourceTime` — three arms,
+because the source genuinely has three cases:
+
+| arm       | the source stated               | reachable destinations                          |
+| --------- | ------------------------------- | ----------------------------------------------- |
+| `day`     | a calendar day and nothing more | day only                                        |
+| `instant` | a time **and** an offset        | day (`sourceDay`) and instant (`sourceInstant`) |
+| `local`   | a time with **no** offset       | day only — the instant column stays NULL        |
+
+The third arm is the point: a `string | null` return can never express "a clock with no
+zone", so the old signature had to guess, and guessing meant either dropping the time or
+resolving it against a timezone nobody supplied.
+
+Three consequences worth stating separately:
+
+- **A day-grained destination reads `sourceDay` and nothing else** — never the offset,
+  never a UTC re-derivation. `20260101003000+0900` states the day `2026-01-01` and _is_
+  `2025-12-31T15:30:00Z`. Both are right; the day attribution (#94) is the one the
+  document stated, and shifting it would be a #2205-constraint-4 regression. The pin
+  lives in `lib/__tests__/source-time.test.ts` and again, end to end, in
+  `lib/__db_tests__/ccda-source-time.test.ts`.
+- **A `local` source leaves an instant destination NULL.** The facility's zone is not
+  the patient's, and "usually the same country" is how correct-looking code produces a
+  confidently wrong moment. The day is still stored, so nothing that was ever _stated_
+  is lost. Facility-zone inference is a separate decision needing its own evidence.
+- **Repair is by reprocess, not by migration.** The discarded times were never in the
+  database, so there is nothing for a migration to move — but `lib/medical-pipeline.ts`
+  retains the source document, so re-parsing the file the app still holds recovers them
+  through the affordance that already exists.
+
+Device integrations are untouched: their destinations always wanted instants, so they
+already preserved them (`lib/integrations/oura.ts` writes one straight into
+`metric_samples.start_time`). #2096 tracks the one device path with the same class of
+problem.
+
+### The narrowing ledger
+
+`lib/__tests__/ingest-narrowing-scan.test.ts` is phase 0's ratchet, and it is a
+**registry, not a dataflow scan** — a scan cannot follow a value from a parser to a
+column. It is the same shape as `HANDBUILT_ALLOW`: every place in the clinical-ingest
+surface that still narrows below its source's grain, with a stated reason and a frozen
+count that may only shrink. A new narrowing fails; converting one lowers the count.
+
+It currently holds **one** entry, total count 1: `appointmentDateTime` keeps the wall
+clock `Appointment.start` printed and drops the offset, because
+`appointments.scheduled_at` is declared `grain: "mixed"` — a bare day or a **zoneless**
+local datetime — with no companion column for a zone anywhere (#2234 owns that
+question). The parser preserves the offset; the drop happens at the MAPPER,
+which knows the destination, rather than at the parser, which does not.
+
 ## The day-midnight anchor
 
 Three write paths file a day-only reading at `` `${date}T00:00:00` ``
@@ -157,6 +222,10 @@ rather than hidden behind a uniform-looking anchor.
 
 - #2205 — the umbrella issue, its phasing, and its constraints.
 - #94 — the day-attribution decision this deliberately does not revisit.
+- #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
+  `SourceTime`, and the narrowing ledger.
+- #2234 / #2096 — the two open narrowings phase 0 names but does not close: an
+  appointment's zone, and zoneless Fitbit Takeout timestamps.
 - #1534 / `lib/__tests__/sql-clock-seam.test.ts` — the sibling ratchet: WHICH
   clock a now-read comes from. This one is about WHAT SHAPE the value is stored
   in. A write site usually has to satisfy both.
