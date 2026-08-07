@@ -38,6 +38,36 @@ export function registerErrorSink(sink: LogSink): void {
   errorSink = sink;
 }
 
+// SECOND persistence sink, filtered by SCOPE rather than by level (issue #2209).
+//
+// The error sink above is a LEVEL filter, and it is the only durable record the app
+// has. Everything the notification tick says below `error` — "nothing due", "already
+// sent today", "no channels configured for profile", every "… skipped: no channel",
+// every reconcile outcome — lives only in the container's stdout, which the deploy
+// timer deletes tens of times a day. The class of thing that is lost is exactly one:
+// the DECLINE, a decision NOT to send, which by construction writes no row anywhere.
+//
+// So this sink takes a SCOPE predicate instead. It is deliberately NOT "persist every
+// info": that would be the whole web app, which is a different and much larger
+// decision. The registering module (lib/notify-log.ts) declares which scopes it
+// admits and which levels are worth keeping; log.ts only carries the event across.
+//
+// Same posture as the error sink: registered by a server-only, fs-backed module on
+// the Node boot path, left null in Edge/browser bundles, and best-effort — the sink
+// guards its own failures so nothing here can throw into a caller's flow.
+export interface LogScopeEvent {
+  level: Level;
+  scope?: string;
+  msg: string;
+  fields?: Record<string, unknown>;
+}
+type ScopeSink = (e: LogScopeEvent) => void;
+let scopeSink: ScopeSink | null = null;
+
+export function registerScopeSink(sink: ScopeSink): void {
+  scopeSink = sink;
+}
+
 const LEVELS: Record<Level, number> = {
   debug: 10,
   info: 20,
@@ -134,6 +164,14 @@ function emit(
   // throws into the caller (guarded inside error-log.ts).
   if (level === "error" && errorSink) {
     errorSink({ level: "error", scope, msg, fields });
+  }
+  // The scope sink runs BEFORE the threshold check for the same reason the error
+  // sink does: the persisted operator record is the point, and a raised LOG_LEVEL
+  // must not silently empty it. The sink applies its own level floor (#2209 —
+  // `debug` is developer tracing, not an operator record) so raising LOG_LEVEL
+  // never adds lines here either.
+  if (scopeSink) {
+    scopeSink({ level, scope, msg, fields });
   }
   if (LEVELS[level] < thresholdLevel()) return;
   const time = new Date().toISOString();

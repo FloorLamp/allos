@@ -44,18 +44,42 @@
 // never serve one profile's answer to another.
 let openScope: Map<string, unknown> | null = null;
 
+// WHO the open scope is for (#2209). The scope is already "one profile's tick", so
+// it is the honest carrier for that fact — and the persisted tick log needs it to
+// attribute a line to a profile without every log call site passing an id. Kept in
+// its own slot beside the memo map rather than inside it, so nothing can memoize on
+// it and the two lifetimes stay obviously the same one.
+export interface TickScopeSubject {
+  /** The profile this scope was opened for. */
+  profileId: number;
+}
+
+let openSubject: TickScopeSubject | null = null;
+
 // Run `fn` with a fresh tick scope open, closing it (and dropping everything
 // memoized in it) when `fn` settles — including on a throw, so a failed profile
 // tick can never leak its snapshot into the next one. Nesting restores the outer
 // scope rather than clearing to null.
-export async function runInTickScope<T>(fn: () => Promise<T>): Promise<T> {
+export async function runInTickScope<T>(
+  fn: () => Promise<T>,
+  subject?: TickScopeSubject
+): Promise<T> {
   const outer = openScope;
+  const outerSubject = openSubject;
   openScope = new Map();
+  openSubject = subject ?? null;
   try {
     return await fn();
   } finally {
     openScope = outer;
+    openSubject = outerSubject;
   }
+}
+
+// The profile the open scope belongs to, or null (no scope, or one opened without a
+// declared subject — a DB test, a `manual` send, the poll loop).
+export function currentTickSubject(): TickScopeSubject | null {
+  return openSubject;
 }
 
 // Whether a tick scope is currently open. For tests and for a caller that wants to

@@ -5,6 +5,9 @@
 
 import "../../scripts/load-env";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import {
   DIGEST_TUNE_PROFILE,
   E2E_LOGIN_DIGEST_TUNE,
@@ -14,6 +17,8 @@ import {
   EMAIL_NOTIFY_PROFILE,
   HA_NOTIFY_PROFILE,
   NOTIF_SWEEP_PROFILE,
+  NOTIFY_LOG_BUSY_PROFILE,
+  NOTIFY_LOG_QUIET_PROFILE,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -72,5 +77,123 @@ export function seedNotifSweep(): void {
   seedMemberLogin(E2E_LOGIN_NOTIF_SWEEP, id, "write");
   console.log(
     `e2e: seeded notification column-sweep fixture — profile ${id} (${NOTIF_SWEEP_PROFILE})`
+  );
+}
+
+// ── Persisted notify-tick log (#2209) ──
+export function seedNotifyTickLog(): void {
+  // Writes data/logs/notify.jsonl DIRECTLY, exactly as seedPrelude() does for
+  // errors.jsonl and for the same two reasons: the spec should not have to provoke a
+  // real 15-minute tick, and the file is NOT reset between e2e runs, so a second
+  // appended copy would break the spec's strict-mode assertions. WRITE, never append.
+  //
+  // The shape seeded here is the issue's thesis in miniature:
+  //   • a BUSY profile whose run declined things and sent nothing;
+  //   • a QUIET profile the tick evaluated and had nothing to say about, which must
+  //     still render as a ROW rather than as absence;
+  //   • a global "tick started" line, the run's own marker;
+  //   • enough filler runs that the pager has two pages and the spec can prove a
+  //     filter survives the crossing.
+  const busy = fixtureProfileId(NOTIFY_LOG_BUSY_PROFILE);
+  const quiet = fixtureProfileId(NOTIFY_LOG_QUIET_PROFILE);
+
+  let seq = 0;
+  const line = (o: {
+    runId: string;
+    profileId: number | null;
+    message: string;
+    level?: "info" | "warn";
+    minute: number;
+    decision?: "declined" | "proceeded";
+  }) => {
+    seq += 1;
+    return JSON.stringify({
+      id: `e2e-notify-${String(seq).padStart(5, "0")}`,
+      // Fixed instants, so the run ordering the spec asserts is deterministic.
+      time: `2026-08-05T${String(6 + Math.floor(o.minute / 60)).padStart(2, "0")}:${String(o.minute % 60).padStart(2, "0")}:00.000Z`,
+      level: o.level ?? "info",
+      scope: "notify",
+      runId: o.runId,
+      profileId: o.profileId,
+      loginId: null,
+      message: o.message,
+      decision: o.decision,
+    });
+  };
+
+  const rows: string[] = [];
+
+  // Thirty filler runs for the BUSY profile, each with one decline — enough to push
+  // the declines-only view past one page of runs.
+  for (let i = 0; i < 30; i++) {
+    const runId = `e2e-fill-${String(i).padStart(2, "0")}`;
+    rows.push(
+      line({ runId, profileId: null, message: "tick started", minute: i * 2 })
+    );
+    rows.push(
+      line({
+        runId,
+        profileId: busy,
+        message: "nothing due",
+        minute: i * 2,
+      })
+    );
+    rows.push(
+      line({
+        runId,
+        profileId: busy,
+        message: "profile evaluated",
+        minute: i * 2,
+      })
+    );
+  }
+
+  // The NEWEST run, which the spec lands on first. It deliberately straddles a
+  // minute boundary so the run row also proves the grouping is keyed on the run id
+  // rather than on a timestamp bucket.
+  const main = "e2e-notify-main";
+  rows.push(
+    line({ runId: main, profileId: null, message: "tick started", minute: 179 })
+  );
+  rows.push(
+    line({
+      runId: main,
+      profileId: busy,
+      message: "refill nudge skipped: no channel",
+      minute: 179,
+    })
+  );
+  rows.push(
+    line({
+      runId: main,
+      profileId: busy,
+      message: "no configured channels; nothing sent",
+      level: "warn",
+      minute: 180,
+    })
+  );
+  rows.push(
+    line({
+      runId: main,
+      profileId: busy,
+      message: "profile evaluated",
+      minute: 180,
+    })
+  );
+  // The QUIET profile: evaluated, decided nothing. One line, one row.
+  rows.push(
+    line({
+      runId: main,
+      profileId: quiet,
+      message: "profile evaluated",
+      minute: 180,
+    })
+  );
+
+  const logPath = path.join(process.cwd(), "data", "logs", "notify.jsonl");
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.writeFileSync(logPath, rows.join("\n") + "\n");
+  console.log(
+    `e2e: seeded notify tick log — ${rows.length} lines, busy profile ${busy}, quiet profile ${quiet}`
   );
 }
