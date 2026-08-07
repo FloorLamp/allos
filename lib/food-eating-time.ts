@@ -26,28 +26,29 @@
 //
 // `acceptEatenAt` is the one gate, and it is `resolveQueuedTakenAt`'s posture applied to
 // eating time: an unusable instant costs the STATEMENT, never the serving. Losing the
-// stated minute is cosmetic; refusing the tap would be a lost food log. It enforces the
-// two rules that keep a row from contradicting itself — not meaningfully in the future,
-// and its profile-local date IS the row's own `date` — because `eaten_at` is what the slot
-// derivation and the cross-midnight re-date read, so an instant sitting outside its own
-// day is not a correction, it is corruption.
+// stated minute is cosmetic; refusing the tap would be a lost food log. The rule itself
+// — not meaningfully in the future, and its profile-local date IS the row's own `date` —
+// turned out not to be about food at all, so it lives in lib/stated-time.ts (#2236) as
+// `acceptStatedAt` and is re-exported here under its food name: one computation, worn by
+// every surface that records when an observed event happened. What stays genuinely food
+// is the #2053 reach-back-from-now offer below — a LOG-time question no other surface
+// asks, because only at log time is the day implicit.
 //
 // NO DB, NO AMBIENT CLOCK — every function takes its `now`.
 
 import { dateStrInTz } from "./date";
 import { hourOptionsBack, statedHourInstant } from "./correction-time";
 
+export {
+  acceptStatedAt as acceptEatenAt,
+  STATED_FUTURE_SKEW_MS as EATEN_AT_FUTURE_SKEW_MS,
+} from "./stated-time";
+
 // How far back the "earlier…" offer reaches. Twelve hours covers the case the affordance
 // exists for — this morning's breakfast entered at lunchtime — and stops well short of
 // the point where somebody should be using the day picker instead.
 export const EATING_TIME_FIRST_HOURS_BACK = 1;
 export const EATING_TIME_LAST_HOURS_BACK = 12;
-
-// Tolerated clock difference between a client and the server before a stated instant
-// reads as future. Matches the dose given_at guard's tolerance for the same reason: a
-// genuinely future eating time is a forgery or a broken clock, but five minutes of skew
-// is neither.
-export const EATEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 // What the user said about when a serving was eaten. `null` — the default and the common
 // case — is "nobody said", which stays a real answer rather than being filled in.
@@ -122,27 +123,13 @@ export function eatingTimeOptions(
   return out;
 }
 
-// The eating instant a serving should actually carry, or null meaning "record no eating
-// time" — never "refuse the serving". VALIDATE, NEVER DROP (the `resolveQueuedTakenAt`
-// discipline): losing the stated minute is cosmetic, losing the food log is not.
-//
-// Two rules, and the second is the load-bearing one: the instant's profile-local date
-// must BE the row's `date`. `eaten_at` is what the meal-window derivation and the
-// cross-midnight re-date read, so an instant outside its own row's day would make the
-// serving disagree with itself.
-//
-// `now` is injected and its clock is the CALLER'S choice, deliberately: the online action
-// resolves the choice against the app's own clock seam and is comparing that seam with
-// itself, while the offline replay is judging an instant that came off an untrusted
-// CLIENT wall clock and therefore compares against real time — the same seam distinction
-// `resolveQueuedTakenAt` documents at length.
-export function acceptEatenAt(
-  eatenAt: Date | null | undefined,
-  tz: string,
-  date: string,
-  now: Date
-): Date | null {
-  if (!eatenAt || Number.isNaN(eatenAt.getTime())) return null;
-  if (eatenAt.getTime() > now.getTime() + EATEN_AT_FUTURE_SKEW_MS) return null;
-  return dateStrInTz(tz, eatenAt) === date ? eatenAt : null;
-}
+// `acceptEatenAt` — the eating instant a serving should actually carry, or null meaning
+// "record no eating time" — is re-exported at the top of this module from
+// lib/stated-time.ts (`acceptStatedAt`, #2236). The VALIDATE-NEVER-DROP posture of the
+// log path stays a fact about the CALLERS, not the rule: `null` costs the statement,
+// never the serving, while the correction path (#2227) treats the same `null` as a
+// refusal the user sees. `now` is injected and its clock is the CALLER'S choice,
+// deliberately: the online action resolves the choice against the app's own clock seam
+// and is comparing that seam with itself, while the offline replay is judging an instant
+// off an untrusted CLIENT wall clock and therefore compares against real time — the same
+// seam distinction `resolveQueuedTakenAt` documents at length.

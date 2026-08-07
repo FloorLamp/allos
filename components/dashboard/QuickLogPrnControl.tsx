@@ -5,6 +5,8 @@ import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -14,11 +16,17 @@ import {
 import { medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
+import { dateStrInTz } from "@/lib/date";
+import { statedHhmm } from "@/lib/stated-time";
 
 // One PRN (as-needed) medication's quick-log row in the dashboard widget (#797).
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
-// retro offsets — 30m ago, 1h ago, or a specific time today — the retro-entry home
-// ("gave it at 4pm, logging it now"). Each successful log is a real administration
+// the shared WhenControl (#2236) — an absolute time today, empty until stated, with
+// a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
+// old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
+// TAP time, so it drifts with every minute a rendered page sits open, which is the
+// argument lib/correction-time.ts already made and this dashboard control never saw
+// — the failure #2236 exists to end. Each successful log is a real administration
 // (the ledger allows multiples/day), and the action's own revalidate brings back the
 // updated "N today · last …" subtitle with its response.
 //
@@ -40,6 +48,7 @@ export default function QuickLogPrnControl({
   rowVariant = "inset",
   layout = "row",
   compactActions = false,
+  tz: tzProp,
 }: {
   itemId: number;
   name: string;
@@ -63,16 +72,24 @@ export default function QuickLogPrnControl({
   // Its Today block needs only status + actions; list/dashboard hosts keep the full row.
   layout?: "row" | "detail";
   compactActions?: boolean;
+  // The TARGET profile's timezone, for hosts that log another profile's dose (#858)
+  // — the shared WhenControl's day/time must be that profile's, not the viewer's.
+  // Defaults to the app-wide TimezoneProvider (the acting profile).
+  tz?: string;
 }) {
+  const contextTz = useTimezone();
+  const tz = tzProp ?? contextTz;
   const [open, setOpen] = useState(false);
-  const [time, setTime] = useState("");
+  // The earlier-dose pair (#2236): the day is fixed to today (the action resolves
+  // the wall time against the profile's today), the time starts UNSTATED — the
+  // control never defaults it to now.
+  const [when, setWhen] = useState<WhenValue>(() => ({
+    date: dateStrInTz(tz),
+    statedAt: null,
+  }));
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
-  const busy =
-    ledger.pending("now") ||
-    ledger.pending("30m") ||
-    ledger.pending("1h") ||
-    ledger.pending("custom");
+  const busy = ledger.pending("now") || ledger.pending("custom");
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
 
   async function log(offset: string, customTime?: string) {
@@ -100,7 +117,7 @@ export default function QuickLogPrnControl({
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
         setOpen(false);
-        setTime("");
+        setWhen({ date: dateStrInTz(tz), statedAt: null });
         return { kind: "keep" };
       },
       onError: () => {
@@ -163,45 +180,33 @@ export default function QuickLogPrnControl({
     </div>
   );
 
+  // The saved value is the pair's local wall time, resolved back to an instant
+  // SERVER-side against the profile's today (the same reason the food bar submits
+  // a choice rather than a client timestamp): the control's fixed day IS today.
+  const savedHhmm = statedHhmm(when.statedAt, tz);
   const options = open ? (
     <div data-testid="prn-log-options">
       <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
         When was it taken?
       </p>
       <div className="flex flex-wrap items-end gap-2">
-        <button
-          type="button"
-          onClick={() => log("30m")}
+        <WhenControl
+          mode="state"
+          grain="minute"
+          value={when}
+          onChange={setWhen}
+          tz={tz}
+          timeRequired
+          minDate={when.date}
+          maxDate={when.date}
+          timeLabel="Specific time today"
           disabled={busy}
-          className="btn-ghost btn-sm"
-          data-testid="prn-log-30m"
-        >
-          30 min ago
-        </button>
+          testId="prn-log-when"
+        />
         <button
           type="button"
-          onClick={() => log("1h")}
-          disabled={busy}
-          className="btn-ghost btn-sm"
-          data-testid="prn-log-1h"
-        >
-          1 hr ago
-        </button>
-        <label className="block">
-          <span className="sr-only">Specific time today</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="input h-8 w-28 text-sm"
-            aria-label="Specific time today"
-            data-testid="prn-log-time"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => time && log("custom", time)}
-          disabled={busy || !time}
+          onClick={() => savedHhmm && log("custom", savedHhmm)}
+          disabled={busy || !savedHhmm}
           className="btn btn-sm"
           data-testid="prn-log-custom"
         >

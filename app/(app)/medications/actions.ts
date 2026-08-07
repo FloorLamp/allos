@@ -209,21 +209,19 @@ export async function deleteSideEffect(
 }
 
 // Resolve the quick-log offset the widget submits into the real intake time to
-// store: "now" → undefined (the core stamps now); "30m"/"1h" → that many minutes
-// ago; "custom" → an HH:MM wall time TODAY in the profile's timezone, converted to
-// the absolute instant. "invalid" signals a malformed custom time. The far-off/
-// future guard itself lives in the auth-blind core (isGivenAtAccepted, #614) so it
-// covers the Telegram path too; this only shapes the offset into a Date.
+// store: "now" → undefined (the core stamps now); "custom" → an HH:MM wall time
+// TODAY in the profile's timezone, converted to the absolute instant. "invalid"
+// signals a malformed custom time. The relative "30m"/"1h" offsets retired with
+// #2236 — the widget states absolute times through the shared WhenControl, so the
+// wire carries only what a user actually said. The far-off/future guard itself
+// lives in the auth-blind core (isGivenAtAccepted, #614) so it covers the Telegram
+// path too; this only shapes the offset into a Date.
 function resolveGivenAt(
   profileId: number,
   offset: string,
   time: string | null
 ): Date | undefined | "invalid" {
   switch (offset) {
-    case "30m":
-      return new Date(Date.now() - 30 * 60 * 1000);
-    case "1h":
-      return new Date(Date.now() - 60 * 60 * 1000);
     case "custom": {
       if (!time) return "invalid";
       // The shape check IS the helper's refusal (#2245): it reads a real wall clock
@@ -241,8 +239,8 @@ function resolveGivenAt(
 
 // Log one PRN (as-needed) administration from the dashboard quick-log widget (#797).
 // The auth gate + offset parsing live here; the write core (logAdministration) is
-// auth-blind and shared with the Telegram /dose path, so "gave it now / 30m ago /
-// 1h ago / at 4:02pm" is one computation. The result preserves whether the write was
+// auth-blind and shared with the Telegram /dose path, so "gave it now / at 4:02pm"
+// is one computation. The result preserves whether the write was
 // fresh or deduplicated so every caller can give honest feedback; the updated
 // count/last-time still surface through revalidation.
 export async function logMedicationAdministration(

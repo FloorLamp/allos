@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
+import { frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
 import {
   medicationsToday,
   prnTodayItem,
@@ -148,12 +150,6 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   ).toBeVisible({ timeout: 15_000 });
   await expect(label).toContainText(`${before + 1} today`, { timeout: 15_000 });
 
-  // The retro-time affordance reveals the offset / custom-time options.
-  await item.getByTestId("prn-log-more").click();
-  await expect(item.getByTestId("prn-log-options")).toBeVisible();
-  await expect(item.getByTestId("prn-log-30m")).toBeVisible();
-  await expect(item.getByTestId("prn-log-time")).toBeVisible();
-
   // CLEAN UP (#868): remove the administration just logged so the shared fixture returns
   // to its seeded count — otherwise a --repeat-each run accumulates doses and the dedup
   // window collapses the next log. The dashboard widget has no remove affordance, so do
@@ -176,5 +172,76 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   // Back to the seeded count (the "Dose removed." undo toast is left to expire — the
   // removal must persist for cleanup, so we do NOT click Undo). Same 15s budget as the
   // log above: the toast confirms the write, the count additionally awaits the re-render.
+  await expect(admin).toContainText(`${before} today`, { timeout: 15_000 });
+});
+
+test("the earlier-dose panel is the shared when-control: absolute time today, empty until stated (#2236)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const widget = page.getByTestId("quick-log-prn");
+  await expect(widget).toBeVisible();
+  const item = prnTodayItem(widget, MED);
+  if (!(await item.isVisible())) {
+    await widget.getByTestId("quick-log-prn-more").locator("summary").click();
+  }
+  await expect(item).toBeVisible();
+  const label = item.getByTestId("prn-day-label");
+  const before = parseCount(await label.textContent());
+  expect(before).toBeGreaterThanOrEqual(1);
+
+  await item.getByTestId("prn-log-more").click();
+  const options = item.getByTestId("prn-log-options");
+  await expect(options).toBeVisible();
+
+  // Relative offsets are not offered on a rendered page (#2236 decision 5): the
+  // old "30 min ago" / "1 hr ago" chips are gone — a relative label computed at
+  // tap time drifts with every minute the page sits open; an absolute time can't.
+  await expect(options).not.toContainText("min ago");
+  await expect(options).not.toContainText("hr ago");
+
+  // The control owns the date+time PAIR; on this surface the day is fixed to the
+  // profile's today and rendered, not implied.
+  await expect(options.getByTestId("prn-log-when-date")).toHaveText("Today");
+
+  // Never defaults to now: the time renders EMPTY until stated, and the save
+  // stays disabled — an unstated time is not a submittable dose here.
+  const timeInput = options.getByTestId("prn-log-when-time");
+  await expect(timeInput).toHaveValue("");
+  await expect(options.getByTestId("prn-log-custom")).toBeDisabled();
+
+  // The one-tap "now" fills an ABSOLUTE local wall time into the field — the
+  // user sees exactly what will be stated, and can adjust it.
+  await options.getByTestId("prn-log-when-now").click();
+  await expect(timeInput).toHaveValue(/^\d{2}:\d{2}$/);
+
+  // State an explicit earlier time — 30 minutes before the frozen "now", which
+  // the pinned zone (local 13:mm, see e2e/pinned-timezone.ts) keeps on today and
+  // clear of the seeded administrations' 120s dedup proximity (45m/90m ago).
+  const { offsetHours } = pinnedTimezone(frozenNow().toISOString());
+  const statedHhmm = new Date(
+    frozenNow().getTime() - 30 * 60 * 1000 + offsetHours * 3600_000
+  )
+    .toISOString()
+    .slice(11, 16);
+  await timeInput.fill(statedHhmm);
+  await settledClick(page, options.getByTestId("prn-log-custom"));
+  await expect(
+    page.getByRole("status").filter({ hasText: `Logged ${MED}` })
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(label).toContainText(`${before + 1} today`, { timeout: 15_000 });
+
+  // CLEAN UP (#868): the stated dose (now − 30m) is the newest administration on
+  // the seeded ledger (the seeds sit 45m/90m back), so removing the newest row
+  // undoes exactly this spec's write and returns the shared fixture to baseline.
+  await page.goto("/medications");
+  const detail = await openMedDetailViaLink(page, MED);
+  const admin = prnAdministrations(detail);
+  const newestRow = prnAdministrationRows(admin).first(); // first-ok: newest row on a newest-first ledger is this spec's own now−30m dose, under CI's sequential workers=1
+  await expect(newestRow).toBeVisible();
+  await settledClick(page, newestRow.getByTestId("prn-administration-remove"));
+  await expect(
+    page.getByRole("status").filter({ hasText: "Dose removed." })
+  ).toBeVisible({ timeout: 15_000 });
   await expect(admin).toContainText(`${before} today`, { timeout: 15_000 });
 });
