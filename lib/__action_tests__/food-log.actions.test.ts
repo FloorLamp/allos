@@ -11,6 +11,7 @@ import { db, today } from "@/lib/db";
 import {
   logFoodServing,
   undoFoodServing,
+  updateFoodLogEvent,
   trackFoodHabit,
   untrackFoodHabit,
 } from "@/app/(app)/nutrition/actions";
@@ -199,6 +200,141 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
       eaten_at: null,
       time_source: null,
     });
+  });
+});
+
+// ── #2227: the correction sheet's eating-time wire ──────────────────────────────
+//
+// One more field on updateFoodLogEvent with three wire values: absent/empty leaves the
+// row's eating time alone, "none" clears it, "HH:MM" states that wall time on the
+// SUBMITTED day. The pin that matters most is the INVERTED acceptEatenAt posture: on
+// the log path an unusable instant silently costs the statement (the serving must
+// land), but in a correction the statement IS the submission, so a refused instant is
+// a formError the user sees — never a silent clear.
+describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
+  function eventRow(profileId: number) {
+    const rows = db
+      .prepare(
+        `SELECT id, date, group_key, meal_slot, logged_at, eaten_at, time_source
+           FROM food_log_events WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      id: number;
+      date: string;
+      group_key: string;
+      meal_slot: string | null;
+      logged_at: string;
+      eaten_at: string | null;
+      time_source: string | null;
+    }[];
+    expect(rows).toHaveLength(1);
+    return rows[0];
+  }
+
+  // Fixtures sit on YESTERDAY so a stated noon is in the past whatever hour CI runs
+  // at — the acceptance gate's future rule never bites the cases that aren't about it.
+  it('"HH:MM" states the wall time of the submitted day', async () => {
+    const login = createLogin();
+    const profile = createProfile("time-stater", login.id);
+    actAs(login, profile);
+    const date = shiftDateStr(today(profile.id), -1);
+    await logFoodServing(fd({ group_key: "berries", date }));
+    const event = eventRow(profile.id);
+
+    const res = await updateFoodLogEvent(
+      fd({ event_id: event.id, date, eaten_at: "12:00" })
+    );
+    expect(res.ok).toBe(true);
+    const after = eventRow(profile.id);
+    expect(after.time_source).toBe("stated");
+    // The same writer + resolver the log path uses — one serialization, one zone.
+    expect(after.eaten_at).toBe(
+      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "12:00")!)
+    );
+    // The audit stamp is not the statement's to touch.
+    expect(after.logged_at).toBe(event.logged_at);
+  });
+
+  it('"none" clears the statement back to "nobody said"', async () => {
+    const login = createLogin();
+    const profile = createProfile("time-clearer", login.id);
+    actAs(login, profile);
+    const date = shiftDateStr(today(profile.id), -1);
+    await logFoodServing(fd({ group_key: "berries", date }));
+    const event = eventRow(profile.id);
+    await updateFoodLogEvent(
+      fd({ event_id: event.id, date, eaten_at: "12:00" })
+    );
+
+    const res = await updateFoodLogEvent(
+      fd({ event_id: event.id, date, eaten_at: "none" })
+    );
+    expect(res.ok).toBe(true);
+    expect(eventRow(profile.id)).toMatchObject({
+      eaten_at: null,
+      time_source: null,
+    });
+  });
+
+  it("an absent field leaves the stated time alone", async () => {
+    const login = createLogin();
+    const profile = createProfile("time-keeper", login.id);
+    actAs(login, profile);
+    const date = shiftDateStr(today(profile.id), -1);
+    await logFoodServing(fd({ group_key: "berries", date }));
+    const event = eventRow(profile.id);
+    await updateFoodLogEvent(
+      fd({ event_id: event.id, date, eaten_at: "12:00" })
+    );
+    const stated = eventRow(profile.id).eaten_at;
+
+    // A meal-only correction says nothing about the time — and changes nothing.
+    const res = await updateFoodLogEvent(
+      fd({ event_id: event.id, date, meal_slot: "Evening" })
+    );
+    expect(res.ok).toBe(true);
+    expect(eventRow(profile.id)).toMatchObject({
+      meal_slot: "Evening",
+      eaten_at: stated,
+      time_source: "stated",
+    });
+  });
+
+  it("a refused instant is a formError the user sees, never a silent clear", async () => {
+    const login = createLogin();
+    const profile = createProfile("time-refused", login.id);
+    actAs(login, profile);
+    const yesterday = shiftDateStr(today(profile.id), -1);
+    await logFoodServing(fd({ group_key: "berries", date: yesterday }));
+    const event = eventRow(profile.id);
+    await updateFoodLogEvent(
+      fd({ event_id: event.id, date: yesterday, eaten_at: "12:00" })
+    );
+    const before = eventRow(profile.id);
+
+    // Tomorrow noon is meaningfully future by construction, whatever hour the suite
+    // runs at — the acceptance gate refuses it, and the INVERTED posture surfaces
+    // that refusal instead of dropping the statement the way the log path would.
+    const res = await updateFoodLogEvent(
+      fd({
+        event_id: event.id,
+        date: shiftDateStr(today(profile.id), 1),
+        eaten_at: "12:00",
+      })
+    );
+    expect(res).toEqual({
+      ok: false,
+      error: "That time isn't on the selected day.",
+    });
+    // NOTHING moved — not the day, and (the silent-clear hazard) not the statement.
+    expect(eventRow(profile.id)).toEqual(before);
+
+    // Garbage is refused as loudly, not coerced and not swallowed.
+    const garbage = await updateFoodLogEvent(
+      fd({ event_id: event.id, date: yesterday, eaten_at: "25:99" })
+    );
+    expect(garbage.ok).toBe(false);
+    expect(eventRow(profile.id)).toEqual(before);
   });
 });
 

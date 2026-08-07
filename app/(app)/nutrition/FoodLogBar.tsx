@@ -10,7 +10,15 @@ import {
 } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
 import { proteinSplitIndex } from "@/lib/food-rank";
-import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
+import {
+  FOOD_SLOTS,
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
+import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
 import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
@@ -23,6 +31,7 @@ import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import {
+  eatingHoursOnDate,
   eatingTimeChoiceValue,
   type EatingTimeChoice,
   type EatingTimeOption,
@@ -128,6 +137,7 @@ export default function FoodLogBar({
   proteinRankBySlot,
   excludedGroups,
   slot,
+  slotBoundaries,
   eatingTimeOptions = [],
   initialFoodGroup,
   nutrientSummaryByDate = [],
@@ -152,6 +162,11 @@ export default function FoodLogBar({
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
   slot: FoodSlot;
+  // The profile's meal-window boundaries (#2227 decision 4) — what lets the correction
+  // sheet derive, client-side, the meal each offered hour lands in, so the Meal select
+  // can follow the chosen hour. The SAME boundaries the server's tallies use
+  // (profileFoodSlotBoundaries), passed down so the sheet and the tally cannot disagree.
+  slotBoundaries: FoodSlotBoundaries;
   // The "earlier…" hours an eating-time statement may name (#2053), each with the local
   // wall time to show and the instant it means. Resolved server-side from the profile's
   // timezone and already filtered to hours that land on `today`, so this island never
@@ -195,11 +210,15 @@ export default function FoodLogBar({
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   // The serving being corrected, plus its in-flight draft. Null = the modal is closed.
+  // `when` is the day + eating-time PAIR the shared control owns (#2227/#2236);
+  // `mealTouched` is decision 4's flag — Meal follows the chosen hour until the user
+  // sets Meal by hand in this sheet.
   const [editing, setEditing] = useState<FoodLogEvent | null>(null);
   const [draft, setDraft] = useState<{
     groupKey: string;
-    date: string;
     mealSlot: FoodSlot;
+    when: WhenValue;
+    mealTouched: boolean;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   // The serving whose row-scoped removal is in flight (#1963), or null. An id, so the
@@ -208,6 +227,9 @@ export default function FoodLogBar({
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
+  // The acting profile's timezone — the zone the correction sheet's day/time pair is
+  // judged in, matching the server's own resolution of the submitted wall time.
+  const tz = useTimezone();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
   // The shared one-tap ledger (#2041): the optimistic bump, the rollback and the
@@ -424,23 +446,96 @@ export default function FoodLogBar({
     });
   }
 
+  // The bounded recent days the sheet may correct within — the same seven-day policy
+  // the whole picker carries (`days` arrives today-first). The shared when-control's
+  // min/max enforce it in the calendar; the save re-checks it for a typed date.
+  const maxCorrectionDay = days[0]?.date ?? today;
+  const minCorrectionDay = days[days.length - 1]?.date ?? today;
+
   function openCorrection(event: FoodLogEvent) {
     setEditing(event);
     setDraft({
       groupKey: event.groupKey,
-      date: event.date,
       mealSlot: event.mealSlot,
+      when: {
+        date: event.date,
+        // The row's stated instant, rebuilt from its local wall clock on its own day
+        // (the list carries "HH:MM", minute grain — the grain this sheet displays and
+        // edits at). An untouched time is OMITTED from the save below, precisely so
+        // this reconstruction is never written back over a second-precision original.
+        statedAt: event.eatenAt
+          ? (statedInstantOnDate(
+              event.date,
+              event.eatenAt,
+              tz
+            )?.toISOString() ?? null)
+          : null,
+      },
+      mealTouched: false,
+    });
+  }
+
+  // The day + eating-time pair moved (via the shared control, which owns the pair
+  // rule). Decision 4 (#2227): a newly chosen hour drags the Meal select with it —
+  // each offered hour carries its derived window (eatingHoursOnDate), and a
+  // minute-grain instant (a "Now" fill, the row's own pinned minute) derives through
+  // the same boundary function — until the user touches Meal by hand in this sheet.
+  function setCorrectionWhen(next: WhenValue) {
+    setDraft((d) => {
+      if (!d) return d;
+      let mealSlot = d.mealSlot;
+      if (
+        !d.mealTouched &&
+        next.statedAt !== null &&
+        next.statedAt !== d.when.statedAt
+      ) {
+        const offered = eatingHoursOnDate(
+          next.date,
+          tz,
+          new Date(),
+          slotBoundaries
+        ).find((option) => option.iso === next.statedAt);
+        mealSlot =
+          offered?.slot ??
+          foodSlotForHhmm(statedHhmm(next.statedAt, tz), slotBoundaries);
+      }
+      return { ...d, when: next, mealSlot };
     });
   }
 
   async function saveCorrection() {
     if (!editing || !draft) return;
+    // The bounded-days policy the retired Day dropdown physically enforced, kept at
+    // save time for a hand-typed date: this sheet recovers a recent meal, it is not an
+    // unrestricted historical editor.
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(draft.when.date) ||
+      draft.when.date < minCorrectionDay ||
+      draft.when.date > maxCorrectionDay
+    ) {
+      toast("Pick a day from the log's own recent range.", { tone: "error" });
+      return;
+    }
     setSaving(true);
     const fd = new FormData();
     fd.set("event_id", String(editing.id));
     fd.set("group_key", draft.groupKey);
-    fd.set("date", draft.date);
+    fd.set("date", draft.when.date);
     fd.set("meal_slot", draft.mealSlot);
+    // The eating-time wire (#2227): an untouched time is OMITTED (the row's stored
+    // instant — seconds included — stays byte-identical), "none" clears, "HH:MM"
+    // states that wall time on the submitted day. The pair travels as (day, wall
+    // time), so a day change re-anchors the statement instead of stranding an instant
+    // off its own day.
+    const draftHhmm = statedHhmm(draft.when.statedAt, tz) || null;
+    if (draftHhmm === null) {
+      if (editing.eatenAt !== null) fd.set("eaten_at", "none");
+    } else if (
+      draftHhmm !== editing.eatenAt ||
+      draft.when.date !== editing.date
+    ) {
+      fd.set("eaten_at", draftHhmm);
+    }
     let outcome: FoodEventEditResult;
     try {
       outcome = await updateFoodLogEvent(fd);
@@ -1269,24 +1364,23 @@ export default function FoodLogBar({
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="food-correct-date">
-                Day
-              </label>
-              <select
-                id="food-correct-date"
-                data-testid="food-correct-date"
-                className="input py-1.5 text-sm"
-                value={draft.date}
-                onChange={(e) =>
-                  setDraft((d) => d && { ...d, date: e.target.value })
-                }
-              >
-                {days.map((day) => (
-                  <option key={day.date} value={day.date}>
-                    {day.label}
-                  </option>
-                ))}
-              </select>
+              <span className="label">When</span>
+              {/* The day + eating-time PAIR, owned together by the shared control
+                  (#2227/#2236): hour grain (the data's own precision), correct mode
+                  ("Not stated" is first and clears), bounded to the same recent days
+                  the retired Day dropdown offered. `logged_at` is deliberately not
+                  here — the tap instant is audit history, never editable. */}
+              <WhenControl
+                mode="correct"
+                grain="hour"
+                value={draft.when}
+                onChange={setCorrectionWhen}
+                minDate={minCorrectionDay}
+                maxDate={maxCorrectionDay}
+                dateLabel="Day"
+                timeLabel="Time eaten"
+                testId="food-correct-time"
+              />
             </div>
             <div>
               <label className="label" htmlFor="food-correct-slot">
@@ -1298,8 +1392,15 @@ export default function FoodLogBar({
                 className="input py-1.5 text-sm"
                 value={draft.mealSlot}
                 onChange={(e) =>
+                  // A hand-set Meal wins from here on: the follow-the-hour default
+                  // (decision 4) stops moving it once the user has spoken.
                   setDraft(
-                    (d) => d && { ...d, mealSlot: e.target.value as FoodSlot }
+                    (d) =>
+                      d && {
+                        ...d,
+                        mealSlot: e.target.value as FoodSlot,
+                        mealTouched: true,
+                      }
                   )
                 }
               >

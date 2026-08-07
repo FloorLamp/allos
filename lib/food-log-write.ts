@@ -21,6 +21,7 @@
 import { db, writeTx } from "./db";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
+import { acceptEatenAt } from "./food-eating-time";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
@@ -270,6 +271,11 @@ export interface FoodEventPlacement {
 //                    profile's row — the statement is id + profile_id scoped).
 //   unknown-group  — the requested group isn't in the catalog; nothing written.
 //   invalid-date   — the requested date isn't a real calendar date; nothing written.
+//   invalid-eaten-at — the requested eating instant fails the acceptEatenAt rule against
+//                    the FINAL date of the patch (off the row's own day, or meaningfully
+//                    future); nothing written. Enforced HERE, at the auth-blind boundary,
+//                    beside invalid-date — the day rule is the ledger's own invariant,
+//                    not a courtesy of whichever action called it.
 //   not-correctable — the row is the reserved `__protein__` ranking event, which is not
 //                    a food-group serving: its truth is the protein_log grams total, and
 //                    re-keying it onto a catalog group would mint a serving from a shake.
@@ -283,6 +289,7 @@ export type FoodEventEditOutcome =
   | { kind: "not-found" }
   | { kind: "unknown-group" }
   | { kind: "invalid-date" }
+  | { kind: "invalid-eaten-at" }
   | { kind: "not-correctable" };
 
 // The post-write placement of one (date, group, window) coordinate. Read INSIDE the
@@ -302,10 +309,11 @@ function placementOf(
   };
 }
 
-// Correct one already-logged serving: its food group, its day, and/or its meal window
-// (issue #1934). The one-tap surfaces got create + delete and never got correction, and
-// delete-and-re-log is NOT equivalent — a re-log stamps the CURRENT instant and window,
-// so "logged last night's dinner this morning" cannot be repaired faithfully.
+// Correct one already-logged serving: its food group, its day, its meal window
+// (issue #1934), and/or its eating instant (issue #2227). The one-tap surfaces got
+// create + delete and never got correction, and delete-and-re-log is NOT equivalent —
+// a re-log stamps the CURRENT instant and window, so "logged last night's dinner this
+// morning" cannot be repaired faithfully.
 //
 // The event ledger and the food_log day counter are ONE fact in two shapes, so the
 // counter MOVES with the event in the same IMMEDIATE transaction: a (date, group) change
@@ -321,12 +329,22 @@ function placementOf(
 export function updateFoodLogEventCore(
   profileId: number,
   eventId: number,
-  patch: { groupKey?: string; date?: string; mealSlot?: FoodSlot }
+  patch: {
+    groupKey?: string;
+    date?: string;
+    mealSlot?: FoodSlot;
+    // The eating instant (#2227), with THREE states: ABSENT leaves the row's alone
+    // (the house convention — an omitted patch field is not a change), NULL clears it
+    // back to "nobody said" (`eaten_at` NULL + `time_source` NULL), and a Date states
+    // it (`time_source` = 'stated'). Validated against the FINAL date of the patch —
+    // an instant off the row's own day answers `invalid-eaten-at` and writes nothing.
+    eatenAt?: Date | null;
+  }
 ): FoodEventEditOutcome {
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot, eaten_at
+        `SELECT group_key, date, logged_at, meal_slot, eaten_at, time_source
            FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
@@ -337,6 +355,7 @@ export function updateFoodLogEventCore(
           logged_at: string;
           meal_slot: FoodSlot | null;
           eaten_at: string | null;
+          time_source: FoodTimeSource | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -355,31 +374,74 @@ export function updateFoodLogEventCore(
     if (!isRealIsoDate(nextDate)) return { kind: "invalid-date" as const };
     const nextSlot = patch.mealSlot ?? row.meal_slot;
 
+    // A STATED instant must satisfy the same acceptEatenAt rule every other eaten_at
+    // write goes through — judged against the FINAL date, so a patch that moves the day
+    // and states an hour is checked against the day the row will actually sit on. What
+    // a refusal costs stays the caller's posture: the correction action surfaces it as
+    // an error the user sees, never a silent clear (#2227's inversion of the log path).
+    if (
+      patch.eatenAt != null &&
+      acceptEatenAt(
+        patch.eatenAt,
+        getTimezone(profileId),
+        nextDate,
+        clockNow()
+      ) === null
+    )
+      return { kind: "invalid-eaten-at" as const };
+    // The eating instant the row carries AFTER this patch; `time_source` travels with
+    // it (a stated instant is 'stated', a cleared one is honest NULL, an untouched one
+    // keeps whatever contract wrote it — a Telegram 'tap' stays a tap).
+    const nextEatenAt =
+      patch.eatenAt === undefined
+        ? row.eaten_at
+        : patch.eatenAt === null
+          ? null
+          : utcInstant(patch.eatenAt);
+    const nextTimeSource: FoodTimeSource | null =
+      patch.eatenAt === undefined
+        ? row.time_source
+        : patch.eatenAt === null
+          ? null
+          : "stated";
+
     const fromSlot = foodSlotForProfileEvent(
       profileId,
       row.logged_at,
       row.meal_slot,
       row.eaten_at
     );
+    // Derived from the NEXT eating instant, not the one being replaced: the returned
+    // `to` placement is what the bar adopts for its counts, so a patch that sets
+    // `eatenAt` without `mealSlot` must answer with the window the NEW instant lands in.
     const toSlot = foodSlotForProfileEvent(
       profileId,
       row.logged_at,
       nextSlot,
-      row.eaten_at
+      nextEatenAt
     );
 
     if (nextDate !== row.date || nextGroup !== row.group_key) {
       // The move is one unbump plus one bump on the shared ledger, so the drop-at-zero
       // on the vacated coordinate and the create-on-first on the new one are the same
-      // two rules every other serving write obeys.
+      // two rules every other serving write obeys. A time-only patch changes neither
+      // coordinate and therefore performs neither (#2227 constraint 4).
       foodDayCounter.unbump(profileId, row.date, [row.group_key], 1);
       foodDayCounter.bump(profileId, nextDate, [nextGroup], 1);
     }
     db.prepare(
       `UPDATE food_log_events
-          SET group_key = ?, date = ?, meal_slot = ?
+          SET group_key = ?, date = ?, meal_slot = ?, eaten_at = ?, time_source = ?
         WHERE id = ? AND profile_id = ?`
-    ).run(nextGroup, nextDate, nextSlot, eventId, profileId);
+    ).run(
+      nextGroup,
+      nextDate,
+      nextSlot,
+      nextEatenAt,
+      nextTimeSource,
+      eventId,
+      profileId
+    );
 
     return {
       kind: "updated" as const,

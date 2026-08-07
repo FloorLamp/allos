@@ -2,10 +2,11 @@
 // button count even when the tap lands OUTSIDE the nudge's own window.
 //
 // THE SYMPTOM IS THE SAME; THE MECHANISM CHANGED, AND THE OLD ONE IS GONE. The nudge bakes
-// its window into every callback token at SEND time. Originally the rebuild asked
-// getFoodSlotServingsOnDate for THAT window while the event's own window was re-derived
-// from the tap instant, so opening the morning nudge at lunch rendered n = 0. #1704 fixed
-// that by writing the token's window onto the row as an explicit `meal_slot`.
+// its window into every callback token at SEND time. Originally the rebuild asked the
+// slot-count query (getFoodSlotServingsOnDate, since deleted by #2227) for THAT window
+// while the event's own window was re-derived from the tap instant, so opening the
+// morning nudge at lunch rendered n = 0. #1704 fixed that by writing the token's window
+// onto the row as an explicit `meal_slot`.
 //
 // #2019 REVERSED that write: the nudge's window is the NUDGE naming itself, not the user
 // declaring a meal, and with a real `eaten_at` on the row the meal is derived from when the
@@ -37,10 +38,12 @@ import { db, today } from "@/lib/db";
 import { utcInstant } from "@/lib/date";
 import {
   currentFoodSlot,
+  getFoodMealDays,
   getFoodServingsOnDate,
-  getFoodSlotServingsOnDate,
   getFoodBarOrder,
 } from "@/lib/queries";
+import { type FoodSlot } from "@/lib/food-slot";
+
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   foodLogCallbackData,
@@ -51,6 +54,18 @@ import { editMessageTextRaw } from "@/lib/notifications/telegram-api";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// Per-window tallies through the meal grouping the web surface renders
+// (getFoodMealDays.slotCounts) — the live consumer of the window derivation, standing
+// where the retired slot-count query (getFoodSlotServingsOnDate, #2019/#2227) used to.
+function slotServingsOnDate(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): Map<string, number> {
+  const [day] = getFoodMealDays(profileId, [date]);
+  return new Map(Object.entries(day.slotCounts[window]));
+}
 
 const editTextMock = vi.mocked(editMessageTextRaw);
 
@@ -209,11 +224,9 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     ]);
     // The window a reader derives for it is the one it was EATEN in — Midday, honestly,
     // rather than the Morning the nudge happened to be titled.
+    expect(slotServingsOnDate(p.profileId, "Midday", t).get("berries")).toBe(1);
     expect(
-      getFoodSlotServingsOnDate(p.profileId, "Midday", t).get("berries")
-    ).toBe(1);
-    expect(
-      getFoodSlotServingsOnDate(p.profileId, NUDGE_WINDOW, t).get("berries")
+      slotServingsOnDate(p.profileId, NUDGE_WINDOW, t).get("berries")
     ).toBeUndefined();
 
     // And the button carries its count regardless — the reported symptom, fixed by a

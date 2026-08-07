@@ -38,6 +38,12 @@
 
 import { dateStrInTz } from "./date";
 import { hourOptionsBack, statedHourInstant } from "./correction-time";
+import { statedHoursOnDate } from "./stated-time";
+import {
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "./food-slot";
 
 export {
   acceptStatedAt as acceptEatenAt,
@@ -121,6 +127,37 @@ export function eatingTimeOptions(
     out.push({ hhmm, iso: instant.toISOString() });
   }
   return out;
+}
+
+// ---- The CORRECTION sheet's offer (#2227) ----
+
+// One offered hour of the correction sheet's selected day: the neutral day-hours
+// option (lib/stated-time.ts) plus the meal window that hour derives to under the
+// profile's own boundaries — the data #2227 decision 4 runs on, where the sheet's
+// Meal select follows the chosen hour until Meal is touched by hand.
+export interface EatingHourOption extends EatingTimeOption {
+  slot: FoodSlot;
+}
+
+// The hours of `date` a serving may be stated to have been eaten at, each carrying the
+// instant it means and its derived meal window. This is `statedHoursOnDate` (#2236,
+// born there as #2227's proposed `eatingHoursOnDate`) wearing the one genuinely-food
+// enrichment: the slot. The offer itself stays the neutral module's — truncated at the
+// current local hour when `date` is today, DST-safe, every option acceptable to
+// `acceptEatenAt` by construction. Unlike `eatingTimeOptions` above (which reaches BACK
+// from now, because at log time the day is implicit), this enumerates a day the sheet
+// has already named — and the hour is an hour OF that day, so there is no cross-midnight
+// re-dating on this surface: the day field owns the day.
+export function eatingHoursOnDate(
+  date: string,
+  tz: string,
+  now: Date,
+  boundaries: FoodSlotBoundaries
+): EatingHourOption[] {
+  return statedHoursOnDate(date, tz, now).map((option) => ({
+    ...option,
+    slot: foodSlotForHhmm(option.hhmm, boundaries),
+  }));
 }
 
 // `acceptEatenAt` — the eating instant a serving should actually carry, or null meaning

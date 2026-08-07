@@ -1,6 +1,8 @@
 // SERVER-ACTION TIER — #1704 cross-writer pin: the web food bar and the Telegram nudge
-// must produce the SAME meal_slot, and therefore the same #1016 slot-scoped button count,
-// for the same tap.
+// must produce the SAME meal_slot, and therefore the same derived WINDOW, for the same
+// tap. (The #1016 slot-scoped button count this used to be asserted through was retired
+// by #2019 and its query deleted by #2227; the window itself — foodEventWindow, the
+// derivation every live tally and placement reads — is what the writers must agree on.)
 //
 // This is the guard that stops the drift recurring on the OTHER side. `meal_slot` exists
 // so a window can be asserted rather than derived from the tap instant, and the two
@@ -23,7 +25,10 @@ import { db } from "@/lib/db";
 import { logFoodServing } from "@/app/(app)/nutrition/actions";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
-import { getFoodSlotServingsOnDate } from "@/lib/queries";
+import { foodEventWindow } from "@/lib/food-slot-count";
+import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
+import { getTimezone } from "@/lib/settings";
+import { type FoodSlot } from "@/lib/food-slot";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -43,6 +48,30 @@ function slotsFor(profileId: number, group: string): (string | null)[] {
       )
       .all(profileId, DATE, group) as { meal_slot: string | null }[]
   ).map((r) => r.meal_slot);
+}
+
+// The WINDOW each of the group's events derives to, in ledger order — foodEventWindow
+// directly, the one derivation every live tally and placement reads (the retired
+// slot-count query used to stand here; #2019/#2227). Works for the reserved __protein__
+// row too, which the web meal grouping deliberately filters out.
+function derivedWindows(profileId: number, group: string): FoodSlot[] {
+  const tz = getTimezone(profileId);
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  return (
+    db
+      .prepare(
+        `SELECT logged_at, meal_slot, eaten_at FROM food_log_events
+          WHERE profile_id = ? AND date = ? AND group_key = ?
+          ORDER BY id`
+      )
+      .all(profileId, DATE, group) as {
+      logged_at: string;
+      meal_slot: FoodSlot | null;
+      eaten_at: string | null;
+    }[]
+  ).map((r) =>
+    foodEventWindow(r.logged_at, tz, boundaries, r.meal_slot, r.eaten_at)
+  );
 }
 
 describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
@@ -67,14 +96,11 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
     expect(slotsFor(web.id, "berries")).toEqual([ASSERTED]);
     expect(slotsFor(tg.id, "berries")).toEqual(slotsFor(web.id, "berries"));
 
-    // …and therefore identical counts, in the asserted window and nowhere else.
+    // …and therefore an identical derived window — the ASSERTED one, not the Midday
+    // the tap instant would have guessed. One window per event, so "and nowhere else"
+    // holds by construction.
     for (const p of [web.id, tg.id]) {
-      expect(getFoodSlotServingsOnDate(p, ASSERTED, DATE).get("berries")).toBe(
-        1
-      );
-      expect(
-        getFoodSlotServingsOnDate(p, "Midday", DATE).get("berries")
-      ).toBeUndefined();
+      expect(derivedWindows(p, "berries")).toEqual([ASSERTED]);
     }
   });
 
@@ -86,16 +112,17 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
     // The Telegram protein button's write: grams + the token's asserted window.
     addProteinGramsCore(actor.id, DATE, 30, LATE_TAP, ASSERTED);
     expect(slotsFor(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED]);
-    expect(
-      getFoodSlotServingsOnDate(actor.id, ASSERTED, DATE).get(PROTEIN_NUDGE_KEY)
-    ).toBe(1);
+    expect(derivedWindows(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED]);
 
     // The web quick-add asserts no window — it logs "now" — so its event stays derived,
-    // which is the honest answer for that surface and must NOT be broken into a slot.
+    // which is the honest answer for that surface and must NOT be broken into a slot:
+    // the second event's window comes from its tap instant (Midday), not the first
+    // event's assertion.
     addProteinGramsCore(actor.id, DATE, 30, LATE_TAP);
     expect(slotsFor(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED, null]);
-    expect(
-      getFoodSlotServingsOnDate(actor.id, "Midday", DATE).get(PROTEIN_NUDGE_KEY)
-    ).toBe(1);
+    expect(derivedWindows(actor.id, PROTEIN_NUDGE_KEY)).toEqual([
+      ASSERTED,
+      "Midday",
+    ]);
   });
 });
