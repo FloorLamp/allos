@@ -214,9 +214,10 @@ describe("subHourlySlotsAtRisk — the operator honesty check (#2121 constraint 
 
   it("never flags on-the-hour times at any cadence", () => {
     for (let tick = 1; tick <= 60; tick++) {
-      expect(subHourlySlotsAtRisk([m(7), m(23)], tick), `cadence ${tick}`).toEqual(
-        []
-      );
+      expect(
+        subHourlySlotsAtRisk([m(7), m(23)], tick),
+        `cadence ${tick}`
+      ).toEqual([]);
     }
   });
 

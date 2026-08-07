@@ -123,10 +123,10 @@ describe("a stored 07:35 across an observed-cadence change 5 → 15 → 5 (#2216
       deleteSetting("notify_tick_last_run_at");
       const day = runDay(DAY_ONE_MS, cadence);
       expect(day.due.length, `cadence ${cadence}`).toBe(2);
-      expect(day.due.map((d) => d.band), `cadence ${cadence}`).toEqual([
-        "first",
-        "retry",
-      ]);
+      expect(
+        day.due.map((d) => d.band),
+        `cadence ${cadence}`
+      ).toEqual(["first", "retry"]);
     }
   });
 });
