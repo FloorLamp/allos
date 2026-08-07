@@ -25,6 +25,7 @@
 
 import { estimate1RM } from "./strength";
 import {
+  judgeTargetDetail,
   summarizeExercise,
   type SetRow,
   type SetStatus,
@@ -32,7 +33,7 @@ import {
 import { exerciseHistoryKey, isBodyweight } from "./lifts";
 import { pickSeedSessions } from "./exercise-window";
 import type { WeightUnit } from "./settings";
-import { kgTo, toKg, round } from "./units";
+import { fmtWeight, kgTo, toKg, round } from "./units";
 import type { ActivitySetPayload } from "./activity-form-validate";
 import type { ActivityEditData } from "./activity-form-model";
 
@@ -115,6 +116,14 @@ export interface RecapExerciseLine {
   // lift (implement-appropriate via pickSeedSessions), kg. Null when there is no
   // prior session to compare against.
   deltaE1rmKg: number | null;
+  // HOW FAR SHORT (issue #2172), from the same judgeTargets pass that produced
+  // `verdict` — never recomputed beside it. `missedSets` counts the targeted working
+  // sets that fell short and `shortfall` is the largest of them ("7/8"); both are the
+  // verdict's own arithmetic, so a formatter can state the magnitude instead of
+  // collapsing one rep on one set into the same phrase as failing every target.
+  // Zero/null whenever `verdict` is not "missed".
+  missedSets: number;
+  shortfall: { reps: number; target: number } | null;
 }
 
 export type TargetRollup = "all-hit" | "some-missed" | "none-targeted";
@@ -238,7 +247,14 @@ export function sessionRecap(
     const bodyweight = hist?.bodyweight ?? isBodyweight(ex.exercise);
     const baseKg = bodyweight ? session.bodyweightKg : 0;
 
-    const summary = summarizeExercise(ex.sets.map(toSetRow), "kg");
+    const setRows = ex.sets.map(toSetRow);
+    const summary = summarizeExercise(setRows, "kg");
+    // The verdict's OWN magnitude (#2172). Read from the shared judgement rather than
+    // re-derived here, and kept only when `summary.status` actually says "missed" — so
+    // the timed/per-side paths, which decline to judge at all, cannot acquire a
+    // shortfall the verdict does not claim.
+    const judgment = judgeTargetDetail(setRows);
+    const missed = summary.status === "missed";
     const workingSets = ex.sets.filter(
       (s) => !s.warmup && hasContent(s)
     ).length;
@@ -297,6 +313,8 @@ export function sessionRecap(
       e1rmPR,
       weightPR,
       deltaE1rmKg,
+      missedSets: missed ? judgment.missedSets : 0,
+      shortfall: missed ? judgment.worst : null,
     });
   }
 
@@ -425,24 +443,131 @@ export function fmtRecapVolume(volumeKg: number, unit: WeightUnit): string {
   return `${Math.round(kgTo(volumeKg, unit)).toLocaleString("en-US")} ${unit}`;
 }
 
-// The compact one-liner that LEADS the recap-led finish nudge (#924) and can title
-// a card: "Push day done · 47 min · 14 sets · Bench press PR · all targets hit".
-// Segments with nothing to say are dropped. Unit-free (counts only).
-export function formatRecapLine(recap: Recap): string {
-  const segs: string[] = [];
+// ── THE RECAP LINE (issue #2172) ───────────────────────────────────────────────
+//
+// The compact one-liner LEADS the recap-led finish nudge (#924) and can title a card.
+// Two of its segments used to carry almost no information: "15 sets" is a count with no
+// comparator (the duration beside it already says the session happened), and "some
+// targets missed" was the same phrase for one rep short on the only targeted lift as for
+// failing every target of the session. In a chat there is no detail below to correct
+// that impression — the line IS the message.
+//
+// So the line restates what the Recap already computed. Same computation, better
+// restatement: no new engine, no new read, and one function with a `detail` knob rather
+// than a second formatter for the chat — a copied-and-drifted twin is exactly what #221
+// exists to prevent.
+//
+//   compact  (default)  — byte-for-byte what it always was. The in-app card titles
+//                         itself with this and renders every fact below it.
+//   detail: true        — the chat form: a PROGRESS fact in place of the bare set count,
+//                         and a target rollup that names and quantifies the miss.
+//
+// TONE (#992/#716): numbers, never adjectives. "Missed" survives only because targets
+// are the user's own vocabulary, and the shortfall is stated as arithmetic ("7/8"), not
+// as failure.
+
+// Past this width the named form degrades to the counted one: a chat line stays ONE
+// line, and many misses (or long lift names) must not wrap the message into a report.
+const RECAP_LINE_MAX = 120;
+
+// Naming more than this many missed lifts is a list, not a line.
+const MAX_NAMED_MISSES = 2;
+
+export interface RecapLineOptions {
+  // Expand the progress and target segments (the chat form). Default false.
+  detail?: boolean;
+}
+
+// The PR segment, unchanged in both forms — a PR is the strongest progress fact the
+// session has, so it keeps the slot whenever one exists.
+function prSegment(recap: Recap): string | null {
+  if (recap.prExercises.length === 1) return `${recap.prExercises[0]} PR`;
+  if (recap.prExercises.length > 1) return `${recap.prExercises.length} PRs`;
+  return null;
+}
+
+// The best vs-last movement of the session, kg — canonical, per the notification unit
+// policy (a chat has no login-unit context). The MAXIMUM is a selection, not a claim
+// about the session, so it is stated whichever way it went: hiding a negative best
+// would make "no delta segment" mean two different things.
+function deltaSegment(recap: Recap): string | null {
+  let best: RecapExerciseLine | null = null;
+  for (const l of recap.exercises) {
+    if (l.deltaE1rmKg == null || l.deltaE1rmKg === 0) continue;
+    if (best == null || l.deltaE1rmKg > best.deltaE1rmKg!) best = l;
+  }
+  if (!best) return null;
+  const d = best.deltaE1rmKg!;
+  return `${best.exercise} ${d > 0 ? "+" : "−"}${fmtWeight(Math.abs(d), "kg")} vs last`;
+}
+
+function setsSegment(recap: Recap): string | null {
+  if (recap.totalWorkingSets <= 0) return null;
+  return `${recap.totalWorkingSets} set${recap.totalWorkingSets === 1 ? "" : "s"}`;
+}
+
+// One missed lift, quantified: "Lat Pulldown 7/8 on one set".
+function missClause(line: RecapExerciseLine): string {
+  if (!line.shortfall) return line.exercise;
+  const sets = line.missedSets === 1 ? "one set" : `${line.missedSets} sets`;
+  return `${line.exercise} ${line.shortfall.reps}/${line.shortfall.target} on ${sets}`;
+}
+
+// COVERAGE AWARENESS. When most of the session's lifts carried no target at all, a bare
+// miss phrase reads as a verdict on the whole session. Saying so is what makes the
+// fixture's line honest: one lift was judged, three were not.
+function untargetedTail(recap: Recap): string {
+  const untargeted = recap.exercises.filter((l) => l.verdict === null).length;
+  const judged = recap.exercises.length - untargeted;
+  return untargeted > judged ? ", rest untargeted" : "";
+}
+
+export function formatRecapLine(
+  recap: Recap,
+  opts: RecapLineOptions = {}
+): string {
+  const detail = opts.detail === true;
   const lead = recap.title.trim() || "Workout";
-  segs.push(`${lead} done`);
+  const head: string[] = [`${lead} done`];
   if (recap.durationMin != null && recap.durationMin > 0)
-    segs.push(`${recap.durationMin} min`);
-  if (recap.totalWorkingSets > 0)
-    segs.push(
-      `${recap.totalWorkingSets} set${recap.totalWorkingSets === 1 ? "" : "s"}`
-    );
-  if (recap.prExercises.length === 1) segs.push(`${recap.prExercises[0]} PR`);
-  else if (recap.prExercises.length > 1)
-    segs.push(`${recap.prExercises.length} PRs`);
-  if (recap.targetRollup === "all-hit") segs.push("all targets hit");
-  else if (recap.targetRollup === "some-missed")
-    segs.push("some targets missed");
-  return segs.join(" · ");
+    head.push(`${recap.durationMin} min`);
+
+  const pr = prSegment(recap);
+  const progress = detail ? (pr ?? deltaSegment(recap)) : pr;
+
+  // A recap's question is "did I progress"; the set count answers "did I show up",
+  // which the message's existence already says. In the detailed form it therefore
+  // becomes a FALLBACK — kept only when the line would otherwise have nothing but the
+  // session and its duration, so this never produces a thinner message than before.
+  const sets = setsSegment(recap);
+
+  const missed = recap.exercises.filter((l) => l.verdict === "missed");
+  function targetSegment(named: boolean): string | null {
+    if (recap.targetRollup === "all-hit") return "all targets hit";
+    if (recap.targetRollup !== "some-missed") return null;
+    if (!detail) return "some targets missed";
+    const body =
+      named && missed.length > 0 && missed.length <= MAX_NAMED_MISSES
+        ? missed.map(missClause).join(", ")
+        : `${missed.length} target${missed.length === 1 ? "" : "s"} missed`;
+    return `${body}${untargetedTail(recap)}`;
+  }
+
+  function compose(named: boolean): string {
+    const target = targetSegment(named);
+    const segs = [...head];
+    if (detail) {
+      if (progress) segs.push(progress);
+      if (!progress && !target && sets) segs.push(sets);
+    } else {
+      if (sets) segs.push(sets);
+      if (progress) segs.push(progress);
+    }
+    if (target) segs.push(target);
+    return segs.join(" · ");
+  }
+
+  const line = compose(true);
+  // LENGTH DISCIPLINE: degrade to the counted form rather than wrap into a report.
+  return line.length > RECAP_LINE_MAX ? compose(false) : line;
 }

@@ -91,7 +91,11 @@ export function recapNudgeLine(
 ): string | null {
   if (!enabled || !recap) return null;
   if (recap.totalWorkingSets === 0) return null;
-  const line = formatRecapLine(recap);
+  // THE DETAILED FORM (#2172). The chat has no recap card under the line — the line is
+  // the whole message — so this is the surface that needs the progress fact and the
+  // named, quantified target rollup. Same formatter, one verbosity option: the in-app
+  // card title keeps the compact form because every fact is rendered below it.
+  const line = formatRecapLine(recap, { detail: true });
   return line || null;
 }
 

@@ -628,6 +628,307 @@ describe("formatRecapLine", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// THE DETAILED LINE (issue #2172) — the chat form, where the line IS the message.
+// ---------------------------------------------------------------------------
+
+// The motivating fixture, verbatim: three untargeted lifts and one 8-rep target with a
+// single 7-rep set. "Some targets missed" was the same phrase this session got as one
+// that failed every target it declared.
+function backWorkout(): RecapInputSession {
+  return {
+    title: "Morning Back Workout",
+    durationMin: 87,
+    intensity: null,
+    bodyweightKg: 0,
+    exercises: [
+      {
+        exercise: "Cable Rear Delt Fly",
+        sets: [
+          { weightKg: 10, reps: 12 },
+          { weightKg: 10, reps: 12 },
+          { weightKg: 10, reps: 11 },
+          { weightKg: 10, reps: 10 },
+        ],
+      },
+      {
+        exercise: "Cable Row",
+        sets: [
+          { weightKg: 45, reps: 10 },
+          { weightKg: 45, reps: 10 },
+          { weightKg: 45, reps: 9 },
+        ],
+      },
+      {
+        exercise: "Dumbbell Curl",
+        sets: [
+          { weightKg: 12, reps: 10 },
+          { weightKg: 12, reps: 10 },
+          { weightKg: 12, reps: 9 },
+          { weightKg: 12, reps: 8 },
+        ],
+      },
+      {
+        exercise: "Lat Pulldown",
+        sets: [
+          { weightKg: 50, reps: 8, targetReps: 8 },
+          { weightKg: 50, reps: 7, targetReps: 8 },
+          { weightKg: 50, reps: 9, targetReps: 8 },
+          { weightKg: 50, reps: 12, targetReps: 8 },
+        ],
+      },
+    ],
+  };
+}
+
+describe("the shortfall magnitude rides the verdict (#2172)", () => {
+  it("carries the missed-set count and the worst shortfall", () => {
+    const r = sessionRecap(backWorkout(), NO_HISTORY);
+    const pulldown = r.exercises.find((e) => e.exercise === "Lat Pulldown")!;
+    expect(pulldown.verdict).toBe("missed");
+    expect(pulldown.missedSets).toBe(1);
+    expect(pulldown.shortfall).toEqual({ reps: 7, target: 8 });
+  });
+
+  it("an untargeted lift claims no shortfall", () => {
+    const r = sessionRecap(backWorkout(), NO_HISTORY);
+    const row = r.exercises.find((e) => e.exercise === "Cable Row")!;
+    expect(row.verdict).toBeNull();
+    expect(row.missedSets).toBe(0);
+    expect(row.shortfall).toBeNull();
+  });
+
+  it("reports the LARGEST shortfall when several sets fall short", () => {
+    const r = sessionRecap(
+      {
+        title: "Push day",
+        durationMin: null,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [
+          {
+            exercise: "Bench press",
+            sets: [
+              { weightKg: 60, reps: 4, targetReps: 5 },
+              { weightKg: 60, reps: 2, targetReps: 5 },
+            ],
+          },
+        ],
+      },
+      NO_HISTORY
+    );
+    expect(r.exercises[0].missedSets).toBe(2);
+    expect(r.exercises[0].shortfall).toEqual({ reps: 2, target: 5 });
+  });
+});
+
+describe("formatRecapLine detailed form (#2172)", () => {
+  it("names and quantifies the miss, coverage-aware", () => {
+    const r = sessionRecap(backWorkout(), NO_HISTORY);
+    expect(formatRecapLine(r, { detail: true })).toBe(
+      "Morning Back Workout done · 87 min · Lat Pulldown 7/8 on one set, rest untargeted"
+    );
+  });
+
+  it("the compact form is byte-for-byte what it always was", () => {
+    const r = sessionRecap(backWorkout(), NO_HISTORY);
+    expect(formatRecapLine(r)).toBe(
+      "Morning Back Workout done · 87 min · 15 sets · some targets missed"
+    );
+  });
+
+  it("counts the misses past the naming cap", () => {
+    const missAt = (exercise: string) => ({
+      exercise,
+      sets: [{ weightKg: 40, reps: 4, targetReps: 5 }],
+    });
+    const r = sessionRecap(
+      {
+        title: "Full body",
+        durationMin: 40,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [missAt("Squat"), missAt("Bench press"), missAt("Row")],
+      },
+      NO_HISTORY
+    );
+    // Three lifts, all targeted: nothing is untargeted, so no coverage tail either.
+    expect(formatRecapLine(r, { detail: true })).toBe(
+      "Full body done · 40 min · 3 targets missed"
+    );
+  });
+
+  it("degrades to the counted form rather than wrapping into a report", () => {
+    const long = (n: string) => ({
+      exercise: `${n} with a deliberately overlong machine name`,
+      sets: [{ weightKg: 40, reps: 4, targetReps: 12 }],
+    });
+    const r = sessionRecap(
+      {
+        title: "Accessories",
+        durationMin: 55,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [long("Seated Cable Row"), long("Chest Supported Row")],
+      },
+      NO_HISTORY
+    );
+    const line = formatRecapLine(r, { detail: true });
+    expect(line).toBe("Accessories done · 55 min · 2 targets missed");
+    expect(line.length).toBeLessThanOrEqual(120);
+  });
+
+  it("all-hit and none-targeted are unchanged in BOTH forms", () => {
+    const hit = sessionRecap(
+      {
+        title: "Push day",
+        durationMin: 30,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [
+          {
+            exercise: "Bench press",
+            sets: [{ weightKg: 60, reps: 5, targetReps: 5 }],
+          },
+        ],
+      },
+      NO_HISTORY
+    );
+    expect(formatRecapLine(hit, { detail: true })).toBe(
+      "Push day done · 30 min · all targets hit"
+    );
+    expect(formatRecapLine(hit)).toBe(
+      "Push day done · 30 min · 1 set · all targets hit"
+    );
+
+    const none = sessionRecap(
+      {
+        title: "Quick lift",
+        durationMin: null,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [
+          { exercise: "Bench press", sets: [{ weightKg: 60, reps: 5 }] },
+        ],
+      },
+      NO_HISTORY
+    );
+    // Nothing else to say: the set count stays as the fallback rather than leaving the
+    // chat a bare "Quick lift done".
+    expect(formatRecapLine(none, { detail: true })).toBe(
+      "Quick lift done · 1 set"
+    );
+  });
+
+  it("the best vs-last delta takes the progress slot when there is no PR", () => {
+    // Two prior sessions: an older HEAVIER one (so this session is no all-time PR) and
+    // a recent lighter one (the seed the delta is measured against). That is what makes
+    // this assertion about the delta rather than about the PR slot.
+    const history: RecapHistory = {
+      // exerciseHistoryKey("Cable Row") folds the implement prefix away — the key is
+      // the canonical base, exactly as every other surface reads this history.
+      row: {
+        bodyweight: false,
+        sessions: [
+          {
+            activityId: 11,
+            date: "2026-08-01",
+            exercise: "Cable Row",
+            baseKg: 0,
+            sets: [
+              {
+                weight_kg: 40,
+                reps: 10,
+                weight_kg_right: null,
+                reps_right: null,
+              },
+            ],
+          },
+          {
+            activityId: 10,
+            date: "2026-06-01",
+            exercise: "Cable Row",
+            baseKg: 0,
+            sets: [
+              {
+                weight_kg: 70,
+                reps: 10,
+                weight_kg_right: null,
+                reps_right: null,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const r = sessionRecap(backWorkout(), history, { currentActivityId: 99 });
+    expect(r.prExercises).toEqual([]);
+    const line = formatRecapLine(r, { detail: true });
+    expect(line).toMatch(/Cable Row \+[\d.]+ kg vs last/);
+    expect(line).toContain("Lat Pulldown 7/8 on one set");
+  });
+
+  it("a PR takes precedence over the delta", () => {
+    const history: RecapHistory = {
+      "bench press": {
+        bodyweight: false,
+        sessions: [
+          {
+            activityId: 10,
+            date: "2026-07-10",
+            exercise: "Bench press",
+            baseKg: 0,
+            sets: [
+              {
+                weight_kg: 60,
+                reps: 5,
+                weight_kg_right: null,
+                reps_right: null,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const r = sessionRecap(
+      {
+        title: "Push day",
+        durationMin: 20,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [
+          { exercise: "Bench press", sets: [{ weightKg: 70, reps: 5 }] },
+        ],
+      },
+      history,
+      { currentActivityId: 99 }
+    );
+    expect(r.exercises[0].e1rmPR).toBe(true);
+    expect(r.exercises[0].deltaE1rmKg).not.toBeNull();
+    expect(formatRecapLine(r, { detail: true })).toBe(
+      "Push day done · 20 min · Bench press PR"
+    );
+  });
+
+  it("no delta with no prior session", () => {
+    const r = sessionRecap(
+      {
+        title: "Push day",
+        durationMin: 20,
+        intensity: null,
+        bodyweightKg: 0,
+        exercises: [
+          { exercise: "Bench press", sets: [{ weightKg: 70, reps: 5 }] },
+        ],
+      },
+      NO_HISTORY
+    );
+    expect(formatRecapLine(r, { detail: true })).toBe(
+      "Push day done · 20 min · 1 set"
+    );
+  });
+});
+
 describe("fmtRecapVolume", () => {
   it("rounds and thousands-groups in the login unit", () => {
     expect(fmtRecapVolume(2450, "kg")).toBe("2,450 kg");

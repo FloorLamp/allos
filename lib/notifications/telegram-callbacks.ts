@@ -85,6 +85,7 @@ import {
   parseTuneCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
+  parsePracticeLogCallback,
   parseRightSizeLowerCallback,
   parseRefillCallback,
   parseSkipCallback,
@@ -351,6 +352,16 @@ export async function handleCallbackQuery(
   const practiceDone = parsePracticeDoneCallback(cq.data);
   if (practiceDone) {
     await handlePracticeDoneTap(cq, practiceDone);
+    return;
+  }
+
+  // The same tap from the on-demand `/practice` list (#1895). A different PREFIX,
+  // because the two messages claim different things to the sweep (see callback-data),
+  // and deliberately the SAME handler and write core — a second logging path for one
+  // button is how two answers to "did that log?" come about.
+  const practiceLog = parsePracticeLogCallback(cq.data);
+  if (practiceLog) {
+    await handlePracticeDoneTap(cq, practiceLog);
     return;
   }
 
