@@ -308,9 +308,8 @@ export function insertVitals(
     occurredAt == null
       ? (() => {
           const hhmm = normalizeClockTime(raw.temperatureTime);
-          return hhmm
-            ? (statedInstantOnDate(date, hhmm, tz)?.toISOString() ?? undefined)
-            : undefined;
+          const inst = hhmm ? statedInstantOnDate(date, hhmm, tz) : null;
+          return inst ? utcInstant(inst) : undefined;
         })()
       : undefined;
 

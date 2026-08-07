@@ -31,17 +31,12 @@ function hcId(canonical: string, iso: string): string {
 }
 
 describe("vitalReadingTime", () => {
-  it("reads a manual reading's HH:MM note (the #800 convention)", () => {
-    expect(vitalReadingTime(bpRow({ notes: "08:05" }), TZ)).toBe("08:05");
-  });
-
-  it("reads a stated occurred_at first — the declared event column (#2235)", () => {
-    // 11:12Z on a July day is 07:12 in New York (UTC-4). The riding conventions
-    // (a notes HH:MM, an external_id instant) never override the column that
-    // MEANS "when this reading was taken".
+  it("reads a stated occurred_at first — the declared event column (#2154/#2235)", () => {
+    // 11:12Z on a July day is 07:12 in New York (UTC-4). The legacy external_id
+    // encoding never overrides the column that MEANS "when this reading was
+    // taken".
     const row = bpRow({
       occurred_at: "2026-07-25T11:12:00Z",
-      notes: "08:05",
       external_id: hcId("Blood Pressure Systolic", "2026-07-25T11:10:00Z"),
     });
     expect(vitalReadingTime(row, TZ)).toBe("07:12");
@@ -49,14 +44,14 @@ describe("vitalReadingTime", () => {
 
   it("gates a stated occurred_at on the row's own local day, like the ingest instant", () => {
     // The statement resolves to the 24th locally while the row says the 25th —
-    // the profile's timezone moved since it was stated. Fall through to the next
-    // convention rather than labelling the day with another day's clock.
+    // the profile's timezone moved since it was stated. Fall through to the
+    // legacy encoding rather than labelling the day with another day's clock.
     const row = bpRow({
       date: DAY,
       occurred_at: "2026-07-24T18:00:00Z",
-      notes: "08:05",
+      external_id: hcId("Blood Pressure Systolic", "2026-07-25T11:10:00Z"),
     });
-    expect(vitalReadingTime(row, TZ)).toBe("08:05");
+    expect(vitalReadingTime(row, TZ)).toBe("07:10");
     expect(
       vitalReadingTime(
         bpRow({ date: DAY, occurred_at: "2026-07-24T18:00:00Z" }),
@@ -67,11 +62,6 @@ describe("vitalReadingTime", () => {
     expect(
       vitalReadingTime(bpRow({ occurred_at: "not-an-instant" }), TZ)
     ).toBeNull();
-  });
-
-  it("ignores a note that is not a clock time", () => {
-    expect(vitalReadingTime(bpRow({ notes: "after coffee" }), TZ)).toBeNull();
-    expect(vitalReadingTime(bpRow({ notes: "44:99" }), TZ)).toBeNull();
   });
 
   it("converts an ingested instant into the profile's wall clock", () => {
@@ -115,14 +105,6 @@ describe("vitalReadingTime", () => {
       )
     ).toBeNull();
   });
-
-  it("prefers the note over the instant when a row somehow carries both", () => {
-    const row = bpRow({
-      notes: "06:00",
-      external_id: hcId("Body Temperature", "2026-07-25T11:10:00Z"),
-    });
-    expect(vitalReadingTime(row, TZ)).toBe("06:00");
-  });
 });
 
 describe("latestVitalOn", () => {
@@ -137,8 +119,8 @@ describe("latestVitalOn", () => {
 
   it("picks the latest by clock time, not by row order", () => {
     const rows = [
-      bpRow({ id: 9, value_num: 131, notes: "19:40" }),
-      bpRow({ id: 10, value_num: 118, notes: "07:10" }),
+      bpRow({ id: 9, value_num: 131, occurred_at: "2026-07-25T23:40:00Z" }),
+      bpRow({ id: 10, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
     ];
     expect(latestVitalOn(rows, DAY, TZ)).toEqual({
       value: 131,
@@ -158,7 +140,7 @@ describe("latestVitalOn", () => {
   it("prefers a timed reading over an untimed one on the same day", () => {
     const rows = [
       bpRow({ id: 30, value_num: 140 }),
-      bpRow({ id: 2, value_num: 117, notes: "06:15" }),
+      bpRow({ id: 2, value_num: 117, occurred_at: "2026-07-25T10:15:00Z" }),
     ];
     expect(latestVitalOn(rows, DAY, TZ)).toEqual({
       value: 117,
@@ -177,14 +159,20 @@ describe("buildTodayVitalsStrip", () => {
       key: "bp",
       label: "Blood pressure",
       unit: "mmHg",
-      rows: [bpRow({ id: 1, value_num: 118, notes: "07:10" })],
-      pairRows: [bpRow({ id: 2, value_num: 76, notes: "07:10" })],
+      rows: [
+        bpRow({ id: 1, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
+      ],
+      pairRows: [
+        bpRow({ id: 2, value_num: 76, occurred_at: "2026-07-25T11:10:00Z" }),
+      ],
     },
     {
       key: "temperature",
       label: "Temperature",
       unit: "°F",
-      rows: [bpRow({ id: 3, value_num: 98.64, notes: "08:05" })],
+      rows: [
+        bpRow({ id: 3, value_num: 98.64, occurred_at: "2026-07-25T12:05:00Z" }),
+      ],
       decimals: 1,
     },
     {
@@ -267,10 +255,15 @@ describe("buildTodayVitalsStrip", () => {
 describe("intradayVitalPoints", () => {
   it("keeps only today's TIMED readings, ascending by minute", () => {
     const rows = [
-      bpRow({ id: 1, value_num: 131, notes: "19:40" }),
-      bpRow({ id: 2, value_num: 118, notes: "07:10" }),
+      bpRow({ id: 1, value_num: 131, occurred_at: "2026-07-25T23:40:00Z" }),
+      bpRow({ id: 2, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
       bpRow({ id: 3, value_num: 125 }), // untimed → stays in the Today strip
-      bpRow({ id: 4, date: "2026-07-24", value_num: 140, notes: "07:10" }),
+      bpRow({
+        id: 4,
+        date: "2026-07-24",
+        value_num: 140,
+        occurred_at: "2026-07-24T11:10:00Z",
+      }),
     ];
     expect(intradayVitalPoints(rows, DAY, TZ)).toEqual([
       { minute: 7 * 60 + 10, value: 118, time: "07:10" },

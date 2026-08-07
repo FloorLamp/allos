@@ -305,6 +305,21 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half: bumps the rebuilt table's sqlite_sequence back to the pre-rebuild high-water mark — schema bookkeeping, never profile rows.",
   },
   {
+    file: "lib/migrations/versions/170-temperature-note-times.ts",
+    includes: "SELECT id, profile_id, date, notes, occurred_at",
+    why: "migration 170 (#2154) temperature note-time data move: a one-shot boot-time sweep over EVERY profile's smuggled 'HH:MM' temperature notes — it selects profile_id per row precisely to resolve each profile's own timezone, and the per-row UPDATEs below key on the ids this scan produced.",
+  },
+  {
+    file: "lib/migrations/versions/170-temperature-note-times.ts",
+    includes: "UPDATE medical_records SET occurred_at = ?, notes = NULL",
+    why: "migration 170 (#2154): keyed on the primary-key id of a row the profile-aware candidate scan above selected — a second profile_id predicate would re-state what the id already pins.",
+  },
+  {
+    file: "lib/migrations/versions/170-temperature-note-times.ts",
+    includes: "UPDATE medical_records SET notes = NULL WHERE id = ?",
+    why: "migration 170 (#2154): same id-keyed shape as its sibling — the id came from the candidate scan, which carried profile_id for timezone resolution.",
+  },
+  {
     file: "lib/migrations/versions/014-hr-minutes-per-source.ts",
     includes: "PRAGMA table_info(hr_minutes)",
     why: "migration 013 replay sentinel: a schema-shape PRAGMA (is `source` already in the PRIMARY KEY?) that reads column metadata, never rows",
