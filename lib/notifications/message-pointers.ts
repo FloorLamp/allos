@@ -285,8 +285,16 @@ export function messagePointerIdAt(
 // (its bursts render on it), and whether it is the NEWEST live message of `kind` in its
 // chat (the one place an unattributed burst may ride). A fresh send binds as
 // FRESH_SEND_BINDING — no pointer row yet, and about to be the newest in every chat it
-// lands in. A message with no pointer row fails CLOSED: messageRef null and not newest,
-// so it renders no attributed burst and no unattributed one.
+// lands in.
+//
+// The newest check is spelled the way the sub-rule is: "never an OLDER one". A message
+// loses the unattributed ride-along exactly when a NEWER live message of its domain
+// exists in its chat — the reported wrong-subject case. When the chat holds no live
+// pointer of the kind at all (best-effort pointer bookkeeping can fail), the rendering
+// message is vacuously newest: nothing is newer than it, and failing closed there would
+// strip a working affordance from the very message whose tap made the burst. Attributed
+// bursts are unaffected either way — they render only where their `messageRef` matches,
+// and a message with no pointer row matches none.
 export function correctionMessageBinding(
   profileId: number,
   kind: string,
@@ -309,7 +317,7 @@ export function correctionMessageBinding(
     | undefined;
   return {
     messageRef,
-    isNewest: newest != null && newest.message_id === ref.messageId,
+    isNewest: newest == null || newest.message_id === ref.messageId,
   };
 }
 
