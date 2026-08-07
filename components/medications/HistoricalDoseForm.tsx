@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
 import {
   logHistoricalDose,
   updateHistoricalDose,
@@ -19,6 +21,23 @@ export interface HistoricalDoseOption {
 // its copy names the ITEM, not "the medication": the only medication-specific rule
 // left is the course window, which only an item that HAS courses is bound by
 // (`courseBound`).
+//
+// The date+time pair renders through the shared WhenControl (#2236 / #2228):
+//
+//   • BACKFILL is `state` mode with the time REQUIRED (decision 2): logging a past
+//     dose is a new assertion that a dose happened, and naming when is the point.
+//     The time still prefills from `defaultTime` so it costs no taps.
+//   • AMEND is `correct` mode: "Not stated" is reachable and submits an empty time,
+//     which the write path records as occurred_at = NULL — amending only the amount
+//     of a dose whose intake time was never stated changes the amount and nothing
+//     else. The time seeds from `editing.statedAt` (the row's occurred_at), NEVER
+//     from the given_at/taken_at record chain — a row with no stated intake time
+//     opens with an EMPTY time field instead of laundering a filing timestamp into
+//     an administration time (#2228's defect).
+//
+// The wire stays date + "HH:MM" (hidden inputs kept in sync with the pair): the
+// action re-anchors the wall time against the submitted date in the profile's
+// timezone, and the core enforces the pair rule again at the boundary.
 export default function HistoricalDoseForm({
   itemId,
   itemName,
@@ -45,11 +64,14 @@ export default function HistoricalDoseForm({
     logId: number;
     doseId: number;
     date: string;
-    time: string;
+    // The row's stated event instant (occurred_at, ISO UTC), or null = no intake
+    // time was ever stated. Never a record-chain fallback.
+    statedAt: string | null;
     amount: string | null;
   };
   onDone: () => void;
 }) {
+  const tz = useTimezone();
   const first = doses[0];
   const initialDose = editing
     ? (doses.find((dose) => dose.id === editing.doseId) ?? {
@@ -61,6 +83,16 @@ export default function HistoricalDoseForm({
   const [doseId, setDoseId] = useState(initialDose?.id ?? 0);
   const [amount, setAmount] = useState(
     editing?.amount ?? initialDose?.amount ?? ""
+  );
+  const [when, setWhen] = useState<WhenValue>(() =>
+    editing
+      ? { date: editing.date, statedAt: editing.statedAt }
+      : {
+          date: maxDate,
+          statedAt:
+            statedInstantOnDate(maxDate, defaultTime, tz)?.toISOString() ??
+            null,
+        }
   );
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -92,7 +124,9 @@ export default function HistoricalDoseForm({
       {editing ? (
         <input type="hidden" name="log_id" value={editing.logId} />
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <input type="hidden" name="date" value={when.date} />
+      <input type="hidden" name="time" value={statedHhmm(when.statedAt, tz)} />
+      <div className="grid gap-3 sm:grid-cols-2">
         {!editing && doses.length > 1 ? (
           <div>
             <label className="label" htmlFor={`history-dose-${itemId}`}>
@@ -134,32 +168,19 @@ export default function HistoricalDoseForm({
             placeholder="e.g. 5 mg"
           />
         </div>
-        <div>
-          <label className="label" htmlFor={`history-date-${itemId}`}>
-            Date
-          </label>
-          <DateField
-            id={`history-date-${itemId}`}
-            name="date"
-            defaultValue={editing?.date ?? maxDate}
-            min={minDate}
-            max={maxDate}
-            required
-            data-testid="historical-dose-date"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`history-time-${itemId}`}>
-            Time taken
-          </label>
-          <input
-            id={`history-time-${itemId}`}
-            name="time"
-            type="time"
-            defaultValue={editing?.time ?? defaultTime}
-            required
-            className="input"
-            data-testid="historical-dose-time"
+        <div className="sm:col-span-2">
+          <span className="label">Taken</span>
+          <WhenControl
+            mode={editing ? "correct" : "state"}
+            grain="minute"
+            value={when}
+            onChange={setWhen}
+            timeRequired={!editing}
+            minDate={minDate}
+            maxDate={maxDate}
+            dateLabel="Date"
+            timeLabel="Time taken"
+            testId="historical-dose"
           />
         </div>
       </div>

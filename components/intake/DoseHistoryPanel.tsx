@@ -19,13 +19,17 @@ import {
 // already-formatted profile-local clock string — when the row states no intake time
 // of its own, the caller marks the record-chain clock as "recorded 7:02am" rather
 // than presenting a filing timestamp as an administration time (#2228 decision 4).
-// `timeValue` is the HH:MM the edit form seeds its <input type="time"> with.
+// `statedAt` is the row's stated event instant (occurred_at, ISO UTC) or null — the
+// ONLY thing the edit form's time field may seed from (#2228 decision 1): a row
+// whose intake time was never stated opens its editor with an EMPTY time field,
+// never with the given_at/taken_at record chain wearing an administration time's
+// clothes.
 export interface DoseHistoryEntry {
   id: number;
   doseId: number;
   date: string;
   time: string;
-  timeValue: string;
+  statedAt: string | null;
   amount: string | null;
   product: string | null;
 }
@@ -219,7 +223,7 @@ export default function DoseHistoryPanel({
                     logId: entry.id,
                     doseId: entry.doseId,
                     date: entry.date,
-                    time: entry.timeValue,
+                    statedAt: entry.statedAt,
                     amount: entry.amount,
                   }}
                   onDone={() => setEditingId(null)}

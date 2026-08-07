@@ -14,6 +14,7 @@ import {
 } from "@/lib/illness-episode";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
+import { updateHistoricalDose } from "@/lib/queries";
 
 // DB-tier gather tests for the school-return countdown (#859 item 2) and the
 // stale-open-episode nudge (#859 item 1) — the input layer the pure tier can't see.
@@ -49,13 +50,14 @@ function makeSick(p: number, startDaysAgo: number) {
 }
 
 // Insert a taken PRN administration of a named item at a fixed UTC given_at.
+// Returns the ids so a test can drive the real amend path against the log row.
 function addAntipyretic(
   p: number,
   name: string,
   date: string,
   givenAtUtc: string
-) {
-  const item = Number(
+): { itemId: number; logId: number } {
+  const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
@@ -69,12 +71,17 @@ function addAntipyretic(
         `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
          VALUES (?, '200 mg', 'any', 'any', 0, datetime('now'))`
       )
-      .run(item).lastInsertRowid
+      .run(itemId).lastInsertRowid
   );
-  db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
-     VALUES (?, ?, ?, '200 mg', ?, 'taken')`
-  ).run(dose, item, date, givenAtUtc);
+  const logId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
+         VALUES (?, ?, ?, '200 mg', ?, 'taken')`
+      )
+      .run(dose, itemId, date, givenAtUtc).lastInsertRowid
+  );
+  return { itemId, logId };
 }
 
 describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
@@ -128,6 +135,56 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s).not.toBeNull();
     expect(s!.hoursSinceAntipyretic).toBe(14); // measured from the STATED instant
     expect(s!.lastAntipyreticClockLabel).toBe("6:00am");
+  });
+
+  it("a caregiver's stated time moves the clearance clock — end to end through the amend path (#2228)", () => {
+    const p = newProfile("sr-amend");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 2);
+    const td = today(p);
+    // Everything on YESTERDAY so no stated wall time can read as future whatever
+    // real hour the tier runs at; the countdown's `now` is injected anyway.
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 101.5, "F", yd, "09:00");
+    const { itemId, logId } = addAntipyretic(
+      p,
+      "Ibuprofen",
+      yd,
+      `${yd} 07:00:00`
+    );
+
+    const nowMs = Date.parse(`${yd}T20:00:00Z`);
+    const ep = () => assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const before = schoolReturnStatusFor(p, ep(), nowMs)!;
+    // Nobody has stated an intake time: the clock runs from the filing stamp and
+    // the note SAYS so.
+    expect(before.hoursSinceAntipyretic).toBe(13); // 20:00 − 07:00
+    expect(before.lastAntipyreticClockLabel).toBe("recorded 7:00am");
+
+    // The caregiver amends the dose, stating it was actually given at 04:00 —
+    // the real write path (#2228 decision 1), not a hand-set column.
+    expect(
+      updateHistoricalDose(
+        p,
+        itemId,
+        logId,
+        yd,
+        new Date(`${yd}T04:00:00Z`),
+        null
+      )
+    ).toEqual({ kind: "logged", date: yd });
+
+    // The clearance clock now measures from the STATED instant (the correct
+    // clinical reading — bestKnownInstant prefers the event), and the note's
+    // clock renders unmarked. The filing stamp itself is untouched history.
+    const after = schoolReturnStatusFor(p, ep(), nowMs)!;
+    expect(after.hoursSinceAntipyretic).toBe(16); // 20:00 − 04:00
+    expect(after.lastAntipyreticClockLabel).toBe("4:00am");
+    expect(
+      db
+        .prepare(`SELECT given_at FROM intake_item_logs WHERE id = ?`)
+        .get(logId)
+    ).toEqual({ given_at: `${yd} 07:00:00` });
   });
 
   it("a NON-antipyretic PRN doesn't count as a fever reducer", () => {

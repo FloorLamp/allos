@@ -479,8 +479,16 @@ and the refusal LIED — a supplement dose came back `stale-dose`, "that dose
 doesn't exist", from a core that had simply refused its kind.
 
 The ungated cores live in `lib/queries/intake/adherence.ts`: `logHistoricalDose`,
-`updateHistoricalDose`, `updateAdministrationLog`, `deleteAdministrationLog`,
-`restoreAdministrationLog`. The reads that serve both kinds are named for both:
+`updateHistoricalDose`, `deleteAdministrationLog`, `restoreAdministrationLog`.
+`updateHistoricalDose` is the ONE amend core (#2228): the illness-episode
+timeline's dose edit routes through it too (its looser twin
+`updateAdministrationLog` is deleted), it writes the stated event instant
+`occurred_at` — never `given_at`, which is a record instant by the #2229 ruling
+and read-only history for amendments — and it takes the row's `date` explicitly:
+a present instant must agree with it (refusal, never silent re-dating) and a
+null instant means no intake time was stated, leaving `occurred_at` NULL. The
+one refusal→message mapping is `lib/historical-dose-error.ts`. The reads that
+serve both kinds are named for both:
 `getIntakeLogsForDate`, `getIntakeLogsInRange`, `getIntakeDoseHistory`, and the
 batched `getIntakeDoseHistoryForItems`.
 

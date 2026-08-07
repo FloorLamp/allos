@@ -470,20 +470,57 @@ describe("episode event ledger actions", () => {
         .get(profile.id, date, "cough")
     ).toEqual({ severity: 4, note: "Worse after dinner" });
 
+    // A fully past day inside the episode (started two days ago), so the stated
+    // 10:30 can never trip the amend core's future guard whatever real hour the
+    // test tier runs at.
+    const doseDate = shiftDateStr(date, -1);
     expect(
       await updateEpisodeDoseAction(
-        fd({ episodeId, eventId: logId, date, time: "10:30", amount: "200 mg" })
+        fd({
+          episodeId,
+          eventId: logId,
+          date: doseDate,
+          time: "10:30",
+          amount: "200 mg",
+        })
       )
     ).toEqual({ ok: true });
+    // The stated time lands in occurred_at through the ONE amend core (#2228
+    // decision 6); given_at is record history and keeps its original stamp.
     expect(
       db
         .prepare(
-          `SELECT amount FROM intake_item_logs l
-            JOIN intake_items i ON i.id = l.item_id
-           WHERE l.id = ? AND i.profile_id = ?`
+          `SELECT l.amount, l.date, l.occurred_at, l.given_at
+             FROM intake_item_logs l
+             JOIN intake_items i ON i.id = l.item_id
+            WHERE l.id = ? AND i.profile_id = ?`
         )
         .get(logId, profile.id)
-    ).toMatchObject({ amount: "200 mg" });
+    ).toMatchObject({
+      amount: "200 mg",
+      date: doseDate,
+      given_at: "2026-01-01 14:00:00",
+    });
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT occurred_at FROM intake_item_logs WHERE id = ?`
+          )
+          .get(logId) as { occurred_at: string }
+      ).occurred_at
+    ).toContain("10:30");
+    // The same clinically significant rewrite records the same audit row the
+    // medication card's amendment does.
+    expect(
+      db
+        .prepare(
+          `SELECT detail FROM audit_events
+            WHERE action = 'dose-log.amend' AND target = ?
+              AND active_profile_id = ?`
+        )
+        .get(String(itemId), profile.id)
+    ).toMatchObject({ detail: doseDate });
 
     expect(
       (
@@ -495,6 +532,87 @@ describe("episode event ledger actions", () => {
     expect(
       (await deleteEpisodeDoseAction(fd({ episodeId, eventId: logId }))).undoId
     ).toBeTypeOf("number");
+  });
+
+  it("episode amendments obey the shared amend rules: near-duplicate refused, may-course extended on backdate", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Amend Rules", login.id);
+    actAs(login, profile);
+    const episodeId = makeSick(profile.id); // starts two days ago, open
+    const date = today(profile.id);
+    const yesterday = shiftDateStr(date, -1);
+    const firstDay = shiftDateStr(date, -2);
+
+    // A `may` medication WITH a course that begins yesterday — the shape whose
+    // rules updateAdministrationLog silently skipped (#2228 §2).
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Course-bound reliever', 1, 'medication', 'as needed', 'may')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '100 mg', 'Anytime', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+       VALUES (?, ?, NULL)`
+    ).run(itemId, yesterday);
+    const insertLog = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+       VALUES (?, ?, ?, ?, '100 mg', 'taken')`
+    );
+    insertLog.run(doseId, itemId, yesterday, `${yesterday} 08:00:00`);
+    const logId = Number(
+      insertLog.run(doseId, itemId, yesterday, `${yesterday} 12:00:00`)
+        .lastInsertRowid
+    );
+
+    // Stating a time within the proximity window of the sibling's given_at is now
+    // refused from the episode surface — identically to the medication card.
+    expect(
+      await updateEpisodeDoseAction(
+        fd({ episodeId, eventId: logId, date: yesterday, time: "08:01" })
+      )
+    ).toEqual({
+      ok: false,
+      error: "A dose is already recorded at about this time.",
+    });
+
+    // Backdating before the course start now extends the `may` course — the
+    // intended consequence of routing through the one core (#2228 decision 6).
+    expect(
+      await updateEpisodeDoseAction(
+        fd({ episodeId, eventId: logId, date: firstDay, time: "07:00" })
+      )
+    ).toEqual({ ok: true });
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT started_on FROM medication_courses WHERE item_id = ?`
+          )
+          .get(itemId) as { started_on: string }
+      ).started_on
+    ).toBe(firstDay);
+    expect(
+      db
+        .prepare(
+          `SELECT detail FROM audit_events
+            WHERE action = 'dose-log.amend' AND target = ?
+              AND active_profile_id = ?`
+        )
+        .get(String(itemId), profile.id)
+    ).toMatchObject({ detail: firstDay });
   });
 
   it("rejects moving an event outside its episode", async () => {
@@ -599,7 +717,8 @@ describe("episode event ledger actions", () => {
           profileId: subject.id,
           episodeId,
           eventId: logId,
-          date,
+          // A past in-episode day, so the stated time can't read as future.
+          date: shiftDateStr(date, -1),
           time: "10:30",
           amount: "200 mg",
         })

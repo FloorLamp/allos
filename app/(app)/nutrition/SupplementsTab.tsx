@@ -58,7 +58,7 @@ import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
-import { bestKnownInstant, instantDate } from "@/lib/row-instants";
+import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
 import type { DoseHistoryEntry } from "@/components/intake/DoseHistoryPanel";
 import {
@@ -309,7 +309,6 @@ export default async function SupplementsTab({
       // "recorded 7:02am", never as a bare clock claiming an administration time
       // the row does not state.
       const when = bestKnownInstant("intake_item_logs", row);
-      const instant = instantDate(when);
       const clock = formatGivenAtClock(
         tz,
         when.known ? when.at : null,
@@ -323,7 +322,9 @@ export default async function SupplementsTab({
           clock && when.known && when.semantic === "record"
             ? `recorded ${clock}`
             : clock,
-        timeValue: instant ? zonedDateParts(tz, instant).hhmm : "",
+        // The edit form's time seed: the row's STATED instant only (#2228
+        // decision 1) — a record-chain clock never seeds the editor.
+        statedAt: row.occurred_at,
         amount: row.amount,
         product: row.product,
       };
