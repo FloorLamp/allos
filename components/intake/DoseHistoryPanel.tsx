@@ -16,8 +16,10 @@ import {
 } from "@/lib/medication-dose-format";
 
 // One recorded administration as the panel renders it. `time` is the
-// already-formatted profile-local clock string; `timeValue` is the HH:MM the edit
-// form seeds its <input type="time"> with.
+// already-formatted profile-local clock string — when the row states no intake time
+// of its own, the caller marks the record-chain clock as "recorded 7:02am" rather
+// than presenting a filing timestamp as an administration time (#2228 decision 4).
+// `timeValue` is the HH:MM the edit form seeds its <input type="time"> with.
 export interface DoseHistoryEntry {
   id: number;
   doseId: number;

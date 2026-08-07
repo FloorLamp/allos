@@ -75,7 +75,8 @@ export function schoolReturnStatusFor(
     .prepare(
       `SELECT ii.name AS name, ii.rxcui AS rxcui,
               ii.rxcui_ingredients AS rxcui_ingredients,
-              l.given_at AS given_at, l.taken_at AS taken_at
+              l.occurred_at AS occurred_at, l.given_at AS given_at,
+              l.taken_at AS taken_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
@@ -86,6 +87,7 @@ export function schoolReturnStatusFor(
     name: string;
     rxcui: string | null;
     rxcui_ingredients: string | null;
+    occurred_at: string | null;
     given_at: string | null;
     taken_at: string;
   }[];
@@ -104,9 +106,10 @@ export function schoolReturnStatusFor(
       continue;
     }
     // The dose's own instant, asked as a question rather than paired by hand (#2205
-    // phase 3). `bestKnownInstant` returns given_at when the row carries one and
-    // taken_at otherwise — the same value this line always computed, with the
-    // substitution now stated in the result instead of hidden in a `??`.
+    // phase 3). `bestKnownInstant` answers with the stated event instant
+    // (`occurred_at`) when the row has one and with the record chain
+    // (given_at → taken_at) otherwise — and SAYS which, so this note can mark a
+    // record-chain clock instead of quoting it as an administration time.
     const when = bestKnownInstant("intake_item_logs", r);
     const d = instantDate(when);
     if (!d || !when.known) continue;
@@ -115,7 +118,15 @@ export function schoolReturnStatusFor(
     if (lastAntipyreticAtMs == null || ms >= lastAntipyreticAtMs) {
       lastAntipyreticAtMs = ms;
       lastAntipyreticName = r.name;
-      lastAntipyreticClockLabel = formatGivenAtClock(tz, stored) || null;
+      // The school-return note is a document a caregiver hands to a school, so its
+      // claim must match what the row states (#2228 decision 4): "last ibuprofen
+      // recorded 4:02pm" when nobody stated an intake time, a bare clock only when
+      // somebody did. The value stays visible with its provenance either way.
+      const clock = formatGivenAtClock(tz, stored) || null;
+      lastAntipyreticClockLabel =
+        clock != null && when.semantic === "record"
+          ? `recorded ${clock}`
+          : clock;
     }
   }
 

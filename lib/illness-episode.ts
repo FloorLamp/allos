@@ -154,7 +154,8 @@ export function assembleIllnessEpisode(
     .prepare(
       `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name,
               COALESCE(l.product, ii.product) AS product, l.date AS date,
-              l.given_at AS given_at, l.taken_at AS taken_at,
+              l.occurred_at AS occurred_at, l.given_at AS given_at,
+              l.taken_at AS taken_at,
               COALESCE(l.amount, d.amount) AS amount
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
@@ -170,6 +171,7 @@ export function assembleIllnessEpisode(
     name: string;
     product: string | null;
     date: string;
+    occurred_at: string | null;
     given_at: string | null;
     taken_at: string;
     amount: string | null;
@@ -188,16 +190,20 @@ export function assembleIllnessEpisode(
       byMed.set(r.item_id, med);
     }
     // #2205 phase 3: the administration's instant, asked once. `bestKnownInstant`
-    // prefers given_at and falls back to taken_at exactly as the hand-rolled pairing
-    // did, but the result records WHICH it used, so a later reader can tell an
-    // observed intake time from the moment the confirm arrived.
-    const parsed = instantDate(bestKnownInstant("intake_item_logs", r));
+    // answers with the stated event instant (`occurred_at`) when the row has one and
+    // the record chain (given_at → taken_at) otherwise — and SAYS which, so the
+    // timeline can mark a record-chain clock as "recorded" instead of quoting a
+    // filing timestamp as an administration time (#2228 decision 4).
+    const when = bestKnownInstant("intake_item_logs", r);
+    const parsed = instantDate(when);
     const localClock = parsed ? zonedDateParts(tz, parsed).hhmm : null;
     const point: AdministrationPoint = {
       id: r.id,
       date: r.date,
       time: localClock,
       time24: localClock,
+      timeRecorded:
+        localClock != null && when.known && when.semantic === "record",
       amount: r.amount,
       product: r.product,
     };
