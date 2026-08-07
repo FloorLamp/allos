@@ -292,6 +292,54 @@ describe("buildFhirBundle", () => {
     ).toBe(false);
   });
 
+  // THE #2234 REGRESSION. Before the split, the export emitted the stored
+  // scheduled_at VERBATIM — so a timed appointment authored by the app's own
+  // form (the space form, "2030-08-01 14:30") exported with a space the
+  // importer's T-requiring probe missed, and re-import silently dropped the
+  // time. The only round-trip fixture used the T form, the one spelling that
+  // already worked. Now the exporter composes `${date}T${time_of_day}` from the
+  // two stored halves, so a web-authored timed appointment — expressed as the
+  // columns the form writes, date + "14:30" — must survive export →
+  // parseFhirBundle with its time intact; a day-only one stays a bare date and
+  // is kept, not dropped.
+  it("round-trips a web-authored timed appointment with its time intact (#2234)", () => {
+    const result = parseFhirBundle(
+      fhirBundleJson({
+        ...input,
+        appointments: [
+          {
+            date: "2030-08-01",
+            time_of_day: "14:30",
+            status: "scheduled",
+            title: "Dermatology follow-up",
+            location: "Skin Clinic",
+            notes: null,
+            kind: null,
+          },
+          {
+            date: "2030-09-15",
+            time_of_day: null,
+            status: "scheduled",
+            title: "Day-only booking",
+            location: null,
+            notes: null,
+            kind: null,
+          },
+        ],
+      })
+    );
+    const timed = result.appointments?.find(
+      (a) => a.title === "Dermatology follow-up"
+    );
+    // The time survives — the T separator is exactly what the importer requires.
+    expect(timed?.scheduled_at).toBe("2030-08-01T14:30");
+    // The day-only booking is kept at day grain, not dropped as unparseable.
+    const dayOnly = result.appointments?.find(
+      (a) => a.title === "Day-only booking"
+    );
+    expect(dayOnly?.scheduled_at).toBe("2030-09-15");
+  });
+
   it("emits an empty (but valid) Bundle for an empty passport", () => {
     const bundle = buildFhirBundle({
       conditions: [],
