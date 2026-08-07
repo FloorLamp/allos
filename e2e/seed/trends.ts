@@ -6,9 +6,9 @@
 import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
-import { shiftDateStr } from "../../lib/date";
+import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
-import { setUserBirthdate, setUserSex } from "../../lib/settings";
+import { getTimezone, setUserBirthdate, setUserSex } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import {
   E2E_LOGIN_TRENDS_CURATE,
@@ -157,18 +157,41 @@ export function seedBodyMobile(): void {
     ).run(tbId, tbToday, `${sleepPrev}T23:10:00Z`, `${tbToday}T06:35:00Z`);
 
     // One day of heart-rate minutes → the "Heart rate (daily avg)" chart renders.
+    //
+    // Instants via zonedWallTimeToUtc through the PROFILE timezone — never naive
+    // `${day}T08:${mm}` strings. hr_minutes.ts is a canonical UTC instant with
+    // read-time day attribution (migration 164), and the seed pins a ROTATING
+    // per-run instance zone (e2e/pinned-timezone.ts): a bare minute string sorts
+    // lexically BEFORE the local-day window's `THH:00:00` lower bound exactly
+    // when the pinned offset makes the window start on the rows' own hour, which
+    // made this fixture's historical day read "No data" for every run starting
+    // 21:00–23:59 UTC (#1417's class — found 2026-08-07 when it redded an
+    // unrelated PR's shard 4 and reproduced 3/3 on clean main in the band).
     const insHrTb = db.prepare(
       `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (?, ?, ?, 6, 'health-connect')`
     );
+    const tbTz = getTimezone(tbId);
     for (let m = 0; m < 20; m++) {
       const mm = String(m).padStart(2, "0");
-      insHrTb.run(tbId, `${tbToday}T08:${mm}`, 62 + (m % 5));
+      insHrTb.run(
+        tbId,
+        zonedWallTimeToUtc(tbTz, tbToday, `08:${mm}`)!.toISOString(),
+        62 + (m % 5)
+      );
     }
     // Deep-past HR makes an exact historical query observable. The selected day
     // must show 88 bpm without aggregating or returning the newer buckets above.
     for (let m = 0; m < 5; m++) {
       const mm = String(m).padStart(2, "0");
-      insHrTb.run(tbId, `${TRENDS_BODY_OLD_DAY}T08:${mm}`, 88);
+      insHrTb.run(
+        tbId,
+        zonedWallTimeToUtc(
+          tbTz,
+          TRENDS_BODY_OLD_DAY,
+          `08:${mm}`
+        )!.toISOString(),
+        88
+      );
     }
 
     seedMemberLogin(E2E_LOGIN_TRENDS_BODY, tbId, "read");
