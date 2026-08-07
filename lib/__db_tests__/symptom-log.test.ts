@@ -101,10 +101,12 @@ describe("derived episode association (#799)", () => {
     }));
 
     const inside = episodeForDate("2026-06-04", illness, events);
+    // The derived end is the inclusive LAST active day (#2232): the stop event fell
+    // on 06-08, so the episode ran through 06-07.
     expect(inside).toEqual({
       situation: "Illness",
       start: "2026-06-01",
-      end: "2026-06-08",
+      end: "2026-06-07",
     });
     // The stop day and a day outside the window derive no episode.
     expect(episodeForDate("2026-06-08", illness, events)).toBeNull();

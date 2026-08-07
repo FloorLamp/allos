@@ -115,7 +115,7 @@ describe("record ↔ visit actions", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date)
            VALUES (?, 'cold', '2026-03-01')`
         )
         .run(profile.id).lastInsertRowid
@@ -134,8 +134,8 @@ describe("episode ↔ visit actions", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, 'flu', '2026-03-01', '2026-03-08')`
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'flu', '2026-03-01', '2026-03-07')`
         )
         .run(profile.id).lastInsertRowid
     );
@@ -160,8 +160,8 @@ describe("episode ↔ visit actions", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, 'flu', '2026-03-01', '2026-03-10')`
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'flu', '2026-03-01', '2026-03-09')`
         )
         .run(profile.id).lastInsertRowid
     );

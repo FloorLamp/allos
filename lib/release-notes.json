@@ -58,6 +58,41 @@
           "body": "A malformed clock value used to resolve to midnight on the stated date rather than failing, which could put a dose, a corrected meal time, or a fever reading at the wrong hour. It is now refused: a workout whose start time can’t be read no longer shows as in progress with an invented duration, and an unreadable fever time is left out of the return-to-school countdown rather than guessed at noon.",
           "kind": "fix",
           "issues": [2245]
+        },
+        {
+          "pr": 2260,
+          "title": "Reminders land on the minute",
+          "body": "The notification scheduler now ticks every 5 minutes by default (was 15), and time pickers in Settings → Notifications step through the minutes your server can actually hit. A time off that grid still saves — Settings names it in a warning instead of refusing it. Operators: TICK_SECONDS in docker-notify.sh is the knob (divisors of 60 offered); the finer default costs about 3× the tick's CPU (~35s → ~105s per day).",
+          "kind": "feature",
+          "issues": [2216]
+        },
+        {
+          "pr": 2256,
+          "title": "Dashboard, capture, and Trends polish",
+          "body": "Practice trends move onto their Wellness cards as a collapsed 26-week view (Trends Overview returns to digest → starred grid → body census); phones stay tiles-only on Overview at every range with the full chart one tap away; empty starred tiles keep their saved slot and stay reorderable, with a compact add-tile disclosure in the grid; the daily check-in card is content-led (rows appear only when they have something to say); and photo capture recovers from blocked, missing, or busy cameras with platform-matched guidance.",
+          "kind": "feature",
+          "issues": [2151, 2152, 2153, 2181, 2182]
+        },
+        {
+          "pr": 2259,
+          "title": "Appointments keep their time through export and re-import",
+          "body": "Appointments now store their day and optional clinic-local time as separate fields, fixing a silent bug where exporting and re-importing a timed appointment dropped the time. Day-only appointments remain first-class and still export as all-day calendar events.",
+          "kind": "fix",
+          "issues": [2234]
+        },
+        {
+          "pr": 2257,
+          "title": "Food log and dose history say which time they show",
+          "body": "The food correction sheet now opens with \"Ate at 19:40.\" when an eating time was recorded — or \"No eating time recorded — logged at 23:40.\" when it wasn't — and dose history (medications, supplements, illness timeline, school-return note) marks a filing-time clock as \"recorded 7:02am\" instead of presenting it as when the dose was taken.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2261,
+          "title": "One shared control for \"when did this happen?\"",
+          "body": "Stating an earlier PRN dose on the dashboard now uses an absolute time with a one-tap Now — the drifting \"30 min ago / 1 hr ago\" chips are gone. The same control rolls out to food, dose, and measurement corrections next.",
+          "kind": "feature",
+          "issues": [2236]
         }
       ]
     },

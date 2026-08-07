@@ -78,18 +78,18 @@ describe("episodeComparisonFor (#856 item 10)", () => {
     const p = newProfile("compare");
     // Two prior CLOSED episodes: 4-day and 6-day.
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-       VALUES (?, 'Illness', '2026-01-01', '2026-01-05')`
-    ).run(p); // 4 days (end exclusive → last active 01-04 → 4 days)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'Illness', '2026-01-01', '2026-01-04')`
+    ).run(p); // 4 days (inclusive last active day 01-04)
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-       VALUES (?, 'Illness', '2026-03-01', '2026-03-07')`
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'Illness', '2026-03-01', '2026-03-06')`
     ).run(p); // 6 days
     // An OPEN episode started 3 days ago.
     const openId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
            VALUES (?, 'Illness', ?, NULL)`
         )
         .run(p, shiftDateStr(today(p), -2)).lastInsertRowid
@@ -108,7 +108,7 @@ describe("episodeComparisonFor (#856 item 10)", () => {
     const openId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
            VALUES (?, 'Illness', ?, NULL)`
         )
         .run(p, shiftDateStr(today(p), -1)).lastInsertRowid

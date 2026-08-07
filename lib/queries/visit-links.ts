@@ -1,5 +1,4 @@
 import { db, today, writeTx } from "../db";
-import { shiftDateStr } from "../date";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   type LinkableEncounter,
@@ -835,7 +834,7 @@ export function linkedEncounterIdsForEpisode(
 export interface EncounterEpisodeRef {
   id: number;
   situation: string;
-  started_at: string | null;
+  start_date: string | null;
 }
 
 export function episodeForLinkedEncounter(
@@ -845,7 +844,7 @@ export function episodeForLinkedEncounter(
   return (
     (db
       .prepare(
-        `SELECT ie.id, ie.situation, ie.started_at
+        `SELECT ie.id, ie.situation, ie.start_date
            FROM episode_encounters le
            JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
           WHERE le.encounter_id = ? AND le.profile_id = ?
@@ -862,8 +861,8 @@ export function episodeForLinkedEncounter(
 export interface LinkedEpisodeRef {
   id: number;
   situation: string;
-  started_at: string | null;
-  ended_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 export function episodesForEncounter(
@@ -872,11 +871,11 @@ export function episodesForEncounter(
 ): LinkedEpisodeRef[] {
   return db
     .prepare(
-      `SELECT ie.id, ie.situation, ie.started_at, ie.ended_at
+      `SELECT ie.id, ie.situation, ie.start_date, ie.end_date
          FROM episode_encounters le
          JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
         WHERE le.encounter_id = ? AND le.profile_id = ?
-        ORDER BY ie.started_at, ie.id`
+        ORDER BY ie.start_date, ie.id`
     )
     .all(encounterId, profileId) as LinkedEpisodeRef[];
 }
@@ -885,9 +884,9 @@ export function episodesForEncounter(
 // contain this visit's date, excluding those already linked and any declined pair.
 // The inverse of suggestionForEpisode — the SAME containment signal and the SAME
 // decline durability (the order-independent signature means a decline from either end
-// silences both). An episode's active range is [started_at, ended_at) — ended_at is
-// the EXCLUSIVE stop day — so its inclusive last active day is ended_at − 1 (today for
-// an open episode), matching assembleIllnessEpisode's `to`.
+// silences both). An episode's active range is the inclusive [start_date, end_date]
+// (#2232), so its last active day is end_date itself (today for an open episode),
+// matching assembleIllnessEpisode's `to`.
 export function episodeSuggestionForEncounter(
   profileId: number,
   encounterId: number
@@ -908,22 +907,22 @@ export function episodeSuggestionForEncounter(
   const episodes = (
     db
       .prepare(
-        `SELECT id, situation, started_at, ended_at
+        `SELECT id, situation, start_date, end_date
            FROM illness_episodes WHERE profile_id = ?`
       )
       .all(profileId) as {
       id: number;
       situation: string;
-      started_at: string | null;
-      ended_at: string | null;
+      start_date: string | null;
+      end_date: string | null;
     }[]
   )
     .filter((e) => !linked.has(e.id))
     .map((e) => ({
       id: e.id,
       situation: e.situation,
-      start: e.started_at,
-      lastActiveDay: e.ended_at ? shiftDateStr(e.ended_at, -1) : asOf,
+      start: e.start_date,
+      lastActiveDay: e.end_date ?? asOf,
     }));
   const declined = getDeclinedSignatures(profileId);
   return suggestEpisodesForEncounter(enc, episodes, declined);

@@ -87,12 +87,14 @@ describe("situation-aware coaching gather (#837)", () => {
 
   it("episode closed today: ease-back rec on the card, slot still quiet", () => {
     const { p, td } = trainedProfile("Illness Closed");
-    // Closed episode whose exclusive end (first well day) is today → ease-back day 0.
-    createEpisodeRow(p, "Illness", shiftDateStr(td, -4), td);
+    // Closed episode whose inclusive last active day (#2232) was yesterday — today is
+    // the first well day, the first day of the ease-back ramp. (An end_date of today
+    // would still COVER today and read as held, not ease-back.)
+    createEpisodeRow(p, "Illness", shiftDateStr(td, -4), shiftDateStr(td, -1));
 
     const input = gatherCoachingInput(p, "kg", "km");
     expect(input.illness?.openEpisode).toBe(false);
-    expect(input.illness?.lastClosed?.endDate).toBe(td);
+    expect(input.illness?.lastClosed?.endDate).toBe(shiftDateStr(td, -1));
 
     const recs = recommendCoaching(input);
     expect(recs.some((r) => r.id === "illness-ease-back")).toBe(true);
@@ -103,7 +105,7 @@ describe("situation-aware coaching gather (#837)", () => {
 
   it("ramp elapsed: normal coaching resumes on both surfaces", () => {
     const { p, td } = trainedProfile("Illness Recovered");
-    // Closed 4 days ago (well beyond the 3-day ease-back ramp).
+    // Last active 4 days ago (beyond the 3-day ease-back ramp).
     createEpisodeRow(p, "Illness", shiftDateStr(td, -8), shiftDateStr(td, -4));
 
     const input = gatherCoachingInput(p, "kg", "km");

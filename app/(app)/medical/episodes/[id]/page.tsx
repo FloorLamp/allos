@@ -127,7 +127,7 @@ export default async function EpisodePage(props: {
   const assembled = assembleIllnessEpisode(profileId, episode);
   const promoted = assembled.conditions.some((c) => c.fromEpisode);
   const canReopen =
-    episodeReopenEligibility(row.ended_at, assembled.asOf).kind === "eligible";
+    episodeReopenEligibility(row.end_date, assembled.asOf).kind === "eligible";
   // Item 1: the SUGGEST-ONLY stale nudge, shown only when THIS episode is the current
   // open one AND it has gone quiet. Item 2: the school-return countdown, when a fever
   // has been logged in this (open) episode. Both format over the ONE gathers (#221).
@@ -336,8 +336,8 @@ export default async function EpisodePage(props: {
             canWrite={canWrite}
             profileId={target}
             editor={{
-              startedAt: row.started_at,
-              endedAt: row.ended_at,
+              startDate: row.start_date,
+              endDate: row.end_date,
               note: row.note,
               outcome: row.outcome,
             }}
