@@ -17,8 +17,9 @@ import { refillMarkerKey } from "@/lib/refill-nudge";
 import { updateTemperatureCore } from "@/lib/temperature-log";
 import {
   deleteAdministrationLog,
-  updateAdministrationLog,
+  updateHistoricalDose,
 } from "@/lib/queries";
+import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   resolveTemperatureUnit,
@@ -184,16 +185,28 @@ export async function updateEpisodeSymptomAction(
   return { ok: true };
 }
 
+// The episode timeline's dose amendment routes through the ONE amend core (#2228
+// decision 6): updateHistoricalDose enforces the course window (extending a `may`
+// item's course on a backdate), scheduled/PRN uniqueness, and the proximity-duplicate
+// guard — the same rules the medication card's edit obeys — where its predecessor
+// updateAdministrationLog enforced none of them. The surface predicates stay HERE:
+// the episode's own `obligation = 'may'` scope and the in-episode date window. An
+// empty `time` states "no intake time" (the shared WhenControl's "Not stated") and
+// leaves the row's day where the form put it; the core writes `occurred_at`, never
+// `given_at`. The amendment is the same clinically significant rewrite it is from
+// the medication card, so it records the same `dose-log.amend` audit row.
 export async function updateEpisodeDoseAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
+  let session: CurrentSession;
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
+    session = await requireProfileWriteAccess(target);
     profileId = target;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    session = await requireWriteAccess();
+    profileId = session.profile.id;
   }
   const episodeId = parseEpisodeId(formData);
   const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
@@ -202,29 +215,50 @@ export async function updateEpisodeDoseAction(
   const time = String(formData.get("time") ?? "");
   if (!row || !id)
     return { ok: false, error: "That dose is no longer available." };
-  if (!eventDateInEpisode(date, row) || !/^\d{2}:\d{2}$/.test(time))
+  if (
+    !eventDateInEpisode(date, row) ||
+    (time !== "" && !/^\d{2}:\d{2}$/.test(time))
+  )
     return { ok: false, error: "Enter a date and time within this episode." };
   const existing = db
     .prepare(
-      `SELECT l.date FROM intake_item_logs l
+      `SELECT l.date, l.item_id FROM intake_item_logs l
          JOIN intake_items i ON i.id = l.item_id
         WHERE l.id = ? AND i.profile_id = ? AND i.obligation = 'may'
           AND l.status = 'taken'`
     )
-    .get(id, profileId) as { date: string } | undefined;
+    .get(id, profileId) as { date: string; item_id: number } | undefined;
   if (!existing || !eventDateInEpisode(existing.date, row))
     return { ok: false, error: "That dose is no longer available." };
   const amount =
     String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 120) || null;
-  const givenAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
-  if (!givenAt)
-    return { ok: false, error: "Enter a date and time within this episode." };
-  const updated = updateAdministrationLog(profileId, id, date, givenAt, amount);
-  if (!updated)
-    return { ok: false, error: "That dose is no longer available." };
+  let occurredAt: Date | null = null;
+  if (time !== "") {
+    occurredAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
+    if (!occurredAt)
+      return { ok: false, error: "Enter a date and time within this episode." };
+  }
+  const outcome = updateHistoricalDose(
+    profileId,
+    existing.item_id,
+    id,
+    date,
+    occurredAt,
+    amount
+  );
+  if (outcome.kind !== "logged")
+    return { ok: false, error: historicalDoseErrorMessage(outcome) };
+  recordAudit({
+    loginId: session.login.id,
+    profileId,
+    action: AUDIT_ACTIONS.doseLogAmend,
+    target: String(existing.item_id),
+    detail: outcome.date,
+  });
   revalidateEpisodeEvents();
+  revalidatePath(`/medications/${existing.item_id}`);
   return { ok: true };
 }
 
