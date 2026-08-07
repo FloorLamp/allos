@@ -384,7 +384,7 @@ export function readingClockWithRelativeAge(
     date,
     `${String(hour).padStart(2, "0")}:${match[2]}`
   );
-  if (Number.isNaN(instant.getTime())) return clock;
+  if (!instant) return clock;
   const age = formatCompactRelativeTime(
     instant.toISOString(),
     context.now ?? new Date()

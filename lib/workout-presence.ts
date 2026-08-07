@@ -144,13 +144,14 @@ function lastTouchMs(row: PresenceActivityRow): number | null {
 // an end-less, duration-less import has no reliable end, so it is NOT treated as
 // finished (the scheduled slot remains its fallback) rather than guessed.
 function endInstantMs(row: PresenceActivityRow, tz: string): number | null {
-  if (row.end_time)
-    return zonedWallTimeToUtc(tz, row.date, row.end_time).getTime();
-  if (row.start_time && row.duration_min != null && row.duration_min > 0)
-    return (
-      zonedWallTimeToUtc(tz, row.date, row.start_time).getTime() +
-      row.duration_min * 60_000
-    );
+  if (row.end_time) {
+    const end = zonedWallTimeToUtc(tz, row.date, row.end_time);
+    if (end) return end.getTime();
+  }
+  if (row.start_time && row.duration_min != null && row.duration_min > 0) {
+    const start = zonedWallTimeToUtc(tz, row.date, row.start_time);
+    if (start) return start.getTime() + row.duration_min * 60_000;
+  }
   return null;
 }
 
@@ -188,18 +189,23 @@ export function computeWorkoutPresence(
     if (!active || touch > active.touch)
       active = { row, touch, quietMin: Math.max(0, quietMin) };
   }
-  if (active) {
-    const startMs = zonedWallTimeToUtc(
-      tz,
-      active.row.date,
-      active.row.start_time!
-    ).getTime();
+  // `start_time` is non-null here: isCompletedSessionRow already routed a
+  // start-less row away. A start that does not RESOLVE (an unreadable clock) is a
+  // different matter — the dock's "for 47 min" would be invented from it — so the
+  // row falls through to the classifiers below rather than reading as live.
+  const activeStart = active
+    ? zonedWallTimeToUtc(tz, active.row.date, active.row.start_time!)
+    : null;
+  if (active && activeStart) {
     return {
       state: "active",
       activityId: active.row.id,
       activityType: active.row.type,
       title: active.row.title,
-      sinceMin: Math.max(0, Math.round((nowMs - startMs) / 60_000)),
+      sinceMin: Math.max(
+        0,
+        Math.round((nowMs - activeStart.getTime()) / 60_000)
+      ),
       stale: active.quietMin >= STALE_MIN,
     };
   }

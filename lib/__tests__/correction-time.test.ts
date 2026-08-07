@@ -330,7 +330,7 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
       const now = new Date(`2026-08-05T${String(h).padStart(2, "0")}:30:00Z`);
       for (const hhmm of pickerHourOptions(now, TZ)) {
         expect(
-          statedHourInstant(hhmm, now, TZ).getTime(),
+          statedHourInstant(hhmm, now, TZ)!.getTime(),
           `${hhmm} at ${now.toISOString()}`
         ).toBeLessThanOrEqual(now.getTime());
       }
@@ -341,13 +341,13 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
     // 00:30 local on the 6th; "20:00" is later than the current hour, so it means the
     // 5th at 20:00 — which is exactly how someone answers 'when did you eat' after
     // midnight, and what re-dates the serving.
-    const inst = statedHourInstant("20:00", NOW, TZ);
+    const inst = statedHourInstant("20:00", NOW, TZ)!;
     expect(inst.toISOString()).toBe("2026-08-05T18:00:00.000Z");
   });
 
   it("resolves an hour earlier than now to TODAY", () => {
     const now = new Date("2026-08-05T18:30:00Z"); // 20:30 local
-    expect(statedHourInstant("16:00", now, TZ).toISOString()).toBe(
+    expect(statedHourInstant("16:00", now, TZ)!.toISOString()).toBe(
       "2026-08-05T14:00:00.000Z"
     );
   });
@@ -357,8 +357,8 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
     // time, so hesitating two minutes lands two minutes off; an absolute hour cannot.
     const rendered = new Date("2026-08-05T18:30:00Z");
     const tapped = new Date("2026-08-05T18:32:00Z");
-    expect(statedHourInstant("16:00", rendered, TZ).toISOString()).toBe(
-      statedHourInstant("16:00", tapped, TZ).toISOString()
+    expect(statedHourInstant("16:00", rendered, TZ)!.toISOString()).toBe(
+      statedHourInstant("16:00", tapped, TZ)!.toISOString()
     );
   });
 

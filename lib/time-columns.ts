@@ -132,16 +132,16 @@ export const TIME_COLUMNS = {
     {
       column: "start_time",
       semantic: "window-start",
-      grain: "instant",
-      convention: "mixed",
-      note: "Vendor ISO-with-milliseconds from lib/integrations/normalize.ts, a profile-local wall-clock instant from a finished live workout, and NULL for a hand-entered activity that stated only a day. Phase 1 left it: the stored string is part of the import dedupe.",
+      grain: "time-of-day",
+      convention: "n/a",
+      note: "A profile-local HH:MM, optional (a hand-entered activity may state only a day). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone. Every writer agrees — `NormActivity.start_time` is declared HH:MM for all integrations, the editor's field is a `type=\"time\"` input, and the AI extractor's ISO shape is folded to HH:MM at the persist boundary (`activityClockHHMM`, #2245).",
     },
     {
       column: "end_time",
       semantic: "window-end",
-      grain: "instant",
-      convention: "mixed",
-      note: "The same three shapes as start_time, and NULL for a hand-entered activity that stated only a day.",
+      grain: "time-of-day",
+      convention: "n/a",
+      note: "The same profile-local HH:MM as start_time, and NULL both for a hand-entered activity that stated only a day and while a live session is unfinished.",
     },
     {
       column: "created_at",

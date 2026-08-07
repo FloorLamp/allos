@@ -192,6 +192,36 @@ export function legacyActivityName(
   return stripped || title;
 }
 
+// The ONE reading of a stated activity clock (#2245). `activities.start_time` /
+// `end_time` are declared `time-of-day` — a profile-local HH:MM — and every writer
+// but one already produces exactly that. The exception is the AI workout extractor,
+// whose contract deliberately accepts either "HH:MM" or an ISO timestamp from a
+// source document, because a training log legitimately contains either; the COLUMN
+// takes one shape, so the persist boundary folds the other into it here.
+//
+// The digits are taken VERBATIM and never shifted by an offset the model emitted. A
+// model transcribing "14:30" off a screenshot into "…T14:30:00Z" invented that `Z`;
+// treating it as evidence about a zone would move a time nobody stated. Same rule as
+// #2234 / #2243.
+//
+// The display path reads through this too, so "what clock does this row state" is one
+// computation rather than a parse per surface.
+const ACTIVITY_CLOCK = /^(\d{1,2}):(\d{2})/;
+const ISO_CLOCK = /^\d{4}-\d{2}-\d{2}[T ](\d{1,2}):(\d{2})/;
+
+export function activityClockHHMM(
+  raw: string | null | undefined
+): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  const m = ACTIVITY_CLOCK.exec(value) ?? ISO_CLOCK.exec(value);
+  if (!m) return null;
+  const [h, min] = [Number(m[1]), Number(m[2])];
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 /** Morning / Afternoon / Evening / Night from a "HH:MM" string, or null. */
 export function timeOfDay(hhmm: string): string | null {
   if (!hhmm) return null;

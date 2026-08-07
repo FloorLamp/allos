@@ -175,7 +175,7 @@ export function seedJournalCard(): void {
         // hr_minutes.ts is a UTC instant since migration 164 (#2205); the fixture
         // converts its local wall clock the same way the ingest does.
         utcMinute(
-          zonedWallTimeToUtc(getTimezone(PROFILE_ID), ride.date, `${hh}:${mm}`)
+          zonedWallTimeToUtc(getTimezone(PROFILE_ID), ride.date, `${hh}:${mm}`)!
         ),
         135 + Math.floor(minute / 8)
       );
@@ -281,13 +281,13 @@ export function seedTrainingZones(): void {
   for (let m = 0; m < 60; m++) {
     const mm = String(m).padStart(2, "0");
     insHr.run(
-      utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, `08:${mm}`)),
+      utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, `08:${mm}`)!),
       m < 50 ? 135 : 160
     );
   }
   // A resting bucket at noon, OUTSIDE any activity window — proves the aggregation
   // scopes to workout windows (this all-day wear minute must not count as training).
-  insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, "12:00")), 62);
+  insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, "12:00")!), 62);
 
   console.log(
     `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`

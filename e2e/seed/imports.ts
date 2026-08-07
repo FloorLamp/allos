@@ -538,11 +538,11 @@ export function seedRecordsBrowser(): void {
   // it were UTC reads a day EARLY under the #1103 pin (Etc/GMT+10 → local 14:00 the
   // previous day) and the dose stopped being excluded from last night at all. Same
   // rule as every other profile-local fixture instant: build it with
-  // zonedWallTimeToUtc(getTimezone(profile), day, "HH:MM").
+  // zonedWallTimeToUtc(getTimezone(profile), day, "HH:MM")!.
   const DOSE_ORDER_MORNING = "Zeaxanthin Morning (e2e)";
   const DOSE_ORDER_BEDTIME = "Ashwagandha Bedtime (e2e)";
   const doseOrderCreatedAt = utcSqlString(
-    zonedWallTimeToUtc(getTimezone(PROFILE_ID), today(PROFILE_ID), "00:00")
+    zonedWallTimeToUtc(getTimezone(PROFILE_ID), today(PROFILE_ID), "00:00")!
   );
   for (const [name, timeOfDay, amount] of [
     [DOSE_ORDER_MORNING, "morning", "1 cap"],

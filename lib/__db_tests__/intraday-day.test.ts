@@ -54,7 +54,7 @@ function seedHr(
 // metric_samples windows are ABSOLUTE instants — built from local wall times so
 // the fixture reads the way a person would describe it.
 function instant(day: string, hhmm: string): string {
-  return zonedWallTimeToUtc(TZ, day, hhmm).toISOString();
+  return zonedWallTimeToUtc(TZ, day, hhmm)!.toISOString();
 }
 
 function seedSample(

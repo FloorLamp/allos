@@ -104,8 +104,8 @@ export function seedRestCard(): void {
     ).run(
       rcId,
       rcToday,
-      zonedWallTimeToUtc(rcTz, rcPrevNight, "23:00").toISOString(),
-      zonedWallTimeToUtc(rcTz, rcToday, "04:00").toISOString()
+      zonedWallTimeToUtc(rcTz, rcPrevNight, "23:00")!.toISOString(),
+      zonedWallTimeToUtc(rcTz, rcToday, "04:00")!.toISOString()
     );
 
     // Signal 2 — resting HR elevated today (62) over a ~54 baseline (prior days) →

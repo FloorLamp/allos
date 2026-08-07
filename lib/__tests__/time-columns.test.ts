@@ -157,6 +157,38 @@ describe("the declared index is internally consistent", () => {
     expect(bad, bad.join(", ")).toEqual([]);
   });
 
+  it("freezes the mixed ledger so it can only shrink", () => {
+    // THE #2245 RATCHET. `mixed` states a PROBLEM — this column holds more than one
+    // shape — and the first real defect in this registry was a column declared
+    // `grain: "instant"` / `convention: "mixed"` on the strength of a note copied
+    // from a same-named column in another table. The note was prose and prose does
+    // not fail CI; a FIELD VALUE frozen in an explicit list does. `unverified`
+    // already worked this way and `mixed` did not, which is why one of them caught
+    // nothing.
+    //
+    // Adding a name here is the point: it forces the claim "this column really does
+    // hold two shapes" to be made deliberately, next to every other column making
+    // it, rather than typed once into a field nobody reads back. Removing one — as
+    // #2245 removed activities.start_time and end_time, which held a profile-local
+    // HH:MM and nothing else — is the ratchet turning.
+    const mixed = (kind: "grain" | "convention") =>
+      entries()
+        .filter(({ col }) => col[kind] === "mixed")
+        .map(({ table, col }) => `${table}.${col.column}`)
+        .sort();
+
+    expect(mixed("grain")).toEqual(["appointments.scheduled_at"]);
+    expect(mixed("convention")).toEqual([
+      "integration_backfill_jobs.finished_at",
+      "integration_backfill_jobs.retry_after_at",
+      "integration_backfill_jobs.started_at",
+      "integration_connections.last_sync_at",
+      "integration_connections.refresh_claimed_at",
+      "metric_samples.end_time",
+      "metric_samples.start_time",
+    ]);
+  });
+
   it("freezes the unverified ledger so it can only shrink", () => {
     // Every entry here is a column whose stored serialization is settled by neither a
     // schema DEFAULT nor a writer that was read. That is the phase-2 worklist. A new

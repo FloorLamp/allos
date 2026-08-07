@@ -174,6 +174,14 @@ export function localDaySpan(
     nextDay.toISOString().slice(0, 10),
     "00:00"
   );
+  // Both edges are local midnight on a real calendar day, so the refusal arm is
+  // unreachable for a well-formed `from`/`to`. It is stated rather than asserted
+  // because the alternative — an Invalid Date reaching `instant()` — would produce a
+  // range that silently matches nothing.
+  if (!start || !end)
+    throw new Error(
+      `localDaySpan: unresolvable local day range ${from}..${to}`
+    );
   return { startUtc: instant(start.getTime()), endUtc: instant(end.getTime()) };
 }
 

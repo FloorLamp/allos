@@ -304,7 +304,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     // Local midnight of the log's own day: inside the day in the profile timezone and
     // (bar the first instant of the day) hours before the replay, so a stored given_at
     // matching it could not have come from the server's own clock.
-    const tapped = zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00");
+    const tapped = zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!;
 
     const { body } = await replay([
       doseIntent(doseId, profile.id, date, tapped.toISOString()),
@@ -808,7 +808,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     // actually holds, so the round-trip assertion below is an identity and not a
     // comparison between two serializations.
     const eatenAt = utcInstant(
-      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")
+      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!
     );
 
     const intent = servingIntent(
@@ -861,7 +861,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       tz,
       shiftDateStr(date, -1),
       "12:00"
-    ).toISOString();
+    )!.toISOString();
     for (const bad of [future, wrongDay, "not-an-instant"]) {
       const res = await replay([
         servingIntent(

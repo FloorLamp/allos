@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activityClockHHMM,
   compositeRollup,
   inferFreeTextType,
   legacyActivityName,
@@ -159,6 +160,39 @@ describe("requiresDistance", () => {
   it("is false for activities without a meaningful distance", () => {
     expect(requiresDistance("Bench Press")).toBe(false);
     expect(requiresDistance("Yoga")).toBe(false);
+  });
+});
+
+describe("activityClockHHMM — the one reading of a stated activity clock", () => {
+  it("passes an HH:MM through, padding an unpadded hour", () => {
+    expect(activityClockHHMM("14:30")).toBe("14:30");
+    expect(activityClockHHMM("9:05")).toBe("09:05");
+    expect(activityClockHHMM(" 07:45 ")).toBe("07:45");
+    // Seconds are surplus precision on a column that stores minutes.
+    expect(activityClockHHMM("14:30:59")).toBe("14:30");
+  });
+
+  it("takes an ISO timestamp's digits VERBATIM, never shifted by its offset", () => {
+    // #2245 / #2234: a model transcribing "14:30" off a screenshot into
+    // "…T14:30:00Z" INVENTED that `Z`. Treating it as evidence about a zone would
+    // move a time nobody stated, so both of these are 14:30 and neither is 19:30.
+    expect(activityClockHHMM("2026-08-07T14:30:00Z")).toBe("14:30");
+    expect(activityClockHHMM("2026-08-07T14:30:00-05:00")).toBe("14:30");
+    expect(activityClockHHMM("2026-08-07T14:30")).toBe("14:30");
+    expect(activityClockHHMM("2026-08-07 14:30:00")).toBe("14:30");
+  });
+
+  it("lands NULL on anything that is not a clock", () => {
+    expect(activityClockHHMM(null)).toBeNull();
+    expect(activityClockHHMM(undefined)).toBeNull();
+    expect(activityClockHHMM("")).toBeNull();
+    expect(activityClockHHMM("   ")).toBeNull();
+    expect(activityClockHHMM("1430")).toBeNull();
+    expect(activityClockHHMM("morning")).toBeNull();
+    expect(activityClockHHMM("2026-08-07")).toBeNull();
+    // Out of range is garbage, not a clock to be rolled over.
+    expect(activityClockHHMM("25:00")).toBeNull();
+    expect(activityClockHHMM("14:75")).toBeNull();
   });
 });
 
