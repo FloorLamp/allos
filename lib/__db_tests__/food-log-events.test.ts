@@ -208,10 +208,17 @@ describe("getFoodMealDays event times (#2227 decision 7)", () => {
     // never the tap time wearing the eating time's name.
     logFoodServingCore(profileId, "berries", anchor, utcInstant(tap));
     // A serving with a stated eating time carries BOTH facts.
-    logFoodServingCore(profileId, "fatty_fish", anchor, utcInstant(tap), undefined, {
-      eatenAt: utcInstant(eaten),
-      source: "stated",
-    });
+    logFoodServingCore(
+      profileId,
+      "fatty_fish",
+      anchor,
+      utcInstant(tap),
+      undefined,
+      {
+        eatenAt: utcInstant(eaten),
+        source: "stated",
+      }
+    );
 
     const [day] = getFoodMealDays(profileId, [anchor]);
     const bySlug = new Map(day.events.map((e) => [e.groupKey, e]));

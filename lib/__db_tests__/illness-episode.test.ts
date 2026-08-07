@@ -181,9 +181,9 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     // #2228 decision 4: every clock here came from the record chain (given_at;
     // occurred_at is unwritten), so each point is marked — the timeline renders
     // "recorded 15:30", never a filing timestamp claiming an administration time.
-    expect(
-      a.medications[0].administrations.map((x) => x.timeRecorded)
-    ).toEqual([true, true, true]);
+    expect(a.medications[0].administrations.map((x) => x.timeRecorded)).toEqual(
+      [true, true, true]
+    );
 
     // Notes carry the symptom note.
     expect(a.notes).toContainEqual({
