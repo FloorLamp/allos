@@ -52,16 +52,16 @@ function newEncounter(
 function newEpisode(
   profileId: number,
   situation: string,
-  startedAt: string,
-  endedAt: string | null
+  startDate: string,
+  endDate: string | null
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, ?, ?, ?)`
       )
-      .run(profileId, situation, startedAt, endedAt).lastInsertRowid
+      .run(profileId, situation, startDate, endDate).lastInsertRowid
   );
 }
 
@@ -75,8 +75,8 @@ describe("encounter-detail gathers (#1350)", () => {
     // range contains the subject visit, and a booked appointment.
     newEncounter(A, "2026-03-02", patel, "AMB");
     const subject = newEncounter(A, "2026-06-18", patel, "AMB");
-    // Episode active 2026-06-15 .. 2026-06-22 (ended_at is the EXCLUSIVE stop day).
-    const ep = newEpisode(A, "sinus infection", "2026-06-15", "2026-06-23");
+    // Episode active 2026-06-15 .. 2026-06-22 (end_date is the inclusive last day).
+    const ep = newEpisode(A, "sinus infection", "2026-06-15", "2026-06-22");
     db.prepare(
       `INSERT INTO appointments (profile_id, date, time_of_day, provider_id, status, encounter_id, title)
        VALUES (?, '2026-06-10', '09:00', ?, 'completed', ?, 'Follow-up')`

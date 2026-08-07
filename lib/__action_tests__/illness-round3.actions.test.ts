@@ -32,7 +32,7 @@ function makeSick(profileId: number, startDaysAgo = 8): number {
     `UPDATE situations SET active = 1 WHERE profile_id = ? AND name = 'Illness'`
   ).run(profileId);
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profileId, shiftDateStr(today(profileId), -startDaysAgo));
   return getOpenEpisodeRow(profileId, "Illness")!.id;
@@ -74,7 +74,8 @@ describe("endStaleEpisodeAction — backdated one-tap close", () => {
     const res = await endStaleEpisodeAction(fd({ episodeId, lastActiveDay }));
     expect(res.ok).toBe(true);
     const row = getEpisodeRow(profileId, episodeId)!;
-    expect(row.ended_at).toBe(shiftDateStr(lastActiveDay, 1));
+    // The inclusive end IS the submitted last active day (#2232).
+    expect(row.end_date).toBe(lastActiveDay);
     // The situation is no longer active (single source of truth kept coherent).
     const active = db
       .prepare(
@@ -106,7 +107,7 @@ describe("dismissStaleNudgeAction", () => {
     );
     expect(acked).toContain(episodeId);
     // Episode itself untouched (still open).
-    expect(getEpisodeRow(profile.id, episodeId)!.ended_at).toBeNull();
+    expect(getEpisodeRow(profile.id, episodeId)!.end_date).toBeNull();
   });
 });
 

@@ -16,8 +16,6 @@
 // place (their body-map side, size, and status), two providers with the same name
 // (specialty, then NPI or locality).
 
-import { EXCLUSIVE_END, INCLUSIVE_END, type RangeEndBound } from "./date-range";
-import { shiftDateStr } from "./date";
 import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
 import { modalityLabel, studyDisplayLabel } from "./imaging-study";
 import {
@@ -76,26 +74,16 @@ export function snippet(
   return `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-// A stored [start, end] window as one display string, under the END-BOUND convention
-// the domain declares (lib/date-range.ts owns that vocabulary):
-//   • INCLUSIVE_END — `end` IS the last day (a protocol's end_date).
-//   • EXCLUSIVE_END — `end` is the first NON-member day (an illness episode's
-//     `ended_at`), so the last day shown is the day BEFORE it.
+// A stored [start, end] window as one display string. `end` IS the last member day —
+// since #2232 every stored day window (a protocol's end_date, an illness episode's
+// end_date) is inclusive, and lib/date-range.ts no longer expresses any other bound.
 // An open window reads "since <start>"; a start-less closed one "until <last day>".
-// Getting this wrong is an off-by-one a reader cannot detect, which is exactly why
-// the bound is a required argument rather than a default.
-export function rangeText(
-  range: { start: string | null; end: string | null },
-  endBound: RangeEndBound
-): string | null {
+export function rangeText(range: {
+  start: string | null;
+  end: string | null;
+}): string | null {
   const start = isoDay(range.start);
-  const end = isoDay(range.end);
-  const lastDay =
-    end == null
-      ? null
-      : endBound === INCLUSIVE_END
-        ? end
-        : shiftDateStr(end, -1);
+  const lastDay = isoDay(range.end);
   if (start && lastDay)
     return start === lastDay ? start : `${start} → ${lastDay}`;
   if (start) return `since ${start}`;
@@ -268,21 +256,21 @@ export function skinHitText(
 
 // ── Illness episodes (#856) ──────────────────────────────────────────────────
 
-// An episode as a hit: the situation over its window and outcome. `ended_at` is the
-// EXCLUSIVE first inactive day, so the range is rendered under that bound (an
-// episode that ended on the 8th reads "→ 2026-03-07").
+// An episode as a hit: the situation over its window and outcome. `end_date` is the
+// inclusive last active day (#2232) — an episode last active on the 7th reads
+// "→ 2026-03-07".
 export function episodeHitText(row: {
   situation: string;
-  started_at: string | null;
-  ended_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
   outcome: string | null;
 }): SearchHitText {
-  const ongoing = row.ended_at == null;
+  const ongoing = row.end_date == null;
   return {
     title: row.situation.trim() || "Illness episode",
     subtitle: subtitleOf([
       ongoing ? "Ongoing" : null,
-      rangeText({ start: row.started_at, end: row.ended_at }, EXCLUSIVE_END),
+      rangeText({ start: row.start_date, end: row.end_date }),
       snippet(row.outcome, 60),
     ]),
   };
@@ -303,7 +291,7 @@ export function protocolHitText(row: {
     title: row.name.trim() || "Protocol",
     subtitle: subtitleOf([
       ongoing ? "Ongoing" : null,
-      rangeText({ start: row.start_date, end: row.end_date }, INCLUSIVE_END),
+      rangeText({ start: row.start_date, end: row.end_date }),
       row.situation,
     ]),
   };

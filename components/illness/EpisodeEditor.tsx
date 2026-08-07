@@ -7,16 +7,17 @@ import DateField from "@/components/DateField";
 import { editEpisodeAction } from "@/app/(app)/medical/episodes/actions";
 
 // Episode boundary + annotation editor (issue #856 items 1/8/9). A plain row edit —
-// derived membership follows the new [start, end) automatically (no change-log surgery).
-// An OPEN episode edits only its start (the "flagged a day late" fix); its end is owned
-// by the "Feeling better" toggle, so the field is hidden. A closed episode edits both.
-// Dates use the internal semantics directly: start = first day sick, end = first day
-// better (EXCLUSIVE), which is exactly how the toggle stamps them.
+// derived membership follows the new [start_date, end_date] automatically (no
+// change-log surgery). An OPEN episode edits only its start (the "flagged a day late"
+// fix); its end is owned by the "Feeling better" toggle, so the field is hidden. A
+// closed episode edits both. Dates use the stored day-window semantics directly
+// (#2232): start = first day sick, end = LAST day sick (inclusive), which is exactly
+// what the row stores.
 export default function EpisodeEditor({
   episodeId,
   ongoing,
-  startedAt,
-  endedAt,
+  startDate,
+  endDate,
   note,
   outcome,
   profileId,
@@ -25,8 +26,8 @@ export default function EpisodeEditor({
 }: {
   episodeId: number;
   ongoing: boolean;
-  startedAt: string | null;
-  endedAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
   note: string | null;
   outcome: string | null;
   // The cross-profile write target (issue #879) — set on a household member's episode page
@@ -68,20 +69,20 @@ export default function EpisodeEditor({
             </label>
             <DateField
               id="ep-start"
-              name="startedAt"
-              defaultValue={startedAt ?? ""}
+              name="startDate"
+              defaultValue={startDate ?? ""}
               data-testid="episode-start-input"
             />
           </div>
           {!ongoing && (
             <div>
               <label className="label" htmlFor="ep-end">
-                First day better
+                Last day sick
               </label>
               <DateField
                 id="ep-end"
-                name="endedAt"
-                defaultValue={endedAt ?? ""}
+                name="endDate"
+                defaultValue={endDate ?? ""}
                 data-testid="episode-end-input"
               />
             </div>

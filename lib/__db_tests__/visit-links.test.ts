@@ -407,7 +407,7 @@ describe("encounter delete NULLs the links (row-ops)", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date)
            VALUES (?, 'cold', ?)`
         )
         .run(profileId, DATE).lastInsertRowid
@@ -451,8 +451,8 @@ describe("episode ↔ visit MANY model (#1198)", () => {
     return Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, ?, '2026-03-01', '2026-03-15')`
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, ?, '2026-03-01', '2026-03-14')`
         )
         .run(profileId, situation).lastInsertRowid
     );
@@ -529,8 +529,8 @@ describe("episode ↔ visit late-import (#1053)", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-           VALUES (?, 'flu', '2026-03-01', '2026-03-08')`
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'flu', '2026-03-01', '2026-03-07')`
         )
         .run(profileId).lastInsertRowid
     );

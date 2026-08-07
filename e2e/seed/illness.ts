@@ -103,7 +103,7 @@ export function seedIllness(): void {
       profileId
     );
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
     ).run(profileId, start);
 
@@ -272,7 +272,7 @@ export function seedIllness(): void {
       illnessCareId
     );
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
     ).run(illnessCareId, shiftDateStr(on, -3));
     // Fever on all four consecutive days (daysAgo 3→0) → "more than 3 days" → the finding.
@@ -365,18 +365,19 @@ export function seedIllness(): void {
       ).run(pid);
     }
 
+    // `endDate` is the inclusive last active day (#2232).
     const addEpisode = (
       pid: number,
       situation: string,
-      startedAt: string,
-      endedAt: string | null
+      startDate: string,
+      endDate: string | null
     ): number => {
       const r = db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
        VALUES (?, ?, ?, ?)`
         )
-        .run(pid, situation, startedAt, endedAt);
+        .run(pid, situation, startDate, endDate);
       return Number(r.lastInsertRowid);
     };
     const addEncounter = (
@@ -396,12 +397,12 @@ export function seedIllness(): void {
 
     // Parent: a past visit, a Flu that overlaps the child's, and a far-past Chickenpox.
     addEncounter(hhParentId, shiftDateStr(on, -40), "Annual physical");
-    addEpisode(hhParentId, "Flu", shiftDateStr(on, -30), shiftDateStr(on, -25));
+    addEpisode(hhParentId, "Flu", shiftDateStr(on, -30), shiftDateStr(on, -26));
     addEpisode(
       hhParentId,
       "Chickenpox",
       shiftDateStr(on, -300),
-      shiftDateStr(on, -295)
+      shiftDateStr(on, -296)
     );
 
     // Child: a routine (UNLINKED) past visit, a Flu overlapping the parent's, and an OPEN
@@ -409,7 +410,7 @@ export function seedIllness(): void {
     // LINKED urgent-care visit + a prescribed medication course whose prescriber matches
     // that visit's provider (the provable chain).
     addEncounter(hhChildId, shiftDateStr(on, -10), "Sick visit");
-    addEpisode(hhChildId, "Flu", shiftDateStr(on, -28), shiftDateStr(on, -24));
+    addEpisode(hhChildId, "Flu", shiftDateStr(on, -28), shiftDateStr(on, -25));
     const coldId = addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
 
     // #1373 care-trail nesting fixture: an urgent-care visit (Dr. Ng) on Cold day 2, linked
@@ -623,7 +624,7 @@ export function seedSymptomVideoEpisode(): void {
   // ongoing row, so a second episode would make that lookup ambiguous.
   db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(pid);
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(pid, started);
 

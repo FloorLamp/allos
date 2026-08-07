@@ -338,7 +338,7 @@ export function seedLegacyCelsius(): void {
       celImportId
     );
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
     ).run(celImportId, shiftDateStr(on, -1));
     db.prepare(

@@ -147,7 +147,7 @@ test.beforeAll(() => {
     episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date)
            VALUES (1, ?, '2026-03-01')`
         )
         .run(EPISODE_SITUATION).lastInsertRowid

@@ -129,7 +129,7 @@ function newEpisode(profileId: number): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, 'Illness', ?, ?)`
       )
       .run(profileId, DATE, DATE).lastInsertRowid

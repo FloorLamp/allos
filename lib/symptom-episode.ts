@@ -6,14 +6,17 @@
 // episode can never disagree across surfaces. No side-state to maintain on episode edits.
 //
 // Pure list math over the same `SituationEvent[]` change-log `situationsActiveOn` reads
-// (lib/trend-annotations.ts). Reconstruction semantics MATCH that function: an episode is
-// [start, end) — inclusive start day, EXCLUSIVE end (the stop date is the first inactive
-// day). A null start means active since before the (capped) log began; a null end means
-// ongoing. That [start, end) window is the chassis's EXCLUSIVE_END convention
-// (lib/date-range.ts, issue #943): these functions CONSTRUCT a range around `date` from
-// the change-log rather than testing membership, so they don't call rangeContainsDate, but
-// the end-bound they build is the illness domain's declared one.
+// (lib/trend-annotations.ts). Reconstruction semantics MATCH that function: an episode
+// covers [start, end] — inclusive first active day, inclusive LAST active day (#2232;
+// a stop event on day D means the situation was active through D−1, so the derived
+// `end` is the stop date minus one). A null start means active since before the
+// (capped) log began; a null end means ongoing. That [start, end] window is the
+// chassis's inclusive-end convention (lib/date-range.ts, issue #943): these functions
+// CONSTRUCT a range around `date` from the change-log rather than testing membership,
+// so they don't call rangeContainsDate, but the end-bound they build is the one the
+// chassis declares.
 
+import { shiftDateStr } from "./date";
 import type { SituationEvent } from "./trend-annotations";
 
 export interface IllnessEpisode {
@@ -25,8 +28,8 @@ export interface IllnessEpisode {
   situation: string;
   // Inclusive first active day (YYYY-MM-DD), or null = active before the log began.
   start: string | null;
-  // Exclusive end = the stop date (the situation was active up to the day before), or
-  // null = ongoing.
+  // Inclusive LAST active day (YYYY-MM-DD, #2232 — the stored `end_date` carries the
+  // same value), or null = ongoing.
   end: string | null;
 }
 
@@ -61,8 +64,9 @@ function eventsFor(
 // active on `date`. Local per-date reasoning identical to situationsActiveOn: the state
 // on `date` is decided by the earliest transition strictly AFTER it (a future "stop" ⇒
 // active on `date`; a future "start" ⇒ inactive), falling back to the current state when
-// there is none. The episode's exclusive end is the earliest stop after `date`; its
-// inclusive start is the latest start on-or-before it (null = active before the log).
+// there is none. The episode's inclusive end is the day before the earliest stop after
+// `date`; its inclusive start is the latest start on-or-before it (null = active before
+// the log).
 export function episodeContainingDate(
   date: string,
   name: string,
@@ -74,8 +78,9 @@ export function episodeContainingDate(
   const after = ev.find((e) => e.date > date);
   const active = after ? after.change === "stop" : currentlyActive;
   if (!active) return null;
-  const end =
+  const stop =
     ev.find((e) => e.date > date && e.change === "stop")?.date ?? null;
+  const end = stop == null ? null : shiftDateStr(stop, -1);
   let start: string | null = null;
   for (const e of ev)
     if (e.date <= date && e.change === "start") start = e.date;
@@ -109,18 +114,34 @@ export function episodeForDate(
   return hits[0];
 }
 
-// Enumerate ALL episodes of one illness-type situation from the change-log, oldest
-// first — the reconstruction the future episode view (#800) lists over. Pairs
-// consecutive start→stop transitions; a leading "stop" with no prior "start" is a
-// before-log episode (start null); an unclosed trailing "start" is ongoing (end null);
-// a currently-active situation with NO events at all is one ongoing before-log episode.
+// One historical on→off run of a situation, as the change-log states it: `start` is
+// the start-event day and `end` is the STOP-EVENT day — the first INACTIVE day, i.e.
+// the pre-#2232 stored shape, NOT the inclusive `IllnessEpisode.end`.
+export interface SituationRun {
+  situation: string;
+  start: string | null;
+  end: string | null;
+}
+
+// Enumerate ALL on→off runs of one illness-type situation from the change-log, oldest
+// first. Pairs consecutive start→stop transitions; a leading "stop" with no prior
+// "start" is a before-log run (start null); an unclosed trailing "start" is ongoing
+// (end null); a currently-active situation with NO events at all is one ongoing
+// before-log run.
+//
+// FROZEN OUTPUT CONVENTION (#2232): the returned `end` is the stop event's own day —
+// the exclusive first-inactive day — because this function's only production caller
+// is the FROZEN migration 046 backfill, which wrote that shape into `ended_at`;
+// migration 169 then converts those values to the inclusive `end_date`. Changing this
+// to emit inclusive ends would make a from-scratch replay subtract a day twice. Live
+// code reads stored rows (lib/illness-episode-store.ts), never this pairing.
 export function episodesForSituation(
   name: string,
   events: readonly SituationEvent[],
   currentlyActive: boolean
-): IllnessEpisode[] {
+): SituationRun[] {
   const ev = eventsFor(name, events);
-  const episodes: IllnessEpisode[] = [];
+  const episodes: SituationRun[] = [];
   let open: string | null | undefined = undefined;
   for (const e of ev) {
     if (e.change === "start") {

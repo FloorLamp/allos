@@ -42,19 +42,20 @@ function addEncounter(
       .run(profileId, date, type, providerId).lastInsertRowid
   );
 }
+// `endDate` is the inclusive last active day (#2232).
 function addEpisode(
   profileId: number,
   situation: string,
-  startedAt: string | null,
-  endedAt: string | null
+  startDate: string | null,
+  endDate: string | null
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, ?, ?, ?)`
       )
-      .run(profileId, situation, startedAt, endedAt).lastInsertRowid
+      .run(profileId, situation, startDate, endDate).lastInsertRowid
   );
 }
 function linkVisit(
@@ -108,14 +109,14 @@ describe("care-trail gather — nesting, chain, not-in-view exclusion, single-vi
     now = today(a);
     const ng = newProvider("Dr. Ng", "ct-ng");
 
-    // Member A: a Cold [now-6 .. now-1] closed, with a LINKED urgent-care visit on day 2
+    // Member A: a Cold [now-6 .. now-2] closed, with a LINKED urgent-care visit on day 2
     // (now-5) and a prescribed Amoxicillin course started the same day, prescribed by the
     // same provider (Dr. Ng) → the provable chain. Plus an UNLINKED dental visit.
     coldId = addEpisode(
       a,
       "Cold",
       shiftDateStr(now, -6),
-      shiftDateStr(now, -1)
+      shiftDateStr(now, -2)
     );
     urgentCareId = addEncounter(a, shiftDateStr(now, -5), "Urgent care", ng);
     linkVisit(a, coldId, urgentCareId);
@@ -130,7 +131,7 @@ describe("care-trail gather — nesting, chain, not-in-view exclusion, single-vi
     );
 
     // Member B: a lone Flu, no links/courses (for the not-in-view + single-view pins).
-    addEpisode(b, "Flu", shiftDateStr(now, -20), shiftDateStr(now, -16));
+    addEpisode(b, "Flu", shiftDateStr(now, -20), shiftDateStr(now, -17));
   });
 
   it("nests the linked visit + course under the episode; holds the unlinked visit apart", () => {
