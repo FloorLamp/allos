@@ -96,7 +96,9 @@ describe("Health Connect exporter v1.9 shapes", () => {
         `SELECT bpm, bpm_min, bpm_max, n FROM hr_minutes
           WHERE profile_id = ? AND ts = ?`
       )
-      .get(profileId, `${DATE}T08:42`);
+      // The bucket key is the SAMPLE's own UTC minute since #2205 / migration 164,
+      // so it matches the pushed instant exactly rather than a zone-shifted one.
+      .get(profileId, `${DATE}T08:42:00Z`);
     expect(hr).toEqual({ bpm: 84, bpm_min: 83, bpm_max: 85, n: 1 });
     expect(
       db

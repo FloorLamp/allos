@@ -7,7 +7,12 @@ import "../../scripts/load-env";
 
 import path from "node:path";
 import { db, today } from "../../lib/db";
-import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
+import {
+  shiftDateStr,
+  utcMinute,
+  utcSqlString,
+  zonedWallTimeToUtc,
+} from "../../lib/date";
 import { practiceIdentity } from "../../lib/practice";
 import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
 import {
@@ -479,7 +484,7 @@ export function seedIntradayPanel(): void {
   //
   // Timezone discipline (#1417): the profile INHERITS the run's pinned instance timezone
   // (frozen local ~13:00), so every absolute instant here is built through
-  // zonedWallTimeToUtc(getTimezone(id), …). hr_minutes.ts is profile-LOCAL by design
+  // zonedWallTimeToUtc(getTimezone(id), …). hr_minutes.ts is a UTC INSTANT since migration 164 (#2205), so its minutes convert through the same helper; by design
   // (#94), so those are seeded as wall-clock minute strings — exactly what the ingest
   // writes. Idempotent: this profile's fixture rows are cleared first.
   {
@@ -507,9 +512,15 @@ export function seedIntradayPanel(): void {
      VALUES (?, ?, ?, ?, ?, 6, 'health-connect')`
     );
     const idHrStamp = (minute: number) =>
-      `${idToday}T${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
-        minute % 60
-      ).padStart(2, "0")}`;
+      utcMinute(
+        zonedWallTimeToUtc(
+          idTz,
+          idToday,
+          `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+            minute % 60
+          ).padStart(2, "0")}`
+        )
+      );
     for (let m = 0; m < 7 * 60; m += 5) {
       insIdHr.run(idId, idHrStamp(m), 52, 48, 57);
     }
@@ -709,9 +720,15 @@ export function seedVitalsToday(): void {
       const bpm = 62 + into - Math.round(out * 1.4);
       insVdHr.run(
         vdId,
-        `${vdToday}T${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
-          m % 60
-        ).padStart(2, "0")}`,
+        utcMinute(
+          zonedWallTimeToUtc(
+            vdTz,
+            vdToday,
+            `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
+              m % 60
+            ).padStart(2, "0")}`
+          )
+        ),
         bpm,
         bpm - 3,
         bpm + 4

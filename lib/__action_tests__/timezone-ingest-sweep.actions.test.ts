@@ -1,12 +1,18 @@
 // SERVER-ACTION TIER — a profile timezone change sweeps the rolling-window ingest
 // rows that key on profile-LOCAL time at ingest (#608).
 //
-// hr_minutes.ts and Health Connect body_metrics.date are computed in the profile's
-// timezone at ingest and never re-keyed, so a timezone change would make the next
-// rolling-window push INSERT ~48h of duplicates under the shifted keys. saveProfile
-// Settings now sweeps the current window's push-sourced rows on a tz change so the
-// re-push repopulates cleanly. This drives the real action and asserts exactly which
-// rows are swept (and which are preserved: manual rows, edit-locked rows, old rows).
+// Health Connect body_metrics.date is computed in the profile's timezone at ingest and
+// never re-keyed, so a timezone change would make the next rolling-window push INSERT
+// ~48h of duplicates under the shifted keys. saveProfileSettings sweeps the current
+// window's push-sourced rows on a tz change so the re-push repopulates cleanly. This
+// drives the real action and asserts exactly which rows are swept (and which are
+// preserved: manual rows, edit-locked rows, old rows, other providers' rows).
+//
+// hr_minutes was the OTHER half of this sweep until #2205 / migration 164 made its
+// `ts` an absolute instant; its key no longer moves with the timezone, so there is
+// nothing left to sweep and those assertions are gone. The body_metrics coverage below
+// is deliberately UNTOUCHED — that key still moves, and the duplicate weigh-in it
+// prevents is a live bug.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -26,11 +32,6 @@ function addBodyMetric(
     "INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited) VALUES (?, ?, ?, ?, ?)"
   ).run(profileId, date, weight, source, edited);
 }
-function addHrMinute(profileId: number, ts: string, source: string) {
-  db.prepare(
-    "INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (?, ?, 70, 6, ?)"
-  ).run(profileId, ts, source);
-}
 function bodyMetricDates(profileId: number, source: string | null): string[] {
   return (
     db
@@ -39,13 +40,6 @@ function bodyMetricDates(profileId: number, source: string | null): string[] {
       )
       .all(profileId, source) as { date: string }[]
   ).map((r) => r.date);
-}
-function hrMinuteTimestamps(profileId: number): string[] {
-  return (
-    db
-      .prepare("SELECT ts FROM hr_minutes WHERE profile_id = ? ORDER BY ts")
-      .all(profileId) as { ts: string }[]
-  ).map((r) => r.ts);
 }
 
 describe("saveProfileSettings sweeps ingest rows on a timezone change (#608)", () => {
@@ -68,9 +62,6 @@ describe("saveProfileSettings sweeps ingest rows on a timezone change (#608)", (
     // Withings keys on the device zone, not the profile zone → must NOT be swept.
     addBodyMetric(profile.id, recent, "withings", 84);
 
-    addHrMinute(profile.id, `${recent}T08:00`, "health-connect");
-    addHrMinute(profile.id, `${old}T08:00`, "health-connect");
-
     // Change the timezone via the real action.
     await saveProfileSettings(fd({ timezone: "Asia/Tokyo" }));
     expect(getTimezone(profile.id)).toBe("Asia/Tokyo");
@@ -82,8 +73,16 @@ describe("saveProfileSettings sweeps ingest rows on a timezone change (#608)", (
     // Manual + Withings rows untouched.
     expect(bodyMetricDates(profile.id, null)).toEqual([recent]);
     expect(bodyMetricDates(profile.id, "withings")).toEqual([recent]);
-    // Recent HC hr_minute swept, old one kept.
-    expect(hrMinuteTimestamps(profile.id)).toEqual([`${old}T08:00`]);
+    // And the sweep touches ONLY body_metrics now: hr_minutes keys on an absolute
+    // instant since migration 164, so a timezone change cannot re-key it and it is
+    // deliberately left alone.
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM hr_minutes WHERE profile_id = ?")
+          .get(profile.id) as { n: number }
+      ).n
+    ).toBe(0);
   });
 
   it("does nothing when the timezone is unchanged", async () => {
