@@ -4,6 +4,7 @@ import {
 } from "./dashboard-widgets";
 import { MEDICATIONS_HREF, type AppRoute } from "./hrefs";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
+import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
 import type { NotifySchedule } from "./settings/notifications";
 
 // Versioned per-profile onboarding state (#719). Only profiles explicitly born
@@ -397,9 +398,10 @@ export function onboardingNotificationSchedule(
       : current.supplementMinutes;
 
   const noSummary = {
+    // Digest off. Its MODE is carried through untouched (#2211): a mode is not
+    // contact, and turning the digest off is not the moment to rewrite a field only
+    // a user's tap is allowed to write.
     digestMinute: null,
-    // Digest off, not wake-auto (issue #1117).
-    digestAuto: false,
     weeklyRecapDay: null,
     weeklyRecapMinute: current.weeklyRecapMinute,
   };
@@ -435,7 +437,11 @@ export function onboardingNotificationSchedule(
     ...current,
     supplementMinutes,
     workoutEnabled: true,
-    digestMinute: current.digestMinute ?? 8 * 60,
+    // The declared digest pre-fill (#2211), shared with the Settings picker so
+    // "what time does the digest start at" has one answer. Static by default —
+    // `current.digestMode` is carried through by the spread and nothing here
+    // enables Dynamic, which needs the user's own tap.
+    digestMinute: current.digestMinute ?? DIGEST_DEFAULT_MINUTE,
     milestonesEnabled: true,
     preventiveEnabled: intent === "essentials-upcoming",
   };

@@ -154,8 +154,11 @@ export interface FoodMealEvent {
   name: string;
   date: string;
   mealSlot: FoodSlot;
-  // Local wall-clock "HH:MM" of the tap, in the profile's timezone. Shown so two
-  // servings of the same group in one window are distinguishable. `logged_at` itself
+  // Local wall-clock "HH:MM" the serving STANDS at, in the profile's timezone: its
+  // eating time where one was captured, its tap otherwise. Shown so two servings of the
+  // same group in one window are distinguishable — and it is the stored value rather
+  // than the tap because after a correction the tap time is no longer the number the
+  // user would recognise (#2206, the web half of the same rule). `logged_at` itself
   // stays the audit instant and is never edited.
   time: string;
 }
@@ -613,9 +616,10 @@ export function getMinutesSinceLastFoodLog(
 // ---- Eating-time correction rows (issue #2019) ----
 
 // The profile's recent food taps as the correction offer reads them: row id, the
-// IMMUTABLE tap stamp (burst identity and every chip offset key on this), and a display
-// name for a lone-tap row. Bounded by the freshness window the offer itself uses, so the
-// read is a handful of rows however busy the day was.
+// IMMUTABLE tap stamp (burst identity and freshness key on this), the instant the row
+// currently STANDS at (#2206 — what the header states and what a chip counts back from),
+// and a display name for a lone-tap row. Bounded by the freshness window the offer itself
+// uses, so the read is a handful of rows however busy the day was.
 //
 // THE ROW SET IS A QUERY, not a memory. Nothing records that some earlier keyboard
 // rendered a correction row, which is exactly why the rows survive a rebuild, a pointer
@@ -630,7 +634,7 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, logged_at FROM food_log_events
+      `SELECT id, group_key, logged_at, eaten_at FROM food_log_events
         WHERE profile_id = ? AND logged_at >= ?
         ORDER BY logged_at, id
         LIMIT 100`
@@ -639,11 +643,17 @@ export function getRecentFoodTaps(
     id: number;
     group_key: string;
     logged_at: string;
+    eaten_at: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     groupKey: r.group_key,
     tapAt: r.logged_at,
+    // Where the row STANDS (#2206): the chips count back from it and the row's header
+    // states it, so a corrected serving stops being displayed at its tap time and a
+    // second chip tap composes onto the first. Read regardless of `time_source` — the
+    // question is what the ledger holds, not who put it there.
+    statedAt: r.eaten_at,
     // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
     // what it is rather than rendered as a mystery slug.
     label: isProteinNudgeKey(r.group_key)

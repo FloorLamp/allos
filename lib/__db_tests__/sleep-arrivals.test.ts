@@ -23,7 +23,8 @@ import { getSleepArrivals } from "@/lib/queries/metrics";
 import {
   MIN_ARRIVAL_SAMPLE,
   arrivalStatistics,
-  digestAutoMinute,
+  digestDeadlineMinute,
+  DEADLINE_MARGIN_MIN,
 } from "@/lib/notifications/digest-schedule";
 
 const PROVIDER = "health-connect";
@@ -185,15 +186,18 @@ describe("the arrival statistic, end to end", () => {
       medianMinute: 7 * 60 + 4,
     });
     // The composition this replaces resolved the same fixture to 07:10.
-    expect(digestAutoMinute(s)).toBe(7 * 60 + 41);
+    expect(s.available && s.p90Minute).toBeGreaterThan(7 * 60 + 10);
   });
 
-  it("gives the `auto` digest the corrected minute through the settings read", () => {
+  it("gives the Dynamic digest its deadline, from this same number", () => {
+    // #2211's second consumer. The deadline derives from the DISTRIBUTION, not from
+    // `floor + SLOT_RETRY_DELAY_MIN` — 08:10 here, an hour after a 07:00 floor would
+    // have been 08:00.
     seedMeasured();
-    setProfileSetting(profileId, "notify_digest_hour", "auto");
-    const sched = getNotifySchedule(profileId);
-    expect(sched.digestAuto).toBe(true);
-    expect(sched.digestMinute).toBe(7 * 60 + 41);
+    const s = arrivalStatistics(getSleepArrivals(profileId));
+    expect(digestDeadlineMinute(7 * 60, s, 15)).toBe(
+      7 * 60 + 40 + DEADLINE_MARGIN_MIN
+    );
   });
 
   it("invents nothing on a thin profile, and neither consumer gets a time", () => {
@@ -206,10 +210,9 @@ describe("the arrival statistic, end to end", () => {
       nights: MIN_ARRIVAL_SAMPLE - 1,
       reason: "thin-sample",
     });
-    expect(digestAutoMinute(s)).toBeNull();
-    // The digest falls back to the wake-time behavior rather than to a guess.
-    setProfileSetting(profileId, "notify_digest_hour", "auto");
-    expect(getNotifySchedule(profileId).digestMinute).not.toBe(7 * 60 + 41);
+    // Neither consumer invents a value: the deadline falls back to the declared
+    // hour after the floor — exactly today's behavior — rather than to a guess.
+    expect(digestDeadlineMinute(7 * 60, s, 15)).toBe(8 * 60);
   });
 
   it("says 'no source' for a profile that has never synced sleep", () => {

@@ -1,39 +1,46 @@
-// The morning digest's OWN scheduling decisions (issue #2102) — pure, no DB, no
-// clock, no network.
+// The morning digest's OWN scheduling decisions — pure, no DB, no clock, no network.
 //
-// THE DEFECT, in one sentence: the digest fires at a fixed hour that lands inside
-// the window where last night's sleep has not arrived yet. On a real Health
-// Connect profile — typical wake 05:40, sleep row arriving a median of 69 minutes
-// later (measured range 19–90) — the digest had last night in hand on 0 of 11
-// mornings at hour 6 (what `auto` resolved to) and 5 of 11 at hour 7.
+// TWO MODES, NO `auto` (#2211). The digest used to have three states — off, a typed
+// `HH:MM`, and `auto` — and `auto` did two jobs at once: "pick my time for me" AND
+// "make my digest complete". Those are different wishes, and welding them together
+// produced the measured defect: a typed time NEVER waited (`shouldDeferDigest` opened
+// with `if (!input.auto) return false`), so a configured 07:00 shipped without last
+// night's sleep on 7 of 13 mornings and never said so; and when a time DID wait it
+// waited an hour to answer a two-minute question, because #2102 borrowed the failure
+// backoff band as its landing zone.
 //
-// Two separate mistakes produced that, and this module holds the fix for both:
+// What replaced it is the two real user groups, named by intent rather than by
+// mechanism:
 //
-//   1. `auto` SCHEDULED ITSELF INTO THE GAP. It resolved through the shared
-//      wake-hour helper — the hour the person WAKES — while the data the digest
-//      wants is systematically ~70 minutes behind waking. The rounding made it
-//      worse: 05:40 is 340 minutes and round(340/60) is 6, so the digest fired an
-//      hour EARLIER than the manual setting it was meant to improve on.
-//      `digestAutoMinute` below resolves past the arrivals instead.
-//   2. THE DIGEST COULD NOT WAIT for a section it was about to print. It sent on
-//      the first tick where its hour was due, complete or not. `shouldDeferDigest`
-//      declines ONCE, into the retry hour `slotDue` already provides.
+//   STATIC   — "same time every day".      Send at HH:MM. Complete or not.
+//   DYNAMIC  — "as soon as it's ready".    Send when last night lands. Not before HH:MM.
+//
+// Both send exactly ONE digest per profile per day, hard-deduped by
+// `notify_last_digest`. The modes change WHEN, never HOW OFTEN — no mode can increase
+// contact — and neither is ever written by anything but a user's own tap.
+//
+// WHY THERE IS NO `auto`. Its job was "the user cannot compute the right time
+// themselves", which is true — nobody knows their own p90 sync arrival. But a
+// SUGGESTION does that job better, because it tells the user the number instead of
+// silently being it, and this statistic is unfit to be a live binding: measured median
+// wake drifted 05:34 → 05:53 over three weekly steps and leave-one-night-out moves the
+// arrival p90 by up to 11 minutes. A time that wanders 10-20 minutes a month with no
+// user action is the opposite of what Static promises. #2217 is the suggestion; the
+// tap is the write. (`AUTO_TIME` stays alive for the Morning INTAKE slot, which
+// resolves from wake time and depends on nothing having synced.)
 //
 // WHAT THIS MODULE IS NOT. It decides WHEN the digest sends. It never decides what
 // the digest prints: #2099 owns that (a stale night is omitted rather than printed
 // as last night's), and the two answers stay separate on purpose — a digest that
-// sends at the end of the window with no sleep in hand simply has no Sleep section,
-// which is already correct behavior.
-//
-// NO NEW STORED STATE, and in particular NO NEW SEND MARKER (#2036). The deferral
-// is structurally bounded by machinery that already exists: `slotDue` is a
-// two-hour window and `notify_last_digest` is a hard per-day marker, so declining
-// at the FIRST of those two hours leaves exactly one hour in which the digest must
-// send, marked or not. "Have I already deferred today?" is answered by the clock
-// (this tick is not the slot's "first" attempt band), not by a stored flag —
-// which is why nothing here needs to be registered in SEND_MARKER_REGISTRY.
+// reaches its deadline with no sleep in hand simply has no Sleep section, which is
+// already correct behavior.
 
-import { slotAttempt } from "./schedule";
+import {
+  clampTickMinutes,
+  formatNotifyTime,
+  slotAttempt,
+  SLOT_RETRY_DELAY_MIN,
+} from "./schedule";
 
 // ── 1. The arrival statistic ─────────────────────────────────────────────────
 //
@@ -116,11 +123,11 @@ export const MAX_ARRIVAL_LAG_MIN = 240;
 // mean what its consumers read it to mean.
 export const MAX_ARRIVAL_SPREAD_MIN = 12 * 60;
 
-// The largest slot minute that has a retry band to defer INTO. `slotAttempt`
-// deliberately does not wrap past midnight (minute 0 is the next calendar day,
-// where the per-day marker is fresh), so a slot at/after 23:00 has no same-day
-// retry band and declining there would drop the digest for the day rather than
-// delay it. 22:59 is the last minute whose +60 retry is still same-day.
+// The largest minute a Dynamic deadline may sit at. `slotAttempt` deliberately does
+// not wrap past midnight (minute 0 is the next calendar day, where the per-day marker
+// is fresh), so a minute at/after 23:00 has no same-day retry band and a deadline
+// there would drop the digest for the day rather than delay it. 22:59 is the last
+// minute whose +60 retry is still same-day.
 export const LAST_DEFERRABLE_MINUTE = 22 * 60 + 59;
 
 /** One night's sleep row and the moment it actually landed. Gathered by
@@ -242,68 +249,335 @@ export function arrivalStatistics(
   };
 }
 
+// ── 2. The two modes ─────────────────────────────────────────────────────────
+
 /**
- * The minute of day an `auto` morning digest should resolve to: the first minute
- * STRICTLY AFTER the arrival p90. Null when the statistic has no answer, which is
- * the caller's signal to fall back to today's wake-time behavior.
+ * How the morning digest decides its send time. Descriptive, not adjectival: the
+ * tone contract is numbers not adjectives, and calling one of them "Smart" implies
+ * the other is dumb.
  *
- * At minute grain (#2121) the old round-up-to-the-next-whole-hour is gone with the
- * rounding problem it papered over. "Strictly after" (the +1) survives, so a digest
- * scheduled for the same minute the data typically lands is not a race it loses half
- * the time. Clamped inside the deferrable range so the auto digest always keeps its
- * retry band.
+ *   static  — "Same time every day"     — send at the minute, complete or not.
+ *   dynamic — "As soon as it's ready"   — send when last night lands, not before
+ *                                         the minute, and by the deadline at the latest.
  *
- * This is the DIGEST's resolution and only the digest's. The `auto` Morning intake
- * time keeps the raw wake minute deliberately: it needs you awake, not your
- * tracker synced, so the wake time is the correct answer for it.
+ * OFF is not a mode. It is the absence of a time (`notify_digest_hour` = "" or
+ * absent), exactly as it always was — the mode key carries the mode and nothing
+ * else, so no third meaning is multiplexed onto either value (#2205).
  */
-export function digestAutoMinute(stats: ArrivalStatistics): number | null {
-  if (!stats.available) return null;
-  return Math.min(LAST_DEFERRABLE_MINUTE, stats.p90Minute + 1);
+export type DigestMode = "static" | "dynamic";
+
+export const DIGEST_MODES = ["static", "dynamic"] as const;
+
+/**
+ * The mode a profile has when nothing is stored. Static, so a digest configured
+ * before modes existed keeps behaving EXACTLY as it did — the migration writes the
+ * mode explicitly, and this is what makes a missed row harmless rather than a
+ * silent behavior change.
+ */
+export const DEFAULT_DIGEST_MODE: DigestMode = "static";
+
+/** Read the stored mode; anything unrecognised (absent, corrupt) is Static. */
+export function parseDigestMode(raw: string | undefined): DigestMode {
+  return raw === "dynamic" ? "dynamic" : DEFAULT_DIGEST_MODE;
 }
 
-// ── 2. Deferring one hour when last night has not landed ─────────────────────
+/**
+ * The minute the digest picker PRE-FILLS when the digest is switched on — the
+ * Static send time, or the Dynamic floor. A pre-fill, not an `auto` binding: it
+ * never moves on its own, and #2217 corrects it once there is evidence. Declared
+ * once so the picker, onboarding and the migration cannot each pick their own
+ * "default digest time".
+ */
+export const DIGEST_DEFAULT_MINUTE = 7 * 60;
 
-export interface DigestDeferInput {
-  /** The digest's resolved slot minute of day, profile-local. */
+/**
+ * How long past the measured arrival p90 a Dynamic digest waits before sending
+ * whatever it has. DECLARED AND AUDITABLE, in the style of MIN_ARRIVAL_SAMPLE and
+ * ARRIVAL_PERCENTILE beside it — not a fitted parameter. It clears the observed
+ * p90→max spread (9 minutes on the 13-night fixture) with headroom, while bounding
+ * how late a digest can be on a day the data never arrives at all.
+ */
+export const DEADLINE_MARGIN_MIN = 30;
+
+/**
+ * The deadline when the arrival statistic has NO ANSWER — for any of its four
+ * reasons. `floor + 60` is exactly today's retry band, so a profile whose sample
+ * cannot carry a percentile behaves precisely as it does now. Never extrapolate
+ * from a thin sample: an hour is the stated fallback, not a guess at the tail.
+ */
+export const DEADLINE_FALLBACK_MIN = 60;
+
+/**
+ * Attempts per profile per day, in EITHER mode. #2121 item 3's decision, unchanged:
+ * a failing send is attempted exactly twice, an hour apart, invariant under the tick
+ * rate — the budget an SMTP greylist can outlive (#1855) and a 429-ing push service
+ * is not hammered by. Re-checks re-evaluate a CONDITION; they never re-attempt a
+ * delivery, which is why the Dynamic re-check loop below is not an attempt loop.
+ */
+export const MAX_DIGEST_ATTEMPTS = 2;
+
+/**
+ * The Dynamic deadline: the profile-local minute at which the digest sends whether
+ * or not last night arrived.
+ *
+ * `p90 + DEADLINE_MARGIN_MIN`, and:
+ *   • floored at `floor + one tick`, so Dynamic never degenerates into "send at the
+ *     floor" through a p90 that sits at or before the floor;
+ *   • clamped by LAST_DEFERRABLE_MINUTE, which is where the same-day retry band ends;
+ *   • never before the floor itself — a floor past LAST_DEFERRABLE_MINUTE has nothing
+ *     to wait INTO, so its deadline collapses onto the floor and Dynamic behaves as
+ *     Static for it. That is the honest degenerate answer, not a dropped digest.
+ *
+ * THE DEADLINE IS NOT `floor + SLOT_RETRY_DELAY_MIN`. That began as #2102 borrowing
+ * the failure backoff as a landing zone; with no `auto` left, the floor has nothing
+ * to secretly anchor and the deadline derives from the arrival distribution instead
+ * (#2214). The two requirements are opposed: a BACKOFF wants to be long and
+ * tick-rate-invariant, WAITING FOR AN ARRIVAL wants the next tick, whatever the tick is.
+ */
+export function digestDeadlineMinute(
+  floorMinute: number,
+  stats: ArrivalStatistics,
+  tickMinutes: number
+): number {
+  const base = stats.available
+    ? stats.p90Minute + DEADLINE_MARGIN_MIN
+    : floorMinute + DEADLINE_FALLBACK_MIN;
+  const notBefore = floorMinute + clampTickMinutes(tickMinutes);
+  return Math.max(
+    floorMinute,
+    Math.min(LAST_DEFERRABLE_MINUTE, Math.max(base, notBefore))
+  );
+}
+
+// ── The per-day attempt fact ─────────────────────────────────────────────────
+//
+// THE ONE GENUINELY NEW STATE IN THE DESIGN, and the thing #2102 deliberately did
+// without. Its rule was "NO NEW STORED STATE, and in particular NO NEW SEND MARKER":
+// "have I deferred today?" was answered by the clock, because the retry band sat at a
+// FIXED offset from a FIXED slot and a decline therefore needed no trace.
+//
+// That stops being viable the moment the retry anchor moves. A Dynamic send fires at
+// whatever tick the data landed on, so its retry band must anchor to the ATTEMPT
+// INSTANT (`attempt + SLOT_RETRY_DELAY_MIN`) — anchoring to the floor instead is
+// wrong and worth naming: a send that fails at 08:05 would have its retry band at
+// `floor + 60`, already in the past, and would silently get no retry at all.
+//
+// ONE FACT ANSWERS BOTH QUESTIONS. The tick must know WHEN the failed attempt
+// happened, which is the same per-day record that distinguishes a DECLINE from a
+// FAILURE — and the distinction falls out of the record's PRESENCE rather than
+// needing a third value: a decline writes nothing (the condition is simply re-asked
+// next tick), a failure writes this. Delivery is still `notify_last_digest`, so the
+// three outcomes are: marker set = delivered, attempt row = attempted-and-failed,
+// neither = declined or not yet due.
+
+/** Today's failed-attempt record for one profile's digest. */
+export interface DigestAttempt {
+  /** The profile-local date it belongs to. A record for another date is stale. */
+  date: string;
+  /** How many attempts have been made today, capped by MAX_DIGEST_ATTEMPTS. */
+  attempts: number;
+  /** The profile-local minute of day of the most recent attempt — the retry anchor. */
+  minute: number;
+}
+
+/** `date|attempts|minute`, the value stored under DIGEST_ATTEMPT_KEY. */
+export function formatDigestAttempt(a: DigestAttempt): string {
+  return `${a.date}|${a.attempts}|${a.minute}`;
+}
+
+/**
+ * Today's attempt record, or null when there is none — absent, corrupt, or belonging
+ * to another day. A stale record reads as "no attempt yet today", which re-arms the
+ * digest with the day rather than freezing it: the same per-day re-arm every other
+ * marker in SEND_MARKER_REGISTRY has.
+ */
+export function parseDigestAttempt(
+  raw: string | undefined,
+  date: string
+): DigestAttempt | null {
+  if (!raw) return null;
+  const [d, a, m] = raw.split("|");
+  if (d !== date) return null;
+  const attempts = Number(a);
+  const minute = Number(m);
+  if (!Number.isInteger(attempts) || attempts < 1) return null;
+  if (!Number.isInteger(minute) || minute < 0 || minute >= 24 * 60) return null;
+  return { date, attempts, minute };
+}
+
+/** The record after one more attempt at `minute`. */
+export function nextDigestAttempt(
+  prev: DigestAttempt | null,
+  date: string,
+  minute: number
+): DigestAttempt {
+  return { date, attempts: (prev?.attempts ?? 0) + 1, minute };
+}
+
+// ── The tick decision ────────────────────────────────────────────────────────
+
+/**
+ * What this tick should do about the digest.
+ *   send — build and dispatch it now.
+ *   wait — DECLINE: last night is outstanding but expected, and the deadline has not
+ *          arrived. Writes nothing; the next tick asks again.
+ *   idle — not this tick's business at all.
+ */
+export type DigestTickAction = "send" | "wait" | "idle";
+
+export interface DigestTickInput {
+  mode: DigestMode;
+  /** Static: the send time. Dynamic: the floor. Profile-local minute of day. */
   slotMinute: number;
   /** The profile-local minute of day this tick is running in. */
   currentMinute: number;
-  /** The (observed, clamped) tick cadence, so the attempt bands match the tick's. */
+  /** The (observed, clamped) tick cadence, so attempt bands match the tick's. */
   tickMinutes: number;
-  /**
-   * Whether the digest time is the resolved `auto` time rather than one the user
-   * typed. Deferral is auto-only: a manually set time is user-owned timing, and
-   * silently sliding someone's 07:00 to 08:00 makes their own setting untrue.
-   */
-  auto: boolean;
+  /** Dynamic only: `digestDeadlineMinute` for this profile. Ignored by Static. */
+  deadlineMinute: number;
+  /** Today's failed-attempt record, or null. Only Dynamic ever writes one. */
+  attempt: DigestAttempt | null;
 }
 
 /**
- * Whether this tick should DECLINE to send the digest and let the retry attempt
- * send it instead. `sleepPending` is a thunk so the caller pays for the sleep read
- * only on the one tick per day where the answer can matter.
+ * The digest's whole scheduling decision, for both modes.
  *
- * The deferral is once and only once, by construction (#2121 re-derivation of the
- * #2102 rule — same structure, expressed over slotAttempt's bands):
- *   • it declines only on the "first" attempt band, so the retry band never defers;
- *   • `slotAttempt` offers no third band;
- *   • so the digest sends on the retry attempt — an hour after the slot, at every
- *     tick rate — whether or not sleep arrived.
- * The digest also carries activity, upcoming, biomarkers and more — one pending
- * section must never hold the rest hostage, and here it structurally cannot.
+ * STATIC is today's behavior, to the minute, and MUST STAY SO — it is the regression
+ * that must never land. Two slot-anchored attempt bands from `slotAttempt`, send on
+ * either, sleep pending or not. It never waits, never reads `sleepPending`, and never
+ * writes an attempt record, so its retry stays exactly the slot-anchored pair #2121
+ * designed.
+ *
+ * DYNAMIC re-checks. From the floor onward it asks each tick whether last night has
+ * landed, sends the moment it has, and sends unconditionally at the deadline — one
+ * pending section never holds activity, upcoming and biomarkers hostage. Once a send
+ * has FAILED, the record short-circuits everything: the only remaining opportunity is
+ * the single attempt-anchored retry band, so the two-attempts-a-day budget holds at
+ * every tick rate however many re-check ticks ran.
+ *
+ * With the Sleep section off, `sleepPending` is already false, so Dynamic collapses to
+ * "send at the floor". That is correct — there is nothing to wait for — and
+ * `describeDigestSchedule` states it rather than leaving it to be discovered.
+ *
+ * `sleepPending` is a thunk so the caller pays for the sleep read only on the ticks
+ * where the answer can matter (constraint 5: those reads ride the tick's memoization).
  */
-export function shouldDeferDigest(
-  input: DigestDeferInput,
+export function planDigestTick(
+  input: DigestTickInput,
   sleepPending: () => boolean
-): boolean {
-  if (!input.auto) return false;
-  if (
-    slotAttempt(input.slotMinute, input.currentMinute, input.tickMinutes) !==
-    "first"
-  ) {
-    return false;
+): DigestTickAction {
+  const tick = clampTickMinutes(input.tickMinutes);
+
+  if (input.mode === "static") {
+    return slotAttempt(input.slotMinute, input.currentMinute, tick) !== null
+      ? "send"
+      : "idle";
   }
-  if (input.slotMinute > LAST_DEFERRABLE_MINUTE) return false;
-  return sleepPending();
+
+  // Before the floor — including every next-day tick, whose offset is negative.
+  // Midnight does not wrap here for the same reason it does not wrap in
+  // `slotAttempt`: hour 0 is the next calendar day, where the per-day marker is fresh.
+  if (input.currentMinute < input.slotMinute) return "idle";
+
+  if (input.attempt) {
+    if (input.attempt.attempts >= MAX_DIGEST_ATTEMPTS) return "idle";
+    const offset = input.currentMinute - input.attempt.minute;
+    return offset >= SLOT_RETRY_DELAY_MIN &&
+      offset < SLOT_RETRY_DELAY_MIN + tick
+      ? "send"
+      : "idle";
+  }
+
+  // At or past the deadline the digest sends unconditionally, in the SAME two
+  // slot-anchored bands Static gets — which is what bounds the work: a digest with no
+  // channel configured (dispatch returns nothing, nothing is marked) costs two builds
+  // for the day rather than one per tick until midnight.
+  if (input.currentMinute >= input.deadlineMinute) {
+    return slotAttempt(input.deadlineMinute, input.currentMinute, tick) !== null
+      ? "send"
+      : "idle";
+  }
+
+  // The re-check window. This is the whole point: three ticks run between a 07:26
+  // arrival and the old 08:15 retry band, each able to answer "has it landed?" for one
+  // already-memoized read.
+  return sleepPending() ? "wait" : "send";
+}
+
+// ── What the user is told ────────────────────────────────────────────────────
+
+/**
+ * The digest's schedule in words. ONE computation (#221): Settings renders this, and
+ * anything else that has to explain the same schedule formats this same result — a
+ * mode and a surface must never describe the send time two different ways.
+ */
+export interface DigestScheduleSummary {
+  /** The schedule itself, naming every time it depends on. */
+  headline: string;
+  /** Where the deadline came from, or null when there is no deadline to explain. */
+  detail: string | null;
+}
+
+/**
+ * Say what this profile's digest will actually do.
+ *
+ * THE FOUR UNAVAILABLE REASONS ARE FOUR DIFFERENT THINGS and are answered as such.
+ * Flattening them into one "not enough data yet" would be a lie to at least one
+ * person: `thin-sample` genuinely resolves by waiting, `no-source` and `no-arrivals`
+ * resolve by a change in what syncs, and `dispersed` — an arrival sample spanning more
+ * than half the clock, which is what a shift worker's genuine rhythm looks like —
+ * does NOT resolve by waiting at all. Promising that person a sample that will never
+ * qualify is exactly the editorialising constraint 4 forbids.
+ */
+export function describeDigestSchedule(input: {
+  mode: DigestMode;
+  /** Static: the send time. Dynamic: the floor. */
+  floorMinute: number;
+  /** Whether the digest's Sleep section is on — the only thing Dynamic waits for. */
+  sleepSectionEnabled: boolean;
+  stats: ArrivalStatistics;
+  tickMinutes: number;
+}): DigestScheduleSummary {
+  const at = formatNotifyTime(input.floorMinute);
+
+  if (input.mode === "static") {
+    return {
+      headline: `Sends at ${at} every day, whether or not last night’s sleep has arrived by then.`,
+      detail: null,
+    };
+  }
+
+  if (!input.sleepSectionEnabled) {
+    return {
+      headline: `Sends at ${at}. Last night’s sleep summary is off, so there is nothing to wait for.`,
+      detail: null,
+    };
+  }
+
+  const deadline = formatNotifyTime(
+    digestDeadlineMinute(input.floorMinute, input.stats, input.tickMinutes)
+  );
+  const headline = `Sends as soon as last night’s sleep lands — never before ${at}, and by ${deadline} at the latest.`;
+
+  if (input.stats.available) {
+    return {
+      headline,
+      detail: `Your sleep has arrived by ${formatNotifyTime(input.stats.p90Minute)} on 9 of every 10 of the last ${input.stats.nights} measured mornings; the latest send adds ${DEADLINE_MARGIN_MIN} minutes to that.`,
+    };
+  }
+
+  const detail = ((): string => {
+    switch (input.stats.reason) {
+      case "no-source":
+        return "Nothing is syncing sleep yet, so there is no arrival time to measure — until something does, the latest send stays an hour after your earliest time.";
+      case "no-arrivals":
+        return "Your sleep rows land as backfills and bulk imports rather than each morning, so there is no arrival time to measure — the latest send stays an hour after your earliest time.";
+      case "thin-sample":
+        return `${input.stats.nights} of the ${MIN_ARRIVAL_SAMPLE} mornings needed have been measured so far; until there are ${MIN_ARRIVAL_SAMPLE}, the latest send stays an hour after your earliest time.`;
+      case "dispersed":
+        return "Your sleep lands across more than half the clock, so there is no typical arrival time to measure and waiting longer will not produce one — the latest send stays an hour after your earliest time.";
+    }
+  })();
+
+  return { headline, detail };
 }

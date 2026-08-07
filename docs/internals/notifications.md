@@ -325,7 +325,10 @@ separate **care-tier** finding (the `prn-max:<itemId>` Upcoming generator, the
 reminder itself is the ungated safety signal. Request-time engines (coaching, AI
 insight) are out of this contract. **Two-way button principle (#233):** a nudge
 earns an inline action button only when the expected response is ONE idempotent,
-low-risk state change with an EXISTING server function (else deep-link) —
+low-risk state change with an EXISTING server function (else deep-link) — the
+time-correction chips are the one deliberate exception (#2206: a repeat tap
+COMPOSES, and the row re-renders with the value each step stored, so "again"
+means "further" rather than "undefined") —
 preventive ✅ Done/🚫 Not applicable/⏰ Remind later route onto
 `recordPreventiveDone`/`setPreventiveOverride`/bus-snooze — plus (#1083) a
 **deep-link "go do it" button** carrying the concrete next action per class (the
@@ -550,19 +553,46 @@ renders it for both:
 
 - taps within ~15 min collapse into a **burst**, because burst-mates share one error
   — dinner logged two hours late is off by two hours for all four servings;
-- the row is `🕐 <name> · −1h · −2h · −3h`, where the NAME button is the picker (a
-  fifth button would shrink a four-button row below legibility);
+- the row is `🕐 <name> <HH:MM> · <HH:MM · −30m> · <HH:MM · −1h>`, where the NAME
+  button is the picker (a fourth button would shrink the row below legibility);
 - 🕐 drills down to **absolute hours** — the past twelve, starting one hour past the
   last chip, three per row, plus `↩︎ Back` — the `symp:`→`symsev:` shape, except the
   quick-log buttons stay on screen so `↩︎ Back` can rebuild from the live keyboard.
 
-**Every offer is anchored to the immutable tap stamp**, which makes a chip
-idempotent (the same chip tapped twice lands on the same instant, so two people
-tapping one message cannot walk a serving four hours back) and keeps a burst's
-internal spread. The picker is absolute rather than relative so the stamp does not
-drift with the seconds between rendering the keyboard and choosing an answer. An
-offered hour LATER than the current hour resolves to **yesterday** — which is how
-the cross-midnight re-date falls out of the same computation.
+**One vocabulary: every offer is an absolute local time (#2206).** A chip states the
+instant it will store, with its offset as context — `19:11 · −1h`, not `−1h`. The
+absolute value is the answer, `chipInstant` computes it once for both the label and
+the write, and it is DST-correct by construction, which is exactly the case a relative
+label gets silently wrong across a fall-back hour. Two chips rather than three, because
+repeat taps reach the middle of the range and the absolute labels need the width.
+
+**A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
+COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
+`given_at` IS the ledger the row set is already a query over — so the chips still
+survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
+which turned into the wrong answer once the row started showing its result: "tap again
+to go further" is the only reading a visibly-moving value supports, and a silent no-op
+would be the worst possible reply to it. Composition is race-safe without versioning
+because each write resolves its base inside its own `IMMEDIATE` transaction, so a second
+callback reads what the first committed. What bounds it instead is the **floor**: a chip
+is only offered while its result stays inside the picker's own twelve-hour reach, and a
+tap arriving off a stale keyboard past that point is REFUSED in words, never clamped.
+Freshness stays keyed on the TAP — a correction is not a tap and must not renew its own
+window — and nothing is stranded when the window closes, because every tap is a complete
+committed write.
+
+**The row states what the ledger holds (#2206).** The header used to name the burst by
+its TAP time, which is precisely the value a correction replaces, so a corrected row went
+on asserting the wrong time forever. It now reads `🕐 Salmon 19:11 (corrected)` — the
+#1779 "a chat must not claim what is no longer true" rule applied to a displayed value
+rather than to a button. No new machinery: the row set is a query, so every rebuild
+re-reads it. The re-render only ever REDUCES what the message claims; it adds no button
+and no new token.
+
+The picker stays absolute-and-anchored-on-now so the stamp does not drift with the
+seconds between rendering the keyboard and choosing an answer. An offered hour LATER
+than the current hour resolves to **yesterday** — which is how the cross-midnight
+re-date falls out of the same computation.
 
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the
@@ -1217,7 +1247,7 @@ happens.
   the one chokepoint.
 
 **Morning digest (one merged message, #1108).** The tick sends ONE summary per
-profile per day at `digest_hour`, hard-deduped by the single
+profile per day at the time its MODE resolves (see below), hard-deduped by the single
 `notify_last_digest` marker. Sections in order: **Illness** (open-episode
 headline) → **Today** → **Yesterday** (activities/adherence/weight) → **Sleep**
 (#1117; ON by default when the digest is enabled as of #1378 — an opt-OUT
@@ -1244,21 +1274,70 @@ key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
 
-**When the digest sends, and the one hour it will wait (#2102).** Two separate
-decisions, both pure in `lib/notifications/digest-schedule.ts`:
+**When the digest sends: two modes, no `auto` (#2211).** The decision is pure in
+`lib/notifications/digest-schedule.ts` (`planDigestTick`); `planProfileDigestTick`
+(`lib/notifications/digest-data.ts`) resolves its stored inputs.
 
-- **`auto` resolves past the ARRIVAL, not the wake.** An `auto` digest time used
-  to resolve to the hour the person WAKES — while the sleep row lands a measured
-  ~70 minutes behind waking (real Health Connect profile, 11 nights, wake 05:40,
-  arrivals 06:02–07:49). The old whole-hour rounding compounded it: `round(340/60)`
-  is 6, so the digest fired at 06:00, before all eleven arrivals and an hour worse
-  than the manual 07:00 it was meant to improve on. `digestAutoMinute` now
-  resolves to the first MINUTE strictly after the measured arrival p90 (#2121
-  deleted the round-up-to-the-next-hour along with the rounding defect). Below the
-  sample gate it returns null and the caller falls back to the wake minute, where
-  the deferral below is the safety net. The **`auto` Morning intake time
-  deliberately stays on the raw wake minute**: it needs you awake, not your
-  tracker synced, so do not fold the arrival into the Morning resolution.
+| Setting state                                 | Behavior                                                                          |
+| --------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Off** — `notify_digest_hour` `""` or absent | nothing sends                                                                     |
+| **Static** — _Same time every day_            | send at `HH:MM`, complete or not                                                  |
+| **Dynamic** — _As soon as it's ready_         | send when last night lands; never before `HH:MM`; unconditionally by the deadline |
+
+- **The mode has its OWN key**, `digest_mode` in `profile_settings`, beside
+  `notify_digest_hour`, which keeps carrying only `""` or `HH:MM`. Multiplexing a
+  third meaning onto the time is exactly what #2205 exists to stop. An absent or
+  unrecognised mode reads as Static (`parseDigestMode`), so a digest configured
+  before modes existed is bit-for-bit unchanged.
+- **No mode can increase contact.** Both send at most ONE digest per profile per
+  day, hard-deduped by `notify_last_digest`; the modes change WHEN, never how
+  often. Neither mode nor time is ever written by anything but a user's own tap
+  (contact-consent rule, `docs/internals/findings.md`), and migration 166 turns no
+  digest on and moves no digest's minute.
+- **Why `auto` is gone.** Its job was "the user cannot compute the right time
+  themselves", which is true — nobody knows their own p90 sync arrival. But a
+  SUGGESTION does that job better, because it tells the user the number instead of
+  silently being it, and this statistic is unfit to be a live binding (see "It is
+  not live" below). #2217 is the suggestion; the tap is the write. **`AUTO_TIME`
+  itself is very much alive** for the Morning INTAKE slot, which resolves from wake
+  time and depends on nothing having synced — do not fold the arrival into it.
+- **Static is today's behavior, to the minute**, and that is the regression that
+  must never land: `slotAttempt`'s two slot-anchored bands, send on either, sleep
+  pending or not. It never reads `digestSleepPending` and never writes an attempt
+  record.
+- **Dynamic re-checks.** From the floor onward each tick asks whether last night has
+  landed, sends the moment it has, and sends unconditionally at the deadline — one
+  pending section never holds Today, Yesterday and New hostage. With the Sleep
+  section off, `digestSleepPending` is already false, so Dynamic collapses to "send
+  at the floor"; `describeDigestSchedule` STATES that rather than leaving it to be
+  discovered.
+- **The deadline derives from the arrival distribution**, not from
+  `floor + SLOT_RETRY_DELAY_MIN`: `digestDeadlineMinute` = `p90 + DEADLINE_MARGIN_MIN`
+  (a declared 30, in the style of `MIN_ARRIVAL_SAMPLE` — not a fitted parameter),
+  floored at `floor + one tick` so Dynamic never degenerates, clamped by
+  `LAST_DEFERRABLE_MINUTE`, and falling back to `floor + 60` whenever the statistic
+  has no answer — which is exactly today's behavior, so a profile with no history is
+  unchanged. `SLOT_RETRY_DELAY_MIN` is back to ONE job: failure backoff.
+- **The Dynamic failure retry anchors to the ATTEMPT instant**, not the floor. A
+  Dynamic send fires at whatever tick the data landed on, so a send failing at 08:05
+  retries at 09:05; a floor-anchored band would sit at `floor + 60`, already in the
+  past, and silently get no retry at all. Attempts stay at `MAX_DIGEST_ATTEMPTS` = 2
+  per profile per day in both modes at every tick rate — re-checks re-evaluate a
+  CONDITION, they never re-attempt a delivery (#2121 item 3).
+- **A decline is distinguishable from a failure**, by the record's PRESENCE. A
+  decline writes nothing; a failed send writes `notify_digest_attempt`
+  (`<date>|<attempts>|<minute>`, declared in `SEND_MARKER_REGISTRY`), which is both
+  the retry anchor and the distinction. Delivery is still `notify_last_digest`, so:
+  marker set = delivered, attempt record = attempted-and-failed, neither = declined
+  or not yet due. The stored date IS the key's lifetime — a record for another day
+  parses as absent, and the day rolling over re-arms both.
+- **The picker pre-fills `DIGEST_DEFAULT_MINUTE` (07:00)** in both modes (the Static
+  send time, or the Dynamic floor), shared with onboarding so "what time does the
+  digest start at" has one answer. It is a PRE-FILL, not an `auto` binding: it never
+  moves on its own, and #2217 corrects it once there is evidence.
+- **Generality is out of scope**: only the digest waits. The `digest-mode` control
+  kind is deliberately not generalised — a second consumer is when this becomes
+  shared vocabulary, not before.
 
 **The arrival statistic (#2214).** "When does last night's sleep normally land, in
 clock time?" is ONE computation — `arrivalStatistics`
@@ -1295,25 +1374,35 @@ clock time?" is ONE computation — `arrivalStatistics`
   time and the exclusion is visible in the `nights` count that gates the sample.
 - **It is not live.** The sample is thin by construction and jumpy
   (leave-one-night-out moves the p90 up to 11 minutes), so it may be proposed or
-  used as a bound, never silently BE a user's send time.
-- **One deferral, into the retry attempt that already exists.** `slotDue` is two
-  attempt bands paired with the hard per-day marker, so the FIRST attempt is free
-  to decline: `deferDigestForSleep` skips the send when last night's sleep is
-  pending but expected, and the retry attempt — an hour later, at every tick
-  rate — sends it. It is bounded by construction — the decision requires this
-  tick to be the slot's "first" band (`slotAttempt`), so the retry attempt never
-  defers and the digest goes out an hour later whether or not the night landed.
-  **Auto only**: a manually set time is user-owned timing, and silently sliding
-  someone's 07:00 would make their own setting untrue. A slot past 22:59 never
-  defers, because `slotAttempt` does not wrap past midnight and there would be no
-  attempt to defer into (`LAST_DEFERRABLE_MINUTE`).
+  used as a bound, never silently BE a user's send time. Its two consumers are
+  Dynamic's deadline (above) and #2217's suggestion; neither may re-derive it and
+  neither may substitute a different percentile.
 
-**No new stored state, and no new send marker.** "Have I already deferred today?"
-is answered by the clock, not a flag, which is why nothing here appears in
-`SEND_MARKER_REGISTRY`. A decline writes nothing at all, so a deferred-then-sent
-digest records its `notify_last_digest` marker, its `notify_digest_last_at`
-watermark, its tail pointer and its #2081 dependency stamp exactly as an on-time
-one does.
+**What the user is told, per no-answer reason.** `describeDigestSchedule` is the
+ONE formatter for "what will my digest do" — Settings renders it and anything else
+explaining the same schedule formats the same result, so a mode and a surface can
+never describe the send time two different ways (#221). The four unavailable
+reasons are four different situations and are **never flattened into one "not
+enough data yet"**: `thin-sample` genuinely resolves by waiting; `no-source` and
+`no-arrivals` resolve only by a change in what syncs; and `dispersed` — a sample
+spanning more than half the clock, which is what a shift worker's genuine rhythm
+looks like — does not resolve by waiting at all, so promising that person a sample
+that will one day qualify would be the editorialising #2214 constraint 4 forbids.
+Every branch states the fallback deadline in the same breath, because that is the
+consequence the user actually experiences.
+
+**A decline is not a failure, and both leave a trace.** A decline writes no send
+state at all — `notify_last_digest`, `notify_digest_last_at`, the tail pointer and
+the #2081 dependency stamp are still set only by a real send, so a
+waited-then-sent digest records exactly what an on-time one does. What a decline
+DOES leave is the #2209/#2220 evidence line (`decision: "declined" | "proceeded"`,
+persisted and readable at Settings → Logs & audit), written by `logDigestTick`
+from the SAME `digestSleepPendingTrace` the decision itself consumed, so the trace
+can never describe a decision other than the one taken. It is written only on a
+tick that actually consulted the predicate — a Dynamic re-check — which bounds it
+at `(deadline − floor) / tick` lines per profile per day, at most four at a
+15-minute tick and fewer whenever the data lands early. A Static profile writes
+none, which is the honest reading: Static never asks the question.
 
 **When to send vs what to print stay separate.** This decides only WHEN. #2099
 decides what: a night that is not last night is omitted rather than printed as

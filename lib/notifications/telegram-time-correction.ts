@@ -31,7 +31,7 @@ import {
 import { now as clockNow } from "../clock";
 import {
   burstFrom,
-  chipInstant,
+  chipTarget,
   isBurstFresh,
   isOfferedHour,
   statedHourInstant,
@@ -40,7 +40,10 @@ import {
   type CorrectionChipToken,
   type TapEvent,
 } from "../correction-time";
-import { restampFoodEventsCore } from "../food-log-write";
+import {
+  restampFoodEventsCore,
+  type FoodRestampOutcome,
+} from "../food-log-write";
 import {
   getRecentDoseTaps,
   getRecentFoodTaps,
@@ -91,6 +94,13 @@ const NO_BURST_TEXT =
   "Couldn't find those entries any more — nothing was changed.";
 const UNOFFERED_TEXT =
   "That time isn't on offer any more — nothing was changed.";
+// The floor (#2206). Repeat chip taps compose, so they have to stop somewhere; the chips
+// come off the keyboard at that point, and a tap that still arrives (a stale keyboard, or
+// a second tap racing a first past the edge) is REFUSED rather than clamped — a clamp
+// would confirm a time nobody chose. It names the picker, which is what an answer that
+// far back is for.
+const OUT_OF_RANGE_TEXT =
+  "That's as far back as the chips go — tap the row for an exact time.";
 
 async function resolve(
   cq: TelegramCallbackQuery,
@@ -177,8 +187,9 @@ async function rebuildFood(
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
 }
 
-// A −Nh chip on a food burst. Re-stamps every row of the burst from its OWN tap instant,
-// so the burst keeps its internal spread, and moves the serving's day + counter with it
+// A chip on a food burst. Re-stamps every row of the burst from the instant it CURRENTLY
+// stands at (#2206 — so a second tap goes further rather than landing where the first one
+// did), keeping the burst's internal spread, and moves the serving's day + counter with it
 // when the correction crosses local midnight.
 export async function handleFoodTimeChip(
   cq: TelegramCallbackQuery,
@@ -186,16 +197,22 @@ export async function handleFoodTimeChip(
 ): Promise<void> {
   const r = await resolve(cq, token, getRecentFoodTaps);
   if (!r) return;
-  const outcome = restampFoodEventsCore(r.profileId, token.fromId, (tapAt) =>
-    chipInstant(tapAt, token.minutesBack / 60)
+  const outcome = restampFoodEventsCore(r.profileId, token.fromId, (row) =>
+    chipTarget(row, token.minutesBack, r.now)
   );
-  await answerCallbackQuery(
-    cq.id,
-    outcome.kind === "restamped"
-      ? foodRestampText(outcome.count, outcome.movedDays)
-      : NO_BURST_TEXT
-  );
+  await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome));
   await rebuildFood(r);
+}
+
+// The toast for a chip or picker write, from what the write ACTUALLY did — never an
+// unconditional confirm, because every one of these branches can happen.
+function foodRestampOutcomeText(
+  outcome: FoodRestampOutcome,
+  hhmm?: string
+): string {
+  if (outcome.kind === "no-burst") return NO_BURST_TEXT;
+  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  return foodRestampText(outcome.count, outcome.movedDays, hhmm);
 }
 
 // The 🕐 drill-down on a food burst: open the absolute-hour picker, apply a chosen hour,
@@ -232,12 +249,7 @@ export async function handleFoodTimeAt(
     token.fromId,
     () => instant
   );
-  await answerCallbackQuery(
-    cq.id,
-    outcome.kind === "restamped"
-      ? foodRestampText(outcome.count, outcome.movedDays, hhmm)
-      : NO_BURST_TEXT
-  );
+  await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome, hhmm));
   await rebuildFood(r);
 }
 
@@ -320,19 +332,35 @@ async function rebuildDose(
 
 // The dose message's own correction ride-along, from the SAME row builder the food nudge
 // uses — the two domains differ only in prefix and in the picker's verb.
+//
+// The burst is RE-READ from the ledger rather than reused from `Resolved` (#2206). The
+// resolve happened before the write, so reusing it would rebuild the row with the instant
+// the correction just replaced — the chat asserting the value it had been asked to stop
+// asserting. The food side gets this for free because `buildFoodNudge` re-queries; this
+// is `resolve`'s own query, run again on the far side of the write.
+//
+// A burst the ledger no longer justifies renders NO row, rather than falling back to the
+// one that was resolved: the row set is a query, and the one thing a rebuild may not do is
+// restore a claim the write just retired.
 function doseCorrectionActions(
   r: Resolved,
   picker?: CorrectionBurst
 ): NotificationAction[] {
-  return picker
-    ? correctionPickerActions(
-        DOSE_TIME_PREFIXES,
-        r.profileId,
-        picker,
-        r.now,
-        r.tz
-      )
-    : correctionActions(DOSE_TIME_PREFIXES, r.profileId, [r.burst], r.tz);
+  if (picker)
+    return correctionPickerActions(
+      DOSE_TIME_PREFIXES,
+      r.profileId,
+      picker,
+      r.now,
+      r.tz
+    );
+  const burst = burstFrom(
+    getRecentDoseTaps(r.profileId, r.now),
+    r.burst.fromId
+  );
+  return burst
+    ? correctionActions(DOSE_TIME_PREFIXES, r.profileId, [burst], r.tz, r.now)
+    : [];
 }
 
 export async function handleDoseTimeChip(
@@ -341,8 +369,8 @@ export async function handleDoseTimeChip(
 ): Promise<void> {
   const r = await resolve(cq, token, getRecentDoseTaps);
   if (!r) return;
-  const outcome = restampDoseLogsCore(r.profileId, token.fromId, (tapAt) =>
-    chipInstant(tapAt, token.minutesBack / 60)
+  const outcome = restampDoseLogsCore(r.profileId, token.fromId, (row) =>
+    chipTarget(row, token.minutesBack, r.now)
   );
   await answerCallbackQuery(cq.id, doseRestampText(outcome));
   await rebuildDose(r, anchorOf(outcome));
@@ -387,6 +415,7 @@ function anchorOf(outcome: DoseRestampOutcome) {
 // schedule that asked for it (#614), so only the administration instant moves.
 function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
   if (outcome.kind === "no-burst") return NO_BURST_TEXT;
+  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
   const what = outcome.count === 1 ? "1 dose" : `${outcome.count} doses`;
   const when = hhmm ? ` to ${hhmm}` : " back";
   const day = outcome.crossedMidnight

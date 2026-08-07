@@ -1741,13 +1741,14 @@ export function getOfferedIntakeForSlot(
 // ---- Administration-time correction (issue #2020) ----
 
 // One recent dose confirmation as the correction offer reads it. `tapAt` is `taken_at`,
-// the IMMUTABLE audit stamp — burst identity, freshness and every chip offset key on it,
-// never on `given_at`, which is the thing being corrected. That separation is what makes
-// a chip idempotent: tapping −2h twice lands on the same instant instead of walking a
-// dose four hours into the past.
+// the IMMUTABLE audit stamp — burst identity and FRESHNESS key on it, never on
+// `given_at`, because a correction is not a tap and must not renew the correction window
+// (#2206). `statedAt` is `given_at`: the administration instant itself, which is what the
+// row's header states and what a chip counts back from, so repeat taps compose.
 export interface DoseTapRow {
   id: number;
   tapAt: string;
+  statedAt: string | null;
   label: string;
   doseId: number;
   date: string;
@@ -1771,7 +1772,7 @@ export function getRecentDoseTaps(
   const rows = db
     .prepare(
       `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-              l.taken_at AS takenAt, s.name AS name
+              l.taken_at AS takenAt, l.given_at AS givenAt, s.name AS name
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
@@ -1785,6 +1786,7 @@ export function getRecentDoseTaps(
     doseId: number;
     date: string;
     takenAt: string;
+    givenAt: string | null;
     name: string;
   }[];
   const out: DoseTapRow[] = [];
@@ -1793,9 +1795,11 @@ export function getRecentDoseTaps(
     // `new Date`, which would read them in the process-local zone.
     const tap = parseUtcSql(r.takenAt);
     if (!tap) continue;
+    const given = r.givenAt ? parseUtcSql(r.givenAt) : null;
     out.push({
       id: r.id,
       tapAt: tap.toISOString(),
+      statedAt: given ? given.toISOString() : null,
       label: r.name,
       doseId: r.doseId,
       date: r.date,
@@ -1820,6 +1824,8 @@ export function getDoseCorrectionBursts(
 //               `anchor` names the dose + day the message can be rebuilt from once the
 //               session's own buttons are gone.
 //   no-burst  — the anchor row is gone or belongs to another profile. Nothing written.
+//   out-of-range — the resolver refused at least one row (a chip that would walk the
+//               burst past the floor, #2206). All-or-nothing: a burst is one error.
 export type DoseRestampOutcome =
   | {
       kind: "restamped";
@@ -1827,7 +1833,8 @@ export type DoseRestampOutcome =
       crossedMidnight: boolean;
       anchor: { doseId: number; date: string };
     }
-  | { kind: "no-burst" };
+  | { kind: "no-burst" }
+  | { kind: "out-of-range" };
 
 // Correct a burst of administration instants (issue #2020).
 //
@@ -1847,19 +1854,21 @@ export type DoseRestampOutcome =
 //     something that was taken. The instant is adjusted; the rows stay.
 //   • It does not RE-ARM anything (#1933). A corrected instant is a correction of
 //     history, not a new event, so no escalation reopens and no reminder returns.
-//   • It only ever moves an instant EARLIER (chips are −Nh, picker hours are all past),
+//   • It only ever moves an instant EARLIER (chips step back, picker hours are all past),
 //     so the PRN redose window can only become MORE conservative — the safe direction
-//     for the one consumer that is safety-relevant.
+//     for the one consumer that is safety-relevant. Repeat chip taps COMPOSE off the
+//     stored `given_at` (#2206), which keeps that direction and bounds how far it can go
+//     through the resolver's own floor rather than through idempotence.
 export function restampDoseLogsCore(
   profileId: number,
   fromLogId: number,
-  resolve: (tapAt: string) => Date
+  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null
 ): DoseRestampOutcome {
   return writeTx(() => {
     const rows = db
       .prepare(
         `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-                l.taken_at AS takenAt, s.name AS name
+                l.taken_at AS takenAt, l.given_at AS givenAt, s.name AS name
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = d.item_id
@@ -1873,26 +1882,52 @@ export function restampDoseLogsCore(
       doseId: number;
       date: string;
       takenAt: string;
+      givenAt: string | null;
       name: string;
     }[];
-    const taps: { row: (typeof rows)[number]; tapAt: string }[] = [];
+    const taps: {
+      row: (typeof rows)[number];
+      tapAt: string;
+      statedAt: string | null;
+    }[] = [];
     for (const r of rows) {
       const tap = parseUtcSql(r.takenAt);
-      if (tap) taps.push({ row: r, tapAt: tap.toISOString() });
+      if (!tap) continue;
+      const given = r.givenAt ? parseUtcSql(r.givenAt) : null;
+      taps.push({
+        row: r,
+        tapAt: tap.toISOString(),
+        statedAt: given ? given.toISOString() : null,
+      });
     }
     const byId = new Map(taps.map((t) => [t.row.id, t]));
     const burst = burstFrom(
-      taps.map((t) => ({ id: t.row.id, tapAt: t.tapAt, label: t.row.name })),
+      taps.map((t) => ({
+        id: t.row.id,
+        tapAt: t.tapAt,
+        statedAt: t.statedAt,
+        label: t.row.name,
+      })),
       fromLogId
     );
     if (!burst) return { kind: "no-burst" as const };
+
+    // Resolve every row before writing any: one refusal refuses the burst.
+    const targets = new Map<number, Date>();
+    for (const id of burst.ids) {
+      const t = byId.get(id);
+      if (!t) continue;
+      const instant = resolve({ tapAt: t.tapAt, statedAt: t.statedAt });
+      if (!instant) return { kind: "out-of-range" as const };
+      targets.set(id, instant);
+    }
 
     const tz = getTimezone(profileId);
     let crossedMidnight = false;
     for (const id of burst.ids) {
       const t = byId.get(id);
-      if (!t) continue;
-      const instant = resolve(t.tapAt);
+      const instant = targets.get(id);
+      if (!t || !instant) continue;
       if (dateStrInTz(tz, instant) !== t.row.date) crossedMidnight = true;
       // Re-scoped at the point of the WRITE (#2059), not only at the read that
       // produced `id`. The burst ids already come from the profile-filtered SELECT

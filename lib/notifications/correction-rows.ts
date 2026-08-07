@@ -8,11 +8,16 @@
 //
 // ── WHY THE NAME IS ALSO THE PICKER BUTTON ───────────────────────────────────
 //
-// The row wants four things on it: what it is about, and three chips. A phone gives a
-// four-button row about ninety points each, and a fifth button for the picker would
-// shrink all of them below legibility. So the LABEL button is the picker: tapping the
-// thing the row names is what opens "when was this, exactly", which is also the more
-// discoverable gesture — the escape hatch sits on the subject rather than beside it.
+// The row wants three things on it: what it is about, and two chips (#2206 — three
+// chips became two once repeat taps started composing). A phone gives a four-button row
+// about ninety points each, and a separate button for the picker would shrink all of them
+// below legibility. So the LABEL button is the picker: tapping the thing the row names is
+// what opens "when was this, exactly", which is also the more discoverable gesture — the
+// escape hatch sits on the subject rather than beside it.
+//
+// Dropping to two chips is also what pays for their absolute labels: "19:11 · −1h" is
+// wider than "−1h", and a three-button row gives each button a third of the width instead
+// of a quarter.
 //
 // ── THE PICKER REPLACES THE MESSAGE, AND COMES BACK ──────────────────────────
 //
@@ -25,10 +30,9 @@
 import {
   burstLabel,
   burstSubject,
-  chipLabel,
+  chipOffers,
   correctionAtToken,
   correctionChipToken,
-  CORRECTION_CHIP_HOURS,
   pickerHourOptions,
   type CorrectionBurst,
 } from "../correction-time";
@@ -54,11 +58,16 @@ export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
 
 // One row per burst: the named picker button, then the chips. Rows are keyed by the
 // burst's anchor id so two bursts never collapse onto one keyboard row.
+//
+// `now` is what bounds the chips: `chipOffers` drops any step that would walk the burst
+// past the floor, so a burst already corrected to the edge of the picker's reach renders
+// its label button alone and the drill-down is the only path left (#2206).
 export function correctionActions(
   prefixes: CorrectionPrefixes,
   profileId: number,
   bursts: readonly CorrectionBurst[],
-  tz: string
+  tz: string,
+  now: Date
 ): NotificationAction[] {
   const out: NotificationAction[] = [];
   for (const burst of bursts) {
@@ -70,14 +79,14 @@ export function correctionActions(
       }),
       row,
     });
-    for (const hours of CORRECTION_CHIP_HOURS) {
+    for (const offer of chipOffers(burst, now, tz)) {
       out.push({
-        label: chipLabel(hours),
+        label: offer.label,
         data: correctionChipToken(
           prefixes.chip,
           profileId,
           burst.fromId,
-          hours * 60
+          offer.minutesBack
         ),
         row,
       });
@@ -87,8 +96,9 @@ export function correctionActions(
 }
 
 // The drill-down keyboard: the offered absolute hours three per row, then `↩︎ Back`.
-// Three per row because an "HH:MM" label is short and a nine-option grid then costs
-// three rows instead of nine.
+// Three per row because a bare "HH:MM" label is short and the grid then costs a handful
+// of rows instead of one per hour. (The chips beside the label button carry an offset
+// suffix too and so ride three-to-a-row at most, which is what the correction row is.)
 export function correctionPickerActions(
   prefixes: CorrectionPrefixes,
   profileId: number,

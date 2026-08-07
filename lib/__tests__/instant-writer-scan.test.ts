@@ -109,8 +109,8 @@ const CANONICAL_INSTANT_COLUMNS: Record<
 // shape the column did not declare" — say why.
 const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 2,
-    why: "the dose-burst reader re-serializes an ALREADY-STORED given_at (parseUtcSql → toISOString) into the in-memory `tapAt` the pure burst grouping compares. Nothing writes it: the value never reaches a bind parameter, and the burst's own output is ids plus a label.",
+    count: 4,
+    why: "the dose-burst reader and the restamp core each re-serialize ALREADY-STORED stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` the pure burst grouping compares — `taken_at` for identity and freshness, `given_at` for the instant the row stands at (#2206). Nothing writes them: the values never reach a bind parameter, the write itself re-serializes through utcSqlString, and the burst's own output is ids plus a label.",
   },
   "lib/reading-writes.ts": {
     count: 1,

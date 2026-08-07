@@ -24,6 +24,8 @@ import {
   formatNotifyTime,
   subHourlySlotsAtRisk,
 } from "@/lib/notifications/schedule";
+import { arrivalStatistics } from "@/lib/notifications/digest-schedule";
+import { getSleepArrivals } from "@/lib/queries/metrics";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
@@ -227,10 +229,16 @@ export default async function NotificationsSettingsPage() {
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}
                 sleepDigestEnabled={getProfileSleepDigest(profile.id)}
                 wearReminderEnabled={getProfileWearReminder(profile.id)}
-                // What "Auto" resolves to (#1117): the profile's typical wake
-                // minute, or null when there isn't enough sleep data yet. At
-                // minute grain (#2121) it is passed unrounded.
+                // What the MORNING SLOT's "Auto" resolves to (#1117): the profile's
+                // typical wake minute, or null when there isn't enough sleep data
+                // yet. At minute grain (#2121) it is passed unrounded. The digest
+                // does not read it — #2211 removed `auto` from the digest.
                 wakeMinute={typicalWakeTime(profile.id)}
+                // The measured sleep-arrival distribution (#2214) the Dynamic
+                // digest's deadline derives from, or its stated no-answer. Read
+                // once here and formatted once, by describeDigestSchedule.
+                arrivalStats={arrivalStatistics(getSleepArrivals(profile.id))}
+                tickMinutes={observedTickMin}
                 subHourlyAtRisk={subHourlyAtRisk}
                 telegramDisabled={getLoginTelegramDisabledKinds(login.id)}
                 pushDisabled={getLoginPushDisabledKinds(login.id)}

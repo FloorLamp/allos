@@ -125,8 +125,11 @@ export type QuickLogTimeSemantic = "instant" | "day-only";
 //
 //   • "hour" — the CONSUMER reads hours, so an hour is the unit a correction has to be
 //              able to move. The unit names that grain; it does not name a widget.
-//              Example mechanisms: the hour chips of lib/correction-time.ts (food,
-//              dose), and the practice session's own dated edit form (#2204).
+//              Example mechanisms: the correction chips of lib/correction-time.ts
+//              (food, dose), and the practice session's own dated edit form (#2204).
+//              Those chips reach half an hour at the small end since #2206 and the
+//              picker stays hourly; the unit still names the TOLERANCE the admission
+//              test asked about, which is the hour.
 //   • "day"  — corrected a DAY at a time, through the dated form that owns the
 //              exception (a period start that actually began yesterday).
 //   • "none" — the form STATES the time on entry, so there is no correction affordance

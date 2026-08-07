@@ -1199,10 +1199,16 @@ offers an **Undo** toast that puts both back.
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
 (`eaten_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
-carries burst-collapsed `−1h · −2h · −3h` chips plus an absolute-hour picker for the
-common case of being slow to tap. A correction moves the serving's meal — and, when
-it crosses local midnight, its day and counter row — so last night's dinner logged
-after midnight is a tap plus one chip rather than a dead end. A web log with no stated
+carries burst-collapsed correction chips plus an absolute-hour picker for the common
+case of being slow to tap. **The chips state the time they set, not an offset**
+(#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker
+speaks, so nobody redoes arithmetic the app already did. Tapping one again goes further
+back rather than landing in the same place, and the row re-renders with the time now
+stored — `🕐 Salmon 19:11 (corrected)` — so the chat states what the ledger holds
+instead of the tap it replaced. The chips stop at the picker's own twelve-hour reach and
+leave the picker as the way to answer beyond it. A correction moves the serving's meal —
+and, when it crosses local midnight, its day and counter row — so last night's dinner
+logged after midnight is a tap plus one chip rather than a dead end. A web log with no stated
 time still records NO eating time rather than a confident wrong one — the web "+" carries
 no "I'm eating now" contract, since the same button logs the apple in your hand and
 backfills Sunday's dinner. What it has instead (#2053) is a small **Now / Earlier…** row
