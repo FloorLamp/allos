@@ -107,7 +107,9 @@ function night(
   lagMin: number,
   minutes = 420
 ): void {
-  const arrivedAt = zonedWallTimeToUtc(TZ, date, clock(arrivalMinute));
+  // The helper builds the clock itself, so it always resolves (#2245 made
+  // zonedWallTimeToUtc refuse a malformed one).
+  const arrivedAt = zonedWallTimeToUtc(TZ, date, clock(arrivalMinute))!;
   const end = new Date(arrivedAt.getTime() - lagMin * 60_000);
   const start = new Date(end.getTime() - minutes * 60_000);
   const sampleId = Number(
