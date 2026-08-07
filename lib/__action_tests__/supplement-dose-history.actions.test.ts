@@ -211,7 +211,10 @@ describe("updateHistoricalDose action — supplements", () => {
     expect(result.ok).toBe(true);
     const row = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0];
     expect(row.amount).toBe("45 mg");
-    expect(row.given_at).toContain("20:15");
+    // The stated time lands in the event column (#2228 decision 1); given_at is
+    // record history for the amend path and keeps the backfill's stamp.
+    expect(row.occurred_at).toContain("20:15");
+    expect(row.given_at).toContain("08:00");
 
     expect(auditRows(profile.id).map((r) => r.action)).toEqual([
       AUDIT_ACTIONS.doseLogBackfill,

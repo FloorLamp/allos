@@ -20,11 +20,11 @@ import {
   deleteAdministrationLog,
   getIntakeDoseHistory,
   getIntakeDoseHistoryForItems,
+  getRedoseArmingState,
   linkItemToPool,
   logHistoricalDose,
   markDoseTaken,
   restoreAdministrationLog,
-  updateAdministrationLog,
   updateHistoricalDose,
 } from "@/lib/queries";
 import {
@@ -134,20 +134,23 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(history[0].amount).toBe("800 mg");
     expect(history[0].date).toBe(date);
     // The row carries `occurred_at` (the stated event instant, migration 165) so the
-    // panel call sites can ask the row-level question (#2228 decision 1a). Nothing
-    // writes it yet — the backfill's stated time lands in `given_at` until the write
-    // half of #2228 — so it is NULL here, and the display tier renders the record
-    // chain marked "recorded" rather than as a bare administration time.
+    // panel call sites can ask the row-level question (#2228 decision 1a). The
+    // backfill's stated time still lands in `given_at` (only the AMENDMENT writes
+    // the event column — decision 2 keeps the backfill as it is), so it is NULL
+    // here, and the display tier renders the record chain marked "recorded".
     expect(history[0].occurred_at).toBeNull();
     const logId = history[0].id;
 
-    // AMEND: a new wall time and a corrected amount, same day.
+    // AMEND: a stated wall time and a corrected amount, same day. The stated time
+    // lands in `occurred_at` — never in `given_at`, which is record history now
+    // (#2228 decision 1) and keeps the backfill's stamp.
     expect(
-      updateHistoricalDose(p, itemId, logId, at(date, "21:15"), "400 mg")
+      updateHistoricalDose(p, itemId, logId, date, at(date, "21:15"), "400 mg")
     ).toEqual({ kind: "logged", date });
     const amended = getIntakeDoseHistory(p, itemId, "0001-01-01")[0];
     expect(amended.amount).toBe("400 mg");
-    expect(amended.given_at).toContain("21:15");
+    expect(amended.occurred_at).toContain("21:15");
+    expect(amended.given_at).toContain("08:30");
 
     // DELETE with undo, then RESTORE — the row comes back with a new id.
     const removed = deleteAdministrationLog(p, logId);
@@ -230,11 +233,11 @@ describe("supplement dose history — the ungated shared cores", () => {
     // counter moves in UNITS and this is still one administration, so the diff each
     // amendment applies is zero: total movement stays the ONE the backfill made,
     // never a second (last-write-wins would re-apply it) and never a rollback.
-    updateHistoricalDose(p, itemId, logId, at(date, "08:00"), "800 mg");
+    updateHistoricalDose(p, itemId, logId, date, at(date, "08:00"), "800 mg");
     expect(onHand(itemId)).toBe(9);
-    updateHistoricalDose(p, itemId, logId, at(date, "19:45"), "800 mg");
+    updateHistoricalDose(p, itemId, logId, date, at(date, "19:45"), "800 mg");
     expect(onHand(itemId)).toBe(9);
-    updateHistoricalDose(p, itemId, logId, at(date, "06:05"), "200 mg");
+    updateHistoricalDose(p, itemId, logId, date, at(date, "06:05"), "200 mg");
     expect(onHand(itemId)).toBe(9);
 
     // …and the one movement is still fully reversible afterwards.
@@ -285,7 +288,7 @@ describe("supplement dose history — the ungated shared cores", () => {
     db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
 
     expect(
-      updateHistoricalDose(p, itemId, logId, at(date, "12:30"), "600 mg")
+      updateHistoricalDose(p, itemId, logId, date, at(date, "12:30"), "600 mg")
     ).toEqual({ kind: "logged", date });
     expect(getIntakeDoseHistory(p, itemId, "0001-01-01")[0].amount).toBe(
       "600 mg"
@@ -310,10 +313,11 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(doseRow(doseId)).toEqual(before);
 
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
-    updateHistoricalDose(p, itemId, logId, at(date, "22:00"), "111 mg");
+    updateHistoricalDose(p, itemId, logId, date, at(date, "22:00"), "111 mg");
     expect(doseRow(doseId)).toEqual(before);
 
-    updateAdministrationLog(p, logId, date, at(date, "23:30"), "222 mg");
+    // A date-only amendment (no stated instant) is a write too — still no schedule.
+    updateHistoricalDose(p, itemId, logId, date, null, "222 mg");
     expect(doseRow(doseId)).toEqual(before);
 
     const removed = deleteAdministrationLog(p, logId);
@@ -322,7 +326,7 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(doseRow(doseId)).toEqual(before);
   });
 
-  it("updateAdministrationLog no longer refuses a scheduled (non-`may`) item", () => {
+  it("a scheduled (non-`may`) item's log stays amendable through the one core", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -2);
@@ -330,11 +334,11 @@ describe("supplement dose history — the ungated shared cores", () => {
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
     expect(
-      updateAdministrationLog(p, logId, date, at(date, "17:00"), "450 mg")
-    ).toBe(true);
+      updateHistoricalDose(p, itemId, logId, date, at(date, "17:00"), "450 mg")
+    ).toEqual({ kind: "logged", date });
     const row = getIntakeDoseHistory(p, itemId, "0001-01-01")[0];
     expect(row.amount).toBe("450 mg");
-    expect(row.given_at).toContain("17:00");
+    expect(row.occurred_at).toContain("17:00");
   });
 
   it("batches recent history for many items in one read", () => {
@@ -367,6 +371,159 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(map.get(b.itemId)).toHaveLength(1);
     expect(map.get(b.itemId)![0].date).toBe(inWindow);
     expect(getIntakeDoseHistoryForItems(p, [], since).size).toBe(0);
+  });
+});
+
+describe("the amend path writes occurred_at, never given_at (#2228)", () => {
+  // A PRN (`may`) medication with no course rows — unbounded history, the
+  // per-administration ledger the proximity guard and redose window apply to.
+  function seedPrnMed(profileId: number): { itemId: number; doseId: number } {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'medication', 'as needed', 'may')`
+        )
+        .run(profileId, `Reliever ${++unique}`).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'Anytime', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    return { itemId, doseId };
+  }
+
+  function logRow(logId: number): {
+    date: string;
+    amount: string | null;
+    occurred_at: string | null;
+    given_at: string | null;
+  } {
+    return db
+      .prepare(
+        `SELECT date, amount, occurred_at, given_at
+           FROM intake_item_logs WHERE id = ?`
+      )
+      .get(logId) as {
+      date: string;
+      amount: string | null;
+      occurred_at: string | null;
+      given_at: string | null;
+    };
+  }
+
+  it("amending only the amount of a row with no stated instant changes the amount and NOTHING else", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const date = shiftDateStr(today(p), -4);
+    logHistoricalDose(p, itemId, doseId, at(date, "08:30"), "400 mg", false);
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+    const before = logRow(logId);
+    expect(before.occurred_at).toBeNull();
+
+    expect(updateHistoricalDose(p, itemId, logId, date, null, "999 mg")) //
+      .toEqual({ kind: "logged", date });
+    const after = logRow(logId);
+    expect(after.amount).toBe("999 mg");
+    // No intake time was ever stated, and none was invented: occurred_at stays
+    // NULL, the row's day stays put, and given_at is read-only history.
+    expect(after.occurred_at).toBeNull();
+    expect(after.date).toBe(before.date);
+    expect(after.given_at).toBe(before.given_at);
+  });
+
+  it("an empty time submission clears a stated instant without moving the row's day", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const date = shiftDateStr(today(p), -3);
+    logHistoricalDose(p, itemId, doseId, at(date, "09:00"), null, false);
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+
+    updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
+    expect(logRow(logId).occurred_at).toContain("14:00");
+
+    // Clearing is a plain `logged` outcome (#2228 constraint 5): back to the
+    // honest "nobody stated one", same day, record chain untouched.
+    expect(updateHistoricalDose(p, itemId, logId, date, null, null)) //
+      .toEqual({ kind: "logged", date });
+    const cleared = logRow(logId);
+    expect(cleared.occurred_at).toBeNull();
+    expect(cleared.date).toBe(date);
+    expect(cleared.given_at).toContain("09:00");
+  });
+
+  it("a stated instant whose local date disagrees with the submitted date is refused, nothing written", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const date = shiftDateStr(today(p), -5);
+    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "400 mg", false);
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+    const before = logRow(logId);
+
+    // The instant names the day BEFORE the submitted date: the pair rule refuses
+    // rather than silently re-dating the row onto the instant's own day (which is
+    // exactly how the old derive-date-from-instant path moved doses, #2228 §1).
+    const disagreeing = at(shiftDateStr(date, -1), "10:00");
+    expect(
+      updateHistoricalDose(p, itemId, logId, date, disagreeing, "999 mg")
+    ).toEqual({ kind: "invalid-time" });
+    expect(logRow(logId)).toEqual(before);
+  });
+
+  it("a date-only amendment still validates the day against the same window", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const date = shiftDateStr(today(p), -2);
+    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), null, false);
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+    const before = logRow(logId);
+
+    const future = shiftDateStr(today(p), 1);
+    expect(updateHistoricalDose(p, itemId, logId, future, null, "999 mg")) //
+      .toEqual({ kind: "invalid-time" });
+    expect(logRow(logId)).toEqual(before);
+  });
+
+  it("the PRN interval clock and proximity guard keep keying on given_at, identically", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedPrnMed(p);
+    // A fully past day, so no wall time here can trip the future guard whatever
+    // real clock the test tier runs at.
+    const date = shiftDateStr(today(p), -2);
+    logHistoricalDose(p, itemId, doseId, at(date, "10:00"), null, false);
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+
+    const before = getRedoseArmingState(p, itemId, date);
+    expect(before.latestGivenAt).toContain("10:00");
+
+    // Stating an occurred_at far from the tap leaves the redose window's arming
+    // instant exactly where it was — moving the window onto occurred_at is its
+    // own safety decision, explicitly NOT this change's (#2228 constraint 3).
+    updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
+    const after = getRedoseArmingState(p, itemId, date);
+    expect(after.latestGivenAt).toBe(before.latestGivenAt);
+    expect(after.latestId).toBe(before.latestId);
+
+    // The phantom-dose proximity guard is likewise unmoved: a new entry within
+    // the dedup window of the row's given_at still collapses…
+    expect(
+      logHistoricalDose(p, itemId, doseId, at(date, "10:01"), null, false)
+    ).toEqual({ kind: "duplicate" });
+    // …and one at the STATED occurred_at does not — the guard never sees it.
+    expect(
+      logHistoricalDose(p, itemId, doseId, at(date, "14:00"), null, false)
+    ).toEqual({ kind: "logged", date });
+
+    // A cleared time changes neither answer.
+    updateHistoricalDose(p, itemId, logId, date, null, null);
+    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).toContain(
+      "14:00"
+    );
   });
 });
 
@@ -457,7 +614,14 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
 
     const earlier = shiftDateStr(date, -2);
     expect(
-      updateHistoricalDose(profileId, itemId, logId, at(earlier, "08:00"), null)
+      updateHistoricalDose(
+        profileId,
+        itemId,
+        logId,
+        earlier,
+        at(earlier, "08:00"),
+        null
+      )
     ).toEqual({ kind: "logged", date: earlier });
     expect(getProfileSetting(profileId, escalationMarkerKey(doseId))).toBe(
       date
@@ -481,7 +645,14 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
 
     // Nothing was un-marked, so nothing is suppressed: the dose is still confirmed
     // today, and a marker stamped here would silence a LATER genuine miss.
-    updateHistoricalDose(profileId, itemId, logId, at(date, "09:30"), "500 mg");
+    updateHistoricalDose(
+      profileId,
+      itemId,
+      logId,
+      date,
+      at(date, "09:30"),
+      "500 mg"
+    );
     expect(
       getProfileSetting(profileId, escalationMarkerKey(doseId))
     ).toBeUndefined();

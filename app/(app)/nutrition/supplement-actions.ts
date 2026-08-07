@@ -88,6 +88,7 @@ import {
   type FormResult,
 } from "@/lib/types";
 import type { HistoricalDoseOutcome } from "@/lib/types";
+import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import type {
   FoodTiming,
   PairRelation,
@@ -1134,6 +1135,13 @@ export async function logHistoricalDose(
 
 // Correct an existing history row (time / amount) without changing its original supply
 // effect. The core owns row scoping, course correction, and scheduled/PRN uniqueness.
+//
+// AN EMPTY `time` IS A REAL ANSWER here (#2228 decisions 1–3), unlike on the backfill
+// above: the amendment writes the stated event instant (`occurred_at`) and null means
+// "no intake time stated", so amending only the amount of a dose whose intake time
+// was never stated changes the amount and nothing else. The submitted `date` is the
+// row's day in its own right — the core refuses a stated instant that disagrees with
+// it rather than re-dating the row.
 export async function updateHistoricalDose(
   formData: FormData
 ): Promise<FormResult> {
@@ -1146,19 +1154,23 @@ export async function updateHistoricalDose(
     !itemId ||
     !logId ||
     !isRealIsoDate(date) ||
-    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+    (time !== "" && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))
   ) {
     return formError("Enter a valid dose date and time.");
   }
 
-  const givenAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
-  if (!givenAt) return formError("Enter a valid dose date and time.");
+  let occurredAt: Date | null = null;
+  if (time !== "") {
+    occurredAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+    if (!occurredAt) return formError("Enter a valid dose date and time.");
+  }
 
   const outcome = updateHistoricalDoseCore(
     profile.id,
     itemId,
     logId,
-    givenAt,
+    date,
+    occurredAt,
     strOrNull(formData.get("amount"))
   );
   if (outcome.kind === "logged") {
@@ -1176,33 +1188,13 @@ export async function updateHistoricalDose(
   return historicalDoseError(outcome);
 }
 
-// Every refusal the two historical-dose cores can answer with, rendered as the message
-// the surface shows. One mapping, so the backfill and the amendment can never drift
-// into describing the same refusal differently — and so `stale-dose` keeps meaning what
-// it says. Before #1933 a SUPPLEMENT dose came back `stale-dose` from a core that had
-// simply refused its kind, telling the user a dose they were looking at did not exist.
+// The one refusal→message mapping lives in lib/historical-dose-error.ts now (#2228
+// decision 6): the illness-episode amendment renders the same core's outcomes, and a
+// "use server" module may export only actions, so the shared mapping cannot live here.
 function historicalDoseError(
   outcome: Exclude<HistoricalDoseOutcome, { kind: "logged" }>
 ): FormResult {
-  switch (outcome.kind) {
-    case "already-taken":
-      return formError(
-        "That scheduled dose is already recorded for this date."
-      );
-    case "already-skipped":
-      return formError("That scheduled dose is marked skipped for this date.");
-    case "duplicate":
-      return formError("A dose is already recorded at about this time.");
-    case "outside-course":
-      return formError("This medication was not active on that date.");
-    case "invalid-time":
-      return formError("Choose a date and time that are not in the future.");
-    case "stale-dose":
-    default:
-      return formError(
-        "That dose is no longer available. Refresh and try again."
-      );
-  }
+  return formError(historicalDoseErrorMessage(outcome));
 }
 
 // Remove one recorded administration with undo (#851 item 11). A mis-tapped confirm

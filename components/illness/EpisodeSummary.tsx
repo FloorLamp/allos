@@ -299,6 +299,7 @@ export default function EpisodeSummary({
         actions={timelineActions}
         tools={timelineTools}
         afterHistory={timelineAfterHistory}
+        tz={timeZone}
       />
 
       {generatedAt && <EpisodeSummaryFooter generatedAt={generatedAt} />}
