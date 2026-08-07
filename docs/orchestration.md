@@ -240,6 +240,28 @@ Every agent prompt must contain, verbatim where marked:
   every browser shard at import, not just the tests for the migration in question.
   Say that when reserving a non-next slot: an agent that expects a handful of red
   tests will read a wall of them as its own bug and start debugging the wrong thing.
+- **A WIDENING SIGNATURE outruns a green CI run, and a clean-merge check will not
+  catch it.** On 2026-08-07 the same change (`zonedWallTimeToUtc` gaining a `null`
+  return, #2245) broke two different branches this way, in both directions: #2250's
+  CI was green against a base that predated #2248's two new call sites, and #2252's
+  agent wrote new fixture helpers against the old signature while #2250 was landing.
+  Both agents reported green honestly. **CI evaluates the MERGE COMMIT; a worktree
+  evaluates the branch** — and a widened signature is not a textual conflict, so
+  `git merge-tree` reports clean and `mergeable_state` says clean while the merged
+  tree does not typecheck. It reaches main silently too: `ci.yml` is `on:
+  pull_request` only, so main is never tested and the breakage surfaces on the NEXT
+  PRs instead of the one that caused it. Two consequences: tell an agent to
+  `git merge origin/main` and re-run typecheck immediately before opening its PR
+  (one minute, catches exactly this), and when a PR touching a shared signature has
+  sat through a long run, do that merge YOURSELF before merging it. Every EXISTING
+  call site is in the diff; every call site added while the agent worked is not.
+- **Another Claude session may be working the same repo, and it takes slots.** On
+  2026-08-07 a branch appeared carrying a different `Claude-Session:` trailer and
+  claiming migration slot 167 — the slot this runbook's own map had recorded as
+  free. The slot map is authoritative only over agents THIS orchestrator dispatched.
+  Before reserving a slot, check the remote for branches you did not create
+  (`git ls-remote --heads origin`), and read the `Claude-Session:` trailer on any
+  branch you do not recognise rather than assuming it is a dead agent of yours.
 - **An agent's worktree is not backed up. Push or lose it.** Five container
   restarts on 2026-08-06/07; the fifth killed three live agents mid-work with
   uncommitted trees — ~2,300 lines that existed only under /tmp. They survived
