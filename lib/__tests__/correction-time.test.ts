@@ -7,7 +7,12 @@ import {
   collapseBursts,
   correctionBursts,
   correctionTokenAnchor,
-  CORRECTION_CHIP_HOURS,
+  chipFloor,
+  chipLabel,
+  chipOffers,
+  chipTarget,
+  CHIP_FLOOR_HOURS_BACK,
+  CORRECTION_CHIP_MINUTES,
   isBurstFresh,
   isOfferedHour,
   MAX_CORRECTION_ROWS,
@@ -26,6 +31,7 @@ import {
   DOSE_TIME_PREFIXES,
   openPickerAnchor,
 } from "@/lib/notifications/correction-rows";
+import { zonedDateParts } from "@/lib/date";
 
 // The pure model behind #2019's eating-time chips and #2020's dose-time twin. No DB, no
 // clock: every function takes its `now`, so the burst window, the cross-midnight day rule
@@ -35,6 +41,17 @@ const TZ = "Europe/Berlin"; // UTC+2 in August
 
 function tap(id: number, iso: string, label = "Salmon"): TapEvent {
   return { id, tapAt: iso, label };
+}
+
+// A tap that has already been corrected: the ledger holds `statedAt`, the audit stamp
+// still holds the tap.
+function corrected(
+  id: number,
+  tapIso: string,
+  statedIso: string,
+  label = "Salmon"
+): TapEvent {
+  return { id, tapAt: tapIso, statedAt: statedIso, label };
 }
 
 describe("collapseBursts — burst-mates share one error, so they share one row", () => {
@@ -164,22 +181,116 @@ describe("burstFrom — the token carries an id, the ledger decides the set", ()
   });
 });
 
-describe("chips — anchored to the tap, so a re-tap is idempotent", () => {
-  it("moves each row back from its OWN tap, keeping the burst's spread", () => {
-    const a = chipInstant("2026-08-05T19:02:00Z", 2);
-    const b = chipInstant("2026-08-05T19:08:00Z", 2);
+describe("chips — the label IS the stored value (#2206)", () => {
+  const NOW = new Date("2026-08-05T19:30:00Z"); // 21:30 local
+
+  it("moves each row back from its OWN instant, keeping the burst's spread", () => {
+    const a = chipInstant("2026-08-05T19:02:00Z", 120);
+    const b = chipInstant("2026-08-05T19:08:00Z", 120);
     expect(a.toISOString()).toBe("2026-08-05T17:02:00.000Z");
     expect(b.toISOString()).toBe("2026-08-05T17:08:00.000Z");
     // Six minutes apart before, six minutes apart after.
     expect(b.getTime() - a.getTime()).toBe(6 * 60_000);
   });
 
-  it("lands on the same instant however many times it is tapped", () => {
-    const once = chipInstant("2026-08-05T19:02:00Z", 2).toISOString();
-    const twice = chipInstant("2026-08-05T19:02:00Z", 2).toISOString();
-    // The offset is computed from `logged_at`, which nothing ever edits — so two people
-    // tapping the same message cannot walk a serving four hours into the past.
-    expect(twice).toBe(once);
+  it("labels every chip with the local time chipInstant computes for it", () => {
+    // The whole point: no surface re-derives an offset, and no user does arithmetic.
+    // Sampled across the day so an off-by-a-timezone label cannot hide in one hour.
+    for (const h of [0, 3, 9, 13, 21, 23]) {
+      const tapAt = `2026-08-05T${String(h).padStart(2, "0")}:41:00Z`;
+      const burst = collapseBursts([tap(1, tapAt)])[0];
+      const now = new Date(new Date(tapAt).getTime() + 10 * 60_000);
+      for (const offer of chipOffers(burst, now, TZ)) {
+        const at = chipInstant(burst.atStartAt, offer.minutesBack);
+        expect(offer.at.toISOString()).toBe(at.toISOString());
+        expect(offer.label.startsWith(zonedDateParts(TZ, at).hhmm)).toBe(true);
+      }
+    }
+  });
+
+  it("states the real local time across a DST fall-back, where an offset lies", () => {
+    // Europe/Berlin falls back at 03:00 local on 2026-10-25: 01:00 UTC is 03:00 CEST,
+    // 02:00 UTC is 02:00 CET. A tap at 03:10 local (01:10 UTC) is an hour and ten
+    // minutes into the repeated hour.
+    const burst = collapseBursts([tap(1, "2026-10-25T01:10:00Z")])[0];
+    const now = new Date("2026-10-25T01:20:00Z");
+    const labels = chipOffers(burst, now, TZ).map((o) => o.label);
+    // −30m lands at 00:40 UTC = 02:40 CEST; −1h lands at 00:10 UTC = 02:10 CEST.
+    expect(labels).toEqual(["02:40 · −30m", "02:10 · −1h"]);
+    // AND THE ROW ITSELF READS 02:10, because the tap (01:10 UTC) is already past the
+    // fall-back and 02:10 CET is the same wall time as 02:10 CEST an hour earlier. So
+    // "−1h" is a claim the clock on the wall flatly contradicts, and only the absolute
+    // label lets the user see which 02:10 they are choosing.
+    expect(burstLabel(burst, TZ)).toBe("Salmon 02:10");
+  });
+
+  it("composes: a second tap counts back from the STORED instant, not the tap", () => {
+    const row = { tapAt: "2026-08-05T19:02:00Z", statedAt: null };
+    const once = chipTarget(row, 60, NOW)!;
+    expect(once.toISOString()).toBe("2026-08-05T18:02:00.000Z");
+    // The write stored that, so the second tap starts from it: two hours back, not one.
+    const twice = chipTarget(
+      { tapAt: row.tapAt, statedAt: once.toISOString() },
+      60,
+      NOW
+    )!;
+    expect(twice.toISOString()).toBe("2026-08-05T17:02:00.000Z");
+    const thrice = chipTarget(
+      { tapAt: row.tapAt, statedAt: twice.toISOString() },
+      30,
+      NOW
+    )!;
+    expect(thrice.toISOString()).toBe("2026-08-05T16:32:00.000Z");
+  });
+
+  it("drops the chips at the floor rather than walking past it", () => {
+    const floor = chipFloor(NOW);
+    expect(floor.toISOString()).toBe("2026-08-05T07:30:00.000Z");
+
+    // Already corrected to twenty minutes above the floor: −30m would cross, −1h too.
+    const deep = collapseBursts([
+      corrected(1, "2026-08-05T19:02:00Z", "2026-08-05T07:50:00Z"),
+    ])[0];
+    expect(chipOffers(deep, NOW, TZ)).toEqual([]);
+    expect(
+      chipTarget({ tapAt: deep.startAt, statedAt: deep.atStartAt }, 30, NOW)
+    ).toBeNull();
+
+    // Forty minutes above the floor: the small chip still fits, the big one does not.
+    const edge = collapseBursts([
+      corrected(1, "2026-08-05T19:02:00Z", "2026-08-05T08:10:00Z"),
+    ])[0];
+    expect(chipOffers(edge, NOW, TZ).map((o) => o.minutesBack)).toEqual([30]);
+  });
+
+  it("bounds the chips by the same reach the picker has", () => {
+    expect(CHIP_FLOOR_HOURS_BACK).toBe(PICKER_LAST_HOURS_BACK);
+  });
+
+  it("never lets a chip label collide with an hour the picker offers", () => {
+    // The two vocabularies are both absolute now, so they must not name the same time
+    // twice on one keyboard. An UNCORRECTED burst is the case a keyboard actually shows
+    // beside a picker; sampled across the freshness window and the day.
+    for (const h of [0, 5, 11, 17, 23]) {
+      for (const ageMin of [0, 17, 43, 59]) {
+        const now = new Date(`2026-08-05T${String(h).padStart(2, "0")}:37:00Z`);
+        const tapAt = new Date(now.getTime() - ageMin * 60_000).toISOString();
+        const burst = collapseBursts([tap(1, tapAt)])[0];
+        const picker = new Set(pickerHourOptions(now, TZ));
+        for (const offer of chipOffers(burst, now, TZ)) {
+          expect(
+            picker.has(zonedDateParts(TZ, offer.at).hhmm),
+            `${offer.label} at ${now.toISOString()}`
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("spells the offset as context, absolute first", () => {
+    const at = new Date("2026-08-05T17:11:00Z");
+    expect(chipLabel(at, TZ, 30)).toBe("19:11 · −30m");
+    expect(chipLabel(at, TZ, 60)).toBe("19:11 · −1h");
   });
 });
 
@@ -191,6 +302,8 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
   it("starts where the chips stop and runs to the ceiling", () => {
     const hours = pickerHourOptions(NOW, TZ);
     expect(hours).toEqual([
+      "22:00",
+      "21:00",
       "20:00",
       "19:00",
       "18:00",
@@ -204,10 +317,11 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
     expect(hours).toHaveLength(
       PICKER_LAST_HOURS_BACK - PICKER_FIRST_HOURS_BACK + 1
     );
-    // The last chip is −3h, so the first offered hour is one past it — the picker never
-    // re-offers what a chip already covers.
+    // The last chip reaches one hour back, so the first offered hour is one past it —
+    // the picker never re-offers what a chip already covers, and the two offers stay
+    // contiguous now that the chips only reach an hour (#2206).
     expect(PICKER_FIRST_HOURS_BACK).toBe(
-      CORRECTION_CHIP_HOURS[CORRECTION_CHIP_HOURS.length - 1] + 1
+      Math.ceil(Math.max(...CORRECTION_CHIP_MINUTES) / 60) + 1
     );
   });
 
@@ -250,25 +364,32 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
 
   it("refuses an hour that is no longer on offer", () => {
     expect(isOfferedHour("20:00", NOW, TZ)).toBe(true);
-    // Two hours later, 20:00 has slid past the twelve-hour ceiling of nothing — but
-    // 01:00 (the hour just gone) was never offered, because the chips cover it.
-    expect(isOfferedHour("01:00", NOW, TZ)).toBe(false);
-    expect(isOfferedHour("23:00", NOW, TZ)).toBe(false);
+    // 00:00 is the hour just gone at 00:30 local — never offered, because the chips
+    // cover the first hour. 11:00 is past the twelve-hour ceiling.
+    expect(isOfferedHour("00:00", NOW, TZ)).toBe(false);
+    expect(isOfferedHour("11:00", NOW, TZ)).toBe(false);
   });
 });
 
 describe("tokens — ids only, and the shapes both domains share", () => {
   it("round-trips a chip token and refuses an offset nobody offers", () => {
-    const t = `${FOOD_TIME_PREFIXES.chip}:3:412:120`;
+    const t = `${FOOD_TIME_PREFIXES.chip}:3:412:30`;
     expect(parseCorrectionChipToken(t, FOOD_TIME_PREFIXES.chip)).toEqual({
       profileId: 3,
       fromId: 412,
-      minutesBack: 120,
+      minutesBack: 30,
     });
-    // A forged offset is refused rather than clamped into something plausible.
+    // A forged offset is refused rather than clamped into something plausible — and so
+    // is a retired one: 120 was a chip before #2206 dropped to two.
     expect(
       parseCorrectionChipToken(
         `${FOOD_TIME_PREFIXES.chip}:3:412:24000`,
+        FOOD_TIME_PREFIXES.chip
+      )
+    ).toBeNull();
+    expect(
+      parseCorrectionChipToken(
+        `${FOOD_TIME_PREFIXES.chip}:3:412:120`,
         FOOD_TIME_PREFIXES.chip
       )
     ).toBeNull();
@@ -329,19 +450,54 @@ describe("the rendered rows", () => {
     NOW
   );
 
-  it("puts the named picker button first, then the three chips, on ONE row", () => {
-    const actions = correctionActions(FOOD_TIME_PREFIXES, 3, bursts, TZ);
+  it("puts the named picker button first, then the two chips, on ONE row", () => {
+    const actions = correctionActions(FOOD_TIME_PREFIXES, 3, bursts, TZ, NOW);
+    // Absolute first, offset as context — the same vocabulary the picker speaks.
     expect(actions.map((a) => a.label)).toEqual([
       "🕐 ×2 21:02–21:08",
-      "−1h",
-      "−2h",
-      "−3h",
+      "20:32 · −30m",
+      "20:02 · −1h",
     ]);
-    // One row key, so the four buttons render side by side.
+    // One row key, so the three buttons render side by side.
     expect(new Set(actions.map((a) => a.row)).size).toBe(1);
     // The label button IS the picker's opener.
     expect(actions[0].data).toBe("foodtimeat:3:11:open");
-    expect(actions[1].data).toBe("foodtime:3:11:60");
+    expect(actions[1].data).toBe("foodtime:3:11:30");
+    expect(actions[2].data).toBe("foodtime:3:11:60");
+  });
+
+  it("states the STORED time and marks a corrected row (#2206 item 2)", () => {
+    const corrections = correctionBursts(
+      [corrected(11, "2026-08-05T19:02:00Z", "2026-08-05T18:02:00Z", "Salmon")],
+      NOW
+    );
+    const actions = correctionActions(
+      FOOD_TIME_PREFIXES,
+      3,
+      corrections,
+      TZ,
+      NOW
+    );
+    // 20:02 local, not the 21:02 it was tapped at — the chat states what the ledger
+    // holds, and the marker says the tap time is no longer what this row means.
+    expect(actions[0].label).toBe("🕐 Salmon 20:02 (corrected)");
+    // And the chips count on from there: another hour back is 19:02, not 20:02 again.
+    expect(actions.map((a) => a.label).slice(1)).toEqual([
+      "19:32 · −30m",
+      "19:02 · −1h",
+    ]);
+    // The re-render adds no button — the row is the same three it always was.
+    expect(actions).toHaveLength(3);
+  });
+
+  it("leaves the picker as the only path once the chips hit the floor", () => {
+    const deep = correctionBursts(
+      [corrected(11, "2026-08-05T19:02:00Z", "2026-08-05T07:40:00Z", "Salmon")],
+      NOW
+    );
+    const actions = correctionActions(FOOD_TIME_PREFIXES, 3, deep, TZ, NOW);
+    expect(actions).toHaveLength(1);
+    expect(actions[0].data).toBe("foodtimeat:3:11:open");
   });
 
   it("keys rows by anchor so two bursts never collapse onto one", () => {
@@ -349,7 +505,7 @@ describe("the rendered rows", () => {
       [tap(11, "2026-08-05T19:02:00Z"), tap(20, "2026-08-05T19:25:00Z")],
       NOW
     );
-    const actions = correctionActions(FOOD_TIME_PREFIXES, 3, two, TZ);
+    const actions = correctionActions(FOOD_TIME_PREFIXES, 3, two, TZ, NOW);
     expect(new Set(actions.map((a) => a.row)).size).toBe(2);
   });
 
@@ -379,9 +535,13 @@ describe("the rendered rows", () => {
     expect(openPickerAnchor(tokens, FOOD_TIME_PREFIXES)).toBe(11);
     expect(openPickerAnchor(tokens, DOSE_TIME_PREFIXES)).toBeNull();
     // A keyboard showing the CHIPS is not showing a picker.
-    const chipTokens = correctionActions(FOOD_TIME_PREFIXES, 3, bursts, TZ).map(
-      (a) => a.data!
-    );
+    const chipTokens = correctionActions(
+      FOOD_TIME_PREFIXES,
+      3,
+      bursts,
+      TZ,
+      NOW
+    ).map((a) => a.data!);
     expect(openPickerAnchor(chipTokens, FOOD_TIME_PREFIXES)).toBeNull();
   });
 });

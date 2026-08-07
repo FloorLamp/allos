@@ -691,6 +691,11 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   expect(new Date(stamped.eaten_at!).getTime()).toBeLessThan(
     frozenNow().getTime()
   );
+  // AND THE ROW STATES IT (#2206). The web half of "a surface must not go on showing the
+  // time a statement replaced": the logged list names this serving by the hour that was
+  // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
+  // chip's own label is what the row ends up reading.
+  await expect(page.getByTestId(`food-logged-${eventId}`)).toContainText(hhmm);
 
   await removeLoggedServing(page, eventId);
 });

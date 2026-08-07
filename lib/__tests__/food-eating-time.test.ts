@@ -16,7 +16,13 @@ import {
   parseEatingTimeChoice,
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
-import { dateStrInTz } from "@/lib/date";
+import { dateStrInTz, zonedDateParts } from "@/lib/date";
+import {
+  chipOffers,
+  collapseBursts,
+  pickerHourOptions,
+  statedHourInstant,
+} from "@/lib/correction-time";
 
 const UTC = "UTC";
 const NY = "America/New_York";
@@ -180,5 +186,49 @@ describe("acceptEatenAt — validate, never drop (#2053)", () => {
     expect(acceptEatenAt(null, UTC, date, now)).toBeNull();
     expect(acceptEatenAt(undefined, UTC, date, now)).toBeNull();
     expect(acceptEatenAt(new Date("not a date"), UTC, date, now)).toBeNull();
+  });
+});
+
+// ---- #2206: the two surfaces speak ONE chip language ------------------------
+//
+// The web bar and the Telegram correction row answer the same question ("when was this
+// eaten") and share `hourOptionsBack`. Before #2206 they had drifted apart in what a
+// button SAYS: the web offered absolute local hours, Telegram offered `−1h`. This pins
+// them together — an offer on either surface names a WALL TIME, never a bare offset,
+// because a bare offset is arithmetic handed back to the user.
+describe("the web and Telegram offers use one vocabulary (#2206)", () => {
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d/;
+  const TZ = "Europe/Berlin";
+
+  it("names an absolute local time on every offer of both surfaces", () => {
+    const now = new Date("2026-08-05T19:30:00Z");
+    // Web: the "Earlier…" hours.
+    const web = eatingTimeOptions(now, TZ, dateStrInTz(TZ, now));
+    expect(web.length).toBeGreaterThan(0);
+    for (const option of web) expect(option.hhmm).toMatch(HHMM);
+
+    // Telegram: the picker's hours, and the chips beside it.
+    for (const hhmm of pickerHourOptions(now, TZ)) expect(hhmm).toMatch(HHMM);
+    const burst = collapseBursts([
+      { id: 1, tapAt: "2026-08-05T19:02:00Z", label: "Salmon" },
+    ])[0];
+    const offers = chipOffers(burst, now, TZ);
+    expect(offers.length).toBeGreaterThan(0);
+    for (const offer of offers) {
+      expect(offer.label).toMatch(HHMM);
+      // And that time is the one the tap would store, not a re-derivation of it.
+      expect(offer.label.startsWith(zonedDateParts(TZ, offer.at).hhmm)).toBe(
+        true
+      );
+    }
+  });
+
+  it("resolves a web hour and a picker hour through the SAME day rule", () => {
+    // 00:30 local: an offered hour later than now means yesterday's, on both surfaces,
+    // because there is only one `statedHourInstant`.
+    const now = new Date("2026-08-05T22:30:00Z");
+    expect(
+      resolveEatingTimeChoice({ kind: "at", hhmm: "20:00" }, now, TZ)
+    ).toEqual(statedHourInstant("20:00", now, TZ));
   });
 });
