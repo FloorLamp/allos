@@ -32,7 +32,7 @@ beforeAll(() => {
   // Open illness episode + a crossing (hyperpyrexia) reading today → the temp
   // red-flag generator emits its care-tier item.
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profile, shiftDateStr(on, -1));
   db.prepare(

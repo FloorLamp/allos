@@ -2,7 +2,7 @@
 // and undoing it. profileId-first, never imports lib/auth — the Server Action owns the
 // gate + revalidation (#319). Closes the loop with #560's condition→situation bridge:
 // an episode (derived from the illness situation) becomes a durable Condition with its
-// onset/resolved taken from the derived [start, end) range.
+// onset/resolved taken from the row's inclusive [start_date, end_date] window (#2232).
 //
 // Row-op side-state (#202): the promotion is keyed by the episode's STABLE ROW id via
 // episodeConditionExternalId, so boundary edits cannot detach it. Promote, edit, end,
@@ -37,9 +37,10 @@ function conditionValues(row: IllnessEpisodeRow) {
   return {
     externalId: episodeConditionExternalId(row.id),
     name: row.situation.trim(),
-    status: row.ended_at ? "resolved" : "active",
-    onsetDate: row.started_at,
-    resolvedDate: row.ended_at ? shiftDateStr(row.ended_at, -1) : null,
+    status: row.end_date ? "resolved" : "active",
+    onsetDate: row.start_date,
+    // The inclusive end_date IS the last active day (#2232) — resolved on it directly.
+    resolvedDate: row.end_date,
   } as const;
 }
 
@@ -82,9 +83,9 @@ export function syncPromotedCondition(
 }
 
 // Create (or find and synchronize) the Condition for an episode. onset = episode start;
-// a closed episode (`end` set — the EXCLUSIVE first inactive day) resolves on end-1
-// (the last active day) with status 'resolved'; an ongoing episode stays 'active' with
-// no resolved date. The condition NAME is the situation (e.g. "Illness").
+// a closed episode resolves on its end_date (the inclusive last active day, #2232)
+// with status 'resolved'; an ongoing episode stays 'active' with no resolved date.
+// The condition NAME is the situation (e.g. "Illness").
 export function promoteEpisodeToConditionCore(
   profileId: number,
   episodeId: number
@@ -145,10 +146,10 @@ export type EndEpisodeOutcome =
 // IS deactivating its illness situation — so this routes through the ONE toggle write
 // path (setActiveSituations), which both flips situations.active AND closes the open
 // illness_episodes row in the same writeTx (syncOpenIllnessEpisode). The toggle closes
-// at today's boundary; this explicit "end episode" action then advances the exclusive
-// end by one day so entries already logged today remain in its history. The row is still
-// closed (`ended_at` is non-null), so current/open-episode state remains coherent.
-// Idempotent: an already-closed episode is a no-op.
+// with yesterday as the last active day; this explicit "end episode" action then
+// advances the inclusive end to today so entries already logged today remain in its
+// history. The row is still closed (`end_date` is non-null), so current/open-episode
+// state remains coherent. Idempotent: an already-closed episode is a no-op.
 export function endEpisodeCore(
   profileId: number,
   episodeId: number
@@ -156,7 +157,7 @@ export function endEpisodeCore(
   return writeTx(() => {
     const row = getEpisodeRow(profileId, episodeId);
     if (!row) return { kind: "missing" };
-    if (row.ended_at != null) {
+    if (row.end_date != null) {
       syncPromotedCondition(profileId, row);
       return { kind: "already" };
     }
@@ -167,12 +168,12 @@ export function endEpisodeCore(
     setActiveSituations(profileId, next);
     const transitionDay = today(profileId);
     const closedAtTransition = getEpisodeRow(profileId, episodeId);
-    if (closedAtTransition?.ended_at === transitionDay) {
+    if (closedAtTransition?.end_date === shiftDateStr(transitionDay, -1)) {
       updateEpisodeBoundaries(
         profileId,
         episodeId,
-        closedAtTransition.started_at,
-        shiftDateStr(transitionDay, 1)
+        closedAtTransition.start_date,
+        transitionDay
       );
     }
     const closed = getEpisodeRow(profileId, episodeId);
@@ -209,7 +210,7 @@ export function reopenEpisodeCore(
     const row = getEpisodeRow(profileId, episodeId);
     if (!row) return { kind: "missing", restartedItemIds: [] };
     const eligibility = episodeReopenEligibility(
-      row.ended_at,
+      row.end_date,
       today(profileId)
     );
     if (eligibility.kind === "ongoing")
@@ -222,8 +223,8 @@ export function reopenEpisodeCore(
       return { kind: "conflict", restartedItemIds: [] };
 
     db.prepare(
-      `UPDATE illness_episodes SET ended_at = NULL
-        WHERE id = ? AND profile_id = ? AND ended_at IS NOT NULL`
+      `UPDATE illness_episodes SET end_date = NULL
+        WHERE id = ? AND profile_id = ? AND end_date IS NOT NULL`
     ).run(row.id, profileId);
     const active = getActiveSituations(profileId);
     if (
@@ -269,8 +270,8 @@ export function reopenEpisodeCore(
 export function editEpisodeCore(
   profileId: number,
   episodeId: number,
-  startedAt: string | null,
-  endedAt: string | null,
+  startDate: string | null,
+  endDate: string | null,
   note: string | null,
   outcome: string | null
 ): boolean {
@@ -279,12 +280,12 @@ export function editEpisodeCore(
       db
         .prepare(
           `UPDATE illness_episodes
-              SET started_at = ?, ended_at = ?, note = ?, outcome = ?
+              SET start_date = ?, end_date = ?, note = ?, outcome = ?
             WHERE id = ? AND profile_id = ?`
         )
         .run(
-          startedAt,
-          endedAt,
+          startDate,
+          endDate,
           note?.trim() || null,
           outcome?.trim() || null,
           episodeId,
@@ -303,11 +304,11 @@ export function editEpisodeCore(
 //   1. Deactivate the illness situation via the ONE toggle path (setActiveSituations),
 //      which closes the open row through syncOpenIllnessEpisode and keeps
 //      situations.active coherent ("never two truths").
-//   2. Correct the row's exclusive end to `lastActiveDay` + 1 (the first inactive day)
-//      with the plain row edit (updateEpisodeBoundaries), so the closed episode reads
-//      as having ended when it actually went quiet, not today.
-// Derived membership follows the new [start, end) automatically. Idempotent: an
-// already-closed episode is a no-op; a missing one reports missing.
+//   2. Correct the row's inclusive end to `lastActiveDay` itself with the plain row
+//      edit (updateEpisodeBoundaries), so the closed episode reads as having ended
+//      when it actually went quiet, not today.
+// Derived membership follows the new [start_date, end_date] automatically. Idempotent:
+// an already-closed episode is a no-op; a missing one reports missing.
 export function endEpisodeAsOfCore(
   profileId: number,
   episodeId: number,
@@ -315,19 +316,14 @@ export function endEpisodeAsOfCore(
 ): EndEpisodeOutcome {
   const row = getEpisodeRow(profileId, episodeId);
   if (!row) return { kind: "missing" };
-  if (row.ended_at != null) return { kind: "already" };
+  if (row.end_date != null) return { kind: "already" };
   const target = normalizeSituationName(row.situation).toLowerCase();
   const next = getActiveSituations(profileId).filter(
     (s) => normalizeSituationName(s).toLowerCase() !== target
   );
   setActiveSituations(profileId, next);
-  // Exclusive end = the first inactive day = last active day + 1.
-  updateEpisodeBoundaries(
-    profileId,
-    episodeId,
-    row.started_at,
-    shiftDateStr(lastActiveDay, 1)
-  );
+  // The inclusive end IS the last active day (#2232) — stored as given.
+  updateEpisodeBoundaries(profileId, episodeId, row.start_date, lastActiveDay);
   const closed = getEpisodeRow(profileId, episodeId);
   if (closed) syncPromotedCondition(profileId, closed);
   return { kind: "ended" };
@@ -357,7 +353,7 @@ export function endEpisodeWithMedReconciliation(
   return writeTx(() => {
     const row = getEpisodeRow(profileId, episodeId);
     if (!row) return { kind: "missing", stoppedItemIds: [] };
-    if (row.ended_at != null) return { kind: "already", stoppedItemIds: [] };
+    if (row.end_date != null) return { kind: "already", stoppedItemIds: [] };
     const ended = lastActiveDay
       ? endEpisodeAsOfCore(profileId, episodeId, lastActiveDay)
       : endEpisodeCore(profileId, episodeId);

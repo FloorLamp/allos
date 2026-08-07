@@ -579,7 +579,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // through the hidden named input. Preserve that value for seed cleanup.
     const originalStart = await page
       .getByTestId("episode-editor")
-      .locator('input[type="hidden"][name="startedAt"]')
+      .locator('input[type="hidden"][name="startDate"]')
       .inputValue();
     const today = frozenNow().toISOString().slice(0, 10);
     try {

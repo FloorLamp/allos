@@ -288,6 +288,23 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "getShareLinkByToken: the ONLY entry point for the unauthenticated public share route — the caller has no profile context yet; the lookup is by the unguessable 256-bit token's SHA-256, and the returned row's profile_id then scopes every downstream read",
   },
   {
+    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
+    includes: "SELECT seq FROM sqlite_sequence WHERE name = 'illness_episodes'",
+    why: "migration 169 (#2232) AUTOINCREMENT preservation: reads the table's sqlite_sequence high-water mark before the rebuild so episode ids can never recycle (the recently-resolved dismissal and stale-nudge ack sets rely on it) — schema bookkeeping, never profile rows; the rebuild's own INSERT…SELECT copies every row with its profile_id.",
+  },
+  {
+    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
+    includes:
+      "INSERT INTO sqlite_sequence (name, seq) VALUES ('illness_episodes', ?)",
+    why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half (empty-table case): sqlite_sequence carries no profile rows.",
+  },
+  {
+    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
+    includes:
+      "UPDATE sqlite_sequence SET seq = ? WHERE name = 'illness_episodes'",
+    why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half: bumps the rebuilt table's sqlite_sequence back to the pre-rebuild high-water mark — schema bookkeeping, never profile rows.",
+  },
+  {
     file: "lib/migrations/versions/014-hr-minutes-per-source.ts",
     includes: "PRAGMA table_info(hr_minutes)",
     why: "migration 013 replay sentinel: a schema-shape PRAGMA (is `source` already in the PRIMARY KEY?) that reads column metadata, never rows",

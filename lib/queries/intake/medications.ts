@@ -12,7 +12,6 @@ import { strengthFromName } from "../../prescription-parse";
 import { profileAgeMonths } from "../../settings";
 import { getLatestBodyMetricDated } from "../metrics";
 import { getEpisodeRow } from "../../illness-episode-store";
-import { shiftDateStr } from "../../date";
 import {
   episodeMedChecklist,
   type EpisodeMedInput,
@@ -62,10 +61,9 @@ export function getEpisodeMedReconciliation(
 ): EpisodeMedSuggestion[] {
   const row = getEpisodeRow(profileId, episodeId);
   if (!row) return [];
-  const start = row.started_at;
-  const endInclusive = row.ended_at
-    ? shiftDateStr(row.ended_at, -1)
-    : today(profileId);
+  const start = row.start_date;
+  // The stored end_date IS the inclusive last active day (#2232).
+  const endInclusive = row.end_date ?? today(profileId);
 
   const meds = db
     .prepare(

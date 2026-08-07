@@ -845,8 +845,14 @@ describe("runEaseBack (#837)", () => {
     const p = newProfile("EaseBack");
     const td = today(p);
     configureTelegram(p, "555001");
-    // A closed flagged-illness episode whose exclusive end (first well day) is today.
-    const episodeId = createEpisodeRow(p, "Illness", shiftDateStr(td, -4), td);
+    // A closed flagged-illness episode last active yesterday (#2232 inclusive
+    // end_date) — today is the first well day, the ease-back ramp's first day.
+    const episodeId = createEpisodeRow(
+      p,
+      "Illness",
+      shiftDateStr(td, -4),
+      shiftDateStr(td, -1)
+    );
 
     const input1 = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();

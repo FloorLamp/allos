@@ -8,16 +8,16 @@
 // no second episode engine (#221). The pure shapes + formatters live in
 // lib/illness-episode-format.ts; this module owns only the DB gather.
 //
-// Range → SQL window: `start` is the inclusive first active day; `end` is EXCLUSIVE
-// (the first inactive day), so the last active day is `end`-minus-one, and an ongoing
-// episode (`end` null) runs through `asOf` (today, profile-local). A null `start`
+// Range → SQL window: `start` is the inclusive first active day; `end` is the
+// inclusive LAST active day (#2232), and an ongoing episode (`end` null) runs through
+// `asOf` (today, profile-local). A null `start`
 // (active before the capped change-log) floors the lower bound so the whole known run
 // is captured. Every statement is profile-scoped (direct `profile_id` or a JOIN to
 // intake_items) per the scoping rule.
 
 import { db } from "./db";
 import { today } from "./db";
-import { shiftDateStr, daysBetweenDateStr, zonedDateParts } from "./date";
+import { daysBetweenDateStr, zonedDateParts } from "./date";
 import { bestKnownInstant, instantDate } from "./row-instants";
 import { getTimezone } from "./settings";
 import { getSymptomDaysInRange } from "./queries/symptoms";
@@ -67,9 +67,9 @@ export function assembleIllnessEpisode(
   const asOf = today(profileId);
   const tz = getTimezone(profileId);
   const ongoing = episode.end == null;
-  // Inclusive query window. `to` is the last active day: end-minus-one for a closed
-  // episode, else today for an ongoing one.
-  const to = episode.end ? shiftDateStr(episode.end, -1) : asOf;
+  // Inclusive query window. `to` is the last active day: the inclusive end for a
+  // closed episode, else today for an ongoing one.
+  const to = episode.end ?? asOf;
   const from = episode.start ?? OPEN_START_FLOOR;
 
   // ── Symptoms: per-symptom severity series (worst-first) ─────────────────────
@@ -284,8 +284,9 @@ export function assembleIllnessEpisode(
 }
 
 // The illness episode that CONTAINS `date` for a profile, or null. Reads the stored
-// episode rows (#856): the tightest (most-recently-started) row whose [start, end)
-// covers `date`. The row's id rides along so callers can link to the [id] route.
+// episode rows (#856): the tightest (most-recently-started) row whose inclusive
+// [start, end] covers `date`. The row's id rides along so callers can link to the
+// [id] route.
 export function episodeForProfileDate(
   profileId: number,
   date: string
@@ -353,7 +354,7 @@ export function openEpisodeForProfile(
 
 // All of a profile's illness episodes, most-recent first — what the timeline lists a
 // card per and the episodes index (#856 item 9) rows over. Each carries its stored row
-// id + [start, end). The DB (idx_illness_episodes_profile) provides the ordering, so
+// id + [start, end]. The DB (idx_illness_episodes_profile) provides the ordering, so
 // consumers no longer parse the situation-events JSON blob per profile per request.
 export function allEpisodesForProfile(profileId: number): IllnessEpisode[] {
   return listEpisodeRows(profileId).map(episodeRowToDerived);

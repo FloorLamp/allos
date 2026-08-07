@@ -158,9 +158,9 @@ const DIGEST_DEPENDENCIES: readonly DigestDependency[] = [
   },
   {
     table: "illness_episodes",
-    select: `COUNT(*) || ':' || COALESCE(MAX(COALESCE(ended_at, started_at)), '')`,
+    select: `COUNT(*) || ':' || COALESCE(MAX(COALESCE(end_date, start_date)), '')`,
     from: `FROM illness_episodes
-           WHERE profile_id = ? AND COALESCE(ended_at, started_at, '') >= ?`,
+           WHERE profile_id = ? AND COALESCE(end_date, start_date, '') >= ?`,
     why: "The episode headline. Closing an episode is an in-place UPDATE, so this one aggregates the LIFECYCLE timestamps rather than the row count — the shape any future entry whose resolving act is an update should copy.",
   },
 ];

@@ -36,11 +36,11 @@ export function episodeComparisonFor(
   episodeId: number
 ): EpisodeComparison | null {
   const row = getEpisodeRow(profileId, episodeId);
-  if (!row || row.ended_at != null || !row.started_at) return null;
+  if (!row || row.end_date != null || !row.start_date) return null;
 
   const currentDay = Math.max(
     1,
-    (daysBetweenDateStr(row.started_at, today(profileId)) ?? 0) + 1
+    (daysBetweenDateStr(row.start_date, today(profileId)) ?? 0) + 1
   );
 
   // Prior CLOSED episodes with a known day-count, excluding this one.

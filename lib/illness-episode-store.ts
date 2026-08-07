@@ -5,12 +5,13 @@
 // so a boundary edit or retro-create is automatically correct with nothing re-parented.
 //
 // This module is the auth-blind (profileId-first, never imports lib/auth — #319) DB
-// read/write for those rows. Every statement is profile-scoped. `started_at`/`ended_at`
-// carry the SAME semantics as the derived IllnessEpisode (lib/symptom-episode.ts):
-//   started_at = inclusive first active day (YYYY-MM-DD; NULL = active before the log)
-//   ended_at   = EXCLUSIVE end (the first inactive day; NULL = open/ongoing)
-// keeping them identical is what makes assembleIllnessEpisode byte-identical to the old
-// change-log derivation (the "assembly output identical pre/post swap" acceptance).
+// read/write for those rows. Every statement is profile-scoped. `start_date`/`end_date`
+// (#2232, migration 169 — day-window vocabulary, both bounds INCLUSIVE) carry the SAME
+// semantics as the derived IllnessEpisode (lib/symptom-episode.ts):
+//   start_date = inclusive first active day (YYYY-MM-DD; NULL = active before the log)
+//   end_date   = inclusive LAST active day (NULL = open/ongoing)
+// keeping them identical is what keeps assembleIllnessEpisode's window one value with
+// no per-boundary conversion.
 //
 // The flagged-situation toggle opens/closes rows through syncOpenIllnessEpisode, called
 // INSIDE the same writeTx that flips situations.active (lib/settings/profile-attrs.ts),
@@ -18,7 +19,7 @@
 
 import { db, today, writeTx } from "./db";
 import { shiftDateStr } from "./date";
-import { rangeContainsDate, EXCLUSIVE_END } from "./date-range";
+import { rangeContainsDate } from "./date-range";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import { episodeReopenEligibility } from "./illness-episode-reopen";
 import {
@@ -32,13 +33,13 @@ export interface IllnessEpisodeRow {
   id: number;
   profile_id: number;
   situation: string;
-  started_at: string | null;
-  ended_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
   note: string | null;
   outcome: string | null;
 }
 
-const COLS = "id, profile_id, situation, started_at, ended_at, note, outcome";
+const COLS = "id, profile_id, situation, start_date, end_date, note, outcome";
 
 // Map a stored row to the derived-episode shape assembleIllnessEpisode consumes. The
 // `id` rides along so surfaces can link to /medical/episodes/[id]; the derivations in
@@ -47,8 +48,8 @@ export function episodeRowToDerived(row: IllnessEpisodeRow): IllnessEpisode {
   return {
     id: row.id,
     situation: row.situation,
-    start: row.started_at,
-    end: row.ended_at,
+    start: row.start_date,
+    end: row.end_date,
   };
 }
 
@@ -87,11 +88,11 @@ export function resolveEpisodeAcrossProfiles(
 
 // The episode row CONTAINING `date`, tightest (most-recently-started) first — the row
 // analogue of the old episodeForDate derivation. A row covers `date` when its inclusive
-// start is on-or-before it (null start = since before the log) and its exclusive end is
-// strictly after it (null end = ongoing). The WHERE clause below is the SQL REALIZATION
-// of the chassis's EXCLUSIVE_END predicate (rangeContainsDate, lib/date-range.ts) — SQL
+// start is on-or-before it (null start = since before the log) and its inclusive end is
+// on-or-after it (null end = ongoing). The WHERE clause below is the SQL REALIZATION
+// of the chassis's inclusive-end predicate (rangeContainsDate, lib/date-range.ts) — SQL
 // can't call the JS matcher, so the two are kept in step by hand (the #394 finite-preimage
-// precedent); the illness domain's declared end-bound is EXCLUSIVE.
+// precedent).
 export function getEpisodeRowForDate(
   profileId: number,
   date: string
@@ -101,16 +102,16 @@ export function getEpisodeRowForDate(
       .prepare(
         `SELECT ${COLS} FROM illness_episodes
           WHERE profile_id = ?
-            AND (started_at IS NULL OR started_at <= ?)
-            AND (ended_at IS NULL OR ended_at > ?)
-          ORDER BY started_at IS NULL, started_at DESC, id DESC
+            AND (start_date IS NULL OR start_date <= ?)
+            AND (end_date IS NULL OR end_date >= ?)
+          ORDER BY start_date IS NULL, start_date DESC, id DESC
           LIMIT 1`
       )
       .get(profileId, date, date) as IllnessEpisodeRow | undefined) ?? null
   );
 }
 
-// The id of the OPEN illness episode that COVERS `date` (started_at ≤ date, ended_at
+// The id of the OPEN illness episode that COVERS `date` (start_date ≤ date, end_date
 // NULL), or null. The default-association source when a symptom is logged (#1093): a
 // symptom logged while an episode is open rolls up under it. Only OPEN episodes qualify
 // — a backfilled/closed episode never retro-claims a freshly logged symptom (that would
@@ -123,9 +124,9 @@ export function openEpisodeIdForDate(
     .prepare(
       `SELECT id FROM illness_episodes
         WHERE profile_id = ?
-          AND (started_at IS NULL OR started_at <= ?)
-          AND ended_at IS NULL
-        ORDER BY started_at IS NULL, started_at DESC, id DESC
+          AND (start_date IS NULL OR start_date <= ?)
+          AND end_date IS NULL
+        ORDER BY start_date IS NULL, start_date DESC, id DESC
         LIMIT 1`
     )
     .get(profileId, date) as { id: number } | undefined;
@@ -146,7 +147,7 @@ export function episodeExistsForProfile(
   );
 }
 
-// The current OPEN row of a named situation (ended_at IS NULL), or null. NOCASE-matched
+// The current OPEN row of a named situation (end_date IS NULL), or null. NOCASE-matched
 // on the situation name so casing/whitespace variants resolve to the same episode.
 export function getOpenEpisodeRow(
   profileId: number,
@@ -157,15 +158,15 @@ export function getOpenEpisodeRow(
     (db
       .prepare(
         `SELECT ${COLS} FROM illness_episodes
-          WHERE profile_id = ? AND situation = ? COLLATE NOCASE AND ended_at IS NULL
-          ORDER BY started_at IS NULL, started_at DESC, id DESC
+          WHERE profile_id = ? AND situation = ? COLLATE NOCASE AND end_date IS NULL
+          ORDER BY start_date IS NULL, start_date DESC, id DESC
           LIMIT 1`
       )
       .get(profileId, norm) as IllnessEpisodeRow | undefined) ?? null
   );
 }
 
-// The profile's most-recently CLOSED episode row (ended_at set), by exclusive-end
+// The profile's most-recently CLOSED episode row (end_date set), by last-active-day
 // descending — the ease-back ramp's anchor (issue #837). Null when no closed episode
 // exists. Every row here is a flagged-illness episode (syncOpenIllnessEpisode only
 // opens rows for illness-type situations), so no extra filtering is needed.
@@ -176,8 +177,8 @@ export function mostRecentClosedEpisodeRow(
     (db
       .prepare(
         `SELECT ${COLS} FROM illness_episodes
-          WHERE profile_id = ? AND ended_at IS NOT NULL
-          ORDER BY ended_at DESC, id DESC
+          WHERE profile_id = ? AND end_date IS NOT NULL
+          ORDER BY end_date DESC, id DESC
           LIMIT 1`
       )
       .get(profileId) as IllnessEpisodeRow | undefined) ?? null
@@ -192,29 +193,30 @@ export function mostRecentClosedEpisodeRow(
 export interface ReopenEligibleEpisode {
   id: number;
   situation: string;
-  endedAt: string;
+  // The inclusive last active day (the stored end_date).
+  endDate: string;
 }
 
 export function reopenEligibleEpisodeForProfile(
   profileId: number
 ): ReopenEligibleEpisode | null {
   const row = mostRecentClosedEpisodeRow(profileId);
-  if (!row || !row.ended_at) return null;
+  if (!row || !row.end_date) return null;
   if (
-    episodeReopenEligibility(row.ended_at, today(profileId)).kind !== "eligible"
+    episodeReopenEligibility(row.end_date, today(profileId)).kind !== "eligible"
   )
     return null;
   if (getOpenEpisodeRow(profileId, row.situation)) return null;
-  return { id: row.id, situation: row.situation, endedAt: row.ended_at };
+  return { id: row.id, situation: row.situation, endDate: row.end_date };
 }
 
 // The count of DISTINCT days within [start, end] (inclusive) that fell inside a
 // flagged-illness episode — the weekly recap's "sick N days this week" honesty line
 // (issue #837), so a sick week reads as a sick week, not a failed one. Loads the
-// episodes overlapping the window ([start,end) semantics: started_at ≤ end, ended_at
-// > start or open) and counts the covered days in JS (the window is ≤ ~31 days, and
+// episodes overlapping the window (inclusive bounds: start_date ≤ end, end_date ≥
+// start or open) and counts the covered days in JS (the window is ≤ ~31 days, and
 // overlapping episodes are de-duplicated by the day set). The per-day membership routes
-// through the chassis's EXCLUSIVE_END predicate (rangeContainsDate, lib/date-range.ts).
+// through the chassis's inclusive-end predicate (rangeContainsDate, lib/date-range.ts).
 export function illnessDaysInWindow(
   profileId: number,
   start: string,
@@ -222,24 +224,20 @@ export function illnessDaysInWindow(
 ): number {
   const rows = db
     .prepare(
-      `SELECT started_at, ended_at FROM illness_episodes
+      `SELECT start_date, end_date FROM illness_episodes
         WHERE profile_id = ?
-          AND (started_at IS NULL OR started_at <= ?)
-          AND (ended_at IS NULL OR ended_at > ?)`
+          AND (start_date IS NULL OR start_date <= ?)
+          AND (end_date IS NULL OR end_date >= ?)`
     )
     .all(profileId, end, start) as {
-    started_at: string | null;
-    ended_at: string | null;
+    start_date: string | null;
+    end_date: string | null;
   }[];
   if (rows.length === 0) return 0;
   let covered = 0;
   for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
     const inEpisode = rows.some((r) =>
-      rangeContainsDate(
-        { start: r.started_at, end: r.ended_at },
-        d,
-        EXCLUSIVE_END
-      )
+      rangeContainsDate({ start: r.start_date, end: r.end_date }, d)
     );
     if (inEpisode) covered++;
   }
@@ -253,7 +251,7 @@ export function listEpisodeRows(profileId: number): IllnessEpisodeRow[] {
     .prepare(
       `SELECT ${COLS} FROM illness_episodes
         WHERE profile_id = ?
-        ORDER BY started_at IS NULL, started_at DESC, id DESC`
+        ORDER BY start_date IS NULL, start_date DESC, id DESC`
     )
     .all(profileId) as IllnessEpisodeRow[];
 }
@@ -274,17 +272,19 @@ export function syncOpenIllnessEpisode(
   if (shouldBeOpen) {
     if (open) return;
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
        VALUES (?, ?, ?, NULL)`
     ).run(profileId, norm, onDate);
   } else {
     if (!open) return;
-    // EXCLUSIVE end = the first inactive day (onDate), matching diffSituations' stop
-    // event and the derivation's [start, end) semantics.
+    // The toggle's stop day (`onDate`) is the first INACTIVE day — diffSituations'
+    // stop event — so the inclusive end_date is the day before it (#2232). A same-day
+    // open-then-close leaves end_date = start_date − 1: an empty window, covering no
+    // days, exactly as the old [start, start) did.
     db.prepare(
-      `UPDATE illness_episodes SET ended_at = ?
-        WHERE id = ? AND profile_id = ? AND ended_at IS NULL`
-    ).run(onDate, open.id, profileId);
+      `UPDATE illness_episodes SET end_date = ?
+        WHERE id = ? AND profile_id = ? AND end_date IS NULL`
+    ).run(shiftDateStr(onDate, -1), open.id, profileId);
   }
 }
 
@@ -293,8 +293,8 @@ export function syncOpenIllnessEpisode(
 export function createEpisodeRow(
   profileId: number,
   situation: string,
-  startedAt: string | null,
-  endedAt: string | null,
+  startDate: string | null,
+  endDate: string | null,
   note: string | null = null,
   outcome: string | null = null
 ): number {
@@ -304,10 +304,10 @@ export function createEpisodeRow(
       db
         .prepare(
           `INSERT INTO illness_episodes
-             (profile_id, situation, started_at, ended_at, note, outcome)
+             (profile_id, situation, start_date, end_date, note, outcome)
            VALUES (?, ?, ?, ?, ?, ?)`
         )
-        .run(profileId, norm, startedAt, endedAt, note, outcome).lastInsertRowid
+        .run(profileId, norm, startDate, endDate, note, outcome).lastInsertRowid
     )
   );
 }
@@ -317,17 +317,17 @@ export function createEpisodeRow(
 export function updateEpisodeBoundaries(
   profileId: number,
   id: number,
-  startedAt: string | null,
-  endedAt: string | null
+  startDate: string | null,
+  endDate: string | null
 ): boolean {
   return writeTx(
     () =>
       db
         .prepare(
-          `UPDATE illness_episodes SET started_at = ?, ended_at = ?
+          `UPDATE illness_episodes SET start_date = ?, end_date = ?
             WHERE id = ? AND profile_id = ?`
         )
-        .run(startedAt, endedAt, id, profileId).changes > 0
+        .run(startDate, endDate, id, profileId).changes > 0
   );
 }
 
@@ -383,18 +383,18 @@ export function mergeEpisodeRows(
     if (!keep || !drop) return null;
     // Union start: a null (before-log) start floors everything; else the earlier date.
     const start =
-      keep.started_at == null || drop.started_at == null
+      keep.start_date == null || drop.start_date == null
         ? null
-        : keep.started_at < drop.started_at
-          ? keep.started_at
-          : drop.started_at;
+        : keep.start_date < drop.start_date
+          ? keep.start_date
+          : drop.start_date;
     // Union end: a null (open) end means the union is still open; else the later date.
     const end =
-      keep.ended_at == null || drop.ended_at == null
+      keep.end_date == null || drop.end_date == null
         ? null
-        : keep.ended_at > drop.ended_at
-          ? keep.ended_at
-          : drop.ended_at;
+        : keep.end_date > drop.end_date
+          ? keep.end_date
+          : drop.end_date;
 
     // Stable row-op side-state: preserve one promotion across the merge. Prefer the
     // keeper's condition; otherwise re-anchor the loser's condition to the keeper id.
@@ -426,7 +426,7 @@ export function mergeEpisodeRows(
     }
 
     db.prepare(
-      `UPDATE illness_episodes SET started_at = ?, ended_at = ?
+      `UPDATE illness_episodes SET start_date = ?, end_date = ?
         WHERE id = ? AND profile_id = ?`
     ).run(start, end, keepId, profileId);
     // Value-sync of the surviving promoted condition — the merge-shaped sibling of
@@ -444,7 +444,8 @@ export function mergeEpisodeRows(
       keep.situation,
       end ? "resolved" : "active",
       start,
-      end ? shiftDateStr(end, -1) : null,
+      // The inclusive end IS the last active day (#2232) — no off-by-one to compensate.
+      end,
       profileId,
       keepExternal
     );
