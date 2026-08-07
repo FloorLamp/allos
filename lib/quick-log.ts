@@ -95,59 +95,7 @@ export type QuickLogTarget =
   // NO sheet item uses it (#1468).
   | { kind: "navigate"; href: AppRoute };
 
-// ---- THE TIME-SEMANTIC DECLARATION (issue #2019 §7) ----
-//
-// Two features needed eating time and both routed around the food ledger, because
-// nothing in the app said what a one-tap log's TIME means. Every entry now answers that
-// question up front, and `lib/__tests__/quick-log.test.ts` fails a new entry that does
-// not — the same completeness discipline `RECONCILE_PREFIXES` applies to buttons and
-// `KIND_REISSUE` to message kinds.
-//
-//   • `instant`  — the log carries a real moment and some consumer reads it. A ONE-TAP
-//                  instant additionally needs a correction affordance whose UNIT matches
-//                  that consumer's tolerance; an instant the FORM asks for is stated
-//                  right the first time and has nothing to correct afterwards.
-//   • `day-only` — the log is about a DAY. This is not a gap and it is not laziness:
-//                  capturing precision nothing consumes is how a later reader comes to
-//                  invent a meaning for it.
-//
-// ADMISSION TEST FOR `instant`, all three required: (1) some consumer reads the instant;
-// (2) the tap contract is "this is happening now"; (3) the correction unit matches the
-// consumer's tolerance. Failing any one of them means `day-only` with the reason written
-// down, so "we decided against it" and "nobody looked" stay distinguishable. (2) and (3)
-// are about a TAP: an entry that opens a form STATING the time answers both by asking,
-// and declares `correctionUnit: "none"` rather than naming a correction it does not have.
-export type QuickLogTimeSemantic = "instant" | "day-only";
-
-// How an `instant` entry's time gets corrected — required for one, so the third leg of
-// the admission test is answered out loud rather than left to a reader's guess (the
-// METRIC_KNOWLEDGE discipline: an explicit `none`, with the reason beside it).
-//
-//   • "hour" — the CONSUMER reads hours, so an hour is the unit a correction has to be
-//              able to move. The unit names that grain; it does not name a widget.
-//              Example mechanisms: the correction chips of lib/correction-time.ts
-//              (food, dose), and the practice session's own dated edit form (#2204).
-//              Those chips reach half an hour at the small end since #2206 and the
-//              picker stays hourly; the unit still names the TOLERANCE the admission
-//              test asked about, which is the hour.
-//   • "day"  — corrected a DAY at a time, through the dated form that owns the
-//              exception (a period start that actually began yesterday).
-//   • "none" — the form STATES the time on entry, so there is no correction affordance
-//              at all. It was `"hour"` on the activity and measurements entries until
-//              #2062, whose own `why` text said in the same breath that no chip exists
-//              for them — an unenforced field is still documentation, and it read as a
-//              promise of a correction UI those two forms have never had.
-export type QuickLogCorrectionUnit = "hour" | "day" | "none";
-
-export interface QuickLogTime {
-  semantic: QuickLogTimeSemantic;
-  // Required in BOTH directions. For `instant`, WHICH consumer reads it and at what
-  // grain; for `day-only`, why an instant would be precision nothing consumes.
-  why: string;
-  // How an `instant` entry is corrected (required for one). A `day-only` entry leaves it
-  // unset: there is no instant to correct.
-  correctionUnit?: QuickLogCorrectionUnit;
-}
+// What a log's TIME means is a per-store fact (docs/internals/time-columns.md), never a sheet-entry one (#2230).
 
 // The sheet's id vocabulary, const-asserted so the domain census below can be
 // checked at the type level (#2130): an entry's `id` must come from here, and a
@@ -175,8 +123,6 @@ export interface QuickLogItem {
   hint: string;
   icon: QuickLogIcon;
   target: QuickLogTarget;
-  // What this entry's TIME means (#2019 §7). Required — see QuickLogTime.
-  time: QuickLogTime;
   // True for the entries only a training-capable profile should see. An
   // age-restricted profile (lib/age-gate.ts) has no training surface at all, so
   // the bar hides its create actions entirely there — same posture as today.
@@ -199,11 +145,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     hint: "Strength, cardio, or sport",
     icon: "barbell",
     target: { kind: "activity" },
-    time: {
-      semantic: "instant",
-      why: "A session already carries start and end instants, and the whole training model reads them — duration, the live-session presence, the post-workout dose window. It is not a one-TAP log at all: the editor asks for the times, so there is nothing to correct afterwards.",
-      correctionUnit: "none",
-    },
     training: true,
   },
   {
@@ -214,11 +155,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // The SAME FoodLogBar the Nutrition → Food tab renders, mounted in the
     // overlay — one component, two mounting contexts.
     target: { kind: "overlay", form: "food" },
-    time: {
-      semantic: "instant",
-      why: "#2019: `eaten_at` is read by eating-window length and protein distribution, both of which tolerate about half an hour, and the Telegram button's contract is 'I am eating now'. Corrected in hour chips. The WEB bar states a time or leaves it null — it never defaults to now, because a backfill has no instant to offer.",
-      correctionUnit: "hour",
-    },
   },
   {
     id: "log-dose",
@@ -229,11 +165,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // typed DoseTakenOutcome the buttons answer from) — reached, never
     // re-implemented.
     target: { kind: "overlay", form: "dose" },
-    time: {
-      semantic: "instant",
-      why: "#2020: `given_at` arms the PRN redose window and keys the phantom-dose proximity guard — the safety-relevant instant in the app. Hour chips, because redose intervals are measured in hours.",
-      correctionUnit: "hour",
-    },
   },
   {
     id: "log-measurements",
@@ -247,11 +178,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // shared-content rule exists to prevent. Same MeasurementsQuickAdd component
     // the Body tab's desktop expander mounts; only the mount changes.
     target: { kind: "overlay", form: "measurements" },
-    time: {
-      semantic: "instant",
-      why: "A reading time is part of the reading and the form ASKS for it — body temperature has carried one since #800/#843, and morning-vs-evening weight is a real difference. Stated on entry rather than corrected afterwards, so no correction affordance exists.",
-      correctionUnit: "none",
-    },
   },
   {
     id: "log-practice",
@@ -263,25 +189,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // LogPracticeButton the Wellness card renders over the same logPractice action — no
     // second write path, and the sheet lists exactly the practices you track.
     target: { kind: "overlay", form: "practice" },
-    time: {
-      // REWRITTEN by #2204, because the old declaration became factually wrong the
-      // moment `practice_logs.time` acquired a reader. It said "nothing reads when in
-      // the day it happened, so capturing an instant would be precision with no
-      // consumer" — correct when written, and the admission test it was failing is
-      // leg 1 (a consumer). #2202 supplied one, so the entry has to state the new
-      // meaning rather than inherit the old words: that is the whole point of this
-      // file (#2019 §7).
-      semantic: "instant",
-      why: "#2202: `lib/weekly-rhythm.ts` reads practice_logs.time — modalHour() picks each practice's typical session hour from its logged times, which is what schedules the retimed pace nudge and what the cards' rhythm note is inferred from. A one-tap log is a statement that the session is happening now, so the write core stamps the profile-local tap instant (#450 — the server's zone, never the device's); the expanded form's own time input still wins, and an explicitly emptied one still means no instant.",
-      // The MECHANISM, named: the session's own dated edit form, on the Wellness card's
-      // history table and the protocol detail's, which owns date and time together
-      // (`editPracticeSession` → `updatePracticeSession`). The UNIT is "hour" because
-      // that is the grain the consumer reads — modalHour buckets by hour — not because
-      // this entry borrows the food/dose chips, which it does not. This is not #2062's
-      // case in reverse: that ruling retired a declared correction affordance that did
-      // not EXIST, and this one does.
-      correctionUnit: "hour",
-    },
   },
   {
     id: "log-mood",
@@ -296,10 +203,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // SAME `logMood` action the dashboard card runs — one write core, a second
     // mounting context — with the #2128 backfill chips choosing the day.
     target: { kind: "overlay", form: "mood" },
-    time: {
-      semantic: "day-only",
-      why: "A check-in is about a DAY — the store upserts on UNIQUE(profile_id, date) and nothing reads an instant. The #2128 backfill chips choose WHICH day before the write, which is a statement, not a correction.",
-    },
   },
   {
     id: "log-period",
@@ -317,11 +220,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // LAYOUT-TIME snapshot of the state on every one of ~60 routes, and a snapshot is
     // exactly as stale as the page (the #1468 reason the overlay gathers on open).
     target: { kind: "overlay", form: "cycle" },
-    time: {
-      semantic: "instant",
-      why: "A period start is DAY-granular but genuinely correctable — 'it started yesterday' is the common case, and the #1892 duration sanity checks judge the corrected date. So the semantic is instant with a DAY unit, and the correction flows through the stateful write core rather than around it.",
-      correctionUnit: "day",
-    },
     cycle: true,
   },
   {
@@ -334,10 +232,6 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // same ingest engine, size/type gates, per-profile storage and dedup apply, and the
     // camera input (`capture="environment"`) comes along for free.
     target: { kind: "overlay", form: "document" },
-    time: {
-      semantic: "day-only",
-      why: "A document's meaningful date is the one PRINTED ON IT, which extraction reads from the document itself; when you happened to upload it is filing metadata that nothing clinical consumes.",
-    },
   },
 ];
 
