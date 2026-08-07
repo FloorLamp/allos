@@ -358,17 +358,26 @@ describe("/weight on demand (#1895)", () => {
 
     const row = db
       .prepare(
-        `SELECT weight_kg FROM body_metrics
+        `SELECT weight_kg, occurred_at FROM body_metrics
           WHERE profile_id = ? AND date = ? ORDER BY id DESC LIMIT 1`
       )
-      .get(p.profileId, today(p.profileId)) as { weight_kg: number };
+      .get(p.profileId, today(p.profileId)) as {
+      weight_kg: number;
+      occurred_at: string | null;
+    };
     expect(row.weight_kg).toBeCloseTo(82.5, 5);
     const after = db
       .prepare(
         "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND date = ?"
       )
       .get(p.profileId, today(p.profileId)) as { n: number };
-    expect(after.n).toBe(before.n + 1);
+    // EDITED DELIBERATELY by #2235 (decision 6): the fixture already seeds
+    // today's manual weigh-in, and the manual core is find-then-write now, so
+    // the reply CORRECTS that day row instead of stacking a second one. And the
+    // bot is a TIME-BLIND caller — it states nothing about when, so it neither
+    // invents an occurred_at nor clears a stated one.
+    expect(after.n).toBe(before.n);
+    expect(row.occurred_at).toBeNull();
     expect(replyBody()).toContain("82.5 kg");
   });
 
