@@ -381,8 +381,12 @@ export function updateFoodLogEventCore(
     // an error the user sees, never a silent clear (#2227's inversion of the log path).
     if (
       patch.eatenAt != null &&
-      acceptEatenAt(patch.eatenAt, getTimezone(profileId), nextDate, clockNow()) ===
-        null
+      acceptEatenAt(
+        patch.eatenAt,
+        getTimezone(profileId),
+        nextDate,
+        clockNow()
+      ) === null
     )
       return { kind: "invalid-eaten-at" as const };
     // The eating instant the row carries AFTER this patch; `time_source` travels with

@@ -188,10 +188,7 @@ describe("eatingHoursOnDate — the correction offer (#2227)", () => {
   it("truncates today at the current local hour", () => {
     const options = eatingHoursOnDate("2026-03-10", UTC, now, SHIFTED);
     expect(options.map((o) => o.hhmm)).toEqual(
-      Array.from(
-        { length: 19 },
-        (_, h) => `${String(h).padStart(2, "0")}:00`
-      )
+      Array.from({ length: 19 }, (_, h) => `${String(h).padStart(2, "0")}:00`)
     );
   });
 

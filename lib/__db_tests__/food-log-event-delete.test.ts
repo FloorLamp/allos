@@ -26,11 +26,20 @@ import {
 } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import {
-  getFoodMealDays,
-  getFoodSlotServingsOnDate,
-  getWeeklyServingsForGroup,
-} from "@/lib/queries";
+import { getFoodMealDays, getWeeklyServingsForGroup } from "@/lib/queries";
+import { type FoodSlot } from "@/lib/food-slot";
+
+// Per-window tallies through the meal grouping the web surface renders
+// (getFoodMealDays.slotCounts) — the live consumer of the window derivation, standing
+// where the retired slot-count query (getFoodSlotServingsOnDate, #2019/#2227) used to.
+function slotServingsOnDate(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): Map<string, number> {
+  const [day] = getFoodMealDays(profileId, [date]);
+  return new Map(Object.entries(day.slotCounts[window]));
+}
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -109,13 +118,13 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
     // The three derived reads agree: Morning lost its serving, the other two windows
     // kept theirs, and the weekly frequency-target progress is down by exactly one.
     expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", anchor).get("berries")
+      slotServingsOnDate(profileId, "Morning", anchor).get("berries")
     ).toBeUndefined();
+    expect(slotServingsOnDate(profileId, "Midday", anchor).get("berries")).toBe(
+      1
+    );
     expect(
-      getFoodSlotServingsOnDate(profileId, "Midday", anchor).get("berries")
-    ).toBe(1);
-    expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", anchor).get("berries")
+      slotServingsOnDate(profileId, "Evening", anchor).get("berries")
     ).toBe(1);
     expect(getWeeklyServingsForGroup(profileId, "berries")).toBe(2);
     const [day] = getFoodMealDays(profileId, [anchor]);
@@ -162,7 +171,7 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
       updateFoodLogEventCore(profileId, corrected, { mealSlot: "Evening" }).kind
     ).toBe("updated");
     expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", anchor).get("berries")
+      slotServingsOnDate(profileId, "Evening", anchor).get("berries")
     ).toBe(2);
 
     // The row-scoped delete takes the row it was NAMED, regardless of tap instant.

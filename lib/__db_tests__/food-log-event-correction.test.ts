@@ -8,9 +8,14 @@
 // and `food_log` (the day counter) are one fact in two shapes, and three different
 // derived reads sit on top of them:
 //
-//   • getFoodSlotServingsOnDate — the Telegram nudge's per-slot "(n)" button counts
 //   • getFoodMealDays           — the web bar's day counts + per-meal tallies
 //   • getWeeklyServingsForGroup — the #580 frequency-target progress
+//   • getFoodBarOrder           — the #950/#2019 proximity-weighted ranking
+//
+// (The Telegram nudge's per-slot "(n)" count used to be the third reader; #2019 retired
+// it — the buttons read the DAY total — and #2227 deleted its query. The per-window
+// assertions below go through `slotServingsOnDate`, a thin view over the meal grouping
+// the web surface actually renders, so the MOVE property keeps its coverage.)
 //
 // They all recompute live, so the thing that can go wrong is not staleness but
 // DOUBLE-COUNTING: a correction that adds at the destination without removing at the
@@ -29,9 +34,21 @@ import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   getFoodBarOrder,
   getFoodMealDays,
-  getFoodSlotServingsOnDate,
   getWeeklyServingsForGroup,
 } from "@/lib/queries";
+import { type FoodSlot } from "@/lib/food-slot";
+
+// Per-window tallies through the meal grouping the web surface renders
+// (getFoodMealDays.slotCounts) — the live consumer of the window derivation, standing
+// where the retired slot-count query (getFoodSlotServingsOnDate, #2019/#2227) used to.
+function slotServingsOnDate(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): Map<string, number> {
+  const [day] = getFoodMealDays(profileId, [date]);
+  return new Map(Object.entries(day.slotCounts[window]));
+}
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -105,14 +122,10 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
 
     // Before: the nudge counts it in Morning and nowhere else.
     expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", anchor).get(
-        "leafy_greens"
-      )
+      slotServingsOnDate(profileId, "Morning", anchor).get("leafy_greens")
     ).toBe(1);
     expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", anchor).get(
-        "leafy_greens"
-      )
+      slotServingsOnDate(profileId, "Evening", anchor).get("leafy_greens")
     ).toBeUndefined();
 
     const outcome = updateFoodLogEventCore(profileId, eventId, {
@@ -129,20 +142,14 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
     // After: it counts in Evening, and Morning is EMPTY — the count moved, it did not
     // reproduce. Summing every slot proves there is still exactly one serving.
     expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", anchor).get(
-        "leafy_greens"
-      )
+      slotServingsOnDate(profileId, "Morning", anchor).get("leafy_greens")
     ).toBeUndefined();
     expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", anchor).get(
-        "leafy_greens"
-      )
+      slotServingsOnDate(profileId, "Evening", anchor).get("leafy_greens")
     ).toBe(1);
     const perSlot = (["Morning", "Midday", "Evening"] as const).map(
       (slot) =>
-        getFoodSlotServingsOnDate(profileId, slot, anchor).get(
-          "leafy_greens"
-        ) ?? 0
+        slotServingsOnDate(profileId, slot, anchor).get("leafy_greens") ?? 0
     );
     expect(perSlot.reduce((a, b) => a + b, 0)).toBe(1);
 
@@ -279,9 +286,9 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
     expect(allCounters(profileId)).toEqual([
       { date: anchor, group_key: "fruit", servings: 3 },
     ]);
-    expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", anchor).get("fruit")
-    ).toBe(3);
+    expect(slotServingsOnDate(profileId, "Morning", anchor).get("fruit")).toBe(
+      3
+    );
   });
 });
 
@@ -318,12 +325,10 @@ describe("updateFoodLogEventCore — date correction (#1934)", () => {
     // Today's slot counts are empty and yesterday's Evening holds it — the day-scoped
     // nudge counts followed the move rather than seeing it twice.
     expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", anchor).get("fatty_fish")
+      slotServingsOnDate(profileId, "Morning", anchor).get("fatty_fish")
     ).toBeUndefined();
     expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", yesterday).get(
-        "fatty_fish"
-      )
+      slotServingsOnDate(profileId, "Evening", yesterday).get("fatty_fish")
     ).toBe(1);
 
     const [past, present] = getFoodMealDays(profileId, [yesterday, anchor]);
@@ -465,14 +470,17 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     });
     expect(outcome.kind).toBe("updated");
     if (outcome.kind !== "updated") return;
-    expect(outcome.from).toMatchObject({ mealSlot: "Morning", mealServings: 0 });
+    expect(outcome.from).toMatchObject({
+      mealSlot: "Morning",
+      mealServings: 0,
+    });
     expect(outcome.to).toMatchObject({ mealSlot: "Evening", mealServings: 1 });
     // The tally the placement claims is the tally the readers now derive.
     expect(
-      getFoodSlotServingsOnDate(profileId, "Evening", yesterday).get("fruit")
+      slotServingsOnDate(profileId, "Evening", yesterday).get("fruit")
     ).toBe(1);
     expect(
-      getFoodSlotServingsOnDate(profileId, "Morning", yesterday).get("fruit")
+      slotServingsOnDate(profileId, "Morning", yesterday).get("fruit")
     ).toBeUndefined();
   });
 

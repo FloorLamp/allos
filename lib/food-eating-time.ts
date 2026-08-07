@@ -39,7 +39,11 @@
 import { dateStrInTz } from "./date";
 import { hourOptionsBack, statedHourInstant } from "./correction-time";
 import { statedHoursOnDate } from "./stated-time";
-import { foodSlotForHhmm, type FoodSlot, type FoodSlotBoundaries } from "./food-slot";
+import {
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "./food-slot";
 
 export {
   acceptStatedAt as acceptEatenAt,
