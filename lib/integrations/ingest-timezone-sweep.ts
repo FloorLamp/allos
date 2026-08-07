@@ -8,36 +8,39 @@ import { HEALTH_CONNECT_ID } from "./health-connect";
 const SWEEP_DAYS = 3;
 
 // Sweep the current rolling-window ingest rows that key on PROFILE-LOCAL time computed
-// at ingest, after the profile's timezone changed (#608). Two tables do this:
+// at ingest, after the profile's timezone changed (#608).
 //
-//  • hr_minutes — PRIMARY KEY (profile_id, ts, source) where `ts` is the profile-local
-//    minute at ingest (#94). A timezone change re-labels which local minute a re-pushed
-//    raw sample lands on, so without a sweep the next rolling-window push INSERTS ~48h
-//    of shifted duplicates alongside the old rows, inflating HR-series / training-zone
-//    reads.
-//  • body_metrics — UNIQUE (profile_id, date, source) where `date` is computed in the
-//    profile timezone at ingest FOR HEALTH CONNECT. An evening weigh-in re-attributes
-//    to the adjacent local day and inserts a second row while the old persists.
+// ONE table does this now: body_metrics — UNIQUE (profile_id, date, source) where
+// `date` is computed in the profile timezone at ingest FOR HEALTH CONNECT. An evening
+// weigh-in re-attributes to the adjacent local day and inserts a second row while the
+// old one persists.
+//
+// hr_minutes USED TO BE THE OTHER HALF, and is deliberately gone (#2205, migration
+// 164). Its `ts` was the profile-local minute at ingest and part of the primary key, so
+// a timezone change re-labelled which minute a re-pushed sample landed on and the next
+// rolling-window push inserted ~48h of shifted duplicates. `ts` is an absolute instant
+// now, the key no longer moves when the timezone does, and there is nothing left to
+// sweep. THIS HALF EXISTED BECAUSE OF THAT WEAKNESS; THE WEAKNESS IS GONE; THEREFORE
+// THE HALF IS GONE.
+//
+// The body_metrics half is NOT the same situation and must stay. `body_metrics.date` is
+// a profile-local DAY, which #2205 leaves untouched by definition (its constraint 4:
+// day attribution is a different question from an instant), so that key still moves
+// with the timezone and the duplicate weigh-in it prevents is a live bug. DELETING IT
+// WOULD BE REINTRODUCING A BUG UNDER COVER OF A CLEANUP.
 //
 // Only Health Connect keys on the profile timezone — Withings and Oura attribute each
 // reading using the DEVICE's own zone, so a profile-tz change does not re-key their
 // rows and they are left alone. Deleting the current window's HC rows lets the next
 // push (within minutes) repopulate them cleanly under the new keys. Edit-locked
 // body_metrics rows are KEPT: a re-push would re-insert them WITHOUT the user's
-// hand-correction, so sweeping them would silently lose the edit. Returns the per-table
-// delete counts. Profile-scoped.
+// hand-correction, so sweeping them would silently lose the edit. Returns the delete
+// count. Profile-scoped.
 export function sweepIngestWindowForTimezoneChange(profileId: number): {
-  hrMinutes: number;
   bodyMetrics: number;
 } {
-  // ts is 'YYYY-MM-DDTHH:MM' and date is 'YYYY-MM-DD', so a lexicographic `>= cutoff`
-  // (a bare date) bounds both to the trailing window.
+  // `date` is 'YYYY-MM-DD', so a lexicographic `>= cutoff` bounds the trailing window.
   const cutoff = shiftDateStr(today(profileId), -SWEEP_DAYS);
-  const hrMinutes = db
-    .prepare(
-      "DELETE FROM hr_minutes WHERE profile_id = ? AND source = ? AND ts >= ?"
-    )
-    .run(profileId, HEALTH_CONNECT_ID, cutoff).changes;
   const bodyMetrics = db
     .prepare(
       `DELETE FROM body_metrics
@@ -45,5 +48,5 @@ export function sweepIngestWindowForTimezoneChange(profileId: number): {
           AND (edited IS NULL OR edited = 0)`
     )
     .run(profileId, HEALTH_CONNECT_ID, cutoff).changes;
-  return { hrMinutes, bodyMetrics };
+  return { bodyMetrics };
 }
