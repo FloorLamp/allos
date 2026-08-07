@@ -227,6 +227,19 @@ Every agent prompt must contain, verbatim where marked:
   A prompt that is silent on slots is not neutral — it delegates the choice. Say
   either "your slot is N, do not take N+1" or "you have NO slot; if you conclude you
   need one, STOP and report rather than taking a number."
+- **State which slots are already ON MAIN, not only which slot the agent holds.**
+  Those are different facts and the agent needs both. On 2026-08-07 a #2211 agent
+  was correctly told it held 166, and spent real effort building a contingency for
+  a gap at 165 — verifying its whole tree twice, once at each id — because its
+  branch base predated the merge that landed 165 and nothing in the brief told it
+  otherwise. Its work was sound and its conclusion ("165 would have been the better
+  call") was simply reasoning from a premise that had already expired. The dispatch
+  costs one sentence: "N and N−1 are on main; yours is N+1."
+- **A migration-id gap is not a migration-test failure.** `assertContiguousIds`
+  runs inside `runMigrations` → `createDb()`, so a gap fails EVERY DB test file and
+  every browser shard at import, not just the tests for the migration in question.
+  Say that when reserving a non-next slot: an agent that expects a handful of red
+  tests will read a wall of them as its own bug and start debugging the wrong thing.
 - **An agent's worktree is not backed up. Push or lose it.** Five container
   restarts on 2026-08-06/07; the fifth killed three live agents mid-work with
   uncommitted trees — ~2,300 lines that existed only under /tmp. They survived
