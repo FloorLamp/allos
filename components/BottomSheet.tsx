@@ -2,6 +2,7 @@
 
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { IconX } from "@tabler/icons-react";
 import { useFocusTrap } from "./useFocusTrap";
 import { usePresence } from "./usePresence";
 import { useLockBodyScroll } from "./useLockBodyScroll";
@@ -84,6 +85,7 @@ export default function BottomSheet({
   initialFocusRef,
   panelRef: externalPanelRef,
   presentation = "sheet",
+  dialogSize = "default",
   zIndexClass = "z-[60]",
   titleHidden = false,
 }: {
@@ -100,6 +102,10 @@ export default function BottomSheet({
   panelRef?: React.RefObject<HTMLDivElement | null>;
   // Sheet everywhere (default) vs sheet-below-`md`/centered-above. See above.
   presentation?: SheetPresentation;
+  // Centered dialogs default to the compact picker/confirm width. Forms with
+  // several peer fields can opt into a wider desktop canvas without changing
+  // their phone sheet presentation.
+  dialogSize?: "default" | "wide";
   // The stacking layer. Defaults to the sheet's own `z-[60]`. A surface that must
   // out-rank the toasts (`z-[100]`) — a confirm, which is a DECISION the viewer
   // has to reach — passes its own. Kept a full class string so Tailwind's
@@ -183,7 +189,11 @@ export default function BottomSheet({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto border-t bg-white px-4 pt-1 outline-none sm:max-w-md sm:pb-4 dark:bg-ink-900 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${OVERLAY_SAFE_BOTTOM} ${
-          asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
+          asDialog
+            ? `md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5 ${
+                dialogSize === "wide" ? "md:max-w-4xl" : "md:max-w-md"
+              }`
+            : ""
         } ${panelMotion}`}
       >
         {/* The drag affordance, now functional (#1425): a downward drag from
@@ -195,18 +205,31 @@ export default function BottomSheet({
           handleRef={handleRef}
           className={`mb-0.5 ${asDialog ? "md:hidden" : ""}`}
         />
-        <h2
-          id={titleId}
-          className={
-            titleHidden
-              ? "sr-only"
-              : `font-semibold text-slate-900 dark:text-slate-100 ${
-                  asDialog ? "text-lg" : "text-base"
-                }`
-          }
-        >
-          {title}
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2
+            id={titleId}
+            className={
+              titleHidden
+                ? "sr-only"
+                : `font-semibold text-slate-900 dark:text-slate-100 ${
+                    asDialog ? "text-lg" : "text-base"
+                  }`
+            }
+          >
+            {title}
+          </h2>
+          {asDialog && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden shrink-0 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 md:inline-flex dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
+              aria-label="Close"
+              title="Close"
+            >
+              <IconX className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+        </div>
         {description && (
           <p
             id={descriptionId}

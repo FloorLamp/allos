@@ -20,8 +20,9 @@ import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //
 // So the assertion here is HOST-WIDTH AWARE rather than a class-name check: measure
 // every field against the box it is actually inside, at the viewport where the bug
-// appeared. A class assertion would have passed the whole time the screenshot was
-// failing.
+// appeared. The quick-entry mount also owns a rendered-surface assertion: its
+// responsive dialog is the card, so the shared form must not draw a second card
+// inside it or retain the compact picker width.
 
 const LOG_DATE = "2026-01-03"; // deep past — no seeded row for profile 1 to collide with
 const LOG_WEIGHT = "71.3";
@@ -79,7 +80,7 @@ async function openEveryGroup(page: Page, form: Locator): Promise<void> {
   }
 }
 
-test("the quick-entry sheet's fields stay inside the panel at a desktop viewport", async ({
+test("the quick-entry dialog is wide, unnested, and keeps fields inside the panel", async ({
   browser,
 }) => {
   // The vitals card's "Log reading" (#1892) opens the shared form in the quick-entry
@@ -102,12 +103,45 @@ test("the quick-entry sheet's fields stay inside the panel at a desktop viewport
     );
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
+    await expect(form).not.toHaveClass(/card/);
+    await expect(
+      page
+        .getByTestId("quick-entry-sheet")
+        .getByRole("heading", { name: "Log measurements" })
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("quick-entry-sheet")
+        .getByRole("button", { name: "Close" })
+    ).toBeVisible();
+
+    const panel = page
+      .getByTestId("quick-entry-sheet")
+      .locator("[data-sheet-panel]");
+    const panelBox = await panel.boundingBox();
+    expect(panelBox?.width).toBeGreaterThan(700);
 
     // The entry point decides the open group: this button is on the vitals card.
     await expect(
       form.locator("#measurements-group-vitals-fields")
     ).toBeVisible();
     await expect(form.locator("#measurements-group-body-fields")).toBeHidden();
+
+    // A timestamp without a temperature is meaningless, so the native time
+    // control must not occupy a whole empty row. Entering a temperature reveals
+    // the compact inline control without changing the submitted field.
+    const temperature = form.getByLabel("Body Temperature", { exact: true });
+    const temperatureTime = form.getByTestId("measurements-temp-time");
+    await expect(temperatureTime).toBeHidden();
+    await temperature.fill("98.6");
+    await expect(temperatureTime).toBeVisible();
+    const temperatureWidth = await temperature.evaluate(
+      (field) => field.getBoundingClientRect().width
+    );
+    const timeWidth = await temperatureTime.evaluate(
+      (field) => field.getBoundingClientRect().width
+    );
+    expect(timeWidth).toBeLessThan(temperatureWidth);
 
     await openEveryGroup(page, form);
     await expectFieldsInsideHost(page, "[data-sheet-panel]");

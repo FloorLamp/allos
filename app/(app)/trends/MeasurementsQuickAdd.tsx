@@ -193,6 +193,7 @@ export default function MeasurementsQuickAdd({
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasTemperature, setHasTemperature] = useState(false);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // HRV is an adult measure here for the same reason body fat is (#493): a
   // growth-tracked profile's Body surfaces don't carry it, so the field doesn't
@@ -390,6 +391,7 @@ export default function MeasurementsQuickAdd({
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
+      setHasTemperature(false);
       tempUnitDetection.reset();
       refreshSummaries();
       return true;
@@ -412,6 +414,7 @@ export default function MeasurementsQuickAdd({
     rememberWritten();
     toast(metric ? `${metric.label} saved` : "Measurements saved");
     formRef.current?.reset();
+    setHasTemperature(false);
     tempUnitDetection.reset();
     refreshSummaries();
     onSaved?.();
@@ -592,9 +595,10 @@ export default function MeasurementsQuickAdd({
             type="number"
             step="0.1"
             name="temperature"
-            onChange={(event) =>
-              tempUnitDetection.readValue(event.target.value)
-            }
+            onChange={(event) => {
+              setHasTemperature(event.target.value.trim() !== "");
+              tempUnitDetection.readValue(event.target.value);
+            }}
             className="input pr-16"
           />
         </UnitToggle>
@@ -603,19 +607,27 @@ export default function MeasurementsQuickAdd({
             Detected °{tempUnitDetection.detectedUnit} from the reading.
           </p>
         )}
-        <label
-          className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
-          htmlFor="m-temp-time"
+        <div
+          className={
+            hasTemperature
+              ? "mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2"
+              : "hidden"
+          }
         >
-          Time taken (optional)
-        </label>
-        <input
-          id="m-temp-time"
-          data-testid="measurements-temp-time"
-          type="time"
-          name="temp_time"
-          className="input mt-1"
-        />
+          <label
+            className="text-xs font-medium text-slate-500 dark:text-slate-400"
+            htmlFor="m-temp-time"
+          >
+            Taken at
+          </label>
+          <input
+            id="m-temp-time"
+            data-testid="measurements-temp-time"
+            type="time"
+            name="temp_time"
+            className="input h-9 min-w-0 py-1.5"
+          />
+        </div>
       </Field>
     ),
     sleep: (

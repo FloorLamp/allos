@@ -116,7 +116,9 @@ export function useQuickEntry(): QuickEntryApi {
 const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   food: { title: "Log food", ownsHeading: true },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
-  measurements: { title: "Log measurements", ownsHeading: true },
+  // The dialog owns this heading and surface. MeasurementsQuickAdd drops its
+  // standalone card chrome in this mount, avoiding a card nested inside a card.
+  measurements: { title: "Log measurements", ownsHeading: false },
   dose: { title: "Log dose", ownsHeading: false },
   practice: { title: "Log practice", ownsHeading: false },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
@@ -188,6 +190,7 @@ export default function QuickEntryProvider({
           // a centered card from `md` up, so the palette's future adoption of the
           // same host doesn't need a second presentation.
           presentation="dialog"
+          dialogSize={form === "measurements" ? "wide" : "default"}
           titleHidden={sheet.ownsHeading}
         >
           <div data-testid="quick-entry-body" data-form={form}>
@@ -243,6 +246,7 @@ function QuickEntryBody({
           showHeadCirc={data.showHeadCirc}
           profileId={data.profileId}
           defaultGroup={prefill?.measurementGroup}
+          presentation="modal"
           onSaved={onDone}
         />
       );
