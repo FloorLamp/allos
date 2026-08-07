@@ -225,6 +225,22 @@ its `CANONICAL_INSTANT_COLUMNS` registry is grown by the migration that converts
 a column, in the same change as that column's readers. See
 `docs/internals/time-model.md`.
 
+READING a row's time is a question about the ROW, not about a column.
+`lib/time-columns.ts` declares what every temporal column means (semantic, grain,
+convention) and is verified against the migrated schema, so a new table with an
+undeclared temporal column fails CI and the published index
+(`docs/internals/time-columns.md`, `npm run gen:time-columns`) cannot rot.
+`lib/row-instants.ts` asks the question over it: `eventInstant`, `recordInstant`,
+`bestKnownInstant`, `rowLocalDay`. Never hand-roll `COALESCE(given_at, taken_at)`
+or `eaten_at ?? logged_at` again — a ledger in
+`lib/__tests__/time-columns.test.ts` freezes the ones that remain.
+`eventInstant` NEVER falls back to the record instant: a row that states no event
+time returns an explicit absence with a reason, because answering it with the tap
+stamp is what turns a distribution of eating times into one of tapping times. A
+caller that genuinely wants the best available instant calls `bestKnownInstant`,
+which reports which column it used. `localDayOf` stays the single instant→day
+path.
+
 ### Freshness
 
 "Is this dated reading still current?" is ONE question too. `lib/freshness.ts`

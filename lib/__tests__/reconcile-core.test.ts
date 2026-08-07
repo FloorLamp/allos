@@ -12,6 +12,7 @@ import {
   keyboardTokens,
   parseProseGatherRecord,
   reconcileClosingText,
+  closingTallyText,
   RECONCILE_CLOSING,
   stripTokens,
   tokenPrefix,
@@ -323,6 +324,88 @@ describe("reconcileClosingText (#1822 item 7)", () => {
         RECONCILE_CLOSING.rollover
       );
     }
+  });
+});
+
+// ---- THE OUTCOME TALLY (issue #2170) ----
+//
+// A resolved close replaced the ENTIRE message text, so the chat ended up knowing LESS
+// than the reminder had said: something was recorded, but not what. The counts below are
+// the reconcile's own resolution facts restated — no new read, no second computation.
+
+describe("reconcileClosingText outcome tally (#2170)", () => {
+  const DOSES = "[Norton] 💊 Evening supplements";
+
+  it("states the tally on a resolved close", () => {
+    expect(
+      reconcileClosingText("resolved", DOSES, { logged: 5, skipped: 1 })
+    ).toBe(
+      "[Norton] 💊 Evening supplements — 5 logged, 1 skipped. In the app."
+    );
+  });
+
+  it("says only what happened — all logged, or all skipped", () => {
+    expect(
+      reconcileClosingText("resolved", DOSES, { logged: 6, skipped: 0 })
+    ).toBe("[Norton] 💊 Evening supplements — 6 logged. In the app.");
+    expect(
+      reconcileClosingText("resolved", DOSES, { logged: 0, skipped: 2 })
+    ).toBe("[Norton] 💊 Evening supplements — 2 skipped. In the app.");
+  });
+
+  it("falls back to today's sentence with nothing to count", () => {
+    for (const tally of [null, undefined, { logged: 0, skipped: 0 }]) {
+      expect(reconcileClosingText("resolved", DOSES, tally)).toBe(
+        "[Norton] 💊 Evening supplements — handled in the app."
+      );
+    }
+  });
+
+  it("the other close reasons are byte-identical to today", () => {
+    // They close for time/lifecycle reasons, where a tally would be wrong or unknowable.
+    const tally = { logged: 5, skipped: 1 };
+    for (const reason of ["rollover", "expired", "superseded"] as const) {
+      expect(reconcileClosingText(reason, DOSES, tally)).toBe(
+        reconcileClosingText(reason, DOSES)
+      );
+    }
+  });
+
+  it("a subjectless pointer has no per-item facts either", () => {
+    expect(
+      reconcileClosingText("resolved", null, { logged: 5, skipped: 1 })
+    ).toBe(RECONCILE_CLOSING.resolved);
+  });
+
+  it("counts only — never an item list, never a judgment", () => {
+    const text = reconcileClosingText("resolved", DOSES, {
+      logged: 5,
+      skipped: 1,
+    });
+    // The pin the design promises: a tally reassures that it is recorded; a list turns
+    // a correction of the app's own display into a report.
+    expect(text.split("—")[1]).toMatch(/^[\s\d,a-z.]+ In the app\.$/);
+    expect(text.toLowerCase()).not.toMatch(/great|well done|nice|you /);
+  });
+
+  it("the attributed subject survives exactly as it does today (#1822 item 7)", () => {
+    expect(
+      reconcileClosingText("resolved", "  [Ada] 💊 Morning doses  \nTake 2…", {
+        logged: 2,
+        skipped: 0,
+      })
+    ).toBe("[Ada] 💊 Morning doses — 2 logged. In the app.");
+  });
+});
+
+describe("closingTallyText (#2170)", () => {
+  it("renders each present count, in ledger order", () => {
+    expect(closingTallyText({ logged: 5, skipped: 1 })).toBe(
+      "5 logged, 1 skipped"
+    );
+    expect(closingTallyText({ logged: 1, skipped: 0 })).toBe("1 logged");
+    expect(closingTallyText({ logged: 0, skipped: 3 })).toBe("3 skipped");
+    expect(closingTallyText({ logged: 0, skipped: 0 })).toBeNull();
   });
 });
 

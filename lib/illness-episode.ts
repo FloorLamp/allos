@@ -17,12 +17,8 @@
 
 import { db } from "./db";
 import { today } from "./db";
-import {
-  shiftDateStr,
-  daysBetweenDateStr,
-  parseUtcSql,
-  zonedDateParts,
-} from "./date";
+import { shiftDateStr, daysBetweenDateStr, zonedDateParts } from "./date";
+import { bestKnownInstant, instantDate } from "./row-instants";
 import { getTimezone } from "./settings";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getConditions } from "./queries/clinical";
@@ -191,7 +187,11 @@ export function assembleIllnessEpisode(
       };
       byMed.set(r.item_id, med);
     }
-    const parsed = parseUtcSql(r.given_at ?? r.taken_at);
+    // #2205 phase 3: the administration's instant, asked once. `bestKnownInstant`
+    // prefers given_at and falls back to taken_at exactly as the hand-rolled pairing
+    // did, but the result records WHICH it used, so a later reader can tell an
+    // observed intake time from the moment the confirm arrived.
+    const parsed = instantDate(bestKnownInstant("intake_item_logs", r));
     const localClock = parsed ? zonedDateParts(tz, parsed).hhmm : null;
     const point: AdministrationPoint = {
       id: r.id,

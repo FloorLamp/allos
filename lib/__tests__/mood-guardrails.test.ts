@@ -66,6 +66,11 @@ const MOOD_TABLE_ALLOWLIST = new Set([
   // table for its verbatim SELECT/COUNT/delete-policy — a data-portability
   // surface, not a flag/retest/streak engine.
   "lib/export.ts",
+  // The #2205 temporal-column index: a schema CENSUS, the same shape as
+  // lib/owned-tables.ts above. It declares that `mood_logs` has a `date`, a
+  // `created_at` and an `updated_at` and what each one means. It reads no mood row,
+  // computes nothing about mood, and is not a flag/retest/streak/import engine.
+  "lib/time-columns.ts",
 ]);
 
 describe("mood guardrails (#992) — never flagged, never retested", () => {

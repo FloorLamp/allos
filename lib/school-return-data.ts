@@ -10,7 +10,8 @@
 // intake_items, matching assembleIllnessEpisode's own PRN gather).
 
 import { db } from "./db";
-import { zonedWallTimeToUtc, parseUtcSql } from "./date";
+import { zonedWallTimeToUtc } from "./date";
+import { bestKnownInstant, instantDate } from "./row-instants";
 import { getTimezone, getProfileSetting } from "./settings";
 import { formatGivenAtClock } from "./administration-format";
 import { parseRxcuiIngredients } from "./rxnorm";
@@ -97,9 +98,14 @@ export function schoolReturnStatusFor(
     ) {
       continue;
     }
-    const stored = r.given_at ?? r.taken_at;
-    const d = parseUtcSql(stored);
-    if (!d) continue;
+    // The dose's own instant, asked as a question rather than paired by hand (#2205
+    // phase 3). `bestKnownInstant` returns given_at when the row carries one and
+    // taken_at otherwise — the same value this line always computed, with the
+    // substitution now stated in the result instead of hidden in a `??`.
+    const when = bestKnownInstant("intake_item_logs", r);
+    const d = instantDate(when);
+    if (!d || !when.known) continue;
+    const stored = when.at;
     const ms = d.getTime();
     if (lastAntipyreticAtMs == null || ms >= lastAntipyreticAtMs) {
       lastAntipyreticAtMs = ms;

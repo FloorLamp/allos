@@ -106,6 +106,35 @@ export function judgeTargets(
     warmup?: number | null;
   }[]
 ): SetStatus {
+  return judgeTargetDetail(sets).status;
+}
+
+// The verdict WITH ITS MAGNITUDE (issue #2172).
+//
+// "Some targets missed" is the same phrase for one rep short on one set and for failing
+// every target of the session, and a chat line has no detail below it to correct the
+// impression. So the shortfall is quantified HERE, by the same pass that decides the
+// verdict — not recomputed beside it by a formatter, which is how the two would come to
+// disagree about which sets counted (warmups, AMRAP, untargeted).
+export interface TargetJudgment {
+  status: SetStatus;
+  // Targeted, non-AMRAP, non-warmup working sets — the ones judged at all.
+  targetedSets: number;
+  // How many of those fell short. 0 unless `status` is "missed".
+  missedSets: number;
+  // The LARGEST shortfall among them: what was done against what was planned ("7/8").
+  // Null unless `status` is "missed".
+  worst: { reps: number; target: number } | null;
+}
+
+export function judgeTargetDetail(
+  sets: {
+    reps: number | null;
+    target_reps?: number | null;
+    to_failure?: number | null;
+    warmup?: number | null;
+  }[]
+): TargetJudgment {
   const targeted = sets.filter(
     (s) =>
       // A warmup set never counts toward met/missed (#338) — a light warmup
@@ -116,8 +145,25 @@ export function judgeTargets(
       !s.to_failure &&
       s.reps != null
   );
-  if (targeted.length === 0) return null;
-  return targeted.every((s) => s.reps! >= s.target_reps!) ? "met" : "missed";
+  if (targeted.length === 0)
+    return { status: null, targetedSets: 0, missedSets: 0, worst: null };
+
+  let missedSets = 0;
+  let worst: { reps: number; target: number } | null = null;
+  for (const s of targeted) {
+    const reps = s.reps!;
+    const target = s.target_reps!;
+    if (reps >= target) continue;
+    missedSets++;
+    if (!worst || target - reps > worst.target - worst.reps)
+      worst = { reps, target };
+  }
+  return {
+    status: missedSets === 0 ? "met" : "missed",
+    targetedSets: targeted.length,
+    missedSets,
+    worst,
+  };
 }
 
 export interface ExerciseSummary {

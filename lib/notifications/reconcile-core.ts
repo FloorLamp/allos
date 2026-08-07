@@ -308,12 +308,54 @@ const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
 //
 // No title (a pointer from before the column existed, or a title-less message) ⇒ the bare
 // closing line above. A close never invents a subject it was not told.
+// ── THE OUTCOME TALLY (issue #2170) ──────────────────────────────────────────
+//
+// A resolved close replaces the ENTIRE message text, so the chat history ended up LESS
+// informative than the reminder had been: the reader learned that something was
+// recorded, not what. The tally states the counts the reconcile ALREADY HAD IN HAND —
+// every claim token was resolved against the ledger to decide the close, so these are
+// the decision's own inputs restated, not a second adherence computation (#221).
+//
+// COUNTS ONLY, NEVER AN ITEM LIST. What the safety tier owes the reader is "it is
+// recorded"; a list turns a correction of the app's own display into a report, and the
+// app ledger stays the complete surface.
+//
+// IT IS A SNAPSHOT, ON PURPOSE. Closing is forgetting: the pointer is deleted in the
+// same claim, so nothing re-edits this text afterwards. A dose edited in the app later
+// makes the chat line HISTORICAL, exactly like every other message in a chat — not
+// wrong, and deliberately not maintained.
+export interface ClosingTally {
+  // Doses confirmed taken, and doses deliberately skipped — a skip is a record the user
+  // made, which is why it is stated rather than folded into the first number.
+  logged: number;
+  skipped: number;
+}
+
+// "5 logged, 1 skipped" / "6 logged" / "2 skipped", or null when there is nothing to
+// count (which then reads as the plain closing sentence).
+export function closingTallyText(tally: ClosingTally): string | null {
+  const parts: string[] = [];
+  if (tally.logged > 0) parts.push(`${tally.logged} logged`);
+  if (tally.skipped > 0) parts.push(`${tally.skipped} skipped`);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 export function reconcileClosingText(
   reason: CloseReason,
-  title: string | null | undefined
+  title: string | null | undefined,
+  // The resolution facts, for `resolved` only. The other reasons close for time or
+  // lifecycle reasons where a tally would be wrong or unknowable — a rolled-over nudge
+  // says nothing about what the day's ledger holds, and a superseded keyboard was
+  // replaced rather than answered.
+  tally?: ClosingTally | null
 ): string {
   const subject = (title ?? "").split("\n")[0]?.trim() ?? "";
-  return subject
-    ? `${subject} — ${RECONCILE_CLOSING_TAIL[reason]}`
-    : RECONCILE_CLOSING[reason];
+  // No subject ⇒ the bare sentence, tally or not: a pointer that never recorded a
+  // subject has no per-item facts to attribute either.
+  if (!subject) return RECONCILE_CLOSING[reason];
+  const counts =
+    reason === "resolved" && tally ? closingTallyText(tally) : null;
+  return counts
+    ? `${subject} — ${counts}. In the app.`
+    : `${subject} — ${RECONCILE_CLOSING_TAIL[reason]}`;
 }
