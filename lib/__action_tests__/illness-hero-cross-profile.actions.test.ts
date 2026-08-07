@@ -49,7 +49,7 @@ function makeSick(profileId: number): number {
     `UPDATE situations SET active = 1 WHERE profile_id = ? AND name = 'Illness'`
   ).run(profileId);
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profileId, shiftDateStr(today(profileId), -2));
   logSymptomCore(profileId, "cough", 2, today(profileId));

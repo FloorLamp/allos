@@ -26,18 +26,19 @@ function newProfile(name: string): number {
   );
 }
 
+// `endDate` is the inclusive last active day (#2232).
 function newEpisode(
   profileId: number,
-  startedAt: string,
-  endedAt: string | null
+  startDate: string,
+  endDate: string | null
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, 'Illness', ?, ?)`
       )
-      .run(profileId, startedAt, endedAt).lastInsertRowid
+      .run(profileId, startDate, endDate).lastInsertRowid
   );
 }
 
@@ -103,7 +104,7 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
       name: "Illness",
       status: "resolved",
       onset_date: "2026-06-02",
-      resolved_date: "2026-06-07", // end-1, the last active day
+      resolved_date: "2026-06-08", // the inclusive end IS the last active day
       edited: 0,
     });
     // The sync's own accounting says it wrote.
@@ -132,7 +133,7 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
       name: "Chronic sinusitis",
       status: "inactive",
       onset_date: "2026-06-01", // untouched — not even the boundary moved it
-      resolved_date: "2026-06-05",
+      resolved_date: "2026-06-06", // the promote-time value, held out
       edited: 1,
     });
     expect(syncPromotedCondition(p, getEpisodeRow(p, episodeId)!)).toBe(

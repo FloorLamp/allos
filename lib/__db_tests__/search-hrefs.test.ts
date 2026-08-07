@@ -148,7 +148,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+          `INSERT INTO illness_episodes (profile_id, situation, start_date)
            VALUES (?, 'PHREF Larkspur cold', '2026-04-02')`
         )
         .run(p).lastInsertRowid

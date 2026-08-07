@@ -941,12 +941,12 @@ export function seedHouseholdFolds(): void {
   // placement — see the header block in e2e/logins/dashboard.ts for what each state
   // is and why the distances (3/5, 10, 20 days) are the whole fixture.
   //
-  // ended_at is EXCLUSIVE, so an episode whose LAST ACTIVE day is `daysAgo` days back
-  // ends at today - (daysAgo - 1). That is the same arithmetic
-  // episodeReopenEligibility measures against, so the fixtures land on the intended
-  // side of both the 7-day reopen window and the 14-day promo window rather than on
-  // a boundary. Dates derive from today(profileId) — the run's FROZEN clock — never
-  // the wall clock.
+  // end_date is the INCLUSIVE last active day (#2232), so an episode whose last
+  // active day is `daysAgo` days back ends at today - daysAgo. That is the same
+  // value episodeReopenEligibility measures against, so the fixtures land on the
+  // intended side of both the 7-day reopen window and the 14-day promo window rather
+  // than on a boundary. Dates derive from today(profileId) — the run's FROZEN clock —
+  // never the wall clock.
   //
   // Idempotent for a reused dev server: each profile's episodes are cleared first,
   // and the logins/grants upsert.
@@ -959,13 +959,13 @@ export function seedHouseholdFolds(): void {
     const on = today(kidId);
     db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(kidId);
     db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
        VALUES (?, ?, ?, ?)`
     ).run(
       kidId,
       situation,
       shiftDateStr(on, -(daysAgo + 6)),
-      shiftDateStr(on, -(daysAgo - 1))
+      shiftDateStr(on, -daysAgo)
     );
     return kidId;
   };

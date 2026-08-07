@@ -209,8 +209,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `goals` | `target_date` | planned | day | n/a |  |
 | `goals` | `created_at` | bookkeeping | instant | bare |  |
 | `hr_minutes` | `ts` | event | instant | canonical | Minute-truncated (lib/date.ts utcMinute) and the row's primary key. Migration 164 converted it from a profile-local wall clock; the local day is now derived at read time. |
-| `illness_episodes` | `started_at` | window-start | day | n/a | A DAY despite the `_at` suffix: the inclusive first active day, NULL when the episode predates the log. |
-| `illness_episodes` | `ended_at` | window-end | day | n/a | A DAY, and EXCLUSIVE — the first INACTIVE day, NULL while ongoing. Comparing it as an instant, or as an inclusive end, is wrong twice. |
+| `illness_episodes` | `start_date` | window-start | day | n/a | The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 168 (#2232). |
+| `illness_episodes` | `end_date` | window-end | day | n/a | The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 168 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day). |
 | `imaging_studies` | `study_date` | event | day | n/a |  |
 | `imaging_studies` | `created_at` | record | instant | bare |  |
 | `immunization_overrides` | `created_at` | record | instant | bare |  |

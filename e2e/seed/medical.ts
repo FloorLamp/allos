@@ -612,8 +612,8 @@ export function seedVisitLinking(): void {
       ).run(vlMedId, VL_DATE);
       // An illness episode spanning VL_DATE, no linked visit yet.
       db.prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-       VALUES (?, 'sinus infection', '2026-05-10', '2026-05-15')`
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'sinus infection', '2026-05-10', '2026-05-14')`
       ).run(vlProfileId);
     }
     seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
@@ -668,8 +668,8 @@ export function seedVisitLinking(): void {
       // An illness episode spanning the subject visit, NO linked visit yet → the
       // encounter-side "Link an illness episode?" suggestion.
       db.prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
-       VALUES (?, 'sinus infection (e2e)', '2026-06-15', '2026-06-23')`
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'sinus infection (e2e)', '2026-06-15', '2026-06-22')`
       ).run(enId);
       // A source document + a document-sourced condition and a manual condition →
       // RecordProvenance deep-link vs plain label (#1353).

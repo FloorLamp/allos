@@ -38,18 +38,19 @@ function addEncounter(profileId: number, date: string, type: string): number {
 
 // A stored illness episode row; started/ended are inclusive-start / EXCLUSIVE-end
 // (null end = ongoing), matching the illness domain's semantics.
+// `endDate` is the inclusive last active day (#2232).
 function addEpisode(
   profileId: number,
-  startedAt: string | null,
-  endedAt: string | null
+  startDate: string | null,
+  endDate: string | null
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
          VALUES (?, 'Illness', ?, ?)`
       )
-      .run(profileId, startedAt, endedAt).lastInsertRowid
+      .run(profileId, startDate, endDate).lastInsertRowid
   );
 }
 
@@ -69,20 +70,20 @@ describe("household history — merged gather, access pin, promotion, episode co
     pRecent = newProfile("HH-Recent");
     now = today(p1);
 
-    // p1: an old visit + a closed episode [now-30, now-26] (ended_at exclusive now-25).
+    // p1: an old visit + a closed episode [now-30, now-26] (inclusive end_date now-26).
     addEncounter(p1, shiftDateStr(now, -40), "Annual physical");
-    addEpisode(p1, shiftDateStr(now, -30), shiftDateStr(now, -25));
+    addEpisode(p1, shiftDateStr(now, -30), shiftDateStr(now, -26));
 
     // p2: a more recent visit + a closed episode [now-28, now-25] that OVERLAPS p1's.
     addEncounter(p2, shiftDateStr(now, -10), "Sick visit");
-    addEpisode(p2, shiftDateStr(now, -28), shiftDateStr(now, -24));
+    addEpisode(p2, shiftDateStr(now, -28), shiftDateStr(now, -25));
 
     // p3: currently sick (open episode covering today) + a far-past closed episode.
     addEpisode(p3, shiftDateStr(now, -2), null);
-    addEpisode(p3, shiftDateStr(now, -200), shiftDateStr(now, -195));
+    addEpisode(p3, shiftDateStr(now, -200), shiftDateStr(now, -196));
 
-    // pWell: no illness at all. pRecent: an episode that closed 5 days ago (within the
-    // 14-day recency window).
+    // pWell: no illness at all. pRecent: an episode last active 5 days ago (within
+    // the 14-day recency window).
     addEncounter(pWell, shiftDateStr(now, -3), "Dental cleaning");
     addEpisode(pRecent, shiftDateStr(now, -12), shiftDateStr(now, -5));
   });
@@ -131,7 +132,7 @@ describe("household history — merged gather, access pin, promotion, episode co
   });
 
   it("does not promote when no accessible profile is currently or recently sick", () => {
-    // pWell has no illness; p1's only episode closed 26 days ago (outside 14).
+    // pWell has no illness; p1's only episode was last active 26 days ago (outside 14).
     expect(isHouseholdRecentlySick([pWell])).toBe(false);
     expect(isHouseholdRecentlySick([p1])).toBe(false);
     expect(isHouseholdRecentlySick([pWell, p1])).toBe(false);

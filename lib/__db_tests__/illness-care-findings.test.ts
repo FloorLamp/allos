@@ -63,7 +63,7 @@ function makeSick(p: number, startDaysAgo: number) {
   // #856: the open episode is now a ROW; membership stays derived. Open one so the
   // #801 assembly the builder gathers resolves the current episode.
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(p, shiftDateStr(today(p), -startDaysAgo));
 }

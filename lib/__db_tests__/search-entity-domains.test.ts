@@ -189,13 +189,13 @@ beforeAll(() => {
   episodeId = Number(
     db
       .prepare(
-        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at, outcome)
-         VALUES (?, 'Winter flu', '2026-03-01', '2026-03-08', 'Resolved without antibiotics')`
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date, outcome)
+         VALUES (?, 'Winter flu', '2026-03-01', '2026-03-07', 'Resolved without antibiotics')`
       )
       .run(mine).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO illness_episodes (profile_id, situation, started_at)
+    `INSERT INTO illness_episodes (profile_id, situation, start_date)
      VALUES (?, 'Winter flu', '2026-06-20')`
   ).run(other);
 
@@ -403,7 +403,7 @@ describe("illness episodes are searchable (#856/#1595)", () => {
     const found = hits(mine, "Winter flu", "episode");
     expect(found).toHaveLength(1);
     expect(found[0].href).toBe(`/medical/episodes/${episodeId}`);
-    // ended_at is the EXCLUSIVE first inactive day, so the label ends on the 7th.
+    // end_date is the inclusive last active day (#2232) — the label ends ON it.
     expect(found[0].subtitle).toContain("2026-03-01 → 2026-03-07");
     expect(titles(mine, "antibiotics", "episode")).toContain("Winter flu");
   });

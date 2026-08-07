@@ -5,6 +5,7 @@ import "./load-env";
 import { db, today } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
 import { shiftDateStr } from "../lib/date";
+import { episodesForSituation } from "../lib/symptom-episode";
 import { zonedWallTimeToUtc } from "../lib/calendar-ics";
 import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
@@ -26,7 +27,6 @@ import {
   initialOnboardingState,
   serializeOnboardingState,
 } from "../lib/onboarding";
-import { backfillIllnessEpisodes } from "../lib/migrations/versions/046-illness-episodes";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -2490,12 +2490,19 @@ upsertProfileSetting.run(
 );
 
 // #856: illness episodes are now stored ROWS (identity + annotations), reconstructed
-// from the change-log by the migration's backfill. The seed writes situation_events
-// directly (above), which the boot-time migration can't see (it ran on the empty DB
-// before seeding), so reconstruct the rows here with the SAME backfill so the current
-// (open) + past (closed) episodes have rows. Clear first for a re-seed.
+// from the change-log by migration 046's backfill and converted to the day-window
+// vocabulary by migration 168 (#2232). The seed writes situation_events directly
+// (above), which the boot-time migrations can't see (they ran on the empty DB before
+// seeding), so reconstruct the rows here the way a 046→168 replay would: one row per
+// change-log run, its end converted from the stop day to the inclusive last active
+// day. Clear first for a re-seed.
 db.prepare("DELETE FROM illness_episodes WHERE profile_id = 1").run();
-backfillIllnessEpisodes(db);
+for (const run of episodesForSituation("Illness", situationEvents, true)) {
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+     VALUES (1, 'Illness', ?, ?)`
+  ).run(run.start, run.end == null ? null : shiftDateStr(run.end, -1));
+}
 
 // ── Symptom log (issue #799) ─────────────────────────────────────────────────
 // A synthetic illness episode with day-by-day symptoms so the dashboard Symptoms card
