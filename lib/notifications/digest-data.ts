@@ -41,7 +41,15 @@ import {
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
-import { arrivalStatistics, shouldDeferDigest } from "./digest-schedule";
+import {
+  arrivalStatistics,
+  digestDeadlineMinute,
+  formatDigestAttempt,
+  nextDigestAttempt,
+  parseDigestAttempt,
+  planDigestTick,
+  type DigestTickAction,
+} from "./digest-schedule";
 import {
   countSituationalDue,
   doseDueOn,
@@ -58,12 +66,13 @@ import {
   getTimezone,
   getPublicUrl,
 } from "../settings";
+import type { NotifySchedule } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { getIntakeDeltas } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
-import { DIGEST_MARKER_KEY } from "./send-markers";
+import { DIGEST_ATTEMPT_KEY, DIGEST_MARKER_KEY } from "./send-markers";
 import {
   activitiesSurviveDemotion,
   collapsedTuneAction,
@@ -709,59 +718,96 @@ export function digestSleepPendingTrace(
   };
 }
 
-// The tick's digest gate (#2102): decline the FIRST attempt so the retry attempt
-// sends the digest WITH last night's sleep in it. One conditional over the two
-// attempt bands `slotDue` already provides — no new scheduling machinery, no new
-// marker, and bounded by construction (see lib/notifications/digest-schedule.ts).
-//
-// THE TRACE (#2209 part 2). #2102's WRITE policy is deliberately trace-free — the
-// marker is set only by a real send — and that is unchanged: nothing below writes
-// any state. What it also left trace-free was the EVIDENCE, and this is the one tick
-// decision with none at all: a deferred-then-sent digest is byte-identical to an
-// on-time one, so "did the digest defer this morning, and why?" was answerable only
-// from a container's stdout. Had it deferred, nothing distinguished "sleep was
-// genuinely late" from "the waiting-window predictor was wrong" — the question #2192
-// is open about, which is why the line names that predictor's inputs too.
-//
-// It costs at most one line per profile per day: `shouldDeferDigest` consults the
-// thunk only on the single attempt band where the slot is current, the digest hour
-// is `auto`, and the band is deferrable. BOTH outcomes are logged — recording only
-// the deferral would leave "it considered waiting and decided not to" exactly as
-// unanswerable as before.
-export function deferDigestForSleep(
+// The DEADLINE a Dynamic digest sends at whatever happened (#2211/#2214): the
+// arrival p90 plus a declared margin, or an hour after the floor when the sample
+// cannot answer. The decision is pure (`digestDeadlineMinute`); this is only its
+// gather. Static never calls it, so a Static profile pays nothing for the read.
+export function digestDeadline(
   profileId: number,
-  slotMinute: number,
+  floorMinute: number,
+  tickMinutes: number
+): number {
+  return digestDeadlineMinute(
+    floorMinute,
+    arrivalStatistics(getSleepArrivals(profileId)),
+    tickMinutes
+  );
+}
+
+// The tick's whole digest decision (#2211), DB side. The decision itself is
+// `planDigestTick`; this resolves its three stored inputs — the mode and minute from
+// the schedule, the deadline from the arrival statistic, today's failed-attempt
+// record from `notify_digest_attempt` — and hands `digestSleepPending` over as the
+// thunk so the sleep read is paid for only on a Dynamic re-check tick.
+export function planProfileDigestTick(
+  profileId: number,
+  sched: Pick<NotifySchedule, "digestMinute" | "digestMode">,
   currentMinute: number,
   tickMinutes: number,
-  auto: boolean
-): boolean {
+  date: string
+): DigestTickAction {
+  if (sched.digestMinute == null) return "idle";
+  // Static ignores the deadline, so the arrival read is never paid for by one.
+  const deadlineMinute =
+    sched.digestMode === "dynamic"
+      ? digestDeadline(profileId, sched.digestMinute, tickMinutes)
+      : sched.digestMinute;
   // Collected rather than assigned to a `let`: the thunk runs (or does not) inside
-  // shouldDeferDigest, and a captured assignment there narrows to `never` under
+  // planDigestTick, and a captured assignment there narrows to `never` under
   // control-flow analysis, which would let a wrong argument through the typecheck.
   const consulted: DigestSleepPendingTrace[] = [];
-  const deferred = shouldDeferDigest(
-    { slotMinute, currentMinute, tickMinutes, auto },
+  const action = planDigestTick(
+    {
+      mode: sched.digestMode,
+      slotMinute: sched.digestMinute,
+      currentMinute,
+      tickMinutes,
+      deadlineMinute,
+      attempt: parseDigestAttempt(
+        getProfileSetting(profileId, DIGEST_ATTEMPT_KEY),
+        date
+      ),
+    },
     () => {
       const t = digestSleepPendingTrace(profileId);
       consulted.push(t);
       return t.pending;
     }
   );
-  // Empty when the gate short-circuited before reading sleep at all (a manual hour,
-  // the retry band, an undeferrable slot) — those ticks stay silent, as they should.
+  // Empty when the plan short-circuited before reading sleep at all — every Static
+  // tick, every tick before the floor, every tick under a failed-attempt record, and
+  // the deadline itself. Those ticks stay silent, as they should.
   const trace = consulted[0];
   if (trace)
-    logDigestDeferral(profileId, slotMinute, currentMinute, trace, deferred);
-  return deferred;
+    logDigestTick(
+      profileId,
+      sched.digestMinute,
+      deadlineMinute,
+      currentMinute,
+      trace,
+      action === "wait"
+    );
+  return action;
 }
 
-// The arrival-side half of the trace: WHEN last night was expected to land, when the
-// source was last contacted, and whether any provider is in the failing/stale
-// attention state (#2192). Read only on the one attempt band a day the gate above is
-// consulted, so the ordinary tick pays nothing for it.
-function logDigestDeferral(
+// The arrival-side half of the trace (#2209 part 2, persisted by #2220): WHEN last
+// night was expected to land, when the source was last contacted, and whether any
+// provider is in the failing/stale attention state (#2192).
+//
+// It is written only on a tick that actually consulted the sleep predicate, which
+// after #2211 means a DYNAMIC re-check tick: at or past the floor, before the
+// deadline, with no failed attempt on record. That bounds the volume at
+// `(deadline − floor) / tick` lines per profile per day — at most four at a
+// 15-minute tick, and fewer whenever the data lands early, because the first
+// non-pending answer sends the digest and ends the window. A Static profile writes
+// none at all, which is the honest reading: Static never asks the question.
+//
+// BOTH outcomes are logged. Recording only the decline would leave "it considered
+// waiting and decided not to" exactly as unanswerable as it was before #2209.
+function logDigestTick(
   profileId: number,
   slotMinute: number,
+  deadlineMinute: number,
   currentMinute: number,
   trace: DigestSleepPendingTrace,
   deferred: boolean
@@ -793,6 +839,10 @@ function logDigestDeferral(
       // rather than by reading its message text (lib/notify-log-format.ts).
       decision: deferred ? "declined" : "proceeded",
       slotMinute,
+      // The Dynamic hard stop this re-check is counting down to. Without it an
+      // operator reading a run of declines cannot tell a window that is behaving
+      // from one whose deadline resolved somewhere unexpected.
+      deadlineMinute,
       currentMinute,
       sleepSection: trace.sleepSection,
       newestWakeDay: trace.newestWakeDay,
@@ -805,6 +855,26 @@ function logDigestDeferral(
       lastSyncAt: latestSleepSyncAt(profileId),
       providerHealthy: getIntegrationAttention(profileId).length === 0,
     }
+  );
+}
+
+// Record that a digest send ATTEMPT failed at `minute`. The record is the Dynamic
+// retry's anchor and, by its presence, what distinguishes a failure from a decline
+// (see the DIGEST_ATTEMPT_KEY entry in send-markers.ts). Static's retry is still
+// slot-anchored, so it never writes one and its behavior is untouched.
+export function recordDigestAttempt(
+  profileId: number,
+  date: string,
+  minute: number
+): void {
+  const prev = parseDigestAttempt(
+    getProfileSetting(profileId, DIGEST_ATTEMPT_KEY),
+    date
+  );
+  setProfileSetting(
+    profileId,
+    DIGEST_ATTEMPT_KEY,
+    formatDigestAttempt(nextDigestAttempt(prev, date, minute))
   );
 }
 

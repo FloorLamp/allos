@@ -28,6 +28,7 @@ import {
 } from "@/lib/settings";
 import { gatherDigestSleep } from "@/lib/notifications/digest-data";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "@/lib/notifications/schedule";
+import { DIGEST_DEFAULT_MINUTE } from "@/lib/notifications/digest-schedule";
 
 const session = (
   metric: string,
@@ -141,17 +142,17 @@ describe("getNotifySchedule — wake-seeded Morning time (#1117, minutes since #
     expect(sched.morningAuto).toBe(true); // absent = auto, just no data to resolve
   });
 
-  it("keeps the digest OFF when absent, but resolves an explicit auto to wake", () => {
+  it("keeps the digest OFF when absent, and never reads the wake time for it", () => {
+    // #2211 removed `auto` from the digest entirely: it has a mode and a concrete
+    // time, and the wake minute is the MORNING INTAKE slot's answer alone. A
+    // residual sentinel (an old tab posting during a deploy overlap) reads as the
+    // declared pre-fill rather than as off — never as the wake time.
     expect(getNotifySchedule(wakeProfile).digestMinute).toBeNull(); // opt-in
-    expect(getNotifySchedule(wakeProfile).digestAuto).toBe(false);
+    expect(getNotifySchedule(wakeProfile).digestMode).toBe("static");
     setProfileSetting(wakeProfile, "notify_digest_hour", "auto");
-    const sched = getNotifySchedule(wakeProfile);
-    // No sync provenance in this fixture → the arrival statistic has no answer
-    // ("no-source"), digestAutoMinute returns null, and the digest falls back to
-    // the wake minute. The corrected statistic itself is pinned in
-    // lib/__db_tests__/sleep-arrivals.test.ts (#2214).
-    expect(sched.digestMinute).toBe(7 * 60);
-    expect(sched.digestAuto).toBe(true);
+    expect(getNotifySchedule(wakeProfile).digestMinute).toBe(
+      DIGEST_DEFAULT_MINUTE
+    );
     setProfileSetting(wakeProfile, "notify_digest_hour", ""); // reset off
   });
 });
