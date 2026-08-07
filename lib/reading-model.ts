@@ -91,7 +91,12 @@ export interface Reading {
   unit: string;
   /** The profile-local day. */
   date: string;
-  /** The absolute instant, where the store records one (metric_samples). */
+  /**
+   * The absolute instant, where the row records one: `metric_samples.start_time`,
+   * or `body_metrics.occurred_at` when a time was stated (#2235). Null means the
+   * reading is day-grain — `medical_records` still always answers null here
+   * (#2154 is the filed fix for its half).
+   */
   measuredAt: string | null;
   source: ReadingSource;
   /** The physical row this reading is presented from. */
@@ -200,6 +205,8 @@ export interface BodyMetricReadingRow {
   source: string | null;
   edited?: number | null;
   notes?: string | null;
+  /** The stated event instant (migration 165, #2235), or NULL = not stated. */
+  occurred_at?: string | null;
 }
 
 /** The `metric_samples` fields a reading is presented from. */
@@ -239,8 +246,11 @@ export function readingFromBodyMetric(
     value: row.value,
     unit: src.unit,
     date: row.date,
-    // body_metrics is a per-DAY row; it records no instant.
-    measuredAt: null,
+    // The row's stated `occurred_at` (#2235): the instant the reading was taken,
+    // when somebody said so — NULL stays NULL, honest absence, never a midnight
+    // anchor. Descriptive only: `date` remains the day attribution and the
+    // dedupe key does not read it.
+    measuredAt: row.occurred_at ?? null,
     source: readingSourceFor({ sourceKey: row.source }),
     store: "body_metrics",
     rowId: row.id,

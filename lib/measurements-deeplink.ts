@@ -73,9 +73,10 @@ export const MEASUREMENT_GROUP_LABEL: Record<MeasurementGroup, string> = {
 // Vitals: it holds the reading people take on purpose and then log.
 export const DEFAULT_MEASUREMENT_GROUP: MeasurementGroup = "vitals";
 
-// Every grouped field of the form, by its DOM id. `m-date` and `m-notes` are
-// deliberately absent: both are permanent, rendered outside the groups, and belong
-// to whatever was entered rather than to one domain.
+// Every grouped field of the form, by its DOM id. `m-date` / `m-time` (the shared
+// WhenControl pair) and `m-notes` are deliberately absent: all are permanent,
+// rendered outside the groups, and belong to whatever was entered rather than to
+// one domain.
 const FIELD_GROUP: Record<string, MeasurementGroup> = {
   "m-systolic": "vitals",
   "m-diastolic": "vitals",
@@ -102,11 +103,13 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
 export const GROUPED_MEASUREMENT_FIELD_IDS: readonly string[] =
   Object.keys(FIELD_GROUP);
 
-// The two permanent fields, outside every group.
-export const UNGROUPED_MEASUREMENT_FIELD_IDS: readonly string[] = [
-  "m-date",
-  "m-notes",
-];
+// The permanent fields outside every group, by the literal `id="…"` the form
+// source carries. Notes only, since #2235: the date (and the sitting's optional
+// time) render through the shared WhenControl, whose `m-date` / `m-time` ids are
+// built from its testId inside components/WhenControl.tsx — outside this scan's
+// literal-id vocabulary, and outside every group for the same reason `m-date`
+// always was (they belong to whatever was entered, not to one domain).
+export const UNGROUPED_MEASUREMENT_FIELD_IDS: readonly string[] = ["m-notes"];
 
 export function measurementFieldGroup(
   fieldId: string | null | undefined

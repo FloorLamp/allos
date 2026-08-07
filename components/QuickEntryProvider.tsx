@@ -237,6 +237,7 @@ function QuickEntryBody({
         <MeasurementsQuickAdd
           weightUnit={data.weightUnit}
           defaultDate={data.defaultDate}
+          defaultStatedAt={data.statedAt}
           temperatureUnit={data.temperatureUnit}
           showBodyFat={data.showBodyFat}
           showGrowth={data.showGrowth}

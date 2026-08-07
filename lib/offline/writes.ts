@@ -33,7 +33,7 @@ import { acceptEatenAt } from "@/lib/food-eating-time";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
-import { recordReading } from "@/lib/reading-writes";
+import { recordReading, resolveStatedOccurredAt } from "@/lib/reading-writes";
 import {
   classifyDoseReplay,
   classifySetReplay,
@@ -106,6 +106,13 @@ export interface BodyMetricWrite {
   bodyFatPct: string | null;
   restingHr: string | null;
   notes: string | null;
+  // The sitting's stated instant (#2235): an ISO instant somebody STATED, `null`
+  // for the form's explicitly-empty Time (clears a stated time on a resubmission),
+  // `undefined` for a time-blind caller (Telegram, the palette, an old queued
+  // intent — leaves any stored statement alone). Accepted / normalized by
+  // `resolveStatedOccurredAt`; a mismatched or future statement costs the
+  // statement, never the reading.
+  occurredAt?: string | null;
 }
 
 function numOrNull(v: string | null): number | null {
@@ -114,10 +121,27 @@ function numOrNull(v: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Persist one body-metrics row. At least ONE measurement is required, but weight is
-// not: body_fat_pct and resting_hr are nullable columns and metric-detail entry can
-// record either independently. A present weight is still validated and converted
-// to canonical kg exactly as before.
+// Persist one manual body-metrics submission. At least ONE measurement is required,
+// but weight is not: body_fat_pct and resting_hr are nullable columns and
+// metric-detail entry can record either independently. A present weight is still
+// validated and converted to canonical kg exactly as before.
+//
+// FIND-THEN-WRITE over the day's MANUAL row (#2235 decision 6) — the same shape,
+// for the same reason, as lib/reading-writes.ts's body_metrics branch: the unique
+// index (profile_id, date, source) treats two NULL sources as distinct, so a plain
+// INSERT quietly grew a second manual row per day and `ON CONFLICT` could never
+// dedupe the manual path at all. A resubmission of a day now CORRECTS that day's
+// manual row — writing only the measures the submission carries, so "body fat and
+// resting HR entered in one sitting" land on ONE row and a later resting-HR entry
+// never blanks that morning's weight. Source-owned rows are invisible to this find
+// (`source IS NULL`), so an importer's row is never touched — and one weigh-in per
+// day stays the contract: this records WHEN the day's reading was taken, it does
+// not enable a second one (multiple readings per day is the readings merge's to
+// grant, via the store that keys on its instant).
+//
+// A resubmitted NOTE is last-write-wins only when the submission actually carries
+// one: a metric-scoped form (which has no notes field) must not blank the morning
+// weigh-in's note, so an empty/absent note leaves the stored one alone.
 export function insertBodyMetric(
   profileId: number,
   w: BodyMetricWrite
@@ -129,17 +153,63 @@ export function insertBodyMetric(
   const bodyFat = numOrNull(w.bodyFatPct);
   const restingHr = numOrNull(w.restingHr);
   if (weight == null && bodyFat == null && restingHr == null) return false;
-  db.prepare(
-    `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, profile_id)
-     VALUES (?,?,?,?,?,?)`
-  ).run(
-    w.date,
-    weight == null ? null : toKg(weight, w.weightUnit),
-    bodyFat,
-    restingHr,
-    w.notes && w.notes.trim() ? w.notes.trim() : null,
-    profileId
-  );
+  const weightKg = weight == null ? null : toKg(weight, w.weightUnit);
+  const notes = w.notes && w.notes.trim() ? w.notes.trim() : null;
+  const stated = resolveStatedOccurredAt(profileId, w.date, w.occurredAt);
+  writeTx(() => {
+    const found = db
+      .prepare(
+        `SELECT id FROM body_metrics
+          WHERE profile_id = ? AND date = ? AND source IS NULL
+          ORDER BY id LIMIT 1`
+      )
+      .get(profileId, w.date) as { id: number } | undefined;
+    if (!found) {
+      db.prepare(
+        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, occurred_at, profile_id)
+         VALUES (?,?,?,?,?,?,?)`
+      ).run(
+        w.date,
+        weightKg,
+        bodyFat,
+        restingHr,
+        notes,
+        // Bound, never defaulted (#2205): the stated instant or honest NULL.
+        stated ?? null,
+        profileId
+      );
+      return;
+    }
+    // One literal statement per column (the profile-scoping scanner reads
+    // profile_id out of LITERAL prepare() text), each run only when the
+    // submission carries that measure.
+    if (weightKg != null) {
+      db.prepare(
+        `UPDATE body_metrics SET weight_kg = ? WHERE id = ? AND profile_id = ?`
+      ).run(weightKg, found.id, profileId);
+    }
+    if (bodyFat != null) {
+      db.prepare(
+        `UPDATE body_metrics SET body_fat_pct = ? WHERE id = ? AND profile_id = ?`
+      ).run(bodyFat, found.id, profileId);
+    }
+    if (restingHr != null) {
+      db.prepare(
+        `UPDATE body_metrics SET resting_hr = ? WHERE id = ? AND profile_id = ?`
+      ).run(restingHr, found.id, profileId);
+    }
+    if (notes != null) {
+      db.prepare(
+        `UPDATE body_metrics SET notes = ? WHERE id = ? AND profile_id = ?`
+      ).run(notes, found.id, profileId);
+    }
+    // `undefined` = no statement, leave the stored one; `null` = explicit clear.
+    if (stated !== undefined) {
+      db.prepare(
+        `UPDATE body_metrics SET occurred_at = ? WHERE id = ? AND profile_id = ?`
+      ).run(stated, found.id, profileId);
+    }
+  });
   return true;
 }
 
@@ -653,6 +723,10 @@ export function applyIntent(
         bodyFatPct: p.bodyFatPct,
         restingHr: p.restingHr,
         notes: p.notes,
+        // The stated sitting time (#2235), carried through the queue so an offline
+        // weigh-in keeps its statement. An intent queued before the field existed
+        // has `undefined` here — no statement, never a clear.
+        occurredAt: p.occurredAt,
       });
     } else if (intent.flow === "mood") {
       const p = intent.payload as MoodPayload;

@@ -33,6 +33,7 @@ import {
   getFoodMealDays,
   type FoodMealEvent,
   getFoodBarOrder,
+  getManualBodyMetricStatedAt,
   getMoodOnDate,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
@@ -89,6 +90,11 @@ export type QuickEntryData =
       // so the overlay gathers ONE prop set instead of two.
       form: "measurements";
       defaultDate: string;
+      // The stated instant already on today's manual body-metrics row, or null —
+      // seeds the form's Time control (#2235 decision 5). Fetched ON OPEN like
+      // everything else here, so a time stated on another device since page load
+      // still seeds back.
+      statedAt: string | null;
       // Scopes the form's last-written-group memory (#2014) to the data subject.
       profileId: number;
       weightUnit: WeightUnit;
@@ -190,6 +196,7 @@ export async function loadQuickEntry(
     return {
       form: "measurements",
       defaultDate: date,
+      statedAt: getManualBodyMetricStatedAt(profile.id, date),
       profileId: profile.id,
       weightUnit: prefs.weightUnit,
       temperatureUnit: prefs.temperatureUnit,
