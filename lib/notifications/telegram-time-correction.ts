@@ -45,7 +45,6 @@ import {
   type FoodRestampOutcome,
 } from "../food-log-write";
 import {
-  getDoseCorrectionBursts,
   getRecentDoseTaps,
   getRecentFoodTaps,
   restampDoseLogsCore,
@@ -336,7 +335,11 @@ async function rebuildDose(
 // resolve happened before the write, so reusing it would rebuild the row with the instant
 // the correction just replaced — the chat asserting the value it had been asked to stop
 // asserting. The food side gets this for free because `buildFoodNudge` re-queries; this
-// is the same query, spelled here.
+// is `resolve`'s own query, run again on the far side of the write.
+//
+// A burst the ledger no longer justifies renders NO row, rather than falling back to the
+// one that was resolved: the row set is a query, and the one thing a rebuild may not do is
+// restore a claim the write just retired.
 function doseCorrectionActions(
   r: Resolved,
   picker?: CorrectionBurst
@@ -349,17 +352,13 @@ function doseCorrectionActions(
       r.now,
       r.tz
     );
-  const burst =
-    getDoseCorrectionBursts(r.profileId, r.now).find(
-      (b) => b.fromId === r.burst.fromId
-    ) ?? r.burst;
-  return correctionActions(
-    DOSE_TIME_PREFIXES,
-    r.profileId,
-    [burst],
-    r.tz,
-    r.now
+  const burst = burstFrom(
+    getRecentDoseTaps(r.profileId, r.now),
+    r.burst.fromId
   );
+  return burst
+    ? correctionActions(DOSE_TIME_PREFIXES, r.profileId, [burst], r.tz, r.now)
+    : [];
 }
 
 export async function handleDoseTimeChip(

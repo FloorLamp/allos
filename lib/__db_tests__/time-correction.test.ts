@@ -133,6 +133,15 @@ function correctionRowLabel(keyboard: unknown): string | null {
   return null;
 }
 
+// The keyboard the CHAT actually received on the last edit — the claim a phone is looking
+// at, as opposed to what a fresh build would produce. #2206 item 2 is about the message,
+// so the assertion has to read the message.
+function lastEditedKeyboard(): unknown {
+  const calls = editText.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return (calls[calls.length - 1][3] as { keyboard?: unknown }).keyboard;
+}
+
 function chipTokensOf(keyboard: unknown): string[] {
   return (keyboard as { text: string; callback_data?: string }[][])
     .flat()
@@ -310,18 +319,25 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     // Before: the row names the burst by the time it was tapped, unmarked.
     expect(correctionRowLabel(kb)).toBe("🕐 Leafy greens 21:02");
 
+    editText.mockClear();
     await handleCallbackQuery(
       cq("5552026", `foodtime:${pid}:${anchor}:60`, kb)
     );
 
-    // A FRESH build — the chat's own rebuild runs the same query — states 20:02.
-    const after = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
-    expect(correctionRowLabel(after)).toBe("🕐 Leafy greens 20:02 (corrected)");
+    // THE MESSAGE THE CHAT NOW SHOWS states 20:02 — not the 21:02 it was tapped at, and
+    // not a value only a fresh build would know about.
+    const edited = lastEditedKeyboard();
+    expect(correctionRowLabel(edited)).toBe(
+      "🕐 Leafy greens 20:02 (corrected)"
+    );
     // Reduced, never extended: the same three buttons, no new claim and no new token.
-    expect(chipTokensOf(after)).toEqual([
+    expect(chipTokensOf(edited)).toEqual([
       `foodtime:${pid}:${anchor}:30`,
       `foodtime:${pid}:${anchor}:60`,
     ]);
+    // And the next build from the ledger agrees, because both are the same query.
+    const after = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    expect(correctionRowLabel(after)).toBe("🕐 Leafy greens 20:02 (corrected)");
   });
 
   it("drops the chips at the floor and refuses a tap that arrives anyway (#2206)", async () => {
@@ -657,6 +673,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     stampTap(anchor, "2026-08-05 19:20:00");
 
     answer.mockClear();
+    editText.mockClear();
     await handleCallbackQuery(
       cq("5552034", `dosetime:${pid}:${anchor}:60`, [])
     );
@@ -664,6 +681,10 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
 
     // The burst the HANDLER resolved was read before the write; the row it rebuilds must
     // be read after it, or the chat re-asserts the value it was told to stop asserting.
+    // Read off the EDIT itself, which is the claim the phone is looking at.
+    expect(correctionRowLabel(lastEditedKeyboard())).toBe(
+      "🕐 Echo Ibuprofen 20:20 (corrected)"
+    );
     const bursts = getDoseCorrectionBursts(pid, clockNow());
     expect(bursts[0].corrected).toBe(true);
     expect(burstLabel(bursts[0], "Europe/Berlin")).toBe(

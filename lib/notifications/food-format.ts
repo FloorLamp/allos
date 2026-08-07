@@ -216,15 +216,17 @@ export interface FoodNudgeRenderOpts {
   // The eating-time correction rows (#2019), already derived from ledger state by the
   // gather. A RIDE-ALONG: no nudge is ever sent because a burst is correctable, and the
   // rows simply appear on whichever food keyboard is live while the taps are fresh.
-  corrections?: readonly CorrectionBurst[];
+  //
+  // The bursts travel WITH the instant the chips are bounded against (#2206), the way the
+  // picker below already carries its own `now`: a chip is dropped when its step would walk
+  // the burst further back than the picker itself reaches, so a caller that could supply
+  // the bursts but not the bound would render exactly the unbounded button this issue took
+  // off the keyboard. Pairing them makes that combination unspellable rather than silently
+  // dropping the rows.
+  corrections?: { bursts: readonly CorrectionBurst[]; now: Date };
   // The profile's timezone, for the correction rows' wall-clock labels. Only read when
   // there are corrections to render.
   tz?: string;
-  // The instant the chips are BOUNDED against (#2206): a chip is dropped when the step
-  // would walk the burst further back than the picker itself reaches. Required alongside
-  // `corrections` — without it the rows are not rendered at all, because an unbounded chip
-  // is exactly the button this issue took off the keyboard.
-  now?: Date;
   // An OPEN eating-time picker (#2019): the burst whose 🕐 was tapped, plus the instant
   // its offered hours are computed from. The picker replaces the correction ROWS and
   // leaves the quick-log buttons standing — deliberately unlike the `symp:`→`symsev:`
@@ -337,25 +339,31 @@ export function renderFoodNudge(
   // The correction ride-along goes LAST, below the view controls: the nudge's own
   // buttons are its subject, and `owningFamily` reads the keyboard in order, so the
   // message stays owned by the food quick-log tokens that lead it.
-  const corrections = opts.corrections ?? [];
-  if (opts.picker && opts.tz) {
+  const tz = opts.tz;
+  // The ride-along renders only when it has everything it needs: the bursts, the instant
+  // that bounds their chips, and the zone the labels are spelled in.
+  const corrections =
+    opts.corrections && opts.corrections.bursts.length > 0 && tz
+      ? { ...opts.corrections, tz }
+      : null;
+  if (opts.picker && tz) {
     actions.push(
       ...correctionPickerActions(
         FOOD_TIME_PREFIXES,
         profileId,
         opts.picker.burst,
         opts.picker.now,
-        opts.tz
+        tz
       )
     );
-  } else if (corrections.length > 0 && opts.tz && opts.now) {
+  } else if (corrections) {
     actions.push(
       ...correctionActions(
         FOOD_TIME_PREFIXES,
         profileId,
-        corrections,
-        opts.tz,
-        opts.now
+        corrections.bursts,
+        corrections.tz,
+        corrections.now
       )
     );
   }
@@ -372,9 +380,9 @@ export function renderFoodNudge(
       // Stated once, above the rows, rather than repeated on every chip: the row already
       // names WHAT it is about and WHEN it was tapped, so the sentence only has to say
       // what the numbers do.
-      opts.picker && opts.tz
-        ? correctionPickerTitle("when did you eat", opts.picker.burst, opts.tz)
-        : corrections.length > 0 && opts.tz && opts.now
+      opts.picker && tz
+        ? correctionPickerTitle("when did you eat", opts.picker.burst, tz)
+        : corrections
           ? // Says what the chips now SAY (#2206): each one names the time it will store,
             // so the sentence only has to explain that they can be pressed again.
             "🕐 Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time."

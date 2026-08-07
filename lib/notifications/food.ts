@@ -97,9 +97,8 @@ export function buildFoodNudge(
     proteinLine,
     visibleCount,
     proteinPresetGrams: presetGrams,
-    corrections,
+    corrections: { bursts: corrections, now },
     tz: getTimezone(profileId),
-    now,
     ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
   });
 }

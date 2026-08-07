@@ -110,6 +110,12 @@ export const CHIP_FLOOR_HOURS_BACK = PICKER_LAST_HOURS_BACK;
 // A DIFFERENCE test, not a provenance claim: the marker's job is "this row no longer says
 // what you tapped", and a second of clock jitter between two stamps written by one request
 // is not that. Every real correction is at least the smallest chip, half an hour.
+//
+// It therefore also marks a serving whose time was STATED on the web rather than corrected
+// in the chat (#2053's Earlier…), and that is the right answer rather than a leak: the row
+// exists to say where the serving stands, the header would otherwise name a tap instant
+// nobody meant, and reading `time_source` here would make the marker a claim about who
+// wrote the value instead of about what the header says.
 const CORRECTED_MARK_MS = 60_000;
 
 // At most this many correction rows ride a keyboard. The rows are the ride-along, not
