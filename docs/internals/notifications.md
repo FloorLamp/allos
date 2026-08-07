@@ -1391,6 +1391,57 @@ that will one day qualify would be the editorialising #2214 constraint 4 forbids
 Every branch states the fallback deadline in the same breath, because that is the
 consequence the user actually experiences.
 
+### The digest time suggestion (#2217)
+
+The other half of retiring `auto`. `auto`'s real job was _"the user cannot compute
+the right time themselves"_ — nobody knows their own p90 sync arrival — and this is
+that job done VISIBLY: the app tells the user the number instead of silently being
+it, and **the tap is the write** (#1505). `lib/digest-time-suggestion.ts` is the
+pure decision; `lib/queries/digest-time-suggestion.ts` is its one gather, read by
+BOTH surfaces.
+
+- **Two statistics, deliberately.** It FIRES on the **median** ("the configured time
+  loses more often than not" is exactly a median, and a time that wins 60% of
+  mornings is not worth interrupting anyone about) and PROPOSES the **p90** (the
+  point of moving is to stop losing, not to lose slightly less often). Both come
+  from the same admitted sample in one `arrivalStatistics` pass, so the claim and
+  the proposal can never describe two different distributions (#221).
+- **Silent in Dynamic**, when the digest is off, when the configured time already
+  clears the p90, and for every one of the four `ArrivalUnavailableReason` values —
+  a floor that "loses" is doing its job, and none of the four no-answer states can
+  carry a percentile.
+- **The proposal is grid-snapped UP** onto the picker grid #2216 derives from the
+  OBSERVED tick cadence (`proposalGridMinutes` — divisors of 60 only, coarsening a
+  non-divisor cadence), so the app never proposes a minute this instance's tick
+  cannot hit, and never a minute earlier than the p90. 07:40 at a 5-minute tick;
+  07:45 at the 15-minute sidecar.
+- **Two surfaces, ONE finding, one episode key.** Settings → Notifications beside
+  the digest time (a rendered aggregate on a page the user opened — class 2, no
+  consent question), and ONE line inside the digest itself, below its content. Both
+  resolve `getDigestTimeSuggestion`, so dismissing either dismisses both.
+- **The digest line rides a send; it never causes one.** `buildDigest` appends it
+  only AFTER the "is there anything to say?" gate, so a message that would not have
+  existed still does not. That is what makes it permissible under the
+  contact-consent rule — the same ride-along shape #1670's right-sizing suggestion
+  has on the practice nudge. **Coaching** tier: never Upcoming, never the hero,
+  never an escalation, never its own send.
+- **The dismissal is a RATCHET, not an equality test** (`digestTimeSuggestionSuppressed`).
+  #2214 measures the p90 moving up to 11 minutes on leave-one-out, so a dismissal at
+  `(configured, proposed)` holds until the proposal moves at least
+  `DIGEST_TIME_MATERIAL_MOVE_MIN` (30 min) LATER; a proposal that moves earlier never
+  re-asks at any distance. Bands would re-ask on a two-minute wobble across a
+  boundary — the ratchet has none. Changing the configured time is a NEW decision
+  about exactly this setting and correctly re-arms.
+- **Three exits, each ONE write, none of which trusts its button.**
+  `applyDigestTimeSuggestion` writes only `notify_digest_hour` (via `setDigestMinute`),
+  `switchDigestToDynamic` only `digest_mode` (via `setDigestMode`), and
+  `dismissDigestTimeSuggestion` only one `upcoming_dismissals` row. Each re-resolves
+  the live suggestion server-side first and returns a typed refusal
+  (`DigestTimeExitResult`) when it has stopped firing, so a stale tab or a
+  week-old Telegram keyboard cannot write a time the detector no longer proposes.
+  The Telegram twin (`handleDigestTimeTap`, tokens `dgtuse` / `dgtdyn` / `dgtno`)
+  carries no minute for the same reason.
+
 **A decline is not a failure, and both leave a trace.** A decline writes no send
 state at all — `notify_last_digest`, `notify_digest_last_at`, the tail pointer and
 the #2081 dependency stamp are still set only by a real send, so a

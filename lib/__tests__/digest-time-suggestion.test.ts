@@ -344,6 +344,8 @@ describe("the in-digest line rides a send — it never causes one", () => {
     yesterdayDue: 0,
     newFlaggedBiomarkers: [],
     newDocuments: [],
+    adherence: null,
+    weightKg: null,
   };
 
   it("returns no digest when the line is the only thing to say", () => {
