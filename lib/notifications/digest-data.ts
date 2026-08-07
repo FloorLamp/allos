@@ -27,6 +27,11 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
 } from "../queries";
+import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";
+import {
+  digestTimeActions,
+  digestTimeSuggestionLine,
+} from "../digest-time-suggestion";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { getOutdoorPlans } from "../queries/weather-training";
 import { trainingPaceLine } from "../queries/upcoming/plans";
@@ -595,6 +600,19 @@ export function gatherDigestInput(
     // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
     // is fresh; buildDigest renders a Sleep section only when present.
     sleep,
+    // The digest TIME suggestion (#2217), resolved by the SAME function the Settings
+    // row reads (`getDigestTimeSuggestion`), so the two surfaces are one finding under
+    // one episode key: a tap on either exit silences both. Null on every ordinary
+    // morning, and null the moment the episode is dismissed.
+    ...(() => {
+      const timing = getDigestTimeSuggestion(profileId);
+      return timing
+        ? {
+            timeSuggestionLine: digestTimeSuggestionLine(timing),
+            timeActions: digestTimeActions(profileId, td, timing),
+          }
+        : {};
+    })(),
   };
 }
 

@@ -33,6 +33,7 @@ import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerati
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
 import { STEPS_PACE_PREFIX } from "./steps-target";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
+import { formatNotifyTime } from "./notifications/schedule";
 
 // The domain GROUP a suppressed row renders under — the section's sub-headings.
 export type SuppressionDomain =
@@ -172,6 +173,17 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "portal-sync:": (t) => {
     const portal = titleize(part(t, 0).split("/")[0].replace(/[_-]/g, " "));
     return portal ? `Portal sync request — ${portal}` : "Portal sync request";
+  },
+  // The digest time suggestion (#2217), keyed `digest-time:<configured>:<proposed>`
+  // in minutes of day. Both numbers are nameable and both matter: the row has to say
+  // which send time the dismissal was about, because changing that time re-arms the
+  // suggestion on its own.
+  "digest-time:": (t) => {
+    const configured = Number(part(t, 0));
+    const proposed = Number(part(t, 1));
+    return Number.isInteger(configured) && Number.isInteger(proposed)
+      ? `Digest time suggestion — ${formatNotifyTime(configured)} → ${formatNotifyTime(proposed)}`
+      : "Digest time suggestion";
   },
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
