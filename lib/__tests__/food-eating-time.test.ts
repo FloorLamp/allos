@@ -11,11 +11,13 @@ import {
   EATEN_AT_FUTURE_SKEW_MS,
   EATING_TIME_LAST_HOURS_BACK,
   acceptEatenAt,
+  eatingHoursOnDate,
   eatingTimeChoiceValue,
   eatingTimeOptions,
   parseEatingTimeChoice,
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
+import { foodSlotForHhmm, type FoodSlotBoundaries } from "@/lib/food-slot";
 import { dateStrInTz, zonedDateParts } from "@/lib/date";
 import {
   chipOffers,
@@ -149,6 +151,79 @@ describe("the offered `earlier…` hours (#2053)", () => {
     expect(options[0].hhmm).toBe("21:00");
     for (const option of options) {
       expect(dateStrInTz(NY, new Date(option.iso))).toBe("2026-03-09");
+    }
+  });
+});
+
+// ---- #2227: the correction sheet's day-hours offer ---------------------------
+//
+// The neutral halves — today truncation, the profile-local "today", DST behavior,
+// option ordering — are pinned in lib/__tests__/stated-time.test.ts against
+// statedHoursOnDate itself. What is genuinely FOOD here, and therefore pinned here,
+// is the enrichment: each offered hour carries the meal window it derives to under
+// the profile's OWN boundaries, which is the data decision 4's follow-the-hour Meal
+// default runs on. Non-default boundaries throughout, so an accidental hard-coded
+// 11:00/15:00 in the adapter cannot pass.
+describe("eatingHoursOnDate — the correction offer (#2227)", () => {
+  // A coherently shifted schedule: Morning ends 10:00, Evening starts 16:00.
+  const SHIFTED: FoodSlotBoundaries = { midday: 10 * 60, evening: 16 * 60 };
+  const now = new Date("2026-03-10T18:30:00Z");
+
+  it("offers all 24 hours of a past day, each carrying its derived meal window", () => {
+    const options = eatingHoursOnDate("2026-03-09", UTC, now, SHIFTED);
+    expect(options).toHaveLength(24);
+    for (const option of options) {
+      // The slot is exactly what the boundary function says for that wall hour —
+      // the same derivation the server's tallies use, so the Meal default the sheet
+      // renders is the window the corrected serving will actually be counted in.
+      expect(option.slot).toBe(foodSlotForHhmm(option.hhmm, SHIFTED));
+    }
+    // The boundaries actually bit: the shifted schedule flips 10:00 to Midday
+    // (default boundaries would call it Morning).
+    expect(options[9]).toMatchObject({ hhmm: "09:00", slot: "Morning" });
+    expect(options[10]).toMatchObject({ hhmm: "10:00", slot: "Midday" });
+    expect(options[16]).toMatchObject({ hhmm: "16:00", slot: "Evening" });
+  });
+
+  it("truncates today at the current local hour", () => {
+    const options = eatingHoursOnDate("2026-03-10", UTC, now, SHIFTED);
+    expect(options.map((o) => o.hhmm)).toEqual(
+      Array.from(
+        { length: 19 },
+        (_, h) => `${String(h).padStart(2, "0")}:00`
+      )
+    );
+  });
+
+  it("every option's iso round-trips to its own hhmm and date", () => {
+    for (const option of eatingHoursOnDate("2026-03-09", NY, now, SHIFTED)) {
+      const parts = zonedDateParts(NY, new Date(option.iso));
+      expect(parts.date).toBe("2026-03-09");
+      expect(parts.hhmm).toBe(option.hhmm);
+    }
+  });
+
+  it("a DST transition day has no duplicate or missing hour", () => {
+    // Spring forward (America/New_York, 2026-03-08): 02:00 does not exist, so the
+    // day offers 23 hours — the nonexistent one absent, none doubled.
+    const spring = eatingHoursOnDate("2026-03-08", NY, now, SHIFTED);
+    expect(spring).toHaveLength(23);
+    expect(spring.map((o) => o.hhmm)).not.toContain("02:00");
+    expect(new Set(spring.map((o) => o.hhmm)).size).toBe(23);
+    // Fall back (2026-11-01): each wall hour offered exactly once, settled onto one
+    // instant, with its slot still derived from the wall clock.
+    const fall = eatingHoursOnDate("2026-11-01", NY, now, SHIFTED);
+    expect(fall).toHaveLength(24);
+    expect(new Set(fall.map((o) => o.hhmm)).size).toBe(24);
+  });
+
+  it("never offers an hour the acceptance gate would refuse (offer↔gate agreement)", () => {
+    for (const date of ["2026-03-09", "2026-03-10"]) {
+      for (const option of eatingHoursOnDate(date, UTC, now, SHIFTED)) {
+        expect(
+          acceptEatenAt(new Date(option.iso), UTC, date, now)
+        ).not.toBeNull();
+      }
     }
   });
 });

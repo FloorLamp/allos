@@ -27,6 +27,7 @@ import {
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
+  getFoodBarOrder,
   getFoodMealDays,
   getFoodSlotServingsOnDate,
   getWeeklyServingsForGroup,
@@ -64,7 +65,8 @@ function allCounters(profileId: number) {
 function ledgerRow(profileId: number, id: number) {
   return db
     .prepare(
-      `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+      `SELECT group_key, date, logged_at, meal_slot, eaten_at, time_source
+         FROM food_log_events
         WHERE id = ? AND profile_id = ?`
     )
     .get(id, profileId) as
@@ -73,6 +75,8 @@ function ledgerRow(profileId: number, id: number) {
         date: string;
         logged_at: string;
         meal_slot: string | null;
+        eaten_at: string | null;
+        time_source: string | null;
       }
     | undefined;
 }
@@ -327,6 +331,198 @@ describe("updateFoodLogEventCore — date correction (#1934)", () => {
     expect(past.events).toHaveLength(1);
     expect(present.counts.fatty_fish).toBeUndefined();
     expect(present.events).toHaveLength(0);
+  });
+});
+
+// ---- #2227: correcting the eating instant --------------------------------------
+//
+// The web sheet's fourth field. All fixtures sit on YESTERDAY so every stated instant
+// is safely in the past whatever hour the suite runs at (acceptEatenAt refuses a
+// meaningfully-future instant, and these tests are about the day rule, not the clock).
+describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
+  it("a time-only patch states the instant and touches nothing else", () => {
+    const { profileId, anchor } = makeProfile("food-correct-time-only");
+    const yesterday = shiftDateStr(anchor, -1);
+    const tapped = `${yesterday}T09:00:00Z`;
+    logFoodServingCore(profileId, "berries", yesterday, tapped, "Morning");
+    const eventId = onlyEventId(profileId);
+
+    const outcome = updateFoodLogEventCore(profileId, eventId, {
+      eatenAt: new Date(`${yesterday}T09:30:00Z`),
+    });
+    expect(outcome.kind).toBe("updated");
+
+    // The instant landed as a STATED time; the audit stamp, the day, the group and
+    // the explicit window are all exactly as they were.
+    expect(ledgerRow(profileId, eventId)).toEqual({
+      group_key: "berries",
+      date: yesterday,
+      logged_at: tapped,
+      meal_slot: "Morning",
+      eaten_at: `${yesterday}T09:30:00Z`,
+      time_source: "stated",
+    });
+    // Constraint 4: a time-only patch performs neither unbump nor bump — the whole
+    // counter table is byte-identical to the post-log state.
+    expect(allCounters(profileId)).toEqual([
+      { date: yesterday, group_key: "berries", servings: 1 },
+    ]);
+  });
+
+  it("eatenAt: null clears both columns; an ABSENT field leaves them alone", () => {
+    const { profileId, anchor } = makeProfile("food-correct-time-clear");
+    const yesterday = shiftDateStr(anchor, -1);
+    logFoodServingCore(
+      profileId,
+      "berries",
+      yesterday,
+      `${yesterday}T09:00:00Z`,
+      "Morning",
+      { eatenAt: `${yesterday}T09:30:00Z`, source: "stated" }
+    );
+    const eventId = onlyEventId(profileId);
+
+    // The house convention first: a patch that says nothing about the time (here, a
+    // slot-only correction) is not a change — the statement survives verbatim.
+    updateFoodLogEventCore(profileId, eventId, { mealSlot: "Evening" });
+    expect(ledgerRow(profileId, eventId)).toMatchObject({
+      meal_slot: "Evening",
+      eaten_at: `${yesterday}T09:30:00Z`,
+      time_source: "stated",
+    });
+
+    // NULL is the explicit clear — back to "nobody said", both columns together.
+    const outcome = updateFoodLogEventCore(profileId, eventId, {
+      eatenAt: null,
+    });
+    expect(outcome.kind).toBe("updated");
+    expect(ledgerRow(profileId, eventId)).toMatchObject({
+      eaten_at: null,
+      time_source: null,
+    });
+  });
+
+  it("an instant off the row's FINAL day answers invalid-eaten-at and writes nothing", () => {
+    const { profileId, anchor } = makeProfile("food-correct-time-offday");
+    const yesterday = shiftDateStr(anchor, -1);
+    const twoDaysAgo = shiftDateStr(anchor, -2);
+    const tapped = `${yesterday}T09:00:00Z`;
+    logFoodServingCore(profileId, "berries", yesterday, tapped, "Morning");
+    const eventId = onlyEventId(profileId);
+
+    // Off the row's own day.
+    expect(
+      updateFoodLogEventCore(profileId, eventId, {
+        eatenAt: new Date(`${twoDaysAgo}T19:00:00Z`),
+      })
+    ).toEqual({ kind: "invalid-eaten-at" });
+    // The FINAL date is what the rule judges: the same instant is refused when the
+    // patch leaves the day put, and accepted when the patch moves the day to match.
+    expect(
+      updateFoodLogEventCore(profileId, eventId, {
+        date: twoDaysAgo,
+        eatenAt: new Date(`${yesterday}T19:00:00Z`),
+      })
+    ).toEqual({ kind: "invalid-eaten-at" });
+    // Both refusals wrote NOTHING — row and counter alike.
+    expect(ledgerRow(profileId, eventId)).toMatchObject({
+      date: yesterday,
+      logged_at: tapped,
+      eaten_at: null,
+      time_source: null,
+    });
+    expect(allCounters(profileId)).toEqual([
+      { date: yesterday, group_key: "berries", servings: 1 },
+    ]);
+
+    const moved = updateFoodLogEventCore(profileId, eventId, {
+      date: twoDaysAgo,
+      eatenAt: new Date(`${twoDaysAgo}T19:00:00Z`),
+    });
+    expect(moved.kind).toBe("updated");
+    expect(ledgerRow(profileId, eventId)).toMatchObject({
+      date: twoDaysAgo,
+      eaten_at: `${twoDaysAgo}T19:00:00Z`,
+      time_source: "stated",
+    });
+    expect(allCounters(profileId)).toEqual([
+      { date: twoDaysAgo, group_key: "berries", servings: 1 },
+    ]);
+  });
+
+  it("a patch setting eatenAt without mealSlot answers with the NEW instant's window", () => {
+    const { profileId, anchor } = makeProfile("food-correct-time-toslot");
+    const yesterday = shiftDateStr(anchor, -1);
+    // A legacy row with no explicit window: its slot derives from its instant, so the
+    // `to` placement is where a stale derivation would show — deriving from the
+    // REPLACED instant would hand the bar a Morning window for a serving the write
+    // just moved to the evening.
+    logFoodServingCore(profileId, "fruit", yesterday, `${yesterday}T08:00:00Z`);
+    const eventId = onlyEventId(profileId);
+
+    const outcome = updateFoodLogEventCore(profileId, eventId, {
+      eatenAt: new Date(`${yesterday}T19:00:00Z`),
+    });
+    expect(outcome.kind).toBe("updated");
+    if (outcome.kind !== "updated") return;
+    expect(outcome.from).toMatchObject({ mealSlot: "Morning", mealServings: 0 });
+    expect(outcome.to).toMatchObject({ mealSlot: "Evening", mealServings: 1 });
+    // The tally the placement claims is the tally the readers now derive.
+    expect(
+      getFoodSlotServingsOnDate(profileId, "Evening", yesterday).get("fruit")
+    ).toBe(1);
+    expect(
+      getFoodSlotServingsOnDate(profileId, "Morning", yesterday).get("fruit")
+    ).toBeUndefined();
+  });
+
+  it("moves the ranking: a dinner tapped at 23:40 corrected to 19:00 ranks as a dinner (#2019/#2227)", () => {
+    // THE regression the issue is about, end to end: the Evening ranking weights each
+    // serving by proximity between the minute it was EATEN (eaten_at ?? logged_at) and
+    // the window's anchor. Before the correction the 23:40 tap minute is outside the
+    // Evening proximity span entirely (as it is outside Morning's — in the pre-#2019
+    // bucket world it TAUGHT the morning nudge), so the control group with a real
+    // evening minute outranks it; stating 19:00 is what makes it rank as the dinner it
+    // was. On the web, before this change, that statement could not be made.
+    const { profileId, anchor } = makeProfile("food-correct-time-ranking");
+    const yesterday = shiftDateStr(anchor, -1);
+    logFoodServingCore(
+      profileId,
+      "fatty_fish",
+      yesterday,
+      `${yesterday}T23:40:00Z`,
+      "Evening"
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      yesterday,
+      `${yesterday}T20:00:00Z`,
+      "Evening"
+    );
+    const fishEvent = db
+      .prepare(
+        `SELECT id FROM food_log_events
+          WHERE profile_id = ? AND group_key = 'fatty_fish'`
+      )
+      .get(profileId) as { id: number };
+
+    const rankOf = (slug: string) =>
+      getFoodBarOrder(profileId, "Evening").groups.findIndex(
+        (group) => group.slug === slug
+      );
+    // Before: the 23:40 minute contributes nothing to Evening, so the control leads.
+    expect(rankOf("berries")).toBeLessThan(rankOf("fatty_fish"));
+
+    const outcome = updateFoodLogEventCore(profileId, fishEvent.id, {
+      eatenAt: new Date(`${yesterday}T19:00:00Z`),
+    });
+    expect(outcome.kind).toBe("updated");
+
+    // After: 19:00 sits closer to the Evening anchor than the control's 20:00, so the
+    // corrected dinner now leads the Evening ranking — the minute the ranking weights
+    // moved with the same correction that the tallies already followed.
+    expect(rankOf("fatty_fish")).toBeLessThan(rankOf("berries"));
   });
 });
 
