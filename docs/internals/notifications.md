@@ -325,7 +325,10 @@ separate **care-tier** finding (the `prn-max:<itemId>` Upcoming generator, the
 reminder itself is the ungated safety signal. Request-time engines (coaching, AI
 insight) are out of this contract. **Two-way button principle (#233):** a nudge
 earns an inline action button only when the expected response is ONE idempotent,
-low-risk state change with an EXISTING server function (else deep-link) —
+low-risk state change with an EXISTING server function (else deep-link) — the
+time-correction chips are the one deliberate exception (#2206: a repeat tap
+COMPOSES, and the row re-renders with the value each step stored, so "again"
+means "further" rather than "undefined") —
 preventive ✅ Done/🚫 Not applicable/⏰ Remind later route onto
 `recordPreventiveDone`/`setPreventiveOverride`/bus-snooze — plus (#1083) a
 **deep-link "go do it" button** carrying the concrete next action per class (the
@@ -550,19 +553,46 @@ renders it for both:
 
 - taps within ~15 min collapse into a **burst**, because burst-mates share one error
   — dinner logged two hours late is off by two hours for all four servings;
-- the row is `🕐 <name> · −1h · −2h · −3h`, where the NAME button is the picker (a
-  fifth button would shrink a four-button row below legibility);
+- the row is `🕐 <name> <HH:MM> · <HH:MM · −30m> · <HH:MM · −1h>`, where the NAME
+  button is the picker (a fourth button would shrink the row below legibility);
 - 🕐 drills down to **absolute hours** — the past twelve, starting one hour past the
   last chip, three per row, plus `↩︎ Back` — the `symp:`→`symsev:` shape, except the
   quick-log buttons stay on screen so `↩︎ Back` can rebuild from the live keyboard.
 
-**Every offer is anchored to the immutable tap stamp**, which makes a chip
-idempotent (the same chip tapped twice lands on the same instant, so two people
-tapping one message cannot walk a serving four hours back) and keeps a burst's
-internal spread. The picker is absolute rather than relative so the stamp does not
-drift with the seconds between rendering the keyboard and choosing an answer. An
-offered hour LATER than the current hour resolves to **yesterday** — which is how
-the cross-midnight re-date falls out of the same computation.
+**One vocabulary: every offer is an absolute local time (#2206).** A chip states the
+instant it will store, with its offset as context — `19:11 · −1h`, not `−1h`. The
+absolute value is the answer, `chipInstant` computes it once for both the label and
+the write, and it is DST-correct by construction, which is exactly the case a relative
+label gets silently wrong across a fall-back hour. Two chips rather than three, because
+repeat taps reach the middle of the range and the absolute labels need the width.
+
+**A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
+COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
+`given_at` IS the ledger the row set is already a query over — so the chips still
+survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
+which turned into the wrong answer once the row started showing its result: "tap again
+to go further" is the only reading a visibly-moving value supports, and a silent no-op
+would be the worst possible reply to it. Composition is race-safe without versioning
+because each write resolves its base inside its own `IMMEDIATE` transaction, so a second
+callback reads what the first committed. What bounds it instead is the **floor**: a chip
+is only offered while its result stays inside the picker's own twelve-hour reach, and a
+tap arriving off a stale keyboard past that point is REFUSED in words, never clamped.
+Freshness stays keyed on the TAP — a correction is not a tap and must not renew its own
+window — and nothing is stranded when the window closes, because every tap is a complete
+committed write.
+
+**The row states what the ledger holds (#2206).** The header used to name the burst by
+its TAP time, which is precisely the value a correction replaces, so a corrected row went
+on asserting the wrong time forever. It now reads `🕐 Salmon 19:11 (corrected)` — the
+#1779 "a chat must not claim what is no longer true" rule applied to a displayed value
+rather than to a button. No new machinery: the row set is a query, so every rebuild
+re-reads it. The re-render only ever REDUCES what the message claims; it adds no button
+and no new token.
+
+The picker stays absolute-and-anchored-on-now so the stamp does not drift with the
+seconds between rendering the keyboard and choosing an answer. An offered hour LATER
+than the current hour resolves to **yesterday** — which is how the cross-midnight
+re-date falls out of the same computation.
 
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the

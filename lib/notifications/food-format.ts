@@ -220,6 +220,11 @@ export interface FoodNudgeRenderOpts {
   // The profile's timezone, for the correction rows' wall-clock labels. Only read when
   // there are corrections to render.
   tz?: string;
+  // The instant the chips are BOUNDED against (#2206): a chip is dropped when the step
+  // would walk the burst further back than the picker itself reaches. Required alongside
+  // `corrections` — without it the rows are not rendered at all, because an unbounded chip
+  // is exactly the button this issue took off the keyboard.
+  now?: Date;
   // An OPEN eating-time picker (#2019): the burst whose 🕐 was tapped, plus the instant
   // its offered hours are computed from. The picker replaces the correction ROWS and
   // leaves the quick-log buttons standing — deliberately unlike the `symp:`→`symsev:`
@@ -343,9 +348,15 @@ export function renderFoodNudge(
         opts.tz
       )
     );
-  } else if (corrections.length > 0 && opts.tz) {
+  } else if (corrections.length > 0 && opts.tz && opts.now) {
     actions.push(
-      ...correctionActions(FOOD_TIME_PREFIXES, profileId, corrections, opts.tz)
+      ...correctionActions(
+        FOOD_TIME_PREFIXES,
+        profileId,
+        corrections,
+        opts.tz,
+        opts.now
+      )
     );
   }
 
@@ -363,8 +374,10 @@ export function renderFoodNudge(
       // what the numbers do.
       opts.picker && opts.tz
         ? correctionPickerTitle("when did you eat", opts.picker.burst, opts.tz)
-        : corrections.length > 0
-          ? "🕐 Ate earlier than you tapped? Nudge it back, or tap the row for an exact time."
+        : corrections.length > 0 && opts.tz && opts.now
+          ? // Says what the chips now SAY (#2206): each one names the time it will store,
+            // so the sentence only has to explain that they can be pressed again.
+            "🕐 Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time."
           : null,
     ],
     "\n"

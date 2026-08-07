@@ -49,6 +49,7 @@ import {
 import { markDoseTaken } from "@/lib/queries";
 import { restampDoseLogsCore } from "@/lib/queries/intake/adherence";
 import { now as clockNow } from "@/lib/clock";
+import { burstLabel } from "@/lib/correction-time";
 import { getFoodCorrectionBursts } from "@/lib/queries";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
 import { getMedicationFamilyStates } from "@/lib/queries/intake/prn-family";
@@ -121,6 +122,22 @@ function foodEvents(profileId: number) {
     time_source: string | null;
     meal_slot: string | null;
   }[];
+}
+
+// The correction row as the chat renders it, read back off a live keyboard: what the row
+// CLAIMS about the burst (#2206 item 2), and which chips it is still offering.
+function correctionRowLabel(keyboard: unknown): string | null {
+  for (const row of keyboard as { text: string; callback_data?: string }[][])
+    for (const btn of row)
+      if (String(btn.callback_data ?? "").endsWith(":open")) return btn.text;
+  return null;
+}
+
+function chipTokensOf(keyboard: unknown): string[] {
+  return (keyboard as { text: string; callback_data?: string }[][])
+    .flat()
+    .map((b) => String(b.callback_data ?? ""))
+    .filter((d) => d.startsWith("foodtime:") || d.startsWith("dosetime:"));
 }
 
 function dayCount(profileId: number, date: string, group: string): number {
@@ -199,10 +216,18 @@ describe("the correction rows are a QUERY over ledger state (#2019)", () => {
     const chips = tokens.filter((t) => t.startsWith("foodtime:"));
     const picker = tokens.filter((t) => t.startsWith("foodtimeat:"));
     // Three taps, ONE row: burst-mates share one error, so they share one correction.
-    expect(chips).toHaveLength(3); // −1h, −2h, −3h
+    expect(chips).toHaveLength(2); // −30m, −1h (#2206)
     expect(picker).toHaveLength(1); // the 🕐 opener
     const anchor = foodEvents(pid)[0].id;
-    expect(chips[0]).toBe(`foodtime:${pid}:${anchor}:60`);
+    expect(chips[0]).toBe(`foodtime:${pid}:${anchor}:30`);
+    expect(chips[1]).toBe(`foodtime:${pid}:${anchor}:60`);
+    // And the buttons state the TIMES they set, not the offsets (#2206 item 1). The
+    // burst's earliest tap is 21:02 Berlin, so −30m reads 20:32.
+    const labels = messageKeyboard(nudge)
+      .flat()
+      .filter((b) => String(b.callback_data ?? "").startsWith("foodtime:"))
+      .map((b) => b.text);
+    expect(labels).toEqual(["20:32 · −30m", "20:02 · −1h"]);
   });
 
   it("stop being offered once the burst is over an hour old", async () => {
@@ -229,13 +254,13 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     const nudge = buildFoodNudge(pid, "Evening", today(pid))!;
     answer.mockClear();
     await handleCallbackQuery(
-      cq("5552022", `foodtime:${pid}:${anchor}:120`, messageKeyboard(nudge))
+      cq("5552022", `foodtime:${pid}:${anchor}:60`, messageKeyboard(nudge))
     );
 
     const rows = foodEvents(pid);
     expect(rows.map((r) => r.eaten_at)).toEqual([
-      "2026-08-05T17:02:00Z",
-      "2026-08-05T17:08:00Z",
+      "2026-08-05T18:02:00Z",
+      "2026-08-05T18:08:00Z",
     ]);
     // The burst keeps its internal spread: each row moved from its OWN tap.
     expect(rows.map((r) => r.time_source)).toEqual(["stated", "stated"]);
@@ -249,7 +274,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     expect(answer.mock.calls[0][1]).toContain("2 servings");
   });
 
-  it("is idempotent — the same chip tapped twice lands on the same instant", async () => {
+  it("COMPOSES — a second tap counts back from the stored value, not the tap (#2206)", async () => {
     const pid = newProfile("Twice Tam");
     seedLoginTelegram(pid, "5552023");
     await tapFood(pid, "5552023", "leafy_greens", "2026-08-05T19:02:00Z");
@@ -258,14 +283,131 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
 
     await handleCallbackQuery(
-      cq("5552023", `foodtime:${pid}:${anchor}:120`, kb)
+      cq("5552023", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    const once = foodEvents(pid)[0].eaten_at;
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:02:00Z");
+    // The same STALE keyboard, tapped again. The write reads its base inside its own
+    // transaction, so the second tap starts where the first one landed: "tap again to go
+    // further" is the only reading a row that now SHOWS its result supports.
     await handleCallbackQuery(
-      cq("5552023", `foodtime:${pid}:${anchor}:120`, kb)
+      cq("5552023", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    // Two caregivers tapping the same message cannot walk a serving four hours back.
-    expect(foodEvents(pid)[0].eaten_at).toBe(once);
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T17:02:00Z");
+    // A finer step composes onto the coarse ones just the same.
+    await handleCallbackQuery(
+      cq("5552023", `foodtime:${pid}:${anchor}:30`, kb)
+    );
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T16:32:00Z");
+  });
+
+  it("the row re-renders with the STORED time, marked, and never with the tap (#2206)", async () => {
+    const pid = newProfile("Render Rhea");
+    seedLoginTelegram(pid, "5552026");
+    await tapFood(pid, "5552026", "leafy_greens", "2026-08-05T19:02:00Z");
+    setNow(NOW_ISO);
+    const anchor = foodEvents(pid)[0].id;
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    // Before: the row names the burst by the time it was tapped, unmarked.
+    expect(correctionRowLabel(kb)).toBe("🕐 Leafy greens 21:02");
+
+    await handleCallbackQuery(
+      cq("5552026", `foodtime:${pid}:${anchor}:60`, kb)
+    );
+
+    // A FRESH build — the chat's own rebuild runs the same query — states 20:02.
+    const after = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    expect(correctionRowLabel(after)).toBe("🕐 Leafy greens 20:02 (corrected)");
+    // Reduced, never extended: the same three buttons, no new claim and no new token.
+    expect(chipTokensOf(after)).toEqual([
+      `foodtime:${pid}:${anchor}:30`,
+      `foodtime:${pid}:${anchor}:60`,
+    ]);
+  });
+
+  it("drops the chips at the floor and refuses a tap that arrives anyway (#2206)", async () => {
+    const pid = newProfile("Floor Flo");
+    seedLoginTelegram(pid, "5552027");
+    await tapFood(pid, "5552027", "leafy_greens", "2026-08-05T19:02:00Z");
+    setNow(NOW_ISO);
+    const anchor = foodEvents(pid)[0].id;
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    // Already corrected to twenty minutes above the floor (NOW − 12h = 07:30Z).
+    db.prepare(
+      `UPDATE food_log_events SET eaten_at = ?, time_source = 'stated' WHERE id = ?`
+    ).run("2026-08-05T07:50:00Z", anchor);
+
+    const rebuilt = messageKeyboard(
+      buildFoodNudge(pid, "Evening", today(pid))!
+    );
+    // The chips are gone; the picker — which is what an answer that far back is for —
+    // is the only path left.
+    expect(chipTokensOf(rebuilt)).toEqual([]);
+    expect(correctionRowLabel(rebuilt)).toBe(
+      "🕐 Leafy greens 09:50 (corrected)"
+    );
+
+    // A tap off the STALE keyboard still arrives. It is refused, not clamped, and the
+    // refusal says where the answer belongs.
+    answer.mockClear();
+    await handleCallbackQuery(
+      cq("5552027", `foodtime:${pid}:${anchor}:60`, kb)
+    );
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T07:50:00Z");
+    expect(String(answer.mock.calls[0][1])).toContain(
+      "as far back as the chips"
+    );
+  });
+
+  it("serialises a double tap — the second reads what the first wrote (#2206)", async () => {
+    const pid = newProfile("Race Rui");
+    seedLoginTelegram(pid, "5552028");
+    await tapFood(pid, "5552028", "leafy_greens", "2026-08-05T19:02:00Z");
+    setNow(NOW_ISO);
+    const anchor = foodEvents(pid)[0].id;
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    answer.mockClear();
+
+    // Two callbacks in flight against ONE burst. Each resolves its base inside its own
+    // IMMEDIATE transaction, so they compose instead of collapsing — a silent no-op is
+    // the worst possible answer when the user's model is "tap again to go further".
+    await Promise.all([
+      handleCallbackQuery(cq("5552028", `foodtime:${pid}:${anchor}:60`, kb)),
+      handleCallbackQuery(cq("5552028", `foodtime:${pid}:${anchor}:60`, kb)),
+    ]);
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T17:02:00Z");
+    // Both taps were answered, and neither claimed something that did not happen.
+    expect(answer.mock.calls).toHaveLength(2);
+    for (const call of answer.mock.calls)
+      expect(String(call[1])).toContain("Eating time updated");
+  });
+
+  it("a correction session does not renew its own freshness window (#2206)", async () => {
+    const pid = newProfile("Window Wim");
+    seedLoginTelegram(pid, "5552029");
+    await tapFood(pid, "5552029", "leafy_greens", "2026-08-05T19:00:00Z");
+    const anchor = foodEvents(pid)[0].id;
+
+    setNow("2026-08-05T19:50:00Z");
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+    await handleCallbackQuery(
+      cq("5552029", `foodtime:${pid}:${anchor}:60`, kb)
+    );
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:00:00Z");
+    // Freshness is keyed on the TAP, which the correction never touched — so correcting
+    // at 19:50 does not buy the row another hour past 20:00.
+    expect(getFoodCorrectionBursts(pid, clockNow())).toHaveLength(1);
+    setNow("2026-08-05T20:05:00Z");
+    expect(getFoodCorrectionBursts(pid, clockNow())).toEqual([]);
+    // And nothing is stranded: the correction that DID land is committed, and a further
+    // tap is refused in words rather than silently.
+    answer.mockClear();
+    await handleCallbackQuery(
+      cq("5552029", `foodtime:${pid}:${anchor}:60`, kb)
+    );
+    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:00:00Z");
+    expect(String(answer.mock.calls[0][1])).toMatch(
+      /Too late|nothing was changed/
+    );
   });
 
   it("refuses a lapsed burst and writes nothing", async () => {
@@ -501,6 +643,43 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     const bursts = getDoseCorrectionBursts(pid, clockNow());
     expect(bursts).toHaveLength(1);
     expect(bursts[0].label).toBe("Ride Ibuprofen");
+    // The tap and the administration instant agree, so nothing claims a correction.
+    expect(bursts[0].corrected).toBe(false);
+    expect(burstLabel(bursts[0], "Europe/Berlin")).toBe("Ride Ibuprofen 21:20");
+  });
+
+  it("re-renders the dose row with the corrected instant, not the resolve-time one (#2206)", async () => {
+    const pid = newProfile("Echo Elke");
+    const { itemId, doseId } = seedDose(pid, "Echo Ibuprofen");
+    seedLoginTelegram(pid, "5552034");
+    markDoseTaken(pid, doseId, itemId, today(pid));
+    const anchor = doseLogs(pid)[0].id;
+    stampTap(anchor, "2026-08-05 19:20:00");
+
+    answer.mockClear();
+    await handleCallbackQuery(
+      cq("5552034", `dosetime:${pid}:${anchor}:60`, [])
+    );
+    expect(doseLogs(pid)[0].givenAt).toBe("2026-08-05 18:20:00");
+
+    // The burst the HANDLER resolved was read before the write; the row it rebuilds must
+    // be read after it, or the chat re-asserts the value it was told to stop asserting.
+    const bursts = getDoseCorrectionBursts(pid, clockNow());
+    expect(bursts[0].corrected).toBe(true);
+    expect(burstLabel(bursts[0], "Europe/Berlin")).toBe(
+      "Echo Ibuprofen 20:20 (corrected)"
+    );
+
+    // Composition, on the dose ledger too — and `taken_at` never moves, which is what
+    // keeps freshness keyed on the tap rather than on the correction session.
+    await handleCallbackQuery(
+      cq("5552034", `dosetime:${pid}:${anchor}:30`, [])
+    );
+    expect(doseLogs(pid)[0].givenAt).toBe("2026-08-05 17:50:00");
+    expect(doseLogs(pid)[0].takenAt).toBe("2026-08-05 19:20:00");
+    expect(getDoseCorrectionBursts(pid, clockNow())[0].endAt).toBe(
+      "2026-08-05T19:20:00.000Z"
+    );
   });
 
   it("re-stamps given_at, leaves the adherence DAY where the schedule put it", async () => {
@@ -545,7 +724,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     )!.latestGivenAt!;
     const anchor = doseLogs(pid)[0].id;
     await handleCallbackQuery(
-      cq("5552032", `dosetime:${pid}:${anchor}:180`, [])
+      cq("5552032", `dosetime:${pid}:${anchor}:60`, [])
     );
 
     const armedAfter = getMedicationFamilyStates(pid, today(pid)).get(
@@ -618,8 +797,8 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
 // `id >= anchor` window the cores scan — the rows really are in front of the writer, and
 // only the scoping keeps them (and the owner's) still.
 describe("a correction anchored on another profile's row writes nothing (#2059)", () => {
-  const backAnHour = (tapAt: string): Date =>
-    new Date(Date.parse(tapAt) - 3_600_000);
+  const backAnHour = (row: { tapAt: string; statedAt: string | null }): Date =>
+    new Date(Date.parse(row.statedAt ?? row.tapAt) - 3_600_000);
 
   it("food: a foreign anchor is no-burst, and neither ledger moves", () => {
     const owner = newProfile("Ledger Lena");

@@ -99,7 +99,7 @@ export function withDoseCorrections(
     : undefined;
   const extra = open
     ? correctionPickerActions(DOSE_TIME_PREFIXES, profileId, open, now, tz)
-    : correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz);
+    : correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz, now);
   const body = open
     ? `${plainBody(message.body)}\n${correctionPickerTitle("when did you take these", open, tz)}`
     : message.body;

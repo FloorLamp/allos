@@ -630,7 +630,7 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, logged_at FROM food_log_events
+      `SELECT id, group_key, logged_at, eaten_at FROM food_log_events
         WHERE profile_id = ? AND logged_at >= ?
         ORDER BY logged_at, id
         LIMIT 100`
@@ -639,11 +639,17 @@ export function getRecentFoodTaps(
     id: number;
     group_key: string;
     logged_at: string;
+    eaten_at: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     groupKey: r.group_key,
     tapAt: r.logged_at,
+    // Where the row STANDS (#2206): the chips count back from it and the row's header
+    // states it, so a corrected serving stops being displayed at its tap time and a
+    // second chip tap composes onto the first. Read regardless of `time_source` — the
+    // question is what the ledger holds, not who put it there.
+    statedAt: r.eaten_at,
     // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
     // what it is rather than rendered as a mystery slug.
     label: isProteinNudgeKey(r.group_key)

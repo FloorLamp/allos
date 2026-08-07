@@ -99,6 +99,7 @@ export function buildFoodNudge(
     proteinPresetGrams: presetGrams,
     corrections,
     tz: getTimezone(profileId),
+    now,
     ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
   });
 }

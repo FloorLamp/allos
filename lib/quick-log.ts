@@ -123,8 +123,11 @@ export type QuickLogTimeSemantic = "instant" | "day-only";
 // the admission test is answered out loud rather than left to a reader's guess (the
 // METRIC_KNOWLEDGE discipline: an explicit `none`, with the reason beside it).
 //
-//   • "hour" — the hour chips of lib/correction-time.ts (food, dose): a late tap is
-//              hours late, and the consumers tolerate that grain.
+//   • "hour" — the correction chips of lib/correction-time.ts (food, dose): a late tap
+//              is hours late, and the consumers tolerate that grain. The chips reach
+//              half an hour at the small end since #2206 and the picker stays hourly;
+//              the unit names the TOLERANCE the admission test asked about, which is
+//              still the hour.
 //   • "day"  — corrected a DAY at a time, through the dated form that owns the
 //              exception (a period start that actually began yesterday).
 //   • "none" — the form STATES the time on entry, so there is no correction affordance
