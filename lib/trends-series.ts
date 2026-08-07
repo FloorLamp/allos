@@ -479,7 +479,7 @@ export function buildTrendAnnotations(
     // A cancelled visit never happened — don't mark it as an event.
     .filter((a) => a.status !== "cancelled")
     .map((a) => ({
-      date: a.scheduled_at.slice(0, 10),
+      date: a.date,
       title: a.title,
       providerName: a.provider_name,
     }));

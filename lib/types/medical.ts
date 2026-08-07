@@ -47,9 +47,11 @@ export type ProviderAffiliationStatus =
 
 // A scheduled medical visit. Profile-owned; optionally
 // linked to the shared providers registry via a nullable provider_id FK.
-// `scheduled_at` is a date (YYYY-MM-DD) or datetime; `status` drives whether it
-// still surfaces on the Upcoming page (only 'scheduled' does). Runtime array is the
-// single source for the union AND the appointments.status CHECK (enum-parity test).
+// `date` is the visit's calendar day (YYYY-MM-DD) and `time_of_day` the optional
+// wall-clock HH:MM — both the CLINIC's local clock, never resolved against the
+// profile timezone (#2234); `status` drives whether it still surfaces on the
+// Upcoming page (only 'scheduled' does). Runtime array is the single source for
+// the union AND the appointments.status CHECK (enum-parity test).
 export const APPOINTMENT_STATUSES = [
   "scheduled",
   "completed",
@@ -75,7 +77,11 @@ export type AppointmentKind =
 export interface Appointment {
   id: number;
   profile_id: number;
-  scheduled_at: string;
+  // The clinic-local calendar day (YYYY-MM-DD, NOT NULL in the schema).
+  date: string;
+  // The clinic-local wall clock (HH:MM), or null for a day-only booking — a real
+  // product state ("Time (optional)"), rendered as an all-day calendar event.
+  time_of_day: string | null;
   provider_id: number | null;
   // Joined display name of the linked provider (from the global registry), null
   // when unlinked. Populated by getAppointments, not a stored column.

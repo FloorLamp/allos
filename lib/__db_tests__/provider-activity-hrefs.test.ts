@@ -77,8 +77,8 @@ describe("provider activity domain destinations", () => {
     ).run(profileId, providerId, source);
     db.prepare(
       `INSERT INTO appointments
-         (profile_id, scheduled_at, title, provider_id, source)
-       VALUES (?, '2026-01-06 09:00', 'Provider Hrefs Appointment', ?, ?)`
+         (profile_id, date, time_of_day, title, provider_id, source)
+       VALUES (?, '2026-01-06', '09:00', 'Provider Hrefs Appointment', ?, ?)`
     ).run(profileId, providerId, source);
     db.prepare(
       `INSERT INTO imaging_studies

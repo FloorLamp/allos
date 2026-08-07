@@ -11,19 +11,21 @@ import type { KindedAppointment } from "../preventive-appointment";
 // Column list + the joined provider_name, shared by both reads so they stay in
 // lockstep. The subquery is NULL when provider_id is null (an unlinked visit).
 const SELECT_COLS = `
-  id, profile_id, scheduled_at, provider_id,
+  id, profile_id, date, time_of_day, provider_id,
   (SELECT p.name FROM providers p WHERE p.id = appointments.provider_id)
     AS provider_name,
   title, location, notes, status, kind, encounter_id,
   document_id, source, created_at`;
 
 // Every appointment for a profile, soonest first. Used by the management page.
+// A day-only row (NULL time_of_day) sorts before same-day timed rows ASC and
+// after them DESC — the exact order the pre-split lexical scheduled_at gave.
 export function getAppointments(profileId: number): Appointment[] {
   return db
     .prepare(
       `SELECT ${SELECT_COLS} FROM appointments
        WHERE profile_id = ?
-       ORDER BY scheduled_at ASC, id ASC`
+       ORDER BY date ASC, time_of_day ASC, id ASC`
     )
     .all(profileId) as Appointment[];
 }
@@ -42,7 +44,7 @@ export function appointmentForEncounter(
       .prepare(
         `SELECT ${SELECT_COLS} FROM appointments
          WHERE profile_id = ? AND encounter_id = ?
-         ORDER BY scheduled_at DESC, id DESC LIMIT 1`
+         ORDER BY date DESC, time_of_day DESC, id DESC LIMIT 1`
       )
       .get(profileId, encounterId) as Appointment | undefined) ?? null
   );
@@ -56,7 +58,7 @@ export function getScheduledAppointments(profileId: number): Appointment[] {
     .prepare(
       `SELECT ${SELECT_COLS} FROM appointments
        WHERE profile_id = ? AND status = 'scheduled'
-       ORDER BY scheduled_at ASC, id ASC`
+       ORDER BY date ASC, time_of_day ASC, id ASC`
     )
     .all(profileId) as Appointment[];
 }
@@ -70,7 +72,7 @@ export function getScheduledAppointments(profileId: number): Appointment[] {
 export function kindedScheduled(profileId: number): KindedAppointment[] {
   return getScheduledAppointments(profileId).map((a) => ({
     kind: a.kind,
-    scheduledAt: a.scheduled_at,
+    date: a.date,
     status: a.status,
   }));
 }

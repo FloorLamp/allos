@@ -387,8 +387,8 @@ const POST_VISIT_ACCOUNTS_STMT = db.prepare(
       AND i.declined = 0
       AND i.profile_id IS NOT NULL
       AND ap.status <> 'cancelled'
-      AND date(ap.scheduled_at) <= ?
-      AND date(ap.scheduled_at) >= ?
+      AND ap.date <= ?
+      AND ap.date >= ?
     ORDER BY i.account_id`
 );
 

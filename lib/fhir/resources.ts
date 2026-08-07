@@ -620,15 +620,15 @@ const FHIR_APPOINTMENT_STATUS: Record<string, AppointmentStatus> = {
 // single entry in the narrowing ledger, `lib/__tests__/ingest-narrowing-scan.test.ts`).
 // `fhirTime` PRESERVED the offset: `Appointment.start` is typed `instant`, so an
 // offset-bearing value arrives here as `grain: "instant"` with the absolute moment in
-// hand. This mapper drops it, on purpose and with somewhere to point:
-// `appointments.scheduled_at` is declared `grain: "mixed"` — a bare day OR a ZONELESS
-// local datetime (lib/time-columns.ts) — and the app has no column for an appointment's
-// zone anywhere. Storing the UTC instant instead would silently reschedule every
-// offset-bearing import: "14:30-05:00" would start rendering as 19:30. #2234 splits
-// that column by grain and explicitly leaves the zone question open; until it is
-// answered, the wall clock the source printed is the honest value, and the drop happens
-// HERE, at the mapper that knows the destination, rather than at the parser where no
-// destination is known yet.
+// hand. This mapper drops it, on purpose and with somewhere to point: the destination
+// is `appointments.date` + `appointments.time_of_day` — a CLINIC-local day and wall
+// clock (#2234's split of the old mixed-grain scheduled_at) — and the app has no
+// column for an appointment's zone anywhere. Storing the UTC instant instead would
+// silently reschedule every offset-bearing import: "14:30-05:00" would start
+// rendering as 19:30. #2234 deliberately left the zone question open (#2243 owns it);
+// until it is answered, the wall clock the source printed is the honest value, and
+// the drop happens HERE, at the mapper that knows the destination, rather than at the
+// parser where no destination is known yet.
 function appointmentDateTime(v: unknown): string | null {
   const t = fhirTime(v);
   if (!t) return null;
@@ -675,7 +675,7 @@ function appointmentKindFromFhir(r: any): AppointmentKind | null {
 
 // FHIR Appointment → ImportedAppointment (issue #416). No CDA equivalent exists, so
 // this is FHIR-only. A dateless (no start) or entered-in-error appointment is dropped
-// (null) — the appointments.scheduled_at column is NOT NULL, so an unschedulable row
+// (null) — the appointments.date column is NOT NULL, so an unschedulable row
 // can't be placed. The attending clinician is resolved from a Practitioner-referencing
 // participant; the facility is a plain location string from a Location participant.
 export function mapAppointmentResource(

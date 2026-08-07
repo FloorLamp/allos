@@ -67,7 +67,7 @@ const EXCLUDED = new Set(["lib/source-time.ts"]);
 const NARROWING_LEDGER: Record<string, { count: number; why: string }> = {
   "lib/fhir/resources.ts": {
     count: 1,
-    why: "`appointmentDateTime` keeps the wall clock the source printed and DROPS the offset. `Appointment.start` is typed `instant`, so fhirTime hands the mapper a real absolute moment — and `appointments.scheduled_at` is declared `grain: 'mixed'` — a bare day or a ZONELESS local datetime (lib/time-columns.ts) — with no companion column for a zone anywhere, so there is nowhere to put it. Storing the UTC instant instead would silently reschedule every offset-bearing import (14:30-05:00 would start rendering as 19:30). #2234 splits that column by grain and explicitly leaves the zone question open; when it is answered this count drops to 0. The drop happens at the MAPPER, which knows the destination, not at the parser, which does not.",
+    why: "`appointmentDateTime` keeps the wall clock the source printed and DROPS the offset. `Appointment.start` is typed `instant`, so fhirTime hands the mapper a real absolute moment — but the destination is `appointments.date` + `appointments.time_of_day`, a CLINIC-local day and wall clock (#2234's split of the old mixed-grain scheduled_at), with no companion column for a zone anywhere, so there is nowhere to put it. Storing the UTC instant instead would silently reschedule every offset-bearing import (14:30-05:00 would start rendering as 19:30). #2234 deliberately left the zone question open (#2243 owns it); when it is answered this count drops to 0. The drop happens at the MAPPER, which knows the destination, not at the parser, which does not.",
   },
 };
 

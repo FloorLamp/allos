@@ -177,7 +177,10 @@ describe("the declared index is internally consistent", () => {
         .map(({ table, col }) => `${table}.${col.column}`)
         .sort();
 
-    expect(mixed("grain")).toEqual(["appointments.scheduled_at"]);
+    // #2234 split appointments.scheduled_at into date + time_of_day, retiring the
+    // last mixed-GRAIN column — the ratchet turning again. A future entry here is
+    // a deliberate claim that a new column really holds two shapes.
+    expect(mixed("grain")).toEqual([]);
     expect(mixed("convention")).toEqual([
       "integration_backfill_jobs.finished_at",
       "integration_backfill_jobs.retry_after_at",

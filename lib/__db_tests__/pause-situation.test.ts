@@ -131,10 +131,10 @@ describe("surgery bridge producer (#1299)", () => {
     return Number(
       db
         .prepare(
-          `INSERT INTO appointments (profile_id, scheduled_at, title, status)
-           VALUES (?, ?, ?, 'scheduled')`
+          `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+           VALUES (?, ?, '09:00', ?, 'scheduled')`
         )
-        .run(profileId, `${date} 09:00`, title).lastInsertRowid
+        .run(profileId, date, title).lastInsertRowid
     );
   }
 
@@ -145,8 +145,8 @@ describe("surgery bridge producer (#1299)", () => {
     expect(getSurgeryBridgeSuggestions(p)).toEqual([]);
 
     // Move it to 5 days out → inside the window.
-    db.prepare(`UPDATE appointments SET scheduled_at = ? WHERE id = ?`).run(
-      `${shiftDateStr(today(p), 5)} 09:00`,
+    db.prepare(`UPDATE appointments SET date = ? WHERE id = ?`).run(
+      shiftDateStr(today(p), 5),
       far
     );
     const cards = getSurgeryBridgeSuggestions(p);
@@ -166,8 +166,8 @@ describe("surgery bridge producer (#1299)", () => {
     expect(pre[0].heldCount).toBe(1);
 
     // Date passes + Pre-surgery active → the post transition (clear + Post-op) appears.
-    db.prepare(`UPDATE appointments SET scheduled_at = ? WHERE id = ?`).run(
-      `${shiftDateStr(today(p), -1)} 09:00`,
+    db.prepare(`UPDATE appointments SET date = ? WHERE id = ?`).run(
+      shiftDateStr(today(p), -1),
       visit
     );
     setActiveSituations(p, ["Pre-surgery"]);

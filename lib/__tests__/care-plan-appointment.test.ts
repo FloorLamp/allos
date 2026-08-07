@@ -28,7 +28,7 @@ describe("appointmentMatchNeedles", () => {
       kind: null,
       title: "Colonoscopy screening visit",
       notes: null,
-      scheduledAt: VISIT,
+      date: VISIT,
     });
     expect(needles).toContain("colonoscopy");
     expect(needles).toContain("screening");
@@ -42,7 +42,7 @@ describe("appointmentMatchNeedles", () => {
         kind: "dental",
         title: null,
         notes: null,
-        scheduledAt: VISIT,
+        date: VISIT,
       })
     ).toContain("dental");
     // vision contributes the too-short-to-tokenize "eye".
@@ -51,7 +51,7 @@ describe("appointmentMatchNeedles", () => {
         kind: "vision",
         title: null,
         notes: null,
-        scheduledAt: VISIT,
+        date: VISIT,
       })
     ).toContain("eye");
   });
@@ -62,7 +62,7 @@ describe("appointmentMatchNeedles", () => {
         kind: "screening",
         title: null,
         notes: null,
-        scheduledAt: VISIT,
+        date: VISIT,
       })
     ).toEqual([]);
   });
@@ -73,7 +73,7 @@ describe("matchCarePlanItemsForAppointment", () => {
     kind: "screening" as const,
     title: "Colonoscopy",
     notes: null,
-    scheduledAt: VISIT,
+    date: VISIT,
   };
 
   it("matches an open item whose description shares a needle in-window", () => {
@@ -120,7 +120,7 @@ describe("matchCarePlanItemsForAppointment", () => {
 
   it("matches a dental kind against a 'Dental cleaning' item with no appt title", () => {
     const matched = matchCarePlanItemsForAppointment(
-      { kind: "dental", title: null, notes: null, scheduledAt: VISIT },
+      { kind: "dental", title: null, notes: null, date: VISIT },
       [item({ id: 8, description: "Dental cleaning" })]
     );
     expect(matched.map((m) => m.id)).toEqual([8]);
@@ -128,7 +128,7 @@ describe("matchCarePlanItemsForAppointment", () => {
 
   it("returns nothing when the appointment needles nothing", () => {
     const matched = matchCarePlanItemsForAppointment(
-      { kind: "screening", title: null, notes: null, scheduledAt: VISIT },
+      { kind: "screening", title: null, notes: null, date: VISIT },
       [item({})]
     );
     expect(matched).toEqual([]);

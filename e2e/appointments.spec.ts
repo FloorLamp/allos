@@ -1,4 +1,7 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { hydratedClick } from "./helpers";
+import { frozenNow, workerDbPath } from "./worker-env";
 // The Upcoming section of the merged Visits page (issue #288 — appointments and
 // encounters share one /encounters surface now). Originally the standalone
 // /appointments list (#391, gap 7); retargeted here to the merged page. Asserts a
@@ -82,6 +85,142 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
     await expect(
       page.locator(APPT_UPCOMING).filter({ hasText: "E2E dermatology visit" })
     ).toHaveCount(0);
+  });
+});
+
+// #2234: the appointment day/time split. An appointment saved WITH a time and one
+// saved WITHOUT are both real product states ("Time (optional)"), stored as the
+// two columns `date` + `time_of_day` — never a folded string. Each test drives the
+// real form end-to-end (save → stored halves → rendered row → re-opened edit
+// form), which is the round-trip a user actually performs.
+const TIMED_MARKER = "E2E day-time timed visit";
+const DAY_ONLY_MARKER = "E2E day-time day-only visit";
+
+// A future day relative to the run's frozen clock (never a fixed near-present
+// date), as bare ISO.
+function futureDay(daysAhead: number): string {
+  return new Date(frozenNow().getTime() + daysAhead * 24 * 3600 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+// The stored halves for a marker title this spec created, straight from the
+// worker's own database.
+function storedHalves(title: string): {
+  date: string;
+  time_of_day: string | null;
+} {
+  const handle = new Database(workerDbPath());
+  try {
+    return handle
+      .prepare(`SELECT date, time_of_day FROM appointments WHERE title = ?`)
+      .get(title) as { date: string; time_of_day: string | null };
+  } finally {
+    handle.close();
+  }
+}
+
+function cleanupDayTimeFixtures() {
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(`DELETE FROM appointments WHERE title IN (?, ?)`)
+      .run(TIMED_MARKER, DAY_ONLY_MARKER);
+  } finally {
+    handle.close();
+  }
+}
+
+test.describe("Appointments — day + optional time round-trip (#2234)", () => {
+  // Per-test cleanup (not just beforeAll) so a CI retry never sees its own
+  // half-created marker row and trip the strict-mode row filter.
+  test.beforeEach(cleanupDayTimeFixtures);
+  test.afterAll(cleanupDayTimeFixtures);
+
+  test("an appointment saved WITH a time stores, renders, and re-opens its clock", async ({
+    page,
+  }) => {
+    test.slow();
+    const day = futureDay(9);
+
+    await page.goto("/records/history/visits");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await expect(upcoming).toBeVisible();
+
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await dialog.getByLabel("Reason / title").fill(TIMED_MARKER);
+    await dialog.getByLabel("Date", { exact: true }).fill(day);
+    await dialog.getByLabel("Time (optional)").fill("14:30");
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Appointment saved")).toBeVisible();
+
+    // Stored as the two halves — the form submits date and time separately.
+    const row = upcoming
+      .getByTestId("appointment-row")
+      .filter({ hasText: TIMED_MARKER });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    expect(storedHalves(TIMED_MARKER)).toEqual({
+      date: day,
+      time_of_day: "14:30",
+    });
+
+    // The row renders the wall clock exactly as entered.
+    await expect(row).toContainText("14:30");
+
+    // Re-open in the edit form: the time field carries the stored clock.
+    await row.getByRole("button", { name: "Appointment actions" }).click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Edit" })
+      .click();
+    await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("14:30");
+    // The date field re-opens on the stored day (display shows the day + year).
+    await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
+      new RegExp(`\\b${Number(day.slice(8, 10))}, ${day.slice(0, 4)}$`)
+    );
+  });
+
+  test("an appointment saved WITHOUT a time stays day-only end-to-end", async ({
+    page,
+  }) => {
+    test.slow();
+    const day = futureDay(10);
+
+    await page.goto("/records/history/visits");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await expect(upcoming).toBeVisible();
+
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await dialog.getByLabel("Reason / title").fill(DAY_ONLY_MARKER);
+    await dialog.getByLabel("Date", { exact: true }).fill(day);
+    // Time left blank on purpose — a day-only booking is a real state.
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Appointment saved")).toBeVisible();
+
+    const row = upcoming
+      .getByTestId("appointment-row")
+      .filter({ hasText: DAY_ONLY_MARKER });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    expect(storedHalves(DAY_ONLY_MARKER)).toEqual({
+      date: day,
+      time_of_day: null,
+    });
+
+    // No invented clock anywhere on the rendered row.
+    await expect(row).not.toContainText(/\d{1,2}:\d{2}/);
+
+    // Re-open in the edit form: the time field is genuinely empty.
+    await row.getByRole("button", { name: "Appointment actions" }).click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Edit" })
+      .click();
+    await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("");
+    await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
+      new RegExp(`\\b${Number(day.slice(8, 10))}, ${day.slice(0, 4)}$`)
+    );
   });
 });
 

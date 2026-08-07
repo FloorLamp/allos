@@ -42,6 +42,22 @@ const kindOf = (formData: FormData): string | null => {
   return isAppointmentKind(raw) ? raw : null;
 };
 
+// The appointment's two halves (#2234): a required clinic-local calendar day and
+// an optional clinic-local wall clock. Validated at this boundary so the split
+// columns can never re-grow a mixed shape — a malformed value is refused, not
+// stored. A `<input type="time">` submits "HH:MM" (or "HH:MM:SS" with a seconds
+// step); either is accepted and stored at minute grain.
+function scheduleOf(
+  formData: FormData
+): { ok: true; date: string; timeOfDay: string | null } | { ok: false } {
+  const date = str(formData, "date");
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false };
+  const time = str(formData, "time");
+  if (time == null) return { ok: true, date, timeOfDay: null };
+  if (!/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(time)) return { ok: false };
+  return { ok: true, date, timeOfDay: time.slice(0, 5) };
+}
+
 // Both the merged Visits page and the Upcoming aggregation reflect appointment
 // changes, so keep their caches in lockstep. Appointments and encounters now share
 // the /encounters surface (issue #288), so that's the one page path to revalidate.
@@ -55,19 +71,20 @@ export async function createAppointment(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const scheduledAt = str(formData, "scheduled_at");
+  const schedule = scheduleOf(formData);
   // a visit with no date can't be scheduled
-  if (!scheduledAt) return formError("Pick a date for this appointment.");
+  if (!schedule.ok) return formError("Pick a date for this appointment.");
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
   db.prepare(
     `INSERT INTO appointments
-       (profile_id, scheduled_at, provider_id, title, location, notes, kind, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')`
+       (profile_id, date, time_of_day, provider_id, title, location, notes, kind, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`
   ).run(
     profile.id,
-    scheduledAt,
+    schedule.date,
+    schedule.timeOfDay,
     providerId,
     str(formData, "title"),
     str(formData, "location"),
@@ -83,9 +100,9 @@ export async function updateAppointment(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  const scheduledAt = str(formData, "scheduled_at");
+  const schedule = scheduleOf(formData);
   if (!id) return formError("Couldn't find that appointment.");
-  if (!scheduledAt) return formError("Pick a date for this appointment.");
+  if (!schedule.ok) return formError("Pick a date for this appointment.");
   // Keep the loaded link unless the provider field was actually changed (#601).
   const providerId = resolveProviderOnEdit(
     Number(formData.get("provider_id")) || null,
@@ -94,10 +111,11 @@ export async function updateAppointment(
   );
   db.prepare(
     `UPDATE appointments
-       SET scheduled_at = ?, provider_id = ?, title = ?, location = ?, notes = ?, kind = ?
+       SET date = ?, time_of_day = ?, provider_id = ?, title = ?, location = ?, notes = ?, kind = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
-    scheduledAt,
+    schedule.date,
+    schedule.timeOfDay,
     providerId,
     str(formData, "title"),
     str(formData, "location"),
@@ -202,19 +220,13 @@ export async function recordPreventiveFromAppointment(
   if (!id) return formError("Couldn't find that appointment.");
   const row = db
     .prepare(
-      "SELECT kind, scheduled_at FROM appointments WHERE id = ? AND profile_id = ?"
+      "SELECT kind, date FROM appointments WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as
-    { kind: string | null; scheduled_at: string } | undefined;
+    .get(id, profile.id) as { kind: string | null; date: string } | undefined;
   if (!row) return formError("Couldn't find that appointment.");
   const ruleKey = satisfiedRuleForCompletedKind(row.kind);
   if (!ruleKey) return formError("This visit maps to no preventive item.");
-  recordPreventiveDone(
-    profile.id,
-    ruleKey,
-    row.scheduled_at.slice(0, 10),
-    "appointment"
-  );
+  recordPreventiveDone(profile.id, ruleKey, row.date, "appointment");
   revalidate();
   return formOk();
 }
@@ -277,7 +289,7 @@ export async function logVisitFromAppointment(
   // goes through the status core so the link swap carries its own expectation.
   const outcome = writeTx((tx) => {
     const row = readForUpdate<{
-      scheduled_at: string;
+      date: string;
       provider_id: number | null;
       title: string | null;
       notes: string | null;
@@ -286,7 +298,7 @@ export async function logVisitFromAppointment(
     }>(
       tx,
       db.prepare(
-        `SELECT scheduled_at, provider_id, title, notes, kind, encounter_id
+        `SELECT date, provider_id, title, notes, kind, encounter_id
            FROM appointments WHERE id = ? AND profile_id = ?`
       ),
       id,
@@ -304,7 +316,7 @@ export async function logVisitFromAppointment(
       )
       .run(
         profile.id,
-        row.scheduled_at.slice(0, 10),
+        row.date,
         encounterTypeForKind(row.kind),
         row.title,
         row.notes,

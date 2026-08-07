@@ -261,7 +261,7 @@ function lastActivityDate(
          UNION ALL
          SELECT date AS d FROM immunizations WHERE profile_id = ? AND provider_id = ?
          UNION ALL
-         SELECT scheduled_at AS d FROM appointments WHERE profile_id = ? AND provider_id = ?
+         SELECT date AS d FROM appointments WHERE profile_id = ? AND provider_id = ?
        )`
     )
     .get(

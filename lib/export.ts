@@ -1189,9 +1189,10 @@ export const DATASETS: ExportDataset[] = [
     key: "appointments",
     label: "Appointments",
     table: "appointments",
-    columns: ["scheduled_at", "title", "location", "status", "notes"],
-    select: `SELECT id, scheduled_at, title, location, status, notes
-       FROM appointments WHERE profile_id = ? ORDER BY scheduled_at DESC, id DESC`,
+    columns: ["date", "time_of_day", "title", "location", "status", "notes"],
+    select: `SELECT id, date, time_of_day, title, location, status, notes
+       FROM appointments WHERE profile_id = ?
+       ORDER BY date DESC, time_of_day DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM appointments WHERE profile_id = ?`,
   }),
   tableDataset({

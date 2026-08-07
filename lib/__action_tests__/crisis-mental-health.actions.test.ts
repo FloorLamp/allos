@@ -26,7 +26,7 @@ describe("createAppointment — mental_health kind (#997)", () => {
 
     const r = await createAppointment(
       fd({
-        scheduled_at: "2026-08-01",
+        date: "2026-08-01",
         title: "Session",
         kind: "mental_health",
       })
@@ -46,7 +46,7 @@ describe("createAppointment — mental_health kind (#997)", () => {
     const profile = createProfile("appt-badkind", login.id);
     actAs(login, profile);
     await createAppointment(
-      fd({ scheduled_at: "2026-08-01", title: "x", kind: "not_a_kind" })
+      fd({ date: "2026-08-01", title: "x", kind: "not_a_kind" })
     );
     const row = db
       .prepare(

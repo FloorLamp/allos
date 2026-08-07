@@ -78,27 +78,24 @@ describe("formatRecordDate", () => {
 });
 
 describe("formatRecordDateTime", () => {
-  it("formats a stored 'YYYY-MM-DD HH:MM' as a date + time, UTC-safe, default 24h", () => {
+  it("formats a day + HH:MM pair as a date + time, UTC-safe, default 24h", () => {
     // Default prefs are the dominant clock (24h) — the stored wall-clock digits
-    // survive exactly, never the raw ISO string.
-    expect(formatRecordDateTime("2026-07-13 14:30")).toBe(
+    // survive exactly, never the raw ISO string. The halves arrive as the two
+    // columns an appointment stores (#2234); nothing is sniffed out of a string.
+    expect(formatRecordDateTime("2026-07-13", "14:30")).toBe(
       "Jul 13, 2026, 14:30"
-    );
-    // Accepts the "T" separator too.
-    expect(formatRecordDateTime("2026-07-13T14:30")).toBe(
-      formatRecordDateTime("2026-07-13 14:30")
     );
   });
 
   it("renders the time in the login's chosen clock", () => {
     expect(
-      formatRecordDateTime("2026-07-13 14:30", "—", {
+      formatRecordDateTime("2026-07-13", "14:30", "—", {
         timeFormat: "12h",
         dateFormat: "mdy",
       })
     ).toBe("Jul 13, 2026, 2:30 PM");
     expect(
-      formatRecordDateTime("2026-07-13 14:30", "—", {
+      formatRecordDateTime("2026-07-13", "14:30", "—", {
         timeFormat: "24h",
         dateFormat: "iso",
       })
@@ -106,13 +103,13 @@ describe("formatRecordDateTime", () => {
   });
 
   it("falls back to a plain-date format when there is no time component", () => {
-    expect(formatRecordDateTime("2024-01-05")).toBe("Jan 5, 2024");
+    expect(formatRecordDateTime("2024-01-05", null)).toBe("Jan 5, 2024");
   });
 
-  it("returns the fallback for a null/empty value", () => {
-    expect(formatRecordDateTime(null)).toBe("—");
-    expect(formatRecordDateTime("")).toBe("—");
-    expect(formatRecordDateTime(null, "")).toBe("");
+  it("returns the fallback for a null/empty date", () => {
+    expect(formatRecordDateTime(null, null)).toBe("—");
+    expect(formatRecordDateTime("", null)).toBe("—");
+    expect(formatRecordDateTime(null, "14:30", "")).toBe("");
   });
 });
 
