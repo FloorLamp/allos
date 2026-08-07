@@ -104,12 +104,24 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 - **`intake_item_logs.given_at` is a RECORD instant, by owner ruling.** For a scheduled
   confirm it is _inferred_: the tap moment stands in for an intake the app never
   observed, so it is a `recorded_at` that has been wearing an event's name. Phase 2
-  wave 2 renames it and adds a **nullable `occurred_at`**, populated only when the user
-  actually states a time — "we don't know when this happened" becomes a first-class
-  state instead of an inferred value. Until then the table has **no event column at
-  all**: `eventInstant("intake_item_logs", row)` answers `not-declared` for every row,
-  and after the split it will answer `not-recorded` for most of them. Those are
-  different facts and neither one is the record instant.
+  wave 1 (migration 165) added the **nullable `occurred_at`** beside it, populated only
+  when the user actually states a time — "we don't know when this happened" is now a
+  first-class state instead of an inferred value. The table used to have **no event
+  column at all**, so `eventInstant("intake_item_logs", row)` answered `not-declared`
+  for every row; today it answers `not-recorded` for a row nobody timed. Those are
+  different facts and neither one is the record instant. What remains of the ruling is
+  the **rename** of `given_at` to `recorded_at` — a rebuild plus a dozen COALESCE
+  readers, on its own slot.
+- **`occurred_at` means one thing in all three observation stores** (`medical_records`,
+  `body_metrics`, `intake_item_logs`, migration 165): the instant the reading or intake
+  actually happened, canonical shape, and **NULL means day-grain** — absence, not empty
+  apparatus. The asymmetry with `metric_samples` is deliberate: that table files an
+  untimed reading at `${date}T00:00:00` because `start_time` is part of its natural key
+  and a re-entry has to be a correction rather than a duplicate. These three carry a
+  real `date` column and key on it, so they can afford honest absence. Two stores spell
+  "not stated" as NULL, one spells it as midnight; that is a real thing an eventual
+  readings merge has to resolve, and naming it is worth more than a uniform-looking
+  anchor that would change what a row's key means.
 - **`given_at` → `taken_at` is a record CHAIN, not an event/record pair.** The dozen
   hand-rolled `COALESCE(given_at, taken_at)` readers were falling back within one
   question all along — right value, wrong name. `recordInstant` walks the chain;
@@ -150,6 +162,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `appointments` | `created_at` | record | instant | bare |  |
 | `audit_events` | `ts` | record | instant | bare |  |
 | `body_metrics` | `date` | day | day | n/a |  |
+| `body_metrics` | `occurred_at` | event | instant | canonical | Migration 165 (#2235, #2205 phase 2 wave 1). When the day's weigh-in was actually taken. Body weight moves a kilogram across a day, so morning-fasted and evening-fed are different measurements of one quantity and an unlabelled mix carries that swing as unattributable noise. NULL means DAY-GRAIN. Descriptive only — the natural key stays (profile_id, date, source), and one row per day is unchanged, so this records WHEN the day's reading was taken and does not enable two weigh-ins in one day. This table has no record stamp at all, so there is nothing here for an event column to be laundered from. |
 | `canonical_biomarkers` | `created_at` | bookkeeping | instant | bare |  |
 | `care_goals` | `target_date` | planned | day | n/a |  |
 | `care_goals` | `created_at` | bookkeeping | instant | bare |  |
@@ -222,7 +235,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `intake_item_doses` | `start_date` | window-start | day | n/a |  |
 | `intake_item_doses` | `end_date` | window-end | day | n/a |  |
 | `intake_item_logs` | `date` | day | day | n/a |  |
-| `intake_item_logs` | `given_at` | record | instant | bare | RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed, so it is a `recorded_at` that has been wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. Phase 2 wave 2 renames it and adds a NULLABLE `occurred_at` populated only when the user states a time, at which point this table gains its first real event column and every row without one reads as not-recorded rather than not-declared. Neither is the record instant, and that is the whole point. |
+| `intake_item_logs` | `occurred_at` | event | instant | canonical | Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `given_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close. |
+| `intake_item_logs` | `given_at` | record | instant | bare | RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed, so it is a `recorded_at` that has been wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. The `occurred_at` half of that ruling landed in migration 165; what is left is the RENAME to `recorded_at`, on its own slot. Neither link is the event instant, and that is the whole point. |
 | `intake_item_logs` | `taken_at` | record | instant | bare | The row's insert stamp, and the SECOND link of the record chain: only rows written before given_at existed (pre-migration-041) fall through to it. The `COALESCE(given_at, taken_at)` a dozen readers hand-roll is this chain — a fallback WITHIN the record question, not a substitution of a record instant for an event one. |
 | `intake_item_side_effects` | `noted_on` | event | day | n/a |  |
 | `intake_item_side_effects` | `created_at` | record | instant | bare |  |
@@ -263,6 +277,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medical_record_revisions` | `date` | day | day | n/a |  |
 | `medical_record_revisions` | `superseded_at` | lifecycle | instant | bare |  |
 | `medical_records` | `date` | day | day | n/a |  |
+| `medical_records` | `occurred_at` | event | instant | canonical | Migration 165 (#2154, #2205 phase 2 wave 1). When the vital was actually taken — the reading's own instant, distinct from `created_at`, which is when it reached the app. NULL means DAY-GRAIN: nobody stated a time, so `eventInstant` answers not-recorded rather than inventing one. Born on the canonical convention rather than converted onto it, so it is in CANONICAL_INSTANT_COLUMNS from the migration that added it and the first writer is already bound to utcInstant(). No column DEFAULT, deliberately: a clock default would stamp the record instant into the event column. |
 | `medical_records` | `created_at` | record | instant | bare |  |
 | `medication_courses` | `started_on` | window-start | day | n/a |  |
 | `medication_courses` | `stopped_on` | window-end | day | n/a |  |

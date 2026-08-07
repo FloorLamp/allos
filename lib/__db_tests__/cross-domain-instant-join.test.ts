@@ -13,12 +13,13 @@
 //   1. event/record pair — food_log_events (eaten_at canonical / logged_at canonical),
 //                          and intake_item_logs, whose given_at/taken_at turned out
 //                          under the owner's ruling to be a RECORD CHAIN rather than
-//                          an event/record pair — so the table has no event instant at
-//                          all until phase 2 wave 2 adds `occurred_at`
+//                          an event/record pair — so its event instant is the separate
+//                          `occurred_at` phase 2 wave 1 added, NULL here because this
+//                          dose was confirmed against a schedule and nobody said when
 //   2. record-only       — substance_log (logged_at canonical)
 //   3. optional event    — practice_logs (a local HH:MM, and a NULL one)
 //   4. window            — metric_samples (start_time / end_time)
-//   5. day-only          — body_metrics (a date and nothing else)
+//   5. day-only          — body_metrics (a date, and an `occurred_at` nobody stated)
 //
 // plus hr_minutes, whose instant is canonical since migration 164.
 //
@@ -119,7 +120,8 @@ beforeAll(() => {
 function doseAndMeal() {
   const dose = db
     .prepare(
-      `SELECT l.date AS date, l.given_at AS given_at, l.taken_at AS taken_at
+      `SELECT l.date AS date, l.occurred_at AS occurred_at,
+              l.given_at AS given_at, l.taken_at AS taken_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.date = ?`
@@ -156,13 +158,20 @@ describe("the comparison that produced the wrong answers", () => {
 
   it("is right when each row is asked for its instant", () => {
     const { dose, meal } = doseAndMeal();
-    // Note WHICH question each side answers. The meal states when it was EATEN; the
-    // dose, by the owner's #2205 ruling, has only a record instant — the confirm's tap
-    // — because nothing in the schema observes when the intake happened. Before phase
-    // 3 that difference was invisible inside a `COALESCE`; here it is the API.
+    // Note WHICH question each side answers. The meal states when it was EATEN; this
+    // dose was confirmed against a schedule and nobody stated a time, so its
+    // `occurred_at` is NULL and the only instant it has is the record one — the
+    // confirm's tap. Before phase 3 that difference was invisible inside a `COALESCE`;
+    // here it is the API.
+    //
+    // UPDATED DELIBERATELY by #2237: this read `not-declared` until migration 165 gave
+    // the table an event column at all. The refusal is unchanged and so is everything
+    // below it; only the REASON sharpened, from "the schema cannot answer" to "nobody
+    // said".
     expect(eventInstant("intake_item_logs", dose)).toMatchObject({
       known: false,
-      why: "not-declared",
+      why: "not-recorded",
+      column: "occurred_at",
     });
     const doseAt = instantDate(recordInstant("intake_item_logs", dose))!;
     const mealAt = instantDate(eventInstant("food_log_events", meal))!;

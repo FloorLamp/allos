@@ -15,13 +15,14 @@
 // substitution it looked like the worst offender; the owner's ruling on #2205 settled
 // that `given_at` is INFERRED from the tap and is therefore a RECORD instant, so the
 // COALESCE was a fallback WITHIN one question all along and the hand-rolls had the
-// right value under the wrong name. The consequence for this module is sharper, not
-// softer: `intake_item_logs` has NO event column at all today, so "when was this dose
-// actually taken" is unanswerable for every row, and the reader has to say so instead
-// of handing back a tap stamp. Phase 2 wave 2 adds a nullable `occurred_at` filled only
-// when somebody states a time — at which point the same question turns from
-// `not-declared` into `not-recorded` for most rows, which is a different fact and a
-// different arm of the union below.
+// right value under the wrong name. The consequence for this module was sharper, not
+// softer: `intake_item_logs` had NO event column at all, so "when was this dose
+// actually taken" was unanswerable for every row and the reader had to say so instead
+// of handing back a tap stamp. Phase 2 wave 1 (migration 165) added the nullable
+// `occurred_at`, filled only when somebody states a time — so that same question now
+// answers `not-recorded` rather than `not-declared` for a row nobody timed, which is a
+// different fact and a different arm of the union below. `body_metrics` and
+// `medical_records` gained the column in the same migration, for the same reason.
 //
 // This module is that question, asked once, over the declared index in
 // lib/time-columns.ts. A surface names a QUANTITY ("the event instant of this dose

@@ -25,22 +25,40 @@ describe("pattern 1 — the event/record pair", () => {
   // `given_at` is INFERRED from the tap, so it is a RECORD instant, and `taken_at` is
   // the row's insert stamp behind it. The dozen hand-rolled
   // `COALESCE(given_at, taken_at)` readers were falling WITHIN one question, not
-  // substituting a record instant for an event one. The consequence is that this table
-  // has no event column at all today.
+  // substituting a record instant for an event one. Phase 2 wave 1 (migration 165)
+  // added the event column this chain never had: a nullable `occurred_at`, filled only
+  // when somebody states a time.
   const dose = {
     date: "2026-03-10",
+    occurred_at: null,
     given_at: "2026-03-10 13:05:00",
     taken_at: "2026-03-10 18:40:00",
   };
 
-  it("has no event instant for a dose confirm, and says so", () => {
-    // Not "this row is missing one" — the schema cannot answer when the intake
-    // happened, for any row, until phase 2 wave 2 adds `occurred_at`. Handing back the
-    // tap stamp here is exactly the substitution #2205 exists to prevent.
+  it("says nobody stated when an untimed dose confirm happened", () => {
+    // UPDATED DELIBERATELY by #2237: before migration 165 this answered
+    // `not-declared` — the schema could not answer for any row, ever. Now it answers
+    // `not-recorded`, which is a different and more actionable fact: the column exists
+    // and this row's is NULL. What has NOT changed is the refusal itself — handing
+    // back the tap stamp is exactly the substitution #2205 exists to prevent.
     expect(eventInstant("intake_item_logs", dose)).toEqual({
       known: false,
-      why: "not-declared",
-      column: null,
+      why: "not-recorded",
+      column: "occurred_at",
+    });
+  });
+
+  it("reads the event instant once somebody states one", () => {
+    expect(
+      eventInstant("intake_item_logs", {
+        ...dose,
+        occurred_at: "2026-03-10T12:30:00Z",
+      })
+    ).toEqual({
+      known: true,
+      at: "2026-03-10T12:30:00Z",
+      column: "occurred_at",
+      derived: false,
     });
   });
 
