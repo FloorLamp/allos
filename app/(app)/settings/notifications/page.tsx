@@ -4,6 +4,7 @@ import {
   getProfileMoodCheckin,
   getProfileMoodRecap,
   getProfileSleepDigest,
+  getProfileWearReminder,
   getProfileHomeAssistant,
   getTelegramBotConfig,
   getNotifySchedule,
@@ -227,6 +228,7 @@ export default async function NotificationsSettingsPage() {
                 moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}
                 sleepDigestEnabled={getProfileSleepDigest(profile.id)}
+                wearReminderEnabled={getProfileWearReminder(profile.id)}
                 // What the MORNING SLOT's "Auto" resolves to (#1117): the profile's
                 // typical wake minute, or null when there isn't enough sleep data
                 // yet. At minute grain (#2121) it is passed unrounded. The digest

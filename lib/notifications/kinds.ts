@@ -22,6 +22,7 @@
 // or vice versa.
 
 import type { NotificationKind } from "./types";
+import type { ReminderWindow } from "./supplement-format";
 
 // Every value of the NotificationKind union, as data. The union is the type-level
 // source of truth; this is its runtime shadow, and the reflection test fails if the
@@ -46,6 +47,7 @@ export const ALL_NOTIFICATION_KINDS = [
   "upcoming",
   "weekly-recap",
   "milestone",
+  "wear-reminder",
   "prn-list",
   "symptom",
   "temp",
@@ -100,7 +102,43 @@ export type NotificationKindEntry = {
   // Hidden for a profile too young for food-group logging (the same predicate the
   // Food tab uses).
   requiresFoodLogging?: boolean;
+  // The intake reminder SLOT(S) this kind's send actually rides (#2161 review).
+  //
+  // Declared only for a kind with no schedule of its own: it fires at one of these
+  // slot times, so a profile with every listed slot turned OFF gets silence however
+  // its own toggle reads. That is a REAL and unexotic state — "when do my supplements
+  // remind me" and "do I want a bedtime watch nudge" are independent questions, and
+  // someone who takes nothing at bedtime turns that slot off — and the failure is the
+  // worst shape a settings page has: a checkbox that says on and does nothing.
+  //
+  // The answer is to NAME the precondition where the toggle is, never to invent a
+  // fallback hour. Guessing a bedtime for a send the user consented to at THEIR
+  // bedtime would be a worse answer than saying what is missing out loud.
+  //
+  // Semantics: "at least ONE of these must be configured". `unmetSlotRequirement`
+  // below is the pure predicate; the settings page formats the note.
+  ridesSlots?: readonly ReminderWindow[];
 };
+
+// The slots a kind may declare, and the note that names them when none is set. Pure,
+// so the settings row and its tests read one rule.
+export function unmetSlotRequirement(
+  entry: NotificationKindEntry,
+  slotConfigured: (slot: ReminderWindow) => boolean
+): readonly ReminderWindow[] | null {
+  const slots = entry.ridesSlots;
+  if (!slots || slots.length === 0) return null;
+  return slots.some(slotConfigured) ? null : slots;
+}
+
+/** "Bedtime" / "Morning, Midday, or Evening" — the slots in the note's own words. */
+export function slotRequirementNote(slots: readonly ReminderWindow[]): string {
+  const named =
+    slots.length === 1
+      ? slots[0]
+      : `${slots.slice(0, -1).join(", ")}, or ${slots[slots.length - 1]}`;
+  return `This rides your ${named} reminder time, which is currently off — set one under Schedule above and it will start sending.`;
+}
 
 export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
   {
@@ -168,6 +206,8 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     control: { type: "toggle", field: "food_telegram_enabled" },
     controlTestId: "food-telegram-enabled",
     requiresFoodLogging: true,
+    // FOOD_NUDGE_WINDOWS — Bedtime is deliberately excluded from the food nudge.
+    ridesSlots: ["Morning", "Midday", "Evening"],
     more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push and Email can't deliver this kind.",
   },
   {
@@ -177,6 +217,8 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     safety: false,
     control: { type: "toggle", field: "mood_checkin_enabled" },
     controlTestId: "mood-checkin-enabled",
+    // The evening slot hour, the check-in's only schedule.
+    ridesSlots: ["Evening"],
     extras: [
       {
         field: "mood_recap_enabled",
@@ -230,6 +272,24 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     // so the notification's own description promised two things it no longer
     // sent.
     more: "Workouts, PRs, adherence, weight, sleep, and goals. Weeks with nothing to report are skipped.",
+  },
+  {
+    kind: "wear-reminder",
+    label: "Bedtime watch reminder",
+    blurb:
+      "A nudge at your Bedtime slot when your watch hasn’t recorded in a while.",
+    safety: false,
+    control: { type: "toggle", field: "wear_reminder_enabled" },
+    controlTestId: "wear-reminder-enabled",
+    // The Bedtime slot minute is the whole of its schedule, so a profile that takes
+    // nothing at bedtime and turned that slot off would consent to a send that can
+    // never fire. The row says so rather than the tick guessing an hour.
+    ridesSlots: ["Bedtime"],
+    // Off unless you turn it on, and it stays off until you do — the ONE place this
+    // feature can be enabled from. Sleep is an observation domain, so nothing here is
+    // ever "missed"; the reminder exists only because a watch left on the charger
+    // costs a whole night of data that no later sync recovers.
+    more: "Off unless you turn it on. Sent at most once a night, and only when your watch has gone quiet while your phone keeps syncing normally — never when a connection is already broken, and never if you don’t usually wear a device to sleep. Ignoring it does nothing further.",
   },
   {
     kind: "milestone",

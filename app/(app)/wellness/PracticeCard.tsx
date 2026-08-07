@@ -206,6 +206,15 @@ export default function PracticeCard({
         today={today}
         defaultDurationMin={practice.previousDurationMin}
         usualSessionDay={practice.usuallyToday}
+        // Both controls, by owner ruling (#2204). `showDetails` keeps the expanded
+        // form for the things only it can say — a past date, a corrected time,
+        // notes — while `inlineDuration` puts the one field that is most of a
+        // practice log's MEANING on the tap itself. "The modal is one tap away"
+        // answered where the field LIVES; it never answered what the one-tap button
+        // WRITES, which was nothing. The two share a single `duration` state, so the
+        // modal opens holding what the stepper shows and cancelling it does not lose
+        // an adjustment.
+        inlineDuration
         showDetails
       />
 

@@ -23,6 +23,7 @@ import {
   setProfileMoodRecap,
   resetMoodCheckinIgnored,
   setProfileSleepDigest,
+  setProfileWearReminder,
   setNotifySchedule,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
@@ -379,6 +380,17 @@ export async function saveNotificationPrefs(formData: FormData) {
   if (formData.has("mood_recap_enabled")) {
     const v = formData.get("mood_recap_enabled");
     setProfileMoodRecap(profile.id, v === "on" || v === "1");
+  }
+
+  // Bedtime wear reminder (#2161): per-profile OPT-IN, off by default. Presence-gated
+  // like its neighbours so a form that doesn't render it can't wipe the setting — and
+  // note what that gate also guarantees: this action is the ONLY writer, reached only
+  // from the Settings checkbox the user ticked. Nothing in the tick, the gather, or
+  // any detector may enable it on the user's behalf (the contact-consent rule: a
+  // contact INCREASE needs the user's own declaration).
+  if (formData.has("wear_reminder_enabled")) {
+    const v = formData.get("wear_reminder_enabled");
+    setProfileWearReminder(profile.id, v === "on" || v === "1");
   }
 
   // Morning-digest sleep summary (#1117): per-profile opt-in, presence-gated like

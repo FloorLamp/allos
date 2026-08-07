@@ -198,10 +198,15 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     tier: "server",
     adminOnly: true,
     summary:
-      "Diagnostic viewers: AI calls, server errors, and the audit trail.",
+      "Diagnostic viewers: AI calls, server errors, the notification tick, and the audit trail.",
+    // A FOURTH viewer rather than a fold into Errors (#2209). Errors is deliberately
+    // an SSR snapshot with a Clear button because errors are rare and low-volume; the
+    // tick is 96 runs a day times every profile, and its unit is a RUN, not a line.
+    // Different volume, different row model, different page.
     pages: [
       { href: "/settings/logs", label: "AI logs" },
       { href: "/settings/errors", label: "Errors" },
+      { href: "/settings/notify-log", label: "Notify tick" },
       { href: "/settings/audit", label: "Audit" },
     ],
   },
