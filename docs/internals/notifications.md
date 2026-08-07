@@ -1151,14 +1151,49 @@ decisions, both pure in `lib/notifications/digest-schedule.ts`:
   arrivals 06:02–07:49). The old whole-hour rounding compounded it: `round(340/60)`
   is 6, so the digest fired at 06:00, before all eleven arrivals and an hour worse
   than the manual 07:00 it was meant to improve on. `digestAutoMinute` now
-  resolves to the first MINUTE strictly after wake + a p90 arrival lag (07:43 on
-  the measured profile — #2121 deleted the round-up-to-the-next-hour along with
-  the rounding defect), measured at read time by joining
-  `integration_sync_rows` → `metric_samples` (`getSleepArrivalLagsMin`). Below the
+  resolves to the first MINUTE strictly after the measured arrival p90 (#2121
+  deleted the round-up-to-the-next-hour along with the rounding defect). Below the
   sample gate it returns null and the caller falls back to the wake minute, where
   the deferral below is the safety net. The **`auto` Morning intake time
   deliberately stays on the raw wake minute**: it needs you awake, not your
-  tracker synced, so do not fold the lag into the Morning resolution.
+  tracker synced, so do not fold the arrival into the Morning resolution.
+
+**The arrival statistic (#2214).** "When does last night's sleep normally land, in
+clock time?" is ONE computation — `arrivalStatistics`
+(`lib/notifications/digest-schedule.ts`) over rows gathered by `getSleepArrivals`
+(`lib/queries/metrics.ts`, joining `integration_sync_rows` → `metric_samples`).
+
+- **The percentile is taken over arrival CLOCK TIMES**, never composed. It used to
+  be `median wake + p90 lag`: a central value of one varying quantity plus a tail
+  value of another, biased low whenever wake and lag are not anti-correlated. On
+  the measured 13-night sample the true p90 is 07:39.6 and the composition
+  returned 07:10 — half an hour early, turning 12 complete digests out of 13 into 8. Since `arrival = wake + lag` per night and both instants are on the row,
+  nothing needs composing, and `typicalWakeTime` is not read by the digest at all.
+- **The lag survives as the ADMISSION test.** `[0, MAX_ARRIVAL_LAG_MIN]` is the
+  right filter for "is this a morning arrival at all" — a negative lag is a
+  backfill, a multi-hour one a Takeout-style bulk import. Admit on lag, measure on
+  clock time.
+- **Two statistics, one pass.** `p90Minute` is what a send time or deadline must
+  clear (`ARRIVAL_PERCENTILE`); `medianMinute` is what "the configured time loses
+  more often than not" means. Both come out of the same admitted sample so two
+  consumers cannot describe two different distributions.
+- **No answer is a first-class state.** The result is a discriminated union, not a
+  nullable minute: neither number exists unless `available` is true, and the
+  reason is stated (`no-source`, `no-arrivals`, `thin-sample`, `dispersed`).
+  Never extrapolate below `MIN_ARRIVAL_SAMPLE`.
+- **Midnight wrap is decided, not assumed.** Arrivals are ordered and interpolated
+  as plain minutes of day on `[0, 1440)` with no rotation and no circular mean, and
+  a sample spanning more than `MAX_ARRIVAL_SPREAD_MIN` (half the clock) is REFUSED
+  as `dispersed` rather than described. The lag filter already removes the shapes
+  that would put a 23:xx beside an 00:xx.
+- **A DST transition day is dropped.** Such a day mixes two UTC offsets into one
+  clock-time sample; with ~13 nights of `integration_sync_rows` retention a single
+  hour-shifted arrival moves the p90 materially, and it carries no information
+  about the sync pipeline. `isDstTransitionDay` (`lib/date.ts`) marks it at gather
+  time and the exclusion is visible in the `nights` count that gates the sample.
+- **It is not live.** The sample is thin by construction and jumpy
+  (leave-one-night-out moves the p90 up to 11 minutes), so it may be proposed or
+  used as a bound, never silently BE a user's send time.
 - **One deferral, into the retry attempt that already exists.** `slotDue` is two
   attempt bands paired with the hard per-day marker, so the FIRST attempt is free
   to decline: `deferDigestForSleep` skips the send when last night's sleep is

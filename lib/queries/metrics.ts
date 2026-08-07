@@ -21,7 +21,14 @@ import {
   localDaySpan,
   offsetSegments,
 } from "../local-day-window";
-import { parseUtcSql, zonedMinuteStr } from "../date";
+import {
+  hhmmToMinutes,
+  isDstTransitionDay,
+  parseUtcSql,
+  zonedDateParts,
+  zonedMinuteStr,
+} from "../date";
+import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
 import { DOCUMENT_SOURCE_PREFIX } from "../body-metric-extract";
 import { getIntegration } from "../integrations/registry";
@@ -538,32 +545,41 @@ export function getSleepSessionsInRange(
   });
 }
 
-// A night is an overnight (rather than a nap) for arrival-lag purposes at this
-// duration. The provenance ledger carries no session label, so the lag sample is
+// A night is an overnight (rather than a nap) for arrival purposes at this
+// duration. The provenance ledger carries no session label, so the sample is
 // bounded by duration instead: a three-hour window is short for a night and long
 // for a nap, and an afternoon nap's sync latency is not the quantity being asked
-// about ("how long after WAKING does last night normally land?").
+// about ("when does last night normally land?").
 const ARRIVAL_LAG_MIN_OVERNIGHT_MIN = 180;
 
-// How long after each recent night ENDED its row actually landed in the database,
-// in minutes — the measured arrival lag behind the `auto` digest hour (#2102).
+// WHEN each recent night's row actually landed — the GATHER behind the arrival
+// statistic (#2214). The decision itself is `arrivalStatistics`
+// (lib/notifications/digest-schedule.ts); this side reads rows and converts
+// timestamps, and takes no percentile of its own.
 //
-// Both sides are absolute UTC instants (`end_time` from the provider, `created_at`
-// stamped by the sync that wrote the row), so the difference is timezone-free and
-// no profile-local conversion is needed. `MIN(created_at)` per sample is the FIRST
-// time the row appeared: a later re-sync updates the same row and must not be
-// mistaken for a slower arrival.
+// THREE CONVENTIONS CROSSED IN ONE READ, all through shared helpers (#2205):
+//   • `ms.end_time` is a canonical instant carrying `Z`;
+//   • `r.created_at` was moved onto the same canonical instant by migration 163,
+//     so `MIN(...)` over it is a chronological minimum rather than a lexical
+//     accident, and both sides parse through `parseUtcSql`;
+//   • the ARRIVAL MINUTE is profile-local, resolved through `zonedDateParts` — the
+//     one place an absolute instant becomes a local day and wall clock (#94).
+// No offset is hand-rolled here, and no instant is hand-built.
+//
+// `MIN(created_at)` per sample is the FIRST time the row appeared: a later re-sync
+// updates the same row and must not be mistaken for a slower arrival.
 //
 // Rows with no provenance are silently absent, which is the correct answer — a
-// manually logged night has no arrival lag to measure, and the resolution's sample
-// gate turns "too few measurable nights" into a fallback rather than a guess.
-export function getSleepArrivalLagsMin(
+// manually logged night has no arrival to measure, and the statistic's sample gate
+// turns "too few measurable nights" into a stated no-answer rather than a guess.
+export function getSleepArrivals(
   profileId: number,
   limitNights = 30
-): number[] {
+): ArrivalNight[] {
+  const tz = getTimezone(profileId);
   const rows = db
     .prepare(
-      `SELECT MIN((julianday(r.created_at) - julianday(ms.end_time)) * 1440.0) AS lagMin
+      `SELECT ms.end_time AS endTime, MIN(r.created_at) AS arrivedAt
          FROM metric_samples ms
          JOIN integration_sync_rows r
            ON r.target_table = 'metric_samples' AND r.target_id = ms.id
@@ -578,12 +594,23 @@ export function getSleepArrivalLagsMin(
         LIMIT ?`
     )
     .all(profileId, ARRIVAL_LAG_MIN_OVERNIGHT_MIN, limitNights) as {
-    lagMin: number | null;
+    endTime: string | null;
+    arrivedAt: string | null;
   }[];
-  return rows
-    .map((r) => r.lagMin)
-    .filter((v): v is number => v != null && Number.isFinite(v))
-    .map((v) => Math.round(v));
+  return rows.flatMap((r) => {
+    const ended = parseUtcSql(r.endTime);
+    const arrived = parseUtcSql(r.arrivedAt);
+    if (!ended || !arrived) return [];
+    const { date, hhmm } = zonedDateParts(tz, arrived);
+    return [
+      {
+        date,
+        arrivalMinute: hhmmToMinutes(hhmm),
+        lagMin: Math.round((arrived.getTime() - ended.getTime()) / 60000),
+        dstTransition: isDstTransitionDay(tz, date),
+      },
+    ];
+  });
 }
 
 // Duration-only manual sleep entries written by the measurements quick-add. Their equal

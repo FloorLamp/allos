@@ -176,6 +176,36 @@ export function zonedWallTimeToUtc(
   return settleWallUtc(Date.UTC(y, mo - 1, d, h || 0, m || 0, 0), tz);
 }
 
+// How many minutes long a profile-local calendar day actually is in `tz` — 1440 on
+// an ordinary day, 1380 or 1500 on the two days a year the zone changes offset.
+// Measured rather than table-driven: the distance between this local midnight and
+// the next one already carries the transition, whichever direction and hour it
+// happens at (some zones shift at 00:00, some at 01:00, some at 02:00, and the
+// southern hemisphere shifts the other way round the year).
+export function localDayMinutes(tz: string, dateStr: string): number {
+  // Refused rather than guessed: an unparseable date would reach Intl as an Invalid
+  // Date and throw. Report the ORDINARY day, so a caller keying an EXCLUSION on this
+  // drops nothing on a garbage date.
+  if (!isRealIsoDate(dateStr)) return 1440;
+  const start = zonedWallTimeToUtc(tz, dateStr, "00:00").getTime();
+  const next = zonedWallTimeToUtc(
+    tz,
+    shiftDateStr(dateStr, 1),
+    "00:00"
+  ).getTime();
+  const minutes = (next - start) / 60000;
+  return Number.isFinite(minutes) ? minutes : 1440;
+}
+
+// Whether a profile-local calendar date contains a UTC-offset change. A clock-time
+// statistic computed across one mixes two offsets — the same wall-clock minute means
+// two different instants either side of the shift — so a consumer that cares
+// (lib/notifications/digest-schedule.ts's arrival statistic) EXCLUDES the day rather
+// than quietly averaging over the seam. Pure (Intl only).
+export function isDstTransitionDay(tz: string, dateStr: string): boolean {
+  return localDayMinutes(tz, dateStr) !== 1440;
+}
+
 // A ZONELESS wall-clock timestamp ("2026-07-25T23:14:30.000" — the shape a vendor
 // export writes when it records what the device's clock said and nothing about where
 // that clock was) resolved to the absolute instant it denotes in `tz`.
