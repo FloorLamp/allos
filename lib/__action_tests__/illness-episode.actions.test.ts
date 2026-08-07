@@ -504,9 +504,7 @@ describe("episode event ledger actions", () => {
     expect(
       (
         db
-          .prepare(
-            `SELECT occurred_at FROM intake_item_logs WHERE id = ?`
-          )
+          .prepare(`SELECT occurred_at FROM intake_item_logs WHERE id = ?`)
           .get(logId) as { occurred_at: string }
       ).occurred_at
     ).toContain("10:30");

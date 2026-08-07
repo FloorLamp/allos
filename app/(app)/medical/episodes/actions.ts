@@ -15,10 +15,7 @@ import { db, today } from "@/lib/db";
 import { getTimezone, deleteProfileSetting } from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { updateTemperatureCore } from "@/lib/temperature-log";
-import {
-  deleteAdministrationLog,
-  updateHistoricalDose,
-} from "@/lib/queries";
+import { deleteAdministrationLog, updateHistoricalDose } from "@/lib/queries";
 import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
