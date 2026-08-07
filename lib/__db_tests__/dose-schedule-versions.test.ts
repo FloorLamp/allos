@@ -37,12 +37,33 @@ import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { setTimezone } from "@/lib/settings";
 import { doseBucketOn, doseDueOn } from "@/lib/supplement-schedule";
 
+// Anchors on the profile's today, which is what most tests here want: they assert a
+// SHAPE, so which weekday it happens to be cannot change the answer.
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
   return { profileId, anchor: today(profileId) };
+}
+
+// An anchor for a test that COUNTS occurrences of one weekday, guaranteed not to be
+// that weekday itself.
+//
+// `ADHERENCE_PATTERN_DAYS` is 56 = 8x7, so the window holds exactly eight of every
+// weekday — but the finding excludes the anchor DAY (today is not over, so it carries
+// no missed dose yet). Anchor on a Friday and the Friday count is 7, not 8. A
+// hard-coded 8 therefore passes six days a week and fails on the seventh, which is
+// worse than failing every day: it reddens whatever happens to be open that morning,
+// long after the change that introduced it. This one reddened every open PR on
+// 2026-08-07, a Friday.
+//
+// Stepping back one day is the whole fix — it moves off the counted weekday and keeps
+// the window reaching up to the present, which the pattern builder requires: a fixed
+// historical anchor yields no findings at all and would assert nothing.
+function anchorAvoidingFriday(profileId: number): string {
+  const t = today(profileId);
+  return isFriday(t) ? shiftDateStr(t, -1) : t;
 }
 
 function isFriday(dateISO: string): boolean {
@@ -191,7 +212,11 @@ describe("migration 151 — seeding an existing dose changes nothing (#1973)", (
 
 describe("buildAdherencePatternFindings — an edit no longer voids the past (#1973)", () => {
   it("keeps the pre-edit window of a re-timed dose, and still flags its pattern", () => {
-    const { profileId, anchor } = makeProfile("dose-versions-window");
+    // This test COUNTS Fridays, so it must not anchor on one — see
+    // anchorAvoidingFriday.
+    const seed = makeProfile("dose-versions-window");
+    const profileId = seed.profileId;
+    const anchor = anchorAvoidingFriday(profileId);
     const born = `${shiftDateStr(anchor, -90)} 09:00:00`;
     const reTimedOn = shiftDateStr(anchor, -5);
 
