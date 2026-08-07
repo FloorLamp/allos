@@ -37,7 +37,16 @@ import {
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
-import { shouldDeferDigest } from "./digest-schedule";
+import {
+  arrivalStatistics,
+  digestDeadlineMinute,
+  formatDigestAttempt,
+  nextDigestAttempt,
+  parseDigestAttempt,
+  planDigestTick,
+  type DigestTickAction,
+} from "./digest-schedule";
+import { getSleepArrivals } from "../queries/metrics";
 import {
   countSituationalDue,
   doseDueOn,
@@ -54,12 +63,13 @@ import {
   getTimezone,
   getPublicUrl,
 } from "../settings";
+import type { NotifySchedule } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { getIntakeDeltas } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
-import { DIGEST_MARKER_KEY } from "./send-markers";
+import { DIGEST_ATTEMPT_KEY, DIGEST_MARKER_KEY } from "./send-markers";
 import {
   activitiesSurviveDemotion,
   collapsedTuneAction,
@@ -668,20 +678,72 @@ export function digestSleepPending(profileId: number): boolean {
   );
 }
 
-// The tick's digest gate (#2102): decline the FIRST attempt so the retry attempt
-// sends the digest WITH last night's sleep in it. One conditional over the two
-// attempt bands `slotDue` already provides — no new scheduling machinery, no new
-// marker, and bounded by construction (see lib/notifications/digest-schedule.ts).
-export function deferDigestForSleep(
+// The DEADLINE a Dynamic digest sends at whatever happened (#2211/#2214): the
+// arrival p90 plus a declared margin, or an hour after the floor when the sample
+// cannot answer. The decision is pure (`digestDeadlineMinute`); this is only its
+// gather. Static never calls it, so a Static profile pays nothing for the read.
+export function digestDeadline(
   profileId: number,
-  slotMinute: number,
+  floorMinute: number,
+  tickMinutes: number
+): number {
+  return digestDeadlineMinute(
+    floorMinute,
+    arrivalStatistics(getSleepArrivals(profileId)),
+    tickMinutes
+  );
+}
+
+// The tick's whole digest decision (#2211), DB side. The decision itself is
+// `planDigestTick`; this resolves its three stored inputs — the mode and minute from
+// the schedule, the deadline from the arrival statistic, today's failed-attempt
+// record from `notify_digest_attempt` — and hands `digestSleepPending` over as the
+// thunk so the sleep read is paid for only on a Dynamic re-check tick.
+export function planProfileDigestTick(
+  profileId: number,
+  sched: Pick<NotifySchedule, "digestMinute" | "digestMode">,
   currentMinute: number,
   tickMinutes: number,
-  auto: boolean
-): boolean {
-  return shouldDeferDigest(
-    { slotMinute, currentMinute, tickMinutes, auto },
+  date: string
+): DigestTickAction {
+  if (sched.digestMinute == null) return "idle";
+  return planDigestTick(
+    {
+      mode: sched.digestMode,
+      slotMinute: sched.digestMinute,
+      currentMinute,
+      tickMinutes,
+      // Static ignores the deadline, so it is never computed for one.
+      deadlineMinute:
+        sched.digestMode === "dynamic"
+          ? digestDeadline(profileId, sched.digestMinute, tickMinutes)
+          : sched.digestMinute,
+      attempt: parseDigestAttempt(
+        getProfileSetting(profileId, DIGEST_ATTEMPT_KEY),
+        date
+      ),
+    },
     () => digestSleepPending(profileId)
+  );
+}
+
+// Record that a digest send ATTEMPT failed at `minute`. The record is the Dynamic
+// retry's anchor and, by its presence, what distinguishes a failure from a decline
+// (see the DIGEST_ATTEMPT_KEY entry in send-markers.ts). Static's retry is still
+// slot-anchored, so it never writes one and its behavior is untouched.
+export function recordDigestAttempt(
+  profileId: number,
+  date: string,
+  minute: number
+): void {
+  const prev = parseDigestAttempt(
+    getProfileSetting(profileId, DIGEST_ATTEMPT_KEY),
+    date
+  );
+  setProfileSetting(
+    profileId,
+    DIGEST_ATTEMPT_KEY,
+    formatDigestAttempt(nextDigestAttempt(prev, date, minute))
   );
 }
 

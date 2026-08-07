@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DIGEST_DEFAULT_MINUTE } from "@/lib/notifications/digest-schedule";
 import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
 import {
   completeOnboardingState,
@@ -230,7 +231,7 @@ describe("onboarding notification schedule", () => {
     morningAuto: false,
     workoutEnabled: true,
     digestMinute: null,
-    digestAuto: false,
+    digestMode: "static" as const,
     weeklyRecapDay: null,
     weeklyRecapMinute: 9 * 60,
     milestonesEnabled: true,
@@ -253,7 +254,7 @@ describe("onboarding notification schedule", () => {
     );
     expect(guidance).toMatchObject({
       workoutEnabled: true,
-      digestMinute: 8 * 60,
+      digestMinute: DIGEST_DEFAULT_MINUTE,
       preventiveEnabled: false,
     });
 
@@ -263,7 +264,7 @@ describe("onboarding notification schedule", () => {
     );
     expect(upcoming).toMatchObject({
       workoutEnabled: true,
-      digestMinute: 8 * 60,
+      digestMinute: DIGEST_DEFAULT_MINUTE,
       preventiveEnabled: true,
     });
 

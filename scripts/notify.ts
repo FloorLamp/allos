@@ -87,7 +87,8 @@ import { runFollowUpNudges } from "../lib/notifications/followup";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import {
-  deferDigestForSleep,
+  planProfileDigestTick,
+  recordDigestAttempt,
   refreshDigestOfferTail,
   runDigest,
 } from "../lib/notifications/digest-data";
@@ -768,42 +769,41 @@ async function tickProfile(
     }
   }
 
-  // Morning digest: ONE merged summary per profile per day at digest_hour (this
-  // profile's timezone), hard-deduped so a bug can't spam a family chat at 7am. As
-  // of #1108 the "what's due" list is the digest's Today section — one message, one
-  // due-today computation (collectUpcoming), one per-day marker (notify_last_digest);
-  // the old separate upcoming digest + its notify_last_upcoming marker are retired.
+  // Morning digest: ONE merged summary per profile per day, hard-deduped so a bug
+  // can't spam a family chat at 7am. As of #1108 the "what's due" list is the
+  // digest's Today section — one message, one due-today computation
+  // (collectUpcoming), one per-day marker (notify_last_digest); the old separate
+  // upcoming digest + its notify_last_upcoming marker are retired.
   //
-  // ONE DEFERRAL (#2102). `slotDue` is already two attempt bands paired with a hard
-  // per-day marker, so the FIRST attempt is free to decline: when last night's
-  // sleep is pending but expected, this tick is skipped and the retry attempt —
-  // an hour later, at every tick rate — sends the digest with the Sleep section in
-  // it. It can only ever happen once — deferDigestForSleep returns false the moment
-  // this tick is not the slot's "first" band — so the retry attempt sends whether
-  // or not the sleep ever landed, and the digest's other sections are never held
-  // hostage. Nothing is written by the decline: the marker is still set only by a
-  // real send, so a deferred-then-sent digest records its pointer, stamp and cursor
-  // exactly as an on-time one does.
-  if (
-    sched.digestMinute != null &&
-    slotDue(sched.digestMinute, minute, tickMinutes) &&
-    getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date &&
-    !deferDigestForSleep(
-      profile.id,
-      sched.digestMinute,
-      minute,
-      tickMinutes,
-      sched.digestAuto
-    )
-  ) {
+  // TWO MODES (#2211), and the whole decision is one call. STATIC is unchanged, to
+  // the minute: `slotAttempt`'s two slot-anchored bands, send on either, sleep
+  // pending or not. DYNAMIC re-checks from its floor onward, sends the moment last
+  // night lands, and sends unconditionally at a deadline derived from the arrival
+  // distribution (#2214) rather than from `floor + SLOT_RETRY_DELAY_MIN`.
+  //
+  // A DECLINE ("wait") WRITES NOTHING — the condition is simply re-asked next tick.
+  // A FAILED SEND writes `notify_digest_attempt`, which is both the Dynamic retry's
+  // anchor (attempt + SLOT_RETRY_DELAY_MIN, not a floor-anchored band already in the
+  // past) and, by its presence, what tells the two apart. Attempts stay at two per
+  // profile per day in either mode: re-checks re-evaluate a CONDITION, they never
+  // re-attempt a delivery (#2121 item 3).
+  if (getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date) {
     try {
-      const dg = await runDigest(
-        profile.id,
-        profile.name,
-        date,
-        coachingInput()
-      );
-      if (dg.failed) anyFailed = true;
+      if (
+        planProfileDigestTick(profile.id, sched, minute, tickMinutes, date) ===
+        "send"
+      ) {
+        const dg = await runDigest(
+          profile.id,
+          profile.name,
+          date,
+          coachingInput()
+        );
+        if (dg.failed) {
+          recordDigestAttempt(profile.id, date, minute);
+          anyFailed = true;
+        }
+      }
     } catch (e) {
       log.error("digest failed", {
         profile: profile.id,

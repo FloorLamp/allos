@@ -65,6 +65,7 @@ import {
   WAKING_END_HOUR,
   parseNotifyTime,
 } from "@/lib/notifications/schedule";
+import { parseDigestMode } from "@/lib/notifications/digest-schedule";
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
@@ -404,13 +405,13 @@ export async function saveNotificationPrefs(formData: FormData) {
       ? n
       : fallback;
   };
-  // Wake-aware "auto" state (#1117): the Morning intake slot and the digest can
-  // follow the profile's wake time. "auto" is a distinct field value the reader
+  // Wake-aware "auto" state (#1117): the Morning intake slot can follow the
+  // profile's wake time. "auto" is a distinct field value the reader
   // (getNotifySchedule) resolves — the write path just records the intent so an
-  // unchanged re-save never freezes the resolved hour as a manual pick.
+  // unchanged re-save never freezes the resolved hour as a manual pick. The DIGEST
+  // has no `auto` any more (#2211): it has a mode and a concrete time.
   const morningAuto =
     String(formData.get("supp_morning_hour") ?? "") === "auto";
-  const digestAuto = String(formData.get("digest_hour") ?? "") === "auto";
   setNotifySchedule(profile.id, {
     supplementMinutes: {
       Morning: morningAuto ? null : time("supp_morning_hour"),
@@ -422,9 +423,12 @@ export async function saveNotificationPrefs(formData: FormData) {
     workoutEnabled:
       formData.get("workout_enabled") === "on" ||
       formData.get("workout_enabled") === "1",
-    // Morning digest: "auto" → follow wake time; "" / "off" → off; else the time.
-    digestMinute: digestAuto ? null : time("digest_hour"),
-    digestAuto,
+    // Morning digest (#2211): "" / "off" → off; else the concrete time, which is the
+    // send time in Static and the floor in Dynamic. The mode is user-owned and is
+    // only ever written by a tap — an unrecognised value reads as Static rather than
+    // silently enabling the mode that waits.
+    digestMinute: time("digest_hour"),
+    digestMode: parseDigestMode(String(formData.get("digest_mode") ?? "")),
     // Weekly recap (#32): weekday 0-6, "" / "off" → off.
     weeklyRecapDay: (() => {
       const raw = String(formData.get("recap_day") ?? "").trim();

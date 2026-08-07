@@ -49,11 +49,11 @@ import {
   parseNotifyTime,
 } from "../notifications/schedule";
 import {
-  arrivalStatistics,
-  digestAutoMinute,
+  DIGEST_DEFAULT_MINUTE,
+  parseDigestMode,
+  type DigestMode,
 } from "../notifications/digest-schedule";
 import { typicalWakeTime } from "../queries/sleep";
-import { getSleepArrivals } from "../queries/metrics";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -767,17 +767,17 @@ export interface NotifySchedule {
   // the "auto" sentinel instead of round-tripping the resolved number as a manual
   // choice. A manual time or "off" leaves this false.
   morningAuto: boolean;
-  // Morning digest: the minute of day (this profile's timezone) to send
-  // the once-a-day summary, or null = off. Off by default. When `digestAuto` is
-  // true this holds the resolved auto minute and the digest is ON then —
-  // which since #2102 is the wake time plus the measured sleep-ARRIVAL lag, not the
-  // wake time itself (see digestAutoMinute).
+  // Morning digest (#2211): the minute of day in this profile's timezone, or null =
+  // off (opt-in — absent stays off). In Static mode this is the SEND TIME; in Dynamic
+  // mode it is the FLOOR the digest is never sent before. There is no `auto` state
+  // any more: a time is always a concrete minute the user typed or tapped, and #2217
+  // is what proposes moving it.
   digestMinute: number | null;
-  // Whether the morning digest follows the wake time (issue #1117). Unlike the
-  // Morning slot, an ABSENT digest stays off (opt-in) — only an explicit "auto"
-  // turns it on at the wake-derived time, so this is true solely for the stored
-  // sentinel.
-  digestAuto: boolean;
+  // Which of the two modes decides the send time. Stored separately from the minute
+  // (`digest_mode`), deliberately NOT multiplexed as a third meaning onto
+  // `notify_digest_hour` — that overload is what #2205 exists to stop. Absent reads
+  // as Static, so a digest configured before modes existed is unchanged.
+  digestMode: DigestMode;
   // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
   // to send the seven-day summary, or null = off. Off by default. The recap fires
   // at weeklyRecapMinute on that weekday.
@@ -813,51 +813,34 @@ const SUPP_HOUR_KEYS = {
 // The default recap send time when a weekday is chosen (09:00).
 const DEFAULT_RECAP_MINUTE = 9 * 60;
 
+// Where the digest's MODE lives (#2211). Its own key beside `notify_digest_hour`,
+// which keeps carrying only "" (off) or "HH:MM" — the two questions ("when" and
+// "how does it decide when") are separate, and multiplexing a third meaning onto the
+// time is exactly what #2205 exists to stop.
+export const DIGEST_MODE_KEY = "digest_mode";
+
 export function getNotifySchedule(profileId: number): NotifySchedule {
   const morningRaw = getProfileSetting(profileId, SUPP_HOUR_KEYS.Morning);
   const digestRaw = getProfileSetting(profileId, "notify_digest_hour");
 
-  // The wake-derived Morning minute (issue #1117), computed only when a slot
-  // actually needs it — an absent/auto Morning, or an "auto" digest. A profile with
-  // an explicit manual Morning time and a non-auto digest never pays the sleep
-  // read. At minute grain (#2121) the wake minute is used AS IS: the old
-  // round-to-the-nearest-hour helper (wakeMinuteToHour) had minutes and threw them
-  // away, and its rounding defect is deleted with it — a 6:50 wake now seeds 6:50.
+  // The wake-derived Morning minute (issue #1117), computed only when the Morning
+  // slot actually needs it — absent or "auto". A profile with an explicit manual
+  // Morning time never pays the sleep read. At minute grain (#2121) the wake minute
+  // is used AS IS: the old round-to-the-nearest-hour helper (wakeMinuteToHour) had
+  // minutes and threw them away, and its rounding defect is deleted with it — a
+  // 6:50 wake now seeds 6:50.
   //
-  // This is the WAKE time, and it stays the answer for the Morning intake slot:
-  // that slot needs you awake and has no dependency on sleep data having synced.
-  // Since #2214 the morning DIGEST does not read it to resolve at all — it takes
-  // the measured arrival p90 whole — and keeps it only as the no-answer fallback
-  // below, which is why an `auto` digest still asks for it here.
-  const needsWake =
-    morningRaw === undefined ||
-    morningRaw === AUTO_TIME ||
-    digestRaw === AUTO_TIME;
+  // This is the WAKE time, and it is the answer for the Morning INTAKE slot ONLY:
+  // that slot needs you awake and has no dependency on sleep data having synced. The
+  // morning DIGEST no longer reads it at all (#2211 removed `auto` from the digest),
+  // so the arrival statistic is not gathered here either — it is a bound and a
+  // suggestion now, never a live binding.
+  const needsWake = morningRaw === undefined || morningRaw === AUTO_TIME;
   const wakeMinute = needsWake ? typicalWakeTime(profileId) : null;
   // Auto/absent Morning resolves to the wake minute, or the hardcoded default when
   // no sleep data yet — graceful degradation.
   const morningAutoValue =
     wakeMinute ?? DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
-
-  // The DIGEST's auto value (#2102, corrected in #2214). It resolves past the time
-  // last night's sleep typically ARRIVES, not the time the profile wakes: the digest
-  // prints a Sleep section, and the row lands a measured ~70 minutes behind waking,
-  // so the wake time scheduled the digest — deliberately — for a time the data has
-  // never arrived by.
-  //
-  // The p90 is taken over arrival CLOCK TIMES directly and is NOT composed out of the
-  // wake minute any more: median wake + p90 lag is a central value of one varying
-  // quantity plus a tail value of another, and measured half an hour low (#2214).
-  // `wakeMinute` survives here only as the FALLBACK when the arrival sample cannot
-  // answer — which is exactly today's behavior for a young profile, where the
-  // one-hour deferral in the tick is the safety net instead.
-  //
-  // Only paid for on an explicitly `auto` digest.
-  const digestAutoValue =
-    digestRaw === AUTO_TIME
-      ? (digestAutoMinute(arrivalStatistics(getSleepArrivals(profileId))) ??
-        morningAutoValue)
-      : morningAutoValue;
 
   return {
     supplementMinutes: {
@@ -882,10 +865,16 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     morningAuto: morningRaw === undefined || morningRaw === AUTO_TIME,
     workoutEnabled:
       (getProfileSetting(profileId, "notify_workout_enabled") ?? "1") === "1",
-    // Digest is opt-in: absent → off (null). Only an explicit "auto" turns it on at
-    // the resolved auto minute; "HH:MM" → manual.
-    digestMinute: parseNotifyTime(digestRaw, null, digestAutoValue),
-    digestAuto: digestRaw === AUTO_TIME,
+    // Digest is opt-in: absent → off (null); "" → off; "HH:MM" → that minute.
+    //
+    // A RESIDUAL "auto" reads as the declared default rather than as off. Migration
+    // 165 converts every stored sentinel, so the only way one can appear is an old
+    // process writing it during a deploy overlap — and turning someone's digest off
+    // is a worse answer to that than pre-filling the default it would have been
+    // switched on with. (`AUTO_TIME` itself is very much alive: the Morning intake
+    // slot above still resolves it.)
+    digestMinute: parseNotifyTime(digestRaw, null, DIGEST_DEFAULT_MINUTE),
+    digestMode: parseDigestMode(getProfileSetting(profileId, DIGEST_MODE_KEY)),
     // Weekly recap — off by default (opt-in). Weekday 0-6, else null.
     weeklyRecapDay: parseWeekday(
       getProfileSetting(profileId, "notify_recap_day")
@@ -947,16 +936,16 @@ export function setNotifySchedule(
     "notify_workout_enabled",
     sched.workoutEnabled ? "1" : "0"
   );
-  // Digest: "auto" sentinel when following the wake time, else "HH:MM" or "" (off).
+  // Digest (#2211): the time and the mode are two settings, written together. The
+  // time is "HH:MM" or "" (off) — no sentinel. The MODE is written even when the
+  // digest is off, so switching it back on restores the mode the user last chose
+  // rather than silently reverting to Static.
   setProfileSetting(
     profileId,
     "notify_digest_hour",
-    sched.digestAuto
-      ? AUTO_TIME
-      : sched.digestMinute == null
-        ? ""
-        : formatNotifyTime(sched.digestMinute)
+    sched.digestMinute == null ? "" : formatNotifyTime(sched.digestMinute)
   );
+  setProfileSetting(profileId, DIGEST_MODE_KEY, sched.digestMode);
   setProfileSetting(
     profileId,
     "notify_recap_day",

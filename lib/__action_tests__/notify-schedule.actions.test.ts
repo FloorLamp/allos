@@ -83,15 +83,34 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     );
   });
 
-  it("records 'auto' for the digest, turning it on at the wake hour", async () => {
+  it("records the digest's MODE alongside its time (#2211)", async () => {
     const login = createLogin();
-    const profile = createProfile("auto-digest", login.id);
+    const profile = createProfile("mode-digest", login.id);
     actAs(login, profile);
 
-    await saveNotificationPrefs(prefsForm({ digest_hour: "auto" }));
+    await saveNotificationPrefs(
+      prefsForm({ digest_hour: "07:00", digest_mode: "dynamic" })
+    );
 
-    expect(getProfileSetting(profile.id, "notify_digest_hour")).toBe("auto");
-    expect(getNotifySchedule(profile.id).digestAuto).toBe(true);
+    // Two settings, two keys — no third meaning multiplexed onto the time (#2205).
+    expect(getProfileSetting(profile.id, "notify_digest_hour")).toBe("07:00");
+    expect(getProfileSetting(profile.id, "digest_mode")).toBe("dynamic");
+    const sched = getNotifySchedule(profile.id);
+    expect(sched.digestMinute).toBe(7 * 60);
+    expect(sched.digestMode).toBe("dynamic");
+  });
+
+  it("never enables Dynamic from an unrecognised mode value", async () => {
+    // Constraint 3: the mode is user-owned and written only by a tap. A form that
+    // omits it (or a stale tab posting the retired "auto") reads as Static.
+    const login = createLogin();
+    const profile = createProfile("mode-fallback", login.id);
+    actAs(login, profile);
+
+    await saveNotificationPrefs(
+      prefsForm({ digest_hour: "07:00", digest_mode: "auto" })
+    );
+    expect(getNotifySchedule(profile.id).digestMode).toBe("static");
   });
 
   it("keeps the digest off when 'off' is chosen", async () => {
@@ -103,8 +122,9 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
 
     expect(getProfileSetting(profile.id, "notify_digest_hour")).toBe("");
     const sched = getNotifySchedule(profile.id);
-    expect(sched.digestAuto).toBe(false);
     expect(sched.digestMinute).toBeNull();
+    // The mode survives an Off so switching back on restores the choice.
+    expect(sched.digestMode).toBe("static");
   });
 
   it("sleep summary is ON by default (#1378) and the toggle is an opt-OUT", async () => {

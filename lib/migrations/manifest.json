@@ -162,5 +162,6 @@
   "161-condition-edit-lock.ts": "d3d8615a4c7cd5846abc01a720ab708a1cc66fbbb009aec01d888a3933f6df92",
   "162-immunizations-share-kind.ts": "09e64c802f1019d428639dc6ac8b51dbdce54e5649b6458bedda938c4805f6ff",
   "163-sync-ledger-utc-instants.ts": "671227700aa550c663950949e1f731dd283a99c098dd31760c438256982e4e9a",
-  "164-hr-minutes-utc-instants.ts": "5fbe7b7993911e9cccfebe9f150239cf726291d0b2dcc1578c87aad5bca9bd05"
+  "164-hr-minutes-utc-instants.ts": "5fbe7b7993911e9cccfebe9f150239cf726291d0b2dcc1578c87aad5bca9bd05",
+  "165-digest-mode.ts": "79fbb8c2b7dd490fe47d0afa055f78046daf48190f0a5294030d4dfda65c011b"
 }

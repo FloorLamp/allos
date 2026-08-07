@@ -65,6 +65,11 @@ export type KindControl =
   // A time control ("HH:MM" at minute grain, #2121) whose "Off" mode is the kind's
   // disable, optionally offering the wake-aware "Auto" sentinel (#1117).
   | { type: "time"; field: string; auto: boolean }
+  // The morning digest's mode + time (#2211): one select carrying Off / Static /
+  // Dynamic, plus the time input that is the send time in Static and the floor in
+  // Dynamic. Deliberately NOT generalised — only the digest waits, and a second
+  // consumer is when this becomes shared vocabulary, not before (#2211 constraint 8).
+  | { type: "digest-mode"; modeField: string; timeField: string }
   // A weekday select (whose "Off" is the disable) plus a time control.
   | { type: "day-time"; dayField: string; timeField: string };
 
@@ -194,7 +199,11 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     label: "Morning digest",
     blurb: "One daily summary, including today’s what’s-due list.",
     safety: false,
-    control: { type: "time", field: "digest_hour", auto: true },
+    control: {
+      type: "digest-mode",
+      modeField: "digest_mode",
+      timeField: "digest_hour",
+    },
     controlTestId: "digest-hour",
     extras: [
       {
@@ -203,7 +212,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
         testId: "digest-sleep-enabled",
       },
     ],
-    more: "Sections with nothing to report are skipped. The Today list is the same one your Upcoming page shows, so a snooze or dismiss there quiets it here. Pick Auto to have it arrive around when you usually wake.",
+    more: "Sections with nothing to report are skipped. The Today list is the same one your Upcoming page shows, so a snooze or dismiss there quiets it here. “Same time every day” sends at the time you pick whether or not last night’s sleep has arrived; “As soon as it’s ready” waits for it, never sends before that time, and sends anyway at the latest time shown.",
   },
   {
     kind: "weekly-recap",
