@@ -147,7 +147,7 @@ describe("setActiveSituations in-transaction diff (#2140)", () => {
     const open = db
       .prepare(
         `SELECT COUNT(*) AS n FROM illness_episodes
-          WHERE profile_id = ? AND ended_at IS NULL`
+          WHERE profile_id = ? AND end_date IS NULL`
       )
       .get(p) as { n: number };
     expect(open.n).toBe(1);
@@ -156,7 +156,7 @@ describe("setActiveSituations in-transaction diff (#2140)", () => {
     const openAfter = db
       .prepare(
         `SELECT COUNT(*) AS n FROM illness_episodes
-          WHERE profile_id = ? AND ended_at IS NULL`
+          WHERE profile_id = ? AND end_date IS NULL`
       )
       .get(p) as { n: number };
     expect(openAfter.n).toBe(0);

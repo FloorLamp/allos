@@ -124,7 +124,7 @@ export function gatherCareTrail(profileIds: number[]): CareTrailGather {
     const todayStr = today(pid);
     for (const e of summarizeEpisodesForProfile(pid)) {
       // The membership window in THIS member's context: an open episode runs to its own
-      // today(); a closed episode to its last active day (== reconcile's ended_at-1).
+      // today(); a closed episode to its last active day (the stored end_date, #2232).
       const rangeEndInclusive = e.ongoing
         ? todayStr
         : (e.lastActiveDay ?? todayStr);

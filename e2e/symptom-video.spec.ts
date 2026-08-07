@@ -298,7 +298,7 @@ test("a caregiver reading a household member's episode can play its clips (#1696
         h
           .prepare(
             `SELECT id FROM illness_episodes
-              WHERE profile_id = ? AND ended_at IS NULL
+              WHERE profile_id = ? AND end_date IS NULL
               ORDER BY id DESC LIMIT 1`
           )
           .get(childId) as { id: number }

@@ -127,13 +127,13 @@ describe("isRecentlySickOn", () => {
     expect(isRecentlySickOn(true, null, today)).toBe(true);
   });
 
-  it("is true when the most recent episode closed within the window", () => {
-    // Closed 10 days ago, window 14 → recently sick.
+  it("is true when the most recent episode's last active day is within the window", () => {
+    // Last active 10 days ago, window 14 → recently sick.
     expect(isRecentlySickOn(false, "2026-03-10", today)).toBe(true);
   });
 
-  it("is false when the most recent episode closed before the window", () => {
-    // Closed 20 days ago, window 14 → not recently sick.
+  it("is false when the most recent episode's last active day is before the window", () => {
+    // Last active 20 days ago, window 14 → not recently sick.
     expect(isRecentlySickOn(false, "2026-02-28", today)).toBe(false);
   });
 
@@ -142,7 +142,7 @@ describe("isRecentlySickOn", () => {
   });
 
   it("respects the default window constant at the boundary", () => {
-    const end = "2026-03-06"; // exactly 14 days before today
+    const end = "2026-03-06"; // last active exactly 14 days before today
     expect(
       isRecentlySickOn(false, end, today, HOUSEHOLD_RECENTLY_SICK_DAYS)
     ).toBe(true);

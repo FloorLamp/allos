@@ -78,12 +78,12 @@ function parseEpisodeId(formData: FormData): number | null {
 
 function eventDateInEpisode(
   date: string,
-  row: { started_at: string | null; ended_at: string | null }
+  row: { start_date: string | null; end_date: string | null }
 ): boolean {
   return (
     isRealIsoDate(date) &&
-    (row.started_at == null || date >= row.started_at) &&
-    (row.ended_at == null || date < row.ended_at)
+    (row.start_date == null || date >= row.start_date) &&
+    (row.end_date == null || date <= row.end_date)
   );
 }
 
@@ -356,7 +356,7 @@ export async function createEpisodeShareLinkAction(
     profileId,
     login.id,
     row.situation,
-    row.started_at,
+    row.start_date,
     expiresAt,
     row.id
   );
@@ -423,9 +423,10 @@ function parseDateOrNull(v: FormDataEntryValue | null): string | null {
 }
 
 // Edit an episode's boundaries + annotations (item 1 + item 8/9) as a plain row edit —
-// derived membership follows the new [start, end) automatically. Coherence guard: an
-// OPEN episode's end is owned by the situation toggle ("Feeling better"), so a submitted
-// end on a still-open row is ignored here — the two are never allowed to disagree.
+// derived membership follows the new [start_date, end_date] automatically. Coherence
+// guard: an OPEN episode's end is owned by the situation toggle ("Feeling better"), so
+// a submitted end on a still-open row is ignored here — the two are never allowed to
+// disagree.
 export async function editEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
@@ -441,20 +442,21 @@ export async function editEpisodeAction(
   const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
-  const startedAt = parseDateOrNull(formData.get("startedAt"));
-  const wasOpen = row.ended_at == null;
+  const startDate = parseDateOrNull(formData.get("startDate"));
+  const wasOpen = row.end_date == null;
   // A closed episode may edit both ends; an open episode keeps its null end (the toggle
-  // owns closing it). The submitted end must fall strictly after the start (exclusive).
-  const submittedEnd = parseDateOrNull(formData.get("endedAt"));
-  const endedAt = wasOpen ? null : submittedEnd;
-  if (endedAt != null && startedAt != null && endedAt <= startedAt)
-    return { ok: false, error: "The end date must be after the start date." };
+  // owns closing it). The submitted end is the inclusive last day sick (#2232), so a
+  // one-day episode has end == start; only end BEFORE start is refused.
+  const submittedEnd = parseDateOrNull(formData.get("endDate"));
+  const endDate = wasOpen ? null : submittedEnd;
+  if (endDate != null && startDate != null && endDate < startDate)
+    return { ok: false, error: "The end date can't be before the start date." };
 
   const updated = editEpisodeCore(
     profileId,
     id!,
-    startedAt,
-    endedAt,
+    startDate,
+    endDate,
     String(formData.get("note") ?? ""),
     String(formData.get("outcome") ?? "")
   );
@@ -475,13 +477,13 @@ export async function createEpisodeAction(
 ): Promise<EpisodeCreateResult> {
   const { profile } = await requireWriteAccess();
   const situation = String(formData.get("situation") ?? "").trim() || "Illness";
-  const startedAt = parseDateOrNull(formData.get("startedAt"));
-  const endedAt = parseDateOrNull(formData.get("endedAt"));
-  if (!startedAt || !endedAt)
+  const startDate = parseDateOrNull(formData.get("startDate"));
+  const endDate = parseDateOrNull(formData.get("endDate"));
+  if (!startDate || !endDate)
     return { ok: false, error: "Enter both a start and an end date." };
-  if (endedAt <= startedAt)
-    return { ok: false, error: "The end date must be after the start date." };
-  const newId = createEpisodeRow(profile.id, situation, startedAt, endedAt);
+  if (endDate < startDate)
+    return { ok: false, error: "The end date can't be before the start date." };
+  const newId = createEpisodeRow(profile.id, situation, startDate, endDate);
   revalidatePath("/medical/episodes");
   return { ok: true, id: newId };
 }

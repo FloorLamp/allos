@@ -13,7 +13,7 @@ export interface EpisodeIndexEntry {
   id: number;
   situation: string;
   start: string | null; // inclusive first active day
-  end: string | null; // EXCLUSIVE end (null = ongoing)
+  end: string | null; // inclusive last active day (null = ongoing)
   ongoing: boolean;
   firstDay: string | null;
   lastActiveDay: string | null;

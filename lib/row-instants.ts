@@ -95,8 +95,8 @@ export type InstantAbsence =
   // not denote an instant yet.
   | "needs-zone"
   // The column is day-grained. A day is not a lesser instant (#94): `allergies
-  // .onset_date` and `illness_episodes.started_at` are days despite their names, and
-  // silently reading either as midnight-somewhere is a fabricated precision.
+  // .onset_date` and `illness_episodes.start_date` are days, and silently reading
+  // either as midnight-somewhere is a fabricated precision.
   | "day-only"
   // The declared grain is `mixed` — the column holds more than one shape, so a
   // generic reader must not pick one. The caller handles it explicitly or not at all.

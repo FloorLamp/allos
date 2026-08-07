@@ -26,13 +26,15 @@ describe("episodeContainingDate", () => {
     ev("Illness", "2026-01-10", "stop"),
   ];
 
-  it("returns [start, end) for a mid-episode date; start day inclusive, stop day exclusive", () => {
+  it("returns the inclusive [start, end] for a mid-episode date; end = last active day (#2232)", () => {
+    // The stop event is 2026-01-10, so the last active day — the derived `end` — is
+    // 2026-01-09.
     expect(
       episodeContainingDate("2026-01-05", "Illness", closed, false)
     ).toEqual({
       situation: "Illness",
       start: "2026-01-01",
-      end: "2026-01-10",
+      end: "2026-01-09",
     });
     // The start day is inside the episode.
     expect(
@@ -40,7 +42,7 @@ describe("episodeContainingDate", () => {
     ).toEqual({
       situation: "Illness",
       start: "2026-01-01",
-      end: "2026-01-10",
+      end: "2026-01-09",
     });
     // The stop day is the first inactive day → no episode.
     expect(
@@ -100,7 +102,10 @@ describe("episodeContainingDate", () => {
   });
 });
 
-describe("episodesForSituation (enumeration for #800)", () => {
+describe("episodesForSituation (the frozen migration-046 pairing)", () => {
+  // Its `end` is the STOP EVENT day (the pre-#2232 stored shape), NOT the inclusive
+  // IllnessEpisode.end — migration 046's backfill wrote this value into `ended_at`
+  // and migration 169 converts it, so the pairing must keep emitting it.
   it("pairs consecutive start→stop, leaves an unclosed start ongoing", () => {
     const events = [
       ev("Illness", "2026-01-01", "start"),

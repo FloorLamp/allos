@@ -5,9 +5,9 @@
 // `AssembledEpisode` lives in lib/illness-episode.ts; this module never touches the DB.
 //
 // "Day N" is computed off the profile-TZ calendar-day boundaries the caller passes in
-// (start day = day 1), matching the symptom-episode derivation's [start, end) semantics
-// (lib/symptom-episode.ts): `end` is EXCLUSIVE (the first inactive day), so the last
-// active day is `end` minus one; an ongoing episode (`end` null) runs through today.
+// (start day = day 1), matching the symptom-episode derivation's inclusive [start, end]
+// semantics (lib/symptom-episode.ts, #2232): `end` IS the last active day; an ongoing
+// episode (`end` null) runs through today.
 
 import { daysBetweenDateStr, shiftDateStr, zonedWallTimeToUtc } from "./date";
 import {
@@ -209,11 +209,11 @@ export interface AssembledEpisode {
   id: number | null;
   situation: string;
   start: string | null; // inclusive first active day, or null (active before the log)
-  end: string | null; // EXCLUSIVE end (first inactive day), or null (ongoing)
+  end: string | null; // inclusive last active day (#2232), or null (ongoing)
   ongoing: boolean;
   // The concrete day window the data was gathered over (inclusive both ends). `firstDay`
-  // falls back to the earliest data day when `start` is null; `lastActiveDay` is
-  // `end`-minus-one for a closed episode, else `asOf` (today) for an ongoing one.
+  // falls back to the earliest data day when `start` is null; `lastActiveDay` is the
+  // inclusive `end` for a closed episode, else `asOf` (today) for an ongoing one.
   firstDay: string | null;
   lastActiveDay: string | null;
   asOf: string; // the profile-local day the assembly was taken "as of"

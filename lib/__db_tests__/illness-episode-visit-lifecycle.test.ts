@@ -170,20 +170,20 @@ describe("episode delete + merge carry the visit-link side-state (#1198/#203)", 
 describe("recently-resolved reopen eligibility (#1140 Part A)", () => {
   it("shows a 6-days-resolved episode and hides an 8-days-resolved one (same 7-day window)", () => {
     const p = newProfile("Reopen");
-    // ended_at is EXCLUSIVE → last active day = ended_at - 1. Resolved 6 days ago:
-    // last active day = today-6 ⇒ ended_at = today-5.
-    const sixAgoEnd = shiftDateStr(today(p), -5);
+    // end_date is the INCLUSIVE last active day (#2232). Resolved 6 days ago:
+    // last active day = end_date = today-6.
+    const sixAgoEnd = shiftDateStr(today(p), -6);
     createEpisodeRow(p, "Cold", shiftDateStr(today(p), -10), sixAgoEnd);
     const eligible = reopenEligibleEpisodeForProfile(p);
     expect(eligible?.situation).toBe("Cold");
 
     const q = newProfile("Expired");
-    // Resolved 8 days ago: last active = today-8 ⇒ ended_at = today-7 (> 7-day window).
+    // Resolved 8 days ago: last active = end_date = today-8 (> 7-day window).
     createEpisodeRow(
       q,
       "Cold",
       shiftDateStr(today(q), -12),
-      shiftDateStr(today(q), -7)
+      shiftDateStr(today(q), -8)
     );
     expect(reopenEligibleEpisodeForProfile(q)).toBeNull();
   });

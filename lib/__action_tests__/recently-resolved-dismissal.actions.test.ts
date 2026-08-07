@@ -41,8 +41,8 @@ const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
 
 // A member login + a profile carrying an episode resolved `daysAgo` days ago.
-// ended_at is EXCLUSIVE, so "last active day = today - daysAgo" means
-// ended_at = today - (daysAgo - 1) — the same arithmetic the eligibility DB test uses.
+// end_date is the INCLUSIVE last active day (#2232), so it is simply
+// today - daysAgo.
 function seedResolved(
   loginId: number,
   profileName: string,
@@ -55,7 +55,7 @@ function seedResolved(
     profile.id,
     situation,
     shiftDateStr(on, -(daysAgo + 5)),
-    shiftDateStr(on, -(daysAgo - 1))
+    shiftDateStr(on, -daysAgo)
   );
   return { profileId: profile.id, episodeId };
 }
@@ -129,7 +129,7 @@ describe("dismissRecentlyResolved (#1548)", () => {
 
     // Age A's episode out of its 7-day window by rewriting its end date, then dismiss
     // a DIFFERENT, still-eligible line. The stale id must not survive the write.
-    db.prepare("UPDATE illness_episodes SET ended_at = ? WHERE id = ?").run(
+    db.prepare("UPDATE illness_episodes SET end_date = ? WHERE id = ?").run(
       shiftDateStr(today(a.profileId), -20),
       a.episodeId
     );
