@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { pinnedTimezone } from "./pinned-timezone";
 
 // The digest time SUGGESTION on Settings → Notifications (#2217).
 //
@@ -53,18 +54,28 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
-// The instant `daysBack` days before the frozen run clock, at `minute` UTC. The e2e
-// profile runs in UTC, so a UTC wall time IS its local clock time.
+// The arrival minute the statistic measures is PROFILE-LOCAL, and the suite pins the
+// instance timezone to whichever fixed-offset zone makes the frozen instant read
+// 13:mm local (e2e/pinned-timezone.ts). So a fixture that seeded UTC wall times would
+// land the whole distribution at an arbitrary local hour and the trigger would fire
+// or not depending on the run's start hour. These instants are built from the LOCAL
+// clock and converted back — the pinned zones are fixed-offset and never observe DST,
+// so one subtraction is the whole conversion.
+const OFFSET_MS =
+  pinnedTimezone(frozenNow().toISOString()).offsetHours * 3600_000;
+
 function instantAt(
   daysBack: number,
   minute: number
 ): { iso: string; day: string } {
-  const base = new Date(frozenNow());
-  base.setUTCDate(base.getUTCDate() - daysBack);
-  base.setUTCHours(Math.floor(minute / 60), minute % 60, 0, 0);
+  // A Date whose UTC fields ARE the profile's local wall clock.
+  const local = new Date(frozenNow().getTime() + OFFSET_MS);
+  local.setUTCDate(local.getUTCDate() - daysBack);
+  local.setUTCHours(Math.floor(minute / 60), minute % 60, 0, 0);
+  const utc = new Date(local.getTime() - OFFSET_MS);
   return {
-    iso: `${base.toISOString().slice(0, 19)}Z`,
-    day: base.toISOString().slice(0, 10),
+    iso: `${utc.toISOString().slice(0, 19)}Z`,
+    day: local.toISOString().slice(0, 10),
   };
 }
 
