@@ -5,10 +5,13 @@ sessions (not app behavior)
 
 An operational runbook for an agent session that orchestrates development on
 this repo: triage issues, dispatch coding agents, review every PR, own e2e,
-merge. Distilled from a session that merged 98 PRs / closed ~215 issues with
-zero reverts, extended after a second session (69 merges, zero reverts,
-migrations 098–108) and a third (10+ merges, zero reverts, migrations 109–112,
-the #1392/#1417 census root-causes, and the release-notes pipeline below).
+merge. Distilled across several such sessions — the first merged 98 PRs and
+closed ~215 issues with zero reverts; later ones added the migration-slot
+protocol (098–108), the #1392/#1417 census root-causes and the release-notes
+pipeline, the `parked`/dependabot rulings and the check-in cadence, and the
+merge-commit discipline below. Migration slots are past 165 and every session
+so far has held zero reverts. Nothing here is theory: each rule is an incident
+that cost time once.
 
 ## Operating contract
 
@@ -197,126 +200,103 @@ in-app file is the only surface.
 
 ## Dispatch prompt template
 
-Every agent prompt must contain, verbatim where marked:
+The fenced block below goes into every agent prompt VERBATIM. Keep it that way:
+it is instructions, not explanations. The incidents each line was bought with
+live in **Why those lines are there**, immediately after — read them before
+writing a brief, and never paste them to an agent.
 
 ```
 - Worktree setup: git fetch origin main && git worktree add $SCRATCH/wt-<x> -b <branch> origin/main
 - cp -al <canonical node_modules — usually /home/user/allos/node_modules>/. $SCRATCH/wt-<x>/node_modules
-  (fill the real path in; never a worktree that may be gone by the time this is read)
-- export PATH=<node-24 bin dir>:$PATH in EVERY shell (see Environment facts; verify better-sqlite3 loads)
-- COMMIT AND PUSH after every meaningful step — container restarts are frequent
-- Long runs (e2e, builds) in ONE foreground bash call — never background + monitor/poll (dies with restarts)
+- export PATH=<node-24 bin dir>:$PATH in EVERY shell (verify better-sqlite3 loads)
+- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts
+- COMMIT AND PUSH after every meaningful step — container restarts are frequent, and
+  your worktree is NOT backed up
+- Foreground ALL gates; never run_in_background for builds/tests; every wait is one
+  blocking Bash call, chunked under the 10-minute tool cap
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST
-  (GET /repos/OWNER/REPO/issues/N and /issues/N/comments) — clarifications and
-  scope changes hide in comment threads; a comment overrides the body when they
-  conflict. Trust symbol names over line numbers.
-- Checks: npm run format && npm run lint && npm run typecheck && npm test && npm run test:db
-  — run format LAST before committing (a late edit after formatting is a known CI breaker)
-- After ANY e2e spec edit — including a spec commit added after the full gate run —
-  re-run `npx vitest run lib/__tests__/e2e-hygiene.test.ts` before pushing. Two
-  consecutive waves (2026-08-06) shipped a late spec commit that tripped the scan
-  in CI (`Date.now()` without `clock-ok`, `.first()` with its `first-ok` comment
-  on the wrong line — the scan requires SAME-LINE markers). The scan is 2 seconds;
-  a CI round trip is 25 minutes.
-- **Every dispatch states the migration-slot situation explicitly, including "you
-  have none."** On 2026-08-07 two agents both wrote `165-*.ts`: one had been
-  allocated the slot, the other was dispatched with no mention of migrations at all
-  because the orchestrator did not anticipate that issue needing one. The agent did
-  the reasonable thing and took the next free-looking number. The runner requires
-  array position == id and `assertContiguousIds` forbids gaps, so the two could not
-  both land, and the collision was only found when their worktrees were rescued.
-  A prompt that is silent on slots is not neutral — it delegates the choice. Say
-  either "your slot is N, do not take N+1" or "you have NO slot; if you conclude you
-  need one, STOP and report rather than taking a number."
-- **State which slots are already ON MAIN, not only which slot the agent holds.**
-  Those are different facts and the agent needs both. On 2026-08-07 a #2211 agent
-  was correctly told it held 166, and spent real effort building a contingency for
-  a gap at 165 — verifying its whole tree twice, once at each id — because its
-  branch base predated the merge that landed 165 and nothing in the brief told it
-  otherwise. Its work was sound and its conclusion ("165 would have been the better
-  call") was simply reasoning from a premise that had already expired. The dispatch
-  costs one sentence: "N and N−1 are on main; yours is N+1."
-- **A migration-id gap is not a migration-test failure.** `assertContiguousIds`
-  runs inside `runMigrations` → `createDb()`, so a gap fails EVERY DB test file and
-  every browser shard at import, not just the tests for the migration in question.
-  Say that when reserving a non-next slot: an agent that expects a handful of red
-  tests will read a wall of them as its own bug and start debugging the wrong thing.
-- **A WIDENING SIGNATURE outruns a green CI run, and a clean-merge check will not
-  catch it.** On 2026-08-07 the same change (`zonedWallTimeToUtc` gaining a `null`
-  return, #2245) broke two different branches this way, in both directions: #2250's
-  CI was green against a base that predated #2248's two new call sites, and #2252's
-  agent wrote new fixture helpers against the old signature while #2250 was landing.
-  Both agents reported green honestly. **CI evaluates the MERGE COMMIT; a worktree
-  evaluates the branch** — and a widened signature is not a textual conflict, so
-  `git merge-tree` reports clean and `mergeable_state` says clean while the merged
-  tree does not typecheck. It reaches main silently too: `ci.yml` is `on:
-  pull_request` only, so main is never tested and the breakage surfaces on the NEXT
-  PRs instead of the one that caused it. Two consequences: tell an agent to
-  `git merge origin/main` and re-run typecheck immediately before opening its PR
-  (one minute, catches exactly this), and when a PR touching a shared signature has
-  sat through a long run, do that merge YOURSELF before merging it. Every EXISTING
-  call site is in the diff; every call site added while the agent worked is not.
-- **Another Claude session may be working the same repo, and it takes slots.** On
-  2026-08-07 a branch appeared carrying a different `Claude-Session:` trailer and
-  claiming migration slot 167 — the slot this runbook's own map had recorded as
-  free. The slot map is authoritative only over agents THIS orchestrator dispatched.
-  Before reserving a slot, check the remote for branches you did not create
-  (`git ls-remote --heads origin`), and read the `Claude-Session:` trailer on any
-  branch you do not recognise rather than assuming it is a dead agent of yours.
-- **An agent's worktree is not backed up. Push or lose it.** Five container
-  restarts on 2026-08-06/07; the fifth killed three live agents mid-work with
-  uncommitted trees — ~2,300 lines that existed only under /tmp. They survived
-  because they happened to be noticed before the next wipe, which is luck, not
-  process. Two consequences: tell agents to commit and push early and often rather
-  than at the end, and when an agent dies, RESCUE ITS TREE FIRST — commit it to its
-  branch as an explicitly-labelled WIP that states no gate has been run, before
-  doing anything else. A resumed agent then verifies what it inherited rather than
-  trusting it.
-- The e2e port variable is `E2E_PORT`, NOT `PORT`. `playwright.config.ts` reads
-  `PORT_BASE = Number(process.env.E2E_PORT ?? 3100)`, so a prompt saying `PORT=6900`
-  is INERT — that agent silently runs on base 3100 like every other agent, and two
-  concurrent agents then share ports and manufacture exactly the flaky e2e results
-  the orchestrator spends the day diagnosing. Copy the invocation from the Local e2e
-  row above verbatim rather than paraphrasing it.
-- **Orchestrator: when the runbook already answers something, follow it rather than
-  improvising.** Twice on 2026-08-06 the orchestrator drifted from a rule written
-  here — reviews went through the GraphQL MCP path instead of the documented REST
-  one (draining GraphQL to zero while REST sat unused), and dispatch prompts said
-  `PORT=` where the Local e2e row says `E2E_PORT=`. Both were caught by someone
-  else. Before writing a dispatch prompt or a review, re-read the row that governs
-  it; the cost of skimming is paid by every agent dispatched that day.
-- npm run phi-scan before the final push — the pre-commit staged-files hook does
-  NOT fire in agent worktrees, and CI's whole-tree scan will red a PR for a
-  pattern-shaped literal (a SHA-256 golden's digit substring once formed a
-  Luhn-valid NPI; the fix is the scanner's own same-line `phi-scan-ok` marker
-  with a justification)
-- NO high-entropy random-looking string literals in tests/fixtures (synthetic
-  tokens included) — CI gitleaks reds the WHOLE repo's PRs on one (see
-  Environment facts); use low-entropy words+digits values
-- Any e2e fixture whose feature groups by profile-LOCAL date/time MUST build
-  instants via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never
-  naive `${day}THH:MM` strings; the seed pins a ROTATING per-run instance
-  timezone (e2e/pinned-timezone.ts) and naive strings parse host-UTC (#1417)
-- Run YOUR changed e2e specs locally at CI parity on your assigned port pair:
-  --repeat-each=3 --retries=0 (retry-masking must not land a flaky spec).
+  (GET /repos/OWNER/REPO/issues/N and /issues/N/comments) — a comment overrides the
+  body when they conflict. Trust symbol names over line numbers.
+- Migration slot: <"your slot is N; M and M-1 are already on main" | "you have NONE —
+  if you conclude you need one, STOP and report rather than taking a number">
+- Immediately before opening the PR: git merge origin/main && npm run typecheck.
+  A signature that widened while you worked is not a textual conflict.
+- Checks: npm run lint && npm run typecheck && npm test && npm run test:db && npm run format
+  — format LAST (a late edit after formatting is a known CI breaker)
+- After ANY e2e spec edit — including one added after your gate run — re-run
+  `npx vitest run lib/__tests__/e2e-hygiene.test.ts` before pushing
+- Run YOUR changed e2e specs at CI parity on your assigned port range:
+  E2E_PORT=<base> ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
-- Migrations: use the slot number the orchestrator RESERVED for you in this
-  brief (numbering is tentative until merge; whoever lands second renumbers +
-  regenerates manifest.json — usually the orchestrator does it at merge time)
-- Use the GitHub token by its NAME — `$GH_TOKEN` (fallback `$GITHUB_TOKEN`) —
-  in every curl; never "search the environment for credentials" (generic
-  credential-hunting trips security monitoring and costs an audit even when
-  the usage is sanctioned)
+- Any e2e fixture whose feature groups by profile-LOCAL date/time MUST build instants
+  via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never naive
+  `${day}THH:MM` strings (the seed pins a ROTATING per-run instance timezone)
+- npm run phi-scan before the final push — the pre-commit hook does NOT fire in worktrees
+- NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
+  included) — use low-entropy words+digits values
+- Use the GitHub token by its NAME — $GH_TOKEN (fallback $GITHUB_TOKEN) — in every curl;
+  never "search the environment for credentials"
+- Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY (use THIS session's configured Co-Authored-By line —
-  the model name varies by session; copy it from your own environment's commit
-  instructions, don't hardcode a model here):
+- Commit trailers EXACTLY (copy the Co-Authored-By line from your own environment's
+  commit instructions — the model name varies by session; do not hardcode one here):
     Co-Authored-By: Claude <model> <noreply@anthropic.com>
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
-- Return: PR number/URL, per-issue fix summary, test summary, surprises
+- Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
+  something failed — never report a green you did not see), surprises
 ```
+
+### Why those lines are there
+
+Orchestrator-facing. Each is an incident, not a preference.
+
+- **"Foreground ALL gates"** — an agent that backgrounds its e2e and waits on a
+  monitor resumes into waiting for a completion event that died with the
+  container. Two stall shapes, four occurrences in one session: waiting forever
+  on a dead monitor, and ending the turn expecting a wake that never comes.
+- **"Commit and push after every step"** — the worktree is not backed up. Five
+  container restarts on 2026-08-06/07; the fifth killed three live agents with
+  uncommitted trees, ~2,300 lines that existed only under `/tmp`. They survived
+  because someone happened to notice before the next wipe, which is luck, not
+  process. When an agent dies, RESCUE ITS TREE FIRST — commit it to its branch as
+  an explicitly-labelled WIP stating no gate has been run — before anything else.
+  A resumed agent then verifies what it inherited rather than trusting it.
+- **"Read all issue comments"** — clarifications, scope changes and owner
+  decisions get buried in comment threads, and a fix that honors the body but
+  misses a comment is wrong.
+- **The migration-slot line, always, including "you have none"** — see
+  **Migration slots** below. A prompt silent on slots is not neutral; it
+  delegates the choice.
+- **"Merge main and typecheck before opening the PR"** — see **CI tests the
+  merge commit** below. One minute; catches the whole class.
+- **"format LAST"** and **the e2e-hygiene re-run** — two consecutive waves
+  (2026-08-06) shipped a late spec commit that tripped the hygiene scan in CI
+  (`Date.now()` without `clock-ok`; `.first()` with its `first-ok` comment on the
+  wrong line — the scan requires SAME-LINE markers). The scan is 2 seconds; a CI
+  round trip is 25 minutes.
+- **`E2E_PORT`, never `PORT`** — `playwright.config.ts` reads
+  `PORT_BASE = Number(process.env.E2E_PORT ?? 3100)`, so a brief saying
+  `PORT=6900` is INERT: that agent silently runs on base 3100 like every other
+  agent, and two concurrent agents then share ports and manufacture exactly the
+  flaky e2e results the orchestrator spends the day diagnosing.
+- **Low-entropy fixture values** — CI gitleaks runs over ALL refs, so one
+  secret-shaped literal on ANY branch reds EVERY open PR repo-wide.
+- **"Report gate results verbatim"** — agents are honest but their gates run
+  against their branch, not the merge; a confident "all green" is true and
+  insufficient. Ask for the numbers so you can tell which tier actually ran.
+- **Token by NAME** — generic credential-hunting trips security monitoring and
+  costs an audit even when the usage is sanctioned.
+
+**Orchestrator: when this runbook already answers something, follow it rather
+than improvising.** Twice on 2026-08-06 the orchestrator drifted from a rule
+written here — reviews went through the GraphQL MCP path instead of the
+documented REST one (draining GraphQL to zero while REST sat unused), and
+dispatch prompts said `PORT=` where the Local e2e row says `E2E_PORT=`. Both
+were caught by someone else. Before writing a dispatch prompt or a review,
+re-read the row that governs it; the cost of skimming is paid by every agent
+dispatched that day.
 
 Add per-dispatch: the issue list with one-line titles, domain context pointers
 (which lib/ modules, which conventions bear — quote the relevant AGENTS.md
@@ -666,44 +646,130 @@ the issue number is guesswork.
   fixtures; pure tests can't see them).
 - Cross-PR conflicts among in-flight branches (same AGENTS.md line, same
   migration number) — plan the merge order and who resolves.
-- Migration hygiene: append-only, manifest regenerated, number announced.
+- Migration hygiene: append-only, manifest regenerated, number announced (see
+  **Migration slots**).
+- Has this branch sat while a shared signature moved? See **CI tests the merge
+  commit** — a green run is a claim about the base it ran on.
 - Flag owner-visible judgment calls in the review (tone unifications, behavior
   loosenings) so the owner can veto cheaply.
 
-**Migration slot protocol (ran ~9 slots flawlessly in one session, 098–108):**
-the orchestrator owns a slot MAP: at each dispatch, check main's current max,
-reserve the next free number in the brief and the task entry, and treat every
-reservation as TENTATIVE — whoever merges second renumbers (rename file, bump
-`id`/`name`/comment, fix `versions/index.ts`, regenerate `manifest.json`, assert
-contiguity `id === position`). **Owner PRs preempt reservations**: an owner
-branch that lands with a migration takes the slot it shipped with, and every
-reserved in-flight slot shifts up one — message each affected agent the new
-number immediately rather than letting them discover the collision in CI.
-**A later slot is unhonorable until the earlier slot MERGES (2026-07-29, the
-120/121 wave):** `assertContiguousIds` forbids gaps, so an agent holding slot
-N+1 cannot even run its own migration tests while N is unmerged — it must BUILD
-on N and renumber to N+1 only after N lands (or take N itself if the earlier
-reservation dissolves, as when a branch ships without its reserved slot). Say
-this dependency explicitly in any brief that reserves a non-next slot, and
+## Migration slots
+
+One orchestrator owns a slot MAP. Everything about slots lives here; do not
+re-derive it in a brief.
+
+**Reserving.** At each dispatch: check main's current max, reserve the next free
+number in the brief AND the task entry, and treat every reservation as TENTATIVE
+— whoever merges second renumbers. State the situation in EVERY brief, including
+the negative case:
+
+> "Your slot is N. M and M−1 are already on main." — or —
+> "You have NO slot. If you conclude you need one, STOP and report rather than
+> taking a number."
+
+A prompt that is silent on slots is not neutral: it delegates the choice, and an
+agent will reasonably take the next free-looking number. On 2026-08-07 two agents
+both wrote `165-*.ts` for exactly that reason, and the collision surfaced only
+when their worktrees were rescued.
+
+**Say what is already ON MAIN, not only what the agent holds.** Those are
+different facts and the agent needs both. A #2211 agent correctly told it held
+166 still spent real effort building a contingency for a gap at 165 — verifying
+its whole tree twice, once at each id — because its branch base predated the
+merge that landed 165 and nothing in the brief said otherwise. Its reasoning was
+sound; its premise had expired. One sentence prevents it.
+
+**A gap is not a migration-test failure — it is a total failure.**
+`assertContiguousIds` runs inside `runMigrations` → `createDb()`, so a gap fails
+EVERY DB test file and every browser shard at import, not just the tests for the
+migration in question. Say this when reserving a non-next slot: an agent
+expecting a handful of red tests will read a wall of them as its own bug and
+debug the wrong thing.
+
+**A later slot is unhonorable until the earlier slot MERGES** (2026-07-29, the
+120/121 wave). Same mechanism: an agent holding N+1 cannot even run its own
+migration tests while N is unmerged. It must BUILD on N and renumber to N+1 only
+after N lands — or take N itself if the earlier reservation dissolves, as when a
+branch ships without its reserved slot. Say the dependency explicitly, and
 message the agent the moment the earlier slot's fate is known.
 
-**Migration-train renumber recipe (the orchestrator, merging N migration PRs in
-sequence — done 3× on the #1059/#1061/#1062 train):** when several in-flight
-branches each claimed the same slot (all cut from the same main), merge them one
-at a time; each after the first renumbers to the next free number. Per PR: (1)
-`git merge origin/main`; (2) `git mv NNN-slug.ts MMM-slug.ts` for each colliding
-migration and bump its `id:` + `name:` + the `Migration NNN` comment inside; (3)
-fix `versions/index.ts` — the import conflict resolves to MAIN's slot import
-PLUS your renamed import, and append your `mMMM` to the array; (4)
-`prettier --write` the renamed migration file, `sha256sum` it, and put that hash
-under the new filename key in `manifest.json` (keep main's entries); (5) grep
-for the OLD number in TEST files — a `migration-NNN-*.test.ts` name and its
-import path, and the profile-scoping allowlist's `NNN-slug.ts` PRAGMA entry, all
-need the new number; (6) validate BEFORE the full gate with the cheap
-deterministic tier: `migration-immutability` (hashes match) + db-tier
-`migrate`/`runner` (contiguous chain applies) + `typecheck` (always typecheck
-after any hand-resolved conflict — a dropped boundary line surfaces as a bare
-`',' expected`).
+**Owner PRs preempt reservations.** An owner branch that lands with a migration
+takes the slot it shipped with, and every reserved in-flight slot shifts up one
+— message each affected agent the new number rather than letting them discover
+the collision in CI.
+
+**Another Claude session may hold a slot you think is free.** On 2026-08-07 a
+branch appeared carrying a different `Claude-Session:` trailer and claiming 167 —
+the slot this runbook's own map recorded as free. The map is authoritative only
+over agents THIS orchestrator dispatched. Before reserving, check the remote for
+branches you did not create (`git ls-remote --heads origin`), and read the
+`Claude-Session:` trailer on any branch you do not recognise rather than assuming
+it is a dead agent of yours.
+
+**Renumber recipe** (merging N migration PRs in sequence — done 3× on the
+#1059/#1061/#1062 train). Branches cut from the same main all claim the same
+slot; merge them one at a time, each after the first renumbering to the next free
+number. Per PR:
+
+1. `git merge origin/main`;
+2. `git mv NNN-slug.ts MMM-slug.ts` for each colliding migration and bump its
+   `id:` + `name:` + the `Migration NNN` comment inside;
+3. fix `lib/migrations/versions/index.ts` — the import conflict resolves to
+   MAIN's slot import PLUS your renamed import, and append your `mMMM` to the
+   array;
+4. `prettier --write` the renamed file, `sha256sum` it, and put that hash under
+   the new filename key in `manifest.json` (keep main's entries);
+5. grep for the OLD number in TEST files — a `migration-NNN-*.test.ts` name and
+   its import path, and the profile-scoping allowlist's `NNN-slug.ts` PRAGMA
+   entry, all need the new number;
+6. validate BEFORE the full gate with the cheap deterministic tier:
+   `migration-immutability` (hashes match) + db-tier `migrate`/`runner`
+   (contiguous chain applies) + `typecheck` (always typecheck after any
+   hand-resolved conflict — a dropped boundary line surfaces as a bare
+   `',' expected`).
+
+## CI tests the merge commit, not your branch
+
+One fact with three faces. All three cost a session hours before the shape was
+named, and all three have the same fix: **re-merge main and re-verify at merge
+time, on anything that has sat.**
+
+`ci.yml` is `on: pull_request` only — **main is never tested**. So a regression
+introduced by the interaction of two green PRs lands silently and surfaces on the
+NEXT PRs, pointing at branches that did nothing wrong.
+
+- **A WIDENING SIGNATURE outruns a green run.** On 2026-08-07 one change
+  (`zonedWallTimeToUtc` gaining a `null` return, #2245) broke two branches in
+  both directions: #2250's CI was green against a base predating #2248's new call
+  sites, and #2252's agent wrote fixtures against the old signature while #2250
+  was landing. Both agents reported green honestly. A widened signature is NOT a
+  textual conflict, so `git merge-tree` reports clean and `mergeable_state` says
+  clean while the merged tree does not typecheck. Every EXISTING call site is in
+  the diff; every call site added while the agent worked is not.
+- **A count-freezing allowlist goes stale when parallel work merges.** A scan
+  that freezes per-file counts (the instant-writer scan, #2205) is deliberately
+  strict, and the cost is that any PR landing beside it invalidates the snapshot:
+  CI scans the MERGE commit, so the ratchet fires on code the branch has never
+  seen. That is the ratchet working, not a defect in either PR — the orchestrator
+  reconciles at merge time (re-merge main, re-verify, raise the counts WITH
+  reasons) and should expect it every time such a scan sits behind other
+  landings.
+- **A behind-only PR's green CI can be stale** (2026-07-26 — broke main for ~1h).
+  `mergeable_state: behind` with green checks is only safe when nothing has merged
+  since those checks RAN on adjacent surfaces. #1560's green predated #1562's
+  merge; the branches were textually conflict-free but semantically incompatible
+  (one added a chart kind, the other had just made a prop + store entry mandatory
+  for every chart kind), and the squash landed a main red on `tsc` and
+  `npm test`. Before merging a behind PR, compare its check-suite timestamp
+  against main's latest merge: if a CODE merge landed in between on adjacent
+  surfaces, `update_pull_request_branch` and let CI re-run on the merge result. A
+  docs/JSON-only intervening merge doesn't require this; anything touching shared
+  source does.
+
+Two standing consequences: every dispatch tells the agent to
+`git merge origin/main && npm run typecheck` immediately before opening its PR,
+and the orchestrator does that merge ITSELF before merging any PR that touches a
+shared signature and has sat through a long run.
 
 **Rebasing a PR ACROSS a merged route restructure (2026-07-22).** When a
 tabs/route-per-page change (e.g. #1079's `/results#anchor` →
@@ -716,18 +782,6 @@ strings are NOT typed, so `build`'s AppRoute sweep (which only catches SOURCE
 hrefs) will NOT flag them — grep the rebased spec for stale route literals and
 re-run its e2e in CI-parity. A clean rebase + green local pure tier is NOT
 sufficient across a route restructure.
-
-**A behind-only PR's green CI can be stale (2026-07-26 — broke main for ~1h).**
-`mergeable_state: behind` with green checks is only safe when nothing has merged
-since those checks RAN on surfaces adjacent to the PR's. #1560's green predated
-\#1562's merge; the branches were textually conflict-free but semantically
-incompatible (one added a chart kind, the other had just made a prop + store
-entry mandatory for every chart kind), and the squash landed a main red on `tsc`
-and `npm test`. Before merging a behind PR, compare its check-suite timestamp
-against main's latest merge: if a CODE merge landed in between on adjacent
-surfaces, `update_pull_request_branch` (REST) and let CI re-run on the merge
-result first. A docs/JSON-only intervening merge doesn't require this; anything
-touching shared source does.
 
 ## Cadence & lifecycle
 
@@ -785,14 +839,6 @@ touching shared source does.
   round. If a fix is urgent on a live agent's branch: message the agent and
   either ask it to make the change or ask it to stand down from the worktree
   explicitly, and wait for the acknowledgement.
-- **A count-freezing allowlist goes stale when parallel work merges.** A scan
-  that freezes per-file counts (the instant-writer scan, #2205) is deliberately
-  strict, and the cost is that any PR landing beside it invalidates the
-  snapshot: CI scans the MERGE commit, so the ratchet fires on code the branch
-  has never seen. That is the ratchet working, not a defect in either PR — but
-  the orchestrator owns reconciling it at merge time (re-merge main, re-verify,
-  raise the counts WITH reasons), and should expect it every time such a scan
-  sits behind other landings.
 - **Re-check every open PR's mergeability after each merge.** A merge silently
   invalidates any open PR touching the same files, and GitHub reports that as
   `mergeable_state: dirty` long before CI says anything. On 2026-08-06 a PR sat
@@ -827,9 +873,17 @@ touching shared source does.
   exactly the work that speeds everything else up. (Session evidence: #1511 and
   #1534 both went out as P2 by habit; both were bottleneck-class.)
 - **Wind-down** = no new dispatches; land everything in flight (review, fix
-  specs, merge), cancel queued waves, clean worktrees, write a handoff listing:
-  merged work, deliberately-open items, owner decisions pending, and any
-  environment state worth keeping (the canonical node_modules worktree).
+  specs, merge), cancel queued waves, clean worktrees and stale local branches,
+  stop the check-in loop, and write a handoff listing merged work,
+  deliberately-open items, and owner decisions pending. Two rules that keep it
+  honest: a still-working agent is not a reason to hold the wind-down open
+  indefinitely, but neither is it a reason to cut it off — invoke the WIP-marker
+  contingency only when an agent has actually died or stalled, and say plainly
+  what is unfinished rather than reporting it complete. And before deleting a
+  worktree with an uncommitted tree, CHECK whether its content is already on main
+  in a later form; on 2026-08-07 one held ~330 lines that looked like lost work
+  and turned out to be a superseded draft. Deleting is irreversible; checking is
+  two greps.
 
 ## Deliberately out of scope for agents
 
