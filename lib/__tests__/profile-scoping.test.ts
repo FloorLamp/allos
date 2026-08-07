@@ -294,12 +294,14 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/migrations/versions/169-illness-episode-day-window.ts",
-    includes: "INSERT INTO sqlite_sequence (name, seq) VALUES ('illness_episodes', ?)",
+    includes:
+      "INSERT INTO sqlite_sequence (name, seq) VALUES ('illness_episodes', ?)",
     why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half (empty-table case): sqlite_sequence carries no profile rows.",
   },
   {
     file: "lib/migrations/versions/169-illness-episode-day-window.ts",
-    includes: "UPDATE sqlite_sequence SET seq = ? WHERE name = 'illness_episodes'",
+    includes:
+      "UPDATE sqlite_sequence SET seq = ? WHERE name = 'illness_episodes'",
     why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half: bumps the rebuilt table's sqlite_sequence back to the pre-rebuild high-water mark — schema bookkeeping, never profile rows.",
   },
   {

@@ -26,7 +26,10 @@ import {
   illnessDaysInWindow,
 } from "@/lib/illness-episode-store";
 import { assembleIllnessEpisode } from "@/lib/illness-episode";
-import { episodeRowToDerived, getEpisodeRow } from "@/lib/illness-episode-store";
+import {
+  episodeRowToDerived,
+  getEpisodeRow,
+} from "@/lib/illness-episode-store";
 
 // The pre-169 shape, as migration 046 created it.
 function legacyDb(): Database.Database {

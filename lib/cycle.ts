@@ -200,8 +200,7 @@ export function cyclePhaseOnDate(
   // Menstrual — within the recorded period's inclusive [start, end] window (`idx`
   // already guarantees period_start ≤ date). An ongoing period (null end) covers its
   // plausible window only — only ever the latest cycle.
-  if (rangeContainsDate(periodRange(p), date))
-    return "menstrual";
+  if (rangeContainsDate(periodRange(p), date)) return "menstrual";
 
   // Post-period.
   if (next != null) {
