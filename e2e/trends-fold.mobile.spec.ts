@@ -138,7 +138,7 @@ test.describe("Overview leads with charts (B)", () => {
     await expect(page.getByTestId("starred-biomarkers")).toBeVisible();
   });
 
-  test("the movers card leads with the top few behind a show-all disclosure", async ({
+  test("the compact movers row leads with the top few behind a show-all disclosure", async ({
     page,
   }) => {
     await page.goto("/trends");

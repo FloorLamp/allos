@@ -240,6 +240,7 @@ test("the picker stars a biomarker straight from Trends", async ({ page }) => {
   // leaves unsaved, then un-stars it from the tile.
   const ANALYTE_2 = "Triglycerides";
   await page.goto("/trends");
+  await page.getByTestId("save-trend-picker-toggle").click();
   const picker = page.getByTestId("save-trend-picker");
   await expect(picker).toBeVisible();
 

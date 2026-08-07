@@ -154,13 +154,18 @@ export interface FoodMealEvent {
   name: string;
   date: string;
   mealSlot: FoodSlot;
-  // Local wall-clock "HH:MM" the serving STANDS at, in the profile's timezone: its
-  // eating time where one was captured, its tap otherwise. Shown so two servings of the
-  // same group in one window are distinguishable — and it is the stored value rather
-  // than the tap because after a correction the tap time is no longer the number the
-  // user would recognise (#2206, the web half of the same rule). `logged_at` itself
-  // stays the audit instant and is never edited.
-  time: string;
+  // Local wall-clock "HH:MM" the serving was EATEN at, in the profile's timezone, when
+  // an eating time was captured (#2019) — null when nobody stated one. The two times
+  // are DIFFERENT questions (#2227 decision 7): the list renders `eatenAt ?? loggedTime`
+  // so two servings of one group stay distinguishable, and the correction sheet is
+  // where the split is answered ("Ate at 19:40." vs "No eating time recorded —
+  // logged at 23:40."). Presence here is `time_source`'s first production reader —
+  // nothing renders tap-vs-stated, only whether an eating time exists at all.
+  eatenAt: string | null;
+  // Local wall-clock "HH:MM" the serving was LOGGED at — the audit/tap instant, always
+  // present. `logged_at` itself is never edited, so after a correction this is no
+  // longer the number the user would recognise; the eating time above is.
+  loggedTime: string;
 }
 
 export interface FoodMealDay {
@@ -244,11 +249,14 @@ export function getFoodMealDays(
       name: group.name,
       date: event.date,
       mealSlot: slot,
-      // The EATING time where one was captured (#2019), the tap time otherwise. The
-      // list exists to make two servings of one group distinguishable, and after a
-      // correction the tap time is no longer the number the user would recognise.
-      time: zonedDateParts(tz, new Date(event.eaten_at ?? event.logged_at))
-        .hhmm,
+      // The EATING time where one was captured (#2019) and the tap time as separate
+      // facts — never collapsed here, so the sheet can say which one it is showing
+      // (#2227 decision 7). The list renders eatenAt ?? loggedTime, visually unchanged
+      // for a row nobody timed.
+      eatenAt: event.eaten_at
+        ? zonedDateParts(tz, new Date(event.eaten_at)).hhmm
+        : null,
+      loggedTime: zonedDateParts(tz, new Date(event.logged_at)).hhmm,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.

@@ -309,3 +309,68 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(loggedRows(page)).toHaveCount(idsBefore.length);
   expect(await slotTotal(page, "Midday")).toBe(middayBefore);
 });
+
+test("the correction sheet names the time it shows: eating time when stated, logged time otherwise (#2227)", async ({
+  page,
+}) => {
+  test.slow(); // the nutrition route compiles on first hit
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  await page.getByTestId("food-slot-morning").click();
+  await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
+  await revealFoodGroup(page, "nuts_seeds");
+
+  const idsBefore = await loggedIds(page);
+
+  // 1. A serving with NO eating-time statement: the honest default (#2019) — the row
+  //    has only its tap instant.
+  await page.getByTestId("log-nuts_seeds").click();
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
+  const unstatedId = await newRowId(page, idsBefore);
+  const idsWithFirst = await loggedIds(page);
+
+  // 2. A serving logged UNDER a statement, through the bar's own control (#2053):
+  //    "Eaten now" is a human answer and writes eaten_at via the real action path.
+  //    A DIFFERENT group on purpose: a second tap of the same row inside the tap
+  //    ledger's cooldown is absorbed as an accidental double.
+  await revealFoodGroup(page, "berries");
+  await page.getByTestId("food-eating-now").click();
+  await page.getByTestId("log-berries").click();
+  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 2);
+  const statedId = await newRowId(page, idsWithFirst);
+  // The statement is sticky across taps by design — release it before anything else.
+  await page.getByTestId("food-eating-now").click();
+
+  // THE PIN, unstated half: the ⋯ menu's accessible name claims the LOGGED time and
+  // the sheet opens with the "No eating time recorded" line — never a bare clock
+  // wearing the wrong claim.
+  const unstated = page.getByTestId(`food-logged-${unstatedId}`);
+  await unstated.getByRole("button", { name: /serving logged at/ }).click();
+  await page.getByTestId(`food-logged-correct-${unstatedId}`).click();
+  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
+  await expect(page.getByTestId("food-correct-provenance")).toContainText(
+    /No eating time recorded — logged at \d{2}:\d{2}\./
+  );
+  await page.getByTestId("food-correct-cancel").click();
+  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
+
+  // THE PIN, stated half: the menu names the EATING time and the sheet opens with
+  // "Ate at …" — the words "logged at" no longer sit over an eating time.
+  const stated = page.getByTestId(`food-logged-${statedId}`);
+  await stated.getByRole("button", { name: /serving eaten at/ }).click();
+  await page.getByTestId(`food-logged-correct-${statedId}`).click();
+  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
+  await expect(page.getByTestId("food-correct-provenance")).toContainText(
+    /Ate at \d{2}:\d{2}\./
+  );
+  await expect(page.getByTestId("food-correct-provenance")).not.toContainText(
+    "No eating time recorded"
+  );
+  await page.getByTestId("food-correct-cancel").click();
+  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
+
+  // Leave the fixture as found.
+  await removeServingRow(page, statedId);
+  await removeServingRow(page, unstatedId);
+});

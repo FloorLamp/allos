@@ -31,7 +31,7 @@ export default function HouseholdHistoryPromoLink() {
       data-testid="household-history-promo"
       className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
     >
-      See the household&rsquo;s illness episodes &amp; visits →
+      Episodes &amp; visits →
     </Link>
   );
 }

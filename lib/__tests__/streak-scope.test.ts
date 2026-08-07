@@ -126,7 +126,7 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
       "app/(app)/training/RestrictedActivityView.tsx",
       "components/AdherenceRefill.tsx",
       "components/dashboard/WeeklyRecapWidget.tsx",
-      "app/(app)/trends/PracticesSection.tsx",
+      "components/practices/PracticeTrends.tsx",
       "lib/trends-practices.ts",
     ];
     for (const rel of surfaces) {

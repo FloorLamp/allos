@@ -234,8 +234,8 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the given_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR.",
   },
   "lib/queries/nutrition.ts": {
-    count: 4,
-    why: "the EATING-TIME reads: the meal-window projection, the eating-minute distribution and the recent-serving lookup, each pairing `eaten_at` with `logged_at`. This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting it is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
+    count: 3,
+    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `eaten_at` with `logged_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
   },
   "lib/queries/search.ts": {
     count: 1,
@@ -252,14 +252,6 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "app/(app)/medications/med-data.ts": {
     count: 2,
     why: "the medication detail's administration list and its 'last taken' label. A rendered surface, so converting it needs a browser test in the same change — deliberately left to the surface's own PR rather than smuggled into the substrate one.",
-  },
-  "app/(app)/medications/[id]/page.tsx": {
-    count: 1,
-    why: "as med-data.ts — the same rendered surface, same reason.",
-  },
-  "app/(app)/nutrition/SupplementsTab.tsx": {
-    count: 1,
-    why: "as med-data.ts — a rendered surface, converted with its own browser test.",
   },
   "lib/food-slot-count.ts": {
     count: 1,

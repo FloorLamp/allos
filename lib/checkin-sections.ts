@@ -1,12 +1,12 @@
 // The pure model for the recomposed "How are you today?" check-in card (issue #1314).
-// The card's four intents become its structure — Rate / Context / Report / Act —
-// under ONE CheckInSection grammar, and each section renders a live one-liner at rest
-// so the card reads as a status panel and opens only for input. Those summary lines
-// are FORMATTERS over the SAME data each section's expansion edits (#221 — no second
-// derivation), so they live here, pure and unit-tested, next to the merged-chip model
-// that #1311 folds in. No DB, no React.
+// The card has four possible intents — Rate / Context / Report / Act — under ONE
+// CheckInSection grammar. #2181 keeps Rate present and lets the other intents earn
+// their row only when they have content; an empty editor stays inside Rate details.
+// Rendered summary lines are FORMATTERS over the SAME data each expansion edits
+// (#221 — no second derivation), so they live here, pure and unit-tested, next to
+// the merged-chip model that #1311 folds in. No DB, no React.
 //
-// The four sections, in fixed order:
+// The four possible sections, in fixed order when present:
 //   1. Rate    — the hero face row (one tap completes the check-in) + the expansion
 //                (Energy, the relevance-gated Calm #1313, a note).
 //   2. Context — the merged "What's going on?" chip group (#1311): sticky situations
@@ -29,11 +29,10 @@ export interface RateSummaryInput {
   calmDisplay: number | null;
 }
 
-// The Rate section's collapsed one-liner. Unlogged → the invitation; logged → the
-// rating plus any expansion detail the user has filled, so the collapsed card still
-// tells them what today holds.
+// The Rate section's collapsed one-liner. Unlogged stays silent; logged names the
+// rating plus any expansion detail the user has filled.
 export function rateSummary(input: RateSummaryInput): string {
-  if (input.valence == null) return "Tap to log your day.";
+  if (input.valence == null) return "";
   const parts = [moodLabel(input.valence)];
   if (input.energy != null) parts.push(`energy ${input.energy}`);
   if (input.calmDisplay != null) parts.push(`calm ${input.calmDisplay}`);
@@ -97,6 +96,13 @@ export function contextGroupHasChips(group: ContextGroup): boolean {
   return group.sticky.length > 0 || group.day.length > 0;
 }
 
+// Whether Context has something to SAY while collapsed. Available-but-unselected
+// chips remain reachable inside Rate's Details flow; they do not earn an empty
+// dashboard section of their own (#2181).
+export function contextGroupHasContent(group: ContextGroup): boolean {
+  return [...group.sticky, ...group.day].some((chip) => chip.active);
+}
+
 // The Context section's collapsed one-liner: the ACTIVE context (situations then
 // today-factors, in that order), or the calm empty state. A formatter over the same
 // group the expansion toggles.
@@ -122,7 +128,7 @@ export function reportSummary(
   if (activeEpisode) return "Illness tracked above.";
   if (symptomCount > 0)
     return `${symptomCount} symptom${symptomCount === 1 ? "" : "s"} logged.`;
-  return "Feeling well.";
+  return "";
 }
 
 // ---- Act (PRN meds) summary --------------------------------------------------

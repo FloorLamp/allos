@@ -3,6 +3,7 @@ import {
   rateSummary,
   contextGroup,
   contextGroupHasChips,
+  contextGroupHasContent,
   contextSummary,
   reportSummary,
   actSummary,
@@ -15,10 +16,10 @@ import {
 // vs today-only day factors).
 
 describe("rateSummary", () => {
-  it("invites a tap when unlogged", () => {
+  it("leaves an unlogged emoji row free of restating copy", () => {
     expect(
       rateSummary({ valence: null, energy: null, calmDisplay: null })
-    ).toBe("Tap to log your day.");
+    ).toBe("");
   });
 
   it("names the rating and any filled expansion detail when logged", () => {
@@ -64,6 +65,13 @@ describe("contextGroup partition (#1311)", () => {
       dayFactors: [{ slug: "work", label: "Work", active: false }],
     });
     expect(contextGroupHasChips(someDay)).toBe(true);
+    expect(contextGroupHasContent(someDay)).toBe(false);
+    expect(
+      contextGroupHasContent({
+        sticky: [],
+        day: [{ ...someDay.day[0], active: true }],
+      })
+    ).toBe(true);
   });
 });
 
@@ -94,7 +102,7 @@ describe("contextSummary", () => {
 
 describe("reportSummary / actSummary", () => {
   it("reports the illness state", () => {
-    expect(reportSummary(false)).toBe("Feeling well.");
+    expect(reportSummary(false)).toBe("");
     expect(reportSummary(true)).toBe("Illness tracked above.");
   });
 

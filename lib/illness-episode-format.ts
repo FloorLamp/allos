@@ -50,8 +50,14 @@ export interface AdministrationPoint {
   // Present for DB-backed episode assemblies; optional for synthetic summaries/tests.
   id?: number;
   date: string;
-  time: string | null; // profile-local clock of given_at, or null
+  time: string | null; // profile-local clock of the best-known instant, or null
   time24?: string | null; // profile-local HH:MM for the edit control
+  // True when `time` came from the RECORD chain (given_at → taken_at) rather than a
+  // stated administration instant (`occurred_at`). The timeline is a clinical
+  // document, so it marks such a clock "recorded 7:02am" instead of presenting a
+  // filing timestamp as an administration time (#2228 decision 4). Optional so
+  // synthetic/test points default to an unmarked clock.
+  timeRecorded?: boolean;
   amount: string | null; // snapshot at confirm time ("200 mg")
   product?: string | null; // formulation/concentration at confirm time
 }
@@ -74,6 +80,9 @@ export type IllnessTimelineEvent =
       date: string;
       time: string | null;
       time24: string | null;
+      // Whether `time` is a record-chain clock rather than a stated administration
+      // instant — see AdministrationPoint.timeRecorded (#2228 decision 4).
+      timeRecorded: boolean;
       label: string;
       detail: string;
       itemId: number;
@@ -116,6 +125,7 @@ export function illnessTimelineEvents(
         date: a.date,
         time: a.time,
         time24: a.time24 ?? null,
+        timeRecorded: a.timeRecorded ?? false,
         label: m.name,
         detail:
           formatMedicationDoseProduct(a.amount, a.product ?? m.product) ||

@@ -120,15 +120,22 @@ test.describe("dashboard daily loop (#1221)", () => {
     const checkin = page.getByRole("main").getByTestId("how-are-you-card");
     await expect(checkin).toBeVisible();
 
-    // Expand the merged "What's going on?" Context section and toggle the custom
-    // fixture situation (the sticky half) ON.
-    await expect(checkin.getByTestId("checkin-section-context")).toBeVisible();
-    await checkin.getByTestId("checkin-section-context-toggle").click();
+    // Empty Context lives inside the Rate details flow until a selection gives it
+    // content worth a collapsed section.
+    await expect(checkin.getByTestId("checkin-section-context")).toHaveCount(0);
+    await checkin.getByTestId("checkin-section-rate-toggle").click();
     const chip = checkin.getByTestId(`checkin-situation-${SITUATION}`);
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute("aria-pressed", "false");
     await settledClick(page, chip);
-    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    // Once selected, Context earns its own collapsed section; reopen that new
+    // server-rendered location rather than waiting on the retired Details node.
+    const activeContext = checkin.getByTestId("checkin-section-context");
+    await expect(activeContext).toBeVisible();
+    await checkin.getByTestId("checkin-section-context-toggle").click();
+    await expect(
+      activeContext.getByTestId(`checkin-situation-${SITUATION}`)
+    ).toHaveAttribute("aria-pressed", "true");
 
     // The #662 activation line renders from the shared dueness count — the fixture's
     // one situational supplement ("Focus Blend") is now due.
@@ -154,6 +161,8 @@ test.describe("dashboard daily loop (#1221)", () => {
     );
     await expect(restoredChip).toHaveAttribute("aria-pressed", "true");
     await settledClick(page, restoredChip);
-    await expect(restoredChip).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      restoredCheckin.getByTestId("checkin-section-context")
+    ).toHaveCount(0);
   });
 });

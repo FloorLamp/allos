@@ -24,21 +24,10 @@ import { reorderSaved } from "@/app/(app)/saved-actions";
 // uses. The arrows survive inside the ⋯ menu as the non-pointer / AT fallback,
 // which is exactly where the issue asks for them — not as always-visible chrome.
 //
-// ONE LIST, ONE WRITE. Converging an interaction means more than converging the
-// gesture: the arrows and the drag now move within the SAME list (this component's
-// order state) through the SAME pure step (`moveInOrder` / `reorderIds`) and the
-// SAME persist (`reorderSaved` → `setSavedOrder`). Before this they could not even
-// agree on what "earlier" meant — the arrows stepped through the stored SAVED
-// order while the grid RENDERS a split (populated tiles two-abreast, then the
-// #1485 A one-line rows), so tapping "Move earlier" on a tile whose neighbour in
-// the saved list was a sunk empty row changed nothing you could see.
-//
-// The reorderable list is therefore the POPULATED tiles, in the order they draw.
-// An empty tile is sunk below the grid BY RULE (it has nothing to show at this
-// window), so its position is not a thing the user can meaningfully move; it keeps
-// its ⋯ menu — the #1456 guarantee is that its UNSTAR stays reachable — and simply
-// offers no arrows. A persist writes the populated order followed by the empty
-// ones, so what you see is what is stored.
+// ONE LIST, ONE WRITE. #2153 retires #1485 A's populated/empty split: every tile
+// draws in its saved slot at uniform geometry, including an empty one. The arrows
+// and drag therefore move the same complete list through the same pure step and
+// persist. Position drawn = position meant.
 //
 // The tile CONTENT is server-rendered (TrendMiniCard is a Server Component that
 // reads units, colours and reference ranges) and passed in as nodes — this file
@@ -48,7 +37,8 @@ export interface SavedTileItem {
   // The Trends series key ("metric:weight" | "bio:ApoB") — the drag id AND the
   // vocabulary the persist action speaks.
   key: string;
-  // Whether this tile compacts to a one-line row and sinks below the grid (#1485 A).
+  // Whether this full-size tile has no reading in the window. It stays reorderable
+  // in its saved slot; the flag only gives the empty state a quiet dim treatment.
   empty: boolean;
   node: ReactNode;
 }
@@ -69,7 +59,7 @@ export function useTileReorder(): TileReorder | null {
 
 function SortableTile({ item }: { item: SavedTileItem }) {
   const { listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.key, disabled: item.empty });
+    useSortable({ id: item.key });
   // dnd-kit's `attributes` (role="button" + the activator aria-* set) are
   // deliberately NOT spread: the tile CONTAINS a link and a ⋯ menu button, and
   // wrapping that in a button role would misdescribe it to AT for the sake of a
@@ -90,11 +80,10 @@ function SortableTile({ item }: { item: SavedTileItem }) {
       // `touch-manipulation`, not `touch-none`: the TouchSensor only swallows the
       // gesture once the press-and-hold has actually activated, so an ordinary
       // flick over the grid must still scroll the page.
-      // Cards in a two/three-column row share a bottom edge. Sparse cards keep
-      // their compact inline content, but the surface still fills the row so the
-      // Overview does not become a jagged masonry grid.
+      // Cards in a two/three-column row share a bottom edge. Empty cards retain
+      // this same surface so the Overview never becomes a ragged split layout.
       className={`h-full touch-manipulation [&>*]:h-full ${
-        isDragging ? "z-20 opacity-80" : ""
+        isDragging ? "z-20 opacity-80" : item.empty ? "opacity-70" : ""
       }`}
       data-testid="saved-tile"
       data-tile-key={item.key}
@@ -106,15 +95,20 @@ function SortableTile({ item }: { item: SavedTileItem }) {
   );
 }
 
-export default function SavedTilesGrid({ items }: { items: SavedTileItem[] }) {
+export default function SavedTilesGrid({
+  items,
+  addTile,
+}: {
+  items: SavedTileItem[];
+  // The one non-sortable empty slot after the saved list. On a phone it stays a
+  // compact full-width row; at lg it occupies otherwise-unused grid geometry.
+  addTile?: ReactNode;
+}) {
   const toast = useToast();
   const [, startTransition] = useTransition();
 
-  // The server's list, split the way it draws. `empty` rides along unchanged — it
-  // is decided by the window, not by the user.
-  const serverOrder = items.filter((i) => !i.empty).map((i) => i.key);
-  const emptyKeys = items.filter((i) => i.empty).map((i) => i.key);
-  const signature = [...serverOrder, "|", ...emptyKeys].join(" ");
+  const serverOrder = items.map((i) => i.key);
+  const signature = serverOrder.join(" ");
   const [order, setOrder] = useState<string[]>(serverOrder);
   const [seenSignature, setSeenSignature] = useState(signature);
   // Re-sync when the server hands back a different set (our own persist
@@ -127,10 +121,7 @@ export default function SavedTilesGrid({ items }: { items: SavedTileItem[] }) {
   }
 
   const byKey = new Map(items.map((i) => [i.key, i]));
-  const populated = order
-    .map((k) => byKey.get(k))
-    .filter((i): i is SavedTileItem => i != null);
-  const empty = emptyKeys
+  const ordered = order
     .map((k) => byKey.get(k))
     .filter((i): i is SavedTileItem => i != null);
 
@@ -139,9 +130,7 @@ export default function SavedTilesGrid({ items }: { items: SavedTileItem[] }) {
     setOrder(next);
     startTransition(async () => {
       const fd = new FormData();
-      // Empty tiles keep their relative order at the end: the store holds ONE list,
-      // and this is the list the user is looking at.
-      fd.set("keys", JSON.stringify([...next, ...emptyKeys]));
+      fd.set("keys", JSON.stringify(next));
       try {
         const res = await reorderSaved(fd);
         if (!res.ok) {
@@ -183,18 +172,19 @@ export default function SavedTilesGrid({ items }: { items: SavedTileItem[] }) {
       >
         <div className="space-y-3" data-testid="saved-tiles">
           <h2 className="flex items-center gap-2 section-label">★ Starred</h2>
-          {populated.length > 0 && (
+          {ordered.length > 0 && (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-              {populated.map((i) => (
+              {ordered.map((i) => (
                 <SortableTile key={i.key} item={i} />
               ))}
-            </div>
-          )}
-          {empty.length > 0 && (
-            <div className="space-y-2">
-              {empty.map((i) => (
-                <SortableTile key={i.key} item={i} />
-              ))}
+              {addTile ? (
+                <div
+                  className="col-span-2 flex items-center justify-center rounded-xl border border-dashed border-black/10 bg-white/40 px-4 py-3 lg:col-span-1 lg:min-h-48 dark:border-white/10 dark:bg-ink-900/40"
+                  data-testid="save-trend-picker-slot"
+                >
+                  {addTile}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

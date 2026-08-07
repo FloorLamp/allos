@@ -49,14 +49,17 @@ async function clearPresurgery(page: import("@playwright/test").Page) {
   await page.goto("/");
   const checkin = page.getByTestId("how-are-you-card");
   if ((await checkin.count()) === 0) return;
-  await checkin.getByTestId("checkin-section-context-toggle").click();
+  const contextToggle = checkin.getByTestId("checkin-section-context-toggle");
+  if ((await contextToggle.count()) > 0) await contextToggle.click();
+  else await checkin.getByTestId("checkin-section-rate-toggle").click();
   const toggle = checkin.getByTestId("checkin-situation-Pre-surgery");
   if ((await toggle.count()) === 0) return;
   if ((await toggle.getAttribute("aria-pressed")) !== "true") return;
   await settledClick(page, toggle);
   // Background Server Action polls can satisfy settledClick's POST wait before
-  // this toggle's refresh lands; the durable inactive state is the real settle.
-  await expect(toggle).not.toHaveAttribute("aria-pressed", "true", {
+  // this toggle's refresh lands. With no active context left, the section itself
+  // disappears; that is the durable inactive-state marker.
+  await expect(checkin.getByTestId("checkin-section-context")).toHaveCount(0, {
     timeout: 15_000,
   });
 }

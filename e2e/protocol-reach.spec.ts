@@ -158,6 +158,15 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       .getByTestId("active-protocol-adherence")
       .locator(".badge")
       .innerText();
+    const adherence = widget.getByTestId("active-protocol-adherence");
+    await expect(adherence).toContainText("Therapy sessions");
+    await expect(adherence).not.toContainText("Red light therapy sessions");
+    const logControl = widget.getByTestId("practice-log-control");
+    await expect(logControl).not.toContainText("Today");
+    await expect(logControl).not.toContainText("No sessions yet");
+    await expect(logControl.getByTestId("practice-log-button")).not.toHaveClass(
+      /bg-brand-600/
+    );
 
     // #2204 (owner ruling): the widget mounts the SAME ProtocolLogButton the detail
     // page does, so its one-tap records what it shows rather than discarding the

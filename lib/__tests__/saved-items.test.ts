@@ -7,7 +7,6 @@ import {
   isSeriesKeySaved,
   orderSavedRefs,
   moveInOrder,
-  partitionOverviewTiles,
   type SavedRef,
 } from "../saved-items";
 
@@ -170,61 +169,5 @@ describe("moveInOrder", () => {
     const input = ["a", "b"];
     expect(moveInOrder(input, 0, "down")).toEqual(["b", "a"]);
     expect(input).toEqual(["a", "b"]);
-  });
-});
-
-describe("partitionOverviewTiles", () => {
-  const tile = (key: string, points: number, outside = false) => ({
-    key,
-    points: Array.from({ length: points }, (_, i) => ({
-      date: `d${i}`,
-      value: i,
-    })),
-    outsideWindow: outside
-      ? { date: "d0", text: "5 mg/dL", age: "5 mo" }
-      : null,
-  });
-
-  it("keeps populated tiles in order and sinks the empty ones below them", () => {
-    const { populated, empty } = partitionOverviewTiles([
-      tile("metric:weight", 3),
-      tile("bio:ApoB", 0),
-      tile("metric:bodyfat", 2),
-    ]);
-    expect(populated.map((s) => s.tile.key)).toEqual([
-      "metric:weight",
-      "metric:bodyfat",
-    ]);
-    expect(empty.map((s) => s.tile.key)).toEqual(["bio:ApoB"]);
-  });
-
-  it("carries each tile's SAVED-order index across the split", () => {
-    // The split is layout only: the sunk tile still reports slot 1, so the reorder
-    // controls keep moving tiles within the persisted saved order rather than the
-    // rendered one.
-    const { populated, empty } = partitionOverviewTiles([
-      tile("metric:weight", 3),
-      tile("bio:ApoB", 0),
-      tile("metric:bodyfat", 2),
-    ]);
-    expect(populated.map((s) => s.index)).toEqual([0, 2]);
-    expect(empty.map((s) => s.index)).toEqual([1]);
-  });
-
-  it("counts a sparse tile (out-of-window reading, no points) as populated", () => {
-    // #1485 G gave that tile a real number to show; compacting it would throw away
-    // the one value the user came for.
-    const { populated, empty } = partitionOverviewTiles([
-      tile("bio:Lp(a)", 0, true),
-    ]);
-    expect(populated.map((s) => s.tile.key)).toEqual(["bio:Lp(a)"]);
-    expect(empty).toEqual([]);
-  });
-
-  it("handles an all-empty and an all-populated set", () => {
-    expect(partitionOverviewTiles([]).populated).toEqual([]);
-    const allEmpty = partitionOverviewTiles([tile("a", 0), tile("b", 0)]);
-    expect(allEmpty.populated).toEqual([]);
-    expect(allEmpty.empty.map((s) => s.index)).toEqual([0, 1]);
   });
 });

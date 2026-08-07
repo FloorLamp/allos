@@ -105,7 +105,12 @@ export interface FoodLogEvent {
   name: string;
   date: string;
   mealSlot: FoodSlot;
-  time: string;
+  // Profile-local "HH:MM" the serving was EATEN at, when one was captured (#2019);
+  // null when nobody stated one. The row renders `eatenAt ?? loggedTime` (#2227
+  // decision 7) — the presence split surfaces in the correction sheet, not per row.
+  eatenAt: string | null;
+  // Profile-local "HH:MM" of the audit/tap instant. Always present, never edited.
+  loggedTime: string;
 }
 
 export interface FoodLogDay {
@@ -1031,10 +1036,16 @@ export default function FoodLogBar({
                     {event.name}
                   </span>
                   <span className="shrink-0 text-xs text-slate-500 tabular-nums dark:text-slate-400">
-                    {event.mealSlot} · {event.time}
+                    {event.mealSlot} · {event.eatenAt ?? event.loggedTime}
                   </span>
                   <OverflowMenu
-                    label={`Actions for the ${event.name} serving logged at ${event.time}`}
+                    label={
+                      // The accessible name says which time it names: "logged at" over
+                      // an EATING time was a wrong claim (#2227).
+                      event.eatenAt
+                        ? `Actions for the ${event.name} serving eaten at ${event.eatenAt}`
+                        : `Actions for the ${event.name} serving logged at ${event.loggedTime}`
+                    }
                     open={openMenuId === event.id}
                     onOpenChange={(next) =>
                       setOpenMenuId(next ? event.id : null)
@@ -1224,9 +1235,18 @@ export default function FoodLogBar({
           className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
         >
           <div data-testid="food-correct-modal" className="mt-4 space-y-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Logged at {editing.time}. Correcting moves this serving — the
-              day&rsquo;s totals and meal tallies follow it.
+            <p
+              data-testid="food-correct-provenance"
+              className="text-xs text-slate-500 dark:text-slate-400"
+            >
+              {/* The one place the eating-time/tap split is answered (#2227 decision
+                  7): the binary a reader cares about is whether an eating time exists
+                  at all, and "Logged at" over an eating time was a wrong claim. */}
+              {editing.eatenAt
+                ? `Ate at ${editing.eatenAt}.`
+                : `No eating time recorded — logged at ${editing.loggedTime}.`}{" "}
+              Correcting moves this serving — the day&rsquo;s totals and meal
+              tallies follow it.
             </p>
             <div>
               <label className="label" htmlFor="food-correct-group">

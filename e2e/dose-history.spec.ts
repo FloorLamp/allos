@@ -122,6 +122,10 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const entry = panel.getByTestId("dose-history-row");
   await expect(entry).toHaveCount(1);
   await expect(entry).toContainText("250 mg");
+  // #2228 decision 4: this row's only clock is the record chain (the confirm's tap
+  // stamp — nothing has stated an intake time), so the panel marks it "recorded"
+  // rather than presenting a filing timestamp as an administration time.
+  await expect(entry).toContainText(/recorded \d{1,2}:\d{2}/);
 
   // ── The same ⋯ row actions the medication history offers ───────────────────
   await entry.getByRole("button", { name: "Dose actions" }).click();
@@ -136,6 +140,11 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await form.getByRole("button", { name: "Save changes" }).click();
   await expect(form).toHaveCount(0);
   await expect(panel.getByTestId("dose-history-row")).toContainText("375 mg");
+  // The amendment wrote no stated event instant either (the write half of #2228 is
+  // a separate change), so the row still carries the "recorded" marker.
+  await expect(panel.getByTestId("dose-history-row")).toContainText(
+    /recorded \d{1,2}:\d{2}/
+  );
 
   // The SCHEDULE is untouched by the correction — the row still reads 250 mg.
   await expect(row).toContainText("250 mg");

@@ -6,8 +6,8 @@ import type { CheckInSectionId } from "@/lib/checkin-sections";
 // The ONE shared section grammar for the recomposed "How are you today?" check-in
 // card (issue #1314): a label + a glanceable collapsed summary + an identically-
 // styled expander, replacing the three ad-hoc <details> the card had accreted. Every
-// section renders a live one-liner AT REST (collapsed state is informative — the card
-// reads as a status panel and opens only for input), carries `aria-expanded` on its
+// rendered section carries a live one-liner AT REST (collapsed state is informative),
+// carries `aria-expanded` on its
 // toggle, and uses the consistent `checkin-section-<id>` / `-toggle` / `-summary` /
 // `-body` testid scheme.
 //

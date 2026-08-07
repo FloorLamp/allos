@@ -930,16 +930,23 @@ export function getAdministrationsForItemsOnDate(
   return out;
 }
 
-// One taken ledger row as the dose-history surfaces render it.
-export interface IntakeDoseHistoryRow {
+// One taken ledger row as the dose-history surfaces render it. It carries the row's
+// declared temporal columns — `occurred_at` (the event instant, stated-only, migration
+// 165) alongside the `given_at` → `taken_at` record chain — so a caller can ask
+// lib/row-instants.ts the row-level question instead of pairing columns by hand, and
+// so an unstated row can render "recorded 7:02am" rather than a bare clock (#2228
+// decision 4). A type alias rather than an interface so it satisfies the readers'
+// `Record<string, unknown>` row parameter structurally.
+export type IntakeDoseHistoryRow = {
   id: number;
   dose_id: number;
   date: string;
+  occurred_at: string | null;
   given_at: string | null;
   taken_at: string;
   amount: string | null;
   product: string | null;
-}
+};
 
 // Taken-dose history for one item's history surface: scheduled and PRN ledger rows
 // on/after `sinceDate`, most recent first. The medication detail page passes its
@@ -954,7 +961,8 @@ export function getIntakeDoseHistory(
 ): IntakeDoseHistoryRow[] {
   return db
     .prepare(
-      `SELECT l.id, l.dose_id, l.date, l.given_at, l.taken_at, l.amount, l.product
+      `SELECT l.id, l.dose_id, l.date, l.occurred_at, l.given_at, l.taken_at,
+              l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
@@ -979,8 +987,8 @@ export function getIntakeDoseHistoryForItems(
   const placeholders = itemIds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT l.id, l.dose_id, l.item_id, l.date, l.given_at, l.taken_at,
-              l.amount, l.product
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.given_at,
+              l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
@@ -996,6 +1004,7 @@ export function getIntakeDoseHistoryForItems(
       id: r.id,
       dose_id: r.dose_id,
       date: r.date,
+      occurred_at: r.occurred_at,
       given_at: r.given_at,
       taken_at: r.taken_at,
       amount: r.amount,
