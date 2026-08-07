@@ -25,6 +25,7 @@ import {
 } from "../intake-deltas";
 import { isTrainingSignalKey } from "../workout-nudge";
 import { importHref } from "../hrefs";
+import { DIGEST_TIME_SECTION_HEADING } from "../digest-time-suggestion";
 import { monthNames } from "../date";
 import {
   activityProvenanceKey,
@@ -224,6 +225,20 @@ export interface DigestInput {
   // message, so buildDigest still returns null when there are no sections and no offer
   // tail. The control tunes a digest; it never justifies one.
   tuneTail?: NotificationAction | null;
+  // The digest TIME suggestion's one line (#2217), or null when it is not firing —
+  // Dynamic, off, no arrival statistic, a configured time that already wins, or a
+  // dismissed episode. Preformatted by the ONE pure builder the Settings row also
+  // reads, so the two surfaces cannot state the claim two different ways.
+  //
+  // LIKE THE TUNE TAIL, IT NEVER JUSTIFIES A DIGEST. It is appended BELOW the content,
+  // only to a message that already exists — see buildDigest. That is what makes it
+  // permissible under the contact-consent rule: a line added to an already-consented
+  // send is not an increase in contact, and this one can neither cause a send nor be
+  // its own.
+  timeSuggestionLine?: string | null;
+  // The three exits that ride the line (Use HH:MM / As soon as it's ready / Not now).
+  // Keyboard-only, like the offer and tune tails, and present only alongside the line.
+  timeActions?: NotificationAction[];
 }
 
 // ---- New documents: WHICH one, and WHAT it produced (#1913 item 3) ---------
@@ -324,6 +339,9 @@ export interface DigestModel {
   // The collapsed ⚙️ Tune control (#1714), rendered AFTER the offer tail: access to
   // your own items outranks tuning what the message says about them.
   tuneTail?: NotificationAction | null;
+  // The digest time suggestion's exits (#2217), LAST: a question about when this
+  // message arrives ranks below everything the message is actually about.
+  timeActions?: NotificationAction[];
 }
 
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
@@ -640,6 +658,18 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // their own list. So a tail-only message is legitimate: no sections, one button.
   // It is not a new send either — the digest already had permission to arrive today.
   if (sections.length === 0 && !input.offerTail) return null;
+
+  // The digest time suggestion (#2217), resolved AFTER the "is there anything to say?"
+  // gate and appended LAST, so it can neither justify a digest nor displace a line
+  // about the person's health. The digest is about them first; when their digest
+  // arrives is a footnote to that, and it renders as one.
+  const timingSection: DigestSection | null = input.timeSuggestionLine
+    ? {
+        heading: DIGEST_TIME_SECTION_HEADING,
+        lines: [input.timeSuggestionLine],
+      }
+    : null;
+  const timeActions = input.timeSuggestionLine ? (input.timeActions ?? []) : [];
   // A tail-only digest still needs a body: an empty message reads as a bug. The
   // count rides the sentence here on EVERY channel — with no other content there is
   // nothing for the Telegram button to be redundant against, and a bare "Nothing
@@ -653,20 +683,24 @@ export function buildDigest(input: DigestInput): DigestModel | null {
           (offered > 0 ? ` ➕ ${offerTextTail(offered)}.` : ""),
       ],
     });
+    if (timingSection) sections.push(timingSection);
     return {
       title: `☀️ Morning digest — ${input.profileName}`,
       sections,
       offerTail: input.offerTail ?? null,
       // A tail-only digest has no category content, so there is nothing to tune.
       tuneTail: null,
+      timeActions,
     };
   }
+  if (timingSection) sections.push(timingSection);
   return {
     title: `☀️ Morning digest — ${input.profileName}`,
     sections,
     offerCount: input.offerCount ?? 0,
     offerTail: input.offerTail ?? null,
     tuneTail: input.tuneTail ?? null,
+    timeActions,
   };
 }
 
@@ -687,10 +721,14 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
     : null;
   // Actions, in reach order: the guaranteed access tail first (#1505 — it is the one
   // affordance that is always correct to offer), then the collapsed ⚙️ Tune control
-  // (#1714). Both are keyboard-only; a message with neither carries no buttons at all.
-  const actions = [model.offerTail, model.tuneTail].filter(
-    (a): a is NotificationAction => a != null
-  );
+  // (#1714), then the digest time suggestion's exits (#2217) — last, because a
+  // question about the message's arrival time ranks below the message. All are
+  // keyboard-only; a message with none carries no buttons at all.
+  const actions = [
+    model.offerTail,
+    model.tuneTail,
+    ...(model.timeActions ?? []),
+  ].filter((a): a is NotificationAction => a != null);
   return {
     title: model.title,
     body,

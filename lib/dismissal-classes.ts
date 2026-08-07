@@ -435,6 +435,18 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     keyClass: "anchored",
     shape: "`<portalSlug>/<accountSlug>:<requestDay>`",
   },
+  {
+    prefix: "digest-time:",
+    keyClass: "anchored",
+    shape: "`<configuredMinute>:<proposedMinute>` (minutes of day)",
+    // Anchored on two NUMBERS the user owns the first of: nothing in the tail is a
+    // recyclable name, and neither minute can outlive a subject — a stale row can only
+    // ever silence a proposal about the same configured send time. The reader is a
+    // RATCHET rather than an equality test (digestTimeSuggestionSuppressed), so a
+    // dismissal also covers nearby proposals under the same configured time; that is
+    // the point (#2217 constraint 3), not leakage. Changing the configured time re-arms
+    // the suggestion on its own, so no sweep is needed to keep the row honest.
+  },
 
   // ---- name-keyed + swept: recyclable strings with a de-orphan sweep ---------
   {
@@ -588,6 +600,18 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   {
     prefix: "offerc",
     what: "Telegram callback-data namespace for the offer tail (lib/notifications/offer-tail)",
+  },
+  {
+    prefix: "dgtuse",
+    what: "Telegram callback-data namespace for the digest time suggestion's accept exit (lib/digest-time-suggestion)",
+  },
+  {
+    prefix: "dgtdyn",
+    what: "Telegram callback-data namespace for the digest time suggestion's switch-to-Dynamic exit (lib/digest-time-suggestion)",
+  },
+  {
+    prefix: "dgtno",
+    what: "Telegram callback-data namespace for the digest time suggestion's decline (lib/digest-time-suggestion); the DISMISSAL it writes is keyed `digest-time:`",
   },
 ];
 

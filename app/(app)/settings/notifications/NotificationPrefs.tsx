@@ -27,6 +27,8 @@ import {
 } from "@/lib/notifications/matrix-bulk";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
+import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
+import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
@@ -202,6 +204,8 @@ function DigestControl({
   mode,
   time,
   onChange,
+  onApplied,
+  timeSuggestion,
   sleepSectionEnabled,
   arrivalStats,
   tickMinutes,
@@ -211,6 +215,12 @@ function DigestControl({
   mode: string;
   time: string;
   onChange: (patch: Record<string, string>) => void;
+  // Fold a one-field write this control did NOT make into the form's local bag,
+  // without re-saving — see NotificationPrefs.mergeLocal.
+  onApplied: (patch: Record<string, string>) => void;
+  // The live #2217 suggestion, or null when it is not firing (Dynamic, off, no
+  // statistic, the configured time already winning, or a dismissed episode).
+  timeSuggestion: DigestTimeSuggestion | null;
   sleepSectionEnabled: boolean;
   arrivalStats: ArrivalStatistics;
   tickMinutes: number;
@@ -279,6 +289,16 @@ function DigestControl({
           )}
         </p>
       )}
+      {/* The digest time suggestion (#2217), BELOW the schedule summary: the fact
+          about the schedule comes first, and the proposal is a response to it. It
+          renders only while it is firing — nothing occupies this space on an
+          ordinary schedule. */}
+      {timeSuggestion && (
+        <DigestTimeSuggestionRow
+          suggestion={timeSuggestion}
+          onApplied={onApplied}
+        />
+      )}
     </div>
   );
 }
@@ -301,6 +321,7 @@ export default function NotificationPrefs({
   wearReminderEnabled,
   wakeMinute,
   arrivalStats,
+  timeSuggestion,
   tickMinutes,
   subHourlyAtRisk,
   telegramDisabled,
@@ -332,6 +353,10 @@ export default function NotificationPrefs({
   // moves the floor, with no round trip — and still through the one pure
   // `describeDigestSchedule`, so there is no second copy of the copy.
   arrivalStats: ArrivalStatistics;
+  // The live digest time suggestion (#2217), or null when it is not firing. Resolved
+  // ONCE on the server, by the same function the digest line reads, so the two
+  // surfaces are one finding with one episode key.
+  timeSuggestion: DigestTimeSuggestion | null;
   // The scheduler's OBSERVED tick cadence — the same figure the sub-hourly warning
   // reads. The Dynamic deadline is floored at one tick past the floor.
   tickMinutes: number;
@@ -400,6 +425,15 @@ export default function NotificationPrefs({
 
   // The whole values bag is posted on every save, so a control that owns two fields
   // (the digest's mode + time) writes both in ONE save rather than two racing ones.
+  // A field the FORM did not write: one of the #2217 exits already stored it through
+  // its own single-field action, so the bag is reconciled to what is now on the server
+  // without posting the whole schedule back. Saving here would be a second write the
+  // user never asked for — and would turn a deliberate one-field action into a
+  // whole-schedule rewrite, which is the thing it exists to avoid.
+  function mergeLocal(patch: Record<string, string>) {
+    setValues((prev) => ({ ...prev, ...patch }));
+  }
+
   function setMany(patch: Record<string, string>) {
     const next = { ...values, ...patch };
     setValues(next);
@@ -773,6 +807,8 @@ export default function NotificationPrefs({
                         mode={values[e.control.modeField]}
                         time={values[e.control.timeField]}
                         onChange={setMany}
+                        onApplied={mergeLocal}
+                        timeSuggestion={timeSuggestion}
                         sleepSectionEnabled={
                           values["digest_sleep_enabled"] === "1"
                         }

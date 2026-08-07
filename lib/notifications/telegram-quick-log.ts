@@ -1017,6 +1017,18 @@ import {
   logPracticeByTargetId,
 } from "../queries";
 import { practiceLogOutcomeText } from "../practice";
+import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";
+import {
+  DIGEST_TIME_DISMISS_ANSWER,
+  DIGEST_TIME_STALE_TEXT,
+  digestTimeDismissToken,
+  digestTimeDynamicAnswer,
+  digestTimeDynamicToken,
+  digestTimeUseAnswer,
+  digestTimeUseToken,
+} from "../digest-time-suggestion";
+import { setDigestMinute, setDigestMode } from "../settings";
+import { dismissFinding } from "../queries/upcoming/suppressions";
 import { today } from "../db";
 import {
   getMoodCheckinIgnored,
@@ -1087,6 +1099,7 @@ import {
   tempReplyMarker,
   weightReplyMarker,
   OUTDATED_MESSAGE_TEXT,
+  type DigestTimeCallback,
   type MoodCheckinCallback,
   type MoodKeepCallback,
   type PracticeDoneCallback,
@@ -1382,4 +1395,75 @@ export async function handleTuneTap(
     })
   );
   await answerCallbackQuery(cq.id, answer);
+}
+
+// The digest time suggestion's three exits (#2217), tapped from the digest itself.
+//
+// WHY THE MESSAGE CARRIES THEM AT ALL. This suggestion exists for the person whose
+// digest is silently incomplete and who does not reopen Settings — reaching only
+// surfaces you must open to see inverts the purpose of a feature whose whole job is to
+// run without you (#1685). The LINE is the reach; these are the exits beside it.
+//
+// EVERY TAP RE-RESOLVES THE LIVE SUGGESTION before it writes. The token carries no
+// minute on purpose: a digest sits in a chat for as long as the reader leaves it there,
+// and the statistic behind the proposal moves. So `getDigestTimeSuggestion` is asked
+// again at tap time and its answer — not the button's memory — is what gets written,
+// or the tap is refused and says so (the #1670 ride-along's rule, one control over).
+//
+// ONE FINDING, ONE EPISODE KEY (constraint 5): 🔕 Not now writes the same suppression
+// row the Settings row's "Not now" writes, so declining here also clears the Settings
+// row. Two surfaces asking one question twice is exactly the noise this is bounded
+// against.
+//
+// THE ROW IS CONSUMED on any successful tap — all three exits answer the same question,
+// so leaving the other two live would invite a second answer to a question already
+// answered. A refused tap leaves the keyboard alone.
+export async function handleDigestTimeTap(
+  cq: TelegramCallbackQuery,
+  token: DigestTimeCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  // A tap on YESTERDAY's digest is about a message whose content has rolled over.
+  // Refuse plainly rather than writing a send time from stale context.
+  if (token.date !== today(profileId)) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const suggestion = getDigestTimeSuggestion(profileId);
+  if (!suggestion) {
+    await answerCallbackQuery(cq.id, DIGEST_TIME_STALE_TEXT);
+    return;
+  }
+
+  let answer: string;
+  if (token.action === "use") {
+    setDigestMinute(profileId, suggestion.proposedMinute);
+    answer = digestTimeUseAnswer(suggestion.proposedMinute);
+  } else if (token.action === "dynamic") {
+    setDigestMode(profileId, "dynamic");
+    answer = digestTimeDynamicAnswer(suggestion.configuredMinute);
+  } else {
+    dismissFinding(profileId, suggestion.dedupeKey);
+    answer = DIGEST_TIME_DISMISS_ANSWER;
+  }
+  await answerCallbackQuery(cq.id, answer);
+
+  if (chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  const consumed = [
+    digestTimeUseToken(profileId, token.date),
+    digestTimeDynamicToken(profileId, token.date),
+    digestTimeDismissToken(profileId, token.date),
+  ].reduce(removeButton, rows);
+  await updateMessageKeyboard(chatId, messageId, consumed);
 }

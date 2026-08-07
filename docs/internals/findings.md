@@ -189,6 +189,36 @@ consequences worth knowing when touching identity code:
 
 ---
 
+## The digest time suggestion (coaching tier, #2217)
+
+A **ride-along** member of the coaching tier, and worth reading beside the portal
+sync ask (#1757) and the right-sizing suggestion (#1670) because all three make the
+same move: a calm finding whose only push presence is a line on a message that was
+already sending.
+
+`digest-time:` is registered `coaching`. It is never an Upcoming row, never the
+Needs-attention hero, never an escalation, and **never its own send** — a
+digest-timing observation is not a safety signal. Its two surfaces are Settings →
+Notifications beside the digest time (class 2: a rendered aggregate on a page the
+user opened) and ONE line inside the morning digest, below its content.
+
+The digest line is permissible under the **contact-consent rule** because it does
+not increase contact: `buildDigest` appends it only after the "is there anything to
+say?" gate, so it can neither cause a send nor be one, and the tick has no
+orchestrator for it. It exists because the person this finding is about is precisely
+the person who does not reopen Settings — the ride-the-nag corollary #1685
+established for a broken sync.
+
+Both surfaces resolve ONE function (`getDigestTimeSuggestion`), so they are one
+finding under one episode key: dismissing either dismisses both. Two surfaces asking
+the same question twice is the noise this is bounded against.
+
+Its dismissal reads the bus with a **ratchet** rather than an equality test — the
+statistic behind it moves up to 11 minutes on leave-one-out (#2214), and a dismissal
+must survive that. See `docs/internals/notifications.md` for the mechanism.
+
+---
+
 ## Illness-care findings (care tier, #805)
 
 The illness-care engine (`lib/illness-care.ts`, builder
