@@ -217,6 +217,25 @@ Every agent prompt must contain, verbatim where marked:
   in CI (`Date.now()` without `clock-ok`, `.first()` with its `first-ok` comment
   on the wrong line — the scan requires SAME-LINE markers). The scan is 2 seconds;
   a CI round trip is 25 minutes.
+- **Every dispatch states the migration-slot situation explicitly, including "you
+  have none."** On 2026-08-07 two agents both wrote `165-*.ts`: one had been
+  allocated the slot, the other was dispatched with no mention of migrations at all
+  because the orchestrator did not anticipate that issue needing one. The agent did
+  the reasonable thing and took the next free-looking number. The runner requires
+  array position == id and `assertContiguousIds` forbids gaps, so the two could not
+  both land, and the collision was only found when their worktrees were rescued.
+  A prompt that is silent on slots is not neutral — it delegates the choice. Say
+  either "your slot is N, do not take N+1" or "you have NO slot; if you conclude you
+  need one, STOP and report rather than taking a number."
+- **An agent's worktree is not backed up. Push or lose it.** Five container
+  restarts on 2026-08-06/07; the fifth killed three live agents mid-work with
+  uncommitted trees — ~2,300 lines that existed only under /tmp. They survived
+  because they happened to be noticed before the next wipe, which is luck, not
+  process. Two consequences: tell agents to commit and push early and often rather
+  than at the end, and when an agent dies, RESCUE ITS TREE FIRST — commit it to its
+  branch as an explicitly-labelled WIP that states no gate has been run, before
+  doing anything else. A resumed agent then verifies what it inherited rather than
+  trusting it.
 - The e2e port variable is `E2E_PORT`, NOT `PORT`. `playwright.config.ts` reads
   `PORT_BASE = Number(process.env.E2E_PORT ?? 3100)`, so a prompt saying `PORT=6900`
   is INERT — that agent silently runs on base 3100 like every other agent, and two
