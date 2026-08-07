@@ -279,7 +279,15 @@ describe("summarizeEpisodesForProfile hoists getConditions once (#886)", () => {
       { date: "2026-06-01", situation: "Illness", change: "start" },
     ];
     seedLog(p, true, events);
-    backfillIllnessEpisodes(db);
+    // The stored rows a 046→168 replay would produce (see the parity test above).
+    for (const run of episodesForSituation("Illness", events, true)) {
+      createEpisodeRow(
+        p,
+        "Illness",
+        run.start,
+        run.end == null ? null : shiftDateStr(run.end, -1)
+      );
+    }
 
     // A few conditions: one whose onset falls inside the second episode's window, and a
     // couple outside — enough that the per-episode filter has real work, and the batched

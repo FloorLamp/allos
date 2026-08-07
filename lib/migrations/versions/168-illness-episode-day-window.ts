@@ -24,14 +24,26 @@ import type { Migration } from "../runner";
 // off-by-one compensations (`shiftDateStr(ended_at, -1)`, `date(?, '-1 day')` on
 // condition sync) are deleted rather than moved.
 //
+// THE TWO VESTIGIAL COLUMNS (the migration-124 pattern). The rebuilt table keeps
+// inert `started_at` and `ended_at` columns, always NULL. Not as a hedge: `migrate()`
+// (lib/db.ts) replays every migration unconditionally for the DB-test harness, and
+// two shipped, immutable migrations hold prepared statements that NAME those columns
+// — 046's backfill INSERT and 062's re-anchor SELECT — which SQLite validates at
+// PREPARE time, before looking at a single row. A source-scan guard
+// (lib/__tests__/illness-window-collapse-guard.test.ts) keeps them unreachable from
+// application code, and the compatibility TRIGGER below translates a replayed 046
+// insert's intent onto the live columns — start as given, end converted from the stop
+// day to the inclusive last active day — so a replayed backfill writes what it meant
+// rather than leaving a half-empty row.
+//
 // INTERACTION WITH FROZEN MIGRATION 046. Its backfill imports the live
 // `episodesForSituation` pairing, whose output deliberately stays on the change-log's
 // stop-event shape (end = the stop day, i.e. the old exclusive end) precisely so a
-// from-scratch replay writes 046-era values that THIS migration then converts. Do not
-// "fix" that function to emit inclusive ends — it would make fresh replays subtract a
-// day twice.
+// from-scratch replay writes 046-era values that THIS migration (or its trigger, on a
+// post-168 replay) then converts. Do not "fix" that function to emit inclusive ends —
+// it would make fresh replays subtract a day twice.
 //
-// Rebuild, not ALTER: the 162/163 pattern (CREATE __new, INSERT…SELECT with the
+// Rebuild, not ALTER: the 124/163 pattern (CREATE __new, INSERT…SELECT with the
 // transformation, DROP, RENAME, re-create the indexes) keeps the whole swap one
 // statement sequence and lets the value rewrite ride the copy. The runner applies
 // migrations with foreign_keys OFF, so the children keyed on illness_episodes(id)
@@ -44,13 +56,36 @@ import type { Migration } from "../runner";
 // rename if the copy's own max id came in lower (e.g. the newest episode had been
 // deleted).
 //
-// REPLAY-SAFE. The DB test tier replays migrations through the non-version-gated
-// migrate() wrapper. Guarded on the stored table SQL: once the table carries
-// `end_date` the whole migration is a no-op, so the -1 day rewrite can never fire
-// twice. The rewrite itself is GLOB-guarded to well-formed YYYY-MM-DD values; any
-// malformed value passes through unchanged rather than being guessed at.
+// REPLAY-SAFE. Guarded on the stored table SQL: once the table carries `end_date` the
+// whole migration is a no-op, so the -1 day rewrite can never fire twice. The rewrite
+// itself (and the trigger's copy of it) is GLOB-guarded to well-formed YYYY-MM-DD
+// values; any malformed value passes through unchanged rather than being guessed at.
 
 const DAY_GLOB = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]";
+
+// LEGACY-INSERT COMPATIBILITY (the migration-124 trigger pattern). The vestigial
+// columns exist so the frozen 046/062 statements still PREPARE; this trigger makes a
+// replayed 046 backfill INSERT still MEAN what it meant: the legacy pair lands on the
+// live columns with the end converted to the inclusive last active day, and the
+// vestigial columns are wiped so dead storage stays dead. It fires only when a row
+// arrives carrying a legacy value AND both live columns are empty, so it is inert for
+// every application insert (which never names the dead columns — the source-scan
+// guard enforces that).
+const LEGACY_COMPAT_TRIGGER = `
+  CREATE TRIGGER IF NOT EXISTS illness_episodes_legacy_window_compat
+  AFTER INSERT ON illness_episodes
+  FOR EACH ROW
+  WHEN NEW.start_date IS NULL AND NEW.end_date IS NULL
+   AND (NEW.started_at IS NOT NULL OR NEW.ended_at IS NOT NULL)
+  BEGIN
+    UPDATE illness_episodes
+       SET start_date = NEW.started_at,
+           end_date = CASE WHEN NEW.ended_at GLOB '${DAY_GLOB}'
+                           THEN date(NEW.ended_at, '-1 day') ELSE NEW.ended_at END,
+           started_at = NULL,
+           ended_at = NULL
+     WHERE id = NEW.id;
+  END;`;
 
 function tableSql(db: Database.Database, name: string): string {
   return (
@@ -65,7 +100,11 @@ function tableSql(db: Database.Database, name: string): string {
 }
 
 export function up(db: Database.Database): void {
-  if (tableSql(db, "illness_episodes").includes("end_date")) return;
+  if (tableSql(db, "illness_episodes").includes("end_date")) {
+    // Already converted; only make sure the compat trigger exists (IF NOT EXISTS).
+    db.exec(LEGACY_COMPAT_TRIGGER);
+    return;
+  }
 
   const prior = db
     .prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'illness_episodes'`)
@@ -79,7 +118,16 @@ export function up(db: Database.Database): void {
       start_date TEXT,
       end_date   TEXT,
       note       TEXT,
-      outcome    TEXT
+      outcome    TEXT,
+      -- VESTIGIAL. Nothing reads or writes these two; start_date/end_date above
+      -- replaced both (#2232). They survive for exactly one reason: migrate()
+      -- (lib/db.ts) applies EVERY migration unconditionally, and the frozen
+      -- migrations 046/062 hold prepared statements naming them. The
+      -- illness_episodes_legacy_window_compat trigger translates a legacy insert;
+      -- lib/__tests__/illness-window-collapse-guard.test.ts keeps them out of
+      -- application code.
+      started_at TEXT,
+      ended_at   TEXT
     );
     INSERT INTO illness_episodes__new
       (id, profile_id, situation, start_date, end_date, note, outcome)
@@ -95,6 +143,7 @@ export function up(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_illness_episodes_open
       ON illness_episodes(profile_id, situation, end_date);
   `);
+  db.exec(LEGACY_COMPAT_TRIGGER);
 
   if (prior != null) {
     // Restore the pre-rebuild high-water mark when it exceeds the copied rows' own

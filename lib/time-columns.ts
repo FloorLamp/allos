@@ -560,6 +560,20 @@ export const TIME_COLUMNS = {
       convention: "n/a",
       note: "The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 168 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day).",
     },
+    {
+      column: "started_at",
+      semantic: "window-start",
+      grain: "day",
+      convention: "n/a",
+      note: "VESTIGIAL, always NULL (#2232, the migration-124 pattern): survives only so the frozen 046/062 statements still prepare under migrate()'s replay. A compat trigger translates a legacy insert onto start_date; the illness-window-collapse-guard scan keeps it out of application code.",
+    },
+    {
+      column: "ended_at",
+      semantic: "window-end",
+      grain: "day",
+      convention: "n/a",
+      note: "VESTIGIAL, always NULL (#2232): the legacy EXCLUSIVE end's dead storage, kept for frozen-migration prepares only. The compat trigger converts a legacy insert's value onto the inclusive end_date.",
+    },
   ],
   imaging_studies: [
     {

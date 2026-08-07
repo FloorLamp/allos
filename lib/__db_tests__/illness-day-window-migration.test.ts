@@ -117,7 +117,11 @@ describe("migration 168 — illness_episodes start_date/end_date, inclusive end"
       "2026-03-06",
       "2026-03-07",
     ]);
-    // The old columns are gone — a reader cannot silently keep the old semantics.
+    // The live columns are start_date/end_date. started_at/ended_at survive as
+    // VESTIGIAL columns (the migration-124 pattern — the frozen 046/062 statements
+    // must still prepare under migrate()'s unconditional replay), but they are
+    // always NULL: dead storage, unreachable from application code per the
+    // illness-window-collapse-guard scan.
     const cols = (
       mem.prepare(`PRAGMA table_info(illness_episodes)`).all() as {
         name: string;
@@ -125,8 +129,33 @@ describe("migration 168 — illness_episodes start_date/end_date, inclusive end"
     ).map((c) => c.name);
     expect(cols).toContain("start_date");
     expect(cols).toContain("end_date");
-    expect(cols).not.toContain("started_at");
-    expect(cols).not.toContain("ended_at");
+    const vestigial = mem
+      .prepare(
+        `SELECT COUNT(*) AS n FROM illness_episodes
+          WHERE started_at IS NOT NULL OR ended_at IS NOT NULL`
+      )
+      .get() as { n: number };
+    expect(vestigial.n).toBe(0);
+  });
+
+  it("translates a replayed 046-shaped legacy insert onto the live columns", () => {
+    const mem = legacyDb();
+    up(mem);
+    // What backfillIllnessEpisodes writes on a post-168 replay: the legacy column
+    // pair, end = the change-log's stop day.
+    mem
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+         VALUES (1, 'Illness', '2026-03-01', '2026-03-08')`
+      )
+      .run();
+    const [row] = rows(mem);
+    expect(row.start_date).toBe("2026-03-01");
+    expect(row.end_date).toBe("2026-03-07");
+    const raw = mem
+      .prepare(`SELECT started_at, ended_at FROM illness_episodes`)
+      .get() as { started_at: string | null; ended_at: string | null };
+    expect(raw).toEqual({ started_at: null, ended_at: null });
   });
 
   it("leaves NULL bounds (ongoing / before-log) untouched and keeps a one-day episode one day", () => {

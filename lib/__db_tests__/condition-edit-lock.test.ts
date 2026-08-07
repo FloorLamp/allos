@@ -186,7 +186,7 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
       name: "Sinus infection",
       status: "inactive",
       onset_date: "2026-06-01",
-      resolved_date: "2026-06-03",
+      resolved_date: "2026-06-04", // the promote-time inclusive end, held out
       edited: 1,
     });
 
