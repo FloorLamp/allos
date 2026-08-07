@@ -24,6 +24,7 @@ import {
   textOf,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // The reaction/manifestation text off an allergy observation's MFST/reaction
 // entryRelationship (Reaction Observation): its value displayName or narrative.
@@ -118,7 +119,7 @@ export function mapAllergy(
   const status = toAllergyStatus(
     clinicalStatusFromEntryRelationships(obs) ?? concernStatus
   );
-  const onset = effTime(obs.effectiveTime);
+  const onset = sourceDay(effTime(obs.effectiveTime));
   return {
     substance,
     substance_code: code,

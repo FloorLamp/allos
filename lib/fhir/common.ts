@@ -1,18 +1,24 @@
 import { classifyLoinc } from "../biomarker-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
-import { isRealIsoDate } from "../date";
 import { nuccLabel } from "../nucc-taxonomy";
 import type { ImportedProvider, ImportedRecord } from "../health-import";
+import { fhirSourceTime, sourceDay, type SourceTime } from "../source-time";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 
 export class FhirError extends Error {}
 
-// Keep the first 10 chars when they form a real calendar date (FHIR dates may be
-// "2021-01-15", "2021-01-15T..", or a partial "2021" — partials are dropped).
-export function isoDate(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const d = v.slice(0, 10);
-  return isRealIsoDate(d) ? d : null;
+// A FHIR `date` / `dateTime` / `instant` → what the resource ACTUALLY said, at its own
+// grain (issue #2243). This used to be `v.slice(0, 10)`, so an `effectiveDateTime` of
+// "2026-08-07T14:30:00-05:00" arrived as a bare day and the offset — the thing that
+// makes it an absolute moment at all — was gone three layers before any destination
+// column was chosen. A partial ("2021", "2021-01") still carries no calendar day and
+// is still dropped.
+//
+// Every day-grained call site wraps this in `sourceDay(...)`, deliberately: the
+// narrowing is now VISIBLE at the destination that wants a day, instead of being a
+// property of the parser that no destination can undo.
+export function fhirTime(v: unknown): SourceTime | null {
+  return fhirSourceTime(v);
 }
 
 // ---- coding / CodeableConcept helpers ----

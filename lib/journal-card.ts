@@ -25,6 +25,7 @@ import type { SetStatus } from "./journal-format";
 import { summarizeExercise, activityProvenanceLabel } from "./journal-format";
 import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
 import { muscleFor } from "./lifts";
+import { activityClockHHMM } from "./activity-meta";
 import { storedActivityFault } from "./activity-validate";
 import { pickFoldValues } from "./import-review/conflicts";
 import { formatLongDate } from "./format-date";
@@ -278,33 +279,25 @@ export function activityHeartRateText(
   return `♥ ${avgHr}${maxHr != null ? `/${maxHr}` : ""} bpm`;
 }
 
-// Compact stored wall-clock range for the Journal summary. Activity form values
-// are HH:MM, while a few import/legacy paths may carry an ISO-like value; keep only
-// the clock portion in either case and never invent a start from an end alone.
+// Compact stored wall-clock range for the Journal summary. `activities.start_time` /
+// `end_time` are a profile-local HH:MM (lib/time-columns.ts), read through the one
+// activity-clock reading so this surface does not hand-roll its own parse; never
+// invent a start from an end alone.
 export function activityTimeText(
   startTime: string | null,
   endTime: string | null,
   timeFormat: TimeFormat = "24h"
 ): string | null {
-  const clock = (value: string | null): string | null => {
-    if (!value) return null;
-    return (
-      /^(\d{1,2}:\d{2})/.exec(value)?.[1] ??
-      /T(\d{2}:\d{2})/.exec(value)?.[1] ??
-      null
-    );
-  };
-  // The stored wall-clock is 24-hour "HH:MM". The DEFAULT (24h) returns it verbatim
-  // — byte-identical to today, with zero padding risk; only a 12h login reshapes it
-  // via the shared clock seam (#964).
+  // The stored wall-clock is 24-hour "HH:MM". The DEFAULT (24h) returns it verbatim;
+  // only a 12h login reshapes it via the shared clock seam (#964).
   const render = (hhmm: string): string => {
     if (timeFormat === "24h") return hhmm;
     const [h, m] = hhmm.split(":").map(Number);
     return formatClock("12h", h, m, "upper-space");
   };
-  const start = clock(startTime);
+  const start = activityClockHHMM(startTime);
   if (!start) return null;
-  const end = clock(endTime);
+  const end = activityClockHHMM(endTime);
   return end ? `${render(start)}–${render(end)}` : render(start);
 }
 

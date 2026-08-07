@@ -18,6 +18,7 @@ import {
   sectionIs,
   truthyNegation,
 } from "../normalize";
+import { sourceDay } from "../../source-time";
 
 // Map one Plan-of-Treatment / Care-Plan section entry to an ImportedCarePlanItem,
 // or null when it carries no usable description. Description prefers the coded
@@ -41,7 +42,7 @@ function mapCarePlanItem(
   if (!description) return null;
   const { code, system } = pickCode(node?.code);
   const { start } = hl7Period(node?.effectiveTime);
-  const plannedDate = start ?? effTime(node?.effectiveTime);
+  const plannedDate = sourceDay(start ?? effTime(node?.effectiveTime));
   const status =
     typeof node?.statusCode?.["@_code"] === "string"
       ? String(node.statusCode["@_code"])
@@ -83,7 +84,7 @@ function mapCareGoal(
       ? pickCode(value)
       : pickCode(obs?.code);
   const { start } = hl7Period(obs?.effectiveTime);
-  const targetDate = start ?? effTime(obs?.effectiveTime);
+  const targetDate = sourceDay(start ?? effTime(obs?.effectiveTime));
   const status =
     typeof obs?.statusCode?.["@_code"] === "string"
       ? String(obs.statusCode["@_code"])

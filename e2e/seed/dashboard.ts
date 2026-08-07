@@ -426,15 +426,15 @@ export function seedNowStrip(): void {
   insertSleepPhase.run(
     sleepPhaseId,
     lateRiserDate,
-    iso(zonedWallTimeToUtc("UTC", lateRiserDate, "04:00")),
-    iso(zonedWallTimeToUtc("UTC", lateRiserDate, "13:00")),
+    iso(zonedWallTimeToUtc("UTC", lateRiserDate, "04:00")!),
+    iso(zonedWallTimeToUtc("UTC", lateRiserDate, "13:00")!),
     540
   );
   insertSleepPhase.run(
     sleepPhaseId,
     daytimeSleepDate,
-    iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "08:00")),
-    iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "16:00")),
+    iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "08:00")!),
+    iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "16:00")!),
     480
   );
   seedMemberLogin(E2E_LOGIN_SLEEP_PHASE, sleepPhaseId, "read");
@@ -467,15 +467,15 @@ export function seedNowStrip(): void {
     insertSegmentedSleep.run(
       sleepSegmentedId,
       wakeDay,
-      iso(zonedWallTimeToUtc("UTC", bedDay, "23:00")),
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "03:00"))
+      iso(zonedWallTimeToUtc("UTC", bedDay, "23:00")!),
+      iso(zonedWallTimeToUtc("UTC", wakeDay, "03:00")!)
     );
     // Second fragment after a 1h awake gap: 04:00 → 08:00 the same wake-day (4h).
     insertSegmentedSleep.run(
       sleepSegmentedId,
       wakeDay,
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "04:00")),
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "08:00"))
+      iso(zonedWallTimeToUtc("UTC", wakeDay, "04:00")!),
+      iso(zonedWallTimeToUtc("UTC", wakeDay, "08:00")!)
     );
   }
   seedMemberLogin(E2E_LOGIN_SLEEP_SEGMENTED, sleepSegmentedId, "read");

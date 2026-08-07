@@ -48,8 +48,8 @@ function resetRestCardState(): void {
       ).run(
         row.id,
         rcToday,
-        zonedWallTimeToUtc("UTC", rcPrevNight, "23:00").toISOString(),
-        zonedWallTimeToUtc("UTC", rcToday, "04:00").toISOString()
+        zonedWallTimeToUtc("UTC", rcPrevNight, "23:00")!.toISOString(),
+        zonedWallTimeToUtc("UTC", rcToday, "04:00")!.toISOString()
       );
       db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(row.id);
       const insertRhr = db.prepare(

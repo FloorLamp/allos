@@ -72,7 +72,8 @@ function stored(profileId: number, key: string): string | undefined {
 /** A synced overnight session whose provenance row landed at `arrivalMinute`. */
 function night(profileId: number, date: string, arrivalMinute: number): void {
   const clock = `${String(Math.floor(arrivalMinute / 60)).padStart(2, "0")}:${String(arrivalMinute % 60).padStart(2, "0")}`;
-  const arrivedAt = zonedWallTimeToUtc(TZ, date, clock);
+  // The helper builds the clock itself, so it always resolves (#2245).
+  const arrivedAt = zonedWallTimeToUtc(TZ, date, clock)!;
   const end = new Date(arrivedAt.getTime() - 60 * 60_000);
   const start = new Date(end.getTime() - 420 * 60_000);
   const sampleId = Number(
