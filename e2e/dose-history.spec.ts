@@ -136,15 +136,55 @@ test("a supplement's dose history offers the medication row actions, and an edit
   // ── The amendment round-trips: the snapshotted amount is corrected in place ─
   const form = panel.getByTestId("historical-dose-form");
   await expect(form).toContainText("won’t change the schedule either");
+  // #2228 write half: the editor's time seeds ONLY from the row's stated
+  // occurred_at — this row has none, so the field opens EMPTY instead of
+  // laundering the confirm's filing timestamp into an administration time.
+  await expect(form.getByTestId("historical-dose-time")).toHaveValue("");
   await form.getByLabel("Amount").fill("375 mg");
   await form.getByRole("button", { name: "Save changes" }).click();
   await expect(form).toHaveCount(0);
   await expect(panel.getByTestId("dose-history-row")).toContainText("375 mg");
-  // The amendment wrote no stated event instant either (the write half of #2228 is
-  // a separate change), so the row still carries the "recorded" marker.
+  // The amount-only amendment stated no intake time (occurred_at stays NULL), so
+  // the row STILL carries the "recorded" marker — amending the amount of a dose
+  // whose intake time was never stated changes the amount and nothing else.
   await expect(panel.getByTestId("dose-history-row")).toContainText(
     /recorded \d{1,2}:\d{2}/
   );
+
+  // ── Stating a time makes the row a real administration clock ───────────────
+  // The frozen e2e clock always reads 13:mm local (e2e/pinned-timezone.ts), so a
+  // morning wall time today is deterministically in the past.
+  await panel
+    .getByTestId("dose-history-row")
+    .getByRole("button", { name: "Dose actions" })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  const timedForm = panel.getByTestId("historical-dose-form");
+  await timedForm.getByTestId("historical-dose-time").fill("07:42");
+  await timedForm.getByRole("button", { name: "Save changes" }).click();
+  await expect(timedForm).toHaveCount(0);
+  // The stated time renders as a BARE clock — the "recorded" marker is gone.
+  await expect(panel.getByTestId("dose-history-row")).toContainText(
+    /(?:7:42am|07:42)/
+  );
+  await expect(panel.getByTestId("dose-history-row")).not.toContainText(
+    "recorded"
+  );
+  // …and reopening the editor now seeds from the stated instant.
+  await panel
+    .getByTestId("dose-history-row")
+    .getByRole("button", { name: "Dose actions" })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await expect(
+    panel
+      .getByTestId("historical-dose-form")
+      .getByTestId("historical-dose-time")
+  ).toHaveValue("07:42");
+  await panel
+    .getByTestId("historical-dose-form")
+    .getByRole("button", { name: "Cancel" })
+    .click();
 
   // The SCHEDULE is untouched by the correction — the row still reads 250 mg.
   await expect(row).toContainText("250 mg");
