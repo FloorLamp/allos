@@ -4,10 +4,9 @@ import type { AppRoute } from "@/lib/hrefs";
 import type { BodyView } from "./body-view";
 
 // The Trends → Body overview toggle (#1067 Phase 2): sparkline TILES vs the classic
-// full-chart STACK. The default is responsive (tiles on mobile, stack on desktop) —
-// the skim-reader keeps their view — and this control lets either viewport pin the
-// other explicitly (`?view=tiles` / `?view=all`). A GET-link segmented control, so
-// it works without JS and the choice lives in the URL alongside tab + range.
+// full-chart STACK. #2152 makes the phone answer unconditional: tiles only, even
+// for `?view=all` and 1D. This desktop-only control chooses the presentation above
+// the breakpoint. A GET-link segmented control keeps the choice in the URL.
 
 export default function BodyViewToggle({
   view,

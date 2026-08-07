@@ -38,7 +38,7 @@ test("a pause link holds the item while its situation is active, then resumes", 
   // activation; Supplements only consumes the resulting schedule state.
   await page.goto("/");
   const checkin = page.getByTestId("how-are-you-card");
-  await checkin.getByTestId("checkin-section-context-toggle").click();
+  await checkin.getByTestId("checkin-section-rate-toggle").click();
   const chip = checkin.getByTestId(`checkin-situation-${SITUATION}`);
   await expect(chip).toBeVisible();
   await expect(chip).toHaveAttribute("aria-pressed", "false");
@@ -50,11 +50,16 @@ test("a pause link holds the item while its situation is active, then resumes", 
   // dashboard — a bystander-POST surface where settledClick can resolve early
   // (see the caveat in e2e/helpers.ts). Twice observed losing the 5s default
   // under CI shard load at retries=0 (2026-07-31, runs 30663070912 and
-  // 30664837925); the button sits disabled while the transition is pending, so
-  // the wide window waits on the real commit and masks nothing.
-  await expect(chip).toHaveAttribute("aria-pressed", "true", {
+  // 30664837925). A selected chip moves from Rate details into the new collapsed
+  // Context section, so that section is the durable server-truth marker.
+  const activeContext = checkin.getByTestId("checkin-section-context");
+  await expect(activeContext).toBeVisible({
     timeout: 30_000,
   });
+  await checkin.getByTestId("checkin-section-context-toggle").click();
+  await expect(
+    activeContext.getByTestId(`checkin-situation-${SITUATION}`)
+  ).toHaveAttribute("aria-pressed", "true");
 
   await page.goto("/nutrition?tab=supplements");
   const heldSection = page.getByTestId("held-section");
@@ -68,13 +73,11 @@ test("a pause link holds the item while its situation is active, then resumes", 
   await page.goto("/");
   const checkinAgain = page.getByTestId("how-are-you-card");
   await checkinAgain.getByTestId("checkin-section-context-toggle").click();
-  await settledClick(
-    page,
-    checkinAgain.getByTestId(`checkin-situation-${SITUATION}`)
+  const activeChip = checkinAgain.getByTestId(`checkin-situation-${SITUATION}`);
+  await settledClick(page, activeChip);
+  await expect(checkinAgain.getByTestId("checkin-section-context")).toHaveCount(
+    0
   );
-  await expect(
-    checkinAgain.getByTestId(`checkin-situation-${SITUATION}`)
-  ).toHaveAttribute("aria-pressed", "false");
   await page.goto("/nutrition?tab=supplements");
   await expect(page.getByTestId("held-section")).toHaveCount(0);
 

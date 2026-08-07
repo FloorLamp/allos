@@ -5,6 +5,7 @@ import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHeatmap from "@/components/practices/PracticeHeatmap";
 import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
+import PracticeTrends from "@/components/practices/PracticeTrends";
 import { useConfirm } from "@/components/ConfirmDialog";
 import OverflowMenu, {
   MENU_ITEM,
@@ -13,7 +14,7 @@ import OverflowMenu, {
 import { useToast } from "@/components/Toast";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import type { PracticeLog } from "@/lib/types";
-import type { WellnessPractice } from "@/lib/queries/wellness";
+import type { PracticeTrend, WellnessPractice } from "@/lib/queries/wellness";
 import PracticeEditor from "./PracticeEditor";
 import { deletePractice, untrackPractice } from "./actions";
 
@@ -21,10 +22,12 @@ export default function PracticeCard({
   practice,
   sessions,
   today,
+  trend,
 }: {
   practice: WellnessPractice;
   sessions: PracticeLog[];
   today: string;
+  trend: PracticeTrend | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -217,6 +220,8 @@ export default function PracticeCard({
         inlineDuration
         showDetails
       />
+
+      {trend ? <PracticeTrends practice={trend} /> : null}
 
       <PracticeHistorySection
         title="Session history"

@@ -1,7 +1,8 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getWellnessPractices } from "@/lib/queries";
+import { getPracticeTrends, getWellnessPractices } from "@/lib/queries";
 import { getWeekStart } from "@/lib/settings";
+import { MAX_PRACTICE_TREND_WEEKS } from "@/lib/trends-practices";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
@@ -20,6 +21,11 @@ export default async function WellnessPage(props: {
     profile.id,
     todayStr,
     getWeekStart(profile.id)
+  );
+  const trendsByIdentity = new Map(
+    getPracticeTrends(profile.id, MAX_PRACTICE_TREND_WEEKS, todayStr).map(
+      (trend) => [trend.identity, trend]
+    )
   );
 
   return (
@@ -54,6 +60,7 @@ export default async function WellnessPage(props: {
                 practice={practice}
                 sessions={practice.sessions}
                 today={todayStr}
+                trend={trendsByIdentity.get(practice.identity) ?? null}
               />
             ))}
           </div>

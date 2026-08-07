@@ -6,6 +6,10 @@ import { useQuickEntry } from "@/components/QuickEntryProvider";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import type { ProtocolPractice } from "@/lib/queries/protocols";
 import { protocolLogAction } from "@/lib/protocol-log-action";
+import {
+  DOSE_ACTION_LABEL,
+  DOSE_ACTION_NEUTRAL,
+} from "@/components/medications/dose-action-styles";
 
 // One shared scope-aware protocol action (#1584), used on both the detail page
 // and dashboard. It reaches the existing activity editor, food logger, or
@@ -20,6 +24,8 @@ export default function ProtocolLogButton({
   showDetails = false,
   inlineDuration = false,
   usualSessionDay = false,
+  compact = false,
+  primaryTone = "brand",
 }: {
   practice: ProtocolPractice;
   ongoing: boolean;
@@ -43,6 +49,8 @@ export default function ProtocolLogButton({
   // Whether today is an inferred rhythm day for the wellness practice (#2188) —
   // see LogPracticeButton. Only meaningful for the "practice" scope.
   usualSessionDay?: boolean;
+  compact?: boolean;
+  primaryTone?: "brand" | "neutral";
 }) {
   const activityEditor = useActivityEditor();
   const quickEntry = useQuickEntry();
@@ -62,6 +70,8 @@ export default function ProtocolLogButton({
         showDetails={showDetails}
         inlineDuration={inlineDuration}
         usualSessionDay={usualSessionDay}
+        compact={compact}
+        primaryTone={primaryTone}
       />
     );
   }
@@ -78,7 +88,11 @@ export default function ProtocolLogButton({
             quickEntry.open("food", { foodGroup: action.foodGroup });
           }
         }}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white"
+        className={
+          primaryTone === "neutral"
+            ? `${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`
+            : "inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white"
+        }
       >
         <IconCheck className="h-4 w-4" stroke={2} aria-hidden />
         {action.label}

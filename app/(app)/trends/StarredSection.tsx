@@ -11,14 +11,9 @@ import {
 import { today } from "@/lib/db";
 import { formatMonthDay } from "@/lib/format-date";
 import { getDisplayFormatPrefs } from "@/lib/settings";
-import {
-  isSeriesKeySaved,
-  metricSeriesKey,
-  partitionOverviewTiles,
-} from "@/lib/saved-items";
+import { isSeriesKeySaved, metricSeriesKey } from "@/lib/saved-items";
 import { sparklineShapeForSeriesKey } from "@/lib/trend-sparkline";
 import type { DateRange } from "@/lib/timeline-format";
-import { EmptyState } from "@/components/ui";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import TrendTileMenu from "@/components/TrendTileMenu";
 import SaveTrendPicker from "@/components/SaveTrendPicker";
@@ -60,9 +55,9 @@ import SavedTilesGrid, {
 //     profile, body fat below the growth-metrics age), and the seed set is the same
 //     for every profile. A gated metric is simply absent, exactly as before.
 //   • A saved item with a tile but NOTHING TO SHOW still renders, so its unstar
-//     control stays reachable at any window (#1456). #1485 A compacts those to a
-//     one-line row and sinks them below the populated tiles, which is where the
-//     ~600px of mid-grid whitespace went.
+//     control stays reachable at any window (#1456). #2153 reverses #1485 A's
+//     compact-and-sink treatment: empty tiles keep their saved slot and the same
+//     geometry as their neighbours. Uniform cells are the accepted whitespace cost.
 export default async function StarredSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
@@ -105,16 +100,6 @@ export default async function StarredSection({ range }: { range: DateRange }) {
     }
   }
 
-  // #1485 A: which tiles compact to a one-line row and sink below the grid. It is a
-  // LAYOUT split only — every tile keeps its slot in the SAVED order, which is the
-  // list both reorder affordances (the #1485 C drag and the ⋯ menu's arrows) move
-  // within, so sinking an empty tile changes where it draws, never what its position
-  // means. The split itself is applied client-side by SavedTilesGrid, over the same
-  // pure predicate, so an optimistic drag re-splits without a round trip.
-  const emptyKeys = new Set(
-    partitionOverviewTiles(tiles).empty.map((t) => t.tile.key)
-  );
-
   // What the picker can still add: everything savable that isn't saved yet — metrics
   // included, since unstarring one now removes its tile and the picker is the way
   // back (see components/SaveTrendPicker.tsx). listCompareOptions applies the same
@@ -122,8 +107,10 @@ export default async function StarredSection({ range }: { range: DateRange }) {
   // volume.
   const options = listCompareOptions(profile.id, restricted);
   const unsaved = (o: { key: string }) => !isSeriesKeySaved(savedRefs, o.key);
+  const unsavedMetrics = options.metrics.filter(unsaved);
+  const unsavedBiomarkers = options.biomarkers.filter(unsaved);
 
-  const renderTile = (t: TrendSeries, compact: boolean) => (
+  const renderTile = (t: TrendSeries) => (
     <TrendMiniCard
       title={t.label}
       mobileTitle={t.shortLabel}
@@ -148,7 +135,6 @@ export default async function StarredSection({ range }: { range: DateRange }) {
       // lib/trend-sparkline.ts — training volume's rest days are real zeros, so a
       // line through them draws a slope over training that never happened.
       sparklineShape={sparklineShapeForSeriesKey(t.key)}
-      compact={compact}
       // The tile's own controls. Its reorder items resolve their list from the
       // grid's context (#1485 C), so nothing about ordering is computed here.
       menu={<TrendTileMenu itemKey={t.key} label={t.label} />}
@@ -160,25 +146,42 @@ export default async function StarredSection({ range }: { range: DateRange }) {
   // reorder is pure motion: no re-query, no client-side tile rendering.
   const items: SavedTileItem[] = tiles.map((t) => ({
     key: t.key,
-    empty: emptyKeys.has(t.key),
-    node: renderTile(t, emptyKeys.has(t.key)),
+    empty: t.points.length === 0 && t.outsideWindow == null,
+    node: renderTile(t),
   }));
+  const addTile = (mobileSectionLabel = false) =>
+    unsavedMetrics.length + unsavedBiomarkers.length > 0 ? (
+      <SaveTrendPicker
+        metrics={unsavedMetrics}
+        biomarkers={unsavedBiomarkers}
+        mobileSectionLabel={mobileSectionLabel}
+      />
+    ) : null;
+  const emptyAddTile = addTile(true);
 
   return (
-    <div className="space-y-6">
+    <>
       {items.length > 0 ? (
-        <SavedTilesGrid items={items} />
+        <SavedTilesGrid items={items} addTile={addTile()} />
       ) : (
         // Everything unstarred (or a brand-new profile whose only saved metrics are
-        // age-gated): the grid is genuinely empty, so it says so and offers the way
-        // back rather than rendering a blank page.
-        <EmptyState message="Star metrics and biomarkers to build your grid." />
+        // age-gated): phones spend one compact row on the section and its action;
+        // larger screens retain the explanatory empty panel. This is one responsive
+        // state (and therefore one form), not duplicate mobile/desktop content.
+        <div
+          className="flex min-h-8 items-center justify-between gap-3 sm:block sm:rounded-xl sm:border sm:border-dashed sm:border-black/10 sm:bg-white sm:p-10 sm:text-center sm:text-sm sm:text-slate-500 sm:dark:border-white/10 sm:dark:bg-ink-900 sm:dark:text-slate-400"
+          data-testid="starred-empty-state"
+        >
+          <span className="hidden sm:inline">
+            Star metrics and biomarkers to build your grid.
+          </span>
+          {emptyAddTile ? (
+            <div className="w-full sm:mt-4 sm:flex sm:justify-center">
+              {emptyAddTile}
+            </div>
+          ) : null}
+        </div>
       )}
-
-      <SaveTrendPicker
-        metrics={options.metrics.filter(unsaved)}
-        biomarkers={options.biomarkers.filter(unsaved)}
-      />
-    </div>
+    </>
   );
 }

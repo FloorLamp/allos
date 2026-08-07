@@ -1577,13 +1577,15 @@ export default async function BodySection({
         }
       />
 
-      {/* 1D is a real intraday lens, not a one-point daily tile grid. It becomes
-          the sole reading view at every viewport so phones keep their tiles-only
-          rule for ordinary ranges without losing the clock-axis charts 1D exists
-          to reveal. This is the same stack desktop reads, mounted once — at 1D it
-          holds the intraday swap (at `hr-day`'s rank) and nothing else windowed. */}
+      {/* #2152: Overview is spark tiles only on phones at EVERY range. Even 1D's
+          clock-axis chart stays in the desktop stack; opening a tile remains the
+          one-tap route to a full chart on a phone. `?view=all` never overrides the
+          viewport rule. */}
       {intraday && (
-        <div className="!mt-2" data-testid="body-intraday-view">
+        <div
+          className={`${stackContainerClass(view)} !mt-2`}
+          data-testid="body-intraday-view"
+        >
           {bodyStack.length > 0 ? (
             <BodyTrendCharts
               items={bodyStack}
@@ -1596,43 +1598,44 @@ export default async function BodySection({
         </div>
       )}
 
-      {!intraday && (
-        <>
-          {/* Sparkline-tile overview — the only ordinary-range view on mobile. */}
-          <div
-            className={`${tilesContainerClass(view)} !mt-2`}
-            data-testid="body-tiles-view"
-          >
-            <BodyMetricTiles
-              tiles={metricTiles}
-              growth={growthGridTiles}
-              sleep={sleepGridTile}
-              order={cardOrder}
-            />
+      {/* The same census component renders both presentations. CSS selects the
+          viewport-safe one; there is no forked mobile census. */}
+      <div
+        className={`${tilesContainerClass(view)} !mt-2`}
+        data-testid="body-tiles-view"
+      >
+        <BodyMetricTiles
+          tiles={metricTiles}
+          growth={growthGridTiles}
+          sleep={sleepGridTile}
+          order={cardOrder}
+        />
 
-            {/* How the arrangement works, said once (#1643) — under the census
+        {/* How the arrangement works, said once (#1643) — under the census
                 rather than above it, so it explains what the reader just scanned
                 without pushing the census down. The ★ is the ONLY thing that
                 reorders this census, and the sequence of what you pin is the
                 starred grid's saved order — one scroll up the same page since
                 #1644 — so the hint names BOTH halves and where each gesture lives
                 instead of adding a second reorder affordance here. */}
-            <p
-              className="mt-3 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="body-pin-hint"
-            >
-              Star a metric on its own page — open any card — to pin it to the
-              top of this section. Pinned cards follow your{" "}
-              <Link
-                href="/trends#starred"
-                className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-              >
-                starred grid
-              </Link>{" "}
-              order; drag them there to re-sequence them.
-            </p>
-          </div>
+        <p
+          className="mt-3 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="body-pin-hint"
+        >
+          Star a metric on its own page — open any card — to pin it to the top
+          of this section. Pinned cards follow your{" "}
+          <Link
+            href="/trends#starred"
+            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            starred grid
+          </Link>{" "}
+          order; drag them there to re-sequence them.
+        </p>
+      </div>
 
+      {!intraday && (
+        <>
           {/* The classic full-chart stack — desktop only. Carries the per-chart
               `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
           <div

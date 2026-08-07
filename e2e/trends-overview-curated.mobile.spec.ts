@@ -1,14 +1,17 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { followLink, settledClick, settledPickOption } from "./helpers";
+import { workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_EMPTY_ANALYTE,
+  TRENDS_CURATE_PROFILE,
 } from "./fixture-logins";
 
-// Trends Overview is CURATION-DRIVEN (#1487) and its tiles are dense (#1485 A+B).
+// Trends Overview is CURATION-DRIVEN (#1487) with uniform saved-slot tiles (#2153).
 //
 // Two things this proves that no other tier can:
 //   1. The membership flip is real — unstarring a STANDARD metric (training volume,
@@ -16,8 +19,7 @@ import {
 //      it back. Both halves matter: a removal with no add gesture would strand the
 //      tile forever, so the round trip is the feature.
 //   2. The tile grid is two-abreast at 390px and a saved item with nothing to show
-//      compacts to a one-line row BELOW the populated tiles, instead of ~300px of
-//      "No data in this range" whitespace mid-grid.
+//      keeps full tile geometry in its saved slot, including reorder controls.
 //
 // Fixture (#868 hygiene): a dedicated write-granted member whose sole profile is
 // "Trends Curate (e2e)" — seeded through the same standard-metric seeds a real new
@@ -52,7 +54,140 @@ async function openTileMenu(page: Page, name: string) {
   return menu;
 }
 
+async function openTileMenuByKey(page: Page, key: string) {
+  await page
+    .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
+    .getByTestId("overflow-menu-trigger")
+    .click();
+  const menu = page.getByTestId("trend-tile-menu");
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
 test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
+  test("an empty starred grid collapses to one action row on a phone", async ({
+    browser,
+  }) => {
+    const db = new Database(workerDbPath());
+    db.pragma("busy_timeout = 5000");
+    const profileId = (
+      db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(TRENDS_CURATE_PROFILE) as { id: number }
+    ).id;
+    const saved = db
+      .prepare(
+        `SELECT id, kind, key, position, created_at
+           FROM saved_items
+          WHERE profile_id = ?
+          ORDER BY id`
+      )
+      .all(profileId) as Array<{
+      id: number;
+      kind: string;
+      key: string;
+      position: number | null;
+      created_at: string;
+    }>;
+    db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(profileId);
+    db.close();
+
+    const page = await curatePage(browser);
+    try {
+      await page.goto("/trends");
+
+      const empty = page.getByTestId("starred-empty-state");
+      const toggle = empty.getByTestId("save-trend-picker-toggle");
+      await expect(
+        toggle.getByText("★ Starred", { exact: true })
+      ).toBeVisible();
+      await expect(
+        toggle.getByText("· Add tile", { exact: true })
+      ).toBeVisible();
+      await expect(
+        toggle.getByText("· Close", { exact: true })
+      ).not.toBeVisible();
+      await expect(
+        empty.getByText("Star metrics and biomarkers to build your grid.")
+      ).not.toBeVisible();
+      await expect(toggle).toBeVisible();
+      const closedTogglePosition = await toggle.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x, y: rect.y };
+      });
+      expect(
+        await empty.evaluate((node) => node.getBoundingClientRect().height)
+      ).toBeLessThanOrEqual(40);
+
+      await toggle.click();
+      const picker = empty.getByTestId("save-trend-picker");
+      await expect(
+        toggle.getByText("· Add tile", { exact: true })
+      ).not.toBeVisible();
+      await expect(toggle.getByText("· Close", { exact: true })).toBeVisible();
+      const openTogglePosition = await toggle.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x, y: rect.y };
+      });
+      expect(
+        Math.abs(openTogglePosition.x - closedTogglePosition.x)
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(openTogglePosition.y - closedTogglePosition.y)
+      ).toBeLessThanOrEqual(1);
+      await expect(
+        picker.getByText("Add to your overview:", { exact: true })
+      ).not.toBeVisible();
+      const search = picker.getByRole("combobox");
+      await expect(search).toBeVisible();
+      await expect(
+        picker.getByRole("button", { name: "Star" })
+      ).not.toBeVisible();
+      expect(
+        await picker.evaluate((node) => {
+          const form = node.getBoundingClientRect();
+          const section =
+            node.parentElement?.parentElement?.getBoundingClientRect();
+          const field = node
+            .querySelector('[role="combobox"]')
+            ?.getBoundingClientRect();
+          return (
+            section != null &&
+            field != null &&
+            form.left >= section.left &&
+            form.right <= section.right &&
+            field.width >= form.width - 2
+          );
+        })
+      ).toBe(true);
+    } finally {
+      await page.context().close();
+      const restoreDb = new Database(workerDbPath());
+      const restore = restoreDb.prepare(
+        `INSERT INTO saved_items
+           (id, profile_id, kind, key, position, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      );
+      const restoreAll = restoreDb.transaction(() => {
+        restoreDb
+          .prepare("DELETE FROM saved_items WHERE profile_id = ?")
+          .run(profileId);
+        for (const row of saved) {
+          restore.run(
+            row.id,
+            profileId,
+            row.kind,
+            row.key,
+            row.position,
+            row.created_at
+          );
+        }
+      });
+      restoreAll();
+      restoreDb.close();
+    }
+  });
+
   test("overview chart links open their detailed metric surfaces", async ({
     browser,
   }) => {
@@ -122,6 +257,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       // #1675, and since #1644 the hub is one long streamed page, so hydration lands
       // later and a value set before React attaches would be reverted — the Star
       // would then submit the stale one.
+      await page.getByTestId("save-trend-picker-toggle").click();
       const picker = page.getByTestId("save-trend-picker");
       await settledPickOption(
         page,
@@ -137,7 +273,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
     }
   });
 
-  test("populated tiles sit two-abreast at 390px and empty ones compact below them", async ({
+  test("empty tiles keep the same grid geometry in their saved slot", async ({
     browser,
   }) => {
     test.slow();
@@ -146,33 +282,43 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       await page.goto("/trends");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
 
-      // #1485 B — two columns at phone width. The fixture's two populated tiles
-      // (weight, resting HR) share a row: same top, different left, each under half
-      // the viewport. A single-column grid fails on the `top` equality.
+      // #1485 B — two columns at phone width. Assert the grid itself rather than
+      // assuming two named tiles are adjacent: the preceding membership test may
+      // legitimately restore one at the end of the saved order.
+      const grid = page.getByTestId("saved-tiles").locator(".grid");
+      await expect(grid).toBeVisible();
+      expect(
+        await grid.evaluate(
+          (element) =>
+            getComputedStyle(element).gridTemplateColumns.split(" ").length
+        )
+      ).toBe(2);
       const weight = tile(page, "Weight");
-      const hr = tile(page, "Resting Heart Rate");
       const wBox = await weight.boundingBox();
-      const hBox = await hr.boundingBox();
       expect(wBox, "weight tile box").not.toBeNull();
-      expect(hBox, "resting HR tile box").not.toBeNull();
-      expect(Math.abs(wBox!.y - hBox!.y)).toBeLessThan(4);
-      // Different COLUMNS, not "weight on the left": the tiles are drag-reorderable
-      // since #1485 C, so which one leads is user state a neighbouring test may have
-      // moved — what this owns is the two-column layout.
-      expect(Math.abs(wBox!.x - hBox!.x)).toBeGreaterThan(100);
       expect(wBox!.width).toBeLessThan(195);
 
-      // #1485 A — a saved analyte with no readings at all is a ONE-LINE row, not a
-      // ~300px card, and it sinks below every populated tile. (The row's own height
-      // is the assertion: a full tile here was the ~600px of mid-grid waste.)
+      // #2153 reverses #1485 A: a saved analyte with no readings is a full grid
+      // cell, not a full-width strip below the populated cards.
       const empty = tile(page, TRENDS_CURATE_EMPTY_ANALYTE);
       await expect(empty).toBeVisible();
       const eBox = await empty.boundingBox();
       expect(eBox, "empty tile box").not.toBeNull();
-      expect(eBox!.height).toBeLessThan(72);
-      expect(eBox!.y).toBeGreaterThan(wBox!.y + wBox!.height);
+      expect(Math.abs(eBox!.width - wBox!.width)).toBeLessThan(3);
+      expect(eBox!.height).toBeGreaterThan(150);
+      await expect(empty).toContainText("No data in this range");
+      const emptyWrapper = empty.locator("xpath=..");
+      await expect(emptyWrapper).toHaveAttribute(
+        "data-tile-key",
+        `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`
+      );
+      expect(
+        await emptyWrapper.evaluate((element) =>
+          element.parentElement?.classList.contains("grid")
+        )
+      ).toBe(true);
 
-      // Compaction, not omission (#1456): its unstar control is still reachable.
+      // Full geometry, not omission (#1456): its unstar control is still reachable.
       const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);
       await expect(menu.getByTestId("star-toggle")).toBeVisible();
     } finally {
@@ -289,22 +435,16 @@ test.describe("reorder converges on drag (#1485 C)", () => {
 
       // The first tile can only go later; the arrows say so rather than offering a
       // move off the end.
-      const firstMenu = await openTileMenu(page, "Weight");
-      const isFirstTile = first === "metric:weight";
+      const firstMenu = await openTileMenuByKey(page, first);
       await expect(firstMenu.getByTestId("saved-move-up")).toBeVisible();
       await expect(firstMenu.getByTestId("saved-move-down")).toBeVisible();
-      if (isFirstTile) {
-        await expect(firstMenu.getByTestId("saved-move-up")).toBeDisabled();
-      }
+      await expect(firstMenu.getByTestId("saved-move-up")).toBeDisabled();
       await page.keyboard.press("Escape");
 
       // "Move earlier" on the SECOND tile puts it first — the same list the drag
       // moves, which is exactly what the old arrows could not promise (they stepped
       // through the stored order, past sunk empty rows).
-      const menu = await openTileMenu(
-        page,
-        second === "metric:weight" ? "Weight" : "Resting Heart Rate"
-      );
+      const menu = await openTileMenuByKey(page, second);
       const settled = reorderSettled(page);
       await menu.getByTestId("saved-move-up").click();
       await expect.poll(async () => (await tileOrder(page))[0]).toBe(second);
@@ -316,10 +456,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
 
       // Restore.
       const back = reorderSettled(page);
-      const restore = await openTileMenu(
-        page,
-        second === "metric:weight" ? "Weight" : "Resting Heart Rate"
-      );
+      const restore = await openTileMenuByKey(page, second);
       await restore.getByTestId("saved-move-down").click();
       await expect.poll(async () => (await tileOrder(page))[0]).toBe(first);
       await back;
@@ -328,7 +465,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
     }
   });
 
-  test("an empty tile offers no reorder arrows — only the unstar it must keep", async ({
+  test("an empty tile reorders within the same saved list", async ({
     browser,
   }) => {
     test.slow();
@@ -337,13 +474,30 @@ test.describe("reorder converges on drag (#1485 C)", () => {
       await page.goto("/trends");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
 
-      // A never-measured analyte is sunk below the grid BY RULE, so its position is
-      // not something the user can move; two arrows that visibly did nothing were
-      // the confusing part of the old chrome.
+      const before = await tileOrder(page);
+      const emptyKey = `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`;
+      const beforeIndex = before.indexOf(emptyKey);
+      expect(beforeIndex).toBeGreaterThanOrEqual(0);
       const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);
       await expect(menu.getByTestId("star-toggle")).toBeVisible();
-      await expect(menu.getByTestId("saved-move-up")).toHaveCount(0);
-      await expect(menu.getByTestId("saved-move-down")).toHaveCount(0);
+      const direction = beforeIndex === 0 ? "down" : "up";
+      const settled = reorderSettled(page);
+      await menu.getByTestId(`saved-move-${direction}`).click();
+      await expect
+        .poll(async () => (await tileOrder(page)).indexOf(emptyKey))
+        .toBe(beforeIndex + (direction === "down" ? 1 : -1));
+      await settled;
+
+      // Restore the saved order through the opposite arrow.
+      const restore = reorderSettled(page);
+      const restoreMenu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);
+      await restoreMenu
+        .getByTestId(`saved-move-${direction === "down" ? "up" : "down"}`)
+        .click();
+      await expect
+        .poll(async () => (await tileOrder(page)).indexOf(emptyKey))
+        .toBe(beforeIndex);
+      await restore;
     } finally {
       await page.context().close();
     }
