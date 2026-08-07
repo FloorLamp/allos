@@ -245,6 +245,11 @@ describe("the migration-free guarantee", () => {
   // Phase 1 is a READ model. Nothing about the three stores moved, so their
   // columns are exactly what they were — the pin that makes "no schema change"
   // a build failure rather than a claim in a PR body.
+  //
+  // EDITED ONCE, DELIBERATELY, by #2237 (#2205 phase 2 wave 1): migration 165 adds a
+  // nullable `occurred_at` to body_metrics and medical_records. That is a real schema
+  // change and this pin's one legitimate edit path — it is the announcement, not an
+  // obstacle. `metric_samples` is untouched: it already had `start_time`.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -257,6 +262,7 @@ describe("the migration-free guarantee", () => {
       "edited",
       "id",
       "notes",
+      "occurred_at",
       "profile_id",
       "resting_hr",
       "source",
@@ -280,9 +286,10 @@ describe("the migration-free guarantee", () => {
     ]);
   });
 
-  it("leaves medical_records untouched — it is the clinical record", () => {
+  it("leaves medical_records unrestructured — it is the clinical record", () => {
     // The highest-stakes table in the app (#1808's FK map, tombstones, undo,
-    // export, the passport). Phase 1 reads from it and restructures nothing.
+    // export, the passport). Phase 1 reads from it and restructures nothing; the
+    // only column it has gained since is migration 165's additive `occurred_at`.
     expect(columns("medical_records")).toEqual([
       "canonical_name",
       "category",
@@ -298,6 +305,7 @@ describe("the migration-free guarantee", () => {
       "loinc",
       "name",
       "notes",
+      "occurred_at",
       "ordering_provider_id",
       "panel",
       "profile_id",

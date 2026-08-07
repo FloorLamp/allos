@@ -238,6 +238,13 @@ export const TIME_COLUMNS = {
   ],
   body_metrics: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 165 (#2235, #2205 phase 2 wave 1). When the day's weigh-in was actually taken. Body weight moves a kilogram across a day, so morning-fasted and evening-fed are different measurements of one quantity and an unlabelled mix carries that swing as unattributable noise. NULL means DAY-GRAIN. Descriptive only — the natural key stays (profile_id, date, source), and one row per day is unchanged, so this records WHEN the day's reading was taken and does not enable two weigh-ins in one day. This table has no record stamp at all, so there is nothing here for an event column to be laundered from.",
+    },
   ],
   canonical_biomarkers: [
     {
@@ -716,23 +723,34 @@ export const TIME_COLUMNS = {
       convention: "n/a",
     },
   ],
-  // FOR WHOEVER RUNS PHASE 2 WAVE 2 — do not re-derive this.
+  // FOR WHOEVER RUNS THE `given_at` RENAME — do not re-derive this.
   //
   // `given_at` and `taken_at` are NOT an event/record pair. Both answer "when did this
   // enter the app": `given_at` is INFERRED (a scheduled confirm writes the tap moment,
   // standing in for an intake nothing observed) and `taken_at` is the row's insert
   // stamp. So the dozen hand-rolled `COALESCE(given_at, taken_at)` readers were falling
   // back WITHIN one question all along — the right value under the wrong name — and the
-  // wave's job is a rename plus a NEW nullable `occurred_at`, not a re-pointing of
-  // existing readers. Until that column exists this table has no event instant at all.
+  // remaining job is a RENAME, not a re-pointing of existing readers.
+  //
+  // The other half of that ruling has landed: `occurred_at` (migration 165, wave 1) is
+  // the event column this chain never had. It is a NEW column, not a re-labelling of an
+  // existing one, which is exactly why it could ship ahead of the rename — the rename
+  // is a rebuild plus a dozen COALESCE readers and carries all of the risk.
   intake_item_logs: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `given_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close.",
+    },
     {
       column: "given_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed, so it is a `recorded_at` that has been wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. Phase 2 wave 2 renames it and adds a NULLABLE `occurred_at` populated only when the user states a time, at which point this table gains its first real event column and every row without one reads as not-recorded rather than not-declared. Neither is the record instant, and that is the whole point.",
+      note: "RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed, so it is a `recorded_at` that has been wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. The `occurred_at` half of that ruling landed in migration 165; what is left is the RENAME to `recorded_at`, on its own slot. Neither link is the event instant, and that is the whole point.",
     },
     {
       column: "taken_at",
@@ -995,6 +1013,13 @@ export const TIME_COLUMNS = {
   ],
   medical_records: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 165 (#2154, #2205 phase 2 wave 1). When the vital was actually taken — the reading's own instant, distinct from `created_at`, which is when it reached the app. NULL means DAY-GRAIN: nobody stated a time, so `eventInstant` answers not-recorded rather than inventing one. Born on the canonical convention rather than converted onto it, so it is in CANONICAL_INSTANT_COLUMNS from the migration that added it and the first writer is already bound to utcInstant(). No column DEFAULT, deliberately: a clock default would stamp the record instant into the event column.",
+    },
     {
       column: "created_at",
       semantic: "record",
