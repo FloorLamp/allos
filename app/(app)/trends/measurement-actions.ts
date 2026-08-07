@@ -51,6 +51,12 @@ export async function addMeasurements(formData: FormData) {
   //    independently; this matters on a metric detail page whose form contains
   //    exactly one field rather than the whole body-composition trio.
   if (filled("weight") || filled("body_fat_pct") || filled("resting_hr")) {
+    // The sitting's stated time (#2235): the form always posts the field, so an
+    // empty value is the user's explicit "no time" (clears a stated one on a
+    // resubmission), while a submission with no field at all — a stale pre-#2235
+    // client — makes no statement and leaves any stored time alone. The core runs
+    // the acceptance gate; nothing is trusted here.
+    const occurredAtRaw = formData.get("occurred_at");
     wrote =
       insertBodyMetric(profile.id, {
         date,
@@ -62,6 +68,10 @@ export async function addMeasurements(formData: FormData) {
         bodyFatPct: str("body_fat_pct"),
         restingHr: str("resting_hr"),
         notes: str("notes"),
+        occurredAt:
+          occurredAtRaw === null
+            ? undefined
+            : String(occurredAtRaw).trim() || null,
       }) || wrote;
   }
 

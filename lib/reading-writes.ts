@@ -35,6 +35,10 @@ import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { placeReading, type ReadingTarget } from "./reading-placement";
 import { readingSourceFor, type ReadingProvenance } from "./reading-model";
+import { acceptStatedAt } from "./stated-time";
+import { utcInstant } from "./date";
+import { now } from "./clock";
+import { getTimezone } from "./settings";
 import type { MedicalCategory } from "./types";
 import type { BodyMetricColumn } from "./metric-readings";
 
@@ -94,22 +98,76 @@ function bodyMetricClear(column: BodyMetricColumn) {
 
 // Insert the day's row carrying ONE measure. The other two columns are left NULL —
 // body_metrics is wide, and a reading of one quantity says nothing about the others.
+// `occurred_at` is bound (never defaulted, never SQL's clock — the #2205 canonical
+// convention): the stated instant when the sitting named one, NULL otherwise.
 function bodyMetricInsert(column: BodyMetricColumn) {
   switch (column) {
     case "weight_kg":
       return db.prepare(
-        `INSERT INTO body_metrics (date, weight_kg, source, profile_id) VALUES (?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, weight_kg, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
       );
     case "body_fat_pct":
       return db.prepare(
-        `INSERT INTO body_metrics (date, body_fat_pct, source, profile_id) VALUES (?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, body_fat_pct, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
       );
     case "resting_hr":
       return db.prepare(
-        `INSERT INTO body_metrics (date, resting_hr, source, profile_id) VALUES (?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, resting_hr, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
       );
   }
 }
+
+// ---- The stated occurred_at (#2235, decisions 4–6) -------------------------
+//
+// `body_metrics.occurred_at` records WHEN the day's reading was taken — a statement
+// somebody actually made, never a record stamp (the table has none to launder from).
+// Three-way input contract, shared by every body-metrics writer:
+//
+//   • `undefined` — the caller says nothing about time. An insert stores NULL
+//     (honest absence, decision 2's NULL-never-midnight rule) and an update leaves
+//     the column untouched, so a time-blind writer (Telegram, the palette, an old
+//     queued intent) can never destroy a stated time.
+//   • `null` — an explicit clear: the form's emptied Time field on a submission
+//     that writes a value (decision 5).
+//   • a string — the stated instant, accepted through THE acceptance gate
+//     (`acceptStatedAt`, #2236): not meaningfully future, and its profile-local
+//     date IS the row's `date`. A statement that fails the gate is REFUSED — the
+//     reading still lands, the statement is dropped (`undefined`), and the row is
+//     never re-dated and never has an honest stored time clobbered by garbage.
+//     The WhenControl pair rule makes the UI unable to produce a mismatch; this
+//     enforces it anyway at the auth-blind boundary (constraint 3).
+//
+// The accepted instant is re-serialized through `utcInstant`, so the stored shape
+// is the canonical `YYYY-MM-DDTHH:MM:SSZ` whatever the caller's ISO carried
+// (constraint 4; the instant-writer scan holds the SQL side of the same rule).
+export function resolveStatedOccurredAt(
+  profileId: number,
+  date: string,
+  occurredAt: string | null | undefined
+): string | null | undefined {
+  if (occurredAt === undefined || occurredAt === null) return occurredAt;
+  const accepted = acceptStatedAt(
+    new Date(occurredAt),
+    getTimezone(profileId),
+    date,
+    now()
+  );
+  return accepted ? utcInstant(accepted) : undefined;
+}
+
+// Write the day row's stated instant. NO `edited` change here on purpose: in the
+// find-then-write below the writer always owns the row it found (the find is keyed
+// on the writer's own source), so this is a source updating its own row or the user
+// updating theirs — not a cross-owner correction. A USER's stated time on a
+// source-owned row has no path through this core today (a manual write never finds
+// a source-owned row); when such a path lands it must stamp `edited` exactly as
+// `bodyMetricUpdate` does for a value (constraint 1). The #133 lock already holds a
+// source re-push — occurred_at included — out of an edited row: the refusal above
+// fires before any column is written.
+const bodyMetricSetOccurredAt = () =>
+  db.prepare(
+    `UPDATE body_metrics SET occurred_at = ? WHERE id = ? AND profile_id = ?`
+  );
 
 // Write ONE measure onto an existing day row, leaving the others alone — which is what
 // makes "body fat and resting HR entered in one sitting" land on one row, and what stops
@@ -167,8 +225,21 @@ export interface ReadingWriteInput {
   unit: string;
   /** The profile-local day. */
   date: string;
-  /** The absolute instant, for the store that records one (`metric_samples`). */
+  /**
+   * The absolute instant for `metric_samples`, on that store's OWN convention
+   * (profile-local bare shape, part of its natural key — see the allowlisted
+   * day-midnight anchor below). NOT the stated body_metrics instant; that is
+   * `occurredAt`, which is a canonical-UTC statement and never an identity.
+   */
   measuredAt?: string | null;
+  /**
+   * The STATED event instant for `body_metrics.occurred_at` (#2235) — any ISO
+   * shape, normalized to the canonical `utcInstant` form after the acceptance
+   * gate. `undefined` = no statement (leave an existing value alone), `null` =
+   * explicit clear. Descriptive only: never part of a dedupe key, and it does not
+   * move a reading's `date`. See `resolveStatedOccurredAt`.
+   */
+  occurredAt?: string | null;
   /** The row's `source` stamp: an integration id, 'manual', `document:<id>`, or null. */
   source?: string | null;
   notes?: string | null;
@@ -236,6 +307,15 @@ export function recordReading(
   return writeTx(() => {
     switch (placement.table) {
       case "body_metrics": {
+        // The stated instant this write carries for the day row (#2235). Resolved
+        // BEFORE the find so a refused statement costs the statement, never the
+        // reading — and the find-then-write itself is untouched: occurred_at is
+        // descriptive, so it plays no part in which row a write lands on.
+        const stated = resolveStatedOccurredAt(
+          profileId,
+          input.date,
+          input.occurredAt
+        );
         const found = bodyMetricFind(placement.column).get(
           profileId,
           input.date,
@@ -244,6 +324,8 @@ export function recordReading(
           | { id: number; edited: number | null; value: number | null }
           | undefined;
         if (found && sourceOwned && isEditLocked(found.edited)) {
+          // The #133 lock holds the WHOLE re-push out — a locked row's stated
+          // time survives exactly as its value does (constraint 1).
           return { ok: false, error: "edit-locked" } as const;
         }
         const disposition = classifyUpsert(
@@ -258,6 +340,11 @@ export function recordReading(
               profileId
             );
           }
+          // Independent of the value disposition: re-stating the same value with
+          // a (new or cleared) time is still a statement about the row.
+          if (stated !== undefined) {
+            bodyMetricSetOccurredAt().run(stated, found.id, profileId);
+          }
           return {
             ok: true,
             store: "body_metrics",
@@ -269,6 +356,7 @@ export function recordReading(
           input.date,
           input.value,
           sourceKey,
+          stated ?? null,
           profileId
         );
         return {

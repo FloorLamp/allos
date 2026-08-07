@@ -21,7 +21,7 @@ import {
   showBodyFat,
   showGrowthQuickAdd,
 } from "@/lib/growth-metrics";
-import { getGoals } from "@/lib/queries";
+import { getGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
 import { dispWeight, round } from "@/lib/units";
 import { filterSeriesByRange } from "@/lib/trends";
 import {
@@ -528,6 +528,16 @@ export default async function BodyMetricDetailPage(props: {
             headerAction={starAction}
             weightUnit={weightUnit}
             defaultDate={todayStr}
+            // Seed the form's Time from today's manual body row (#2235 decision
+            // 5) — only for the metrics that row can carry; every other metric's
+            // occurred_at half is #2154's, so its form seeds nothing yet.
+            defaultStatedAt={
+              measurementEntry.metric === "weight" ||
+              measurementEntry.metric === "body-fat" ||
+              measurementEntry.metric === "resting-hr"
+                ? getManualBodyMetricStatedAt(profile.id, todayStr)
+                : null
+            }
             temperatureUnit={getUnitPrefs(login.id).temperatureUnit}
             showBodyFat={entryGates.showBodyFat}
             showGrowth={entryGates.showGrowth}

@@ -8,7 +8,7 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The "Log measurements" form's LAYOUT and DISCLOSURE (issue #2014).
@@ -33,6 +33,26 @@ function clearLoggedWeight(): void {
     handle
       .prepare("DELETE FROM body_metrics WHERE profile_id = 1 AND date = ?")
       .run(LOG_DATE);
+  } finally {
+    handle.close();
+  }
+}
+
+// The frozen run's "today" for profile 1 (the pinned zone keeps the local date
+// equal to the frozen instant's UTC date — see e2e/pinned-timezone.ts).
+const TODAY = frozenNow().toISOString().slice(0, 10);
+
+// The #2235 spec below owns today's MANUAL body row outright: profile 1's seeded
+// weights stop at yesterday, and only the manual (source NULL) row is this spec's —
+// clearing it restores the shared baseline exactly.
+function clearTodayManualBodyRow(): void {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        "DELETE FROM body_metrics WHERE profile_id = 1 AND date = ? AND source IS NULL"
+      )
+      .run(TODAY);
   } finally {
     handle.close();
   }
@@ -194,5 +214,68 @@ test("a collapsed group announces its value and still saves it", async ({
     }
   } finally {
     clearLoggedWeight();
+  }
+});
+
+test("the sitting's Time (#2235): empty by default, one-tap Now, census renders it, reopening seeds it", async ({
+  page,
+}) => {
+  test.slow();
+  clearTodayManualBodyRow();
+  try {
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+
+    // Never defaults to now (#2053): the date opens on today, and the Time still
+    // renders EMPTY, with the control's one-tap "Now" beside it.
+    const timeInput = form.getByTestId("m-time");
+    await expect(timeInput).toHaveValue("");
+
+    // "Now" fills an ABSOLUTE local wall time the user sees and can adjust. The
+    // stated value is read back from the field (the browser clock is frozen but
+    // ticks), and every later assertion compares against exactly that statement.
+    await hydratedClick(page, form.getByTestId("m-now"));
+    await expect(timeInput).toHaveValue(/^\d{2}:\d{2}$/);
+    const statedHhmm = await timeInput.inputValue();
+
+    const weight = form.locator("#m-weight");
+    await settledFill(page, weight, "71.8");
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Save measurements" })
+    );
+    await expect(page.getByText("Measurements saved")).toBeVisible();
+
+    // Server truth: the statement landed on today's manual row in the canonical
+    // utcInstant shape — never a midnight anchor, never a re-dated row.
+    const handle = new Database(DB_PATH);
+    try {
+      const row = handle
+        .prepare(
+          "SELECT occurred_at FROM body_metrics WHERE profile_id = 1 AND date = ? AND source IS NULL"
+        )
+        .get(TODAY) as { occurred_at: string | null } | undefined;
+      expect(row?.occurred_at).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+      );
+    } finally {
+      handle.close();
+    }
+
+    // The body census's Today cell says WHEN the weigh-in was taken.
+    await expect(page.getByTestId("vitals-today-weight")).toContainText(
+      `at ${statedHhmm}`
+    );
+
+    // Re-opening the form for the day seeds the Time back from the row's own
+    // occurred_at, so a resubmission preserves the statement unless cleared.
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    await expect(
+      page.getByTestId("measurements-quick-add").getByTestId("m-time")
+    ).toHaveValue(statedHhmm);
+  } finally {
+    clearTodayManualBodyRow();
   }
 });

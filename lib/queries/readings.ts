@@ -41,19 +41,19 @@ function bodyMetricReadingSelect(column: BodyMetricColumn) {
   switch (column) {
     case "weight_kg":
       return db.prepare(
-        `SELECT id, date, weight_kg AS value, source, edited, notes FROM body_metrics
+        `SELECT id, date, weight_kg AS value, source, edited, notes, occurred_at FROM body_metrics
           WHERE profile_id = ? AND weight_kg IS NOT NULL
           ORDER BY date ASC, id ASC`
       );
     case "body_fat_pct":
       return db.prepare(
-        `SELECT id, date, body_fat_pct AS value, source, edited, notes FROM body_metrics
+        `SELECT id, date, body_fat_pct AS value, source, edited, notes, occurred_at FROM body_metrics
           WHERE profile_id = ? AND body_fat_pct IS NOT NULL
           ORDER BY date ASC, id ASC`
       );
     case "resting_hr":
       return db.prepare(
-        `SELECT id, date, resting_hr AS value, source, edited, notes FROM body_metrics
+        `SELECT id, date, resting_hr AS value, source, edited, notes, occurred_at FROM body_metrics
           WHERE profile_id = ? AND resting_hr IS NOT NULL
           ORDER BY date ASC, id ASC`
       );
@@ -81,6 +81,7 @@ export function getStreamReadings(
       source: string | null;
       edited: number;
       notes: string | null;
+      occurred_at: string | null;
     }[];
     return rows.map((r) => readingFromBodyMetric(r, src));
   }

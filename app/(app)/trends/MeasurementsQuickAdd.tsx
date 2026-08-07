@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconChevronDown } from "@tabler/icons-react";
-import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
@@ -106,6 +106,14 @@ export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
 export interface MeasurementsQuickAddProps {
   defaultDate: string;
+  // The stated instant already on `defaultDate`'s manual body-metrics row, or null
+  // (#2235 decision 5): editing an existing day seeds the Time from the row's own
+  // `occurred_at` — the only thing there is to seed, since body_metrics has no
+  // record stamp to launder from — so a resubmission preserves a stated time
+  // unless the user clears the field. Never a default-to-now: an unseeded form
+  // renders the Time EMPTY even when the date is today (#2053), with the
+  // control's one-tap "Now" beside it.
+  defaultStatedAt?: string | null;
   weightUnit: WeightUnit;
   // The viewer's login temperature-unit preference (#857) — seeds the temp entry
   // unit. Storage stays canonical °F.
@@ -177,6 +185,7 @@ function rememberGroup(
 
 export default function MeasurementsQuickAdd({
   defaultDate,
+  defaultStatedAt = null,
   weightUnit,
   temperatureUnit = "F",
   showBodyFat = true,
@@ -193,6 +202,15 @@ export default function MeasurementsQuickAdd({
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // The submission's WHEN — one date + one optional Time for the whole sitting
+  // (#2235 decision 3), owned as a PAIR by the shared control so a stated instant's
+  // profile-local date is the row's date by construction. Posted through the hidden
+  // pair below; the initial statedAt is the seed from the day's existing manual row
+  // (or null — the control never defaults it to now).
+  const [when, setWhen] = useState<WhenValue>(() => ({
+    date: defaultDate,
+    statedAt: defaultStatedAt,
+  }));
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // HRV is an adult measure here for the same reason body fat is (#493): a
   // growth-tracked profile's Body surfaces don't carry it, so the field doesn't
@@ -384,6 +402,10 @@ export default function MeasurementsQuickAdd({
           bodyFatPct: body.bodyFatPct,
           restingHr: body.restingHr,
           notes: body.notes,
+          // The sitting's stated time travels with the queued intent (#2235):
+          // an offline weigh-in keeps its statement, and an explicitly-empty
+          // Time still clears — same trichotomy the online action posts.
+          occurredAt: s("occurred_at"),
         });
       }
       if (hasVitals) await enqueue("vitals", date, vitals);
@@ -779,17 +801,36 @@ export default function MeasurementsQuickAdd({
         </p>
       )}
 
-      <div className={GRID_CLASS}>
-        <Field label="Date" htmlFor="m-date">
-          <DateField
-            id="m-date"
-            name="date"
-            defaultValue={defaultDate}
-            required
-          />
-        </Field>
-        {metric ? scopedFields[metric.key] : null}
+      {/* The submission's one date + one optional Time (#2235 decision 3): the
+          shared WhenControl owns the pair (ids m-date / m-time from its testId),
+          and the hidden pair below is what actually posts — so the Server Action
+          and the offline queue read the same two names whatever the control
+          renders. The Time never defaults to now (#2053); the control offers a
+          one-tap "Now" while the chosen day is today. The two per-measure time
+          inputs (temperature, peak flow) deliberately stay: #2154 lands second
+          and folds them into this one control. */}
+      <input type="hidden" name="date" value={when.date} readOnly />
+      <input
+        type="hidden"
+        name="occurred_at"
+        value={when.statedAt ?? ""}
+        readOnly
+      />
+      <div>
+        <span className="label">Date &amp; time</span>
+        <WhenControl
+          mode="state"
+          grain="minute"
+          value={when}
+          onChange={setWhen}
+          testId="m"
+          dateLabel="Date"
+          timeLabel="Time taken (optional)"
+        />
       </div>
+      {metric ? (
+        <div className={GRID_CLASS}>{scopedFields[metric.key]}</div>
+      ) : null}
 
       {!metric && (
         <div className="space-y-2">

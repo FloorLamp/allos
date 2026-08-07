@@ -229,6 +229,11 @@ export interface BodyMetric {
   // 1 when a source-owned (imported) row has been hand-edited, so ingest leaves it
   // alone on re-sync (#133); 0/NULL otherwise. Drives the edit-lock badge (#659).
   edited: number | null;
+  // The stated event instant (migration 165, #2235): when the day's reading was
+  // actually taken, as somebody stated it — canonical `YYYY-MM-DDTHH:MM:SSZ`, or
+  // NULL for a day-grain reading (honest absence, never a midnight anchor). The
+  // row's day attribution stays `date`; nothing keys or branches on this.
+  occurred_at: string | null;
 }
 
 // A body-metrics row with its provenance resolved for display: document-sourced
