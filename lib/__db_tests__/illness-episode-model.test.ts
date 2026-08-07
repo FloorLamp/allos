@@ -14,7 +14,7 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { backfillIllnessEpisodes } from "@/lib/migrations/versions/046-illness-episodes";
 import { stabilizeEpisodeConditions } from "@/lib/migrations/versions/062-stable-episode-conditions";
-import { up as up168 } from "@/lib/migrations/versions/169-illness-episode-day-window";
+import { up as up169 } from "@/lib/migrations/versions/169-illness-episode-day-window";
 import { shiftDateStr } from "@/lib/date";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import {
