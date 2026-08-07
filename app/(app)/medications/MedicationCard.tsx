@@ -517,6 +517,7 @@ export default function MedicationCard({
                 redoseLine={prnRedoseLine}
                 redosePrimary={prnRedosePrimary}
                 layout="detail"
+                tz={timezone}
               />
             ) : (
               <div className="flex flex-wrap items-baseline justify-between gap-2">

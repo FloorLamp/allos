@@ -14,8 +14,9 @@ import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
 
 // Dashboard quick-log widget for PRN (as-needed) medications (#797). The one-tap
-// retro-entry home: each active PRN med gets a "Taken now" button plus retro offsets
-// (30m/1h ago, or a specific time). The per-day count + last time is computed here
+// retro-entry home: each active PRN med gets a "Taken now" button plus an "Earlier
+// dose" statement — an absolute time today via the shared WhenControl (#2236).
+// The per-day count + last time is computed here
 // (server, with the profile tz) and passed down so the client control stays a thin
 // formatter over one server computation. Rendered only when the profile has active
 // PRN meds — the empty state is the data-aware onboarding CTA (page.tsx).
@@ -129,6 +130,7 @@ export function QuickLogPrnContent({
         profileId={profileId}
         rowVariant={rowVariant}
         compactActions={compact}
+        tz={tz}
       />
     );
   };
