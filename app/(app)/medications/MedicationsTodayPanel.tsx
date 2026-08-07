@@ -186,6 +186,7 @@ export default function MedicationsTodayPanel({
               rowVariant="embedded"
               compactActions
               profileId={profileId}
+              tz={timezone}
             />
           ))}
       </div>
