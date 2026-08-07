@@ -25,6 +25,7 @@ import {
   subHourlySlotsAtRisk,
 } from "@/lib/notifications/schedule";
 import { arrivalStatistics } from "@/lib/notifications/digest-schedule";
+import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
 import { getSleepArrivals } from "@/lib/queries/metrics";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -238,6 +239,11 @@ export default async function NotificationsSettingsPage() {
                 // digest's deadline derives from, or its stated no-answer. Read
                 // once here and formatted once, by describeDigestSchedule.
                 arrivalStats={arrivalStatistics(getSleepArrivals(profile.id))}
+                // The #2217 suggestion, resolved by the ONE function the in-digest
+                // line also reads — so the Settings row and that line are the same
+                // finding under the same episode key, and dismissing either
+                // dismisses both.
+                timeSuggestion={getDigestTimeSuggestion(profile.id)}
                 tickMinutes={observedTickMin}
                 subHourlyAtRisk={subHourlyAtRisk}
                 telegramDisabled={getLoginTelegramDisabledKinds(login.id)}

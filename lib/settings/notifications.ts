@@ -1011,3 +1011,24 @@ export function setNotifySchedule(
     String(sched.wakingEndHour)
   );
 }
+
+// ---- The two ONE-FIELD digest writes (#2217) -------------------------------
+//
+// The time suggestion's exits each perform exactly ONE write, and these are why they
+// can. `setNotifySchedule` rewrites the whole schedule — correct for a form that
+// renders the whole schedule, wrong for a one-tap accept, which must be provably
+// unable to touch a slot time, a quiet-hours bound or a domain toggle the user did
+// not open (#2217 constraint 1: one tap, one explicit write).
+//
+// Both take the value the CALLER re-derived from the live detector. Neither infers
+// anything: a suggestion never writes, and these are only reached from a tap.
+
+/** Set the digest's send time (Static) / floor (Dynamic) and nothing else. */
+export function setDigestMinute(profileId: number, minute: number): void {
+  setProfileSetting(profileId, "notify_digest_hour", formatNotifyTime(minute));
+}
+
+/** Set the digest's mode and nothing else — not the time, not the schedule. */
+export function setDigestMode(profileId: number, mode: DigestMode): void {
+  setProfileSetting(profileId, DIGEST_MODE_KEY, mode);
+}

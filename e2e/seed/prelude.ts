@@ -34,11 +34,13 @@ export function seedPrelude(): void {
   // Synthetic error text — no PHI. Written through the real marker write path (the
   // notify_lifecycle delivery-health row, #942) so the fixture can't drift from
   // what dispatch() records on a failed Telegram send.
+  // The canonical second-resolution instant (#2233, migration 167) — the same
+  // shape instantNow() binds on a real failed dispatch.
   writeTx(() =>
     setDeliveryFailure(
       "telegram",
       "Telegram API 401: Unauthorized (bot token revoked)",
-      "2026-07-09T08:00:00.000Z"
+      "2026-07-09T08:00:00Z"
     )
   );
 
