@@ -876,7 +876,26 @@ day"). Predicted ≠ due (#1505): `frequencyPace` remains the only dueness
 authority, and the bus gate, per-day marker, and ceiling silence are untouched.
 The same inference feeds the calm "usually a session day" note on the
 protocol/practice cards (rendered surfaces, quiet without a pattern), and the
-nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice. Each behind practice carries an inline
+nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
+**Every one-tap practice log now records what it shows (#2204, owner ruling).** The
+inline duration stepper is on all four practice affordances — the quick-log
+sheet, the Wellness card, the protocol detail card, and the dashboard's
+Active-protocols widget — each rendering `practiceDurationPrefill` over the
+practice's last LOGGED session. `LogPracticeButton` routes the stepper's render
+and the tap's write through ONE `stepperShown` expression, so no surface can
+post a duration that is not on screen. The expanded modal survives where it
+already was (`showDetails`): it owns the past date, the corrected time and the
+notes, and the objection it answered was always about stacking a modal over a
+one-tap surface, never about the field.
+
+**The one-tap paths feed that inference now (#2204).** `logPracticeSession`
+treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
+instant" — distinct from an explicit `null`, which stays the expanded form's
+"this session has no instant". Until #2202 nothing read `practice_logs.time`, so
+the quick sheet and this Done ✓ button both wrote null; once `modalHour` became
+its reader that inverted into a defect where the fastest logging paths starved
+the inference that reschedules their own nudge. The stamp is bounded to the
+profile's today, so a backdated correction never acquires a fabricated instant. Each behind practice carries an inline
 **"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`
@@ -943,6 +962,89 @@ still reads as progress. It rides WITH the recap line inside the congratulatory
 message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
+
+## Bedtime wear reminder (#2161)
+
+**The one consented send in the quiet-stream family.** A watch left on the
+charger as bedtime approaches costs a whole night of sleep data that no later
+sync recovers — on the measured 56-day profile it happened once in eight weeks
+and was that profile's only missing night. #2146 detects and RENDERS that state
+and is deliberately never-a-send; its constraint 4 reserves contact for "a
+separate consented feature", and this is it.
+
+**Why it may be a class-1 send at all.** Sleep and HR are observation domains
+(`docs/internals/findings.md` §3), so no obligation exists to hang a send on.
+The contact-consent rule permits a contact INCREASE only behind a user-owned
+declaration, so the declaration IS the feature: `wear_reminder_enabled`
+(`profile_settings`, off by default), rendered as one row of the Settings →
+Notifications kinds matrix. Two properties are enforced, not merely intended:
+
+- **Off is byte-for-byte today's behaviour.** `bedtimeWearVerdict`
+  (`lib/wear-reminder.ts`) checks consent FIRST and returns before any other
+  signal is read; `bedtimeWearReminderState` pays one settings read and stops.
+- **Nothing enables it but a user action.** `saveNotificationPrefs` is the only
+  writer. A detected lost night may SUGGEST turning it on — the right-sizing
+  family's shape, detection suggests and the tap writes — but no detector, tick,
+  or gather may perform the write.
+
+**The predicate** is #2146's quiet-stream shape at a bedtime-sized tolerance:
+the declared continuous stream has been silent for ≥ `WEAR_QUIET_TOLERANCE_MIN`
+(40 min, declared — never learned from a wear pattern) **while the provider kept
+syncing ok in that window**. The second clause is load-bearing: continuing ok
+syncs with nothing on the stream is the off-wrist signature, whereas a window
+with no ok syncs is a CONNECTION outage that #1685 already owns and names — two
+rows for one fault is exactly what the one-row rule forbids. The declared stream
+is Health Connect's `hr_minutes`, the only continuous wear stream the app
+ingests (the Fitbit Takeout archive import has no live cadence to be silent
+against and is exempt by construction). #2146 moves that declaration into the
+provider registry beside `staleAfterDays` once a second provider needs one.
+
+Two gates sit in front of the predicate. The **expected-active** gate is the
+SHARED #2097 vocabulary — `isSleepTracking` over `getSyncedSleepWakeDays` — so a
+profile that does not wear a device to sleep is never reminded even when the
+setting is on, and a manual-only sleep logger never hears from it at all. The
+**deference** gate yields to a failing or `needs-reauth` provider through the
+same `getIntegrationAttention` model every other surface reads: a reconnect item
+already owns that contact, and "still on the charger?" would be false advice
+while the pipeline is down.
+
+**Send hygiene.** It rides the profile's existing **Bedtime** supplement slot
+minute (no schedule of its own), through the tick's ordinary `dueSlots` loop, on
+one declared per-day marker `notify_last_wear_reminder` (`profile-fixed`,
+`profile_settings`, swept by the standard date rollover). One send per night, no
+escalation, no repeat; ignoring it does nothing further and the morning surface
+is #2146's calm row. The cadence is the tick's per-day marker discipline rather
+than `planNudgeCadence`: there is one profile-fixed key with no subject to
+strand, so there is no candidate set to freeze and no self-healing sweep to run.
+A skipped night leaves the marker UNSET, so it never spends the night's send.
+
+**Timestamps.** The gather joins two of the three coexisting conventions
+(#94/#1333/#2146 constraint 6): `hr_minutes.ts` is profile-local bare,
+`integration_sync_events.at` is UTC bare. The stream's wall time is converted
+once through `zonedWallIsoToUtc` and everything is compared in UTC from there —
+reading `hr_minutes.ts` as UTC is the #2096 failure class, and subtracting two
+bare local strings would report wall-clock difference rather than elapsed time
+on a DST night.
+
+**The precondition is named, never guessed.** The reminder's entire schedule is
+the Bedtime slot minute, and that slot is independently switchable — someone who
+takes nothing at bedtime turns it off — so consent plus a disabled slot is a
+reachable state in which the checkbox reads ON and nothing can ever send. A
+checkbox that says on and does nothing is the worst failure a settings page has,
+and worse still for a consent. The fix is at the SURFACE: `ridesSlots` on the
+kind registry entry declares which slot(s) a scheduleless kind fires at,
+`unmetSlotRequirement` is the pure predicate, and the row renders a note naming
+the missing slot and pointing at the Schedule card above it. The checkbox stays
+editable (a consent must always be withdrawable, and turning one on before
+setting a time is a legitimate order to work in). Deliberately NOT a fallback
+hour in the tick: guessing a bedtime for a send the user consented to at _their_
+bedtime is a worse answer than saying what is missing. The mood check-in
+(Evening) and the food nudge (Morning/Midday/Evening) declare the same field and
+get the same note — the defect was never unique to this kind.
+
+**Known grain limit, accepted.** The check runs at the slot minute, so a charger
+placement a few minutes before a late bedtime is missed. #2121's finer ticks and
+a `typicalBedTime` anchor tighten it later; neither is a dependency.
 
 ## Send markers and nudge cadence (#2036)
 
@@ -1994,3 +2096,59 @@ send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
 the escalation gather deliberately reads the unfiltered `collectWindowDoses` —
 the safety tier is structurally never priority-gated. An all-low send is silent
 BY DESIGN.
+
+## The tick's decision record (#2209)
+
+Only `error` used to be durable. Everything the tick said below it — `nothing
+due`, `already sent today`, `no channels configured for profile`, every
+`… nudge skipped: no channel`, every reconcile outcome — went to stdout only,
+and the deploy timer recreates the `allos-notify` sidecar tens of times a day,
+so its working retention is under an hour, permanently.
+
+The asymmetry is one class: the **decline**. A send writes a row
+(`notify_messages` plus a `notify_last_*` marker); a decision _not_ to send
+writes nothing, anywhere. Recoverable without logs: sends, sync outcomes with
+counts, delivery health, errors, AI events. Not recoverable, and all of it below
+`error`: every decline above.
+
+`data/logs/notify.jsonl` (`lib/notify-log.ts`) is the third sink behind the
+shared JSONL substrate (`lib/jsonl-log-file.ts`, #1883), filtered by **scope**
+(`lib/notify-log-format.ts` declares which) rather than by level. The viewer is
+**Settings → Logs & audit → Notify tick**, admin-only.
+
+Rules this record lives under:
+
+- **The tick must not get slower.** The sink is synchronous by design, as the
+  error sink already is, and best-effort throughout — a logging failure never
+  throws into the tick, and a dead disk costs neither an outcome nor a marker.
+- **Scope, not level.** Persisting every `info` from the web app is a different
+  and much larger decision. `debug` is never persisted.
+- **No new chatter.** The tick is already quiet when nothing is due, and the
+  point is to keep what it says rather than to make it say more. Exactly two
+  lines were added, both to make a quiet run visible: `tick started` (once per
+  run) and `profile evaluated` (once per profile per run).
+- **The unit is a RUN.** `beginNotifyRun()` stamps a run id; the profile half
+  rides the `lib/tick-cache.ts` scope the tick already opens per profile,
+  falling back to the `profile` field the call sites already pass. Grouping is
+  keyed on that id, never on a timestamp bucket — a fan-out over several
+  profiles routinely straddles a minute.
+- **A quiet run renders as a ROW, not as absence.** Otherwise "silence because
+  nothing was due" reads identically to "silence because the sidecar is wedged",
+  which is the whole ambiguity the record removes.
+- **Same PHI posture as `errors.jsonl`**: profile names, item names and finding
+  text can appear, so the message and the field bag both go through the shared
+  `redactSecrets`/`buildDetail` chokepoint, and the viewer is admin-only.
+
+`deferDigestForSleep` (#2102) carries an explicit trace. Its **write** policy is
+unchanged — the marker is still set only by a real send, and nothing about the
+deferral stores state — but the decision now names its inputs (the sleep opt-in,
+the newest recorded night, whether last night is in hand, whether the profile is
+still tracking) plus the arrival-side ones #2192 is open about (expected-by, last
+sync, provider health). At most one line per profile per day, on the single
+attempt band where the gate is consulted, and it **declares** its own decision
+rather than being classified from its message text.
+
+This is the OPERATOR record and does not replace #2173, which owns making "this
+profile's reminders reach no one" visible to someone who can fix it, derived at
+read time from DB state. Nor is it a per-tick audit table: `audit_events` is for
+user-attributable writes.

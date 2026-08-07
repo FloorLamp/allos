@@ -291,6 +291,10 @@ describe("quick-log time semantics (#2019 §7)", () => {
       // built the capture and the correction for.
       "log-food": "hour",
       "log-dose": "hour",
+      // #2204: hour-grained too, but corrected through the SESSION's own dated edit
+      // form rather than chips — the unit names the grain the consumer (modalHour)
+      // reads, not the widget that moves it.
+      "log-practice": "hour",
       // A period start is corrected a DAY at a time, through the dated form on
       // /medical/cycles that owns the exceptions.
       "log-period": "day",
@@ -301,7 +305,6 @@ describe("quick-log time semantics (#2019 §7)", () => {
       // `day-only` entries have no instant, so no unit at all. The mood row's
       // #2128 day chips choose the day BEFORE the write — a statement, not a
       // correction — so it stays day-only with no unit.
-      "log-practice": null,
       "log-mood": null,
       "add-document": null,
     });
@@ -317,9 +320,17 @@ describe("quick-log time semantics (#2019 §7)", () => {
       semantic: "instant",
       correctionUnit: "hour",
     });
-    // Practice is the DELIBERATE non-extension: day-granular by design, and nothing
-    // reads an instant, so capturing one would invite a consumer to invent a meaning.
-    expect(byId.get("log-practice")!.time.semantic).toBe("day-only");
+    // Practice JOINED them in #2204, and only because the missing half of the old
+    // argument arrived: the entry was `day-only` because no consumer read the instant,
+    // #2202's modalHour is that consumer, and leaving the declaration alone would have
+    // left this file asserting something false about a column the rhythm inference now
+    // depends on. The `why` has to NAME the consumer — a bare "instant" would be the
+    // precise failure #2019 §7 exists to prevent.
+    const practice = byId.get("log-practice")!.time;
+    expect(practice.semantic).toBe("instant");
+    expect(practice.correctionUnit).toBe("hour");
+    expect(practice.why).toMatch(/weekly-rhythm/);
+    expect(practice.why).toMatch(/modalHour/);
   });
 });
 

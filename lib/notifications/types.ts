@@ -31,6 +31,7 @@ export type NotificationKind =
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary
   | "milestone" // milestone reached
+  | "wear-reminder" // opt-in bedtime "watch still on the charger?" nudge (#2161)
   // ── On-demand command replies (#1895's vocabulary, kinded for #1898) ───────
   // These are RE-ISSUABLE: the user asks for the keyboard, so asking again must
   // re-issue THE keyboard rather than stack another one in the chat. They carry a

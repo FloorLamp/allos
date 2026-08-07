@@ -98,6 +98,13 @@ export default function ActiveProtocolWidget({
                 atCeiling={p.adherence?.atCeiling ?? false}
                 today={today}
                 usualSessionDay={p.practiceUsuallyToday}
+                // #2204 (owner ruling): the widget's tap records what it shows too.
+                // No `showDetails` here — the widget is a summary and the detail page
+                // owns the expanded form — so this row carries two controls rather
+                // than three, but the duration is the one that would otherwise be
+                // silently thrown away.
+                defaultDurationMin={p.practicePreviousDurationMin}
+                inlineDuration
               />
             )}
 

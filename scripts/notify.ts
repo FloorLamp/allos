@@ -47,6 +47,7 @@ import {
   intakeSlotMarkerKey,
 } from "../lib/notifications/send-markers";
 import { buildMoodCheckin } from "../lib/notifications/mood";
+import { buildWearReminder } from "../lib/notifications/wear-reminder";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
@@ -93,6 +94,7 @@ import {
 } from "../lib/notifications/digest-data";
 import { reconcileProfileMessages } from "../lib/notifications/reconcile";
 import { runInTickScope } from "../lib/tick-cache";
+import { beginNotifyRun } from "../lib/notify-log";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -425,6 +427,31 @@ async function tickProfile(
         markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
         build: () => buildMoodCheckin(profile.id, date),
         onDelivered: () => bumpMoodCheckinIgnored(profile.id),
+      });
+  }
+  // Bedtime wear reminder (#2161): OPT-IN per profile, off by default, riding the
+  // BEDTIME supplement slot minute — no schedule of its own, exactly as the mood
+  // check-in rides Evening.
+  //
+  // The gate here is only "is the slot due"; every other condition — the consent flag
+  // itself, the expected-active gate, the provider-health deference, and the quiet-
+  // stream predicate — lives in buildWearReminder, which returns null for all of them.
+  // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
+  // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
+  // spends the night's single send.
+  //
+  // Cadence is the tick's own per-day marker discipline, NOT planNudgeCadence: there
+  // is one profile-fixed key with no subject to strand, so there is no candidate set
+  // to freeze and no self-healing sweep to run — the date rollover is the whole
+  // lifecycle. Reaching for the episode planner here would add a vocabulary the
+  // signal does not have.
+  {
+    const slotMinute = sched.supplementMinutes.Bedtime;
+    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+      dueSlots.push({
+        slot: "wear_reminder",
+        markerKey: TICK_SLOT_MARKER_KEYS.wear_reminder,
+        build: () => buildWearReminder(profile.id),
       });
   }
   if (sched.workoutEnabled) {
@@ -915,6 +942,19 @@ async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
 
+  // THE RUN (#2209). One id for this whole invocation, stamped onto every line the
+  // persisted tick log keeps, so the admin viewer can group by (run, profile)
+  // instead of guessing from timestamps — a fan-out over several profiles routinely
+  // straddles a minute, and a bucketing heuristic splits exactly those runs.
+  //
+  // The line below is the run's own marker and the ONE new global line this issue
+  // adds. It earns its place by being the thing that makes a QUIET tick visible: a
+  // run that decided nothing must still render as a row, or "silence because nothing
+  // was due" stays indistinguishable from "silence because the sidecar is wedged" —
+  // which is the ambiguity the log exists to kill.
+  const run = beginNotifyRun();
+  log.info("tick started", { run, profiles: profiles.length });
+
   // THE OBSERVED TICK CADENCE (#2121). The attempt bands in slotDue are one tick
   // wide, so the tick must know how often it really runs — not how often a config
   // claims it runs, because a mismatch in either direction mis-sizes the bands
@@ -963,9 +1003,19 @@ async function tick() {
       // assessment and the medication-family state — each collapse to ONE
       // evaluation for this profile. The scope closes with the profile, and nothing
       // inside it writes what those gathers read (lib/tick-cache.ts states the rule).
-      if (await runInTickScope(() => tickProfile(p, tickMinutes))) {
-        anyFailed = true;
-      }
+      //
+      // The scope also DECLARES its subject (#2209), which is what lets the persisted
+      // tick log attribute a line to a profile without threading an id through every
+      // log call site in lib/notifications/**.
+      const failed = await runInTickScope(() => tickProfile(p, tickMinutes), {
+        profileId: p.id,
+      });
+      if (failed) anyFailed = true;
+      // The per-profile run marker — the second and last new line this issue adds.
+      // One row per profile per run is exactly the viewer's unit, and without it a
+      // profile the tick evaluated and had nothing to say about would leave no trace
+      // at all: the quiet-tick ambiguity again, one level down.
+      log.info("profile evaluated", { profile: p.id, failed });
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,

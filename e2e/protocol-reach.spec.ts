@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
@@ -153,6 +158,21 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       .getByTestId("active-protocol-adherence")
       .locator(".badge")
       .innerText();
+
+    // #2204 (owner ruling): the widget mounts the SAME ProtocolLogButton the detail
+    // page does, so its one-tap records what it shows rather than discarding the
+    // duration. No details trigger here — the widget is a summary and the detail page
+    // owns the expanded form — so this row is stepper + tap, two controls not three.
+    const widgetPractice = widget.getByTestId("practice-log-control");
+    await expect(
+      widgetPractice.getByTestId("practice-duration-input")
+    ).toBeVisible();
+    await expect(
+      widgetPractice.getByTestId("practice-log-details-trigger")
+    ).toHaveCount(0);
+    // Nothing is clipped at this width even with the stepper added — the control
+    // cluster wraps rather than overflowing (the #2204 containment fix).
+    await expectNoClippedContent(page);
 
     // Restore the default (hidden) so the shared dashboard layout is left untouched
     // for neighboring specs (suite hygiene — a spec owns its state).

@@ -53,10 +53,12 @@ import {
 import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeDayCount,
+  getPracticeSessions,
   getPracticeSpellingsMap,
   isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "./wellness";
+import { practiceDurationPrefill } from "../practice";
 import {
   biomarkerOutcomeOption,
   type OutcomeOption,
@@ -960,6 +962,14 @@ export interface ActiveProtocolSummary {
   // for non-practice scopes and whenever no rhythm exists (#558: no pattern
   // renders nothing). Data, not dueness (#1505).
   practiceUsuallyToday: boolean;
+  // Where the widget's inline duration stepper STARTS (#2204) — `practiceDurationPrefill`
+  // over the identity's last logged session, the same pure resolution the Wellness card,
+  // the quick sheet, and the protocol detail page read. Null for a non-practice scope and
+  // for a practice with no history: blank is a real answer, and the app does not invent a
+  // duration. The widget mounts the SAME ProtocolLogButton the detail page does, so
+  // leaving this out would have left the dashboard's one-tap the last log that discards
+  // what it never showed.
+  practicePreviousDurationMin: number | null;
   primaryOutcome: {
     label: string;
     betterness: Betterness;
@@ -1026,6 +1036,21 @@ export function getActiveProtocolSummaries(
         practiceUsuallyToday:
           practice?.scopeKind === "practice" &&
           isPredictedPracticeDay(profileId, practice.value, today) === true,
+        // One LIMIT-1 indexed read per practice-scoped active protocol, over the
+        // spellings this gather already resolved — the same bounded shape as the
+        // today-count beside it.
+        practicePreviousDurationMin:
+          practice?.scopeKind === "practice"
+            ? practiceDurationPrefill(
+                getPracticeSessions(
+                  profileId,
+                  practice.value,
+                  1,
+                  undefined,
+                  practiceSpellingsFor(spellingsByIdentity, practice.value)
+                )
+              )
+            : null,
         primaryOutcome: primary
           ? {
               label: primary.label,

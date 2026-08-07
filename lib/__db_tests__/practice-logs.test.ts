@@ -11,6 +11,8 @@ import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
 import {
   logPracticeSession,
+  logPracticeByTargetId,
+  inferPracticeSchedule,
   getPracticeDayCount,
   getPracticeSessions,
   getFrequencyTargetProgress,
@@ -32,6 +34,7 @@ import {
   updateWellnessPractice,
 } from "@/lib/practice-store";
 import { practiceIdentity } from "@/lib/practice";
+import { modalHour } from "@/lib/weekly-rhythm";
 
 function makeProfile(name: string): number {
   return Number(
@@ -429,5 +432,151 @@ describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
     const theirs = makeProfile("tracked-theirs");
     practiceTarget(theirs, "Sauna", 3, null);
     expect(getTrackedPractices(mine)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2204 — the quick path stops discarding duration and time.
+//
+// Two omissions with two different histories. DURATION was reachable only through the
+// Wellness card's modal, and the sheet deliberately refused to stack one — an objection
+// about MODALS that the inline stepper answers without reversing. TIME was declared
+// `day-only` because nothing read it, and #2202's `modalHour` is now that reader, which
+// turned the omission into an active regression: the faster the path, the more it
+// starved the very inference that reschedules its own nudge.
+describe("quick-path practice logs carry duration and time (#2204)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T07:05:00Z")); // a Wednesday, 07:05 UTC
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function rows(profileId: number) {
+    return db
+      .prepare(
+        `SELECT practice, date, time, duration_min FROM practice_logs
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      practice: string;
+      date: string;
+      time: string | null;
+      duration_min: number | null;
+    }[];
+  }
+
+  it("stamps the profile-local tap instant when the caller states no time", () => {
+    const pid = makeProfile("quick-time-stamp");
+    const t = today(pid);
+    // The one-tap shape: no `time` key at all.
+    expect(logPracticeSession(pid, "Sauna", t)).toMatchObject({
+      kind: "logged",
+    });
+    expect(rows(pid)).toEqual([
+      { practice: "Sauna", date: t, time: "07:05", duration_min: null },
+    ]);
+  });
+
+  it("keeps an explicitly empty time null — the modal's blank is a statement", () => {
+    const pid = makeProfile("quick-time-explicit-null");
+    const t = today(pid);
+    // The expanded form ALWAYS posts its time field; empty means "no instant", and
+    // silently stamping one there would be the app inventing data the user declined.
+    logPracticeSession(pid, "Sauna", t, { time: null });
+    // ...and a stated time still wins outright.
+    logPracticeSession(pid, "Sauna", t, { time: "06:30" });
+    expect(rows(pid).map((r) => r.time)).toEqual([null, "06:30"]);
+  });
+
+  it("does not stamp a backdated correction — 'now' is not that day's instant", () => {
+    const pid = makeProfile("quick-time-backdated");
+    const t = today(pid);
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -3));
+    expect(rows(pid).map((r) => r.time)).toEqual([null]);
+  });
+
+  it("feeds modalHour identically from a quick tap and a Wellness-modal log", () => {
+    const tapped = makeProfile("rhythm-from-tap");
+    const typed = makeProfile("rhythm-from-modal");
+    const t = today(tapped);
+    for (const back of [0, -7, -14]) {
+      // The quick path states nothing; the modal states the same instant by hand.
+      logPracticeSession(tapped, "Breathwork", shiftDateStr(t, back));
+      logPracticeSession(typed, "Breathwork", shiftDateStr(t, back), {
+        time: "07:05",
+      });
+    }
+    const hourOf = (pid: number) => modalHour(rows(pid).map((r) => r.time));
+    expect(hourOf(tapped)).toBe(7);
+    expect(hourOf(tapped)).toBe(hourOf(typed));
+    // And the rhythm reader agrees, rather than falling to the 18:00 evening default.
+    expect(inferPracticeSchedule(tapped, "Breathwork").hour).toBe(7);
+  });
+
+  it("stamps the Telegram Done ✓ tap too — it was starving the nudge it feeds", () => {
+    const pid = makeProfile("quick-time-telegram");
+    const tid = practiceTarget(pid, "Red light therapy", 3, null);
+    expect(logPracticeByTargetId(pid, tid)).toMatchObject({ kind: "logged" });
+    expect(rows(pid).map((r) => r.time)).toEqual(["07:05"]);
+  });
+
+  it("writes the duration the quick path supplies, and prefills the NEXT tap from it", () => {
+    const pid = makeProfile("quick-duration");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 3, null);
+
+    // Nothing logged yet: no history and no declared default, so the sheet offers a
+    // BLANK stepper. The app does not invent a duration (#2204 constraint 2).
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBeNull();
+
+    // Tap one: the user types 20 into the stepper and accepts it.
+    logPracticeSession(pid, "Sauna", t, { durationMin: 20 });
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(20);
+
+    // Tap two: the prefill arrives at 20, the user steps it to 25 and logs. The NEXT
+    // prefill must be 25 — the value WRITTEN, not the one that was merely shown.
+    logPracticeSession(pid, "Sauna", t, { durationMin: 25 });
+    expect(rows(pid).map((r) => r.duration_min)).toEqual([20, 25]);
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(25);
+
+    // Tap three: the user steps the stepper off the bottom and logs without one.
+    // Blank stays blank — clearing is a decision the next prefill honours, not a
+    // gap the last non-null value quietly fills back in.
+    logPracticeSession(pid, "Sauna", t, { durationMin: null });
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBeNull();
+  });
+
+  it("folds the prefill across an identity's spellings and stays profile-scoped", () => {
+    const mine = makeProfile("quick-duration-mine");
+    const theirs = makeProfile("quick-duration-theirs");
+    const t = today(mine);
+    practiceTarget(mine, "Sauna", 3, null);
+    practiceTarget(theirs, "Sauna", 3, null);
+
+    // Another profile's longer session may not leak into mine.
+    logPracticeSession(theirs, "Sauna", t, { durationMin: 45 });
+    expect(getTrackedPractices(mine)[0].previousDurationMin).toBeNull();
+
+    // Two stored spellings of ONE identity: the newest row wins, whichever it is
+    // spelled as — the same fold the today-count uses.
+    logPracticeSession(mine, "sauna", shiftDateStr(t, -1), { durationMin: 12 });
+    expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(12);
+    logPracticeSession(mine, "Sauna", t, { durationMin: 18 });
+    expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(18);
+  });
+
+  it("leaves the Wellness card's own prefill reading the same value", () => {
+    const pid = makeProfile("quick-duration-card");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 3, null);
+    logPracticeSession(pid, "Sauna", t, { durationMin: 30 });
+    // One question, one computation: the sheet and the card format the SAME pure
+    // resolution, so the two surfaces cannot offer different defaults.
+    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(
+      getTrackedPractices(pid)[0].previousDurationMin
+    );
+    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(30);
   });
 });

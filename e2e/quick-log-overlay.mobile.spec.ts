@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
-import { openMeasurementGroup, settledClick } from "./helpers";
+import { hydratedClick, openMeasurementGroup, settledClick } from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -86,6 +86,28 @@ function shellProfileId(): number {
 // The practice sessions and uploaded documents this spec writes. Cleared at test start
 // AND after, so --repeat-each and a re-run after a failure both begin from "none" —
 // every practice assertion below is then about the session the test itself logged.
+// The single practice row this spec's tap wrote, for the #2204 assertions that are
+// about the STORE rather than about the screen.
+function readShellPracticeLog(): {
+  time: string | null;
+  duration_min: number | null;
+} {
+  const db = openDb();
+  try {
+    return db
+      .prepare(
+        `SELECT time, duration_min FROM practice_logs
+          WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(shellProfileId()) as {
+      time: string | null;
+      duration_min: number | null;
+    };
+  } finally {
+    db.close();
+  }
+}
+
 function clearShellPracticeLogs(): void {
   const db = openDb();
   try {
@@ -442,6 +464,32 @@ test("a practice logs in one tap from the sheet and the week count moves", async
       "No sessions yet"
     );
 
+    // #2204: the row carries an INLINE duration control. The standing objection was
+    // to stacking the expanded date/time/duration MODAL over a one-tap sheet, and it
+    // still holds — nothing here opens one, and there is no trigger to open one with.
+    const duration = row.getByTestId("practice-duration-input");
+    await expect(row.getByTestId("practice-inline-duration")).toBeVisible();
+    await expect(page.getByTestId("practice-log-details")).toHaveCount(0);
+    await expect(page.getByTestId("practice-log-details-trigger")).toHaveCount(
+      0
+    );
+    // Nothing logged yet, so nothing is prefilled: the app does not invent a duration
+    // for a practice with no history and no declared default.
+    await expect(duration).toHaveValue("");
+    // Four taps of + reach 20 minutes without a keyboard.
+    for (let i = 0; i < 4; i++)
+      await hydratedClick(page, row.getByTestId("practice-duration-up"));
+    await expect(duration).toHaveValue("20");
+    // ...and stepping down is the way back, including off the bottom to blank.
+    await hydratedClick(page, row.getByTestId("practice-duration-down"));
+    await expect(duration).toHaveValue("15");
+    for (let i = 0; i < 3; i++)
+      await hydratedClick(page, row.getByTestId("practice-duration-down"));
+    await expect(duration).toHaveValue("");
+    for (let i = 0; i < 4; i++)
+      await hydratedClick(page, row.getByTestId("practice-duration-up"));
+    await expect(duration).toHaveValue("20");
+
     await settledClick(page, row.getByTestId("practice-log-button"));
 
     // Answered from the typed outcome, and you are STILL on the dashboard: the sheet
@@ -458,6 +506,14 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
 
+    // The ONE tap wrote what the row was showing (#2204). Read from the store, not
+    // from the toast: the duration the stepper held, and a non-null time — the quick
+    // path used to write null there, starving the very rhythm inference (#2202) that
+    // reschedules this practice's own nudge.
+    const logged = readShellPracticeLog();
+    expect(logged.duration_min).toBe(20);
+    expect(logged.time).toMatch(/^\d{2}:\d{2}$/);
+
     // Durable, and from SERVER-rendered state: the Wellness card's week count moved,
     // which is only true if the tap wrote through the shared practice store.
     await page.goto("/wellness");
@@ -465,6 +521,18 @@ test("a practice logs in one tap from the sheet and the week count moves", async
       .getByTestId("wellness-practice-card")
       .filter({ hasText: SHELL_PRACTICE });
     await expect(card).toContainText("1 day this week");
+
+    // And the NEXT prefill is the value that was LOGGED, so accepting it a second
+    // time costs zero taps.
+    await page.goto("/");
+    const again = await openQuickEntry(page, "log-practice");
+    await expect(
+      again
+        .getByTestId("quick-entry-practice-list")
+        .getByRole("listitem")
+        .filter({ hasText: SHELL_PRACTICE })
+        .getByTestId("practice-duration-input")
+    ).toHaveValue("20");
   } finally {
     clearShellPracticeLogs();
     await page.context().close();

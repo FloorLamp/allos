@@ -341,6 +341,11 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
 
   // ── Not re-issuable ────────────────────────────────────────────────────────
   {
+    kind: "wear-reminder",
+    reissuable: false,
+    why: "It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. It also carries no keyboard — its whole content is words — so it records no pointer and would have nothing to rotate even if a second send existed.",
+  },
+  {
     kind: "temp",
     reissuable: false,
     why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. The sibling-closing hazard that first justified this entry is gone since #1995 — those prompts now declare their own subjects, so the supersede lookup is per profile and cannot reach a sibling's copy — but the entry stands on its own footing: a `/temp` prompt asks for a typed REPLY and carries no keyboard, so it records no pointer and supersedes nothing either way. If a prompt ever gains buttons, re-issue becomes a real question and gets answered then, per profile.",
@@ -580,6 +585,11 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
     kind: "symptom",
     prose: null,
     why: "The `/symptom` grid is a picker; the `symptom` family removes each entry the day's log answers.",
+  },
+  {
+    kind: "wear-reminder",
+    prose: null,
+    why: "A question about the data (\"your watch hasn't recorded since 21:05 — still on the charger?\"), not a claim an in-app write can resolve. Putting the watch back on is not an app action at all, and the stream healing is already answered by the next night's silence: the reminder is evaluated fresh at each Bedtime slot and simply does not send.",
   },
   {
     kind: "prn-list",

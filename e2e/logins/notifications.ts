@@ -37,3 +37,11 @@ export const EMAIL_NOTIFY_PROFILE = "Email Notify (e2e)";
 // needs to read a column this spec alone has touched.
 export const E2E_LOGIN_NOTIF_SWEEP = "e2e_notif_sweep";
 export const NOTIF_SWEEP_PROFILE = "Notif Sweep (e2e)";
+
+// Two dedicated profiles for the persisted notify-tick log viewer (#2209). The spec
+// asserts on RUN ROWS grouped by (run, profile), so it must own every line it counts
+// — a shared profile would let another fixture's tick lines drift into its totals.
+// Two profiles, because the point of the page is that BOTH shapes render: one that
+// declined things, and one QUIET one the tick evaluated and had nothing to say about.
+export const NOTIFY_LOG_BUSY_PROFILE = "Notify Log Busy (e2e)";
+export const NOTIFY_LOG_QUIET_PROFILE = "Notify Log Quiet (e2e)";
