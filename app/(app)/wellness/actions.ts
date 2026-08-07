@@ -38,7 +38,15 @@ function optionalNumber(formData: FormData, key: string): number | null {
 }
 
 // Shared one-tap + expanded-detail action. A missing date means profile-local today;
-// optional time/duration/notes are written only when the expanded form supplies them.
+// optional duration/notes are written only when the form supplies them.
+//
+// TIME IS PRESENCE-GATED, not value-gated (#2204). The expanded form always renders a
+// time input, so it always POSTS the field — empty when the user left it empty, which
+// is a statement ("this session has no instant") the write core must hear as `null`.
+// A one-tap path posts no `time` field at all, which is a different statement ("I have
+// no opinion, you have the clock") and reaches the core as `undefined`, where it stamps
+// the profile-local tap instant. Collapsing the two with `|| null` is what made every
+// quick tap write a null time; the FormData distinction was already there, unused.
 export async function logPractice(
   formData: FormData
 ): Promise<PracticeLogOutcome> {
@@ -47,7 +55,9 @@ export async function logPractice(
   if (!practice) return { kind: "invalid-date" };
   const date = String(formData.get("date") ?? "").trim() || today(profile.id);
   const outcome = logPracticeSession(profile.id, practice, date, {
-    time: String(formData.get("time") ?? "").trim() || null,
+    time: formData.has("time")
+      ? String(formData.get("time") ?? "").trim() || null
+      : undefined,
     durationMin: optionalNumber(formData, "duration_min"),
     notes: String(formData.get("notes") ?? "").trim() || null,
   });

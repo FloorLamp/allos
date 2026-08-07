@@ -344,6 +344,19 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
       "None needed. Auto-pause is a separate mechanism (mood_checkin_ignored), not this marker.",
   },
   {
+    key: "notify_last_wear_reminder",
+    fixed: true,
+    markerClass: "profile-fixed",
+    cadence: "per-day",
+    store: "profile_settings",
+    shape: "none — one key per profile",
+    value:
+      "the profile-local date the opt-in bedtime wear reminder was delivered (#2161)",
+    writer: "scripts/notify.ts, through TICK_SLOT_MARKER_KEYS below",
+    retention:
+      "None needed — the standard date rollover IS the sweep. The value is a date, so a new profile-local day re-arms the signal and a stale value can only ever match a past night. There is nothing recyclable in the key, and turning the opt-in off simply stops the builder returning a message, which leaves the last marker inert rather than stranded. One send per night, no escalation, no repeat.",
+  },
+  {
     key: "notify_preventive_assessed",
     fixed: true,
     markerClass: "profile-fixed",
@@ -563,6 +576,7 @@ export const TICK_SLOT_MARKER_KEYS = {
   workout: "notify_last_workout",
   mood_checkin: "notify_last_mood_checkin",
   practice: "notify_last_practice",
+  wear_reminder: "notify_last_wear_reminder",
 } as const;
 
 export type TickSlot = keyof typeof TICK_SLOT_MARKER_KEYS;

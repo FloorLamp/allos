@@ -47,6 +47,7 @@ import {
   intakeSlotMarkerKey,
 } from "../lib/notifications/send-markers";
 import { buildMoodCheckin } from "../lib/notifications/mood";
+import { buildWearReminder } from "../lib/notifications/wear-reminder";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
@@ -426,6 +427,31 @@ async function tickProfile(
         markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
         build: () => buildMoodCheckin(profile.id, date),
         onDelivered: () => bumpMoodCheckinIgnored(profile.id),
+      });
+  }
+  // Bedtime wear reminder (#2161): OPT-IN per profile, off by default, riding the
+  // BEDTIME supplement slot minute — no schedule of its own, exactly as the mood
+  // check-in rides Evening.
+  //
+  // The gate here is only "is the slot due"; every other condition — the consent flag
+  // itself, the expected-active gate, the provider-health deference, and the quiet-
+  // stream predicate — lives in buildWearReminder, which returns null for all of them.
+  // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
+  // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
+  // spends the night's single send.
+  //
+  // Cadence is the tick's own per-day marker discipline, NOT planNudgeCadence: there
+  // is one profile-fixed key with no subject to strand, so there is no candidate set
+  // to freeze and no self-healing sweep to run — the date rollover is the whole
+  // lifecycle. Reaching for the episode planner here would add a vocabulary the
+  // signal does not have.
+  {
+    const slotMinute = sched.supplementMinutes.Bedtime;
+    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+      dueSlots.push({
+        slot: "wear_reminder",
+        markerKey: TICK_SLOT_MARKER_KEYS.wear_reminder,
+        build: () => buildWearReminder(profile.id),
       });
   }
   if (sched.workoutEnabled) {

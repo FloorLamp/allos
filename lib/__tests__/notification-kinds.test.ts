@@ -9,6 +9,8 @@ import {
   SAFETY_NOTIFICATION_KINDS,
   isSafetyKind,
   notificationKindEntry,
+  slotRequirementNote,
+  unmetSlotRequirement,
 } from "../notifications/kinds";
 import type { NotificationKind } from "../notifications/types";
 
@@ -199,5 +201,69 @@ describe("dispatch ⇄ registry", () => {
       unhandled,
       `dispatched kinds with no settings row and no documented exclusion: ${unhandled.join(", ")}`
     ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The slot-precondition declaration (#2161 review).
+//
+// A kind with NO schedule of its own fires at an intake reminder slot minute. Those
+// slots are independently switchable, so "every slot this kind rides is off" is a
+// reachable state in which the kind's own checkbox reads ON and nothing is ever sent.
+// Silence with an enabled-looking control is the worst failure a settings page has,
+// and it is worse still for a CONSENT — the whole point of the bedtime wear reminder
+// is that the user asked for it.
+//
+// The fix is a declaration plus a rendered note, never a fallback hour: guessing a
+// bedtime for a send the user consented to at THEIR bedtime is a worse answer than
+// naming the missing precondition out loud.
+describe("slot preconditions (#2161)", () => {
+  const byKind = new Map(NOTIFICATION_KIND_REGISTRY.map((e) => [e.kind, e]));
+
+  it("declares the slots for every kind whose whole schedule is a slot minute", () => {
+    // A census by name, in the repository's usual posture: a NEW slot-riding kind has
+    // to be decided about here rather than silently inheriting "no precondition".
+    const declared = Object.fromEntries(
+      NOTIFICATION_KIND_REGISTRY.filter((e) => e.ridesSlots).map((e) => [
+        e.kind,
+        e.ridesSlots,
+      ])
+    );
+    expect(declared).toEqual({
+      // FOOD_NUDGE_WINDOWS — Bedtime is deliberately not one of them.
+      food: ["Morning", "Midday", "Evening"],
+      mood: ["Evening"],
+      "wear-reminder": ["Bedtime"],
+    });
+  });
+
+  it("is unmet only when EVERY declared slot is off", () => {
+    const wear = byKind.get("wear-reminder")!;
+    expect(unmetSlotRequirement(wear, () => true)).toBeNull();
+    expect(unmetSlotRequirement(wear, () => false)).toEqual(["Bedtime"]);
+    // One of several is enough — the food nudge rides whichever windows are set.
+    const food = byKind.get("food")!;
+    expect(unmetSlotRequirement(food, (s) => s === "Midday")).toBeNull();
+    expect(unmetSlotRequirement(food, () => false)).toEqual([
+      "Morning",
+      "Midday",
+      "Evening",
+    ]);
+  });
+
+  it("says nothing about a kind that owns its own schedule", () => {
+    // The digest and the recap carry their own time controls; a milestone has no
+    // schedule at all. None of them can be silenced by a slot, so none declares one
+    // and none may grow a note.
+    for (const kind of ["digest", "weekly-recap", "milestone", "dose"] as const)
+      expect(unmetSlotRequirement(byKind.get(kind)!, () => false)).toBeNull();
+  });
+
+  it("names the missing slots in the note, and points at the Schedule card", () => {
+    expect(slotRequirementNote(["Bedtime"])).toContain("your Bedtime reminder");
+    expect(slotRequirementNote(["Bedtime"])).toContain("Schedule");
+    expect(slotRequirementNote(["Morning", "Midday", "Evening"])).toContain(
+      "Morning, Midday, or Evening"
+    );
   });
 });

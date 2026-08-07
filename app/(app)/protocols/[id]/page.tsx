@@ -30,7 +30,7 @@ import {
   protocolPracticeNoun,
 } from "@/lib/protocol-practice";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
-import { previousPracticeDuration } from "@/lib/practice";
+import { practiceDurationPrefill } from "@/lib/practice";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
@@ -140,7 +140,7 @@ export default async function ProtocolDetailPage(props: {
       : [];
   const previousDurationMin =
     practice?.scopeKind === "practice"
-      ? previousPracticeDuration(
+      ? practiceDurationPrefill(
           getPracticeSessions(
             profile.id,
             practice.value,
@@ -307,6 +307,7 @@ export default async function ProtocolDetailPage(props: {
                   today={todayStr}
                   defaultDurationMin={previousDurationMin}
                   usualSessionDay={practiceUsuallyToday}
+                  inlineDuration
                   showDetails
                 />
               )}

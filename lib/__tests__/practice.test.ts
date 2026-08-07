@@ -13,7 +13,9 @@ import {
   normalizePracticeName,
   practiceIdentity,
   samePractice,
-  previousPracticeDuration,
+  practiceDurationPrefill,
+  stepPracticeDuration,
+  PRACTICE_DURATION_STEP_MIN,
   validatePracticeCadence,
   groupPracticeSpellings,
   practiceSpellingsFor,
@@ -171,12 +173,42 @@ describe("practice identity + dedupeKey namespace (#1259)", () => {
     expect(grouped.has("")).toBe(false);
   });
 
-  it("prefills duration from the immediately previous session only", () => {
-    expect(previousPracticeDuration([{ duration_min: 20 }])).toBe(20);
+  // #2204: the prefill order, all three legs, plus the two rules the inline stepper
+  // depends on — a blank stays blank, and "last logged" means the last row WRITTEN.
+  it("prefills duration from the last LOGGED session, then a declared default, then blank", () => {
+    // Leg 1 — the most recent session speaks.
+    expect(practiceDurationPrefill([{ duration_min: 20 }])).toBe(20);
+    // Leg 1 still, and it says "nothing": a last session logged WITHOUT a duration
+    // prefills blank rather than reaching further back. Clearing the stepper once is
+    // a decision the next prefill honours (#2204 constraint 4).
     expect(
-      previousPracticeDuration([{ duration_min: null }, { duration_min: 20 }])
+      practiceDurationPrefill([{ duration_min: null }, { duration_min: 20 }])
     ).toBeNull();
-    expect(previousPracticeDuration([])).toBeNull();
+    // Leg 2 — no history at all, so a declared default may speak.
+    expect(practiceDurationPrefill([], 15)).toBe(15);
+    // ...but never over real history.
+    expect(practiceDurationPrefill([{ duration_min: 30 }], 15)).toBe(30);
+    // An unusable declaration degrades to blank instead of seeding an impossible row.
+    expect(practiceDurationPrefill([], 0)).toBeNull();
+    expect(practiceDurationPrefill([], -5)).toBeNull();
+    // Leg 3 — nothing to say. The app does not invent a duration.
+    expect(practiceDurationPrefill([])).toBeNull();
+  });
+
+  it("steps the inline duration, and steps DOWN off the bottom to blank", () => {
+    expect(stepPracticeDuration(20, PRACTICE_DURATION_STEP_MIN)).toBe(25);
+    expect(stepPracticeDuration(20, -PRACTICE_DURATION_STEP_MIN)).toBe(15);
+    // Up from blank reaches the first step without typing.
+    expect(stepPracticeDuration(null, PRACTICE_DURATION_STEP_MIN)).toBe(
+      PRACTICE_DURATION_STEP_MIN
+    );
+    // Down from blank has nowhere to go.
+    expect(stepPracticeDuration(null, -PRACTICE_DURATION_STEP_MIN)).toBeNull();
+    // Down off the bottom CLEARS — "no duration" stays one tap away.
+    expect(stepPracticeDuration(5, -PRACTICE_DURATION_STEP_MIN)).toBeNull();
+    expect(stepPracticeDuration(3, -PRACTICE_DURATION_STEP_MIN)).toBeNull();
+    // A hand-typed odd value still steps by the step, not to a multiple of it.
+    expect(stepPracticeDuration(7, PRACTICE_DURATION_STEP_MIN)).toBe(12);
   });
 
   it("ships the curated starter list (#1259)", () => {

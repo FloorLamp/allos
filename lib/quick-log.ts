@@ -123,8 +123,10 @@ export type QuickLogTimeSemantic = "instant" | "day-only";
 // the admission test is answered out loud rather than left to a reader's guess (the
 // METRIC_KNOWLEDGE discipline: an explicit `none`, with the reason beside it).
 //
-//   • "hour" — the hour chips of lib/correction-time.ts (food, dose): a late tap is
-//              hours late, and the consumers tolerate that grain.
+//   • "hour" — the CONSUMER reads hours, so an hour is the unit a correction has to be
+//              able to move. The unit names that grain; it does not name a widget.
+//              Example mechanisms: the hour chips of lib/correction-time.ts (food,
+//              dose), and the practice session's own dated edit form (#2204).
 //   • "day"  — corrected a DAY at a time, through the dated form that owns the
 //              exception (a period start that actually began yesterday).
 //   • "none" — the form STATES the time on entry, so there is no correction affordance
@@ -259,8 +261,23 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // second write path, and the sheet lists exactly the practices you track.
     target: { kind: "overlay", form: "practice" },
     time: {
-      semantic: "day-only",
-      why: "Deliberately not extended (#2019). A practice session counts against a WEEKLY floor; nothing reads when in the day it happened, so capturing an instant would be precision with no consumer — which is exactly how a later reader comes to invent a meaning for it.",
+      // REWRITTEN by #2204, because the old declaration became factually wrong the
+      // moment `practice_logs.time` acquired a reader. It said "nothing reads when in
+      // the day it happened, so capturing an instant would be precision with no
+      // consumer" — correct when written, and the admission test it was failing is
+      // leg 1 (a consumer). #2202 supplied one, so the entry has to state the new
+      // meaning rather than inherit the old words: that is the whole point of this
+      // file (#2019 §7).
+      semantic: "instant",
+      why: "#2202: `lib/weekly-rhythm.ts` reads practice_logs.time — modalHour() picks each practice's typical session hour from its logged times, which is what schedules the retimed pace nudge and what the cards' rhythm note is inferred from. A one-tap log is a statement that the session is happening now, so the write core stamps the profile-local tap instant (#450 — the server's zone, never the device's); the expanded form's own time input still wins, and an explicitly emptied one still means no instant.",
+      // The MECHANISM, named: the session's own dated edit form, on the Wellness card's
+      // history table and the protocol detail's, which owns date and time together
+      // (`editPracticeSession` → `updatePracticeSession`). The UNIT is "hour" because
+      // that is the grain the consumer reads — modalHour buckets by hour — not because
+      // this entry borrows the food/dose chips, which it does not. This is not #2062's
+      // case in reverse: that ruling retired a declared correction affordance that did
+      // not EXIST, and this one does.
+      correctionUnit: "hour",
     },
   },
   {

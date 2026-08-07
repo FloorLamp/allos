@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   getProtocols,
   getProtocol,
@@ -480,6 +481,71 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
     // shared component can render "N days this week · Target 3-5x/week".
     expect(summary.adherence!.perWeekMax).toBe(5);
     expect(summary.adherence!.noun).toBe("day");
+  });
+
+  // #2204 (owner ruling): the dashboard widget mounts the SAME ProtocolLogButton the
+  // detail page does, so it needs the same prefill or its one-tap would be the last
+  // practice log in the app that discards a duration it never showed.
+  it("carries the practice's duration prefill for the widget's inline stepper", () => {
+    const profile = newProfile("Proto Duration");
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (?, 'practice', 'Sauna', 'sauna', 3, NULL)`
+        )
+        .run(profile).lastInsertRowid
+    );
+    const todayStr = today(profile);
+    db.prepare(
+      `INSERT INTO protocols
+         (profile_id, name, start_date, outcome_keys, frequency_target_id, owns_frequency_target)
+       VALUES (?, 'Sauna trial', ?, '[]', ?, 1)`
+    ).run(profile, todayStr, targetId);
+
+    // No history yet: blank is a real answer, and the widget must not invent one.
+    expect(
+      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
+        .practicePreviousDurationMin
+    ).toBeNull();
+
+    const log = db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    log.run(profile, "Sauna", shiftDateStr(todayStr, -1), "07:00", 15);
+    log.run(profile, "sauna", todayStr, "07:30", 20);
+    // The LAST logged session wins, folded across the identity's spellings — the same
+    // pure resolution every other practice surface reads.
+    expect(
+      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
+        .practicePreviousDurationMin
+    ).toBe(20);
+
+    // A session logged WITHOUT one prefills blank again: clearing the stepper is a
+    // decision the next prefill honours rather than reaching further back.
+    log.run(profile, "Sauna", todayStr, "19:00", null);
+    expect(
+      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
+        .practicePreviousDurationMin
+    ).toBeNull();
+  });
+
+  it("has no duration prefill for a non-practice protocol scope", () => {
+    const profile = newProfile("Proto Duration Food");
+    insertProtocol(profile, {
+      name: "Veg push",
+      start: "2026-05-01",
+      end: null,
+      keys: [],
+    });
+    // The activity/food actions open their own full forms, which have always asked
+    // for what they record — there is no one-tap duration to prefill.
+    expect(
+      getActiveProtocolSummaries(profile, "2026-05-10", "kg")[0]
+        .practicePreviousDurationMin
+    ).toBeNull();
   });
 });
 

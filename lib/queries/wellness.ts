@@ -18,7 +18,7 @@ import {
   practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,
-  previousPracticeDuration,
+  practiceDurationPrefill,
   samePractice,
 } from "../practice";
 import type { FrequencyTarget, PracticeLog } from "../types";
@@ -299,7 +299,7 @@ export function getWellnessPractices(
         pace: targetProgress?.pace ?? "on-pace",
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
-        previousDurationMin: previousPracticeDuration(item.sessions),
+        previousDurationMin: practiceDurationPrefill(item.sessions),
         // The rhythm over the identity's own sessions — already gathered above, so
         // the aggregate infers in memory over the SAME rows the per-practice query
         // wrapper (inferPracticeSchedule) scans; the pure core is the one
@@ -342,6 +342,12 @@ export interface TrackedPractice {
   // Sessions logged TODAY, folded across the identity's spellings — what the shared
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
+  // The quick sheet's inline duration stepper starts here (#2204) — `practiceDurationPrefill`
+  // over the identity's LAST LOGGED session, the same pure resolution the Wellness card's
+  // expanded form uses. Null means blank, and blank is a real answer: the sheet does not
+  // invent a duration for a practice with no history, or for one whose last session
+  // deliberately carried none.
+  previousDurationMin: number | null;
 }
 
 // The quick surfaces' practice list: one row per practice-scope frequency target.
@@ -384,6 +390,45 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
+  // The inline duration prefill's ingredient (#2204): ONE row per stored spelling —
+  // that spelling's newest session — folded to one row per identity in JS, exactly as
+  // the today-count fold above does (SQL cannot call practiceIdentity). Bounded by the
+  // number of distinct spellings, not by history, so the sheet still opens on two
+  // small reads. The ordering is byte-for-byte getPracticeSessions' own, COALESCE
+  // sentinel included, so "the last logged session" means the same row on every
+  // surface that asks.
+  const latestRows = db
+    .prepare(
+      `SELECT practice, date, time, id, duration_min FROM (
+         SELECT practice, date, time, id, duration_min,
+                ROW_NUMBER() OVER (
+                  PARTITION BY practice
+                  ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+                ) AS rn
+           FROM practice_logs
+          WHERE profile_id = ?
+       ) WHERE rn = 1`
+    )
+    .all(profileId) as {
+    practice: string;
+    date: string;
+    time: string | null;
+    id: number;
+    duration_min: number | null;
+  }[];
+  const latestByIdentity = new Map<string, (typeof latestRows)[number]>();
+  // The recency key, in getPracticeSessions' own order: date, then time with its
+  // null-sorts-last sentinel, then the row id as the tiebreak.
+  const recency = (r: (typeof latestRows)[number]) =>
+    `${r.date} ${r.time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
+  for (const row of latestRows) {
+    const identity = practiceIdentity(row.practice);
+    if (!identity) continue;
+    const held = latestByIdentity.get(identity);
+    if (!held || recency(row) > recency(held))
+      latestByIdentity.set(identity, row);
+  }
+
   const seen = new Set<string>();
   const out: TrackedPractice[] = [];
   for (const target of targets) {
@@ -409,6 +454,12 @@ export function getTrackedPractices(
       atCeiling: targetProgress?.atCeiling ?? false,
       pace: targetProgress?.pace ?? "on-pace",
       todayCount: todayByIdentity.get(identity) ?? 0,
+      // The SAME pure resolution the Wellness card's expanded form reads — one
+      // question, one computation. A practice with no logs at all resolves through
+      // the empty list rather than being special-cased here.
+      previousDurationMin: practiceDurationPrefill(
+        latestByIdentity.has(identity) ? [latestByIdentity.get(identity)!] : []
+      ),
     });
   }
   return out.sort((left, right) =>
