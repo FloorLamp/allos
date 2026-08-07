@@ -65,7 +65,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@napi-rs/canvas": "^0.1.100",
+    "@napi-rs/canvas": "^1.0.3",
     "@tabler/icons-react": "^3.46.0",
     "better-sqlite3": "^13.0.3",
     "exceljs": "^4.4.0",
