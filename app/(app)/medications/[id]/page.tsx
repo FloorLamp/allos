@@ -12,8 +12,7 @@ import {
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
-import { zonedDateParts } from "@/lib/date";
-import { bestKnownInstant, instantDate } from "@/lib/row-instants";
+import { bestKnownInstant } from "@/lib/row-instants";
 import {
   formatGivenAtClock,
   formatGivenAtClockWithRelativeAge,
@@ -120,7 +119,6 @@ export default async function MedicationDetailPage(props: {
     // (given_at → taken_at) — with the answer saying WHICH question it came from.
     const when = bestKnownInstant("intake_item_logs", dose);
     const stored = when.known ? when.at : null;
-    const instant = instantDate(when);
     // Only attach relative age when the dose's logical date is today; otherwise its
     // adjacent date already supplies the useful context and "just now" would be false.
     const clock =
@@ -144,7 +142,10 @@ export default async function MedicationDetailPage(props: {
         clock && when.known && when.semantic === "record"
           ? `recorded ${clock}`
           : clock,
-      timeValue: instant ? zonedDateParts(data.tz, instant).hhmm : "",
+      // The edit form's time seed: the row's STATED instant only (#2228 decision
+      // 1). A record-chain clock never seeds the editor — a row with no stated
+      // intake time opens with an empty time field.
+      statedAt: dose.occurred_at,
       amount: dose.amount,
       product: dose.product,
     };

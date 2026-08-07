@@ -46,25 +46,9 @@ const HANDROLLED_ALLOW = new Map<
         "form's one shared Time control when its occurred_at write half lands",
     },
   ],
-  [
-    "components/medications/HistoricalDoseForm.tsx",
-    {
-      count: 1,
-      kind: "event",
-      reason:
-        "dose backfill/amend time; #2228's write half (occurred_at) adopts " +
-        "the shared control",
-    },
-  ],
-  [
-    "components/illness/EpisodeTimeline.tsx",
-    {
-      count: 1,
-      kind: "event",
-      reason:
-        "episode dose edit time; migrates with #2228's one-amend-core merge",
-    },
-  ],
+  // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
+  // write half: both adopt the shared control (backfill = state + timeRequired,
+  // amend = correct with "Not stated" reachable).
   [
     "components/illness/SymptomLogBar.tsx",
     {

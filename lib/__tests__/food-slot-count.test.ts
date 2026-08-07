@@ -1,15 +1,16 @@
-// PURE TIER — the shared slot-derivation (issues #950, #1016). The SAME code path decides
-// the window for the ranking's slot signal (foodEventsInWindow) and the nudge's slot-scoped
-// button counts (slotServingCounts), so a morning tap is excluded from the midday count and
-// a boundary-time tap buckets consistently for BOTH — one shared fixture pins them (#221).
+// PURE TIER — the shared window derivation (issues #950, #2019). `foodEventWindow` is
+// the ONE precedence deciding which food window a ledger event belongs to: an explicit
+// meal_slot, then a captured eating instant (#2019), then the legacy tap instant.
+//
+// The count half this file used to pin (`slotServingCounts` / `foodEventsInWindow`, the
+// #1016 slot-scoped nudge suffix) was retired by #2019 and deleted in #2227 — the
+// Telegram buttons read the DAY total, and the ranking weights by proximity. The
+// per-window TALLY properties (day scoping, multi-tap accumulation, correction moves)
+// are pinned in the DB tier against the meal grouping the web surface actually renders
+// (getFoodMealDays.slotCounts), which is the live consumer of this derivation.
 
 import { describe, it, expect } from "vitest";
-import {
-  foodEventWindow,
-  foodEventsInWindow,
-  slotServingCounts,
-  type FoodLedgerEvent,
-} from "@/lib/food-slot-count";
+import { foodEventWindow } from "@/lib/food-slot-count";
 import { foodSlotBoundaries } from "@/lib/food-slot";
 
 const TZ = "UTC";
@@ -21,15 +22,6 @@ const BOUNDS = foodSlotBoundaries({
 });
 const DAY = "2026-07-13";
 
-// One shared fixture: a morning tap, a midday tap, a boundary-time tap at exactly 11:00
-// (Midday), and an evening tap — all on the same day.
-const EVENTS: FoodLedgerEvent[] = [
-  { name: "whole_grains", date: DAY, logged_at: `${DAY}T08:00:00Z` }, // Morning
-  { name: "fatty_fish", date: DAY, logged_at: `${DAY}T12:30:00Z` }, // Midday
-  { name: "leafy_greens", date: DAY, logged_at: `${DAY}T11:00:00Z` }, // Midday (boundary)
-  { name: "berries", date: DAY, logged_at: `${DAY}T19:00:00Z` }, // Evening
-];
-
 describe("foodEventWindow", () => {
   it("buckets a tap by its logged_at instant in the profile's tz + boundaries", () => {
     expect(foodEventWindow(`${DAY}T08:00:00Z`, TZ, BOUNDS)).toBe("Morning");
@@ -37,107 +29,43 @@ describe("foodEventWindow", () => {
     expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS)).toBe("Evening");
   });
 
-  it("puts a boundary-time (11:00) tap in Midday, consistently for ranking and count", () => {
+  it("puts a boundary-time (11:00) tap in Midday", () => {
     expect(foodEventWindow(`${DAY}T11:00:00Z`, TZ, BOUNDS)).toBe("Midday");
   });
 
-  it("prefers an explicit backfilled meal over the later tap time", () => {
-    expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS, "Morning")).toBe(
+  it("prefers a captured eating instant over the tap instant (#2019)", () => {
+    // Tapped at 23:40, eaten at 19:00 — the dinner derives to the window it was EATEN
+    // in, which is what makes an eating-time correction MOVE a legacy-slot row (#2227).
+    expect(
+      foodEventWindow(`${DAY}T23:40:00Z`, TZ, BOUNDS, null, `${DAY}T19:00:00Z`)
+    ).toBe("Evening");
+    // And absent a statement, the tap instant remains the honest last resort.
+    expect(foodEventWindow(`${DAY}T12:30:00Z`, TZ, BOUNDS, null, null)).toBe(
+      "Midday"
+    );
+    expect(foodEventWindow(`${DAY}T08:00:00Z`, TZ, BOUNDS, null, null)).toBe(
       "Morning"
     );
   });
-});
 
-describe("slotServingCounts (#1016)", () => {
-  it("counts only the taps whose derived window matches — morning excluded from midday", () => {
-    const midday = slotServingCounts(EVENTS, TZ, BOUNDS, "Midday", DAY);
-    // fatty_fish (12:30) + leafy_greens (11:00 boundary) count; whole_grains (08:00) does not.
-    expect(midday.get("fatty_fish")).toBe(1);
-    expect(midday.get("leafy_greens")).toBe(1);
-    expect(midday.get("whole_grains")).toBeUndefined();
-    expect(midday.get("berries")).toBeUndefined();
-  });
-
-  it("the midday slot count agrees with the ranking's midday slot events (#221)", () => {
-    // Both surfaces read the SAME derivation: the set of names in Midday must match.
-    const inWindow = foodEventsInWindow(EVENTS, TZ, BOUNDS, "Midday").map(
-      (e) => e.name
+  it("an explicit meal_slot wins over BOTH instants — a declaration, not a guess", () => {
+    // The #1704 property, re-pointed from the retired count onto the derivation
+    // itself: a backfill that asserted Morning stays Morning for every consumer,
+    // however late the tap landed and whatever the eating instant says.
+    expect(foodEventWindow(`${DAY}T12:30:00Z`, TZ, BOUNDS, "Morning")).toBe(
+      "Morning"
     );
-    const counted = [
-      ...slotServingCounts(EVENTS, TZ, BOUNDS, "Midday", DAY).keys(),
-    ];
-    expect(inWindow.sort()).toEqual(counted.sort());
-  });
-
-  it("excludes events from a different DAY (a backfilled-yesterday tap)", () => {
-    const evs: FoodLedgerEvent[] = [
-      ...EVENTS,
-      // A tap whose window is Midday but logged to YESTERDAY — not today's slot count.
-      { name: "fatty_fish", date: "2026-07-12", logged_at: `${DAY}T12:00:00Z` },
-    ];
     expect(
-      slotServingCounts(evs, TZ, BOUNDS, "Midday", DAY).get("fatty_fish")
-    ).toBe(1);
-  });
-
-  it("tallies multiple taps of the same group in one slot", () => {
-    const evs: FoodLedgerEvent[] = [
-      { name: "fatty_fish", date: DAY, logged_at: `${DAY}T12:00:00Z` },
-      { name: "fatty_fish", date: DAY, logged_at: `${DAY}T13:00:00Z` },
-    ];
-    expect(
-      slotServingCounts(evs, TZ, BOUNDS, "Midday", DAY).get("fatty_fish")
-    ).toBe(2);
-  });
-
-  it("groups an explicitly backfilled meal by meal_slot, not logged_at", () => {
-    const evs: FoodLedgerEvent[] = [
-      {
-        name: "berries",
-        date: "2026-07-11",
-        logged_at: `${DAY}T19:00:00Z`,
-        meal_slot: "Morning",
-      },
-    ];
-    expect(
-      slotServingCounts(evs, TZ, BOUNDS, "Morning", "2026-07-11").get("berries")
-    ).toBe(1);
-    expect(
-      slotServingCounts(evs, TZ, BOUNDS, "Evening", "2026-07-11").get("berries")
-    ).toBeUndefined();
-  });
-
-  // The #1704 regression, pinned at the derivation. A Telegram nudge bakes its window
-  // into the callback token at SEND time; the tap can land in a later window (you open
-  // the morning nudge at lunch). Before the fix the handler stored meal_slot = null, so
-  // the event derived to the TAP's window while the rebuild asked for the TOKEN's — the
-  // button's "(n)" suffix read 0 even though the serving logged. With the token's window
-  // carried explicitly the count follows the button that was pressed.
-  it("counts an explicit-slot event for its OWN window, not the tap-derived one (#1704)", () => {
-    const lateTapOnMorningNudge: FoodLedgerEvent[] = [
-      {
-        name: "berries",
-        date: DAY,
-        logged_at: `${DAY}T12:30:00Z`, // derives Midday
-        meal_slot: "Morning", // but the nudge asserted Morning
-      },
-    ];
-    expect(
-      slotServingCounts(lateTapOnMorningNudge, TZ, BOUNDS, "Morning", DAY).get(
-        "berries"
+      foodEventWindow(
+        `${DAY}T12:30:00Z`,
+        TZ,
+        BOUNDS,
+        "Morning",
+        `${DAY}T19:00:00Z`
       )
-    ).toBe(1);
-    expect(
-      slotServingCounts(lateTapOnMorningNudge, TZ, BOUNDS, "Midday", DAY).get(
-        "berries"
-      )
-    ).toBeUndefined();
-    // And the ranking reads the same derivation, so it agrees about the slot (#221).
-    expect(
-      foodEventsInWindow(lateTapOnMorningNudge, TZ, BOUNDS, "Morning")
-    ).toHaveLength(1);
-    expect(
-      foodEventsInWindow(lateTapOnMorningNudge, TZ, BOUNDS, "Midday")
-    ).toHaveLength(0);
+    ).toBe("Morning");
+    expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS, "Morning")).toBe(
+      "Morning"
+    );
   });
 });

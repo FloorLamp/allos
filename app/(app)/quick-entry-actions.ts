@@ -43,7 +43,12 @@ import {
 import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { FoodGroup } from "@/lib/food-groups";
-import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
+import {
+  FOOD_SLOTS,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
+import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 
@@ -128,6 +133,10 @@ export type QuickEntryData =
       proteinPreset: number | null;
       excludedGroups: string[];
       slot: FoodSlot;
+      // The profile's meal-window boundaries — what the correction sheet's
+      // follow-the-hour Meal default derives from (#2227 d4), the same numbers the
+      // server's tallies use.
+      slotBoundaries: FoodSlotBoundaries;
       // The "earlier…" hours the eating-time statement may name (#2053) — the SAME
       // server-resolved offer the Food tab passes, so the sheet cannot present a
       // narrower affordance than the page it opened over.
@@ -250,6 +259,7 @@ export async function loadQuickEntry(
       proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
+      slotBoundaries: profileFoodSlotBoundaries(profile.id),
       eatingTimeOptions: eatingTimeOptions(
         clockNow(),
         getTimezone(profile.id),

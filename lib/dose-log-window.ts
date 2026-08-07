@@ -126,3 +126,16 @@ export function isHistoricalDoseTimeAccepted(
   const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, givenAt));
   return diff != null && diff <= 0;
 }
+
+// The DATE half of the same window, for a historical amendment that states no
+// intake time at all (#2228). `isHistoricalDoseTimeAccepted` applies only when an
+// instant is present; a date-only amendment still validates its day against the
+// identical rule — any past day, never the future — instead of skipping
+// validation because there is no clock to judge.
+export function isHistoricalDoseDateAccepted(
+  todayStr: string,
+  date: string
+): boolean {
+  const diff = daysBetweenDateStr(todayStr, date);
+  return diff != null && diff <= 0;
+}

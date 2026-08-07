@@ -1,14 +1,25 @@
-// Shared slot-derivation over the food_log_events ledger (issues #950, #1016). This is
-// the ONE code path that decides which food WINDOW an event belongs to — an explicit
-// meal_slot when present, otherwise its logged_at instant in the profile's timezone +
-// configured slot boundaries — and it is consumed by
-// BOTH:
-//   • the #950 slot RANKING signal (rankFoodGroups's slot occurrences), and
-//   • the #1016 slot-scoped nudge button COUNTS (getFoodSlotServingsOnDate).
-// Because ranking and count share this derivation, they can never disagree about which
-// slot a tap falls in — a boundary-time tap buckets identically for both (#221 — one
-// shared fixture pins them). Pure (zonedDateParts + foodSlotForHhmm are pure), so it's
-// unit-tested without a DB.
+// Shared slot-derivation over the food_log_events ledger (issue #950; precedence
+// re-settled by #2019). This is the ONE precedence that decides which food WINDOW an
+// event belongs to — an explicit meal_slot when present, then a captured eating
+// instant, then the tap instant, in the profile's timezone + configured boundaries.
+//
+// Its live consumers (#2227 corrected this list after #2019 retired one of them):
+//   • the web log's meal grouping — getFoodMealDays' per-window tallies AND the
+//     correction rows they are built in one pass with (lib/queries/nutrition.ts);
+//   • the write-side reads, via the profile-resolving mirror foodSlotForProfileEvent
+//     (lib/profile-food-slot.ts): mealServingCount's per-window dedupe and the
+//     correction/delete cores' from/to/vacated placements (#1934/#1963/#2227);
+//   • the same eaten-over-tap precedence, one level down, in the #2019 ranking signal
+//     (slotProximityOccurrences weights each event at the minute it was EATEN when one
+//     was captured) and the current-window chip (currentFoodSlot).
+//
+// What is NOT here any more: the #1016 slot-scoped nudge button count
+// (getFoodSlotServingsOnDate / slotServingCounts) was retired by #2019 — the Telegram
+// suffix reads the DAY total now (lib/notifications/food.ts says so outright), and the
+// ranking weights by PROXIMITY rather than bucket membership. #2227 deleted the dead
+// query rather than leave a derivation advertising consumers that no longer exist.
+//
+// Pure (zonedDateParts + foodSlotForHhmm are pure), so it's unit-tested without a DB.
 
 import { zonedDateParts } from "./date";
 import {
@@ -17,8 +28,8 @@ import {
   type FoodSlotBoundaries,
 } from "./food-slot";
 
-// A food_log_events row as the ranking/count read it: the group_key, logged day, tap
-// instant, and optional explicit consumed window.
+// A food_log_events row as the window derivation reads it: the group_key, logged day,
+// tap instant, and optional explicit consumed window.
 export interface FoodLedgerEvent {
   name: string; // group_key
   date: string; // YYYY-MM-DD (the logged day)
@@ -51,43 +62,9 @@ export function foodEventWindow(
   return foodSlotForHhmm(hhmm, boundaries);
 }
 
-// The ledger events whose derived window matches `window` — the #950 slot frecency
-// source consumed by rankFoodGroups.
-export function foodEventsInWindow(
-  events: readonly FoodLedgerEvent[],
-  tz: string,
-  boundaries: FoodSlotBoundaries,
-  window: FoodSlot
-): FoodLedgerEvent[] {
-  return events.filter(
-    (e) =>
-      foodEventWindow(e.logged_at, tz, boundaries, e.meal_slot, e.eaten_at) ===
-      window
-  );
-}
-
-// Slot-scoped per-group serving counts for a single DAY (#1016): the day's ledger events
-// whose derived window matches, tallied by group_key. This is what the Telegram nudge's
-// button "(n)" suffix reads — "n servings logged in THIS window today" — while the tally
-// line stays the day total. Only events whose logged DAY equals `date` count (a backfilled
-// yesterday tap has date=yesterday and is excluded from today's slot count). Shares
-// foodEventWindow with the ranking, so a tap counts for exactly the slot it ranks in.
-export function slotServingCounts(
-  events: readonly FoodLedgerEvent[],
-  tz: string,
-  boundaries: FoodSlotBoundaries,
-  window: FoodSlot,
-  date: string
-): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const e of events) {
-    if (e.date !== date) continue;
-    if (
-      foodEventWindow(e.logged_at, tz, boundaries, e.meal_slot, e.eaten_at) !==
-      window
-    )
-      continue;
-    m.set(e.name, (m.get(e.name) ?? 0) + 1);
-  }
-  return m;
-}
+// `foodEventsInWindow` and `slotServingCounts` used to live here as the count half of
+// the module — the #1016 slot-scoped nudge button suffix. #2019 retired that suffix
+// (the button count is the DAY total, and the ranking weights by proximity), and #2227
+// removed the two functions with their last advertised consumer. The tests that pinned
+// "a corrected serving changes window" moved onto `foodEventWindow` directly and onto
+// the meal grouping the web surface renders (getFoodMealDays.slotCounts).

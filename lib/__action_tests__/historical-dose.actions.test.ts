@@ -193,10 +193,11 @@ describe("logHistoricalDose", () => {
     expect(result).toEqual({ ok: true });
     const log = db
       .prepare(
-        "SELECT date, given_at, amount, supply_adjusted FROM intake_item_logs WHERE id = ?"
+        "SELECT date, occurred_at, given_at, amount, supply_adjusted FROM intake_item_logs WHERE id = ?"
       )
       .get(logId) as {
       date: string;
+      occurred_at: string;
       given_at: string;
       amount: string;
       supply_adjusted: number;
@@ -206,8 +207,13 @@ describe("logHistoricalDose", () => {
       amount: "7.5 mg",
       supply_adjusted: 0,
     });
-    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+    // The stated time lands in the event column; given_at is record history for
+    // the amend path (#2228 decision 1) and keeps the original backfill's stamp.
+    expect(formatGivenAtClock(getTimezone(profile.id), log.occurred_at)).toBe(
       "9:45am"
+    );
+    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+      "8:00am"
     );
     expect(
       (
@@ -361,5 +367,75 @@ describe("logHistoricalDose", () => {
           .get(foreignLogId) as { amount: string }
       ).amount
     ).toBe("5 mg");
+  });
+});
+
+// #2228: only the AMENDMENT gains the empty-time state. An empty `time` on the
+// amend path is a real answer ("no intake time stated", occurred_at = NULL); an
+// empty `time` on the backfill path is still refused with the existing message,
+// because a backfill is a new assertion that a dose happened and naming when is
+// the point (decision 2).
+describe("empty time: accepted on amend, refused on backfill", () => {
+  it("amends with an empty time, leaving occurred_at NULL and the day in place", async () => {
+    const { profile } = seedActor();
+    const date = shiftDateStr(today(profile.id), -3);
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(date, -5),
+    });
+    expect(
+      await logHistoricalDose(
+        fd({ id: itemId, dose_id: doseId, date, time: "08:00" })
+      )
+    ).toEqual({ ok: true });
+    const logId = (
+      db
+        .prepare("SELECT id FROM intake_item_logs WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id;
+
+    const result = await updateHistoricalDose(
+      fd({ id: itemId, log_id: logId, date, time: "", amount: "10 mg" })
+    );
+    expect(result).toEqual({ ok: true });
+    const log = db
+      .prepare(
+        "SELECT date, occurred_at, given_at, amount FROM intake_item_logs WHERE id = ?"
+      )
+      .get(logId) as {
+      date: string;
+      occurred_at: string | null;
+      given_at: string;
+      amount: string;
+    };
+    expect(log.amount).toBe("10 mg");
+    expect(log.occurred_at).toBeNull();
+    expect(log.date).toBe(date);
+    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+      "8:00am"
+    );
+  });
+
+  it("still refuses an empty time on the backfill path", async () => {
+    const { profile } = seedActor();
+    const date = shiftDateStr(today(profile.id), -3);
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(date, -5),
+    });
+    const result = await logHistoricalDose(
+      fd({ id: itemId, dose_id: doseId, date, time: "" })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "Enter a valid dose date and time.",
+    });
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM intake_item_logs WHERE item_id = ?"
+          )
+          .get(itemId) as { count: number }
+      ).count
+    ).toBe(0);
   });
 });

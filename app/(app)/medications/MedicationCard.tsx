@@ -167,13 +167,15 @@ export default function MedicationCard({
     amount: string | null;
     product: string | null;
   }[];
-  // Taken-dose ledger rows for scheduled and PRN medications.
+  // Taken-dose ledger rows for scheduled and PRN medications. `statedAt` is the
+  // row's stated event instant (occurred_at) or null — the edit form's only time
+  // seed (#2228 decision 1).
   doseHistory?: {
     id: number;
     doseId: number;
     date: string;
     time: string;
-    timeValue: string;
+    statedAt: string | null;
     amount: string | null;
     product: string | null;
   }[];

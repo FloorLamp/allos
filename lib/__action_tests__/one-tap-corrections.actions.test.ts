@@ -24,8 +24,21 @@ import {
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import { getFoodMealDays, getFoodSlotServingsOnDate } from "@/lib/queries";
+import { getFoodMealDays } from "@/lib/queries";
+import { type FoodSlot } from "@/lib/food-slot";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+
+// Per-window tallies through the meal grouping the web surface renders
+// (getFoodMealDays.slotCounts) — the live consumer of the window derivation, standing
+// where the retired slot-count query (getFoodSlotServingsOnDate, #2019/#2227) used to.
+function slotServingsOnDate(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): Map<string, number> {
+  const [day] = getFoodMealDays(profileId, [date]);
+  return new Map(Object.entries(day.slotCounts[window]));
+}
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -85,11 +98,11 @@ describe("updateFoodLogEvent (#1934)", () => {
     });
 
     expect(
-      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
+      slotServingsOnDate(profile.id, "Morning", date).get("berries")
     ).toBeUndefined();
-    expect(
-      getFoodSlotServingsOnDate(profile.id, "Evening", date).get("berries")
-    ).toBe(1);
+    expect(slotServingsOnDate(profile.id, "Evening", date).get("berries")).toBe(
+      1
+    );
     // The corrected value is rendered on the Food tab, the trends rollup, and the
     // dashboard, so all three are revalidated.
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
@@ -128,9 +141,9 @@ describe("updateFoodLogEvent (#1934)", () => {
       updateFoodLogEvent(fd({ event_id: eventId, meal_slot: "Evening" }))
     ).rejects.toThrow();
 
-    expect(
-      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
-    ).toBe(1);
+    expect(slotServingsOnDate(profile.id, "Morning", date).get("berries")).toBe(
+      1
+    );
     expect(revalidate).not.toHaveBeenCalled();
   });
 
@@ -159,9 +172,9 @@ describe("updateFoodLogEvent (#1934)", () => {
     expect(counters(owner.id)).toEqual([
       { date, group_key: "berries", servings: 1 },
     ]);
-    expect(
-      getFoodSlotServingsOnDate(owner.id, "Morning", date).get("berries")
-    ).toBe(1);
+    expect(slotServingsOnDate(owner.id, "Morning", date).get("berries")).toBe(
+      1
+    );
     expect(counters(intruder.id)).toEqual([]);
     expect(revalidate).not.toHaveBeenCalled();
   });
@@ -217,7 +230,7 @@ describe("deleteFoodLogEvent (#1963)", () => {
 
     expect(counters(profile.id)).toEqual([]);
     expect(
-      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
+      slotServingsOnDate(profile.id, "Morning", date).get("berries")
     ).toBeUndefined();
     const [day] = getFoodMealDays(profile.id, [date]);
     expect(day.events).toHaveLength(0);
@@ -242,9 +255,9 @@ describe("deleteFoodLogEvent (#1963)", () => {
     expect(counters(profile.id)).toEqual([
       { date, group_key: "berries", servings: 1 },
     ]);
-    expect(
-      getFoodSlotServingsOnDate(profile.id, "Morning", date).get("berries")
-    ).toBe(1);
+    expect(slotServingsOnDate(profile.id, "Morning", date).get("berries")).toBe(
+      1
+    );
     expect(revalidate).not.toHaveBeenCalled();
   });
 

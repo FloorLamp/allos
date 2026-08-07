@@ -16,6 +16,7 @@ import { now as clockNow, sqlNow } from "../../clock";
 import {
   shiftDateStr,
   dateStrInTz,
+  utcInstant,
   utcSqlString,
   parseUtcSql,
 } from "../../date";
@@ -24,9 +25,11 @@ import { escalationMarkerKey } from "../../notifications/escalation-keys";
 import {
   isDoseDateAccepted as isDoseDateInWindow,
   isGivenAtAccepted,
+  isHistoricalDoseDateAccepted,
   isHistoricalDoseTimeAccepted,
   resolveQueuedTakenAt,
 } from "../../dose-log-window";
+import { acceptStatedAt } from "../../stated-time";
 import {
   burstFrom,
   correctionBursts,
@@ -686,6 +689,27 @@ export function logHistoricalDose(
 // course start backward only after uniqueness checks pass. Scheduled edits retain one
 // status row per dose/date; PRN edits retain the per-administration time dedup.
 //
+// THE ONE AMEND CORE (#2228 decision 6): the illness-episode timeline's dose edit
+// (updateEpisodeDoseAction) routes here too — its predecessor updateAdministrationLog
+// enforced none of the course/uniqueness/proximity rules, so the same clinical
+// amendment was strict from a medication card and loose from an episode. Callers keep
+// their own surface predicates (the episode scopes its read to `may` items inside the
+// episode window); the shared rules live here once.
+//
+// IT WRITES `occurred_at`, NEVER `given_at` (#2228 decision 1). Under the #2229
+// ruling `given_at` is a RECORD instant (the tap), so a human's stated administration
+// time lands in the stated-only event column (migration 165) and `given_at` is
+// read-only history for this path — which also keeps the PRN redose window and the
+// phantom-dose proximity guard, both keyed on `given_at`, behaving identically
+// before and after an amendment (the issue's constraint 3).
+//
+// `date` IS PASSED EXPLICITLY, not derived from the instant (#2228 decision 3): a
+// present instant must AGREE with it (`acceptStatedAt` — the pair rule) or the whole
+// amendment is refused, never silently re-dated; a null instant means "no intake time
+// stated" — the amendment changes what it names and NOTHING else, and the date-only
+// path still validates the day against the same any-past-day window
+// (isHistoricalDoseDateAccepted) instead of skipping validation.
+//
 // RETIRED DOSES AND PAUSED ITEMS STAY EDITABLE — deliberately, and unlike the create
 // path. `d.retired = 0` answers "may this dose still be scheduled onto a new day",
 // which is the wrong question for a row that already exists: the schedule was retired,
@@ -712,18 +736,27 @@ export function updateHistoricalDose(
   profileId: number,
   itemId: number,
   logId: number,
-  givenAt: Date,
+  date: string,
+  occurredAt: Date | null,
   amountOverride: string | null
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
-  // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
-  // so is the stored given_at this may be re-validating, so all three must agree.
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
+  if (occurredAt) {
+    // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived
+    // and so is any stored instant this may be re-validating, so all must agree.
+    if (!isHistoricalDoseTimeAccepted(tz, todayStr, occurredAt, clockNow())) {
+      return { kind: "invalid-time" };
+    }
+    // The pair rule (#2236's acceptance gate, reused rather than re-derived): the
+    // stated instant's profile-local date IS the submitted `date`, or the amendment
+    // is refused — never silently re-dated onto the instant's own day.
+    if (!acceptStatedAt(occurredAt, tz, date, clockNow())) {
+      return { kind: "invalid-time" };
+    }
+  } else if (!isHistoricalDoseDateAccepted(todayStr, date)) {
     return { kind: "invalid-time" };
   }
-  const date = dateStrInTz(tz, givenAt);
-  const givenAtStr = utcSqlString(givenAt);
 
   return writeTx((tx): HistoricalDoseOutcome => {
     const row = db
@@ -795,7 +828,12 @@ export function updateHistoricalDose(
             existing.status === "skipped" ? "already-skipped" : "already-taken",
         };
       }
-    } else {
+    } else if (occurredAt) {
+      // The phantom-dose proximity guard, unchanged: other rows still participate
+      // by their `given_at` (the issue's constraint 3 — moving the guard onto
+      // `occurred_at` is its own decision), judged against the stated instant. An
+      // amendment that clears the time states nothing to be near, so it has no
+      // proximity to check and lands as an ordinary `logged` outcome.
       const duplicate = db
         .prepare(
           `SELECT l.id
@@ -806,7 +844,13 @@ export function updateHistoricalDose(
               AND ABS(strftime('%s', l.given_at) - strftime('%s', ?)) <= ?
             LIMIT 1`
         )
-        .get(row.dose_id, logId, profileId, givenAtStr, ADMIN_DEDUP_WINDOW_SEC);
+        .get(
+          row.dose_id,
+          logId,
+          profileId,
+          utcSqlString(occurredAt),
+          ADMIN_DEDUP_WINDOW_SEC
+        );
       if (duplicate) return { kind: "duplicate" };
     }
 
@@ -818,13 +862,20 @@ export function updateHistoricalDose(
     const amount = amountOverride?.trim() || row.dose_amount;
     db.prepare(
       `UPDATE intake_item_logs
-          SET date = ?, given_at = ?, amount = ?
+          SET date = ?, occurred_at = ?, amount = ?
         WHERE id = ? AND item_id = ?
           AND EXISTS (
             SELECT 1 FROM intake_items s
              WHERE s.id = intake_item_logs.item_id AND s.profile_id = ?
           )`
-    ).run(date, givenAtStr, amount, logId, itemId, profileId);
+    ).run(
+      date,
+      occurredAt ? utcInstant(occurredAt) : null,
+      amount,
+      logId,
+      itemId,
+      profileId
+    );
     // Moving the row off its old date un-marks the dose for that day, so the day it
     // vacated is stamped handled and can never be chased (see suppressEscalationRearm).
     if (row.old_date !== date) {
@@ -1125,51 +1176,6 @@ export function deleteAdministrationLog(
       itemId: row.item_id,
       date: row.date,
     };
-  });
-}
-
-// Correct the wall time or snapshotted amount of one recorded administration.
-// This remains one consumed administration, so supply is deliberately unchanged (the
-// same zero re-diff updateHistoricalDose explains at length).
-//
-// Ungated since #1933: it carried `s.obligation = 'may'`, which meant a SCHEDULED
-// dose log could not be corrected at all — obligation decides dueness and pushability,
-// never whether a recorded fact may be amended. A retired dose and a paused item are
-// likewise no bar; the row is history. Callers keep their own surface predicates (the
-// illness-episode timeline gathers `may` dose events and still scopes its own read to
-// them), but the shared core no longer refuses on the item's shape.
-export function updateAdministrationLog(
-  profileId: number,
-  logId: number,
-  date: string,
-  givenAt: Date,
-  amount: string | null
-): boolean {
-  return writeTx(() => {
-    const owned = db
-      .prepare(
-        `SELECT l.dose_id AS dose_id, l.date AS old_date
-           FROM intake_item_logs l
-           JOIN intake_items s ON s.id = l.item_id
-          WHERE l.id = ? AND s.profile_id = ?
-            AND l.status = 'taken'`
-      )
-      .get(logId, profileId) as
-      { dose_id: number; old_date: string } | undefined;
-    if (!owned) return false;
-    const info = db
-      .prepare(
-        `UPDATE intake_item_logs
-            SET date = ?, given_at = ?, amount = ?
-          WHERE id = ? AND item_id IN
-            (SELECT id FROM intake_items WHERE profile_id = ?)`
-      )
-      .run(date, utcSqlString(givenAt), amount, logId, profileId);
-    if (info.changes !== 1) return false;
-    if (owned.old_date !== date) {
-      suppressEscalationRearm(profileId, owned.dose_id, owned.old_date);
-    }
-    return true;
   });
 }
 

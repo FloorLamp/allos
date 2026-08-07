@@ -338,7 +338,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .locator('input:not([type="hidden"])')
       .first() // first-ok: the date input in the scoped event-editor date-time control, measured for layout — order-agnostic
       .boundingBox();
-    const timeBox = await dateTime.locator('input[name="time"]').boundingBox();
+    // The visible time input lives in the shared WhenControl (#2236/#2228); the
+    // form's `time` field itself is a hidden input kept in sync with the pair.
+    const timeBox = await dateTime
+      .getByTestId("illness-event-when-time")
+      .boundingBox();
     const saveBox = await eventEditor
       .getByRole("button", { name: "Save" })
       .boundingBox();

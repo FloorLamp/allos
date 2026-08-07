@@ -39,11 +39,7 @@ import {
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
 import { blendFoodOrder, slotProximityOccurrences } from "../food-rank";
-import {
-  foodEventWindow,
-  slotServingCounts,
-  type FoodLedgerEvent,
-} from "../food-slot-count";
+import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -543,30 +539,12 @@ function curatedFoodRankKeys(profileId: number): string[] {
   return [...slugs.slice(0, mid), PROTEIN_NUDGE_KEY, ...slugs.slice(mid)];
 }
 
-// Slot-scoped serving counts for the Telegram nudge's per-button "(n)" suffix (#1016):
-// today's food_log_events taps whose DERIVED window matches, per group. A slot-framed
-// message gets slot-framed button state, while the tally line (getFoodServingsOnDate)
-// stays the day total. Shares the window derivation with the #950 ranking (slotServingCounts
-// → foodEventWindow), so a tap counts for exactly the slot it ranks in (#221). Ledger-only:
-// a serving that exists only in the food_log day counter (pre-ledger history, a manual count
-// edit) has no timestamp and counts toward the day tally only. Profile-scoped via the
-// food_log_events filter.
-export function getFoodSlotServingsOnDate(
-  profileId: number,
-  window: FoodSlot,
-  date: string
-): Map<string, number> {
-  const boundaries = profileFoodSlotBoundaries(profileId);
-  const tz = getTimezone(profileId);
-  const events = db
-    .prepare(
-      `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
-         FROM food_log_events
-        WHERE profile_id = ? AND date = ?`
-    )
-    .all(profileId, date) as FoodLedgerEvent[];
-  return slotServingCounts(events, tz, boundaries, window, date);
-}
+// `getFoodSlotServingsOnDate` — the #1016 slot-scoped nudge button "(n)" suffix — used
+// to live here. #2019 retired the suffix (the Telegram buttons and tally line both read
+// the DAY total, lib/notifications/food.ts), which left this query with zero production
+// callers, and #2227 deleted it rather than keep a derivation advertising a consumer
+// that no longer exists. Per-window tallies live where they are rendered: the web meal
+// grouping (getFoodMealDays.slotCounts) and the write cores' placement counts.
 
 // How many PROTEIN taps landed on a day (#1073/#1379). The reserved __protein__ key
 // deliberately never reaches the `food_log` day counter — reserved-key discipline keeps a

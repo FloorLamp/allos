@@ -22,9 +22,11 @@ import {
 } from "@/lib/illness-timeline-view";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
-import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ScrollFade from "@/components/ScrollFade";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
 import {
   deleteEpisodeDoseAction,
   deleteEpisodeTemperatureAction,
@@ -93,6 +95,62 @@ function TemperatureEditorField({
   );
 }
 
+// The "when" half of the temperature/dose editor — the shared WhenControl (#2236)
+// over the date+time PAIR, submitted as the same `date` + `time` fields the actions
+// already read (hidden inputs kept in sync with the pair).
+//
+// The DOSE edit is `correct` mode (#2228): its time seeds from the row's STATED
+// administration instant only — `timeRecorded` marks a record-chain clock, which
+// never seeds an editor — so a dose whose intake time was never stated opens with
+// an EMPTY time field, and "Not stated" submits an empty time (occurred_at = NULL)
+// instead of laundering a filing timestamp into an administration time. The
+// TEMPERATURE edit stays `state` mode with the time required, exactly as strict as
+// the input it replaces: a reading's clock is part of the reading.
+function EventWhenFields({
+  event,
+  minDate,
+  maxDate,
+  tz,
+}: {
+  event: Exclude<IllnessTimelineEvent, { kind: "symptom" }>;
+  minDate?: string;
+  maxDate?: string;
+  tz: string;
+}) {
+  const [when, setWhen] = useState<WhenValue>(() => {
+    const stated =
+      event.kind === "medication" && event.timeRecorded ? null : event.time24;
+    return {
+      date: event.date,
+      statedAt: stated
+        ? (statedInstantOnDate(event.date, stated, tz)?.toISOString() ?? null)
+        : null,
+    };
+  });
+  return (
+    <div className="min-w-0" data-testid="illness-event-date-time">
+      <span className="label mb-0">When</span>
+      <input type="hidden" name="date" value={when.date} />
+      <input type="hidden" name="time" value={statedHhmm(when.statedAt, tz)} />
+      <div className="mt-1">
+        <WhenControl
+          mode={event.kind === "medication" ? "correct" : "state"}
+          grain="minute"
+          value={when}
+          onChange={setWhen}
+          tz={tz}
+          timeRequired={event.kind === "temperature"}
+          minDate={minDate}
+          maxDate={maxDate}
+          dateLabel="Date"
+          timeLabel="Time"
+          testId="illness-event-when"
+        />
+      </div>
+    </div>
+  );
+}
+
 function fmtDate(date: string, prefs: DisplayFormatPrefs): string {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!parsed) return date;
@@ -157,6 +215,7 @@ export default function EpisodeTimeline({
   actions,
   tools,
   afterHistory,
+  tz: tzProp,
 }: {
   episode: AssembledEpisode;
   canEdit?: boolean;
@@ -166,7 +225,13 @@ export default function EpisodeTimeline({
   actions?: ReactNode;
   tools?: ReactNode;
   afterHistory?: ReactNode;
+  // The SUBJECT profile's timezone for the event editors' WhenControl. The
+  // cross-profile episode page passes the target's zone explicitly; hosts editing
+  // the acting profile fall back to the app-wide TimezoneProvider.
+  tz?: string;
 }) {
+  const contextTz = useTimezone();
+  const tz = tzProp ?? contextTz;
   const formatPrefs = useFormatPrefs();
   const episodeEvents = illnessTimelineEvents(episode);
   const groups = groupIllnessTimelineEvents(episodeEvents, careEvents);
@@ -410,46 +475,13 @@ export default function EpisodeTimeline({
           </div>
         ) : (
           <div className="grid items-end gap-3 sm:grid-cols-[minmax(18rem,2fr)_minmax(9rem,1fr)]">
-            <div
-              className="grid min-w-0 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2"
-              data-testid="illness-event-date-time"
-            >
-              <div className="min-w-0">
-                <label
-                  className="label mb-0"
-                  htmlFor={`episode-event-date-${inputId}`}
-                >
-                  Date
-                </label>
-                <div className="mt-1">
-                  <DateField
-                    id={`episode-event-date-${inputId}`}
-                    name="date"
-                    required
-                    defaultValue={event.date}
-                    min={episode.firstDay ?? undefined}
-                    max={episode.lastActiveDay ?? undefined}
-                    inputClassName="w-full min-w-0"
-                  />
-                </div>
-              </div>
-              <div className="min-w-0">
-                <label
-                  className="label mb-0"
-                  htmlFor={`episode-event-time-${inputId}`}
-                >
-                  Time
-                </label>
-                <input
-                  id={`episode-event-time-${inputId}`}
-                  className="input mt-1 w-full min-w-0"
-                  type="time"
-                  name="time"
-                  required
-                  defaultValue={event.time24 ?? ""}
-                />
-              </div>
-            </div>
+            <EventWhenFields
+              key={keyFor(event)}
+              event={event}
+              minDate={episode.firstDay ?? undefined}
+              maxDate={episode.lastActiveDay ?? undefined}
+              tz={tz}
+            />
             {event.kind === "temperature" ? (
               <TemperatureEditorField
                 inputId={inputId}
