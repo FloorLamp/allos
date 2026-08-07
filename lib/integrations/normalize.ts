@@ -278,6 +278,14 @@ function activityMetricValues(r: NormActivity): (number | string | null)[] {
 export interface NormVital {
   external_id: string; // 'health-connect:<canonical>:<time>'
   date: string; // YYYY-MM-DD (local)
+  // The instant the reading was taken, canonical UTC (`utcInstant` shape) —
+  // destined for medical_records.occurred_at (#2154). The parsers were already
+  // encoding this moment into `external_id`; now it is queryable data too.
+  // `external_id` STAYS the dedupe key, unchanged — occurred_at is descriptive,
+  // never identity. Absent/null for a source whose reading is a DAILY AGGREGATE
+  // (Fitbit Takeout's daily SpO₂/respiratory files): a vendor day-summary has no
+  // event instant, and NULL is the honest day-grain answer.
+  occurred_at?: string | null;
   category: "vitals" | "lab" | "biomarker";
   name: string;
   canonical: string;
@@ -623,6 +631,11 @@ export function upsertHrMinutes(
 // is `unchanged` and writes nothing at all.
 const VITAL_COMPARE_COLS: string[] = [
   "date",
+  // The stated instant (#2154). In the compare set so a re-send of the rolling
+  // window BACKFILLS a pre-#2154 row's occurred_at (stored NULL, incoming
+  // instant → "updated", not "unchanged") — the one write path historical
+  // device rows have; occurred_at alone never supersedes (no revision row).
+  "occurred_at",
   "category",
   "name",
   "value",
@@ -639,19 +652,19 @@ export function upsertVitals(
   sink?: SyncRowSink
 ): { ids: number[]; counts: UpsertCounts } {
   const find = db.prepare(
-    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name,
-            reference_range, flag, result_status
+    `SELECT id, edited, date, occurred_at, category, name, value, value_num, unit,
+            canonical_name, reference_range, flag, result_status
        FROM medical_records WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, result_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (profile_id, date, occurred_at, category, name, value, value_num, unit, canonical_name, source, external_id, result_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE medical_records
-       SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
-           canonical_name = ?, result_status = ?
+       SET date = ?, occurred_at = ?, category = ?, name = ?, value = ?, value_num = ?,
+           unit = ?, canonical_name = ?, result_status = ?
      WHERE id = ?`
   );
   // Re-import tombstones for medical_records vitals (#508), keyed by external_id.
@@ -684,6 +697,7 @@ export function upsertVitals(
       const status = normalizeResultStatus(r.result_status);
       const post = {
         date: r.date,
+        occurred_at: r.occurred_at ?? null,
         category: r.category,
         name: r.name,
         value: valueStr,
@@ -732,6 +746,7 @@ export function upsertVitals(
         }
         update.run(
           r.date,
+          r.occurred_at ?? null,
           r.category,
           r.name,
           valueStr,
@@ -757,6 +772,9 @@ export function upsertVitals(
       const info = insert.run(
         profileId,
         r.date,
+        // Bound, never defaulted (#2205): the source's stated instant or honest
+        // NULL for a day-grain reading.
+        r.occurred_at ?? null,
         r.category,
         r.name,
         valueStr,
