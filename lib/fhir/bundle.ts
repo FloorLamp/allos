@@ -30,7 +30,7 @@ import {
   ICD10,
   buildResolver,
   conceptName,
-  isoDate,
+  fhirTime,
   loincFromFhirCode,
   pickCoding,
 } from "./common";
@@ -283,14 +283,14 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
     return "negated";
   if (resourceType === "Immunization") {
     if (!codeFromVaccineCode(r?.vaccineCode)) return "unmapped_loinc";
-    if (!isoDate(r?.occurrenceDateTime)) return "other";
+    if (!fhirTime(r?.occurrenceDateTime)) return "other";
   }
   if (resourceType === "Observation") {
     // A dropped Observation with no usable date is `other`; one that HAS a date but
     // yielded no reading carried no productive value (no scalar value AND no valued
     // component) — mirror the CDA path's no_value drop.
     if (
-      !isoDate(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
+      !fhirTime(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
     )
       return "other";
     // A non-analyte administrative code or a derived anthropometric percentile is
@@ -330,7 +330,7 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
     return "no_value";
   // An Appointment drops only when it carries no usable start (nothing else can
   // reject it, since status was handled above) — undatable, so `other`.
-  if (resourceType === "Appointment" && !isoDate(r?.start)) return "other";
+  if (resourceType === "Appointment" && !fhirTime(r?.start)) return "other";
   // A VisionPrescription is retracted for a cancelled/draft status (negated), else it
   // dropped because no lensSpecification carried a refraction (no_value).
   if (resourceType === "VisionPrescription") {

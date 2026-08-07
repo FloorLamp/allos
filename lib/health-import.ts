@@ -82,6 +82,14 @@ export interface ImportedRecord {
   value_num: number | null;
   unit: string | null;
   date: string; // YYYY-MM-DD
+  // The absolute moment the SOURCE stated, canonical UTC (#2243 / #2205 phase 0),
+  // destined for medical_records.occurred_at. Set ONLY when the document carried both
+  // a clock time and a zone — a zoneless clinical clock is never resolved against the
+  // profile's timezone (decision 3), so it stays null and the DAY above is all that is
+  // claimed. Never derive `date` from this and never derive this from `date`: for
+  // `20260101003000+0900` the day is 2026-01-01 and the instant is 2025-12-31T15:30:00Z,
+  // and both are right.
+  occurred_at?: string | null;
   external_id: string;
   // The reading's LOINC code when the source carries one (CCD/FHIR vitals/labs),
   // used to route body-height readings into metric_samples (lib/height-extract).

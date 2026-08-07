@@ -1,4 +1,5 @@
 import { classifyLoinc } from "../biomarker-loinc";
+import { sourceDay, sourceInstant } from "../source-time";
 import {
   toConditionLaterality,
   toConditionSeverity,
@@ -62,7 +63,7 @@ import {
   fhirReadingFromCode,
   firstCodingCode,
   humanName,
-  isoDate,
+  fhirTime,
   loincFromFhirCode,
   pickCoding,
   providerFromRefs,
@@ -125,7 +126,7 @@ export function mapImmunizationResource(
 ): ImportedImmunization | null {
   if (r.status === "entered-in-error" || r.status === "not-done") return null;
   const code = codeFromVaccineCode(r.vaccineCode);
-  const date = isoDate(r.occurrenceDateTime);
+  const date = sourceDay(fhirTime(r.occurrenceDateTime));
   if (!code || !date) return null;
   const lot = typeof r.lotNumber === "string" ? r.lotNumber.trim() : "";
   // The administering clinic/clinician (Immunization.performer[].actor) — kept as
@@ -171,9 +172,14 @@ export function observationRecords(
   // Keep the prior `effectiveDateTime ?? issued` order so no already-stored key
   // shifts; effectivePeriod.start is only a final fallback that RECOVERS
   // observations which carry a period but neither of those (previously dropped).
-  const date = isoDate(
+  // The source time at ITS OWN grain (#2243): `date` is the day the bundle stated
+  // (never shifted by the offset — #94), and the instant is carried onto each reading
+  // below for medical_records.occurred_at. A FHIR `dateTime` with no offset is a
+  // zoneless wall clock, so it yields a day and NO instant (decision 3).
+  const time = fhirTime(
     r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start
   );
+  const date = sourceDay(time);
   if (!date) return [];
   // The performing lab/org (Observation.performer) — provenance.
   const provider = ctx
@@ -228,6 +234,7 @@ export function observationRecords(
     })
     .map((rec) => ({
       ...rec,
+      occurred_at: sourceInstant(time),
       encounter_external_id: encExt,
       result_status: resultStatus,
     }));
@@ -261,10 +268,10 @@ export function mapConditionResource(r: any): ImportedCondition | null {
   const clinicalStatus =
     firstCodingCode(r?.clinicalStatus) ?? conceptName(r?.clinicalStatus);
   const status = toConditionStatus(clinicalStatus);
-  const onset = isoDate(r?.onsetDateTime ?? r?.onsetPeriod?.start);
+  const onset = sourceDay(fhirTime(r?.onsetDateTime ?? r?.onsetPeriod?.start));
   const resolved =
     status === "resolved"
-      ? isoDate(r?.abatementDateTime ?? r?.abatementPeriod?.end)
+      ? sourceDay(fhirTime(r?.abatementDateTime ?? r?.abatementPeriod?.end))
       : null;
   // Import intelligence (#590), parity with the CDA path: downgrade a birth-event
   // or stale self-limited active row to resolved. A present clinicalStatus is
@@ -401,7 +408,7 @@ export function mapAllergyResource(
   const status = toAllergyStatus(
     firstCodingCode(r?.clinicalStatus) ?? conceptName(r?.clinicalStatus)
   );
-  const onset = isoDate(r?.onsetDateTime ?? r?.onsetPeriod?.start);
+  const onset = sourceDay(fhirTime(r?.onsetDateTime ?? r?.onsetPeriod?.start));
   return {
     substance,
     substance_code: code,
@@ -446,8 +453,11 @@ function fhirMedPeriods(r: any): ImportMedPeriod[] {
   const out: ImportMedPeriod[] = [];
   const ep = r?.effectivePeriod;
   if (ep && (ep.start || ep.end))
-    out.push({ low: isoDate(ep.start), high: isoDate(ep.end) });
-  const point = isoDate(r?.effectiveDateTime);
+    out.push({
+      low: sourceDay(fhirTime(ep.start)),
+      high: sourceDay(fhirTime(ep.end)),
+    });
+  const point = sourceDay(fhirTime(r?.effectiveDateTime));
   if (point) out.push({ low: point, high: null });
   const dosageArr = Array.isArray(r?.dosageInstruction)
     ? r.dosageInstruction
@@ -457,7 +467,10 @@ function fhirMedPeriods(r: any): ImportMedPeriod[] {
   for (const d of dosageArr) {
     const bp = d?.timing?.repeat?.boundsPeriod;
     if (bp && (bp.start || bp.end))
-      out.push({ low: isoDate(bp.start), high: isoDate(bp.end) });
+      out.push({
+        low: sourceDay(fhirTime(bp.start)),
+        high: sourceDay(fhirTime(bp.end)),
+      });
   }
   return out;
 }
@@ -522,11 +535,13 @@ export function mapMedicationResource(
   // Prefer the therapy/effective date over the order-written date so a med that
   // carries an effective time aligns with the CDA path (which keys on
   // effectiveTime) — see the medicationExternalId note on cross-format dedup.
-  const date = isoDate(
-    r?.effectiveDateTime ??
-      r?.effectivePeriod?.start ??
-      r?.authoredOn ??
-      r?.dateAsserted
+  const date = sourceDay(
+    fhirTime(
+      r?.effectiveDateTime ??
+        r?.effectivePeriod?.start ??
+        r?.authoredOn ??
+        r?.dateAsserted
+    )
   );
   if (!date) return null;
   // Derived courses: effective period(s) → dates, status →
@@ -596,16 +611,30 @@ const FHIR_APPOINTMENT_STATUS: Record<string, AppointmentStatus> = {
   noshow: "cancelled",
 };
 
-// Preserve the appointment's date AND wall-clock time when the FHIR instant carries
-// one ("2026-08-01T14:30:00Z" → "2026-08-01T14:30", matching the datetime-local
-// format a manual booking stores); a date-only value stays "YYYY-MM-DD". Null when
-// the date portion isn't a real calendar date.
+// The appointment's date AND the wall-clock time the SOURCE stated
+// ("2026-08-01T14:30:00Z" → "2026-08-01T14:30", matching the datetime-local format a
+// manual booking stores); a date-only value stays "YYYY-MM-DD". Null when the date
+// portion isn't a real calendar date.
+//
+// THE ONE DELIBERATE NARROWING LEFT IN EITHER CLINICAL PARSER (#2243 decision 5 — it
+// is the single entry in the narrowing ledger, lib/__tests__/ingest-narrowing-scan.
+// test.ts). `fhirTime` PRESERVED the offset: `Appointment.start` is typed `instant`,
+// so an offset-bearing value arrives here as `grain: "instant"` with the absolute
+// moment in hand. This mapper drops it, on purpose and with somewhere to point:
+// `appointments.scheduled_at` is a zoneless local datetime (lib/time-columns.ts) and
+// the app has no column for an appointment's zone. Storing the UTC instant instead
+// would silently reschedule every offset-bearing import — "14:30-05:00" would start
+// rendering as 19:30. #2234 splits that column by grain and explicitly leaves the zone
+// question open; until it is answered, the wall clock the source printed is the honest
+// value, and the drop happens HERE, at the mapper that knows the destination, rather
+// than at the parser where no destination is known yet.
 function appointmentDateTime(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const date = isoDate(v);
-  if (!date) return null;
-  const m = /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(v.trim());
-  return m ? `${date}T${m[1]}` : date;
+  const t = fhirTime(v);
+  if (!t) return null;
+  if (t.grain === "day") return t.date;
+  if (t.grain === "local") return `${t.date}T${t.hhmm}`;
+  const m = /^\d{4}-\d{2}-\d{2}[Tt](\d{2}:\d{2})/.exec(String(v).trim());
+  return m ? `${t.date}T${m[1]}` : t.date;
 }
 
 // Best-effort map from an Appointment's SERVICE/TYPE codings to one of the app's
@@ -785,9 +814,9 @@ export function mapEncounterResource(
   ctx: FhirBundleCtx
 ): ImportedEncounter | null {
   if (r?.status === "entered-in-error") return null;
-  const date = isoDate(r?.period?.start ?? r?.actualPeriod?.start);
+  const date = sourceDay(fhirTime(r?.period?.start ?? r?.actualPeriod?.start));
   if (!date) return null;
-  const end = isoDate(r?.period?.end ?? r?.actualPeriod?.end);
+  const end = sourceDay(fhirTime(r?.period?.end ?? r?.actualPeriod?.end));
   const type = conceptName(Array.isArray(r?.type) ? r.type[0] : r?.type);
   // The encounter TYPE code + labeled system off the first type[].coding (issue
   // #1035) — the CPT/CDT coding the display resolves from, feeding the preventive
@@ -863,8 +892,10 @@ export function mapProcedureResource(
   // Prefer a billing ICD-10 coding, else the primary/first coding — mirrors the
   // CDA pickCode preference so the same procedure keys identically across formats.
   const { code, system } = pickCoding(r?.code, [ICD10]);
-  const date = isoDate(
-    r?.performedDateTime ?? r?.performedPeriod?.start ?? r?.performedString
+  const date = sourceDay(
+    fhirTime(
+      r?.performedDateTime ?? r?.performedPeriod?.start ?? r?.performedString
+    )
   );
   // The performing clinician (performer[].actor) — prefer the named individual.
   const provider = providerFromRefs(
@@ -999,10 +1030,12 @@ export function mapCarePlanResource(r: any): ImportedCarePlanItem[] {
       conceptName(Array.isArray(d?.category) ? d.category[0] : d?.category) ??
       d?.kind ??
       null;
-    const plannedDate = isoDate(
-      d?.scheduledPeriod?.start ??
-        d?.scheduledTiming?.event?.[0] ??
-        d?.scheduledString
+    const plannedDate = sourceDay(
+      fhirTime(
+        d?.scheduledPeriod?.start ??
+          d?.scheduledTiming?.event?.[0] ??
+          d?.scheduledString
+      )
     );
     const status =
       (typeof d?.status === "string" ? d.status : null) ?? planStatus;
@@ -1033,13 +1066,13 @@ export function mapCarePlanResource(r: any): ImportedCarePlanItem[] {
         category: conceptName(
           Array.isArray(r?.category) ? r.category[0] : r?.category
         ),
-        planned_date: isoDate(r?.period?.start),
+        planned_date: sourceDay(fhirTime(r?.period?.start)),
         status: planStatus,
         provider: null,
         external_id: carePlanExternalId({
           description,
           code: null,
-          plannedDate: isoDate(r?.period?.start),
+          plannedDate: sourceDay(fhirTime(r?.period?.start)),
         }),
       });
     }
@@ -1064,7 +1097,7 @@ export function mapGoalResource(r: any): ImportedCareGoal | null {
   const { code, system } = pickCoding(r?.description ?? target?.measure, [
     ICD10,
   ]);
-  const targetDate = isoDate(target?.dueDate);
+  const targetDate = sourceDay(fhirTime(target?.dueDate));
   const status =
     typeof r?.lifecycleStatus === "string" ? r.lifecycleStatus : null;
   return {
@@ -1371,7 +1404,7 @@ export function mapImagingStudyResource(
     [typeof r?.description === "string" ? r.description.trim() : "", noteText]
       .filter(Boolean)
       .join("\n") || null;
-  const study_date = isoDate(r?.started);
+  const study_date = sourceDay(fhirTime(r?.started));
   // Drop a study that carries no distinguishing signal at all (no specific
   // modality, no region, no date, no narrative) — nothing worth a row.
   if (modality === "other" && !body_region && !study_date && !impressionRaw)
@@ -1422,8 +1455,8 @@ export function mapDiagnosticReport(
     [conclusion, conclusionCodeText, formText].filter(Boolean).join("\n\n") ||
     null;
   if (!narrative) return { records, imagingStudies: [] };
-  const date = isoDate(
-    r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start
+  const date = sourceDay(
+    fhirTime(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
   );
   if (looksLikeImagingReport(r)) {
     const categoryCodings = (
@@ -1502,9 +1535,9 @@ export function mapDocumentReferenceImaging(
     conceptName(r?.type)
   );
   const attCreation = atts
-    .map((a: any) => isoDate(a?.creation))
+    .map((a: any) => sourceDay(fhirTime(a?.creation)))
     .find((d: string | null) => !!d);
-  const study_date = isoDate(r?.date) ?? attCreation ?? null;
+  const study_date = sourceDay(fhirTime(r?.date)) ?? attCreation ?? null;
   return {
     modality,
     body_region: null,
@@ -1657,7 +1690,7 @@ export function mapVisionPrescription(
       .map((b) => (typeof b === "string" && b.trim() ? b.trim() : null))
       .find(Boolean) ?? null;
 
-  const issued_date = isoDate(r?.dateWritten ?? r?.created);
+  const issued_date = sourceDay(fhirTime(r?.dateWritten ?? r?.created));
   const provider = providerFromRefs(
     r?.prescriber,
     ctx,
@@ -1701,7 +1734,7 @@ export function mapVisionPrescription(
 // ("male"/"female"/…), and name. Sex/birthdate fill the profile when unset;
 // the name is document provenance (medical_documents.patient_name).
 export function mapPatientDemographics(r: any): ImportDemographics | null {
-  const birthdate = isoDate(r?.birthDate);
+  const birthdate = sourceDay(fhirTime(r?.birthDate));
   const sex =
     r?.gender === "male" ? "male" : r?.gender === "female" ? "female" : null;
   const name = humanName(r);

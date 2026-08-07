@@ -842,10 +842,10 @@ function insertImportRows(
   // the delete-by-document_id above.
   const insRec = db.prepare(
     `INSERT OR IGNORE INTO medical_records
-       (date, category, name, value, value_num, unit, reference_range, notes,
-        panel, flag, canonical_name, document_id, source, external_id, provider_id,
-        profile_id, loinc, result_status, fasting, specimen)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (date, occurred_at, category, name, value, value_num, unit, reference_range,
+        notes, panel, flag, canonical_name, document_id, source, external_id,
+        provider_id, profile_id, loinc, result_status, fasting, specimen)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
   // Allergies + problem-list conditions. Own tables, same idempotency
@@ -1100,6 +1100,11 @@ function insertImportRows(
     if (r.category === "prescription") continue;
     const info = insRec.run(
       r.date,
+      // The moment the SOURCE stated (#2243), already canonical UTC from
+      // lib/source-time.ts — bound, never interpolated, and NULL whenever the document
+      // gave a clock with no zone. `date` beside it stays the day the document
+      // attributed the reading to and is never re-derived from this.
+      r.occurred_at ?? null,
       r.category,
       r.name,
       r.value,

@@ -1,4 +1,4 @@
-export { FhirError, isoDate } from "./fhir/common";
+export { FhirError, fhirTime } from "./fhir/common";
 export type { FhirEntry } from "./fhir/common";
 export {
   mapImmunizationResource,
