@@ -40,16 +40,25 @@ export interface FoodLedgerEvent {
 
 // The event's food window, in strict precedence:
 //
-//   1. an explicit `meal_slot` — the web bar's tab, which is a DECLARATION;
-//   2. `eaten_at` — a captured eating instant (#2019), so a Telegram serving lands in
-//      the window it was actually eaten in, and a corrected one MOVES there;
+//   1. an explicit `meal_slot` — a DECLARATION (the backfill's tab) or an OVERRIDE
+//      (the correction sheet's hand-set Meal). Never an echo: since #2269 the log
+//      path stores no slot beside a stated eating time, so a row carries one only
+//      when the user actually asserted a meal;
+//   2. `eaten_at` — a captured or stated eating instant (#2019/#2269), so a serving
+//      lands in the window it was actually eaten in, and a corrected one MOVES there;
 //   3. `logged_at` — LEGACY ONLY, and the reason #2019 exists. The tap stamp is not
 //      eating time (migration 056 says so in as many words); it is all a pre-#2019 row
 //      has, so a historical event keeps deriving from it rather than losing its meal.
 //
-// The consequence that matters: the read-time re-labelling — where editing a supplement
-// reminder hour silently moved which meal a historical serving belonged to — no longer
-// touches anything logged since #2019, because those rows carry their own instant.
+// THE MUTABILITY CONTRACT, honestly stated (#2269 decision 3): a stored `meal_slot`
+// FREEZES a row's window; an instant RE-BUCKETS under boundary edits, by design.
+// The boundaries are the midpoints of the profile's configured Morning/Midday/Evening
+// times, so pinning Morning to 05:43 moves the Morning/Midday split and a past 09:30
+// serving becomes Midday with no write anywhere — the boundaries define what "midday"
+// MEANS for this person, and history follows the definition. Carrying an instant fixes
+// which MINUTE is read, not the boundaries it is read through; the only thing that
+// freezes a label is a stored slot — which Telegram deliberately never writes, and
+// which the web log path since #2269 writes only for a declaration-only backfill.
 export function foodEventWindow(
   loggedAt: string,
   tz: string,

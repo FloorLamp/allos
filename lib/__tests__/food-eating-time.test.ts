@@ -17,7 +17,12 @@ import {
   parseEatingTimeChoice,
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
-import { foodSlotForHhmm, type FoodSlotBoundaries } from "@/lib/food-slot";
+import {
+  DEFAULT_EVENING_BOUNDARY_MIN,
+  DEFAULT_MIDDAY_BOUNDARY_MIN,
+  foodSlotForHhmm,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
 import { dateStrInTz, zonedDateParts } from "@/lib/date";
 import {
   chipOffers,
@@ -105,10 +110,17 @@ describe("resolving a choice to an instant (#2053)", () => {
   });
 });
 
+// The profile-default boundaries, spelled through the same constants the derivation
+// exports — the neutral case for the tests that are not about the enrichment.
+const DEFAULTS: FoodSlotBoundaries = {
+  midday: DEFAULT_MIDDAY_BOUNDARY_MIN,
+  evening: DEFAULT_EVENING_BOUNDARY_MIN,
+};
+
 describe("the offered `earlier…` hours (#2053)", () => {
   it("runs back from one hour ago, newest first", () => {
     const now = new Date("2026-03-10T18:30:00Z");
-    const options = eatingTimeOptions(now, UTC, "2026-03-10");
+    const options = eatingTimeOptions(now, UTC, "2026-03-10", DEFAULTS);
     expect(options).toHaveLength(EATING_TIME_LAST_HOURS_BACK);
     expect(options[0].hhmm).toBe("17:00");
     expect(options[options.length - 1].hhmm).toBe("06:00");
@@ -121,7 +133,8 @@ describe("the offered `earlier…` hours (#2053)", () => {
     const options = eatingTimeOptions(
       new Date("2026-03-10T04:30:00Z"),
       UTC,
-      "2026-03-10"
+      "2026-03-10",
+      DEFAULTS
     );
     expect(options.map((o) => o.hhmm)).toEqual([
       "03:00",
@@ -133,7 +146,7 @@ describe("the offered `earlier…` hours (#2053)", () => {
 
   it("every offered instant is accepted by the write's own gate", () => {
     const now = new Date("2026-03-10T04:30:00Z");
-    for (const option of eatingTimeOptions(now, UTC, "2026-03-10")) {
+    for (const option of eatingTimeOptions(now, UTC, "2026-03-10", DEFAULTS)) {
       expect(
         acceptEatenAt(new Date(option.iso), UTC, "2026-03-10", now)
       ).not.toBeNull();
@@ -145,13 +158,37 @@ describe("the offered `earlier…` hours (#2053)", () => {
     // offerable there while UTC — already past midnight on the 10th — offers two.
     const now = new Date("2026-03-10T02:30:00Z");
     expect(dateStrInTz(NY, now)).toBe("2026-03-09");
-    expect(eatingTimeOptions(now, UTC, "2026-03-10")).toHaveLength(2);
-    const options = eatingTimeOptions(now, NY, "2026-03-09");
+    expect(eatingTimeOptions(now, UTC, "2026-03-10", DEFAULTS)).toHaveLength(2);
+    const options = eatingTimeOptions(now, NY, "2026-03-09", DEFAULTS);
     expect(options).toHaveLength(EATING_TIME_LAST_HOURS_BACK);
     expect(options[0].hhmm).toBe("21:00");
     for (const option of options) {
       expect(dateStrInTz(NY, new Date(option.iso))).toBe("2026-03-09");
     }
+  });
+
+  // ---- #2269: the log-time offer carries the filing --------------------------
+  //
+  // The chip announces the CONSEQUENCE before the tap: a stated hour wins the meal
+  // at log time, so each option carries the window `foodSlotForHhmm` derives under
+  // the profile's OWN boundaries — non-default ones here, so a hard-coded 11:00/15:00
+  // in the enrichment cannot pass. Same shape as the correction sheet's
+  // `eatingHoursOnDate` (#2268): one vocabulary, two surfaces.
+  it("each option carries the window its hour derives to under the profile's boundaries (#2269)", () => {
+    // Morning ends 10:00, Evening starts 16:00 — a coherently shifted schedule.
+    const SHIFTED: FoodSlotBoundaries = { midday: 10 * 60, evening: 16 * 60 };
+    const now = new Date("2026-03-10T18:30:00Z");
+    const options = eatingTimeOptions(now, UTC, "2026-03-10", SHIFTED);
+    expect(options.length).toBeGreaterThan(0);
+    for (const option of options) {
+      expect(option.slot).toBe(foodSlotForHhmm(option.hhmm, SHIFTED));
+    }
+    // The boundaries actually bit: 10:00 is Midday here (default calls it Morning),
+    // and 17:00 — the newest offer — is already Evening.
+    expect(options[0]).toMatchObject({ hhmm: "17:00", slot: "Evening" });
+    expect(
+      options.find((o) => o.hhmm === "10:00")
+    ).toMatchObject({ slot: "Midday" });
   });
 });
 
@@ -277,7 +314,7 @@ describe("the web and Telegram offers use one vocabulary (#2206)", () => {
   it("names an absolute local time on every offer of both surfaces", () => {
     const now = new Date("2026-08-05T19:30:00Z");
     // Web: the "Earlier…" hours.
-    const web = eatingTimeOptions(now, TZ, dateStrInTz(TZ, now));
+    const web = eatingTimeOptions(now, TZ, dateStrInTz(TZ, now), DEFAULTS);
     expect(web.length).toBeGreaterThan(0);
     for (const option of web) expect(option.hhmm).toMatch(HHMM);
 

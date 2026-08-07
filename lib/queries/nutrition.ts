@@ -491,16 +491,25 @@ function gatherFoodRankingSignals(
   // profile's timezone; the anchor is the profile's own configured slot hour. Nothing
   // here asks which BUCKET an event fell in, so the 14:59/15:01 cliff is gone and an
   // event that never claimed a meal still participates.
+  //
+  // `meal_slot` IS DELIBERATELY NOT READ — decided, not incidental (#2269 decision 2).
+  // Ranking learns WHEN THIS PERSON EATS, and the eating minute is honestly when even
+  // for a row carrying a deliberate Meal override: the 02:00 snack hand-filed under
+  // Evening was still eaten at 02:00, and letting the override contribute at its
+  // window's anchor would teach the nudge a time nobody ate at. Tallies and ranking
+  // answer DIFFERENT questions ("which section does this serving file under" vs "when
+  // does this person eat") and may legitimately disagree on an overridden row; #2269's
+  // log-path rule is what confines that disagreement to deliberate overrides.
   let slot: { name: string; date: string; weight?: number }[] = [];
   if (window) {
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+        `SELECT group_key AS name, date, logged_at, eaten_at
            FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
-      .all(profileId, since) as FoodLedgerEvent[];
+      .all(profileId, since) as Omit<FoodLedgerEvent, "meal_slot">[];
     slot = slotProximityOccurrences(
       events.map((e) => ({
         name: e.name,
