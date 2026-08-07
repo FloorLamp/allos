@@ -33,7 +33,11 @@ import {
 } from "../practice";
 import { today as todayFor } from "../db";
 import { collectRightSizeCandidates } from "../rule-findings";
-import { practiceDoneCallback, rightSizeLowerCallback } from "./callback-data";
+import {
+  practiceDoneCallback,
+  practiceLogCallback,
+  rightSizeLowerCallback,
+} from "./callback-data";
 import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
 
@@ -103,6 +107,59 @@ export function behindPractices(
     })
     .filter((entry) => entry.released)
     .map((entry) => entry.item);
+}
+
+// ── THE ON-DEMAND LIST (`/practice`, issue #1895) ────────────────────────────
+//
+// Telegram has offered one-tap practice logging since #1259, but ONLY when the pace
+// nudge happened to arrive — a practice you are on track with, or one whose nudge
+// scrolled away, had no door from the chat at all. This is that door.
+//
+// It is NOT `buildPracticeReminder` with the filters removed, and the difference is the
+// point: the nudge exists because the SYSTEM decided a target is behind (bus-gated,
+// ceiling-silent, rhythm-retimed), while this exists because the USER asked. So the
+// list carries every tracked practice — including the ones already met, which is what
+// makes it a logger rather than a second nag — and none of the nudge's ride-alongs: no
+// right-size offer, no shortfall framing that nobody asked for. Contact is unchanged;
+// this adds a reply to a message the user sent, never a send.
+//
+// One computation all the same (#221): the progress rows and the per-practice line are
+// the same `getFrequencyTargetProgress` + `practiceShortfallLine` the nudge and the
+// Wellness card read, and the button is the same `practiceDoneCallback` the nudge mints
+// and `handlePracticeDoneTap` consumes.
+export function buildPracticeList(
+  profileId: number,
+  nonce: string = Date.now().toString(36)
+): NotificationMessage | null {
+  const rows = getFrequencyTargetProgress(profileId)
+    .filter((p) => p.target.scope_kind === "practice")
+    .map((p) => ({
+      targetId: p.target.id,
+      name: p.target.scope_value,
+      count: p.count,
+      floor: p.per_week,
+      ceiling: p.per_week_max,
+      // No rhythm line here: "usually Mon/Wed/Fri" answers "when does this normally
+      // happen", which is a nudge's question. The user is holding the phone.
+      rhythmDays: null,
+    }));
+  if (rows.length === 0) return null;
+
+  const shown = rows.slice(0, MAX_PRACTICE_BUTTONS);
+  const dropped = rows.length - shown.length;
+  return {
+    title: "🧘 Log a practice",
+    body:
+      shown.map((b) => `• ${practiceShortfallLine(b)}`).join("\n") +
+      (dropped > 0
+        ? `\n⚠️ +${dropped} more — open the app to log the rest.`
+        : ""),
+    actions: shown.map((b) => ({
+      label: `✓ ${b.name}`,
+      data: practiceLogCallback(profileId, b.targetId, nonce),
+    })),
+    kind: "practice-list",
+  };
 }
 
 // One practice's shortfall as a VERDICT rather than a bare ratio (#1722 item 5b) —

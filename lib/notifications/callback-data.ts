@@ -583,6 +583,35 @@ export function parsePracticeDoneCallback(
   return { profileId, targetId, token };
 }
 
+// The SAME button, on the on-demand `/practice` list (#1895) — under its own prefix,
+// because the two messages make different claims and the sweep reads the claim off the
+// prefix. `pdone` rides a nudge that asserts "this practice is behind", so its buttons
+// die the moment that stops being true. A `/practice` button asserts nothing at all: it
+// is an additive access affordance, exactly like `prn` on the `/dose` list — logging
+// another session is valid whenever, the token carries no date, and it can never become
+// a false claim. Declared INERT in ./reconcile-registry for that reason.
+//
+// Identical field shape, so the tap routes to the same handler and the same write core:
+// what differs is what the message SAYS, not what the button does.
+export function practiceLogCallback(
+  profileId: number,
+  targetId: number,
+  token: string
+): string {
+  return `plog:${profileId}:${targetId}:${token}`;
+}
+
+export function parsePracticeLogCallback(
+  data: unknown
+): PracticeDoneCallback | null {
+  if (typeof data !== "string" || !data.startsWith("plog:")) return null;
+  const [, profStr, targStr, token] = data.split(":");
+  const profileId = Number(profStr);
+  const targetId = Number(targStr);
+  if (!profileId || !targetId || !token) return null;
+  return { profileId, targetId, token };
+}
+
 // ---- The right-sizing ride-along on the practice nudge (#1670) ----
 // The pace nudge already fires for a practice that is behind its weekly floor. When
 // that shortfall has been CHRONIC — every one of the last four completed weeks under
@@ -1046,6 +1075,36 @@ export function parseTempReply(
         ? "C"
         : "F";
   return { value, unit };
+}
+
+// ---- Weight reply quick-log (#1895) -----------------------------------------
+//
+// The `/temp` prompt-reply pattern, one quantity over: `/weight` sends a prompt whose
+// body carries a "(#weight:<profileId>)" marker and the user REPLIES with a number. The
+// same statelessness argument applies — the marker rides the prompt, so nothing
+// server-side has to remember who was asked — and the same attribution guarantee: a
+// multi-profile chat gets one named prompt each, and a reply resolves to the profile its
+// prompt named rather than to whoever sorts first.
+//
+// The VALUE is parsed by the palette's `parseWeightEntry` (lib/palette-quick-log), which
+// is also the parser behind `weight 82.5` in the command palette — one grammar for the
+// same one-liner, and one range guard. A chat carries no login unit preference, so the
+// unit defaults to canonical kg per the notification unit policy; an explicit "lb"
+// suffix still wins, and the conversion happens server-side at the write like every
+// other boundary.
+
+export function weightReplyMarker(profileId: number): string {
+  return `(#weight:${profileId})`;
+}
+
+export function parseWeightReplyMarker(
+  replyToText: string | null | undefined
+): number | null {
+  if (!replyToText) return null;
+  const m = /\(#weight:(\d+)\)/.exec(replyToText);
+  if (!m) return null;
+  const id = Number(m[1]);
+  return id > 0 ? id : null;
 }
 
 // ---- Household dose round (issue #1459) --------------------------------------

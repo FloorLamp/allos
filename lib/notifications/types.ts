@@ -41,6 +41,8 @@ export type NotificationKind =
   | "prn-list" // the /dose as-needed medication list (#797)
   | "symptom" // the /symptom grid + its severity picker (#859)
   | "temp" // the /temp reply prompt (#859)
+  | "practice-list" // the /practice tracked-practice list (#1895)
+  | "weight" // the /weight reply prompt (#1895)
   | "test" // a send-test from Settings
   | "other"; // unclassified / default
 

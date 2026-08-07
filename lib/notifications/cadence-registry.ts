@@ -214,6 +214,16 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
     why: "The prompt a `/temp` command answers with (#859). It asks for a reading the user just said they wanted to record; nothing decides WHEN it goes out except the command itself.",
   },
   {
+    kind: "practice-list",
+    cadence: "on-demand",
+    why: "The reply to a `/practice` command (#1895) — the tracked practices as one-tap buttons. Nothing schedules it, and nothing may delay it: the pace NUDGE is the scheduled member of this domain (kind `practice`, which carries its own cadence entry), and keeping the two kinds apart is what stops a cadence rule written for the nag from throttling an answer.",
+  },
+  {
+    kind: "weight",
+    cadence: "on-demand",
+    why: "The prompt a `/weight` command answers with (#1895) — the `temp` prompt one quantity over, and the same reasoning: the command itself is the only thing that decides when it goes out.",
+  },
+  {
     kind: "test",
     cadence: "on-demand",
     why: "The Settings send-test, which exists to prove the wiring delivers. Any cadence at all — a hold, a dedupe, a spacing rule — would stop the test from answering the only question it is asked.",

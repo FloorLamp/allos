@@ -11,3 +11,10 @@ lib/screenings.json
 lib/nutrient-food-map.json
 lib/food-groups.json
 lib/zip-centroids.json
+
+# GENERATED (issue #2205 phase 3): the temporal-column index table is written by
+# `npm run gen:time-columns` from lib/time-columns.ts, and a pure test asserts the
+# committed block still matches the registry byte for byte. Prettier pads a markdown
+# table to its widest cell, and the widest cell here is a 700-character note — which
+# both inflates the file tenfold and makes it permanently disagree with its generator.
+docs/internals/time-columns.md

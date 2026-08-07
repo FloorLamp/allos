@@ -14,7 +14,7 @@
 //      wants is systematically ~70 minutes behind waking. The rounding made it
 //      worse: 05:40 is 340 minutes and round(340/60) is 6, so the digest fired an
 //      hour EARLIER than the manual setting it was meant to improve on.
-//      `digestAutoHour` below resolves past the arrivals instead.
+//      `digestAutoMinute` below resolves past the arrivals instead.
 //   2. THE DIGEST COULD NOT WAIT for a section it was about to print. It sent on
 //      the first tick where its hour was due, complete or not. `shouldDeferDigest`
 //      declines ONCE, into the retry hour `slotDue` already provides.
@@ -35,27 +35,86 @@
 
 import { slotAttempt } from "./schedule";
 
-// ── 1. Resolving the `auto` digest hour ──────────────────────────────────────
+// ── 1. The arrival statistic ─────────────────────────────────────────────────
+//
+// ONE question (#2214): WHEN DOES LAST NIGHT'S SLEEP NORMALLY LAND, IN CLOCK TIME?
+//
+// It used to be answered by composing two independently varying quantities —
+// `digestAutoMinute(typicalWakeTime(p), arrivalLagAllowance(lags))`, a CENTRAL value
+// of one plus a TAIL value of the other. That is not the p90 of anything. It is
+// biased low whenever wake and lag are not anti-correlated, which is the ordinary
+// case: on the measured 13-night sample the true p90 of arrival clock times is
+// 07:39.6 and the composition returned 07:10, half an hour early — enough to turn
+// 12 complete digests out of 13 into 8.
+//
+// Since `arrival = wake + lag` per night, and both instants are already in hand on
+// the row, the percentile is taken DIRECTLY over the arrival clock times. Nothing is
+// composed, and `typicalWakeTime` is not read here at all (it stays the right answer
+// for the Morning intake slot, which needs you awake rather than your tracker
+// synced).
+//
+// THE LAG SURVIVES AS THE ADMISSION TEST, not as the quantity. "Is this a morning
+// arrival at all?" is a question about the lag — a negative one is a backfill, a
+// multi-hour one a Takeout-style bulk import — so nights are admitted on their lag
+// and then measured on their clock time.
+//
+// TWO STATISTICS, ONE COMPUTATION. The p90 is what a send time or a deadline must
+// clear; the MEDIAN is what "the configured time loses more often than not" means
+// (#2217's trigger). They come out of the same admitted sample in one pass so the
+// two consumers cannot end up describing two different distributions.
+//
+// NOT LIVE. The sample is thin by construction (`integration_sync_rows` retention
+// reaches back ~13 days) and jumpy (leave-one-night-out moves the p90 by up to 11
+// minutes). Neither consumer may silently BE a user's send time: #2217 proposes this
+// number and the user's tap writes it, #2211 uses it as a bound. Read the shape as
+// saying so — it answers, it does not bind.
 
-// How many measured arrival lags the resolution insists on before it will trust
-// them. Below this the sample is too thin to carry a percentile and the caller
-// falls back to the wake hour (where the deferral below is the safety net).
-// `integration_sync_rows` retention on the measured instance reaches back ~12
+// How many measured arrivals the statistic insists on before it will answer. Below
+// this the sample is too thin to carry a percentile and the caller falls back.
+// `integration_sync_rows` retention on the measured instance reaches back ~12–13
 // days, so a thin sample is the ordinary case rather than an exotic one.
 export const MIN_ARRIVAL_SAMPLE = 5;
 
-// The percentile of the arrival-lag distribution the resolved hour clears. NOT the
-// median: a median guarantees ~50% failure by definition. The remaining tail is
-// what the one-hour deferral is for.
-export const ARRIVAL_LAG_PERCENTILE = 0.9;
+// The percentile of the ARRIVAL CLOCK TIME distribution a send time or deadline
+// clears. NOT the median: a median guarantees ~50% failure by definition.
+// (Renamed from ARRIVAL_LAG_PERCENTILE with the correction — it is taken over
+// arrivals now, never over lags, and a name saying "lag" would preserve exactly the
+// confusion #2214 removes.)
+export const ARRIVAL_PERCENTILE = 0.9;
+
+// The typical arrival — the same distribution's midpoint. Declared beside its
+// sibling rather than written inline at the call site, because it is a DECISION:
+// "does the configured time lose more often than not" is a question about the
+// median and about nothing else.
+export const ARRIVAL_TYPICAL_PERCENTILE = 0.5;
 
 // Lags outside [0, this] are not MORNING arrivals and never join the sample. A
 // negative lag is a row stamped before the session it describes ended (a backfill);
 // a multi-hour one is a Takeout-style bulk import or a device that spent the day
 // off the charger. Either would drag a percentile somewhere no morning digest
-// should follow, and neither describes "how long after waking does last night
-// normally land".
+// should follow, and neither describes "when does last night normally land".
 export const MAX_ARRIVAL_LAG_MIN = 240;
+
+// ── MIDNIGHT WRAP: the stated position, not an accident ─────────────────────
+//
+// Clock times are circular and minute-of-day arithmetic is not. 00:14 and 23:50 are
+// 24 minutes apart on a clock and 1416 apart on the number line, so a naive
+// percentile over a sample straddling midnight describes a distribution that does
+// not exist.
+//
+// THE DECISION: arrivals are ordered and interpolated as PLAIN minutes of day on
+// [0, 1440), with no rotation and no circular mean — and the statistic REFUSES a
+// sample that is not confined to a single contiguous half-day window. It does not
+// try to be clever about a wrapped sample; it declines to describe one.
+//
+// That is sound here rather than merely convenient. Admission already requires a lag
+// in [0, 240] behind an overnight session's END, so an admitted arrival is a morning
+// arrival within four hours of a night ending — the shapes that would produce a
+// 23:xx alongside an 00:xx (bulk imports, backfills, a device off the charger for a
+// day) are exactly what the lag filter removes. A sample that spans more than half
+// the clock in spite of that is not a daily rhythm, and no percentile over it would
+// mean what its consumers read it to mean.
+export const MAX_ARRIVAL_SPREAD_MIN = 12 * 60;
 
 // The largest slot minute that has a retry band to defer INTO. `slotAttempt`
 // deliberately does not wrap past midnight (minute 0 is the next calendar day,
@@ -64,47 +123,143 @@ export const MAX_ARRIVAL_LAG_MIN = 240;
 // delay it. 22:59 is the last minute whose +60 retry is still same-day.
 export const LAST_DEFERRABLE_MINUTE = 22 * 60 + 59;
 
+/** One night's sleep row and the moment it actually landed. Gathered by
+ * `getSleepArrivals` (lib/queries/metrics.ts); nothing here reads a DB or a clock. */
+export interface ArrivalNight {
+  /** The ARRIVAL's profile-local calendar date (YYYY-MM-DD). */
+  date: string;
+  /** The arrival's profile-local minute of day, 0..1439. */
+  arrivalMinute: number;
+  /** Minutes from the night's end instant to the arrival. The admission test only. */
+  lagMin: number;
+  /**
+   * Whether `date` is a day on which the profile's zone changed UTC offset. Such a
+   * day mixes two offsets into one clock-time sample, and with ~13 nights available
+   * a single hour-shifted arrival moves the p90 materially — so it is dropped
+   * (#2214 constraint 2). Roughly two nights a year, carrying no information about
+   * the sync pipeline.
+   */
+  dstTransition: boolean;
+}
+
 /**
- * The arrival-lag allowance (minutes after waking) the digest hour should clear, or
- * null when the sample is too thin to say. Samples are minutes between a night's
- * wake instant and the moment its row actually landed in the database.
+ * Why there is no statistic. Each value is a genuinely different situation and the
+ * consumers may want to say different things about them — a profile that has never
+ * synced sleep is not a profile whose every arrival was a bulk import.
  */
-export function arrivalLagAllowance(lags: readonly number[]): number | null {
-  const usable = lags
-    .filter((m) => Number.isFinite(m) && m >= 0 && m <= MAX_ARRIVAL_LAG_MIN)
-    .sort((a, b) => a - b);
-  if (usable.length < MIN_ARRIVAL_SAMPLE) return null;
-  // Linear-interpolated percentile, so a small sample doesn't collapse onto its
-  // maximum the way nearest-rank would.
-  const idx = (usable.length - 1) * ARRIVAL_LAG_PERCENTILE;
+export type ArrivalUnavailableReason =
+  /** No candidate nights at all: no syncing sleep source, or no provenance rows. */
+  | "no-source"
+  /** Candidates existed; none was a morning arrival (all backfills/imports/DST). */
+  | "no-arrivals"
+  /** Admitted, but fewer than MIN_ARRIVAL_SAMPLE. Never extrapolate from these. */
+  | "thin-sample"
+  /** Admitted arrivals span more than half the clock — see MAX_ARRIVAL_SPREAD_MIN. */
+  | "dispersed";
+
+/**
+ * The arrival statistic. A DISCRIMINATED UNION rather than a nullable number, so
+ * "there is no answer" is a first-class state a caller cannot mistake for a time:
+ * neither minute exists unless `available` is true.
+ */
+export type ArrivalStatistics =
+  | {
+      available: true;
+      /** Admitted nights the two minutes were computed from. */
+      nights: number;
+      /** ARRIVAL_PERCENTILE of the arrival clock times, profile-local minute of day. */
+      p90Minute: number;
+      /** ARRIVAL_TYPICAL_PERCENTILE of the same sample, profile-local minute of day. */
+      medianMinute: number;
+    }
+  | {
+      available: false;
+      /** Admitted nights — 0, or the under-gate count. Visible so a caller can say
+       * "3 of the 5 mornings needed" rather than only "not yet". */
+      nights: number;
+      reason: ArrivalUnavailableReason;
+    };
+
+/**
+ * Linear-interpolated percentile of an ASCENDING sample, unrounded. Shared by every
+ * percentile in this module so there is exactly one method: interpolation rather
+ * than nearest-rank, so a small sample doesn't collapse onto its maximum. Requires a
+ * non-empty sample (both callers gate on MIN_ARRIVAL_SAMPLE first).
+ */
+export function interpolatedPercentile(
+  sortedAsc: readonly number[],
+  p: number
+): number {
+  const idx = (sortedAsc.length - 1) * p;
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
-  return Math.round(usable[lo] + (usable[hi] - usable[lo]) * (idx - lo));
+  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (idx - lo);
+}
+
+/**
+ * The one arrival computation (#2214). Admits on the lag, measures on the clock,
+ * and returns the p90 and the median of the same admitted sample — or a stated
+ * reason there is no answer.
+ */
+export function arrivalStatistics(
+  nights: readonly ArrivalNight[]
+): ArrivalStatistics {
+  if (nights.length === 0) {
+    return { available: false, nights: 0, reason: "no-source" };
+  }
+  const admitted = nights
+    .filter(
+      (n) =>
+        !n.dstTransition &&
+        Number.isFinite(n.lagMin) &&
+        n.lagMin >= 0 &&
+        n.lagMin <= MAX_ARRIVAL_LAG_MIN &&
+        Number.isFinite(n.arrivalMinute) &&
+        n.arrivalMinute >= 0 &&
+        n.arrivalMinute < 24 * 60
+    )
+    .map((n) => n.arrivalMinute)
+    .sort((a, b) => a - b);
+
+  if (admitted.length === 0) {
+    return { available: false, nights: 0, reason: "no-arrivals" };
+  }
+  // The gate counts what SURVIVED admission, so a dropped DST day or a bulk import
+  // is visible as a thinner sample rather than silently padding it (#2214 test 4).
+  if (admitted.length < MIN_ARRIVAL_SAMPLE) {
+    return { available: false, nights: admitted.length, reason: "thin-sample" };
+  }
+  if (admitted[admitted.length - 1] - admitted[0] > MAX_ARRIVAL_SPREAD_MIN) {
+    return { available: false, nights: admitted.length, reason: "dispersed" };
+  }
+  return {
+    available: true,
+    nights: admitted.length,
+    p90Minute: Math.round(interpolatedPercentile(admitted, ARRIVAL_PERCENTILE)),
+    medianMinute: Math.round(
+      interpolatedPercentile(admitted, ARRIVAL_TYPICAL_PERCENTILE)
+    ),
+  };
 }
 
 /**
  * The minute of day an `auto` morning digest should resolve to: the first minute
- * STRICTLY AFTER the typical wake time plus the arrival-lag allowance. Null when
- * either input is missing, which is the caller's signal to fall back to today's
- * wake-time behavior.
+ * STRICTLY AFTER the arrival p90. Null when the statistic has no answer, which is
+ * the caller's signal to fall back to today's wake-time behavior.
  *
  * At minute grain (#2121) the old round-up-to-the-next-whole-hour is gone with the
- * rounding problem it papered over: wake 05:40 + a 75-minute allowance now resolves
- * to 06:56, not 07:00 — the first tick at/after that minute sends. "Strictly
- * after" (the +1) survives, so a digest scheduled for the same minute the data
- * typically lands is not a race it loses half the time. Clamped inside the
- * deferrable range so the auto digest always keeps its retry band.
+ * rounding problem it papered over. "Strictly after" (the +1) survives, so a digest
+ * scheduled for the same minute the data typically lands is not a race it loses half
+ * the time. Clamped inside the deferrable range so the auto digest always keeps its
+ * retry band.
  *
  * This is the DIGEST's resolution and only the digest's. The `auto` Morning intake
  * time keeps the raw wake minute deliberately: it needs you awake, not your
  * tracker synced, so the wake time is the correct answer for it.
  */
-export function digestAutoMinute(
-  wakeMinute: number | null,
-  lagAllowanceMin: number | null
-): number | null {
-  if (wakeMinute == null || lagAllowanceMin == null) return null;
-  return Math.min(LAST_DEFERRABLE_MINUTE, wakeMinute + lagAllowanceMin + 1);
+export function digestAutoMinute(stats: ArrivalStatistics): number | null {
+  if (!stats.available) return null;
+  return Math.min(LAST_DEFERRABLE_MINUTE, stats.p90Minute + 1);
 }
 
 // ── 2. Deferring one hour when last night has not landed ─────────────────────

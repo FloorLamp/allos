@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledFill } from "./helpers";
+import { hydratedClick, openCareOverviewSection, settledFill } from "./helpers";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
 // the user CONFIRMS ("Use code"), which fills the code + code-system fields; on save
 // the stored code renders in the conditions table. This drives the real form and
@@ -94,9 +94,10 @@ test("picking a family-history condition applies its ICD-10-CM code too (#1676)"
   page,
 }) => {
   await page.goto("/records/care/overview");
-  const section = page.getByTestId("records-family-history");
-  // Native <details> — no JS, no POST. The reveal is the signal.
-  await section.locator("summary").click();
+  // Native <details> (#1804), opened through the shared, `open`-guarded helper
+  // (#2231). The unconditional summary click this replaced was the same bug from the
+  // other side: it CLOSES a section anything else has already opened.
+  await openCareOverviewSection(page, "records-family-history");
   await hydratedClick(
     page,
     page.getByTestId("add-family-history-panel-toggle")

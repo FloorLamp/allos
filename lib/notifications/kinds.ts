@@ -51,6 +51,8 @@ export const ALL_NOTIFICATION_KINDS = [
   "prn-list",
   "symptom",
   "temp",
+  "practice-list",
+  "weight",
   "test",
   "other",
 ] as const satisfies readonly NotificationKind[];
@@ -313,6 +315,10 @@ export const NON_CONFIGURABLE_KINDS: Readonly<
   symptom:
     "The reply to a `/symptom` command (#859) — a direct request answered in place, with no scheduled send behind it to configure.",
   temp: "The reply prompt for a `/temp` command (#859) — same reasoning as the other on-demand replies: the request IS the consent.",
+  "practice-list":
+    "The reply to a `/practice` command (#1895) — the tracked practices as one-tap buttons. Distinct from the `practice` KIND, which is the pace nudge the tick decides to send: that one is configurable because the system initiates it, and this one is not, because the user just typed it.",
+  weight:
+    "The reply prompt for a `/weight` command (#1895) — the `/temp` shape one quantity over. Nothing schedules it; the request IS the consent.",
 };
 
 // The kinds a user can route per channel — the matrix rows. Derived from the ONE

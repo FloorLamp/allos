@@ -1253,14 +1253,49 @@ decisions, both pure in `lib/notifications/digest-schedule.ts`:
   arrivals 06:02–07:49). The old whole-hour rounding compounded it: `round(340/60)`
   is 6, so the digest fired at 06:00, before all eleven arrivals and an hour worse
   than the manual 07:00 it was meant to improve on. `digestAutoMinute` now
-  resolves to the first MINUTE strictly after wake + a p90 arrival lag (07:43 on
-  the measured profile — #2121 deleted the round-up-to-the-next-hour along with
-  the rounding defect), measured at read time by joining
-  `integration_sync_rows` → `metric_samples` (`getSleepArrivalLagsMin`). Below the
+  resolves to the first MINUTE strictly after the measured arrival p90 (#2121
+  deleted the round-up-to-the-next-hour along with the rounding defect). Below the
   sample gate it returns null and the caller falls back to the wake minute, where
   the deferral below is the safety net. The **`auto` Morning intake time
   deliberately stays on the raw wake minute**: it needs you awake, not your
-  tracker synced, so do not fold the lag into the Morning resolution.
+  tracker synced, so do not fold the arrival into the Morning resolution.
+
+**The arrival statistic (#2214).** "When does last night's sleep normally land, in
+clock time?" is ONE computation — `arrivalStatistics`
+(`lib/notifications/digest-schedule.ts`) over rows gathered by `getSleepArrivals`
+(`lib/queries/metrics.ts`, joining `integration_sync_rows` → `metric_samples`).
+
+- **The percentile is taken over arrival CLOCK TIMES**, never composed. It used to
+  be `median wake + p90 lag`: a central value of one varying quantity plus a tail
+  value of another, biased low whenever wake and lag are not anti-correlated. On
+  the measured 13-night sample the true p90 is 07:39.6 and the composition
+  returned 07:10 — half an hour early, turning 12 complete digests out of 13 into 8. Since `arrival = wake + lag` per night and both instants are on the row,
+  nothing needs composing, and `typicalWakeTime` is not read by the digest at all.
+- **The lag survives as the ADMISSION test.** `[0, MAX_ARRIVAL_LAG_MIN]` is the
+  right filter for "is this a morning arrival at all" — a negative lag is a
+  backfill, a multi-hour one a Takeout-style bulk import. Admit on lag, measure on
+  clock time.
+- **Two statistics, one pass.** `p90Minute` is what a send time or deadline must
+  clear (`ARRIVAL_PERCENTILE`); `medianMinute` is what "the configured time loses
+  more often than not" means. Both come out of the same admitted sample so two
+  consumers cannot describe two different distributions.
+- **No answer is a first-class state.** The result is a discriminated union, not a
+  nullable minute: neither number exists unless `available` is true, and the
+  reason is stated (`no-source`, `no-arrivals`, `thin-sample`, `dispersed`).
+  Never extrapolate below `MIN_ARRIVAL_SAMPLE`.
+- **Midnight wrap is decided, not assumed.** Arrivals are ordered and interpolated
+  as plain minutes of day on `[0, 1440)` with no rotation and no circular mean, and
+  a sample spanning more than `MAX_ARRIVAL_SPREAD_MIN` (half the clock) is REFUSED
+  as `dispersed` rather than described. The lag filter already removes the shapes
+  that would put a 23:xx beside an 00:xx.
+- **A DST transition day is dropped.** Such a day mixes two UTC offsets into one
+  clock-time sample; with ~13 nights of `integration_sync_rows` retention a single
+  hour-shifted arrival moves the p90 materially, and it carries no information
+  about the sync pipeline. `isDstTransitionDay` (`lib/date.ts`) marks it at gather
+  time and the exclusion is visible in the `nights` count that gates the sample.
+- **It is not live.** The sample is thin by construction and jumpy
+  (leave-one-night-out moves the p90 up to 11 minutes), so it may be proposed or
+  used as a bound, never silently BE a user's send time.
 - **One deferral, into the retry attempt that already exists.** `slotDue` is two
   attempt bands paired with the hard per-day marker, so the FIRST attempt is free
   to decline: `deferDigestForSleep` skips the send when last night's sleep is
@@ -1477,10 +1512,12 @@ registry has no route.
 **Which domains get a verb is a census, not a vibe** (#2130). The registry also
 declares `TELEGRAM_DOMAIN_CENSUS`, type-checked over the shared
 `LoggableDomain` axis (`lib/loggable-domains.ts`): every loggable domain maps to
-a shipped verb, a `plannedVerb(...)` (food, practice, weight — decided in;
-#1895 builds the vocabulary surface), or an `arguedExclusion(...)` with its
+a shipped verb, a `plannedVerb(...)`, or an `arguedExclusion(...)` with its
 reason (vitals, activity, period, substance, document). A new domain fails
-`tsc` there until someone decides.
+`tsc` there until someone decides. #2130 decided food, practice and weight IN and
+#1895 built them, so those three rows now name their shipped verbs — the flip
+happened in the same change that routed the handlers, which a runtime pin forces
+(a planned verb may never shadow a shipped one) and nothing is left planned.
 
 **One authority for "which text triggers this handler" (#2004).** The dispatcher
 resolved the verb through `parseCommand`/the alias table, and then each logging
@@ -1522,6 +1559,42 @@ supersede invariant from closing a sibling the same command just sent). A build
 that yields nothing is answered honestly — "already checked in today" — never with
 an empty keyboard, because a command that silently produced nothing is the defect
 this feature exists to remove.
+
+**`/food`, `/practice` and `/weight`** — the three verbs #2130 decided in.
+
+- **`/food`** re-renders `buildFoodNudge` for the profile's CURRENT slot
+  (`currentFoodSlot`, the derivation the Food tab's chip reads) — the same builder
+  the tick sends, the reconcile rebuilds and every tap re-renders through. ONE
+  MESSAGE PER PROFILE rather than one merged keyboard, because the food family's
+  reconciler rebuilds a nudge from its first `food:` token and two profiles' buttons
+  in one message would make every rebuild render one over the other. Each message
+  declares its own subject (#1995) and rotates its own #947 pointer, so the single
+  live food keyboard invariant holds across both senders — which is why that
+  rotation now lives in `trackDelivered` beside the other bookkeeping rather than in
+  the fan-out branch alone. Gated on food-logging RELEVANCE (the life-stage rule the
+  dashboard uses), deliberately not on the `food_telegram_enabled` opt-in: that flag
+  decides whether the tick may CONTACT someone, and a typed verb is access.
+- **`/practice`** lists the tracked practices as one-tap buttons — the door the
+  domain never had, since #1259 only offers logging when the pace nudge happens to
+  arrive. It is not the nudge with its filters removed: the nudge exists because the
+  SYSTEM found a target behind (bus-gated, ceiling-silent, rhythm-retimed), and this
+  exists because the user asked, so it carries every tracked practice including the
+  met ones and none of the nudge's ride-alongs. Its buttons take their own `plog:`
+  prefix, declared INERT (the `prn:` shape one domain over): logging a session is
+  additive and always valid, so the list claims nothing that could go stale — while
+  `pdone:` keeps its state-claim family, because the nudge asserts "this is behind".
+  Same handler, same write core, typed outcome.
+- **`/weight`** is the `/temp` prompt-reply shape one quantity over: a prompt
+  carrying a `(#weight:<profileId>)` marker, a reply parsed by the palette's own
+  `parseWeightEntry` (one grammar and one range guard for `weight 82.5` and a chat
+  reply alike), and a write through `insertBodyMetric` — canonical kg converted at
+  the boundary, kg assumed when the reply names no unit, since a chat carries no
+  login unit preference. A refusal is stated; nothing is confirmed unconditionally.
+
+`practice-list` and `weight` are their own notification kinds, non-configurable for
+the reason every on-demand reply is: the request IS the consent. `practice-list`
+re-issues (a second `/practice` supersedes the first); the `weight` prompt carries no
+keyboard, so it records no pointer and supersedes nothing.
 
 ## Live-message reconciliation (#1779)
 

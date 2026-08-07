@@ -49,11 +49,11 @@ import {
   parseNotifyTime,
 } from "../notifications/schedule";
 import {
-  arrivalLagAllowance,
+  arrivalStatistics,
   digestAutoMinute,
 } from "../notifications/digest-schedule";
 import { typicalWakeTime } from "../queries/sleep";
-import { getSleepArrivalLagsMin } from "../queries/metrics";
+import { getSleepArrivals } from "../queries/metrics";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -857,8 +857,9 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
   //
   // This is the WAKE time, and it stays the answer for the Morning intake slot:
   // that slot needs you awake and has no dependency on sleep data having synced.
-  // The morning DIGEST does depend on it, and resolves through digestAutoMinute
-  // instead (#2102) — do not fold the arrival lag into the wake minute.
+  // Since #2214 the morning DIGEST does not read it to resolve at all — it takes
+  // the measured arrival p90 whole — and keeps it only as the no-answer fallback
+  // below, which is why an `auto` digest still asks for it here.
   const needsWake =
     morningRaw === undefined ||
     morningRaw === AUTO_TIME ||
@@ -869,19 +870,24 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
   const morningAutoValue =
     wakeMinute ?? DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 
-  // The DIGEST's auto value (#2102). It resolves past the time last night's sleep
-  // typically ARRIVES, not the time the profile wakes: the digest prints a Sleep
-  // section, and the row lands a measured ~70 minutes behind waking, so the wake
-  // time scheduled the digest — deliberately — for a time the data has never
-  // arrived by. Only paid for on an explicitly `auto` digest; a thin arrival sample
-  // returns null and falls back to today's wake-time behavior, where the one-hour
-  // deferral in the tick is the safety net instead.
+  // The DIGEST's auto value (#2102, corrected in #2214). It resolves past the time
+  // last night's sleep typically ARRIVES, not the time the profile wakes: the digest
+  // prints a Sleep section, and the row lands a measured ~70 minutes behind waking,
+  // so the wake time scheduled the digest — deliberately — for a time the data has
+  // never arrived by.
+  //
+  // The p90 is taken over arrival CLOCK TIMES directly and is NOT composed out of the
+  // wake minute any more: median wake + p90 lag is a central value of one varying
+  // quantity plus a tail value of another, and measured half an hour low (#2214).
+  // `wakeMinute` survives here only as the FALLBACK when the arrival sample cannot
+  // answer — which is exactly today's behavior for a young profile, where the
+  // one-hour deferral in the tick is the safety net instead.
+  //
+  // Only paid for on an explicitly `auto` digest.
   const digestAutoValue =
     digestRaw === AUTO_TIME
-      ? (digestAutoMinute(
-          wakeMinute,
-          arrivalLagAllowance(getSleepArrivalLagsMin(profileId))
-        ) ?? morningAutoValue)
+      ? (digestAutoMinute(arrivalStatistics(getSleepArrivals(profileId))) ??
+        morningAutoValue)
       : morningAutoValue;
 
   return {

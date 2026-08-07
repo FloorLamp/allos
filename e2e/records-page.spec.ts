@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { expectNoClippedContent, followLink } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  openCareOverviewSection,
+} from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
@@ -138,7 +142,7 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-care-plan")).toBeVisible();
   await expect(page.getByTestId("records-health-goals")).toBeVisible();
   await expect(page.getByTestId("smoking-history")).toBeHidden();
-  await page.getByTestId("records-background").locator("summary").click();
+  await openCareOverviewSection(page, "records-background");
   const smokingHistory = page.getByTestId("smoking-history");
   await expect(smokingHistory).toBeVisible();
   expect(

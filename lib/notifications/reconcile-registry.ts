@@ -147,6 +147,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
     inert: "collapses the offer tail back — pure keyboard view state",
   },
   {
+    prefix: "plog",
+    inert:
+      "the on-demand `/practice` list's ✓ button (#1895) — the `prn` shape one domain over: logging a session is additive and valid at any time, the token carries no date, and the list claims nothing about dueness (that is the `pdone` nudge's job, which keeps its own family)",
+  },
+  {
     prefix: "prn",
     inert:
       "an additive access affordance (#797/#1505): logging an as-needed dose is valid at any time, and the token carries no date, so it never becomes a false claim",
@@ -329,16 +334,26 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
     why: "One wellbeing check-in per day, re-sent (or asked for) as one question. A second live face-picker in the chat would let the same day be answered twice from two messages, and the newer send is the one whose date the tokens carry.",
   },
   {
-    kind: "wear-reminder",
-    reissuable: false,
-    why: "It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. It also carries no keyboard — its whole content is words — so it records no pointer and would have nothing to rotate even if a second send existed.",
+    kind: "practice-list",
+    reissuable: true,
+    why: "`/practice` renders the tracked practices from live state (#1895), each line carrying this week's count. Typing it again means 'show me that again', so the earlier copy is a stale reading of the same question — and two live lists make 'which one did I tap' unanswerable, which for a session log matters: it is not idempotent.",
   },
 
   // ── Not re-issuable ────────────────────────────────────────────────────────
   {
+    kind: "wear-reminder",
+    reissuable: false,
+    why: "It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. It also carries no keyboard — its whole content is words — so it records no pointer and would have nothing to rotate even if a second send existed.",
+  },
+  {
     kind: "temp",
     reissuable: false,
     why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. The sibling-closing hazard that first justified this entry is gone since #1995 — those prompts now declare their own subjects, so the supersede lookup is per profile and cannot reach a sibling's copy — but the entry stands on its own footing: a `/temp` prompt asks for a typed REPLY and carries no keyboard, so it records no pointer and supersedes nothing either way. If a prompt ever gains buttons, re-issue becomes a real question and gets answered then, per profile.",
+  },
+  {
+    kind: "weight",
+    reissuable: false,
+    why: "A `/weight` prompt asks for a typed REPLY and carries no keyboard (#1895), so it records no pointer and supersedes nothing either way — the `temp` entry's reasoning, one quantity over. A multi-profile chat's per-profile prompts each declare their own subject (#1995), so re-issue cannot reach a sibling's copy even if the prompt gained buttons.",
   },
   {
     kind: "food",
@@ -585,6 +600,16 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
     kind: "temp",
     prose: null,
     why: "A prompt asking for a reading. Like the check-in, it poses a question rather than claiming an answer.",
+  },
+  {
+    kind: "weight",
+    prose: null,
+    why: "The `/weight` prompt (#1895) — the `temp` prompt one quantity over. It asks for a number and asserts nothing that a later write could falsify.",
+  },
+  {
+    kind: "practice-list",
+    prose: null,
+    why: "A user-initiated listing of the tracked practices (#1895), the `prn-list` shape one domain over: its buttons are inert because logging a session is additive and always valid, and its text is that same offer plus this week's counts as they stood when the user asked. It claims nothing outstanding — the pace NUDGE is the message that does, and the `practice` family already owns its keyboard.",
   },
   {
     kind: "upcoming",

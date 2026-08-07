@@ -383,9 +383,10 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
     expect(markDoseTaken(pid, doseId, itemId, D)).toBe("logged");
 
     // Resolved for real now, so the message closes as HANDLED — not as out of date.
+    // Since #2170 "handled" is stated as the outcome tally the resolution produced.
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "handled in the app"
+      "1 logged. In the app."
     );
   });
 
@@ -1043,7 +1044,8 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
 
     expect(out.closed).toBe(1);
     const closingText = editText.mock.calls.at(-1)![2];
-    expect(closingText).toBe(`${title} — handled in the app.`);
+    // The tally (#2170) rides the SAME attributed subject this issue put there.
+    expect(closingText).toBe(`${title} — 1 logged. In the app.`);
     expect(closingText).toContain("[Norton]");
   });
 
@@ -1121,6 +1123,76 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(editText.mock.calls.at(-1)![2]).toBe(RECONCILE_CLOSING.rollover);
+  });
+});
+
+// ---- The closing edit states the OUTCOME (issue #2170) ---------------------
+//
+// A fully-resolved close replaced the ENTIRE message text, so the chat history ended up
+// less informative than the reminder had been: the reader knew something was recorded,
+// not what. The counts below are the reconcile's own resolution facts restated — the
+// same ledger reads that decided the close.
+
+describe("a resolved close states the outcome tally (#2170)", () => {
+  it("counts what the ledger says: logged and skipped", async () => {
+    const pid = newProfile("Tally Tara");
+    const a = seedDose(pid, "Tara A");
+    const b = seedDose(pid, "Tara B");
+    const c = seedDose(pid, "Tara C");
+    seedLoginTelegram(pid, "5552170");
+    await sendMorningReminder(pid);
+
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, b.doseId, b.itemId, today(pid));
+    markDoseSkipped(pid, c.doseId, c.itemId, today(pid));
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    const text = String(editText.mock.calls.at(-1)![2]);
+    expect(text).toContain("2 logged, 1 skipped. In the app.");
+    // The message's own subject still leads it (#1822 item 7).
+    expect(text.startsWith("💊 Morning supplements —")).toBe(true);
+    // Counts only — no item is named in the closing line.
+    expect(text).not.toContain("Tara A");
+  });
+
+  it("all taken reads as a single count", async () => {
+    const pid = newProfile("Whole Wren");
+    const a = seedDose(pid, "Wren A");
+    const b = seedDose(pid, "Wren B");
+    seedLoginTelegram(pid, "5552171");
+    await sendMorningReminder(pid);
+
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, b.doseId, b.itemId, today(pid));
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      "2 logged. In the app."
+    );
+  });
+
+  it("THE SNAPSHOT PROPERTY: a later in-app edit changes nothing in the chat", async () => {
+    // Closing is forgetting — the claim deletes the pointer, so no later sweep can
+    // re-edit this text. The line is HISTORICAL, exactly like any other chat message,
+    // and that is the design rather than a gap in it.
+    const pid = newProfile("Snapshot Sana");
+    const a = seedDose(pid, "Sana A");
+    seedLoginTelegram(pid, "5552172");
+    await sendMorningReminder(pid);
+
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    await reconcileProfileMessages(pid);
+    const closingText = String(editText.mock.calls.at(-1)![2]);
+    expect(closingText).toContain("1 logged. In the app.");
+    expect(liveMessagePointers(pid)).toEqual([]);
+
+    // Correct it in the app afterwards…
+    markDoseSkipped(pid, a.doseId, a.itemId, today(pid));
+    editText.mockClear();
+    const again = await reconcileProfileMessages(pid);
+    // …and nothing is examined, nothing is edited, and the chat still reads as it did.
+    expect(again.examined).toBe(0);
+    expect(editText).not.toHaveBeenCalled();
   });
 });
 
