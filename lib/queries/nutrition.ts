@@ -46,6 +46,7 @@ import {
   correctionBursts,
   CORRECTION_FRESH_MIN,
   type CorrectionBurst,
+  type CorrectionMessageBinding,
 } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
@@ -620,7 +621,8 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, logged_at, eaten_at FROM food_log_events
+      `SELECT id, group_key, logged_at, eaten_at, notify_message_id
+         FROM food_log_events
         WHERE profile_id = ? AND logged_at >= ?
         ORDER BY logged_at, id
         LIMIT 100`
@@ -630,6 +632,7 @@ export function getRecentFoodTaps(
     group_key: string;
     logged_at: string;
     eaten_at: string | null;
+    notify_message_id: number | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
@@ -640,6 +643,9 @@ export function getRecentFoodTaps(
     // second chip tap composes onto the first. Read regardless of `time_source` — the
     // question is what the ledger holds, not who put it there.
     statedAt: r.eaten_at,
+    // Which message's tap wrote the row (#2264) — the burst's attribution, so a
+    // correction row renders only on the message that produced it.
+    messageRef: r.notify_message_id,
     // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
     // what it is rather than rendered as a mystery slug.
     label: isProteinNudgeKey(r.group_key)
@@ -649,14 +655,17 @@ export function getRecentFoodTaps(
 }
 
 // The correction rows one food keyboard should carry right now — the fresh taps,
-// collapsed into bursts, newest first, capped. One computation for the send, every
-// rebuild, and the hourly sweep (#221), so a chat can never show a chip the handler
-// would refuse.
+// collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
+// One computation for the send, every rebuild, and the hourly sweep (#221), so a chat
+// can never show a chip the handler would refuse. `binding` is the rendering message's
+// #2264 identity (correctionMessageBinding); omitting it returns the profile-wide set,
+// which only a caller that is not rendering a message may use.
 export function getFoodCorrectionBursts(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentFoodTaps(profileId, now), now);
+  return correctionBursts(getRecentFoodTaps(profileId, now), now, binding);
 }
 
 // ---- Food-habit N-week consistency trend (issue #954) ----

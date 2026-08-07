@@ -22,7 +22,7 @@ import { proteinDayCounter } from "./day-counter-ledger-db";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
 import { type FoodSlot } from "./food-slot";
-import type { FoodEatingTime } from "./food-log-write";
+import type { FoodEatingTime, FoodWriteOrigin } from "./food-log-write";
 
 // The per-profile settings key holding the most recent add amount, so the quick-add
 // pre-fills the last scoop size. A settings-tier value (not profile-owned data), so
@@ -76,7 +76,10 @@ export function addProteinGramsCore(
   mealSlot?: FoodSlot,
   // WHEN IT WAS CONSUMED (#2019) — the same separate fact `logFoodServingCore` records,
   // on the same columns, so protein distribution reads one ledger with one time model.
-  time?: FoodEatingTime
+  time?: FoodEatingTime,
+  // Which message's tap this is (#2264) — the Telegram "+Xg" button only, so the
+  // protein burst's correction row renders on the message that produced it.
+  origin?: FoodWriteOrigin
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
@@ -89,8 +92,9 @@ export function addProteinGramsCore(
     // day counter and every food-GROUP path, so it never becomes a serving.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source,
+          notify_message_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       PROTEIN_NUDGE_KEY,
@@ -98,7 +102,8 @@ export function addProteinGramsCore(
       loggedAt,
       mealSlot ?? null,
       time?.eatenAt ?? null,
-      time?.source ?? null
+      time?.source ?? null,
+      origin?.notifyMessageId ?? null
     );
     return { kind: "logged", grams: total };
   });

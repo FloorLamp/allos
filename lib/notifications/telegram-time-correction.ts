@@ -31,6 +31,7 @@ import {
 import { now as clockNow } from "../clock";
 import {
   burstFrom,
+  burstsForMessage,
   chipTarget,
   isBurstFresh,
   isOfferedHour,
@@ -40,6 +41,7 @@ import {
   type CorrectionChipToken,
   type TapEvent,
 } from "../correction-time";
+import { correctionMessageBinding } from "./message-pointers";
 import {
   restampFoodEventsCore,
   type FoodRestampOutcome,
@@ -58,10 +60,12 @@ import {
 } from "./callback-data";
 import {
   correctionActions,
+  correctionBodyStatement,
   correctionPickerActions,
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
 } from "./correction-rows";
+import { plainBody } from "./rich-text";
 import { buildFoodNudge } from "./food";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
@@ -152,6 +156,8 @@ function foodRebuild(
   profileId: number,
   rows: InlineKeyboard,
   now: Date,
+  // The message being rebuilt (#2264), so the correction rows stay bound to it.
+  ref: { chatId: string | number; messageId: number },
   picker?: CorrectionBurst
 ): NotificationMessage | null {
   let window: FoodNudgeWindow | null = null;
@@ -174,7 +180,7 @@ function foodRebuild(
     window,
     date,
     countVisibleFoodButtons(rows) || undefined,
-    { now, ...(picker ? { picker } : {}) }
+    { now, ref, ...(picker ? { picker } : {}) }
   );
 }
 
@@ -182,7 +188,13 @@ async function rebuildFood(
   r: Resolved,
   picker?: CorrectionBurst
 ): Promise<void> {
-  const rebuilt = foodRebuild(r.profileId, r.rows, r.now, picker);
+  const rebuilt = foodRebuild(
+    r.profileId,
+    r.rows,
+    r.now,
+    { chatId: r.chatId, messageId: r.messageId },
+    picker
+  );
   if (rebuilt)
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
 }
@@ -323,10 +335,16 @@ async function rebuildDose(
   if (!rebuilt) return;
   // The correction ride-along is appended by the same builder the reminder itself uses,
   // so the picker and the chips ride the rebuilt message exactly as they rode the one
-  // that was tapped.
+  // that was tapped — and once the burst is corrected, the BODY states the stored time
+  // (#2264 bug 1) from the same computation every other dose render uses.
+  const { actions, bursts } = doseCorrectionParts(r, picker);
+  const statement = correctionBodyStatement(bursts, r.tz);
   await rebuildMessage(r.profileId, r.chatId, r.messageId, {
     ...rebuilt,
-    actions: [...(rebuilt.actions ?? []), ...doseCorrectionActions(r, picker)],
+    ...(statement
+      ? { body: `${plainBody(rebuilt.body)}\n${statement}` }
+      : {}),
+    actions: [...(rebuilt.actions ?? []), ...actions],
   });
 }
 
@@ -342,25 +360,44 @@ async function rebuildDose(
 // A burst the ledger no longer justifies renders NO row, rather than falling back to the
 // one that was resolved: the row set is a query, and the one thing a rebuild may not do is
 // restore a claim the write just retired.
-function doseCorrectionActions(
+function doseCorrectionParts(
   r: Resolved,
   picker?: CorrectionBurst
-): NotificationAction[] {
+): { actions: NotificationAction[]; bursts: CorrectionBurst[] } {
   if (picker)
-    return correctionPickerActions(
-      DOSE_TIME_PREFIXES,
-      r.profileId,
-      picker,
-      r.now,
-      r.tz
-    );
+    return {
+      actions: correctionPickerActions(
+        DOSE_TIME_PREFIXES,
+        r.profileId,
+        picker,
+        r.now,
+        r.tz
+      ),
+      bursts: [picker],
+    };
   const burst = burstFrom(
     getRecentDoseTaps(r.profileId, r.now),
     r.burst.fromId
   );
-  return burst
-    ? correctionActions(DOSE_TIME_PREFIXES, r.profileId, [burst], r.tz, r.now)
+  // Re-attached only if the burst is still bound to THIS message (#2264): the row that
+  // was just tapped rendered here, but a stale keyboard can carry a token for a burst
+  // that belongs elsewhere, and a rebuild may not restore a claim the binding refuses.
+  const bound = burst
+    ? burstsForMessage(
+        [burst],
+        correctionMessageBinding(r.profileId, "dose", {
+          chatId: r.chatId,
+          messageId: r.messageId,
+        })
+      )
     : [];
+  return {
+    actions:
+      bound.length > 0
+        ? correctionActions(DOSE_TIME_PREFIXES, r.profileId, bound, r.tz, r.now)
+        : [],
+    bursts: bound,
+  };
 }
 
 export async function handleDoseTimeChip(

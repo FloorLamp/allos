@@ -168,6 +168,7 @@ import { migration as m166 } from "./166-digest-mode";
 import { migration as m167 } from "./167-notify-lifecycle-utc-instant";
 import { migration as m168 } from "./168-appointment-day-time-split";
 import { migration as m169 } from "./169-illness-episode-day-window";
+import { migration as m170 } from "./170-tap-message-provenance";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -345,4 +346,5 @@ export const MIGRATIONS: Migration[] = [
   m167,
   m168,
   m169,
+  m170,
 ];

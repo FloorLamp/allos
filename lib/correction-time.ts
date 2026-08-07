@@ -145,6 +145,12 @@ export interface TapEvent {
   // not a memory of some earlier message — the row set was already a query over exactly
   // this ledger.
   statedAt?: string | null;
+  // WHICH MESSAGE'S TAP wrote this row (#2264): the `notify_messages` row id stored on
+  // the ledger row, or null for a tap no chat message produced — a web one-tap, an
+  // offline replay, or a chat tap whose message row has since been pruned or closed
+  // (`ON DELETE SET NULL`). Attribution, not time: it decides WHERE a correction row may
+  // render, never what it says.
+  messageRef?: number | null;
   // What the row is, for a lone-tap row's label ("Salmon 20:11", "Ibuprofen 22:01").
   label: string;
 }
@@ -177,6 +183,12 @@ export interface CorrectionBurst {
   // Does any member stand somewhere other than where it was tapped? The "(corrected)"
   // marker, and nothing more — see CORRECTED_MARK_MS.
   corrected: boolean;
+  // The message this burst belongs to (#2264): its FIRST tap's `messageRef`. The first
+  // tap, matching `fromId` already being the burst's anchor — burst-mates share one
+  // error, and the message that error was made on is the one the first tap landed from.
+  // Null is an UNATTRIBUTED burst (web, offline replay, pruned message row), which may
+  // ride only the newest live message of its domain — see `burstsForMessage`.
+  messageRef: number | null;
   // The lone member's label; empty for a multi-row burst, which is named by its count.
   label: string;
 }
@@ -216,6 +228,7 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
       corrected: current.some(
         (e) => Math.abs(ms(rowInstant(e)) - ms(e.tapAt)) >= CORRECTED_MARK_MS
       ),
+      messageRef: first.messageRef ?? null,
       label: current.length === 1 ? first.label : "",
     });
     current = [];
@@ -248,17 +261,55 @@ export function isBurstFresh(burst: CorrectionBurst, now: Date): boolean {
   return age >= 0 ? age <= CORRECTION_FRESH_MIN * MIN_MS : true;
 }
 
+// WHERE a burst may render (#2264). A correction row is a claim about the MESSAGE it
+// rides — its chips restamp the burst its tokens anchor on — so a message may only ever
+// carry its OWN bursts. `messageRef` is the rendering message's `notify_messages` row id
+// (null for a message that has none: a fresh send not yet delivered, or a message whose
+// pointer was never recorded); `isNewest` says whether the rendering message is the
+// newest live message of its domain in its chat, which is the ONE place an unattributed
+// burst (a web one-tap, an offline replay, a pruned message row) may ride — never an
+// older message, whose subject it is not.
+export interface CorrectionMessageBinding {
+  messageRef: number | null;
+  isNewest: boolean;
+}
+
+// A message that has not been delivered yet has no pointer row and is, by construction,
+// about to be the newest live message of its domain in every chat it lands in.
+export const FRESH_SEND_BINDING: CorrectionMessageBinding = {
+  messageRef: null,
+  isNewest: true,
+};
+
+// The bursts one message may show (#2264): its own, plus — only while it is the newest
+// live message of its domain — the unattributed ones. A burst whose taps came from a
+// DIFFERENT message is never shown: the wrong-subject case fails closed, because the
+// chips would restamp servings the message never mentioned.
+export function burstsForMessage(
+  bursts: readonly CorrectionBurst[],
+  binding: CorrectionMessageBinding
+): CorrectionBurst[] {
+  return bursts.filter((b) =>
+    b.messageRef != null
+      ? binding.messageRef != null && b.messageRef === binding.messageRef
+      : binding.isNewest
+  );
+}
+
 // The correction rows a keyboard should carry right now: the profile's fresh taps,
-// collapsed into bursts, newest first, capped. The ROW SET IS A QUERY over ledger state
-// — never a memory of what some earlier message rendered — which is why the rows survive
-// a rebuild, a pointer rotation and a restart, and why they simply appear on whichever
-// keyboard is currently live.
+// collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
+// The ROW SET IS A QUERY over ledger state — never a memory of what some earlier message
+// rendered — which is why the rows survive a rebuild, a pointer rotation and a restart.
+// The binding filters BEFORE the cap, so a foreign burst can never push a message's own
+// burst off its keyboard. No binding means no message filter — the pre-#2264 profile-wide
+// set, which only a caller that is not rendering a message may ask for.
 export function correctionBursts(
   events: readonly TapEvent[],
-  now: Date
+  now: Date,
+  binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return collapseBursts(events)
-    .filter((b) => isBurstFresh(b, now))
+  const fresh = collapseBursts(events).filter((b) => isBurstFresh(b, now));
+  return (binding ? burstsForMessage(fresh, binding) : fresh)
     .reverse()
     .slice(0, MAX_CORRECTION_ROWS);
 }
