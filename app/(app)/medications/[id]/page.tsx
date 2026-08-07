@@ -12,7 +12,8 @@ import {
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
-import { parseUtcSql, zonedDateParts } from "@/lib/date";
+import { zonedDateParts } from "@/lib/date";
+import { bestKnownInstant, instantDate } from "@/lib/row-instants";
 import {
   formatGivenAtClock,
   formatGivenAtClockWithRelativeAge,
@@ -114,25 +115,35 @@ export default async function MedicationDetailPage(props: {
     m.med.id,
     historyMinDate ?? "0001-01-01"
   ).map((dose) => {
-    const storedTime = dose.given_at ?? dose.taken_at;
-    const instant = parseUtcSql(storedTime);
+    // The row-level time question, asked once (#2205 phase 3): the stated event
+    // instant (`occurred_at`) when somebody named one, else the record chain
+    // (given_at → taken_at) — with the answer saying WHICH question it came from.
+    const when = bestKnownInstant("intake_item_logs", dose);
+    const stored = when.known ? when.at : null;
+    const instant = instantDate(when);
+    // Only attach relative age when the dose's logical date is today; otherwise its
+    // adjacent date already supplies the useful context and "just now" would be false.
+    const clock =
+      dose.date === data.todayStr
+        ? formatGivenAtClockWithRelativeAge(
+            data.tz,
+            stored,
+            formatPrefs.timeFormat,
+            new Date(data.nowIso)
+          )
+        : formatGivenAtClock(data.tz, stored, formatPrefs.timeFormat);
     return {
       id: dose.id,
       doseId: dose.dose_id,
       date: dose.date,
-      // Legacy scheduled logs may have only `taken_at`, which is the time the row
-      // was recorded rather than the date represented by `l.date`. Only attach
-      // relative age when the dose's logical date is today; otherwise its adjacent
-      // date already supplies the useful context and "just now" would be false.
+      // This panel IS the clinical record (#2228 decision 4), so a clock that came
+      // from the record chain renders as "recorded 7:02am" — never as a bare clock
+      // claiming an administration time the row does not state. A stated
+      // `occurred_at` renders unmarked.
       time:
-        dose.date === data.todayStr
-          ? formatGivenAtClockWithRelativeAge(
-              data.tz,
-              storedTime,
-              formatPrefs.timeFormat,
-              new Date(data.nowIso)
-            )
-          : formatGivenAtClock(data.tz, storedTime, formatPrefs.timeFormat),
+        clock && when.known && when.semantic === "record"
+          ? `recorded ${clock}`
+          : clock,
       timeValue: instant ? zonedDateParts(data.tz, instant).hhmm : "",
       amount: dose.amount,
       product: dose.product,

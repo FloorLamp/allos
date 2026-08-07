@@ -105,6 +105,29 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s!.clearedForHours).toBe(11);
     expect(s!.met).toBe(false);
     expect(s!.lastAntipyreticName).toBe("Ibuprofen");
+    // #2228 decision 4: nobody stated an intake time (`occurred_at` is unwritten),
+    // so the note's clock is the RECORD chain and says so — "last ibuprofen
+    // recorded 6:00am", never a bare clock claiming an administration time.
+    expect(s!.lastAntipyreticClockLabel).toBe("recorded 6:00am");
+  });
+
+  it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {
+    const p = newProfile("sr-stated");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 1);
+    const td = today(p);
+    logTemperatureCore(p, 101.5, "F", td, "09:00");
+    addAntipyretic(p, "Ibuprofen", td, `${td} 07:15:00`);
+    // The caregiver stated when it was actually given; the filing stamp stays put.
+    db.prepare(
+      `UPDATE intake_item_logs SET occurred_at = ? WHERE date = ?`
+    ).run(`${td}T06:00:00Z`, td);
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T20:00:00Z`));
+    expect(s).not.toBeNull();
+    expect(s!.hoursSinceAntipyretic).toBe(14); // measured from the STATED instant
+    expect(s!.lastAntipyreticClockLabel).toBe("6:00am");
   });
 
   it("a NON-antipyretic PRN doesn't count as a fever reducer", () => {

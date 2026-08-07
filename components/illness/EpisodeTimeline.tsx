@@ -684,11 +684,23 @@ export default function EpisodeTimeline({
                               className="grid grid-cols-[4rem_minmax(0,1fr)_auto] gap-x-1.5 border-b border-black/5 py-2 sm:table-row sm:border-0 sm:py-0 dark:border-white/5"
                             >
                               <td className="row-span-2 block whitespace-nowrap px-2 align-top text-xs text-slate-500 sm:table-cell sm:px-0 sm:py-2 sm:pr-2 dark:text-slate-400">
-                                {formatClockValue(
-                                  event.time,
-                                  formatPrefs.timeFormat,
-                                  "—"
-                                )}
+                                {/* A dose clock from the record chain is marked in
+                                    this document's own voice — "recorded 7:02am" —
+                                    never presented as an administration time
+                                    (#2228 decision 4). The value stays visible with
+                                    its provenance; honesty is about the claim. */}
+                                {event.kind === "medication" &&
+                                event.timeRecorded &&
+                                event.time
+                                  ? `recorded ${formatClockValue(
+                                      event.time,
+                                      formatPrefs.timeFormat
+                                    )}`
+                                  : formatClockValue(
+                                      event.time,
+                                      formatPrefs.timeFormat,
+                                      "—"
+                                    )}
                               </td>
                               <td className="block min-w-0 pr-1 align-top font-medium break-words text-slate-700 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-200">
                                 {eventLabel(event)}
