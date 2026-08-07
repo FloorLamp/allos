@@ -2,6 +2,7 @@
 // and list it here.
 
 import { writeTx } from "../db";
+import { instantNow } from "../clock";
 import { createLogger } from "../log";
 import {
   type ChannelId,
@@ -62,10 +63,14 @@ function recordDeliveryOutcome(results: DispatchResult[]): void {
       const prevFailedChannel = readFailedChannel();
       const decision = decideMarker(results, prevFailedChannel);
       if (decision.action === "set") {
+        // `notify_lifecycle.at` is on the canonical stored-instant convention
+        // (migration 167, #2233): the shape comes from lib/date.ts via the clock
+        // seam, never from a hand-built `new Date().toISOString()` — which wrote
+        // a third serialization (milliseconds + Z) into a schema that has two.
         setDeliveryFailure(
           decision.failure.channel,
           decision.failure.error,
-          new Date().toISOString()
+          instantNow()
         );
       } else if (decision.action === "clear") {
         clearDeliveryMarker();

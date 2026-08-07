@@ -54,6 +54,7 @@ import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
 import { TTC_WORKUP_PREFIX } from "./ttc";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
+import { DIGEST_TIME_PREFIX } from "./digest-time-suggestion";
 import { SYNC_REQUEST_PREFIX } from "./sync-requests";
 import type { ReasonCode } from "./reasons";
 
@@ -330,6 +331,28 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SYNC_REQUEST_PREFIX,
     tier: "coaching",
     builder: "syncRequestItems (Upcoming generator, lib/queries/upcoming)",
+    reasons: [],
+  },
+  {
+    // The digest TIME suggestion (#2217): the configured send time loses more often
+    // than not against the measured sleep-arrival distribution, so the app proposes
+    // the p90 and waits for a tap. COACHING tier by hard product contract — a
+    // digest-timing observation is not a safety signal, so it is never an Upcoming
+    // row, never the hero, never an escalation and NEVER ITS OWN SEND.
+    //
+    // Its one push presence is a ride-along line on the morning digest itself (owner
+    // decision 2026-08-06), the same shape #1670's right-sizing suggestion has on the
+    // practice nudge: a line added to an already-consented send is not an increase in
+    // contact, and `buildDigest` appends it only to a message that already exists, so
+    // it can never justify one.
+    //
+    // NOT a rule-findings builder: it is resolved per surface by
+    // `activeDigestTimeSuggestion`, so collectCoachingFindings never sees it. It is
+    // registered here for the same reason the portal sync ask and the poor-sleep
+    // override are — the KEY must be guardable and the tier must be declared.
+    prefix: DIGEST_TIME_PREFIX,
+    tier: "coaching",
+    builder: "activeDigestTimeSuggestion (lib/digest-time-suggestion.ts)",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

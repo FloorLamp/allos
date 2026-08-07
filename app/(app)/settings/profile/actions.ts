@@ -47,7 +47,12 @@ import {
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
   setProfileHouseholdRound,
+  setDigestMinute,
+  setDigestMode,
 } from "@/lib/settings";
+import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
+import { dismissFinding } from "@/lib/queries/upcoming/suppressions";
+import type { DigestTimeExitResult } from "@/lib/digest-time-suggestion";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { buildHouseholdRound } from "@/lib/notifications/household-round";
 import { dispatch } from "@/lib/notifications";
@@ -464,6 +469,52 @@ export async function saveNotificationPrefs(formData: FormData) {
     wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
   revalidatePath("/settings/notifications");
+}
+
+// ---- The digest time suggestion's three exits (#2217) ----------------------
+//
+// The engine DETECTS and SUGGESTS; the tap is the write (#1505). Each of these is one
+// tap and one explicit write, and none of them is reachable except from a tap.
+//
+// THE PROPOSED MINUTE IS NEVER READ OFF THE BUTTON. Each action re-resolves the live
+// suggestion server-side and writes what the detector says NOW — the #1670 ride-along's
+// rule, and the reason a stale tab, a replayed form post or a forged field cannot write
+// a time the detector would not currently propose. A tap on a suggestion that has since
+// stopped firing writes NOTHING and says so.
+
+// "Use 07:40" — write exactly the digest's send time, and nothing else.
+export async function applyDigestTimeSuggestion(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  setDigestMinute(profile.id, suggestion.proposedMinute);
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.proposedMinute };
+}
+
+// The other exit: #2211's Dynamic mode, which solves the same problem by WAITING for
+// the arrival instead of by scheduling past it. Writes the mode and nothing else — the
+// stored minute stays exactly where it is and becomes the floor.
+export async function switchDigestToDynamic(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  setDigestMode(profile.id, "dynamic");
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.configuredMinute };
+}
+
+// Declining is a FIRST-CLASS OUTCOME, not a deferral: a dismissed suggestion is
+// dismissed. One row on the shared suppression bus, under the episode key BOTH surfaces
+// resolve, so this silences the Settings row and the in-digest line together
+// (constraint 5).
+export async function dismissDigestTimeSuggestion(): Promise<DigestTimeExitResult> {
+  const { profile } = await requireWriteAccess();
+  const suggestion = getDigestTimeSuggestion(profile.id);
+  if (!suggestion) return { ok: false, reason: "stale" };
+  dismissFinding(profile.id, suggestion.dedupeKey);
+  revalidatePath("/settings/notifications");
+  return { ok: true, minute: suggestion.configuredMinute };
 }
 
 // The Telegram "send test" is login-scoped as of #1072 (sendTestNotification in

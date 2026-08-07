@@ -132,9 +132,11 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   web bar never defaults it to now (#2019/#2053).
 - **`practice_logs.time`** is a bare local `HH:MM` and often NULL. It is not an instant;
   resolving it needs the row's `date` and the profile timezone.
-- **`notify_lifecycle.at`** is `new Date().toISOString()` — milliseconds and a `Z`, a
+- **`notify_lifecycle.at`** was `new Date().toISOString()` — milliseconds and a `Z`, a
   third serialization phase 1's rule C did not see because the module that builds the
-  string writes no SQL of its own. Nothing compares it in SQL today.
+  string writes no SQL of its own. Migration 167 (#2233) normalized it onto the
+  canonical instant and the writer now binds `instantNow()`. Nothing compares it in
+  SQL today.
 - **`appointments.date` + `appointments.time_of_day`** are the CLINIC's local day and
   optional wall clock (#2234's split of the old mixed-grain `scheduled_at`). A NULL
   `time_of_day` IS the day-only grain, and neither half is ever resolved against the
@@ -297,7 +299,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `narratives` | `period_start` | window-start | day | n/a |  |
 | `narratives` | `period_end` | window-end | day | n/a |  |
 | `narratives` | `created_at` | record | instant | bare |  |
-| `notify_lifecycle` | `at` | event | instant | iso-ms | `new Date().toISOString()` — milliseconds and a `Z`, a third serialization. Phase 1's rule C did not see it because the module that builds the string writes no SQL of its own. Nothing compares it in SQL today; a phase-2 wave should move it onto utcInstant. |
+| `notify_lifecycle` | `at` | event | instant | canonical | Was `new Date().toISOString()` — milliseconds and a `Z`, a third serialization phase 1's rule C could not see because the module that builds the string writes no SQL of its own. Migration 167 (#2233) normalized the stored values and the writer now binds instantNow(). Nothing compares it in SQL. |
 | `notify_messages` | `date` | day | day | n/a |  |
 | `notify_messages` | `sent_at` | event | instant | bare |  |
 | `optical_prescriptions` | `issued_date` | event | day | n/a |  |

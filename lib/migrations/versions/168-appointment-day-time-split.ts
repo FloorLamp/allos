@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 167 (issue #2234): split `appointments.scheduled_at` by grain — as a
+// Migration 168 (issue #2234): split `appointments.scheduled_at` by grain — as a
 // TABLE REBUILD, because the column is NOT NULL and its replacement (`date`) is too.
 //
 // `scheduled_at` held THREE shapes, with no marker saying which: a bare day
@@ -38,7 +38,7 @@ import type { Migration } from "../runner";
 // `substr(…, 12, 5)` takes `HH:MM` from either; a value carrying seconds still
 // yields the HH:MM prefix.
 //
-// The CREATE below is the version-166 appointments shape VERBATIM — migration
+// The CREATE below is the version-167 appointments shape VERBATIM — migration
 // 024's rebuilt definition plus 026's trailing `encounter_id` — with the one
 // column replaced by the two new ones in its position. The copy preserves ids;
 // the profile listing index is recreated over (profile_id, date, time_of_day) so
@@ -112,7 +112,7 @@ export function up(db: Database.Database): void {
            AND encounter_id NOT IN (SELECT id FROM encounters);`
     );
 
-    const scratch = "appointments__new167";
+    const scratch = "appointments__new168";
     db.exec(
       CREATE_APPOINTMENTS.replace(
         "CREATE TABLE appointments (",
@@ -150,7 +150,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 167,
-  name: "167-appointment-day-time-split",
+  id: 168,
+  name: "168-appointment-day-time-split",
   up,
 };

@@ -245,92 +245,33 @@ describe("the registry itself", () => {
   });
 });
 
-// ---- The time-semantic completeness guard (issue #2019 §7) ----
+// ---- No time declaration on a sheet entry (#2230) ----
 //
-// Two features needed eating time and both routed around the food ledger, because
-// nothing said what a one-tap log's TIME meant. This is the declaration that stops a new
-// quick-log entry from shipping without answering — the RECONCILE_PREFIXES discipline,
-// one registry over.
-describe("quick-log time semantics (#2019 §7)", () => {
-  it("every entry declares a semantic with a written reason", () => {
+// The #2019 §7 `time` field was welded to the wrong object: a sheet row fans out
+// to several stores with different time capabilities (log-measurements alone
+// covers four), so no single semantic could be true of it. What a column's TIME
+// means is a per-store fact, declared in lib/time-columns.ts and published in
+// docs/internals/time-columns.md. This is the ratchet the deletion earns: a
+// future re-addition of a temporal declaration to a sheet entry fails here.
+describe("no time declaration on a sheet entry (#2230)", () => {
+  it("no QuickLogItem carries a temporal field", () => {
+    // An allowlist rather than a temporal-name blocklist, so a re-added time
+    // field fails whatever it is called. A genuinely new NON-temporal field is
+    // added here in the same change that adds it to QuickLogItem.
+    const allowed = new Set([
+      "id",
+      "label",
+      "hint",
+      "icon",
+      "target",
+      "training",
+      "cycle",
+    ]);
     for (const item of QUICK_LOG_ITEMS) {
-      expect(["instant", "day-only"], item.id).toContain(item.time.semantic);
-      // A reason, not a placeholder: the point is that "we decided against it" and
-      // "nobody looked" stay distinguishable a year from now.
-      expect(item.time.why.length, item.id).toBeGreaterThan(40);
-    }
-  });
-
-  it("an `instant` entry names how it is corrected; a `day-only` one has nothing to correct", () => {
-    for (const item of QUICK_LOG_ITEMS) {
-      if (item.time.semantic === "instant") {
-        expect(["hour", "day", "none"], item.id).toContain(
-          item.time.correctionUnit
-        );
-      } else {
-        expect(item.time.correctionUnit, item.id).toBeUndefined();
+      for (const key of Object.keys(item)) {
+        expect(allowed.has(key), `${item.id}.${key}`).toBe(true);
       }
     }
-  });
-
-  // #2062: "some value is declared" was all the guard above ever checked, so the
-  // activity and measurements entries shipped `chipUnit: "hour"` while their own `why`
-  // said no chip exists for them. The declaration is documentation either way, and
-  // documentation that contradicts itself is worse than none — so every entry's unit is
-  // pinned here BY NAME. A new entry fails this list until someone decides its answer,
-  // which is the same completeness posture as the semantic guard itself.
-  it("every entry's correction unit is the one its surface actually offers", () => {
-    // `?? null` rather than leaving it undefined: `toEqual` ignores undefined-valued
-    // properties, so an omitted unit on a NEW entry would slip through the comparison
-    // that is supposed to catch exactly that.
-    const units = Object.fromEntries(
-      QUICK_LOG_ITEMS.map((i) => [i.id, i.time.correctionUnit ?? null])
-    );
-    expect(units).toEqual({
-      // Hour chips (lib/correction-time.ts) — the two one-tap ledgers #2019/#2020
-      // built the capture and the correction for.
-      "log-food": "hour",
-      "log-dose": "hour",
-      // #2204: hour-grained too, but corrected through the SESSION's own dated edit
-      // form rather than chips — the unit names the grain the consumer (modalHour)
-      // reads, not the widget that moves it.
-      "log-practice": "hour",
-      // A period start is corrected a DAY at a time, through the dated form on
-      // /medical/cycles that owns the exceptions.
-      "log-period": "day",
-      // Forms that ASK for the time on entry: nothing to correct afterwards, and no
-      // chip-based correction UI has ever existed for either.
-      "log-activity": "none",
-      "log-measurements": "none",
-      // `day-only` entries have no instant, so no unit at all. The mood row's
-      // #2128 day chips choose the day BEFORE the write — a statement, not a
-      // correction — so it stays day-only with no unit.
-      "log-mood": null,
-      "add-document": null,
-    });
-  });
-
-  it("food and dose are the two `instant` logs #2019/#2020 built the capture for", () => {
-    const byId = new Map(QUICK_LOG_ITEMS.map((i) => [i.id, i]));
-    expect(byId.get("log-food")!.time).toMatchObject({
-      semantic: "instant",
-      correctionUnit: "hour",
-    });
-    expect(byId.get("log-dose")!.time).toMatchObject({
-      semantic: "instant",
-      correctionUnit: "hour",
-    });
-    // Practice JOINED them in #2204, and only because the missing half of the old
-    // argument arrived: the entry was `day-only` because no consumer read the instant,
-    // #2202's modalHour is that consumer, and leaving the declaration alone would have
-    // left this file asserting something false about a column the rhythm inference now
-    // depends on. The `why` has to NAME the consumer — a bare "instant" would be the
-    // precise failure #2019 §7 exists to prevent.
-    const practice = byId.get("log-practice")!.time;
-    expect(practice.semantic).toBe("instant");
-    expect(practice.correctionUnit).toBe("hour");
-    expect(practice.why).toMatch(/weekly-rhythm/);
-    expect(practice.why).toMatch(/modalHour/);
   });
 });
 

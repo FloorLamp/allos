@@ -18,6 +18,11 @@ import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
 import {
+  DIGEST_TIME_DISMISS_PREFIX,
+  DIGEST_TIME_DYNAMIC_PREFIX,
+  DIGEST_TIME_USE_PREFIX,
+} from "../digest-time-suggestion";
+import {
   isDigestCategory,
   TUNE_COLLAPSE_PREFIX,
   TUNE_EXPAND_PREFIX,
@@ -1251,6 +1256,38 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
   const itemId = Number(itemStr);
   if (!profileId || !itemId || !date) return null;
   return { profileId, itemId, date };
+}
+
+// ---- The digest time suggestion's exits (issue #2217) -----------------------
+
+export interface DigestTimeCallback {
+  profileId: number;
+  date: string;
+  // `use` writes the proposed send time, `dynamic` writes the mode, `dismiss` writes
+  // one suppression row. Each is a SINGLE explicit write, and each re-resolves the
+  // live suggestion first — the token deliberately carries no minute, so a button
+  // that has been sitting in a chat cannot write a time the detector has since
+  // stopped proposing.
+  action: "use" | "dynamic" | "dismiss";
+}
+
+// Parse a "dgtuse:<profileId>:<date>" / "dgtdyn:…" / "dgtno:…" token. `date` is the
+// digest's own day: a tap on YESTERDAY's message is refused, the same staleness rule
+// the offer tail and the ⚙️ Tune control apply.
+export function parseDigestTimeCallback(
+  data: unknown
+): DigestTimeCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profStr, date] = data.split(":");
+  const profileId = Number(profStr);
+  if (!profileId || !date) return null;
+  if (prefix === DIGEST_TIME_USE_PREFIX)
+    return { profileId, date, action: "use" };
+  if (prefix === DIGEST_TIME_DYNAMIC_PREFIX)
+    return { profileId, date, action: "dynamic" };
+  if (prefix === DIGEST_TIME_DISMISS_PREFIX)
+    return { profileId, date, action: "dismiss" };
+  return null;
 }
 
 // ---- The digest's ⚙️ Tune control (issue #1714) ------------------------------

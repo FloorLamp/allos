@@ -397,8 +397,10 @@ describe("value hygiene", () => {
   });
 
   it("normalizes a millisecond ISO stamp that reached storage", () => {
-    // notify_lifecycle.at is written with `new Date().toISOString()`; a reader must not
-    // have to know that.
+    // notify_lifecycle.at was written with `new Date().toISOString()` before
+    // migration 167 normalized it; a reader must keep absorbing a millisecond stamp
+    // it meets (an unmigrated export, a value from before the conversion) without
+    // having to know that history.
     expect(
       eventInstant("notify_lifecycle", { at: "2026-03-10T13:05:00.123Z" })
     ).toMatchObject({ at: "2026-03-10T13:05:00Z" });

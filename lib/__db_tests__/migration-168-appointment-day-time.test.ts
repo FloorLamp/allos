@@ -1,9 +1,9 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
-import { up } from "@/lib/migrations/versions/167-appointment-day-time-split";
+import { up } from "@/lib/migrations/versions/168-appointment-day-time-split";
 
-// Migration 167 (#2234): the appointments.scheduled_at split, rebuilt as
+// Migration 168 (#2234): the appointments.scheduled_at split, rebuilt as
 // `date TEXT NOT NULL` + `time_of_day TEXT NULL`.
 //
 // The column held THREE shapes — a bare day, the form's space-separated local
@@ -38,7 +38,7 @@ function columnInfo(
   ).find((c) => c.name === column);
 }
 
-// The version-166 appointments shape (024's rebuild + 026's encounter_id), with
+// The pre-168 appointments shape (024's rebuild + 026's encounter_id; 167 touched only notify_lifecycle), with
 // minimal referenced tables so the dangling-link nulling has something to probe.
 function preMigrationDb(): Database.Database {
   const mem = new Database(":memory:");
@@ -89,7 +89,7 @@ function preMigrationDb(): Database.Database {
   return mem;
 }
 
-describe("migration 167 — appointments.scheduled_at → date + time_of_day", () => {
+describe("migration 168 — appointments.scheduled_at → date + time_of_day", () => {
   it("moves every stored shape to the right halves, preserving ids", () => {
     const mem = preMigrationDb();
     up(mem);
