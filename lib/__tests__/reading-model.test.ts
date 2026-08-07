@@ -95,7 +95,7 @@ describe("identity resolution across stores", () => {
 });
 
 describe("the Reading mapping from each store's row shape", () => {
-  it("maps a body_metrics row (wide, per-day, no instant, no provenance)", () => {
+  it("maps a body_metrics row (wide, per-day, no provenance)", () => {
     const r = readingFromBodyMetric(
       {
         id: 3,
@@ -112,6 +112,8 @@ describe("the Reading mapping from each store's row shape", () => {
       value: 57,
       unit: "bpm",
       date: "2026-07-02",
+      // No `occurred_at` on the row (a pre-165 read, or an untimed reading) means
+      // no instant — honest absence, never a midnight anchor (#2235 decision 2).
       measuredAt: null,
       source: "wearable",
       store: "body_metrics",
@@ -121,6 +123,59 @@ describe("the Reading mapping from each store's row shape", () => {
       notes: "post-illness",
     });
     expect(r.provenance).toBeUndefined();
+  });
+
+  it("maps a body_metrics row's stated occurred_at onto measuredAt (#2235)", () => {
+    const r = readingFromBodyMetric(
+      {
+        id: 4,
+        date: "2026-07-03",
+        value: 55,
+        source: null,
+        occurred_at: "2026-07-03T07:12:00Z",
+      },
+      RHR
+    );
+    expect(r.measuredAt).toBe("2026-07-03T07:12:00Z");
+    // The instant is DESCRIPTIVE: the day attribution stays the row's `date`.
+    expect(r.date).toBe("2026-07-03");
+    // And a row that states NULL maps back to null, not to a synthesized anchor.
+    expect(
+      readingFromBodyMetric(
+        {
+          id: 5,
+          date: "2026-07-03",
+          value: 56,
+          source: null,
+          occurred_at: null,
+        },
+        RHR
+      ).measuredAt
+    ).toBeNull();
+  });
+
+  it("dedupeReadings is unchanged by a body_metrics instant (#2235 non-goal)", () => {
+    // occurred_at is descriptive, never identity: two presentations of the same
+    // (identity, date, source, value) collapse whether or not one carries the
+    // instant — and differing instants do NOT make two readings out of one row.
+    const bare = readingFromBodyMetric(
+      { id: 7, date: "2026-07-04", value: 52, source: null },
+      RHR
+    );
+    const timed = readingFromBodyMetric(
+      {
+        id: 7,
+        date: "2026-07-04",
+        value: 52,
+        source: null,
+        occurred_at: "2026-07-04T06:45:00Z",
+      },
+      RHR
+    );
+    expect(dedupeReadings([bare, timed])).toHaveLength(1);
+    // Distinct values still stay distinct — the instant changed nothing about
+    // what the key reads.
+    expect(dedupeReadings([timed, { ...bare, value: 53 }])).toHaveLength(2);
   });
 
   it("maps a metric_samples row, keeping its absolute instant", () => {

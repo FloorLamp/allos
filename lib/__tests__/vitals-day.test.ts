@@ -35,6 +35,40 @@ describe("vitalReadingTime", () => {
     expect(vitalReadingTime(bpRow({ notes: "08:05" }), TZ)).toBe("08:05");
   });
 
+  it("reads a stated occurred_at first — the declared event column (#2235)", () => {
+    // 11:12Z on a July day is 07:12 in New York (UTC-4). The riding conventions
+    // (a notes HH:MM, an external_id instant) never override the column that
+    // MEANS "when this reading was taken".
+    const row = bpRow({
+      occurred_at: "2026-07-25T11:12:00Z",
+      notes: "08:05",
+      external_id: hcId("Blood Pressure Systolic", "2026-07-25T11:10:00Z"),
+    });
+    expect(vitalReadingTime(row, TZ)).toBe("07:12");
+  });
+
+  it("gates a stated occurred_at on the row's own local day, like the ingest instant", () => {
+    // The statement resolves to the 24th locally while the row says the 25th —
+    // the profile's timezone moved since it was stated. Fall through to the next
+    // convention rather than labelling the day with another day's clock.
+    const row = bpRow({
+      date: DAY,
+      occurred_at: "2026-07-24T18:00:00Z",
+      notes: "08:05",
+    });
+    expect(vitalReadingTime(row, TZ)).toBe("08:05");
+    expect(
+      vitalReadingTime(
+        bpRow({ date: DAY, occurred_at: "2026-07-24T18:00:00Z" }),
+        TZ
+      )
+    ).toBeNull();
+    // Garbage in the column is no statement at all.
+    expect(
+      vitalReadingTime(bpRow({ occurred_at: "not-an-instant" }), TZ)
+    ).toBeNull();
+  });
+
   it("ignores a note that is not a clock time", () => {
     expect(vitalReadingTime(bpRow({ notes: "after coffee" }), TZ)).toBeNull();
     expect(vitalReadingTime(bpRow({ notes: "44:99" }), TZ)).toBeNull();
