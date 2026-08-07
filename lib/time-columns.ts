@@ -1118,8 +1118,8 @@ export const TIME_COLUMNS = {
       column: "at",
       semantic: "event",
       grain: "instant",
-      convention: "iso-ms",
-      note: "`new Date().toISOString()` — milliseconds and a `Z`, a third serialization. Phase 1's rule C did not see it because the module that builds the string writes no SQL of its own. Nothing compares it in SQL today; a phase-2 wave should move it onto utcInstant.",
+      convention: "canonical",
+      note: "Was `new Date().toISOString()` — milliseconds and a `Z`, a third serialization phase 1's rule C could not see because the module that builds the string writes no SQL of its own. Migration 167 (#2233) normalized the stored values and the writer now binds instantNow(). Nothing compares it in SQL.",
     },
   ],
   notify_messages: [

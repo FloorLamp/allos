@@ -98,6 +98,10 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     columns: ["created_at"],
     why: "migration 163 — the per-row provenance stamp (#1333), converted with its parent so the arrival-lag join reads one convention on both sides.",
   },
+  notify_lifecycle: {
+    columns: ["at"],
+    why: "migration 167 (#2233) — the delivery-health marker's failure instant, normalized off `new Date().toISOString()`'s millisecond shape (a THIRD serialization rule C could not see: the module that built the string, lib/notifications/index.ts, writes no SQL of its own — the #2205 phase 3 census caught it). The writer now binds instantNow(); nothing compares this column in SQL.",
+  },
 };
 
 // ---- Rule C allowlist --------------------------------------------------------
