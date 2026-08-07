@@ -50,6 +50,14 @@ import {
   DIGEST_MARKER_KEY,
 } from "@/lib/notifications/send-markers";
 import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
+import { DEADLINE_MARGIN_MIN } from "@/lib/notifications/digest-schedule";
+import {
+  beginNotifyRun,
+  clearNotifyLog,
+  endNotifyRun,
+  readNotifyEvents,
+} from "@/lib/notify-log";
+import { classifyNotifyLine, type NotifyEvent } from "@/lib/notify-log-format";
 import { seedLoginTelegram } from "./fixtures";
 
 // The frozen morning. Its own night (2026-08-06) is deliberately ABSENT — that is
@@ -174,6 +182,13 @@ function lastNightArrives(profileId: number, arrivalMinute: number): void {
   night(profileId, FROZEN_DAY, arrivalMinute, 90);
 }
 
+/** This profile's persisted digest-tick decision line, or undefined if it wrote none. */
+function declineTrace(profileId: number): NotifyEvent | undefined {
+  return readNotifyEvents().events.find(
+    (e) => e.profileId === profileId && e.decision != null
+  );
+}
+
 function stubFetch(ok = true): ReturnType<typeof vi.fn> {
   const mock = vi.fn(
     async () =>
@@ -196,7 +211,10 @@ type TickOutcome = "already-sent" | "idle" | "declined" | "sent" | "failed";
 //   if (getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date) {
 //     if (planProfileDigestTick(...) === "send") {
 //       const dg = await runDigest(...);
-//       if (dg.failed) { recordDigestAttempt(profile.id, date, minute); ... }
+//       if (dg.failed) {
+//         if (sched.digestMode === "dynamic") recordDigestAttempt(...);
+//         ...
+//       }
 //     }
 //   }
 async function tickDigest(
@@ -207,9 +225,10 @@ async function tickDigest(
   const date = today(profileId);
   if (getProfileSetting(profileId, DIGEST_MARKER_KEY) === date)
     return "already-sent";
+  const sched = getNotifySchedule(profileId);
   const action = planProfileDigestTick(
     profileId,
-    getNotifySchedule(profileId),
+    sched,
     minute,
     TICK_MINUTES,
     date
@@ -218,7 +237,11 @@ async function tickDigest(
   if (action === "idle") return "idle";
   const dg = await runDigest(profileId, name, date);
   if (dg.failed) {
-    recordDigestAttempt(profileId, date, minute);
+    // ONLY Dynamic anchors its retry to the attempt, so only Dynamic writes the
+    // record. Static's two attempts are `slotAttempt`'s slot-anchored bands and it
+    // never reads this key.
+    if (sched.digestMode === "dynamic")
+      recordDigestAttempt(profileId, date, minute);
     return "failed";
   }
   return "sent";
@@ -360,6 +383,62 @@ describe("Dynamic — sends the moment last night lands", () => {
     expect(getProfileSetting(p, DIGEST_ATTEMPT_KEY)).toBeUndefined();
   });
 
+  it("leaves the #2209 trace, declared as a decline and naming its evidence", async () => {
+    // Writing no SEND state does not mean writing no EVIDENCE (#2209, persisted by
+    // #2220): the decision carries `decision: "declined"` so the operator page
+    // classifies it by what the tick decided rather than by parsing message text, and
+    // it carries the same predicate inputs the decision itself consumed.
+    clearNotifyLog();
+    beginNotifyRun();
+    const p = seedProfile("DeclineTrace", "dynamic");
+    stubFetch();
+    vi.setSystemTime(at(clock(FLOOR)));
+    expect(await tickDigest(p, "DeclineTrace")).toBe("declined");
+    endNotifyRun();
+
+    const line = declineTrace(p);
+    expect(line).toBeDefined();
+    expect(line?.decision).toBe("declined");
+    expect(classifyNotifyLine(line!)).toBe("decline");
+    const d = line?.detail ?? "";
+    // The predicate half: the section is on and last night is genuinely outstanding.
+    expect(d).toContain('"sleepSection":true');
+    expect(d).toContain('"hasLastNight":false');
+    expect(d).toContain('"tracking":true');
+    // The arrival half, from #2214's statistic — never the composition it replaced.
+    expect(d).toContain(`"arrivalNights":${MEASURED.length}`);
+    expect(d).toContain(`"expectedByMin":${DEADLINE - DEADLINE_MARGIN_MIN}`);
+    // And the countdown this decline is running against.
+    expect(d).toContain(`"deadlineMinute":${DEADLINE}`);
+  });
+
+  it("a PROCEEDING re-check is logged too, so 'it considered waiting' is answerable", async () => {
+    clearNotifyLog();
+    beginNotifyRun();
+    const p = seedProfile("ProceedTrace", "dynamic");
+    stubFetch();
+    lastNightArrives(p, FLOOR);
+    vi.setSystemTime(at(clock(FLOOR)));
+    expect(await tickDigest(p, "ProceedTrace")).toBe("sent");
+    endNotifyRun();
+
+    const line = declineTrace(p);
+    expect(line?.decision).toBe("proceeded");
+    expect(line?.detail).toContain('"hasLastNight":true');
+  });
+
+  it("STATIC never asks the question, so it writes no trace at all", async () => {
+    clearNotifyLog();
+    beginNotifyRun();
+    const p = seedProfile("StaticNoTrace", "static");
+    stubFetch();
+    vi.setSystemTime(at(clock(FLOOR)));
+    expect(await tickDigest(p, "StaticNoTrace")).toBe("sent");
+    endNotifyRun();
+
+    expect(declineTrace(p)).toBeUndefined();
+  });
+
   it("collapses to 'send at the floor' with the Sleep section off", async () => {
     // With `digest_sleep_enabled = 0` there is nothing to wait for, so Dynamic IS
     // Static for that profile — every morning, not just the ones where sleep landed.
@@ -406,6 +485,25 @@ describe("a failed send backs off from the ATTEMPT, not from the floor", () => {
       vi.setSystemTime(at(clock(m)));
       expect(await tickDigest(p, "DynamicFail"), clock(m)).toBe("idle");
     }
+  });
+
+  it("a STATIC failure writes no attempt record — its bands are slot-anchored", async () => {
+    // The record exists to move Dynamic's retry anchor. Static's two attempts are
+    // `slotAttempt`'s slot-anchored bands and it never reads the key, so writing one
+    // would leave a `profile_settings` row nothing consults — and would make the
+    // SEND_MARKER_REGISTRY entry's "Static never writes it" untrue.
+    const p = seedProfile("StaticFail", "static");
+    stubFetch(false);
+
+    vi.setSystemTime(at(clock(FLOOR)));
+    expect(await tickDigest(p, "StaticFail")).toBe("failed");
+    expect(getProfileSetting(p, DIGEST_ATTEMPT_KEY)).toBeUndefined();
+    expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBeUndefined();
+
+    // Its retry is still the slot's second band, an hour after the SLOT.
+    vi.setSystemTime(at(clock(FLOOR + 60)));
+    expect(await tickDigest(p, "StaticFail")).toBe("failed");
+    expect(getProfileSetting(p, DIGEST_ATTEMPT_KEY)).toBeUndefined();
   });
 });
 

@@ -827,7 +827,13 @@ async function tickProfile(
           coachingInput()
         );
         if (dg.failed) {
-          recordDigestAttempt(profile.id, date, minute);
+          // ONLY DYNAMIC writes the record. Static's two attempts are the
+          // slot-anchored bands `slotAttempt` already gives it, and it never reads
+          // this key — writing one for a Static profile would put a row in
+          // `profile_settings` that nothing ever consults, and make the
+          // SEND_MARKER_REGISTRY entry's "Static never writes it" untrue.
+          if (sched.digestMode === "dynamic")
+            recordDigestAttempt(profile.id, date, minute);
           anyFailed = true;
         }
       }

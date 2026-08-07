@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — migration 165 (#2211): the morning digest gets a MODE, and
+// DB INTEGRATION TIER — migration 166 (#2211): the morning digest gets a MODE, and
 // the `auto` sentinel leaves `notify_digest_hour`.
 //
 // THE CONSTRAINT UNDER TEST is the issue's own: the mode is NEW, so no user's digest
@@ -18,7 +18,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
-import { up } from "@/lib/migrations/versions/165-digest-mode";
+import { up } from "@/lib/migrations/versions/166-digest-mode";
 import {
   getNotifySchedule,
   setProfileSetting,
@@ -52,7 +52,7 @@ let seq = 0;
 
 function newProfile(): number {
   const id = Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`Mig165_${++seq}`)
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`Mig166_${++seq}`)
       .lastInsertRowid
   );
   setTimezone(id, TZ);
@@ -106,7 +106,7 @@ beforeEach(() => {
   db.exec("DELETE FROM metric_samples");
 });
 
-describe("migration 165 — every digest becomes Static, and none moves or turns on", () => {
+describe("migration 166 — every digest becomes Static, and none moves or turns on", () => {
   it("carries a typed time over unchanged", () => {
     const p = newProfile();
     setProfileSetting(p, "notify_digest_hour", "06:45");

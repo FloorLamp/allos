@@ -123,7 +123,8 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     expect(getProfileSetting(profile.id, "notify_digest_hour")).toBe("");
     const sched = getNotifySchedule(profile.id);
     expect(sched.digestMinute).toBeNull();
-    // The mode survives an Off so switching back on restores the choice.
+    // The mode is still written beside the off time, so the stored pair stays total
+    // and a reader never has to tell "unset" from "Static".
     expect(sched.digestMode).toBe("static");
   });
 

@@ -15,8 +15,10 @@ import {
 //
 // It also pins that the summary under the control names the DEADLINE, because the
 // Dynamic promise ("by X at the latest") is the half a user cannot infer from the
-// picker — and that the profile is told which of the four no-answer reasons applies
-// rather than a flattened "not enough data yet".
+// picker. WHICH of the four no-answer reasons is stated, and that they stay four
+// different sentences, is pinned in the pure tier over `describeDigestSchedule`
+// (lib/__tests__/digest-schedule.test.ts) — the copy is a function of the arrival
+// sample, and asserting it here would only pin the E2E seed's sample instead.
 //
 // Runs as admin acting as the seeded profile 1 (shared storageState).
 // BLAST RADIUS: it drives the digest control and the sleep extra, then RESETS the
@@ -81,8 +83,9 @@ test.describe("morning digest modes (issue #2211)", () => {
       "nothing to wait for"
     );
 
-    // Off keeps the mode, so switching back on restores the choice rather than
-    // silently reverting to Static.
+    // Off is the ABSENCE of a time: `notify_digest_hour = ""` is the off state, so
+    // turning the digest off genuinely forgets the minute — and it persists as off
+    // across a reload rather than only in React state.
     await settledSelectSave(
       page,
       page.getByTestId("digest-hour"),
@@ -90,13 +93,20 @@ test.describe("morning digest modes (issue #2211)", () => {
       kindsCard
     );
     await expect(page.getByTestId("digest-hour-time")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("digest-hour")).toHaveValue("");
+    await expect(page.getByTestId("digest-hour-time")).toHaveCount(0);
+
+    // Turning it back on pre-fills the declared 07:00 default in EITHER mode. A
+    // pre-fill, not an `auto` binding: it does not move on its own, and #2217 is what
+    // proposes moving it.
     await settledSelectSave(
       page,
       page.getByTestId("digest-hour"),
       "dynamic",
       kindsCard
     );
-    await expect(page.getByTestId("digest-hour-time")).toHaveValue("06:45");
+    await expect(page.getByTestId("digest-hour-time")).toHaveValue("07:00");
 
     // Reset the shared fixture: digest off, sleep summary back on (its default).
     await settledCheckSave(

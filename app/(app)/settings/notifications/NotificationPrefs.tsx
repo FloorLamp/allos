@@ -189,10 +189,11 @@ function TimeControl({
 // left two of them unreachable without understanding it. And not "Smart": the tone
 // contract is numbers not adjectives, and it implies the alternative is dumb.
 //
-// The mode is preserved when the digest is switched Off, so switching it back on
-// restores what the user last chose. Switching from Off seeds the previous concrete
-// time, or the declared 07:00 pre-fill — a pre-fill, never an `auto` binding: it does
-// not move on its own, and #2217 is what proposes moving it.
+// OFF IS THE ABSENCE OF A TIME, so switching Off writes `digest_hour: ""` and leaves
+// `digest_mode` alone — a mode is not contact and there is nothing to be gained by
+// clearing it. Switching back ON re-asks for the mode (the select collapses Off and
+// mode into one control) and seeds the declared 07:00 pre-fill. A pre-fill, never an
+// `auto` binding: it does not move on its own, and #2217 is what proposes moving it.
 //
 // The summary below the control is `describeDigestSchedule` — the SAME pure result
 // any other surface explaining this schedule formats, so a mode and a surface can

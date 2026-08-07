@@ -399,7 +399,8 @@ export function onboardingNotificationSchedule(
 
   const noSummary = {
     // Digest off. Its MODE is carried through untouched (#2211): a mode is not
-    // contact, and remembering it means a later opt-in restores what was chosen.
+    // contact, and turning the digest off is not the moment to rewrite a field only
+    // a user's tap is allowed to write.
     digestMinute: null,
     weeklyRecapDay: null,
     weeklyRecapMinute: current.weeklyRecapMinute,

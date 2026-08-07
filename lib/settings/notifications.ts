@@ -899,7 +899,7 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     // Digest is opt-in: absent → off (null); "" → off; "HH:MM" → that minute.
     //
     // A RESIDUAL "auto" reads as the declared default rather than as off. Migration
-    // 165 converts every stored sentinel, so the only way one can appear is an old
+    // 166 converts every stored sentinel, so the only way one can appear is an old
     // process writing it during a deploy overlap — and turning someone's digest off
     // is a worse answer to that than pre-filling the default it would have been
     // switched on with. (`AUTO_TIME` itself is very much alive: the Morning intake
@@ -968,9 +968,11 @@ export function setNotifySchedule(
     sched.workoutEnabled ? "1" : "0"
   );
   // Digest (#2211): the time and the mode are two settings, written together. The
-  // time is "HH:MM" or "" (off) — no sentinel. The MODE is written even when the
-  // digest is off, so switching it back on restores the mode the user last chose
-  // rather than silently reverting to Static.
+  // time is "HH:MM" or "" (off) — no sentinel. The MODE is written unconditionally,
+  // including while the digest is off, so the stored pair is always total: a reader
+  // never has to decide whether an absent mode beside an off time means "Static" or
+  // "unset". It does NOT survive as a user-visible choice — the picker collapses Off
+  // and mode into one select, so turning the digest back on asks for the mode again.
   setProfileSetting(
     profileId,
     "notify_digest_hour",

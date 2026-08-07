@@ -14,7 +14,7 @@ import {
 } from "../../notifications/digest-schedule";
 import { formatNotifyTime } from "../../notifications/schedule";
 
-// Migration 165 (issue #2211): the morning digest gets a MODE, and the `auto`
+// Migration 166 (issue #2211): the morning digest gets a MODE, and the `auto`
 // sentinel leaves `notify_digest_hour`.
 //
 // The digest used to have three states in one key — absent/"" (off), "HH:MM"
@@ -185,7 +185,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 165,
-  name: "165-digest-mode",
+  id: 166,
+  name: "166-digest-mode",
   up,
 };
