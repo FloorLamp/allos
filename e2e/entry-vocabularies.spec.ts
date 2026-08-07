@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   hydratedClick,
+  openCareOverviewSection,
   settledClick,
   settledFill,
   settledSelect,
@@ -114,14 +115,12 @@ async function openAllergyDialog(page: Page) {
   return dialog;
 }
 
+// The third copy of "open a Care › Overview disclosure" the #2231 audit found. It
+// carried the same read-once-then-click race as the family-history one, so it now
+// asks the same shared, `open`-guarded helper; the caller still asserts what it
+// reveals.
 async function revealCarePlan(page: Page) {
-  const section = page.getByTestId("records-care-plan");
-  const open = await section.evaluate(
-    (element) => (element as HTMLDetailsElement).open
-  );
-  // Native <details> — no JS, no POST; the caller asserts what it reveals.
-  if (!open) await section.locator("summary").click();
-  return section;
+  return openCareOverviewSection(page, "records-care-plan");
 }
 
 async function openCarePlanDialog(page: Page) {

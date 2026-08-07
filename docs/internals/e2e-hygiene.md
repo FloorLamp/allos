@@ -377,6 +377,7 @@ decision tree; the summary:
 | **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard      |
 | A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                       |
 | A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)         |
+| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231) |
 | A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                            |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
@@ -669,6 +670,35 @@ visit dialog's **Add** (a `<form action>` submit whose "Appointment saved" toast
 only raised after the action resolves) had the identical shape, and three
 `Edit dashboard`/`Cancel` clicks are pure client toggles on the heaviest page in the
 app — `hydratedClick`, not `settledClick` and not a retry loop, since they TOGGLE.
+
+### When the APP is the other writer — `openCareOverviewSection` (#2231)
+
+`hydratedClick`'s rule ("a toggle must be clicked ONCE, never retried") assumes the
+spec is the only thing writing the state. Care › Overview breaks that assumption:
+its four sections are native `<details>` (#1804), and `CareOverviewDisclosure` ALSO
+opens the section the URL hash names, imperatively, from an effect that runs at
+**hydration**. Two writers, one bit.
+
+Three specs had each rolled their own "open the section": read `details.open` once,
+click `summary` if it says closed. That read-once-then-click is a race against the
+effect, and it fails in the direction that is easy to miss — the read says CLOSED,
+the effect flips `open` true while the click is still running its actionability
+checks, and the click's native toggle then **closes** what the effect just opened.
+The spec spends its whole timeout asserting against a collapsed section. That is
+#2231: the same test, same locator, `Expected: visible / Received: hidden`, on two
+unrelated branches ~14 h apart, neither of which touched the spec. (Note the failure
+is NOT "the read saw `open === true` and skipped the click" — forcing that state
+makes the old helper pass, because a genuinely-open section reveals its contents.)
+
+The fix is decision-tree case 4 — the marked retry loop — with the guard doing the
+work `hydratedClick`'s single click was doing: the loop clicks only when the element
+reports `open === false`, so an already-open section is never clicked shut, and the
+one-shot hydration effect can cost at most one extra iteration. Reproduced on demand
+by re-closing the section and having a one-shot `pointerdown` listener re-open it
+before the summary's native activation: the old helper fails, the new one passes.
+
+Generalise the shape, not the helper: **when the app itself writes the state your
+click toggles, guard the click on that state and let the loop converge.**
 
 ### The action and the apply are two events — `settledClickApplied` (#1858)
 
