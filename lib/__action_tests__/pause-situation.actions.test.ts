@@ -91,11 +91,8 @@ describe("surgery-bridge accept/dismiss actions (#1299)", () => {
           `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
            VALUES (?, ?, '09:00', ?, 'scheduled')`
         )
-        .run(
-          profileId,
-          shiftDateStr(today(profileId), offset),
-          title
-        ).lastInsertRowid
+        .run(profileId, shiftDateStr(today(profileId), offset), title)
+        .lastInsertRowid
     );
   }
   beforeEach(() => {

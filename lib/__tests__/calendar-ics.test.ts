@@ -206,7 +206,8 @@ describe("zonedWallTimeToUtc", () => {
 describe("appointmentToIcsEvent — detail levels + timing", () => {
   const base: AppointmentLike = {
     id: 7,
-    date: "2026-07-10", time_of_day: "14:30",
+    date: "2026-07-10",
+    time_of_day: "14:30",
     status: "scheduled",
     title: "Cardiology follow-up",
     location: "Heart Center",
@@ -280,7 +281,8 @@ describe("selectFeedAppointments", () => {
   const appts: AppointmentLike[] = [
     {
       id: 1,
-      date: "2026-07-20", time_of_day: null,
+      date: "2026-07-20",
+      time_of_day: null,
       status: "scheduled",
       title: null,
       location: null,
@@ -289,7 +291,8 @@ describe("selectFeedAppointments", () => {
     },
     {
       id: 2,
-      date: "2026-07-01", time_of_day: null,
+      date: "2026-07-01",
+      time_of_day: null,
       status: "scheduled",
       title: null,
       location: null,
@@ -298,7 +301,8 @@ describe("selectFeedAppointments", () => {
     },
     {
       id: 3,
-      date: "2026-01-01", time_of_day: null,
+      date: "2026-01-01",
+      time_of_day: null,
       status: "scheduled",
       title: null,
       location: null,
@@ -307,7 +311,8 @@ describe("selectFeedAppointments", () => {
     }, // stale
     {
       id: 4,
-      date: "2026-06-20", time_of_day: null,
+      date: "2026-06-20",
+      time_of_day: null,
       status: "completed",
       title: null,
       location: null,
@@ -316,7 +321,8 @@ describe("selectFeedAppointments", () => {
     },
     {
       id: 5,
-      date: "2026-07-05", time_of_day: null,
+      date: "2026-07-05",
+      time_of_day: null,
       status: "cancelled",
       title: null,
       location: null,
@@ -343,7 +349,8 @@ describe("selectFeedAppointments", () => {
 describe("appointmentToPreviewRow — in-app preview projection", () => {
   const base: AppointmentLike = {
     id: 7,
-    date: "2026-07-10", time_of_day: "14:30",
+    date: "2026-07-10",
+    time_of_day: "14:30",
     status: "scheduled",
     title: "Cardiology follow-up",
     location: "Heart Center",
@@ -421,7 +428,8 @@ describe("selectFeedPreviewRows — selection + projection composed", () => {
     const appts: AppointmentLike[] = [
       {
         id: 1,
-        date: "2026-07-20", time_of_day: "09:00",
+        date: "2026-07-20",
+        time_of_day: "09:00",
         status: "scheduled",
         title: "Physical",
         location: null,
@@ -430,7 +438,8 @@ describe("selectFeedPreviewRows — selection + projection composed", () => {
       },
       {
         id: 2,
-        date: "2026-06-20", time_of_day: null,
+        date: "2026-06-20",
+        time_of_day: null,
         status: "completed", // dropped
         title: null,
         location: null,
@@ -439,7 +448,8 @@ describe("selectFeedPreviewRows — selection + projection composed", () => {
       },
       {
         id: 3,
-        date: "2026-01-01", time_of_day: null,
+        date: "2026-01-01",
+        time_of_day: null,
         status: "scheduled", // stale (outside 30-day past window)
         title: null,
         location: null,
@@ -489,7 +499,8 @@ function familyFixture(): ConsolidatedProfileFeed[] {
       appts: [
         {
           id: 1,
-          date: "2026-07-10", time_of_day: "14:30",
+          date: "2026-07-10",
+          time_of_day: "14:30",
           status: "scheduled",
           title: "Cardiology follow-up",
           location: "Heart Center",
@@ -508,7 +519,8 @@ function familyFixture(): ConsolidatedProfileFeed[] {
       appts: [
         {
           id: 1, // same appointment id as Ada's — must NOT collide
-          date: "2026-07-09", time_of_day: "09:00",
+          date: "2026-07-09",
+          time_of_day: "09:00",
           status: "scheduled",
           title: "Dermatology",
           location: null,
@@ -517,7 +529,8 @@ function familyFixture(): ConsolidatedProfileFeed[] {
         },
         {
           id: 2,
-          date: "2026-06-20", time_of_day: null,
+          date: "2026-06-20",
+          time_of_day: null,
           status: "completed", // history — dropped by the selector
           title: null,
           location: null,
@@ -713,7 +726,8 @@ describe("selectFeedAppointments — future horizon", () => {
   const appts: AppointmentLike[] = [
     {
       id: 1,
-      date: "2026-07-20", time_of_day: null,
+      date: "2026-07-20",
+      time_of_day: null,
       status: "scheduled",
       title: null,
       location: null,
@@ -722,7 +736,8 @@ describe("selectFeedAppointments — future horizon", () => {
     },
     {
       id: 2,
-      date: "2026-09-01", time_of_day: null,
+      date: "2026-09-01",
+      time_of_day: null,
       status: "scheduled",
       title: null,
       location: null,
@@ -806,7 +821,8 @@ describe("upcomingSignalToIcsEvent", () => {
 describe("composeFeedEvents", () => {
   const appt: AppointmentLike = {
     id: 5,
-    date: "2026-07-11", time_of_day: "14:30",
+    date: "2026-07-11",
+    time_of_day: "14:30",
     status: "scheduled",
     title: "Cardiology",
     location: "Heart Center",
@@ -915,7 +931,8 @@ describe("composeFeedEvents", () => {
 describe("composeFeedPreviewRows mirrors composeFeedEvents", () => {
   const appt: AppointmentLike = {
     id: 5,
-    date: "2026-07-11", time_of_day: "14:30",
+    date: "2026-07-11",
+    time_of_day: "14:30",
     status: "scheduled",
     title: "Cardiology",
     location: "Heart Center",
@@ -975,7 +992,8 @@ describe("FEED_CATEGORIES completeness", () => {
 describe("appointmentToIcsEvent — mental_health sensitivity (#997)", () => {
   const mh: AppointmentLike = {
     id: 9,
-    date: "2026-07-10", time_of_day: "14:30",
+    date: "2026-07-10",
+    time_of_day: "14:30",
     status: "scheduled",
     title: "Therapy — Dr. Okafor",
     location: "Telehealth",

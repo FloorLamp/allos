@@ -106,7 +106,10 @@ function futureDay(daysAhead: number): string {
 
 // The stored halves for a marker title this spec created, straight from the
 // worker's own database.
-function storedHalves(title: string): { date: string; time_of_day: string | null } {
+function storedHalves(title: string): {
+  date: string;
+  time_of_day: string | null;
+} {
   const handle = new Database(workerDbPath());
   try {
     return handle
@@ -167,7 +170,10 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
 
     // Re-open in the edit form: the time field carries the stored clock.
     await row.getByRole("button", { name: "Appointment actions" }).click();
-    await page.getByRole("menu").getByRole("menuitem", { name: "Edit" }).click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Edit" })
+      .click();
     await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("14:30");
     // The date field re-opens on the stored day (display shows the day + year).
     await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
@@ -207,7 +213,10 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
 
     // Re-open in the edit form: the time field is genuinely empty.
     await row.getByRole("button", { name: "Appointment actions" }).click();
-    await page.getByRole("menu").getByRole("menuitem", { name: "Edit" }).click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Edit" })
+      .click();
     await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("");
     await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
       new RegExp(`\\b${Number(day.slice(8, 10))}, ${day.slice(0, 4)}$`)

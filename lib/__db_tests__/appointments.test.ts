@@ -117,7 +117,11 @@ describe("appointments — day-only vs timed ordering on one date (#2234)", () =
 
   it("ASC (getAppointments): the day-only row leads its date, then times ascend", () => {
     const titles = getAppointments(pid).map((r) => r.title);
-    expect(titles).toEqual(["ORD day-only", "ORD timed early", "ORD timed late"]);
+    expect(titles).toEqual([
+      "ORD day-only",
+      "ORD timed early",
+      "ORD timed late",
+    ]);
   });
 
   it("DESC (the export read): times descend, the day-only row trails its date", () => {
@@ -128,7 +132,11 @@ describe("appointments — day-only vs timed ordering on one date (#2234)", () =
       )
       .all(pid)
       .map((r) => (r as { title: string }).title);
-    expect(titles).toEqual(["ORD timed late", "ORD timed early", "ORD day-only"]);
+    expect(titles).toEqual([
+      "ORD timed late",
+      "ORD timed early",
+      "ORD day-only",
+    ]);
   });
 });
 

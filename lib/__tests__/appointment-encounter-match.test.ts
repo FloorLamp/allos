@@ -8,7 +8,8 @@ import {
 function appt(over: Partial<MatchAppointment> = {}): MatchAppointment {
   return {
     id: 1,
-    date: "2026-03-10", timeOfDay: null,
+    date: "2026-03-10",
+    timeOfDay: null,
     providerId: 7,
     status: "scheduled",
     encounterId: null,

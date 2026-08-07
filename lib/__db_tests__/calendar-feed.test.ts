@@ -182,13 +182,7 @@ describe("calendar feed — content customization", () => {
     pid = newProfile("CAL-OPT");
     now = today(pid);
     // A scheduled appointment (default category) ...
-    addAppointment(
-      pid,
-      shiftDateStr(now, 2),
-      "10:00",
-      "OPT Visit",
-      "Clinic X"
-    );
+    addAppointment(pid, shiftDateStr(now, 2), "10:00", "OPT Visit", "Clinic X");
     // ... and an active goal with a future target date (the "goal" category).
     db.prepare(
       `INSERT INTO goals (profile_id, title, status, archived, target_date)
