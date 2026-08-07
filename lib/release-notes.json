@@ -68,31 +68,10 @@
         },
         {
           "pr": 2256,
-          "title": "Practice trends live on their Wellness cards",
-          "body": "Each tracked practice's 26-week view — weeks in range, cadence against your declared band, session length — now sits beside its logging and history on Wellness, collapsed by default. Trends Overview returns to digest → starred grid → body census.",
+          "title": "Dashboard, capture, and Trends polish",
+          "body": "Practice trends move onto their Wellness cards as a collapsed 26-week view (Trends Overview returns to digest → starred grid → body census); phones stay tiles-only on Overview at every range with the full chart one tap away; empty starred tiles keep their saved slot and stay reorderable, with a compact add-tile disclosure in the grid; the daily check-in card is content-led (rows appear only when they have something to say); and photo capture recovers from blocked, missing, or busy cameras with platform-matched guidance.",
           "kind": "feature",
-          "issues": [2151]
-        },
-        {
-          "pr": 2256,
-          "title": "The daily check-in card is content-led",
-          "body": "Rows appear only when they have something to say: rating first, context and reports earn their place, and a quiet one-line door covers \"not feeling well?\" on an ordinary day.",
-          "kind": "feature",
-          "issues": [2181]
-        },
-        {
-          "pr": 2256,
-          "title": "Photo capture recovers from camera trouble",
-          "body": "A blocked, missing, or busy camera now gets a specific explanation and platform-matched recovery steps — and a device without a live camera opens the native picker in one tap.",
-          "kind": "fix",
-          "issues": [2182]
-        },
-        {
-          "pr": 2256,
-          "title": "Phones stay tiles-only on Trends Overview",
-          "body": "At every range, including 1D — the full chart is one tap away on each metric's page, and empty starred tiles keep their saved slot and stay reorderable. Adding a tile is now a compact disclosure inside the grid.",
-          "kind": "fix",
-          "issues": [2152, 2153]
+          "issues": [2151, 2152, 2153, 2181, 2182]
         },
         {
           "pr": 2259,
