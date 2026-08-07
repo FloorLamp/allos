@@ -26,11 +26,16 @@ import {
 } from "@/lib/correction-time";
 import {
   correctionActions,
+  correctionBodyStatement,
   correctionPickerActions,
   FOOD_TIME_PREFIXES,
   DOSE_TIME_PREFIXES,
   openPickerAnchor,
 } from "@/lib/notifications/correction-rows";
+import {
+  burstsForMessage,
+  FRESH_SEND_BINDING,
+} from "@/lib/correction-time";
 import { zonedDateParts } from "@/lib/date";
 
 // The pure model behind #2019's eating-time chips and #2020's dose-time twin. No DB, no
@@ -543,5 +548,166 @@ describe("the rendered rows", () => {
       NOW
     ).map((a) => a.data!);
     expect(openPickerAnchor(chipTokens, FOOD_TIME_PREFIXES)).toBeNull();
+  });
+});
+
+// ---- #2264: a correction row renders only on the message that produced it ----
+//
+// The burst carries its FIRST tap's message provenance, and `burstsForMessage` is the
+// one filter every render site applies: an attributed burst renders on its own message
+// and nowhere else (the wrong-subject case fails closed — its chips would restamp
+// servings the message never mentioned), while an unattributed burst (a web one-tap, an
+// offline replay, a pruned message row) rides only the NEWEST live message of its
+// domain, never an older one.
+describe("message attribution (#2264)", () => {
+  const NOW = new Date("2026-08-05T19:30:00Z");
+
+  function tapFrom(id: number, iso: string, messageRef: number | null) {
+    return { id, tapAt: iso, messageRef, label: "Salmon" };
+  }
+
+  it("attributes a burst to its FIRST tap's message, matching the fromId anchor", () => {
+    const [burst] = collapseBursts([
+      tapFrom(1, "2026-08-05T19:02:00Z", 41),
+      // A burst-mate tapped from a different message keeps collapsing (one error,
+      // one row) — attribution follows the first tap, exactly as the anchor does.
+      tapFrom(2, "2026-08-05T19:08:00Z", 55),
+    ]);
+    expect(burst.fromId).toBe(1);
+    expect(burst.messageRef).toBe(41);
+  });
+
+  it("renders a burst on its own message and never on a sibling", () => {
+    const bursts = collapseBursts([tapFrom(1, "2026-08-05T19:02:00Z", 41)]);
+    expect(
+      burstsForMessage(bursts, { messageRef: 41, isNewest: true })
+    ).toHaveLength(1);
+    expect(
+      burstsForMessage(bursts, { messageRef: 41, isNewest: false })
+    ).toHaveLength(1);
+    // The sibling — even the NEWEST sibling — shows nothing: newest-ness is the
+    // unattributed sub-rule, never a license to adopt a foreign burst.
+    expect(
+      burstsForMessage(bursts, { messageRef: 99, isNewest: true })
+    ).toHaveLength(0);
+    // A message with no pointer row at all fails closed.
+    expect(
+      burstsForMessage(bursts, { messageRef: null, isNewest: false })
+    ).toHaveLength(0);
+  });
+
+  it("rides an unattributed burst on the newest live message only", () => {
+    const bursts = collapseBursts([tapFrom(1, "2026-08-05T19:02:00Z", null)]);
+    expect(
+      burstsForMessage(bursts, { messageRef: 41, isNewest: true })
+    ).toHaveLength(1);
+    expect(FRESH_SEND_BINDING.isNewest).toBe(true);
+    expect(burstsForMessage(bursts, FRESH_SEND_BINDING)).toHaveLength(1);
+    // An OLDER message — the reported 7:30-shows-12:42 case — shows nothing.
+    expect(
+      burstsForMessage(bursts, { messageRef: 41, isNewest: false })
+    ).toHaveLength(0);
+  });
+
+  it("filters BEFORE the cap, so a foreign burst cannot displace a message's own", () => {
+    // Three fresh bursts: two foreign, one owned — the owned one is the OLDEST, so a
+    // cap applied before the filter would have evicted it.
+    const events = [
+      tapFrom(1, "2026-08-05T18:40:00Z", 41),
+      tapFrom(10, "2026-08-05T19:00:00Z", 99),
+      tapFrom(20, "2026-08-05T19:20:00Z", 98),
+    ];
+    const own = correctionBursts(events, NOW, {
+      messageRef: 41,
+      isNewest: false,
+    });
+    expect(own).toHaveLength(1);
+    expect(own[0].fromId).toBe(1);
+    // And with no binding, the profile-wide set still caps at MAX_CORRECTION_ROWS.
+    expect(correctionBursts(events, NOW)).toHaveLength(MAX_CORRECTION_ROWS);
+  });
+
+  it("a fresh send carries only the unattributed bursts", () => {
+    const events = [
+      tapFrom(1, "2026-08-05T19:00:00Z", 41),
+      tapFrom(10, "2026-08-05T19:20:00Z", null),
+    ];
+    const fresh = correctionBursts(events, NOW, FRESH_SEND_BINDING);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].fromId).toBe(10);
+  });
+});
+
+// ---- #2264 bug 1: the body states the stored time ----------------------------
+//
+// The label button carries `×4 12:42 (corrected)` and Telegram clips it to `×4 12:4…`
+// on a phone — so once a burst is corrected, the BODY becomes the statement of record.
+// Built from the SAME burstLabel computation as the button, never a second phrasing,
+// for both domains (the helper is domain-blind, like the whole module).
+describe("correctionBodyStatement (#2264)", () => {
+  const NOW = new Date("2026-08-05T19:30:00Z");
+
+  it("says nothing while no burst is corrected — today's copy stands", () => {
+    const bursts = correctionBursts([tap(1, "2026-08-05T19:02:00Z")], NOW);
+    expect(correctionBodyStatement(bursts, TZ)).toBeNull();
+  });
+
+  it("names the stored instant of a corrected lone tap, via burstLabel", () => {
+    const bursts = correctionBursts(
+      [corrected(1, "2026-08-05T19:02:00Z", "2026-08-05T18:02:00Z", "Salmon")],
+      NOW
+    );
+    const statement = correctionBodyStatement(bursts, TZ);
+    expect(statement).toBe("🕐 Recorded: Salmon 20:02 (corrected)");
+    // One computation: the sentence embeds exactly what the label button states.
+    expect(statement).toContain(burstLabel(bursts[0], TZ));
+  });
+
+  it("covers the multi-burst case and skips the uncorrected sibling", () => {
+    const bursts = correctionBursts(
+      [
+        corrected(1, "2026-08-05T18:50:00Z", "2026-08-05T17:50:00Z", "Salmon"),
+        // 25 minutes later — a second burst, NOT corrected: it contributes nothing.
+        tap(10, "2026-08-05T19:15:00Z", "Berries"),
+      ],
+      NOW
+    );
+    expect(bursts).toHaveLength(2);
+    expect(correctionBodyStatement(bursts, TZ)).toBe(
+      "🕐 Recorded: Salmon 19:50 (corrected)"
+    );
+  });
+
+  it("joins two corrected bursts on one line, newest first (MAX_CORRECTION_ROWS)", () => {
+    const bursts = correctionBursts(
+      [
+        corrected(1, "2026-08-05T18:50:00Z", "2026-08-05T17:50:00Z", "Salmon"),
+        corrected(10, "2026-08-05T19:15:00Z", "2026-08-05T18:45:00Z", "Nuts"),
+      ],
+      NOW
+    );
+    expect(bursts).toHaveLength(MAX_CORRECTION_ROWS);
+    expect(correctionBodyStatement(bursts, TZ)).toBe(
+      "🕐 Recorded: Nuts 20:45 (corrected) · Salmon 19:50 (corrected)"
+    );
+  });
+
+  it("speaks both domains' vocabularies unchanged — the labels are the bursts' own", () => {
+    // A dose burst is the same shape with a dose label; the statement embeds
+    // burstLabel verbatim either way, so the two chats cannot drift.
+    const bursts = correctionBursts(
+      [
+        corrected(
+          7,
+          "2026-08-05T19:00:00Z",
+          "2026-08-05T17:00:00Z",
+          "Ibuprofen"
+        ),
+      ],
+      NOW
+    );
+    expect(correctionBodyStatement(bursts, TZ)).toBe(
+      `🕐 Recorded: ${burstLabel(bursts[0], TZ)}`
+    );
   });
 });
