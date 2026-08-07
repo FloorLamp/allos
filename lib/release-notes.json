@@ -1,6 +1,46 @@
 {
   "days": [
     {
+      "date": "2026-08-07",
+      "entries": [
+        {
+          "pr": 2248,
+          "title": "Your morning digest can wait for last night's sleep",
+          "body": "The digest now has two modes. “Same time every day” is what you have today. “As soon as it’s ready” treats your time as the earliest it may send and holds the digest until last night’s sleep has actually synced, with a deadline so it never waits indefinitely. Existing digests keep their time and stay on the same-time-every-day mode; the new one is opt-in under Settings → Notifications.",
+          "kind": "feature",
+          "issues": [2211, 2102]
+        },
+        {
+          "pr": 2247,
+          "title": "Time-correction buttons say the time they set",
+          "body": "The “ate earlier than you tapped” buttons on a Telegram nudge now read “19:11 · −1h” — the actual time they will store, not just an offset to work out yourself. Press one again to go further back, and the row updates to show the time now recorded rather than the moment you tapped.",
+          "kind": "feature",
+          "issues": [2206]
+        },
+        {
+          "pr": 2226,
+          "title": "Log a practice session with its real duration and time",
+          "body": "A practice quick-log keeps how long the session was and when it happened instead of assuming the moment you tapped. Plus an opt-in bedtime reminder to put your wearable on, for anyone whose sleep data goes missing on the nights they forget.",
+          "kind": "feature",
+          "issues": [2204, 2161]
+        },
+        {
+          "pr": 2224,
+          "title": "The chat answers with what it actually knows",
+          "body": "Ask for a recap and you get the facts behind it, with closing tallies rather than a vague summary — plus three new things you can ask it to do.",
+          "kind": "feature",
+          "issues": [1895]
+        },
+        {
+          "pr": 2220,
+          "title": "See why a reminder didn't send",
+          "body": "When the notification tick declines to send something, that decision is now recorded and readable on its own operator page, so a digest that went out late or empty can be explained instead of guessed at.",
+          "kind": "feature",
+          "issues": [2209]
+        }
+      ]
+    },
+    {
       "date": "2026-08-06",
       "entries": [
         {
