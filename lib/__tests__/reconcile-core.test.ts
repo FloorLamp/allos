@@ -459,7 +459,10 @@ describe("closingTallyText (#2274)", () => {
     // The tokens are read in keyboard order, which is already the reminder's
     // obligation-then-name sort. A second sort here is exactly the drift to avoid.
     expect(
-      closingTallyText({ taken: ["Zinc", "Alpha-lipoic", "Magnesium"], skipped: [] })
+      closingTallyText({
+        taken: ["Zinc", "Alpha-lipoic", "Magnesium"],
+        skipped: [],
+      })
     ).toBe("Zinc, Alpha-lipoic, Magnesium taken");
   });
 
@@ -491,10 +494,12 @@ describe("closeDetailText — the ONE close formatter (#2275)", () => {
     // Present-and-empty ⇒ this group was about items and there are none, so it is
     // omitted. ABSENT ⇒ the outcome names no items at all and stands alone — which is
     // how workout-draft says "finished" and "discarded" differently at all.
-    expect(closeDetailText({ groups: [{ names: [], outcome: "taken" }] })).toBeNull();
-    expect(closeDetailText({ groups: [{ outcome: "session discarded" }] })).toBe(
-      "session discarded"
-    );
+    expect(
+      closeDetailText({ groups: [{ names: [], outcome: "taken" }] })
+    ).toBeNull();
+    expect(
+      closeDetailText({ groups: [{ outcome: "session discarded" }] })
+    ).toBe("session discarded");
   });
 
   it("leads a group with its attribution (#377), for the household round", () => {

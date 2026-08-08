@@ -17,7 +17,10 @@
 // not open a database. `import type` is erased before this file ever executes.
 
 import { describe, expect, it } from "vitest";
-import type { CloseContent, FamilyReconciler } from "../notifications/reconcile";
+import type {
+  CloseContent,
+  FamilyReconciler,
+} from "../notifications/reconcile";
 import type { CloseDetail } from "../notifications/reconcile-core";
 
 const dead = () => new Set<string>();
@@ -50,22 +53,41 @@ const notApplicable: FamilyReconciler = {
 // A family cannot CLAIM detail without producing it. This is the entire defect: with
 // `tally?()` optional, this object was legal and silently closed to the bare sentence.
 // @ts-expect-error `outcome-detail` requires `detail()`
-const claimsDetailWithoutProducing: FamilyReconciler = { dead, closeStates: "outcome-detail" };
+const claimsDetailWithoutProducing: FamilyReconciler = {
+  dead,
+  closeStates: "outcome-detail",
+};
 
 // A family cannot DECLINE detail without a reason, on either non-detail variant.
 // @ts-expect-error `subject-only` requires `why`
-const declinesWithoutReason: FamilyReconciler = { dead, closeStates: "subject-only" };
+const declinesWithoutReason: FamilyReconciler = {
+  dead,
+  closeStates: "subject-only",
+};
 
 // @ts-expect-error `not-applicable` requires `why`
-const notApplicableWithoutReason: FamilyReconciler = { dead, closeStates: "not-applicable" };
+const notApplicableWithoutReason: FamilyReconciler = {
+  dead,
+  closeStates: "not-applicable",
+};
 
 // A family cannot HALF-declare: a stated reason AND a detail producer is two answers to
 // one question, and the variants are mutually exclusive by construction.
 // @ts-expect-error `subject-only` may not carry `detail()`
-const halfDeclared: FamilyReconciler = { dead, closeStates: "subject-only", why: "x", detail: someDetail };
+const halfDeclared: FamilyReconciler = {
+  dead,
+  closeStates: "subject-only",
+  why: "x",
+  detail: someDetail,
+};
 
 // @ts-expect-error `outcome-detail` may not carry `why`
-const detailWithReason: FamilyReconciler = { dead, closeStates: "outcome-detail", detail: someDetail, why: "x" };
+const detailWithReason: FamilyReconciler = {
+  dead,
+  closeStates: "outcome-detail",
+  detail: someDetail,
+  why: "x",
+};
 
 // And a family cannot decline to answer at all — which is what nine of them did.
 // @ts-expect-error every reconciler must declare a `closeStates`

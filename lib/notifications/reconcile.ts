@@ -775,9 +775,7 @@ const refill: FamilyReconciler = {
     }
     return resolved.length > 0
       ? {
-          groups: [
-            namedIfSeveral(resolved, "no longer low", resolved.length),
-          ],
+          groups: [namedIfSeveral(resolved, "no longer low", resolved.length)],
         }
       : null;
   },
@@ -1451,7 +1449,8 @@ function planEdit(
     // ONE formatter over what the family DECLARED, never a per-family rendering: which
     // families can answer at all is settled by `CloseContent` above, at compile time.
     const detail =
-      decision.reason === "resolved" && reconciler?.closeStates === "outcome-detail"
+      decision.reason === "resolved" &&
+      reconciler?.closeStates === "outcome-detail"
         ? reconciler.detail(profileId, tokens, pointer)
         : null;
     return {

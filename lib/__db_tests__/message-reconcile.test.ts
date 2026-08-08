@@ -1837,9 +1837,7 @@ describe("food-optin: the close states which way the setting went (#2275)", () =
         { text: "Not now", callback_data: `foodoptin:${pid}:no` },
       ]
     );
-    expect(text).toBe(
-      "[Ola] 🍽️ Log food from here? — food logging turned on."
-    );
+    expect(text).toBe("[Ola] 🍽️ Log food from here? — food logging turned on.");
   });
 });
 
@@ -1923,18 +1921,32 @@ describe("the name lookup is profile-scoped (#2274)", () => {
     markDoseTaken(a, ad.doseId, ad.itemId, today(a));
     markDoseTaken(b, bd.doseId, bd.itemId, today(b));
 
-    const aText = await closeTextFor(a, shared, 7014, "dose", "[Ann] 💊 Morning", [
-      {
-        text: "✅ Ann Magnesium",
-        callback_data: `take:${a}:${ad.doseId}:${ad.itemId}:${today(a)}`,
-      },
-    ]);
-    const bText = await closeTextFor(b, shared, 7015, "dose", "[Ben] 💊 Morning", [
-      {
-        text: "✅ Ben Magnesium",
-        callback_data: `take:${b}:${bd.doseId}:${bd.itemId}:${today(b)}`,
-      },
-    ]);
+    const aText = await closeTextFor(
+      a,
+      shared,
+      7014,
+      "dose",
+      "[Ann] 💊 Morning",
+      [
+        {
+          text: "✅ Ann Magnesium",
+          callback_data: `take:${a}:${ad.doseId}:${ad.itemId}:${today(a)}`,
+        },
+      ]
+    );
+    const bText = await closeTextFor(
+      b,
+      shared,
+      7015,
+      "dose",
+      "[Ben] 💊 Morning",
+      [
+        {
+          text: "✅ Ben Magnesium",
+          callback_data: `take:${b}:${bd.doseId}:${bd.itemId}:${today(b)}`,
+        },
+      ]
+    );
 
     expect(aText).toBe("[Ann] 💊 Morning — Ann Magnesium taken.");
     expect(aText).not.toContain("Ben");

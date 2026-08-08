@@ -1974,7 +1974,7 @@ prefix. So a resolved close now names what happened, in the domain's own words:
 
 - **The domain's vocabulary**, never the reconcile's private one: `taken` / `skipped`,
   because the button is `✅ <name>` and the write core is `markDoseTaken`.
-- **Two groups, taken first, joined by ` · `** — the reminder's own separator. An empty
+- **Two groups, taken first, joined by `·`** — the reminder's own separator. An empty
   group is omitted, so the common all-taken case is one clean clause.
 - **Names only.** The app ledger stays the complete surface: no amounts, no food notes,
   no adherence tails, no per-dose marks. The receipt answers WHICH; how much is in the app.
@@ -1991,7 +1991,7 @@ prefix. So a resolved close now names what happened, in the domain's own words:
   disclosing anything new. That parity argument is what licenses every family below.
 
 **What a close says is part of the reconciler's TYPE (#2275).** Nine of the eleven
-families used to collapse to "handled in the app." *while holding the outcome* —
+families used to collapse to "handled in the app." _while holding the outcome_ —
 `mood`'s own resolution predicate reads the recorded mood and keeps only the null
 check; `workoutDraft` knows whether the session was **finished or discarded**, two
 opposite outcomes that rendered identically. The cause was mechanical: the old
@@ -2008,19 +2008,19 @@ error until its author declares one. The rendering is ONE pure formatter
 (`closeDetailText`, `lib/notifications/reconcile-core.ts`) over the declared facts,
 never a per-family sentence.
 
-| Family | `closeStates` | What the close states |
-| --- | --- | --- |
-| `intake-dose` | `outcome-detail` | doses taken / skipped, by name |
-| `escalation` | `outcome-detail` | the same, via the shared dose detail |
-| `household-round` | `outcome-detail` | per member, the member's name leading its group (#377) |
-| `preventive` | `outcome-detail` | done / not applicable (⏰ Remind later is a bus snooze, so a deferred rule never reaches a resolved close) |
-| `refill` | `outcome-detail` | which item is no longer low |
-| `symptom` | `outcome-detail` | the symptom and the severity recorded |
-| `mood` | `outcome-detail` | the recorded mood, in the shared 5-point vocabulary |
-| `workout-draft` | `outcome-detail` | **session finished** vs **session discarded** |
-| `practice` | `outcome-detail` | which practice is done for the week / back on pace |
-| `food-optin` | `outcome-detail` | which way the setting went |
-| `food` | `not-applicable` | additive — the keyboard never resolves, so it closes on rollover only |
+| Family            | `closeStates`    | What the close states                                                                                      |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `intake-dose`     | `outcome-detail` | doses taken / skipped, by name                                                                             |
+| `escalation`      | `outcome-detail` | the same, via the shared dose detail                                                                       |
+| `household-round` | `outcome-detail` | per member, the member's name leading its group (#377)                                                     |
+| `preventive`      | `outcome-detail` | done / not applicable (⏰ Remind later is a bus snooze, so a deferred rule never reaches a resolved close) |
+| `refill`          | `outcome-detail` | which item is no longer low                                                                                |
+| `symptom`         | `outcome-detail` | the symptom and the severity recorded                                                                      |
+| `mood`            | `outcome-detail` | the recorded mood, in the shared 5-point vocabulary                                                        |
+| `workout-draft`   | `outcome-detail` | **session finished** vs **session discarded**                                                              |
+| `practice`        | `outcome-detail` | which practice is done for the week / back on pace                                                         |
+| `food-optin`      | `outcome-detail` | which way the setting went                                                                                 |
+| `food`            | `not-applicable` | additive — the keyboard never resolves, so it closes on rollover only                                      |
 
 The contract governs the **`resolved`** close only. `rollover`, `expired` and
 `superseded` close for time or lifecycle reasons where there is no outcome to state,
