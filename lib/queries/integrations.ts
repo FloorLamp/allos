@@ -1,11 +1,12 @@
 import { db, today } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
+import { instantNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
 import type { IntegrationId, IntegrationSyncEvent } from "@/lib/types";
 import {
   staleSyncs,
   staleSyncDetail,
-  syncStalenessThreshold,
+  silenceToleranceMinutes,
   isStaleSyncEvent,
   STALE_SYNC_EVENT_ID,
   type StaleSync,
@@ -16,6 +17,7 @@ import {
   type ProvenanceTable,
 } from "@/lib/integrations/sync-log";
 import {
+  observedSuccessCadenceMinutes,
   providerStanding,
   standingEscalates,
   syncVocabularyForKind,
@@ -199,8 +201,8 @@ interface ProviderFacts {
   // for every caller, however much display history it asked for.
   window: IntegrationSyncEvent[];
   lastSuccessAt: string | null;
-  // The #1685 quiet-stop facts when the staleness rule fires for this CONNECTED
-  // provider, for the "no data since" copy. Null otherwise.
+  // The quiet-stop facts when the silence rule fires for this CONNECTED provider,
+  // for the "no data since" copy. Null otherwise.
   stale: StaleSync | null;
   standing: ProviderStanding;
 }
@@ -220,8 +222,11 @@ function resolveProviderFacts(
   );
   const latest = window[0] ?? null;
   const lastSuccessAt = getLastSuccessfulSyncAt(profileId, providerId);
-  const thresholdDays = syncStalenessThreshold(def);
-  const td = today(profileId);
+  const toleranceMinutes = silenceToleranceMinutes(def);
+  // NOW as an instant, through the clock seam (#2263): the silence rule is instant
+  // arithmetic against `integration_sync_events.at`, which migration 163 put on the
+  // canonical UTC+`Z` convention, so the comparison is lexically and numerically safe.
+  const nowAt = instantNow();
   // The quiet-stop copy facts, from the same staleSyncs derivation the standing
   // composes (`alreadyFailing: false` — this IS the failing derivation, so there is
   // no other signal to defer to; getImportIssues still reports each provider once).
@@ -231,11 +236,11 @@ function resolveProviderFacts(
           {
             provider: providerId,
             lastSuccessAt,
-            thresholdDays,
+            toleranceMinutes,
             alreadyFailing: false,
           },
         ],
-        td
+        nowAt
       )[0] ?? null)
     : null;
   return {
@@ -251,8 +256,8 @@ function resolveProviderFacts(
       latest,
       recentRuns: window,
       lastSuccessAt,
-      thresholdDays,
-      today: td,
+      toleranceMinutes,
+      now: nowAt,
     }),
   };
 }
@@ -262,8 +267,10 @@ function resolveProviderFacts(
 // IntegrationSyncEvent for the same reason the expired-token issue is: everything
 // downstream of getImportIssues (the profile-menu badge, the Data → Review count and
 // Needs-attention card, the attention item, and the digest) already reads that one
-// list. `at` is the last successful sync — the moment the data stopped — so the row
-// sorts and reads honestly next to real events.
+// list. `at` is the INSTANT of the last successful sync — the moment the data stopped
+// — so the row sorts and reads honestly next to real events. It was the bare DATE
+// until #2263, which made a synthetic row compare as midnight against a column of
+// full instants.
 function syntheticStaleIssue(
   profileId: number,
   provider: string,
@@ -274,7 +281,7 @@ function syntheticStaleIssue(
     id: STALE_SYNC_EVENT_ID,
     profile_id: profileId,
     provider,
-    at: s.since,
+    at: s.sinceAt,
     ok: 0,
     window_start: null,
     window_end: null,
@@ -288,7 +295,7 @@ function syntheticStaleIssue(
     skipped: null,
     raw_ref: null,
     error: staleSyncDetail(def?.name ?? provider, s),
-    created_at: s.since,
+    created_at: s.sinceAt,
   };
 }
 
@@ -514,10 +521,10 @@ export function getReviewPairCount(profileId: number): number {
 // Review tab's "Needs attention" card, the profile-menu/Data badge, the dashboard
 // hero, and the digest. Since #1880 this is the flap-aware standing, not
 // latest-event-wins: a provider contributes an issue only when its standing
-// escalates (`failing` — 3 consecutive failures or a #1685 staleness breach — or
-// `needs-reauth`). An `intermittent` provider — failures in the recent window but a
-// recent success too — never appears here; it renders as a calm amber fact on the
-// non-escalating surfaces instead. Profile-scoped via getLatestSyncEventPerProvider
+// escalates (`failing` — no successful run inside the provider's silence tolerance,
+// #2263 — or `needs-reauth`). An `intermittent` provider — failures in the recent
+// window but a success inside the tolerance — never appears here; it renders as a
+// calm amber fact on the non-escalating surfaces instead. Profile-scoped via getLatestSyncEventPerProvider
 // — per-provider, so it can't miss a broken provider whose failure has aged out of
 // a global recent-events window (#304).
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
@@ -537,8 +544,8 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
       // A recorded failure names the cause — the honest row.
       failing.push(facts.latest);
     } else if (facts.stale) {
-      // The quiet stop (#1685): nothing failed, nothing arrived. The synthetic row
-      // states the observation. One row per provider either way.
+      // The quiet stop: nothing failed, nothing arrived. The synthetic row states
+      // the observation. One row per provider either way.
       failing.push(syntheticStaleIssue(profileId, def.id, facts.stale));
     }
   }
@@ -630,13 +637,18 @@ export interface IntegrationState {
   // shape the provider is in, and which words its counts are reported in.
   standing: ProviderStanding;
   vocabulary: SyncVocabulary;
-  // The #1685 quiet-stop facts when the staleness rule fires (a `failing` standing
-  // whose latest run SUCCEEDED long ago) — the "no data since <date>" copy's
-  // ingredients. Null otherwise.
+  // The quiet-stop facts when the silence rule fires (a `failing` standing whose
+  // latest run SUCCEEDED long ago) — the "no data since <date>" copy's ingredients.
+  // Null otherwise.
   stale: StaleSync | null;
   // The standing window's tally (#1880): how many of the last `total` runs failed,
   // for the intermittent surfaces' honest "3 of the last 10 runs failed" copy.
   recentRuns: { total: number; failed: number };
+  // The OBSERVED median gap between successful runs in that window, in whole minutes
+  // (#2263 decision 4) — the SIGNAL the amber surfaces state beside the failure
+  // tally, which is only the noise. Null when the window holds fewer than two
+  // successes. Display only: it never feeds the declared escalation tolerance.
+  successCadenceMinutes: number | null;
   // The PROFILE's time zone and its today, resolved once here (#1991). History groups
   // by DAY, and a day is the reader's — a UTC slice would put a 21:00 local push on
   // the wrong side of midnight for anyone east or west of Greenwich.
@@ -732,6 +744,7 @@ export function getIntegrationState(
       total: facts.window.length,
       failed: facts.window.filter((e) => !e.ok).length,
     },
+    successCadenceMinutes: observedSuccessCadenceMinutes(facts.window),
     timeZone: getTimezone(profileId),
     today: today(profileId),
     backfills: getIntegrationBackfillJobs(profileId, def.id),

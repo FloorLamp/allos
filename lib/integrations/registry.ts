@@ -42,9 +42,22 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
     // The phone exporter pushes on a schedule (typically hourly), so a connected
     // Health Connect goes quiet only when the phone stops: the exporter app was
-    // killed, battery optimization suspended it, or the token was rotated. Three days
-    // tolerates a phone off for a long weekend without tolerating a dead exporter.
-    staleAfterDays: 3,
+    // killed, battery optimization suspended it, or the token was rotated. EXPLICIT
+    // rather than derived — a push provider declares no poll cadence to derive from.
+    //
+    // 12 h, revised down from three days on evidence (#2263 decision 3b). Measured
+    // over 1223 pushes across 19 days: median gap 16 min, p90 34 min, p99 67 min,
+    // longest non-outage silence 1.6 h (the eight longest all sit in the 02:00–05:30
+    // local window — Android Doze stretching the interval overnight, not the phone
+    // going away). The one real outage was 16.2 h of pure ABSENCE: the phone-side
+    // exporter pushed to a retired URL that answered 301, did not follow it, and
+    // nothing ever reached the server — so there were no failure events to classify
+    // and only the tolerance could catch it. At three days that went unreported for
+    // two and a half more days; at 12 h it is named inside one waking period, while
+    // the day's data is still recoverable. Not tighter: 3–6 h clears the measured
+    // distribution too, but an 8-hour overnight with the phone off is plausible for
+    // other installs and would be flagged before its owner woke.
+    silenceToleranceMinutes: 12 * 60,
     stoppedConsequence:
       "Steps, workouts, and vitals from your phone have stopped arriving.",
     docsUrl: "https://github.com/mcnaveen/health-connect-webhook",
@@ -72,8 +85,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // successful poll, including a quiet one that found no new activities
     // (isQuietSync). So the last successful sync tracks the CONNECTION's liveness,
     // not the user's training: a rest week is not staleness. Three days is ~72
-    // missed polls.
-    staleAfterDays: 3,
+    // missed polls. An OVERRIDE of the cadence-derived default, keeping the number
+    // and the reason this provider already shipped with (#2263).
+    silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
     pull: {
@@ -138,8 +152,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
     // Polled hourly like Strava (declared pull cadence, not the tick rate), and a
     // quiet poll still records an ok event, so the same three-day reading applies: nights without the ring off the charger are not
-    // staleness, a connection that stopped answering is.
-    staleAfterDays: 3,
+    // staleness, a connection that stopped answering is. An OVERRIDE of the
+    // cadence-derived default, keeping this provider's shipped number and reason
+    // (#2263).
+    silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence:
       "Sleep, HRV, and workouts from your ring have stopped arriving.",
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
@@ -181,8 +197,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // Polled hourly (declared pull cadence, not the tick rate), and a poll that
     // finds no new measurement still records an ok event — so a week between weigh-ins is NOT staleness (the scale is idle, the
     // connection is fine). Three days measures the poll, which is the thing that can
-    // silently die.
-    staleAfterDays: 3,
+    // silently die. An OVERRIDE of the cadence-derived default, keeping this
+    // provider's shipped number and reason (#2263).
+    silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence:
       "Measurements from your scale and cuff have stopped arriving.",
     docsUrl: "https://developer.withings.com/",
@@ -219,7 +236,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "yet available for self-hosted use.",
     dataTypes: ["Workouts", "Steps", "Heart rate", "Sleep"],
     // Exempt: `planned`, so there is no connection to go stale.
-    staleAfterDays: null,
+    silenceToleranceMinutes: null,
     docsUrl: "https://developer.garmin.com/gc-developer-program/health-api/",
   },
   {
@@ -259,7 +276,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // Exempt by nature: a one-off archive import, not a live connection. "You have not
     // re-imported your Takeout export in three days" is not a fault, and nagging about
     // it would be the exact false positive that teaches a user to ignore the signal.
-    staleAfterDays: null,
+    silenceToleranceMinutes: null,
     docsUrl: "https://takeout.google.com/",
   },
   {
@@ -296,7 +313,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // the Fitbit Takeout entry avoids. The card still shows per-(portal, login, patient)
     // last-synced from the tool's own sync reports; that is reporting, not a freshness
     // assertion.
-    staleAfterDays: null,
+    silenceToleranceMinutes: null,
   },
   {
     id: "weather",
@@ -311,11 +328,18 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "the UV for activities you already logged. Needs only your home location " +
       "(Settings → Profile); works offline with a clear-sky estimate.",
     dataTypes: ["UV index", "Solar irradiance"],
-    // Hourly, keyless, and the only prerequisite is a home location; UV backfill is
-    // what the sun-exposure math reads, so a stopped weather sync quietly degrades a
-    // computed signal. Two days — the tightest threshold here, because nothing about
-    // this provider is bursty.
-    staleAfterDays: 2,
+    // NO override: weather takes the cadence-derived DEFAULT
+    // (DEFAULT_SILENCE_TOLERANCE_POLLS × its declared 60-minute cadence = 12 h), the
+    // one value #2263 actually decided, so the default is the number rather than a
+    // number beside it.
+    //
+    // 12 h clears this provider's measured p90 success→success gap (6 h, over 171
+    // runs) with headroom while still reporting a real outage inside half a day. It
+    // REPLACES a two-day quiet-stop threshold that let a stopped feed degrade the
+    // sun-exposure/UV math for two days before saying anything — and, more to the
+    // point, it replaces a three-consecutive-failure escalation that sat BELOW this
+    // provider's ordinary operating variance and read "Sync failing" for 29% of hours
+    // while every successful run re-fetched the full 381-row window.
     stoppedConsequence:
       "UV and daylight readings for your home location have stopped arriving.",
     docsUrl: "https://open-meteo.com/",
@@ -346,7 +370,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     dataTypes: ["Appointments", "Reminders"],
     // Exempt: OUTBOUND. The calendar app pulls our feed; we never sync anything in,
     // so this provider records no sync events and has no freshness to assert.
-    staleAfterDays: null,
+    silenceToleranceMinutes: null,
     docsUrl:
       "https://support.google.com/calendar/answer/37100#subscribe_by_url",
   },
