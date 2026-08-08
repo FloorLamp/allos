@@ -7,17 +7,25 @@
 // the offer never contains an option the gate would refuse, a future or wrong-day
 // instant costs the statement, and NOTHING in the model can turn an absent
 // statement into a defaulted now.
+//
+// Since #2296 one more, and it is the one the owner ruled on: UNSTATED and REFUSED
+// are different answers. The gate used to answer `Date | null` and a fast device
+// clock could therefore throw a stated eating time away with nothing on screen. The
+// tolerance stays five minutes; what changed is that the refusal is now sayable.
 
 import { describe, it, expect } from "vitest";
 import {
   STATED_FUTURE_SKEW_MS,
-  acceptStatedAt,
+  STATED_TIME_REFUSAL_NOTE,
+  judgeStatedAt,
   reanchorStatedAt,
   statedHhmm,
   statedHoursOnDate,
   statedInstantOnDate,
+  type JudgedStatement,
+  type StatedTimeRefusal,
 } from "@/lib/stated-time";
-import { acceptEatenAt, EATEN_AT_FUTURE_SKEW_MS } from "@/lib/food-eating-time";
+import { judgeEatenAt, EATEN_AT_FUTURE_SKEW_MS } from "@/lib/food-eating-time";
 import { dateStrInTz, zonedDateParts } from "@/lib/date";
 
 const UTC = "UTC";
@@ -93,8 +101,10 @@ describe("statedHoursOnDate (#2236 / #2227's day-hours offer)", () => {
     ] as const) {
       const now = new Date(nowIso);
       for (const o of statedHoursOnDate(date, NY, now)) {
+        const verdict = judgeStatedAt(new Date(o.iso), NY, date, now);
+        expect(verdict.kind).toBe("accepted");
         expect(
-          acceptStatedAt(new Date(o.iso), NY, date, now)?.toISOString()
+          verdict.kind === "accepted" ? verdict.at.toISOString() : null
         ).toBe(o.iso);
       }
     }
@@ -123,42 +133,109 @@ describe("statedInstantOnDate (the pair rule, by construction)", () => {
   });
 });
 
-describe("acceptStatedAt (the one gate, ex-acceptEatenAt)", () => {
+describe("judgeStatedAt (the one gate, ex-acceptEatenAt)", () => {
   const now = new Date("2026-08-07T20:00:00Z");
 
   it("accepts an instant on the row's own local day", () => {
     const at = new Date("2026-08-07T15:00:00Z");
-    expect(acceptStatedAt(at, UTC, "2026-08-07", now)).toBe(at);
+    expect(judgeStatedAt(at, UTC, "2026-08-07", now)).toEqual({
+      kind: "accepted",
+      at,
+    });
   });
 
   it("judges the day in the profile's zone, not the runner's", () => {
     // 03:00Z on Aug 8 is 23:00 on Aug 7 in New York.
     const at = new Date("2026-08-08T03:00:00Z");
-    const accepted = acceptStatedAt(at, NY, "2026-08-07", now2(at));
-    expect(accepted).toBe(at);
-    expect(acceptStatedAt(at, UTC, "2026-08-07", now2(at))).toBeNull();
+    expect(judgeStatedAt(at, NY, "2026-08-07", now2(at))).toEqual({
+      kind: "accepted",
+      at,
+    });
+    expect(judgeStatedAt(at, UTC, "2026-08-07", now2(at))).toEqual({
+      kind: "refused",
+      reason: "other-day",
+    });
   });
 
   it("refuses a meaningfully future instant, tolerating clock skew", () => {
     const skewed = new Date(now.getTime() + STATED_FUTURE_SKEW_MS - 1000);
-    expect(acceptStatedAt(skewed, UTC, "2026-08-07", now)).toBe(skewed);
+    expect(judgeStatedAt(skewed, UTC, "2026-08-07", now)).toEqual({
+      kind: "accepted",
+      at: skewed,
+    });
     const future = new Date(now.getTime() + STATED_FUTURE_SKEW_MS + 1000);
-    expect(acceptStatedAt(future, UTC, "2026-08-07", now)).toBeNull();
+    expect(judgeStatedAt(future, UTC, "2026-08-07", now)).toEqual({
+      kind: "refused",
+      reason: "future",
+    });
   });
 
-  it("refuses an instant off the row's day, and absence stays absence", () => {
+  it("refuses an instant off the row's day", () => {
     expect(
-      acceptStatedAt(new Date("2026-08-06T12:00:00Z"), UTC, "2026-08-07", now)
-    ).toBeNull();
-    expect(acceptStatedAt(null, UTC, "2026-08-07", now)).toBeNull();
-    expect(acceptStatedAt(undefined, UTC, "2026-08-07", now)).toBeNull();
-    expect(acceptStatedAt(new Date("nope"), UTC, "2026-08-07", now)).toBeNull();
+      judgeStatedAt(new Date("2026-08-06T12:00:00Z"), UTC, "2026-08-07", now)
+    ).toEqual({ kind: "refused", reason: "other-day" });
+  });
+
+  // #2296, the whole point: absence and refusal are DIFFERENT answers. The old
+  // `Date | null` shape said "null" to both, which is how a device clock running
+  // fast could discard a stated eating time in silence for as long as the gate
+  // has existed — nothing downstream could tell there had been anything to lose.
+  it("separates 'nobody stated a time' from 'a time was stated and refused'", () => {
+    expect(judgeStatedAt(null, UTC, "2026-08-07", now)).toEqual({
+      kind: "unstated",
+    });
+    expect(judgeStatedAt(undefined, UTC, "2026-08-07", now)).toEqual({
+      kind: "unstated",
+    });
+    expect(judgeStatedAt(new Date("nope"), UTC, "2026-08-07", now)).toEqual({
+      kind: "refused",
+      reason: "malformed",
+    });
+  });
+
+  // The clock case the owner ruled on, at the exact tolerance: six minutes fast is
+  // an ordinary un-NTP'd phone, not a forgery. It still loses the minute — the
+  // ruling KEEPS the five-minute gate — but it is now a refusal a surface can name.
+  it("names the clock, not the day, when a fast client states 'now'", () => {
+    const sixMinutesFast = new Date(now.getTime() + 6 * 60 * 1000);
+    expect(judgeStatedAt(sixMinutesFast, UTC, "2026-08-07", now)).toEqual({
+      kind: "refused",
+      reason: "future",
+    });
+    expect(STATED_FUTURE_SKEW_MS).toBe(5 * 60 * 1000);
+  });
+
+  it("has a note for every refusal reason, and none of them is empty", () => {
+    // The completeness pin: a new reason without copy would render a surface's
+    // sentence with a hole in it, which is a different flavour of the same silence.
+    const reasons: StatedTimeRefusal[] = ["future", "other-day", "malformed"];
+    for (const reason of reasons) {
+      expect(STATED_TIME_REFUSAL_NOTE[reason].length).toBeGreaterThan(0);
+    }
+    expect(Object.keys(STATED_TIME_REFUSAL_NOTE).sort()).toEqual(
+      [...reasons].sort()
+    );
+  });
+
+  it("cannot answer `unstated` to a caller that is holding a statement", () => {
+    // The overload's job, checked as a type AND at runtime: a call site with an
+    // instant in hand should not have to write a branch for "there was no instant".
+    const judged = judgeStatedAt(
+      new Date("2026-08-07T15:00:00Z"),
+      UTC,
+      "2026-08-07",
+      now
+    );
+    // `judged` is typed JudgedStatement here, so this reads `.at` with no narrowing
+    // past `accepted` — the union has no third member to exclude.
+    const asJudged: JudgedStatement = judged;
+    expect(asJudged.kind).not.toBe("unstated");
   });
 
   it("is the same computation the food module re-exports", () => {
     // The move (#2236): one rule, worn by every surface — not a food copy and a
     // neutral copy that can drift.
-    expect(acceptEatenAt).toBe(acceptStatedAt);
+    expect(judgeEatenAt).toBe(judgeStatedAt);
     expect(EATEN_AT_FUTURE_SKEW_MS).toBe(STATED_FUTURE_SKEW_MS);
   });
 

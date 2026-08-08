@@ -553,8 +553,11 @@ deliberately: they write `'stated'` for either shape, because the web "+" declar
 contract of its own, so the source of the instant is the person who said so. Online the
 form carries the CHOICE and the server resolves it — a tab open for an hour cannot stamp
 a stale "now"; offline the capture carries a resolved instant and the replay validates it
-through the same `acceptEatenAt` gate, which is `resolveQueuedTakenAt`'s untrusted-client-
-clock posture applied to eating time. On the dose side there is no
+through the same `judgeEatenAt` gate, which is `resolveQueuedTakenAt`'s untrusted-client-
+clock posture applied to eating time. A refused instant costs the statement and never the
+serving — and since #2296 never silently: the replay answers `done` with a `timeNotice`,
+and the reconnect confirmation says the minute was lost and why
+(`docs/internals/time-model.md`). On the dose side there is no
 schema at all: `intake_item_logs.recorded_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
 

@@ -35,7 +35,7 @@ import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { placeReading, type ReadingTarget } from "./reading-placement";
 import { readingSourceFor, type ReadingProvenance } from "./reading-model";
-import { acceptStatedAt } from "./stated-time";
+import { judgeStatedAt } from "./stated-time";
 import { utcInstant } from "./date";
 import { now } from "./clock";
 import { getTimezone } from "./settings";
@@ -131,12 +131,21 @@ function bodyMetricInsert(column: BodyMetricColumn) {
 //   • `null` — an explicit clear: the form's emptied Time field on a submission
 //     that writes a value (decision 5).
 //   • a string — the stated instant, accepted through THE acceptance gate
-//     (`acceptStatedAt`, #2236): not meaningfully future, and its profile-local
+//     (`judgeStatedAt`, #2236): not meaningfully future, and its profile-local
 //     date IS the row's `date`. A statement that fails the gate is REFUSED — the
 //     reading still lands, the statement is dropped (`undefined`), and the row is
 //     never re-dated and never has an honest stored time clobbered by garbage.
 //     The WhenControl pair rule makes the UI unable to produce a mismatch; this
 //     enforces it anyway at the auth-blind boundary (constraint 3).
+//
+// KNOWN GAP, deliberately left (#2296): this is the one surviving path that drops a
+// refused statement without saying so. The gate now answers a verdict, so the reason
+// is available right here — but the four body-metric writers above it
+// (`insertBodyMetric`, the palette, the Telegram quick-log, the offline replay) all
+// answer `boolean`, so surfacing it is a widening of five call sites and their UIs,
+// not a line. The owner's #2296 ruling covers the food paths it was reproduced on;
+// this one is called out rather than quietly widened. Do NOT collapse the verdict
+// back to a nullable Date here — the distinction is what a follow-up needs.
 //
 // The accepted instant is re-serialized through `utcInstant`, so the stored shape
 // is the canonical `YYYY-MM-DDTHH:MM:SSZ` whatever the caller's ISO carried
@@ -147,13 +156,13 @@ export function resolveStatedOccurredAt(
   occurredAt: string | null | undefined
 ): string | null | undefined {
   if (occurredAt === undefined || occurredAt === null) return occurredAt;
-  const accepted = acceptStatedAt(
+  const verdict = judgeStatedAt(
     new Date(occurredAt),
     getTimezone(profileId),
     date,
     now()
   );
-  return accepted ? utcInstant(accepted) : undefined;
+  return verdict.kind === "accepted" ? utcInstant(verdict.at) : undefined;
 }
 
 // Write the day row's stated instant. NO `edited` change here on purpose: in the

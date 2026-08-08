@@ -14,9 +14,12 @@
 //     Stamped by SQL, a draft saved SECONDS ago read as 58 minutes quiet — past
 //     STALE_MIN (45) — and the dock rendered "Still working out? Finish or discard".
 //   • the offline food replay judged a queued eating-time statement against a bare
-//     `new Date()` while the statement itself had been resolved against the seam, so
-//     `acceptEatenAt` refused a seconds-old statement as 58 minutes in the FUTURE and
-//     `food_log_events.time_source` landed NULL instead of 'stated'.
+//     `new Date()` while the statement itself had been resolved against the seam (the
+//     e2e fixture puts the BROWSER on the frozen clock too), so the gate — `judgeEatenAt`
+//     since #2296 — refused a seconds-old statement as 58 minutes in the FUTURE and
+//     `food_log_events.time_source` landed NULL instead of 'stated'. Since #2296 that
+//     refusal is also SPOKEN, so a spurious one now misinforms the user rather than
+//     merely losing a minute: it blames a device clock the app itself had moved.
 //
 // The tests below reproduce that gap DIRECTLY — freeze the seam ahead of real time,
 // exactly as the nudge does — rather than asserting an equality that would still hold

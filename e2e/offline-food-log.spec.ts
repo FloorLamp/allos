@@ -149,8 +149,12 @@ function newestBerriesEventAfter(
 // tap is precisely the one most likely to be offline — the case the chips exist for is
 // also the case the connection is worst. Offline the browser has no server to resolve a
 // choice against, so the capture carries a resolved INSTANT, and the replay validates it
-// (acceptEatenAt) rather than trusting it: it came off an untrusted client wall clock,
-// the same posture resolveQueuedTakenAt takes for a queued dose's tap instant.
+// (judgeEatenAt) rather than trusting it: it came off an untrusted client wall clock,
+// the same posture resolveQueuedTakenAt takes for a queued dose's tap instant. What it
+// is validated AGAINST is the app's own clock seam (#2287), not a second real clock —
+// the fixture puts this browser on the same frozen instant the server reads, so the
+// statement and the gate answer one "now" and only a genuinely divergent device clock
+// can be refused.
 test("a stated eating time rides an offline serving through replay (#2053)", async ({
   page,
   context,
@@ -201,4 +205,83 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   expect(
     Math.abs(new Date(row!.eaten_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(60 * 60_000);
+});
+
+// #2296 (owner ruling, 2026-08-08) — a device clock running fast must not cost the
+// stated eating time IN SILENCE.
+//
+// The acceptance gate tolerates five minutes of client/server skew and refuses
+// anything further; that tolerance is defensible and is unchanged here. What was not
+// defensible is that the refusal was invisible: the offline capture is the ONE food
+// path carrying a client INSTANT (there is no server to resolve a choice against while
+// offline), so a phone whose clock had drifted threw away the minute the user had just
+// stated while the reconnect toast reported a clean sync.
+//
+// The fast clock is simulated the way the bug reproduces: the browser's system time is
+// pushed hours ahead of the SERVER'S OWN NOW, so the captured instant lands beyond the
+// skew window. That offset is anchored on `frozenNow()` — the instant the app's clock
+// seam actually answers (#2287) — rather than on the runner's wall clock, so this test
+// measures a DEVICE divergence and never the suite's own real-vs-frozen gap. Twelve
+// hours is far past any run's own duration, so WHICH rule fires ("future", checked
+// first) is deterministic.
+const FAST_CLOCK_MS = 12 * 60 * 60_000;
+
+test("a fast device clock keeps the serving and the sync SAYS the time wasn't recorded (#2296)", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // The user states a time, exactly as in the passing #2053 case above.
+  await hydratedClick(page, page.getByTestId("food-eating-now"));
+  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await revealFoodGroup(page, "berries");
+  const count = page.getByTestId("count-berries");
+  const before = Number((await count.textContent())?.trim() || "0");
+  const baselineEventId = maxFoodEventId();
+
+  // The broken clock. Nothing else about the tap changes.
+  await context.clock.setSystemTime(
+    new Date(frozenNow().getTime() + FAST_CLOCK_MS)
+  );
+
+  await context.setOffline(true);
+  await hydratedClick(page, page.getByTestId("log-berries"));
+  await expect(
+    page.getByText("Saved offline — will sync when you reconnect.")
+  ).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
+
+  // THE FIX: the confirmation the user already gets on reconnect now admits what it
+  // could not keep, on the same toast and in the same calm tone — the entry DID sync,
+  // so this must not read like the red "couldn't be applied" panel.
+  await context.setOffline(false);
+  await expect(
+    page.getByText(
+      "Synced 1 offline entry. One was saved without its stated time — your device's clock is ahead."
+    )
+  ).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+  // Not the dead-letter panel: nothing here needs re-entering.
+  await expect(page.getByTestId("offline-rejected-review")).toHaveCount(0);
+
+  // And the ruling's other half: the SERVING still landed. Only the minute is gone.
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await revealFoodGroup(page, "berries");
+  await expect(page.getByTestId("count-berries")).toHaveText(
+    String(before + 1)
+  );
+
+  const row = newestBerriesEventAfter(baselineEventId);
+  expect(row).not.toBeUndefined();
+  expect(row!.eaten_at).toBeNull();
+  expect(row!.time_source).toBeNull();
 });

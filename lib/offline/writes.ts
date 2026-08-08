@@ -36,7 +36,8 @@ import {
 import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { acceptEatenAt } from "@/lib/food-eating-time";
+import { judgeEatenAt } from "@/lib/food-eating-time";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
@@ -617,7 +618,11 @@ function applyFoodIntent(
   payload: FoodPayload,
   date: string,
   capturedAt: unknown
-): { status: "done" | "rejected"; reason?: string } {
+): {
+  status: "done" | "rejected";
+  reason?: string;
+  timeNotice?: StatedTimeRefusal;
+} {
   if (!payload || typeof payload !== "object" || !isRealIsoDate(date)) {
     return { status: "rejected" };
   }
@@ -640,16 +645,25 @@ function applyFoodIntent(
     // is in the future, or whose profile-local date isn't the day this serving is
     // landing on, costs the STATEMENT and never the serving.
     //
-    // WHICH now it is judged against is the whole of #2287. It used to be a bare
-    // `new Date()` — deliberately outside the clock seam, on the reasoning that a
-    // client instant and the server's are two independent REAL clocks. They are not
-    // two clocks: both sides answer the app's own "now", and the seam is what makes
-    // that one answer. Reading the gate against real time while the statement was
-    // resolved against the seam is a comparison of a value with a DIFFERENT clock,
-    // and it refused a seconds-old statement as 58 minutes in the future — landing
-    // `time_source` NULL on a serving the user had explicitly timed. Inert in
-    // production, where the seam is the real clock.
-    const stated = acceptEatenAt(
+    // THIS is where a fast device clock actually bites (#2296): the offline capture is
+    // the one food path that carries a client INSTANT rather than a choice the server
+    // resolves, so a phone six minutes ahead loses the minute it stated, here. The
+    // serving still lands — but the verdict rides back out as a `timeNotice` so the
+    // reconnect confirmation can say the minute did not.
+    //
+    // WHICH now it is judged against is the whole of #2287, and it is what makes that
+    // notice TRUE. This used to be a bare `new Date()` — deliberately outside the clock
+    // seam, on the reasoning that a client instant and the server's are two independent
+    // REAL clocks. Under the e2e freeze they are not independent: the fixture puts the
+    // BROWSER on the same frozen instant the server reads, so judging against real time
+    // compared a value with a DIFFERENT clock and refused a seconds-old statement as 58
+    // minutes in the future — landing `time_source` NULL, and (since #2296) telling the
+    // user their device's clock was ahead when it was the suite's freeze that had moved.
+    // The seam removes the spurious refusals; the ones that survive are real, which is
+    // the only footing on which a notice is worth showing. Inert in production, where
+    // the seam IS the real clock — a genuinely fast device is still refused, and still
+    // says so.
+    const verdict = judgeEatenAt(
       typeof payload.eatenAt === "string" ? new Date(payload.eatenAt) : null,
       getTimezone(profileId),
       date,
@@ -661,8 +675,8 @@ function applyFoodIntent(
       date,
       loggedAt,
       mealSlot,
-      stated
-        ? { eatenAt: utcInstant(stated), source: "stated" as const }
+      verdict.kind === "accepted"
+        ? { eatenAt: utcInstant(verdict.at), source: "stated" as const }
         : undefined
     );
     if (outcome.kind === "unknown-group") {
@@ -672,7 +686,10 @@ function applyFoodIntent(
           "This food group is no longer available, so the serving wasn't logged.",
       };
     }
-    return { status: "done" };
+    return {
+      status: "done",
+      ...(verdict.kind === "refused" ? { timeNotice: verdict.reason } : {}),
+    };
   }
   if (payload.entry === "protein") {
     const grams = payload.grams;
@@ -746,6 +763,12 @@ export type ReplayApplied = "done" | "duplicate" | "rejected";
 export interface ReplayOutcome {
   status: ReplayApplied;
   reason?: string;
+  // A statement the write KEPT NOTHING OF while keeping the row (#2296). Only a
+  // `done` outcome carries one: the intent applied, and something the user said about
+  // WHEN did not survive the gate. It is not a failure and must never be shown as
+  // one — see components/OfflineQueueProvider for how loud "tell them" is allowed to
+  // be once the user may have walked away from the tap.
+  timeNotice?: StatedTimeRefusal;
 }
 
 // Apply one queued intent for `profileId`, exactly once. The idempotency-key check
@@ -760,6 +783,10 @@ export function applyIntent(
   intent: QueuedIntent
 ): ReplayOutcome {
   let outcome: ReplayOutcome = { status: "rejected" };
+  // Set by a flow that APPLIED while refusing a stated time (#2296) — carried out on
+  // the "done" outcome below, never on a rejection (the two mean opposite things: one
+  // kept the row, the other kept nothing).
+  let timeNotice: StatedTimeRefusal | undefined;
   writeTx(() => {
     if (alreadyReplayed(profileId, intent.key)) {
       outcome = { status: "duplicate" };
@@ -828,6 +855,7 @@ export function applyIntent(
         outcome = applied;
         return;
       }
+      timeNotice = applied.timeNotice;
       ok = true;
     } else if (intent.flow === "mobility") {
       // A queued mobility ON tap (#2130) replays through the SAME auth-blind core
@@ -888,7 +916,7 @@ export function applyIntent(
       return;
     }
     recordReplayKey(profileId, intent.key, intent.flow);
-    outcome = { status: "done" };
+    outcome = { status: "done", ...(timeNotice ? { timeNotice } : {}) };
   });
   return outcome;
 }
