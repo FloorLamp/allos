@@ -100,6 +100,9 @@ import {
   parseWorkoutFinishCallback,
   workoutDiscardAnswerText,
   workoutFinishAnswerText,
+  parseActivityTypeAskCallback,
+  activityTypeAskAnswerText,
+  type ActivityTypeAskCallback,
   type WorkoutFinishCallback,
   tempReplyMarker,
   SYMPTOM_SEVERITY_LABELS,
@@ -121,6 +124,7 @@ import {
   tapSkipAnswerText,
 } from "./callback-data";
 import { finishWorkoutSession, discardWorkoutSession } from "../workout-finish";
+import { classifyActivityType } from "../activity-type-write";
 import {
   buildPostWorkoutFinishReminder,
   postWorkoutFinishMarkerKey,
@@ -252,6 +256,14 @@ export async function handleCallbackQuery(
   const workoutFinish = parseWorkoutFinishCallback(cq.data);
   if (workoutFinish) {
     await handleWorkoutFinishTap(cq, workoutFinish);
+    return;
+  }
+
+  // The post-workout TYPE ask (#2272): the source recorded a workout but declined to
+  // say what kind, so the recap that was already going out asked. The tap is the write.
+  const typeAsk = parseActivityTypeAskCallback(cq.data);
+  if (typeAsk) {
+    await handleActivityTypeAskTap(cq, typeAsk);
     return;
   }
 
@@ -711,6 +723,38 @@ async function handleWorkoutFinishTap(
       replacementWithTitle(cq.message?.text, "Workout finished ✅")
     );
   }
+}
+
+// The post-workout TYPE ask (#2272). The source recorded a session and declined to say
+// what kind; the recap asked, and this is the answer. Detection SUGGESTS, the user's
+// tap WRITES (#1670) — nothing classifies on its own, and the answer applies to THIS
+// ROW only (no remembered per-profile inference rule, which would be a second engine
+// silently mislabeling every session after it).
+//
+// The keyboard is consumed whatever the outcome, because the ask is asked ONCE: an
+// answered row has its answer, and a row that was deleted or absorbed by the duplicate
+// auto-merge (#2271) has nothing left to answer for. The toast says which of those
+// happened rather than confirming a write that did not occur.
+async function handleActivityTypeAskTap(
+  cq: TelegramCallbackQuery,
+  token: ActivityTypeAskCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = classifyActivityType(
+    profileId,
+    token.activityId,
+    token.type
+  );
+  await answerCallbackQuery(cq.id, activityTypeAskAnswerText(outcome));
+  await consumeRow(cq, activityTypeAskAnswerText(outcome));
 }
 
 // Apply a single ✅ take or ⏭ skip tap: resolve the acting profile from the chat,

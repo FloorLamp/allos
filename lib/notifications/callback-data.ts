@@ -10,6 +10,7 @@ import type {
   DiscardWorkoutOutcome,
   FinishWorkoutOutcome,
 } from "../workout-finish";
+import type { ClassifyActivityTypeOutcome } from "../activity-type-write";
 import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
@@ -734,6 +735,67 @@ export function workoutDiscardAnswerText(
       return "Draft discarded 🗑";
     case "already-finished":
       return "Already finished — nothing to discard.";
+    case "not-found":
+    default:
+      return "This session is out of date. Open the app.";
+  }
+}
+
+// ---- The post-workout TYPE ask (#2272) ----
+// When an imported session finishes as `unclassified` — its source recorded a workout
+// but declined to say what kind — the recap that was already going out carries three
+// inline buttons. "actype:<profileId>:<activityId>:<type>" carries IDS ONLY (the
+// profile id is the resolve-against-chat cross-check, exactly like a dose tap), and
+// the handler re-verifies ownership on write. Detection SUGGESTS; the user's tap is
+// the write (#1670) — nothing here classifies on its own.
+
+export const ACTIVITY_TYPE_ASK_TYPES = ["strength", "cardio", "sport"] as const;
+export type ActivityTypeAskType = (typeof ACTIVITY_TYPE_ASK_TYPES)[number];
+
+export interface ActivityTypeAskCallback {
+  profileId: number;
+  activityId: number;
+  type: ActivityTypeAskType;
+}
+
+// The single source of truth for the button token (the recap mints it, the parser
+// reads it) so the prefix can't drift between send and handle.
+export function activityTypeAskCallback(
+  profileId: number,
+  activityId: number,
+  type: ActivityTypeAskType
+): string {
+  return `actype:${profileId}:${activityId}:${type}`;
+}
+
+// Parse an "actype:<profileId>:<activityId>:<type>" token. Malformed (wrong prefix,
+// bad ids, a type outside the three offered answers) → null.
+export function parseActivityTypeAskCallback(
+  data: unknown
+): ActivityTypeAskCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^actype:(\d+):(\d+):([a-z]+)$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  const activityId = Number(m[2]);
+  const type = m[3] as ActivityTypeAskType;
+  if (!profileId || !activityId) return null;
+  if (!ACTIVITY_TYPE_ASK_TYPES.includes(type)) return null;
+  return { profileId, activityId, type };
+}
+
+// The Telegram toast for a type-ask tap, per the typed classifyActivityType outcome.
+// Honest per outcome (the markDoseTaken contract): a re-tap, or a keyboard whose row
+// was merged away by the duplicate collapse (#2271), says so rather than confirming a
+// write that did not happen.
+export function activityTypeAskAnswerText(
+  outcome: ClassifyActivityTypeOutcome
+): string {
+  switch (outcome.kind) {
+    case "classified":
+      return `Saved as ${outcome.type} ✅`;
+    case "already-classified":
+      return `Already saved as ${outcome.type}.`;
     case "not-found":
     default:
       return "This session is out of date. Open the app.";

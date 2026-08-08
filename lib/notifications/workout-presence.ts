@@ -36,9 +36,14 @@ import {
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramRecipients } from "./fan-out";
 import {
+  ACTIVITY_TYPE_ASK_PROMPT,
+  activityTypeAskActions,
   composeFinishNudge,
+  importedRecapLine,
   recapNudgeLine,
   weeklyRemainingLine,
+  type FinishTypeAsk,
+  type ImportedSessionFacts,
 } from "./workout-recap-format";
 import { getFrequencyTargetProgress } from "../queries";
 import { collectWindowDoses } from "./supplements";
@@ -168,27 +173,60 @@ export function buildPostWorkoutFinishReminder(
 // (isCompletedSessionRow): a finish that was undone in the delay window, or an
 // edit that moved the session off today, sends nothing. The presence path skips
 // this (presence already proved a just-finished session).
+// The imported row's own facts, for the #2272 recap line, plus the two fields the
+// composition branches on: `source` (is this an import at all) and `type` (is it the
+// stated absence the ask is for). One read; profile-scoped.
+interface FinishRow {
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+  elapsed_min: number | null;
+  distance_km: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  relative_effort: number | null;
+  title: string;
+  type: string;
+  source: string | null;
+}
+
+function loadFinishRow(
+  profileId: number,
+  activityId: number
+): FinishRow | null {
+  const row = db
+    .prepare(
+      `SELECT date, start_time, end_time, duration_min, elapsed_min, distance_km,
+              avg_hr, max_hr, relative_effort, title, type, source
+         FROM activities WHERE id = ? AND profile_id = ?`
+    )
+    .get(activityId, profileId) as FinishRow | undefined;
+  return row ?? null;
+}
+
+function importedFacts(row: FinishRow): ImportedSessionFacts {
+  return {
+    title: row.title,
+    // Active minutes are the pace/volume source (#1202); an import that carried only a
+    // wall-clock span still has something honest to say, so fall back to elapsed.
+    durationMin: row.duration_min ?? row.elapsed_min,
+    distanceKm: row.distance_km,
+    avgHr: row.avg_hr,
+    maxHr: row.max_hr,
+    relativeEffort: row.relative_effort,
+  };
+}
+
 export async function runPostWorkoutForActivity(
   profileId: number,
   activityId: number,
   opts: { verifyCompletedToday?: boolean } = {}
 ): Promise<{ failed: boolean }> {
   const date = today(profileId);
+  const finishRow = loadFinishRow(profileId, activityId);
   if (opts.verifyCompletedToday) {
-    const row = db
-      .prepare(
-        `SELECT date, start_time, end_time, duration_min
-           FROM activities WHERE id = ? AND profile_id = ?`
-      )
-      .get(activityId, profileId) as
-      | {
-          date: string;
-          start_time: string | null;
-          end_time: string | null;
-          duration_min: number | null;
-        }
-      | undefined;
-    if (!row || row.date !== date || !isCompletedSessionRow(row))
+    if (!finishRow || finishRow.date !== date || !isCompletedSessionRow(finishRow))
       return { failed: false };
   }
 
@@ -216,7 +254,16 @@ export async function runPostWorkoutForActivity(
       "workout-recap",
       getProfileHomeAssistant(profileId).disabledKinds
     );
-  const recapLine = recapNudgeLine(recap, recapEnabled);
+  // #2272: an IMPORTED finish has no `exercise_sets`, so the strength recap declines
+  // and the message had nothing to say — measurably, no imported activity had ever
+  // produced a recap. It now gets a line built from the facts the import actually
+  // carries (duration, distance, HR, relative effort), with no volume/PR language.
+  // Same gate: the `workout-recap` kind of the #928 matrix, no new policy.
+  const recapLine =
+    recapNudgeLine(recap, recapEnabled) ??
+    (recapEnabled && finishRow?.source
+      ? importedRecapLine(importedFacts(finishRow))
+      : null);
   // §3 (#981): the recap line gains a forward-looking weekly-remaining status, from the
   // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
@@ -226,7 +273,19 @@ export async function runPostWorkoutForActivity(
     : null;
   const leadLine =
     recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine;
-  const msg = composeFinishNudge(leadLine, doseMsg);
+  // THE ASK (#2272). Offered only when the finishing row is the stated absence itself,
+  // and only ON a message already going out — it adds no send of its own. One offer per
+  // activity, carried by the same one-shot marker the nudge already burns: if it is
+  // ignored the row stays `unclassified` and stays correctable in the app forever. A
+  // queue that re-asks is how a signal gets trained into noise.
+  const ask: FinishTypeAsk | null =
+    finishRow?.type === "unclassified"
+      ? {
+          prompt: ACTIVITY_TYPE_ASK_PROMPT,
+          actions: activityTypeAskActions(profileId, activityId),
+        }
+      : null;
+  const msg = composeFinishNudge(leadLine, doseMsg, ask);
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 
   // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
