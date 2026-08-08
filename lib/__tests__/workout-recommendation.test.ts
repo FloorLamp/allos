@@ -18,6 +18,7 @@ import {
   formatWorkoutReminder,
   type WorkoutRecommendation,
 } from "@/lib/notifications/workout-format";
+import { exerciseSessionCount } from "@/lib/exercise-familiarity";
 import { suggestTitle, exerciseHistoryKey } from "@/lib/lifts";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
@@ -308,13 +309,16 @@ describe("formatWorkoutReminder — deload softening (#741)", () => {
   });
 });
 
-describe("formatWorkoutReminder — how-to deep link (#734)", () => {
+describe("formatWorkoutReminder — how-to deep link (#734, bounded by #2223)", () => {
+  const BASE = "https://allos.example.com";
+  // A lift the reader has NEVER done, which is the whole population the guide is for.
   const rec: WorkoutRecommendation = {
     focus: ["Chest"],
     exercises: ["Barbell Bench Press", "Incline Bench Press"],
     behind: [],
     rest: null,
     onTrack: null,
+    leadExerciseSessions: 0,
   };
 
   it("adds a deep-link button to the lead exercise's guide when a base is given", () => {
@@ -342,7 +346,7 @@ describe("formatWorkoutReminder — how-to deep link (#734)", () => {
       ...rec,
       rest: { title: "Rest day", detail: "You trained hard yesterday." },
     };
-    const msg = formatWorkoutReminder(restRec, "https://allos.example.com");
+    const msg = formatWorkoutReminder(restRec, BASE);
     expect(msg!.actions?.[0]?.url).toContain(
       "exercise=Barbell%20Bench%20Press"
     );
@@ -355,9 +359,71 @@ describe("formatWorkoutReminder — how-to deep link (#734)", () => {
       behind: [],
       rest: null,
       onTrack: null,
+      leadExerciseSessions: 0,
     };
-    const msg = formatWorkoutReminder(focusOnly, "https://allos.example.com");
+    const msg = formatWorkoutReminder(focusOnly, BASE);
     expect(msg!.actions).toBeUndefined();
+  });
+
+  // #2223 — the guide is an INTRODUCTION, not a reference. One logged session stops it.
+  it("omits the button once the lift has been done — a weekly bencher gets no bench guide", () => {
+    const msg = formatWorkoutReminder(
+      { ...rec, leadExerciseSessions: 1 },
+      BASE
+    );
+    expect(msg).not.toBeNull();
+    expect(msg!.actions).toBeUndefined();
+  });
+
+  it("omits the button when the count is ABSENT — unknown is not zero", () => {
+    // Inverts the pre-#2223 assertion: a rec with no count used to send the button.
+    // A path that forgets to thread it must go quiet, never resurrect the noise.
+    const { leadExerciseSessions: _omitted, ...noCount } = rec;
+    const msg = formatWorkoutReminder(noCount, BASE);
+    expect(msg).not.toBeNull();
+    expect(msg!.actions).toBeUndefined();
+  });
+
+  it("omits the button for a lift with NO guide, however new it is", () => {
+    const custom: WorkoutRecommendation = {
+      ...rec,
+      exercises: ["My Weird Machine Thing"],
+      leadExerciseSessions: 0,
+    };
+    const msg = formatWorkoutReminder(custom, BASE);
+    // The destination panel is documented to hide its how-to section for a custom
+    // lift, so the button would have promised content that isn't there.
+    expect(msg!.actions).toBeUndefined();
+  });
+
+  it("suppresses identically on the rest-day branch — one computation, one suppression", () => {
+    const restKnown: WorkoutRecommendation = {
+      ...rec,
+      leadExerciseSessions: 1,
+      rest: { title: "Rest day", detail: "You trained hard yesterday." },
+    };
+    const msg = formatWorkoutReminder(restKnown, BASE);
+    expect(msg).not.toBeNull();
+    expect(msg!.actions).toBeUndefined();
+    // The rest reframe itself is otherwise untouched.
+    expect(msg!.title).toBe("🛌 Rest day");
+  });
+
+  it("matches the guide's identity: a 'Dumbbell Curl' history mutes a 'Barbell Curl' recommendation", () => {
+    const curl: WorkoutRecommendation = {
+      focus: ["Arms"],
+      exercises: ["Barbell Curl"],
+      behind: [],
+      rest: null,
+      onTrack: null,
+      // What `exerciseSessionCount` returns for a profile that logged "Dumbbell Curl":
+      // 1, because both names key to the ONE `curl` guide this button points at.
+      leadExerciseSessions: exerciseSessionCount(
+        [{ exercise: "Dumbbell Curl", date: "2026-07-01" }],
+        "Barbell Curl"
+      ),
+    };
+    expect(formatWorkoutReminder(curl, BASE)!.actions).toBeUndefined();
   });
 });
 

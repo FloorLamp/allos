@@ -15,6 +15,7 @@ import {
   recoveryOverrideLine,
 } from "../workout-recommendation";
 import { parkedDisclosureLines } from "../weather-training";
+import { exerciseSessionCount } from "../exercise-familiarity";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput, getActivitiesByDate } from "../queries";
@@ -168,6 +169,26 @@ export function recommendWorkout(
   // notification path has no login whose temperature preference it could read.
   const parkedNotes = parkedDisclosureLines(nw.parked);
 
+  // How well the reader already knows the lead lift (#2223), so the formatter can bound
+  // the "📖 How to" button to a lift they have NOT done. No new read: these are the very
+  // rows the core just frequency-ranked the exercise list from — the same bounded scan
+  // answering one more question about itself — and both callers of recommendWorkout
+  // (the once-per-tick gather of #447 and the request-time/manual re-gather) populate
+  // them for free.
+  //
+  // The window is the gather's 56 days, deliberately: a lift dropped for two months
+  // earns its cues back on return. See lib/exercise-familiarity.ts before shortening or
+  // unbounding it.
+  //
+  // UNDEFINED when the gather carried no dated rows at all — "unknown", which the
+  // formatter reads as "don't send". Counting 0 there would hand the button to every
+  // history-less caller, the exact direction the attention doctrine forbids.
+  const leadExercise = nw.exercises[0];
+  const leadExerciseSessions =
+    input.datedExercises && leadExercise
+      ? exerciseSessionCount(input.datedExercises, leadExercise)
+      : undefined;
+
   const top = recs[0];
   const rest =
     top?.kind === "rest"
@@ -212,5 +233,8 @@ export function recommendWorkout(
     recoveryOverride: nw.recovery.override
       ? recoveryOverrideLine(nw.recovery.override)
       : null,
+    // Absent, not 0, when unknown (#2223) — the formatter's how-to button needs
+    // positive evidence that the lift is new before it fires.
+    ...(leadExerciseSessions !== undefined ? { leadExerciseSessions } : {}),
   };
 }

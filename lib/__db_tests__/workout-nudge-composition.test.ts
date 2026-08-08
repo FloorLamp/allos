@@ -13,6 +13,10 @@
 //           SCOPE the strength workout.
 //   #2002 — the weather-parking disclosure never reached Telegram, though the engine's
 //           own comments promise the nudge renders it.
+//   #2223 — the "📖 How to" button rode on EVERY send, so a lifter who benched weekly
+//           for years got a bench-press form reference forever. The familiarity count
+//           has to actually ARRIVE from the gather; the pure tier can only prove the
+//           formatter obeys a field handed to it.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
@@ -21,10 +25,12 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setHomeLocation,
+  setPublicUrl,
   setTimezone,
   setWeekMode,
   type UnitPrefs,
 } from "@/lib/settings";
+import { exerciseHistoryKey } from "@/lib/lifts";
 import { upsertWeatherDays } from "@/lib/integrations/weather-cache";
 import type { DailyWeatherRow } from "@/lib/integrations/open-meteo";
 import { logPracticeSession } from "@/lib/queries";
@@ -256,6 +262,89 @@ describe("the composed workout nudge (#2015/#2016/#2017)", () => {
     expect(plainBody(buildWorkoutTargetReminder(pid)!.body)).toContain(
       "Behind this week: Back 0/2 ← today"
     );
+  });
+});
+
+// #2223 — the "📖 How to" deep link, bounded to a lift the reader has NOT done. The
+// pure tier proves the formatter obeys `leadExerciseSessions`; only this tier proves the
+// count ARRIVES, counted over the gather's real rows through `exerciseHistoryKey`.
+describe("the how-to button goes only to a lift you haven't done (#2223)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-08T12:00:00Z")); // a Wednesday
+    setPublicUrl("https://allos.example.test");
+  });
+  afterEach(() => {
+    setPublicUrl("");
+    vi.useRealTimers();
+  });
+
+  // A profile behind on Back, whose back history is whatever the caller logs.
+  function seedBackProfile(name: string, backSessions: readonly string[][]) {
+    const pid = makeProfile(name);
+    const t = today(pid);
+    target(pid, "region", "Back", 2);
+    // Non-back history, outside this week, so the profile is a real lifter either way.
+    logLifts(pid, shiftDateStr(t, -3), ["Barbell Bench Press"]);
+    for (const [i, exercises] of backSessions.entries())
+      logLifts(pid, shiftDateStr(t, -(10 + i * 7)), exercises);
+    return pid;
+  }
+
+  function guideUrl(msg: { actions?: { url?: string }[] }): string | undefined {
+    return msg.actions?.find((a) => a.url)?.url;
+  }
+
+  it("sends the button for a lead lift with ZERO sessions in the window", () => {
+    const pid = seedBackProfile("nudge-guide-new", []);
+    const rec = recommendWorkout(pid)!;
+    // No back history at all, so the core falls back to the catalog lift for the region.
+    expect(rec.exercises[0]).toBe("Deadlift");
+    expect(rec.leadExerciseSessions).toBe(0);
+
+    const msg = buildWorkoutTargetReminder(pid)!;
+    expect(msg.actions?.[0]?.label).toBe("📖 How to: Deadlift");
+    expect(guideUrl(msg)).toBe(
+      "https://allos.example.test/training?tab=analyze&kind=strength&exercise=Deadlift"
+    );
+  });
+
+  it("sends NO button once the lead lift has one logged session", () => {
+    const pid = seedBackProfile("nudge-guide-known", [["Lat Pulldown"]]);
+    const rec = recommendWorkout(pid)!;
+    expect(rec.exercises[0]).toBe("Lat Pulldown");
+    expect(rec.leadExerciseSessions).toBe(1);
+
+    const msg = buildWorkoutTargetReminder(pid)!;
+    // The message is otherwise unchanged — only the affordance is gone.
+    expect(plainBody(msg.body)).toContain("Suggested: Lat Pulldown");
+    expect(msg.actions).toBeUndefined();
+  });
+
+  it("counts SESSIONS, not sets — three sets on one day is still one session", () => {
+    const pid = seedBackProfile("nudge-guide-sets", [
+      ["Lat Pulldown", "Lat Pulldown", "Lat Pulldown"],
+    ]);
+    const rec = recommendWorkout(pid)!;
+    expect(rec.exercises[0]).toBe("Lat Pulldown");
+    expect(rec.leadExerciseSessions).toBe(1);
+    expect(buildWorkoutTargetReminder(pid)!.actions).toBeUndefined();
+  });
+
+  it("counts through exerciseHistoryKey, so a variant spelling still mutes it", () => {
+    // Logged as "Barbell Row"; the recommendation leads with that same merged lift.
+    // Both spellings reach the ONE guide the button would deep-link to, so the
+    // familiarity count has to agree with it rather than with the display name.
+    const pid = seedBackProfile("nudge-guide-variant", [
+      ["Barbell Row"],
+      ["Cable Row"],
+    ]);
+    const rec = recommendWorkout(pid)!;
+    expect(exerciseHistoryKey(rec.exercises[0])).toBe(
+      exerciseHistoryKey("Barbell Row")
+    );
+    expect(rec.leadExerciseSessions).toBe(2);
+    expect(buildWorkoutTargetReminder(pid)!.actions).toBeUndefined();
   });
 });
 

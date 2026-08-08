@@ -797,6 +797,34 @@ Four rules, all enforced in the pure core so no formatter can re-derive them:
   overview. The nudge previously rendered none of it, silently swapping the indoor
   stand-in in for a parked ride (#2002). The rest reframe keeps both the cardio line
   and the disclosure out on purpose — a rest day pushes nothing.
+- **The how-to button is an INTRODUCTION, so it is bounded (#2223).** The `📖 How to:
+{lead exercise}` deep link (#734) used to ride on every send — a lifter who had
+  benched weekly for years got a bench-press form reference forever, and a custom lift
+  got a button to `ExerciseDetailPanel`, which is documented to hide its how-to section
+  when there is no guide. Two defects, one predicate, one expression in
+  `formatWorkoutReminder`: a public URL, a lead lift, `isNewLift(leadExerciseSessions)`,
+  and `hasExerciseGuide(lead)`. It is computed once and spread into BOTH branches —
+  the rest reframe has strictly less reason to carry a form reference than the nudge.
+  - `lib/exercise-familiarity.ts` owns the question and the threshold, apart:
+    `exerciseSessionCount(rows, exercise)` is the FACT, `FAMILIAR_AFTER_SESSIONS = 1`
+    is the POLICY (owner decision 2026-08-06 — one logged session is enough to stop
+    the link; the guide stays permanently reachable in the exercise panel).
+  - **No new read.** `recommendWorkout` counts over `CoachingInput.datedExercises`,
+    the same bounded rows the core just frequency-ranked the exercise list from, and
+    carries the number as `WorkoutRecommendation.leadExerciseSessions`.
+  - **Identity is `exerciseHistoryKey`**, the key the guide index itself uses, so a
+    profile that logs "Dumbbell Curl" and is recommended "Barbell Curl" is not told it
+    has never done the lift whose guide it would receive. **Distinct DATES**, not rows:
+    `getRecentDatedExercises` returns one row per set.
+  - **The 56-day window is the intended semantic**, not a leak — a lift dropped for two
+    months earns its cues back on return. Stated in `lib/exercise-familiarity.ts` so
+    nobody "fixes" it into an all-time count (which would also be far more expensive).
+  - **Absent means "don't send".** Alone among the optional fields on
+    `WorkoutRecommendation`, absent does NOT mean prior behavior: `undefined` and `0`
+    are different values, so a path that forgets to thread the count goes quiet rather
+    than resurrecting the noise. That is the contact-consent rule in
+    `docs/internals/findings.md` — the system may reduce contact unilaterally, never
+    increase it. `digestWorkoutLine` still renders no actions at all.
 
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
