@@ -43,6 +43,7 @@ export * from "./queries/imports";
 export * from "./queries/upcoming";
 export * from "./queries/attention";
 export * from "./queries/integrations";
+export * from "./queries/continuous-streams";
 export * from "./queries/protocols";
 export * from "./queries/situation-impact";
 export * from "./queries/equipment";

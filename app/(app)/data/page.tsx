@@ -28,6 +28,7 @@ import {
   getActivityDuplicateClusters,
   getBodyMetricConflicts,
   getUnitMislabelReviews,
+  getQuietStreamRows,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -117,6 +118,12 @@ export default async function DataPage(
     activeSection = (
       <ReviewInbox
         issues={importIssues}
+        // A provider syncing green while one of its continuous streams went quiet
+        // (#2146). Built only for the ACTIVE Review section — it is two indexed seeks
+        // per declared stream, but nothing on the Import or Manage request needs it —
+        // and deliberately absent from `reviewCount` above: a coaching-tier
+        // observation must not inflate an escalation badge.
+        quietStreams={getQuietStreamRows(profile.id, login.id)}
         // The recurring per-provider streams for the "Connected sources" section.
         sources={getConnectedSources(profile.id)}
         // The one-off "Imports" feed (documents + archives + paste jobs) behind Review.
