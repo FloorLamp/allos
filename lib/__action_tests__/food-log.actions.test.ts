@@ -414,9 +414,11 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
 // One more field on updateFoodLogEvent with three wire values: absent/empty leaves the
 // row's eating time alone, "none" clears it, "HH:MM" states that wall time on the
 // SUBMITTED day. The pin that matters most is the INVERTED judgeEatenAt posture: on
-// the log path an unusable instant silently costs the statement (the serving must
+// the log path an unusable instant costs the statement and not the serving (which must
 // land), but in a correction the statement IS the submission, so a refused instant is
-// a formError the user sees — never a silent clear.
+// a formError the user sees — never a silent clear. Since #2296 the difference is what
+// a refusal COSTS, not whether it is mentioned: both surfaces say it, one as a notice
+// on a write that succeeded and one as the failure it genuinely is.
 describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
   function eventRow(profileId: number) {
     const rows = db

@@ -161,10 +161,16 @@ export default function OfflineQueueProvider({
       lastSyncToastAt.current = now;
       // The sync confirmation, amended when a replay kept a row but refused the time
       // it was told (#2296). Same toast, same default tone, same auto-dismiss: the
-      // entries DID land, so this must not read like the dead-letter alert below.
-      // The service worker's Background Sync path reports a count and no notices —
-      // it replays without a page, so there is nobody to tell; the row is correct
-      // apart from a cosmetic minute and stays editable from its own ⋯ sheet.
+      // entries DID land, so this must not read like the dead-letter alert below,
+      // which says "these weren't saved" and would be false here.
+      //
+      // The service-worker call site passes no notices, and that is exact rather than
+      // lossy: sw.js DELEGATES to an open tab (posting synced: 0, which returns above)
+      // and only replays itself when NO tab is open — where there is no client to post
+      // a notice to and no one to read it. A missing minute is cosmetic, the serving is
+      // on the right day, and the row stays correctable from its own ⋯ sheet, so
+      // "nobody was there" is an acceptable place for this to go unsaid. Claiming the
+      // time WAS recorded would not be, and nothing does.
       toast(syncedAnnouncement(n, timeNotices));
       // Survives the #1473 sweep: the queue replays through the /api/offline-replay
       // route handler (and the service worker), never a Server Action, so nothing
