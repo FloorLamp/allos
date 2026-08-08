@@ -56,6 +56,7 @@ import { TTC_WORKUP_PREFIX } from "./ttc";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import { DIGEST_TIME_PREFIX } from "./digest-time-suggestion";
 import { SYNC_REQUEST_PREFIX } from "./sync-requests";
+import { RECORDS_RECENCY_PREFIX } from "./records-recency";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -331,6 +332,30 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SYNC_REQUEST_PREFIX,
     tier: "coaching",
     builder: "syncRequestItems (Upcoming generator, lib/queries/upcoming)",
+    reasons: [],
+  },
+  {
+    // RECORDS-RECENCY asks (#2164 + #2176) — the other two legs of the #1757 pattern,
+    // under ONE namespace because they are one question about two person-operated
+    // sources: an archive whose exclusive streams have aged past their declared horizon,
+    // and a manual-upload profile whose lab/biomarker frontier has aged past the
+    // preventive catalog's check-up cadence.
+    //
+    // COACHING tier, and the ceiling is the same hard contract the portal request has:
+    // no dedicated send, EVER, no escalation, and off the non-hideable hero
+    // (cardBandForItem). Records hygiene is not a safety signal, and an ask about a
+    // month-scale drift that cannot be dismissed is a nag.
+    //
+    // The key is EPISODE-scoped on the source's own data frontier
+    // (`records-recency:<source>:<frontier>`), so a dismissal means "not this ask" and
+    // the next staleness episode after a real refresh surfaces as a new one.
+    //
+    // NOT a rule-findings builder: the items come from the Upcoming generator
+    // `recordsRecencyItems`, so the collectCoachingFindings reflection guards never see
+    // them — registered here for the same reason the portal ask above is.
+    prefix: RECORDS_RECENCY_PREFIX,
+    tier: "coaching",
+    builder: "recordsRecencyItems (Upcoming generator, lib/queries/upcoming)",
     reasons: [],
   },
   {

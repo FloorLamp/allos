@@ -174,6 +174,18 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const portal = titleize(part(t, 0).split("/")[0].replace(/[_-]/g, " "));
     return portal ? `Portal sync request — ${portal}` : "Portal sync request";
   },
+  // A records-recency ask (#2164/#2176), keyed `records-recency:<source>:<frontier>`.
+  // The SOURCE is the nameable part; the frontier is the episode anchor, and quoting a
+  // date back at someone who silenced an ask about that date adds nothing.
+  "records-recency:": (t) => {
+    const head = part(t, 0);
+    if (head === "clinical-records") return "Lab results recency";
+    if (head === "archive") {
+      const provider = titleize(part(t, 1).replace(/[_-]/g, " "));
+      return provider ? `Archive refresh — ${provider}` : "Archive refresh";
+    }
+    return "Records recency";
+  },
   // The digest time suggestion (#2217), keyed `digest-time:<configured>:<proposed>`
   // in minutes of day. Both numbers are nameable and both matter: the row has to say
   // which send time the dismissal was about, because changing that time re-arms the

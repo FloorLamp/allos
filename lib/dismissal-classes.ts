@@ -436,6 +436,17 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`<portalSlug>/<accountSlug>:<requestDay>`",
   },
   {
+    prefix: "records-recency:",
+    keyClass: "anchored",
+    shape:
+      "`archive:<providerId>:<dataFrontier>` | `clinical-records:<dataFrontier>`",
+    // Anchored on the SOURCE's own data frontier (#2164/#2176). Neither half is a
+    // recyclable user string: the provider id is registry vocabulary, `clinical-records`
+    // is a literal, and the frontier is a MAX(date) over rows the app owns. A stale row
+    // can only ever silence an ask about a frontier that has since moved — and when it
+    // moves the key moves with it, which is the mechanism, not a leak. No sweep needed.
+  },
+  {
     prefix: "digest-time:",
     keyClass: "anchored",
     shape: "`<configuredMinute>:<proposedMinute>` (minutes of day)",
