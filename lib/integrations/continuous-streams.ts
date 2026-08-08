@@ -87,6 +87,23 @@ export function streamsWithReminder(
   return allContinuousStreams().filter((s) => s.stream.reminder === reminder);
 }
 
+/**
+ * THE one stream a named send adapter actually watches, or null.
+ *
+ * Exactly one entry declares `bedtime-wear` today. A second would need a per-profile
+ * choice of which device to remind about — a product question neither #2161 nor #2162
+ * answers — so the first is taken and the rest deliberately ignored until it is
+ * decided. Resolved HERE rather than in either caller because two callers now need the
+ * same answer for the same reason: #2161's gather sends about this stream, and #2162's
+ * offboarding prompt claims that those sends have paused. If the two picked
+ * differently, the prompt would be explaining a pause that never happened.
+ */
+export function reminderStream(
+  reminder: ContinuousStreamReminderId
+): ProviderStream | null {
+  return streamsWithReminder(reminder)[0] ?? null;
+}
+
 /** Every stream that declares the #2146 quiet facet, i.e. is reportable as quiet. */
 export function quietReportableStreams(): ProviderStream[] {
   return allContinuousStreams().filter((s) => s.stream.quiet != null);

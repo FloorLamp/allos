@@ -25,6 +25,7 @@ import { subHourlySlotsAtRisk } from "@/lib/notifications/schedule";
 import { formatClockMinutes } from "@/lib/format-date";
 import { arrivalStatistics } from "@/lib/notifications/digest-schedule";
 import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
+import { wearReminderPausedNote } from "@/lib/queries/stream-lifecycle";
 import { getSleepArrivals } from "@/lib/queries/metrics";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -235,6 +236,10 @@ export default async function NotificationsSettingsPage() {
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}
                 sleepDigestEnabled={getProfileSleepDigest(profile.id)}
                 wearReminderEnabled={getProfileWearReminder(profile.id)}
+                // #2162 constraint 5: while the shared expected-active gate is closed
+                // the reminder cannot fire, so the row says so rather than implying
+                // tonight's send. Derived — the setting itself is never rewritten.
+                wearReminderPaused={wearReminderPausedNote(profile.id)}
                 // What the MORNING SLOT's "Auto" resolves to (#1117): the profile's
                 // typical wake minute, or null when there isn't enough sleep data
                 // yet. At minute grain (#2121) it is passed unrounded. The digest

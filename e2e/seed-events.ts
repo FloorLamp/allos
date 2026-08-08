@@ -27,6 +27,7 @@ import {
 import {
   seedIntegrationSyncEvents,
   seedQuietStream,
+  seedStreamLifecycle,
   seedSyncHistoryDay,
 } from "./seed/integrations";
 import { seedPortalHouseholds } from "./seed/portals";
@@ -130,6 +131,7 @@ seedPrelude();
 seedJournalCard();
 seedIntegrationSyncEvents();
 seedQuietStream();
+seedStreamLifecycle();
 seedSyncHistoryDay();
 seedMergeFixtures();
 seedImportFeed();

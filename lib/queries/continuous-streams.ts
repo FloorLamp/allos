@@ -82,6 +82,15 @@ import { getIntegrationAttention } from "./integrations";
 interface StreamReader {
   /** The newest row's EVENT instant for this profile + source, canonical, or null. */
   latestAt(profileId: number, source: string): string | null;
+  /**
+   * The OLDEST row's event instant for this profile + source, canonical, or null.
+   *
+   * The lifecycle's `appeared` state (#2162) is the only thing that asks it: "when did
+   * this stream first ever deliver for this profile" is what separates a device
+   * someone just started wearing from one they have worn for a year. One indexed seek
+   * on the same primary key `latestAt` walks, from the other end.
+   */
+  earliestAt(profileId: number, source: string): string | null;
   /** Does this profile have any row from `source` inside the local day `day`? */
   deliveredOnDay(
     profileId: number,
@@ -102,6 +111,16 @@ const STREAM_READERS: Record<ContinuousStreamTable, StreamReader> = {
         .get(profileId, source) as { ts: string | null } | undefined;
       // `ts` is declared, not assumed: eventInstant reads TIME_COLUMNS.hr_minutes and
       // normalizes whatever convention that column is on today.
+      const at = eventInstant("hr_minutes", { ts: row?.ts ?? null });
+      return at.known ? at.at : null;
+    },
+    earliestAt(profileId, source) {
+      const row = db
+        .prepare(
+          `SELECT MIN(ts) AS ts FROM hr_minutes
+            WHERE profile_id = ? AND source = ?`
+        )
+        .get(profileId, source) as { ts: string | null } | undefined;
       const at = eventInstant("hr_minutes", { ts: row?.ts ?? null });
       return at.known ? at.at : null;
     },
@@ -136,6 +155,43 @@ export function latestStreamInstant(
   source: string
 ): string | null {
   return STREAM_READERS[table].latestAt(profileId, source);
+}
+
+/** The OLDEST instant on a declared stream, canonical UTC, or null (#2162). */
+export function earliestStreamInstant(
+  profileId: number,
+  table: ContinuousStreamTable,
+  source: string
+): string | null {
+  return STREAM_READERS[table].earliestAt(profileId, source);
+}
+
+/**
+ * The profile-local days, inside the stream's DECLARED expected-active window, on
+ * which it delivered at least one row — exactly the input `isStreamActive` takes.
+ *
+ * Extracted in #2162 rather than copied: the quiet row and the lifecycle ask the same
+ * question of the same declaration, and a second copy of the loop is how one of them
+ * would end up counting a UTC day while the other counted a local one. Each day is a
+ * half-open local UTC range over the canonical column (migration 164 dropped the
+ * `substr(ts,1,10)` index for precisely that reason), so it costs one bounded EXISTS
+ * per declared day — three, today.
+ */
+export function streamDeliveredDays(
+  profileId: number,
+  table: ContinuousStreamTable,
+  source: string,
+  tz: string,
+  todayStr: string,
+  windowDays: number
+): string[] {
+  const reader = STREAM_READERS[table];
+  const days: string[] = [];
+  for (let back = 1; back <= windowDays; back++) {
+    const day = shiftDateStr(todayStr, -back);
+    if (reader.deliveredOnDay(profileId, source, tz, day)) days.push(day);
+  }
+  return days;
 }
 
 /**
@@ -224,15 +280,16 @@ export const getQuietStreams = cache(function getQuietStreams(
       minutesSinceStream != null && minutesSinceStream > quiet.dipToleranceMin;
 
     // The shared #2097/#2146 expected-active gate, over the stream's DECLARED window.
-    const deliveredDays: string[] = [];
-    if (overTolerance) {
-      const reader = STREAM_READERS[stream.table];
-      for (let back = 1; back <= stream.expectedActive.windowDays; back++) {
-        const day = shiftDateStr(todayStr, -back);
-        if (reader.deliveredOnDay(profileId, provider, tz, day))
-          deliveredDays.push(day);
-      }
-    }
+    const deliveredDays = overTolerance
+      ? streamDeliveredDays(
+          profileId,
+          stream.table,
+          provider,
+          tz,
+          todayStr,
+          stream.expectedActive.windowDays
+        )
+      : [];
 
     const okSyncMs = overTolerance
       ? ms(latestOkSyncInstant(profileId, provider))

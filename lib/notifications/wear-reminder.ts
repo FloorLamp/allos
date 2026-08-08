@@ -44,7 +44,7 @@ import {
   latestOkSyncInstant,
   latestStreamInstant,
 } from "../queries/continuous-streams";
-import { streamsWithReminder } from "../integrations/continuous-streams";
+import { reminderStream } from "../integrations/continuous-streams";
 import {
   BEDTIME_WEAR_TITLE,
   bedtimeWearBody,
@@ -56,12 +56,13 @@ import type { NotificationMessage } from "./types";
 /**
  * The (provider, stream) pair this reminder watches, resolved from the registry.
  *
- * Exactly one entry is declared today. A second would need a per-profile choice of
- * which device to remind about, which is #2162's lifecycle question, not this one's —
- * so the first is taken and the rest deliberately ignored until that ships.
+ * The "first declared entry wins" rule moved into `reminderStream` in #2162, because
+ * the offboarding prompt has to name the SAME stream this send watches — it claims
+ * those sends have paused, and a prompt about a different device would be explaining a
+ * pause that never happened.
  */
 function watchedStream() {
-  return streamsWithReminder("bedtime-wear")[0] ?? null;
+  return reminderStream("bedtime-wear");
 }
 
 /**

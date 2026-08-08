@@ -11,13 +11,19 @@ import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
 import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
 import { generateHealthConnectToken } from "../../lib/integrations/connections";
-import { utcMinute } from "../../lib/date";
-import { getTimezone } from "../../lib/settings";
+import { utcMinute, shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
+import { getTimezone, setProfileWearReminder } from "../../lib/settings";
 import {
   E2E_LOGIN_SYNC_HISTORY,
   SYNC_HISTORY_PROFILE,
   E2E_LOGIN_QUIET_STREAM,
   QUIET_STREAM_PROFILE,
+  E2E_LOGIN_STREAM_ONBOARD,
+  STREAM_ONBOARD_PROFILE,
+  E2E_LOGIN_STREAM_DECLINE,
+  STREAM_DECLINE_PROFILE,
+  E2E_LOGIN_STREAM_LAPSED,
+  STREAM_LAPSED_PROFILE,
 } from "../fixture-logins";
 import { PROFILE_ID, ins, fixtureProfileId, seedMemberLogin } from "./common";
 
@@ -525,5 +531,103 @@ export function seedQuietStream(): void {
   console.log(
     `e2e: seeded quiet-stream fixture — profile ${profileId} (${QUIET_STREAM_PROFILE}), ` +
       `hr_minutes quiet for 5 h in ${getTimezone(profileId)} while pushes continue (#2146)`
+  );
+}
+
+// ── The stream lifecycle (#2162) ─────────────────────────────────────────────
+//
+// Three profiles, because the three specs answer their offer in three different ways
+// and a shared profile would let one spec's tap decide another's fixture. Each is
+// built RELATIVE to the run's frozen clock and in its own profile-local timezone, and
+// every `hr_minutes.ts` value is the canonical UTC minute the wall clock denotes
+// (migration 164), minted the way ingest mints it.
+//
+// The lifecycle reads PROFILE-LOCAL days, so each fixture day is anchored at a wall
+// clock (20:00) rather than at an offset from `now` — a fixed offset would drift
+// across a local midnight and move a stream's first or last day by one.
+
+/** Heart-rate minutes ending at a profile-local `day` + wall clock, canonical UTC. */
+function seedStreamMinutes(
+  profileId: number,
+  tz: string,
+  day: string,
+  hhmm: string,
+  minutes: number
+): void {
+  const end = zonedWallTimeToUtc(tz, day, hhmm);
+  if (!end) return;
+  const insert = db.prepare(
+    `INSERT OR REPLACE INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, 63, 60, 'health-connect')`
+  );
+  for (let back = 0; back < minutes; back++)
+    insert.run(profileId, utcMinute(new Date(end.getTime() - back * 60_000)));
+}
+
+/** A successful push, so the connection reads healthy the whole time. */
+function seedStreamPush(profileId: number, at: Date): void {
+  db.prepare(
+    `INSERT INTO integration_sync_events
+       (profile_id, provider, at, ok, received, written, inserted, updated, unchanged)
+     VALUES (?, 'health-connect', ?, 1, 8, 8, 0, 2, 6)`
+  ).run(profileId, utcMinute(at));
+}
+
+function resetStreamProfile(profileId: number): void {
+  db.prepare(`DELETE FROM hr_minutes WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM integration_sync_events WHERE profile_id = ?`).run(
+    profileId
+  );
+  db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(
+    profileId
+  );
+  upsertConnection(profileId, "health-connect", { status: "connected" });
+}
+
+export function seedStreamLifecycle(): void {
+  const clock = clockNow();
+
+  // APPEARED — the onboarding moment, twice over. Heart rate started arriving TODAY
+  // and never before, and the bedtime reminder is off (it has never been touched, so
+  // there is nothing to write: off is the absence of the setting).
+  for (const [username, name] of [
+    [E2E_LOGIN_STREAM_ONBOARD, STREAM_ONBOARD_PROFILE],
+    [E2E_LOGIN_STREAM_DECLINE, STREAM_DECLINE_PROFILE],
+  ] as const) {
+    const profileId = fixtureProfileId(name);
+    seedMemberLogin(username, profileId, "write");
+    resetStreamProfile(profileId);
+    const tz = getTimezone(profileId);
+    seedStreamMinutes(profileId, tz, today(profileId), "07:40", 45);
+    seedStreamPush(profileId, new Date(clock.getTime() - 20 * 60_000));
+    console.log(
+      `e2e: seeded stream-onboarding fixture — profile ${profileId} (${name}), ` +
+        `first heart-rate minutes today in ${tz} (#2162)`
+    );
+  }
+
+  // ENDED — two months of wear, then a fortnight of silence, with the reminder ON.
+  // The gate closed itself around day three; the prompt exists to say so.
+  const lapsedId = fixtureProfileId(STREAM_LAPSED_PROFILE);
+  seedMemberLogin(E2E_LOGIN_STREAM_LAPSED, lapsedId, "write");
+  resetStreamProfile(lapsedId);
+  const lapsedTz = getTimezone(lapsedId);
+  const lapsedToday = today(lapsedId);
+  for (let back = 60; back >= 14; back--)
+    seedStreamMinutes(
+      lapsedId,
+      lapsedTz,
+      shiftDateStr(lapsedToday, -back),
+      "20:00",
+      4
+    );
+  // The phone keeps pushing right up to the present: the connection is green, only
+  // the device went away — the same separation #2146 turns on.
+  for (const minutesAgo of [18, 95, 240])
+    seedStreamPush(lapsedId, new Date(clock.getTime() - minutesAgo * 60_000));
+  setProfileWearReminder(lapsedId, true);
+  console.log(
+    `e2e: seeded stream-offboarding fixture — profile ${lapsedId} ` +
+      `(${STREAM_LAPSED_PROFILE}), heart rate silent 14 days in ${lapsedTz} (#2162)`
   );
 }
