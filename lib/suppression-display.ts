@@ -31,6 +31,10 @@ import { WEATHER_MED_PREFIX } from "./weather-med-safety";
 import { OUTDOOR_PLAN_PREFIX } from "./queries/weather-training";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
+import {
+  STREAM_OFFBOARD_PREFIX,
+  STREAM_ONBOARD_PREFIX,
+} from "./integrations/stream-lifecycle";
 import { STEPS_PACE_PREFIX } from "./steps-target";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
@@ -453,6 +457,34 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     domain: "Suggestions",
     label: (t) =>
       part(t, 0) === "post" ? "Post-op suggestion" : "Pre-surgery suggestion",
+  },
+  {
+    // The continuous-stream ONBOARDING offer (#2162): "your watch started sending
+    // heart rate — want the bedtime reminder?" answered with No thanks. Not in
+    // RULE_FINDING_REGISTRY for the same reason `pool-refill:` isn't — no rule builder
+    // emits it, and the registry's reflection guards read builder output. Both tails
+    // are registry vocabulary, so the provider reads back as a name.
+    prefix: STREAM_ONBOARD_PREFIX,
+    domain: "Suggestions",
+    label: (t) => {
+      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return provider
+        ? `Bedtime watch reminder offer — ${provider}`
+        : "Bedtime watch reminder offer";
+    },
+  },
+  {
+    // The OFFBOARDING prompt (#2162), answered either way — "Turn them off" and
+    // "Keep them ready" both dismiss THIS lapse episode, and the tail's episode day is
+    // what keeps a later lapse from arriving pre-silenced.
+    prefix: STREAM_OFFBOARD_PREFIX,
+    domain: "Suggestions",
+    label: (t) => {
+      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return provider
+        ? `Paused watch reminder note — ${provider}`
+        : "Paused watch reminder note";
+    },
   },
 ];
 

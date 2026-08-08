@@ -39,6 +39,10 @@
 // visible defect — the #1931 sweep found `steps-pace:` exactly that way and added it.
 
 import { SUPPRESSION_DISPLAY_PREFIXES } from "./suppression-display";
+import {
+  STREAM_OFFBOARD_PREFIX,
+  STREAM_ONBOARD_PREFIX,
+} from "./integrations/stream-lifecycle";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never
@@ -334,6 +338,17 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`<recommendationId>` (the closed rest/train/cardio id set)",
   },
   {
+    prefix: STREAM_ONBOARD_PREFIX,
+    keyClass: "catalog",
+    shape: "`<integrationId>:<continuousStreamId>` (both registry vocabulary)",
+    // The #2162 onboarding offer, declined. Deliberately PERMANENT and deliberately
+    // catalog-class: neither tail is user-typed, both come from the provider registry,
+    // and "stop offering me the bedtime reminder for this device's heart rate" is a
+    // statement about the topic that should outlive any particular hr_minutes row. A
+    // NEW provider or a NEW stream mints a different key, so a second wearable gets
+    // its own offer rather than inheriting this silence.
+  },
+  {
     prefix: "immunization:",
     keyClass: "name-keyed-swept",
     shape: "`<catalogComponentCode>`",
@@ -344,6 +359,17 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
   },
 
   // ---- anchored: a date / period / episode anchor bounds re-attachment -------
+  {
+    prefix: STREAM_OFFBOARD_PREFIX,
+    keyClass: "anchored",
+    shape:
+      "`<integrationId>:<continuousStreamId>:<lastDeliveredLocalDay>` (#2162)",
+    // The episode anchor IS the last day the stream delivered, which is constant for
+    // the whole of one lapse and moves the moment data returns. That is what makes the
+    // prompt one-shot per EPISODE rather than per stream: a dismissal cannot repeat
+    // inside the lapse it was given in, and a later lapse after a genuine resume has a
+    // different anchor and therefore arrives un-silenced. No episode row to sweep.
+  },
   {
     prefix: "training-obs:",
     keyClass: "anchored",

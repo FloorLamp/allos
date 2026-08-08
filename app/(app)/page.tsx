@@ -120,6 +120,7 @@ import IllnessHero, {
 import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
+import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
@@ -1243,6 +1244,14 @@ export default async function Dashboard() {
           dismissAction={dismissRecentlyResolved}
         />
       )}
+      {/* The continuous-stream on/offboarding offer (#2162) — a wearable that just
+          started delivering, or one whose reminders have paused themselves. Class 2:
+          it competes for space here, is answered in one tap, and stays dismissed.
+          Renders nothing at all on almost every day. */}
+      <StreamLifecycleOffers
+        profileId={profile.id}
+        canWrite={access === "write"}
+      />
       {/* Skipped when the Now strip promoted it — one render, never two (#1413). */}
       {showRecapCard && finishedRecap && !nowPromoted.has("session-recap") && (
         <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />

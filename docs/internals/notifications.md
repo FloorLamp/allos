@@ -1105,10 +1105,12 @@ Notifications kinds matrix. Two properties are enforced, not merely intended:
 - **Off is byte-for-byte today's behaviour.** `bedtimeWearVerdict`
   (`lib/wear-reminder.ts`) checks consent FIRST and returns before any other
   signal is read; `bedtimeWearReminderState` pays one settings read and stops.
-- **Nothing enables it but a user action.** `saveNotificationPrefs` is the only
-  writer. A detected lost night may SUGGEST turning it on — the right-sizing
-  family's shape, detection suggests and the tap writes — but no detector, tick,
-  or gather may perform the write.
+- **Nothing enables it but a user action.** There are exactly two writers, and
+  both are Server Actions bound to a button a person pressed:
+  `saveNotificationPrefs` (the Settings row) and the #2162 lifecycle's
+  accept/turn-off taps. A detected lost night may SUGGEST turning it on — the
+  right-sizing family's shape, detection suggests and the tap writes — but no
+  detector, tick, or gather may perform the write.
 
 **The predicate** is #2146's quiet-stream shape at a bedtime-sized tolerance:
 the declared continuous stream has been silent for ≥ `WEAR_QUIET_TOLERANCE_MIN`
@@ -1119,8 +1121,11 @@ with no ok syncs is a CONNECTION outage that #1685 already owns and names — tw
 rows for one fault is exactly what the one-row rule forbids. The declared stream
 is Health Connect's `hr_minutes`, the only continuous wear stream the app
 ingests (the Fitbit Takeout archive import has no live cadence to be silent
-against and is exempt by construction). #2146 moves that declaration into the
-provider registry beside `silenceToleranceMinutes` once a second provider needs one.
+against and is exempt by construction). #2146 moved that declaration into the
+provider registry beside `silenceToleranceMinutes` (`continuousStreams`, with
+`reminder: "bedtime-wear"` on the entry this watches), so which provider and which
+stream is a registry question; `reminderStream("bedtime-wear")` resolves it once,
+for this send and for #2162's offboarding prompt alike.
 
 Two gates sit in front of the predicate. The **expected-active** gate is the
 SHARED #2097 vocabulary — `isSleepTracking` over `getSyncedSleepWakeDays` — so a
@@ -1141,13 +1146,39 @@ than `planNudgeCadence`: there is one profile-fixed key with no subject to
 strand, so there is no candidate set to freeze and no self-healing sweep to run.
 A skipped night leaves the marker UNSET, so it never spends the night's send.
 
-**Timestamps.** The gather joins two of the three coexisting conventions
-(#94/#1333/#2146 constraint 6): `hr_minutes.ts` is profile-local bare,
-`integration_sync_events.at` is UTC bare. The stream's wall time is converted
-once through `zonedWallIsoToUtc` and everything is compared in UTC from there —
-reading `hr_minutes.ts` as UTC is the #2096 failure class, and subtracting two
-bare local strings would report wall-clock difference rather than elapsed time
-on a DST night.
+**Timestamps.** Both columns the gather joins are now canonical UTC instants —
+`hr_minutes.ts` since migration 164, `integration_sync_events.at` since migration
+163, with pre-163 rows still on SQLite's bare shape. Nothing here parses a stored
+stamp by hand: every read goes through the shared `latestStreamInstant` /
+`latestOkSyncInstant` (`lib/queries/continuous-streams.ts`), which resolve each
+column against its DECLARED meaning in `lib/time-columns.ts`, and every comparison
+is on epoch milliseconds. That indirection is not decoration — this module used to
+convert `hr_minutes.ts` with `zonedWallIsoToUtc`, which REFUSES a stamp carrying
+`Z`, so after migration 164 it resolved null for every real row and the reminder
+could not fire at all (#2309). Going through the declaration means the next
+conversion moves this reader with it.
+
+**Onboarding and offboarding (#2162).** Nothing introduced this reminder when a
+wearable started delivering, and nothing closed the loop when someone stopped
+wearing it. The stream lifecycle
+(`lib/integrations/stream-lifecycle.ts`, documented in full in
+`docs/internals/integrations-sync.md`) does both, and it never adds a send:
+
+- **Onboarding.** When the declared stream first delivers (`appeared`) and the
+  setting is off, a two-button offer renders on the integrations page and once on
+  the dashboard. **Yes, remind me** writes the setting; **No thanks** writes only a
+  permanent per-(provider, stream) dismissal, because there was nothing on to turn
+  off. IGNORING IT ENABLES NOTHING — that is why it is an offer and not a default.
+- **Offboarding.** After 14 days of silence (`ended`) the reminder has already been
+  quiet for a week and a half: the expected-active gate closed within days, all by
+  itself. The prompt EXPLAINS that and offers **Keep them ready** (a dismissal, the
+  setting untouched) or **Turn them off** (the user's tap is the write). This is
+  §7's confirm-to-KEEP direction, not a second consent request, and a resume needs
+  no ceremony — the gate reopens on the next row.
+- **Setting-page honesty.** While the gate is closed the kinds-matrix row shows the
+  derived paused state (`wearReminderPausedNote`) instead of implying tonight's
+  send. Nothing rewrites the toggle; the pause is presentation, the same shape
+  #1668 shipped for the mood check-in.
 
 **The precondition is named, never guessed.** The reminder's entire schedule is
 the Bedtime slot minute, and that slot is independently switchable — someone who

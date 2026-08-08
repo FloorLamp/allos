@@ -347,6 +347,7 @@ export default function NotificationPrefs({
   moodRecapEnabled,
   sleepDigestEnabled,
   wearReminderEnabled,
+  wearReminderPaused,
   wakeMinute,
   arrivalStats,
   timeSuggestion,
@@ -373,6 +374,11 @@ export default function NotificationPrefs({
   // a fact about the data subject's habits, not about a device — and off by default,
   // so an absent setting renders unchecked and sends nothing.
   wearReminderEnabled: boolean;
+  // #2162: the derived paused-by-gate note for that reminder, or null when there is
+  // nothing to disclose (off, delivering, or no connected stream at all). Resolved
+  // server-side by the SAME lifecycle the on/offboarding offers read, so the Settings
+  // row and the offboarding prompt can never disagree about whether it is paused.
+  wearReminderPaused: string | null;
   // The profile's typical wake minute of day that the Morning slot's "Auto"
   // resolves to, or null when there isn't enough sleep data yet (#1117). The DIGEST
   // no longer reads it — #2211 removed `auto` from the digest entirely.
@@ -829,6 +835,23 @@ export default function NotificationPrefs({
                       {slotGap(e)}
                     </p>
                   )}
+                  {/* #2162 constraint 5 — setting-page honesty. While the shared
+                      expected-active gate is closed, the bedtime reminder is not
+                      going to fire tonight, and a checkbox that reads "on" with no
+                      disclosure would be claiming otherwise. It reports the DERIVED
+                      pause and leaves the user's own setting exactly as they left it;
+                      only a tap ever writes that field. Gated on the LIVE checkbox
+                      value so a just-unticked row stops claiming to be paused. */}
+                  {e.kind === "wear-reminder" &&
+                    wearReminderPaused &&
+                    values["wear_reminder_enabled"] === "1" && (
+                      <p
+                        className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                        data-testid={`kind-paused-${e.kind}`}
+                      >
+                        {wearReminderPaused}
+                      </p>
+                    )}
 
                   {e.control.type === "time" && (
                     <div className="mt-2">
