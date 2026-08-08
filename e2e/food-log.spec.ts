@@ -669,9 +669,13 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   const hourChips = page.locator('[data-testid^="food-eating-at-"]');
   const newestHour = hourChips.first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
   await expect(newestHour).toBeVisible();
-  const hhmm = (await newestHour.textContent())!.trim();
+  // The chip announces the FILING, not just the hour (#2269): `19:00 · Evening` —
+  // the #2268 correction-sheet enrichment worn at log time.
+  const chipText = (await newestHour.textContent())!.trim();
+  expect(chipText).toMatch(/^([01]\d|2[0-3]):[0-5]\d · (Morning|Midday|Evening)$/);
+  const hhmm = chipText.split("·")[0].trim();
   await hydratedClick(page, newestHour);
-  await expect(earlier).toHaveText(hhmm);
+  await expect(earlier).toHaveText(chipText);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `recorded as eaten at ${hhmm}`
   );
@@ -696,6 +700,68 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
   // chip's own label is what the row ends up reading.
   await expect(page.getByTestId(`food-logged-${eventId}`)).toContainText(hhmm);
+
+  await removeLoggedServing(page, eventId);
+});
+
+test("a stated time wins over the tab: the serving lands, visibly, in its derived section (#2269)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // State the newest offered hour and read the filing its chip announces.
+  await hydratedClick(page, page.getByTestId("food-eating-earlier"));
+  const newestHour = page
+    .locator('[data-testid^="food-eating-at-"]')
+    .first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
+  await expect(newestHour).toBeVisible();
+  const filingSlot = (await newestHour.getAttribute("data-slot"))!;
+  expect(["Morning", "Midday", "Evening"]).toContain(filingSlot);
+  await hydratedClick(page, newestHour);
+
+  // Stand in a DIFFERENT tab than the one the hour files under. The tab is
+  // navigation; the chip stated the consequence.
+  const otherTab = ["Morning", "Midday", "Evening"].find(
+    (slot) => slot !== filingSlot
+  )!;
+  await hydratedClick(
+    page,
+    page.getByTestId(`food-slot-${otherTab.toLowerCase()}`)
+  );
+  // The answer text names the filing before the tap does.
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    `and land in ${filingSlot}`
+  );
+
+  const filingTotal = page.getByTestId(
+    `food-slot-total-${filingSlot.toLowerCase()}`
+  );
+  const tabTotal = page.getByTestId(
+    `food-slot-total-${otherTab.toLowerCase()}`
+  );
+  const filingBefore = Number((await filingTotal.textContent())!.trim());
+  const tabBefore = Number((await tabTotal.textContent())!.trim());
+
+  await revealFoodGroup(page, "nuts_seeds");
+  const before = await loggedListIds(page);
+  // The DERIVED section's total ticks on the tap itself — the optimistic update
+  // places the serving where the chip said it would land, not in the cell being
+  // looked at. Asserted right after the click, before the action settles.
+  await page.getByTestId("log-nuts_seeds").click();
+  await expect(filingTotal).toHaveText(String(filingBefore + 1));
+  await expect(tabTotal).toHaveText(String(tabBefore));
+
+  // Settled: the server files it under the same derived meal (no meal_slot echo was
+  // stored — the row's window comes from the stated instant).
+  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
+  const eventId = await newlyLoggedId(page, before);
+  await expect(page.getByTestId(`food-logged-${eventId}`)).toHaveAttribute(
+    "data-slot",
+    filingSlot
+  );
+  await expect(filingTotal).toHaveText(String(filingBefore + 1));
+  await expect(tabTotal).toHaveText(String(tabBefore));
 
   await removeLoggedServing(page, eventId);
 });
