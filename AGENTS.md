@@ -321,6 +321,17 @@ Canonical biomarker ranges come from `lib/canonical-biomarkers.json`.
 `lib/canonical-flags-version.ts` to reprocess existing records when canonical
 ranges or flag logic change.
 
+A curated `CANONICAL_ALIASES` route is never inert. `buildCanonicalIndex` lets a
+real entry win a key collision, and an ai-coined vocabulary row counts as one —
+so the spelling a document taught the vocabulary used to shadow the very route
+added to retire it (#2306). `mergeSupersededCanonicalNames` retires an `ai` row
+the vocabulary has superseded (shadowed by another entry, or blocking a route)
+and re-points its stored readings AND everything keyed on that name — the ★
+save, the retest/flag dismissals, a biomarker goal, a coverage gap, a protocol
+outcome. It runs both as migration 174 (the drift already on disk) and as a boot
+task after `seedCanonicalBiomarkers` (aliases ship without schema changes). A
+`seed` row is untouchable and a route with no target is never followed.
+
 AI insights and extraction use `@anthropic-ai/sdk`. The default
 `HEALTH_AI_MODEL` is `claude-sonnet-5`. Missing credentials must degrade
 gracefully. Medical document ingestion is orchestrated by

@@ -38,6 +38,13 @@ const ALLOWLIST = new Set<string>([
   // reached from bootTasks and takes the Database handle directly, so importing
   // lib/db here would close the db → boot-tasks → db import cycle.
   "lib/photo/metadata-backfill.ts",
+  // The superseded-canonical-name merge (#2306) is boot-path work under the SAME
+  // hardened contract as lib/migrations/*: its one write transaction goes through
+  // runBootTx (BEGIN IMMEDIATE + bounded SQLITE_BUSY retry). It cannot use writeTx —
+  // it is reached from bootTasks AND from migration 174, and takes the Database
+  // handle directly, so importing lib/db here would close the db → boot-tasks → db
+  // import cycle (and the migration runs before that singleton exists at all).
+  "lib/canonical-alias-merge-db.ts",
   "lib/offline/queue-db.ts",
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
   // nothing to do with SQLite write locks (#1699).

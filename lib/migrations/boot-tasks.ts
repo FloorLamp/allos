@@ -6,6 +6,7 @@ import {
   computeQualitativeFlagChanges,
 } from "../flag-reconcile";
 import { canonicalFlagsSignature } from "../canonical-flags-version";
+import { mergeSupersededCanonicalNames } from "../canonical-alias-merge-db";
 import type { CyclePeriod } from "../cycle";
 import { hashPasswordSync } from "../password";
 import { extractionLeaseMinutes } from "../extraction-lease";
@@ -38,6 +39,17 @@ import { createLogger } from "../log";
 //                                  reasoning the spec gives for the flag reconcile
 //                                  below — the seed is that reconcile's data side,
 //                                  so it stays per-boot too.
+//   • mergeSupersededCanonical…  — retires ai-coined vocabulary rows the dataset has
+//                                  superseded (a shadowed duplicate spelling, or one
+//                                  blocking a curated CANONICAL_ALIASES route) and
+//                                  re-points their stored readings + name-keyed side
+//                                  state (#2306). Per-boot for the SAME reason as the
+//                                  seed above: the alias table and the dataset grow in
+//                                  releases with NO schema change, and any import
+//                                  between two boots can mint a fresh blocking row —
+//                                  so migration 174 (which runs this identical pass
+//                                  once, for the drift already on disk) cannot be the
+//                                  whole answer.
 //   • reconcileFlagsIfCanonical… — gated on the canonical-flags-version content
 //                                  signature, not the schema version.
 //   • stuck-state cleanup        — resets extraction/import rows a crash left mid-
@@ -91,6 +103,17 @@ export function bootTasks(db: Database.Database): void {
   // Re-sync the canonical_biomarkers table from the committed JSON so range edits
   // propagate to existing DBs on boot (see the module header).
   seedCanonicalBiomarkers(db);
+
+  // Retire ai-coined vocabulary rows the dataset has since superseded — a spelling
+  // another entry already outranks, or one whose key a curated CANONICAL_ALIASES
+  // route wants — and move their stored readings (and the name-keyed side-state)
+  // onto the surviving spelling (#2306). AFTER the seed, so the ai→seed promotion
+  // has run and every alias target exists; BEFORE the flag reconcile, which this
+  // pass re-arms (by clearing the stored signature) when it actually moved a row
+  // onto a different band. Reads only, and no transaction at all, when nothing has
+  // drifted — see lib/canonical-alias-merge-db.ts for why it is a boot task as well
+  // as migration 174.
+  mergeSupersededCanonicalNames(db);
 
   // Re-derive every record's flag against the canonical ranges, but only when
   // those ranges (or the flag-derivation logic) have actually changed since the
