@@ -301,7 +301,7 @@ export type DoseStatusOutcome = DoseTakenOutcome | "cleared" | "unchanged";
 //   duplicate  — a same-dose administration already exists within the short double-
 //                tap window (a re-tapped button / retried callback); nothing written,
 //                supply untouched, and the standing count/last-time reported.
-//   invalid-time — the supplied given_at failed the window guard (#614: a forged or
+//   invalid-time — the supplied recorded_at failed the window guard (#614: a forged or
 //                far-off time); nothing written.
 //   stale-item — the item isn't this profile's, has no loggable (non-retired) dose,
 //                or was deleted; nothing written.

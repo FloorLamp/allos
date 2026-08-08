@@ -304,7 +304,7 @@ export default async function SupplementsTab({
     (doseHistoryByItem.get(s.id) ?? []).map((row) => {
       // The row-level time question, asked once (#2205 phase 3): the stated event
       // instant (`occurred_at`) when somebody named one, else the record chain
-      // (given_at → taken_at) — with the answer saying WHICH it was. The panel IS
+      // (recorded_at → taken_at) — with the answer saying WHICH it was. The panel IS
       // the clinical record (#2228 decision 4), so a record-chain clock renders as
       // "recorded 7:02am", never as a bare clock claiming an administration time
       // the row does not state.

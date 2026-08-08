@@ -11,7 +11,7 @@
 // holds by construction) or verifies it and refuses.
 //
 // `statedAt` is never a record stamp and never a coalesced fallback. A caller that
-// holds `given_at ?? taken_at` does not hold a statement — it holds a filing
+// holds `recorded_at ?? taken_at` does not hold a statement — it holds a filing
 // timestamp wearing one's clothes (#2228's laundering defect) — so the type is
 // `string | null` and null RENDERS EMPTY rather than being filled in. Nothing here
 // defaults to now: an absent statement stays absent (#2053's rule).
@@ -49,7 +49,7 @@ export interface StatedHourOption {
 
 // Tolerated clock difference between a client and the server before a stated
 // instant reads as future. Five minutes of skew is neither a forgery nor a broken
-// clock (the same tolerance the dose given_at guard uses).
+// clock (the same tolerance the dose recorded_at guard uses).
 export const STATED_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 // The instant a statement should actually carry, or null meaning "record no

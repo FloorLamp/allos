@@ -72,13 +72,13 @@ function seedDose(itemId: number, amount: string, retired = 0): number {
 function logRows(doseId: number, date: string) {
   return db
     .prepare(
-      `SELECT amount, status, given_at, supply_adjusted
+      `SELECT amount, status, recorded_at, supply_adjusted
          FROM intake_item_logs WHERE dose_id = ? AND date = ? ORDER BY id`
     )
     .all(doseId, date) as {
     amount: string | null;
     status: string;
-    given_at: string | null;
+    recorded_at: string | null;
     supply_adjusted: number;
   }[];
 }
@@ -114,7 +114,7 @@ describe("the tri-state walks through the lib core (#2039)", () => {
       {
         amount: "2 caps",
         status: "taken",
-        given_at: expect.any(String),
+        recorded_at: expect.any(String),
         supply_adjusted: 1,
       },
     ]);

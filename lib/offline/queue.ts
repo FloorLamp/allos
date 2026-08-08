@@ -114,7 +114,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
     "Cadenced, not idempotent: the #2007 layer-3 re-log confirm asks a same-DAY question from the server-known session count, which an offline capture cannot answer honestly — a replay could double-log a day already logged from another device with no confirm ever shown."
   ),
   "prn-dose": arguedExclusion(
-    "A PRN administration arms the #798 redose window from its given_at — the safety-relevant instant (#2020). The control renders that advisory from server state at tap time; offline it would be stale, and a queued administration would guard nothing until replay. Deliberately online-only."
+    "A PRN administration arms the #798 redose window from its recorded_at — the safety-relevant instant (#2020). The control renders that advisory from server state at tap time; offline it would be stale, and a queued administration would guard nothing until replay. Deliberately online-only."
   ),
   "symptom-severity": arguedExclusion(
     "Deferred to #1860, which owns the symptom quick-log's offline story; deciding it here would preempt that issue's scope (#2130 excludes it by name)."
@@ -137,7 +137,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
 export interface DosePayload {
   doseId: number;
   // The instant the user actually TAPPED (ISO), captured at tap and stamped onto the
-  // log's given_at when the replay lands (#1427) — a dose taken in a hospital waiting
+  // log's recorded_at when the replay lands (#1427) — a dose taken in a hospital waiting
   // room at 08:12 must not read as taken at 19:40 when the phone finds signal again.
   // The server VALIDATES it (lib/dose-log-window's resolveQueuedTakenAt) and falls
   // back to the replay instant when it's unusable. OPTIONAL: absent on an intent

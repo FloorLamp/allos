@@ -92,7 +92,7 @@ function seedMixedStrengthPair(db: Database.Database): number {
   // invariant): 2400 mg — twice the mg ceiling, yet only "3 of 6" by count.
   for (const backMs of [10_800_000, 7_200_000, 3_600_000]) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status, amount)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
        VALUES (?, ?, ?, ?, 'taken', '800 mg')`
     ).run(
       rxDoseId,

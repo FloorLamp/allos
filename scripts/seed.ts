@@ -1398,12 +1398,12 @@ const ibuprofenDoseId = Number(
 );
 courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
 // Two PRN administrations earlier today (#797), so the Medications card / dashboard
-// quick-log widget show "2 today · last …". given_at is the real intake time (a few
+// quick-log widget show "2 today · last …". recorded_at is the real intake time (a few
 // hours ago), stored UTC to match datetime('now'); date is pinned to today.
 {
   const prnDay = today(SEED_PROFILE_ID);
   const admIns = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
      VALUES (?, ?, ?, ?, '200 mg', 'taken')`
   );
   for (const minutesAgo of [300, 90]) {
@@ -1419,7 +1419,7 @@ courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
   }
   // A couple more earlier in the illness episode (daysAgo 2 and 1), so the episode
   // view's "ibuprofen N×" story + per-day medication ledger span the whole run (#801),
-  // not just today. given_at is that day's afternoon (UTC SQL).
+  // not just today. recorded_at is that day's afternoon (UTC SQL).
   for (const ago of [2, 1]) {
     admIns.run(
       ibuprofenDoseId,

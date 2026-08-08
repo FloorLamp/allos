@@ -22,7 +22,7 @@ import {
 // writes are documented as relying on "a prior profile-scoped ownership check". That
 // assumption is exactly what #2059 found had quietly stopped being true for the #2020
 // time-correction write: the burst ids came from a scoped read, but the UPDATE that
-// moved `given_at` trusted them, so a later refactor of the burst query — or a new call
+// moved `recorded_at` trusted them, so a later refactor of the burst query — or a new call
 // site handing in an id from somewhere else — would have turned a defence-in-depth gap
 // into a cross-profile write with nothing failing.
 //

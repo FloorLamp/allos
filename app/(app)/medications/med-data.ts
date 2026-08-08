@@ -238,7 +238,7 @@ export function loadMedicationsData(
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
   // Through the frozen-clock seam (#1005): a bare new Date() here diverges from
-  // clock-stamped given_at/log times under ALLOS_TEST_NOW (a production no-op).
+  // clock-stamped recorded_at/log times under ALLOS_TEST_NOW (a production no-op).
   const nowInstant = clockNow();
   const { hhmm } = zonedDateParts(tz, nowInstant);
   const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
@@ -327,14 +327,16 @@ export function loadMedicationsData(
       id: a.id,
       label: formatGivenAtClockWithRelativeAge(
         tz,
-        a.given_at ?? a.taken_at,
+        a.recorded_at ?? a.taken_at,
         timeFormat,
         nowInstant
       ),
       amount: a.amount,
       product: a.product,
     }));
-    const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
+    const last = admins[0]
+      ? (admins[0].recorded_at ?? admins[0].taken_at)
+      : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
     const famCount = fam?.countToday ?? admins.length;

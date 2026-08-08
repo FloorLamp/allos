@@ -190,7 +190,7 @@ export async function updateEpisodeSymptomAction(
 // the episode's own `obligation = 'may'` scope and the in-episode date window. An
 // empty `time` states "no intake time" (the shared WhenControl's "Not stated") and
 // leaves the row's day where the form put it; the core writes `occurred_at`, never
-// `given_at`. The amendment is the same clinically significant rewrite it is from
+// `recorded_at`. The amendment is the same clinically significant rewrite it is from
 // the medication card, so it records the same `dose-log.amend` audit row.
 export async function updateEpisodeDoseAction(
   formData: FormData
