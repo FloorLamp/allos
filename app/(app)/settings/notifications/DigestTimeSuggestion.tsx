@@ -36,9 +36,15 @@ import {
 // that (`copy.tradeoff`, two clock times, no adjectives) rather than leaving the
 // ranking asserted by styling. The in-digest keyboard carries the same order.
 //
-// The app has exactly one non-primary button weight, so "Use <proposed>" and
-// "No thanks" share `btn-ghost`: the ranking is carried by the primary fill, by the
-// reading order, and by the sentence — never by a third invented button style.
+// THREE WEIGHTS OUT OF TWO BUTTON CLASSES PLUS A LINK (#2255 owner ruling). The app
+// has exactly one non-primary button weight, so the two REAL choices take both of
+// them — `btn` for the mode switch, `btn-ghost` for "Use <proposed>" — and the
+// decline leaves the button vocabulary entirely for the muted text link the Notice
+// family already uses for a decline (`DraftRestoreBanner`'s "Discard"). An exit
+// should not compete visually with the two choices it is an exit from, and minting a
+// third button weight to say so would be a design-system change every surface pays
+// for, driven by one card. It stays a <button>: same dismiss action, focusable and
+// activated by Enter AND Space, which an href-less <a> is not.
 //
 // Nothing here carries the proposed minute into the write. Each action re-resolves the
 // live suggestion server-side, so a tab left open across a week of drifting statistics
@@ -111,7 +117,7 @@ export default function DigestTimeSuggestionRow({
         </button>
         <button
           type="button"
-          className="btn-ghost btn-sm"
+          className="font-medium opacity-70 underline-offset-2 hover:underline disabled:opacity-50"
           disabled={pending}
           data-testid="digest-time-dismiss"
           onClick={() => run(dismissDigestTimeSuggestion, {})}
