@@ -259,6 +259,39 @@ test.describe("the digest time suggestion (issue #2217)", () => {
     await expect(page.getByTestId("digest-hour-time")).toHaveValue("07:00");
   });
 
+  test("the decline is a real button: tab-reachable, named, Enter and Space both fire", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // The decline renders as a text link rather than a button (owner ruling on
+    // #2255 §2), so what keeps it usable is that it is still a <button>: reachable
+    // by Tab, carrying its accessible name, and activated by BOTH keys. An
+    // href-less <a> styled the same way would answer to neither key.
+    await page.goto("/settings/notifications");
+    const card = page.getByTestId("digest-time-suggestion");
+    const decline = card.getByTestId("digest-time-dismiss");
+    await expect(decline).toHaveAccessibleName("No thanks");
+
+    // Focus the choice before it, then Tab: this pins tab-order reachability, not
+    // just that .focus() would have worked.
+    await card.getByTestId("digest-time-use").focus();
+    await page.keyboard.press("Tab");
+    await expect(decline).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(card).toHaveCount(0);
+
+    // Same control, same dismissal, on the other activation key.
+    resetDigest();
+    await page.reload();
+    await page
+      .getByTestId("digest-time-suggestion")
+      .getByTestId("digest-time-dismiss")
+      .focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("digest-time-suggestion")).toHaveCount(0);
+  });
+
   test("unticking the sleep summary drops the card, with no reload (#2255)", async ({
     page,
   }) => {
