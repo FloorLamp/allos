@@ -6,9 +6,13 @@
 //
 // Composition rule:
 //   • recap line — gated by its own per-profile toggle (workout-recap kind, on by
-//     default) AND by there being real strength work to recap;
+//     default) AND by there being something to recap: real strength work
+//     (recapNudgeLine) or, for a SOURCED row with no sets, the facts the import
+//     itself carries (importedRecapLine, #2272);
 //   • supplement section — the existing dose reminder, gated by dueness;
-//   • either alone still sends; both absent ⇒ no send.
+//   • the #2272 type ask — a line and buttons APPENDED when the finishing row is
+//     `unclassified`, riding whatever is already going out and never sending alone;
+//   • either of the first two alone still sends; both absent ⇒ no send.
 
 import type { NotificationAction, NotificationMessage } from "./types";
 import { joinBody } from "./rich-text";
@@ -186,21 +190,24 @@ export function activityTypeAskActions(
   }));
 }
 
+// The type ask's two halves, as the composition takes them: the prompt sentence that
+// follows the recap line, and the inline buttons that answer it.
+export interface FinishTypeAsk {
+  prompt: string;
+  actions: NotificationAction[];
+}
+
 // Compose the finish nudge: the recap line (when present) LEADS, then the due
 // post-workout supplement section (the existing dose message) follows. Returns
 // null when both are absent so the caller sends nothing (and doesn't burn the
 // one-shot). The combined message keeps the dose message's kind ("dose") so its
 // SAFETY-tier routing/actions are preserved; a recap-only message is classified
 // "workout-recap" for structured-channel routing.
-// The type ask (#2272) rides this message when the finishing session is
-// `unclassified` — a LINE and BUTTONS on a message that was already going out, never
-// a send of its own. That is the whole contact-consent posture: the system may reduce
-// contact unilaterally, never increase it. With nothing to ride on there is no ask.
-export interface FinishTypeAsk {
-  prompt: string;
-  actions: NotificationAction[];
-}
-
+//
+// It also carries the type ask (#2272) when the finishing session is `unclassified`
+// — a LINE and BUTTONS on a message that was already going out, never a send of its
+// own. That is the whole contact-consent posture: the system may reduce contact
+// unilaterally, never increase it. With nothing to ride on there is no ask.
 export function composeFinishNudge(
   recapLine: string | null,
   doseMessage: NotificationMessage | null,
