@@ -1,4 +1,6 @@
 import { db } from "../db";
+import { cache } from "../request-cache";
+import { tickCached } from "../tick-cache";
 import {
   PROVIDER_PREFERENCE,
   pickOneProviderPerDay,
@@ -593,7 +595,32 @@ const ARRIVAL_LAG_MIN_OVERNIGHT_MIN = 180;
 // Rows with no provenance are silently absent, which is the correct answer — a
 // manually logged night has no arrival to measure, and the statistic's sample gate
 // turns "too few measurable nights" into a stated no-answer rather than a guess.
-export function getSleepArrivals(
+//
+// MEMOIZED ON BOTH LIFETIMES (#2249). This is a 30-night join over
+// `metric_samples × integration_sync_rows` with a `MIN(created_at)` group-by, and a
+// DYNAMIC digest tick asks it TWICE for the same profile: once through
+// `digestDeadline` for the deadline, and again in `logDigestTick`, which quotes the
+// same statistic in its evidence line (#2209/#2220) — same gather, same tick, same
+// profile, on every re-check tick. `cache()` is identity in
+// a tick (lib/request-cache.ts says so deliberately), so the collapse that matters
+// here is `tickCached`; the `cache()` beside it is what collapses the Settings page's
+// own two reads (the Dynamic caption's `arrivalStats` and the #2217 suggestion's
+// resolver) into one per request.
+//
+// Nothing inside a tick writes these rows AFTER the first read: `syncIntegrations` is
+// the first statement of `tickProfile`, so the pull pass has finished writing
+// `metric_samples` and `integration_sync_rows` before anything in the scope reads
+// them, and no later tick step writes either table. The scope closes with the profile
+// — see lib/tick-cache.ts for the rule this depends on.
+export const getSleepArrivals = cache(
+  tickCached(
+    "getSleepArrivals",
+    (profileId: number, limitNights = 30) => `${profileId}:${limitNights}`,
+    getSleepArrivalsUncached
+  )
+);
+
+function getSleepArrivalsUncached(
   profileId: number,
   limitNights = 30
 ): ArrivalNight[] {

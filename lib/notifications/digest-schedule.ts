@@ -37,10 +37,10 @@
 
 import {
   clampTickMinutes,
-  formatNotifyTime,
   slotAttempt,
   SLOT_RETRY_DELAY_MIN,
 } from "./schedule";
+import { formatClockMinutes, type TimeFormat } from "../format-date";
 
 // ── 1. The arrival statistic ─────────────────────────────────────────────────
 //
@@ -433,8 +433,14 @@ export interface DigestTickInput {
   currentMinute: number;
   /** The (observed, clamped) tick cadence, so attempt bands match the tick's. */
   tickMinutes: number;
-  /** Dynamic only: `digestDeadlineMinute` for this profile. Ignored by Static. */
-  deadlineMinute: number;
+  /**
+   * Dynamic only: `digestDeadlineMinute` for this profile. A THUNK, exactly like
+   * `sleepPending` below and for the same reason (#2249): resolving it costs a
+   * 30-night arrival gather, and most Dynamic ticks decline before the deadline can
+   * matter — every Static tick, every tick before the floor, and every tick under a
+   * failed-attempt record. Static never calls it at all.
+   */
+  deadlineMinute: () => number;
   /** Today's failed-attempt record, or null. Only Dynamic ever writes one. */
   attempt: DigestAttempt | null;
 }
@@ -459,8 +465,9 @@ export interface DigestTickInput {
  * "send at the floor". That is correct — there is nothing to wait for — and
  * `describeDigestSchedule` states it rather than leaving it to be discovered.
  *
- * `sleepPending` is a thunk so the caller pays for the sleep read only on the ticks
- * where the answer can matter (constraint 5: those reads ride the tick's memoization).
+ * `sleepPending` — and, since #2249, `deadlineMinute` — are THUNKS so the caller pays
+ * for each read only on the ticks where its answer can matter (constraint 5: those
+ * reads ride the tick's memoization).
  */
 export function planDigestTick(
   input: DigestTickInput,
@@ -492,8 +499,11 @@ export function planDigestTick(
   // slot-anchored bands Static gets — which is what bounds the work: a digest with no
   // channel configured (dispatch returns nothing, nothing is marked) costs two builds
   // for the day rather than one per tick until midnight.
-  if (input.currentMinute >= input.deadlineMinute) {
-    return slotAttempt(input.deadlineMinute, input.currentMinute, tick) !== null
+  // The first point at which the deadline can change the answer — every short-circuit
+  // above it returns without paying for the arrival gather behind it (#2249).
+  const deadlineMinute = input.deadlineMinute();
+  if (input.currentMinute >= deadlineMinute) {
+    return slotAttempt(deadlineMinute, input.currentMinute, tick) !== null
       ? "send"
       : "idle";
   }
@@ -537,12 +547,26 @@ export function describeDigestSchedule(input: {
   sleepSectionEnabled: boolean;
   stats: ArrivalStatistics;
   tickMinutes: number;
+  /**
+   * The reader's clock convention (#964/#1163), for DISPLAY only. Defaults to 24h —
+   * the documented fixed format for a surface with no login in context. Every stored
+   * value, form field and wire token still serializes through `formatNotifyTime`.
+   */
+  timeFormat?: TimeFormat;
 }): DigestScheduleSummary {
-  const at = formatNotifyTime(input.floorMinute);
+  const clock = (minute: number) =>
+    formatClockMinutes(input.timeFormat ?? "24h", minute);
+  const at = clock(input.floorMinute);
 
   if (input.mode === "static") {
+    // With the Sleep section off, "whether or not last night's sleep has arrived by
+    // then" is noise: this digest carries no sleep, so there is no arrival for the
+    // send time to beat (#2255 §3). Parallel to the Dynamic branch's own sleep-off
+    // variant below — the same fact, stated where it changes what the mode does.
     return {
-      headline: `Sends at ${at} every day, whether or not last night’s sleep has arrived by then.`,
+      headline: input.sleepSectionEnabled
+        ? `Sends at ${at} every day, whether or not last night’s sleep has arrived by then.`
+        : `Sends at ${at} every day.`,
       detail: null,
     };
   }
@@ -554,7 +578,7 @@ export function describeDigestSchedule(input: {
     };
   }
 
-  const deadline = formatNotifyTime(
+  const deadline = clock(
     digestDeadlineMinute(input.floorMinute, input.stats, input.tickMinutes)
   );
   const headline = `Sends as soon as last night’s sleep lands — never before ${at}, and by ${deadline} at the latest.`;
@@ -562,7 +586,7 @@ export function describeDigestSchedule(input: {
   if (input.stats.available) {
     return {
       headline,
-      detail: `Your sleep has arrived by ${formatNotifyTime(input.stats.p90Minute)} on 9 of every 10 of the last ${input.stats.nights} measured mornings; the latest send adds ${DEADLINE_MARGIN_MIN} minutes to that.`,
+      detail: `Your sleep has arrived by ${clock(input.stats.p90Minute)} on 9 of every 10 of the last ${input.stats.nights} measured mornings; the latest send adds ${DEADLINE_MARGIN_MIN} minutes to that.`,
     };
   }
 

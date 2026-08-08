@@ -49,6 +49,7 @@ import type {
   DigestMode,
 } from "./notifications/digest-schedule";
 import type { NotificationAction } from "./notifications/types";
+import { formatClockMinutes, type TimeFormat } from "./format-date";
 
 // The dedupeKey namespace, registered in RULE_FINDING_REGISTRY.
 export const DIGEST_TIME_PREFIX = "digest-time:";
@@ -132,6 +133,12 @@ export interface DigestTimeSuggestionInput {
   mode: DigestMode;
   /** The configured send time, or null when the digest is off. */
   configuredMinute: number | null;
+  /**
+   * Whether the digest's Sleep section is on (#2255). Declared here, beside the mode
+   * and the time, because it is the same KIND of fact and belongs to the same
+   * decision — `describeDigestSchedule` already takes it for exactly this reason.
+   */
+  sleepSectionEnabled: boolean;
   /** The measured arrival distribution (#2214), or its stated no-answer. */
   stats: ArrivalStatistics;
   /** The scheduler's OBSERVED tick cadence — what the proposal is snapped to. */
@@ -158,6 +165,10 @@ export interface DigestTimeSuggestion {
  *
  * SILENT WHEN (each for its own reason, none foldable into another):
  *   • the digest is OFF — there is no send time to be wrong;
+ *   • the SLEEP SECTION is off (#2255) — the whole premise is "your digest goes out
+ *     before last night's sleep arrives", and a digest that carries no sleep has
+ *     nothing to miss. Firing anyway offered a Dynamic exit into a mode whose own
+ *     caption immediately says "there is nothing to wait for";
  *   • the mode is DYNAMIC — the minute is a floor, and Dynamic already waits;
  *   • the arrival statistic has no answer — whichever of its four reasons applies.
  *     `thin-sample` resolves by waiting, `no-source`/`no-arrivals` resolve by a change
@@ -174,6 +185,7 @@ export function digestTimeSuggestion(
   input: DigestTimeSuggestionInput
 ): DigestTimeSuggestion | null {
   if (input.configuredMinute == null) return null;
+  if (!input.sleepSectionEnabled) return null;
   if (input.mode !== "static") return null;
   if (!input.stats.available) return null;
 
@@ -260,6 +272,11 @@ export interface DigestTimeSuggestionCopy {
   headline: string;
   /** "Your digest sends at 07:00, so it often goes out before the data arrives." */
   detail: string;
+  /**
+   * Why the exits are ranked the way they are (#2255 §2), in numbers rather than
+   * adjectives. Both times it quotes are already on the buttons beside it.
+   */
+  tradeoff: string;
   /** What the two statistics were measured over. */
   evidence: string;
   /** The write exit. */
@@ -272,23 +289,41 @@ export interface DigestTimeSuggestionCopy {
   line: string;
 }
 
+/**
+ * `timeFormat` renders the two clock times for a surface that HAS a login — the
+ * Settings card, through the #964/#1163 seam every other clock render already uses.
+ * It defaults to 24h, which is what the login-less consumers need: the in-digest
+ * `line` and the Telegram keyboard have a profile but no login in context and keep
+ * their documented fixed per-channel format (see the rule at the top of
+ * lib/format-date.ts). This is DISPLAY only — `formatNotifyTime` stays the canonical
+ * serializer for stored values, form field values and wire tokens.
+ */
 export function digestTimeSuggestionCopy(
-  s: DigestTimeSuggestion
+  s: DigestTimeSuggestion,
+  timeFormat: TimeFormat = "24h"
 ): DigestTimeSuggestionCopy {
-  const proposed = formatNotifyTime(s.proposedMinute);
-  const configured = formatNotifyTime(s.configuredMinute);
+  const proposed = formatClockMinutes(timeFormat, s.proposedMinute);
+  const configured = formatClockMinutes(timeFormat, s.configuredMinute);
   const headline = `Last night’s sleep usually lands by ${proposed}.`;
   const detail = `Your digest sends at ${configured}, so it often goes out before the data arrives.`;
   return {
     headline,
     detail,
+    // The RANKING, argued rather than asserted by button colour (#2255 §2). Moving the
+    // static time costs the full gap every morning; Dynamic keeps the current time as
+    // its floor and usually sends earlier than the proposal, bounded by a deadline.
+    // Static-later wins only on predictability, and this is the sentence that says so.
+    tradeoff: `“As soon as it’s ready” usually sends earlier than ${proposed}; ${proposed} keeps a fixed time.`,
     evidence: `Measured over ${s.nights} morning${s.nights === 1 ? "" : "s"}.`,
     useLabel: `Use ${proposed}`,
     // NOT "Switch to Dynamic". "Dynamic" is a word the user never sees: #2211 labels
     // the modes by INTENT rather than by mechanism, and its picker calls this one "As
     // soon as it's ready". The exit is that mode; the button says what the picker says.
     dynamicLabel: "Switch to “As soon as it’s ready”",
-    dismissLabel: "Not now",
+    // NOT "Not now" (#2255 §3). This exit is an episode-scoped dismissal that survives
+    // statistical jitter — it does not come back next week — so a label that reads as
+    // a snooze under-promises what the tap actually does.
+    dismissLabel: "No thanks",
     line: `${headline} ${detail}`,
   };
 }
@@ -370,9 +405,17 @@ export function digestTimeDismissToken(
 }
 
 /**
- * The three buttons, in reach order: the write the line is about, the other mode that
- * solves the same problem, then declining. A Telegram button has ~30 usable characters
- * beside its icon, so the middle label is the picker's own words trimmed of the verb.
+ * The three buttons, in reach order: the mode that WAITS for the arrival, the static
+ * time that schedules past it, then declining. A Telegram button has ~30 usable
+ * characters beside its icon, so the first label is the picker's own words trimmed of
+ * the verb.
+ *
+ * Dynamic leads (#2255 §2) for the same reason it is the card's primary action, and
+ * the two orders are deliberately the same one: bumping the static time costs the
+ * user the full gap every morning, while Dynamic keeps the current time as its floor,
+ * usually sends earlier than the proposal, and is deadline-bounded. Static-later wins
+ * only on predictability. The Settings card ARGUES that in a sentence; a keyboard has
+ * no room for one, so here the argument is carried by order alone.
  */
 export function digestTimeActions(
   profileId: number,
@@ -381,17 +424,19 @@ export function digestTimeActions(
 ): NotificationAction[] {
   return [
     {
-      label: `🕘 Use ${formatNotifyTime(s.proposedMinute)}`,
-      data: digestTimeUseToken(profileId, date),
-      row: "digest-time",
-    },
-    {
       label: "⏳ As soon as it’s ready",
       data: digestTimeDynamicToken(profileId, date),
       row: "digest-time",
     },
     {
-      label: "🔕 Not now",
+      // The WIRE format, not a display pref: a Telegram send has a profile but no
+      // login in context, so it keeps its fixed 24-h channel format.
+      label: `🕘 Use ${formatNotifyTime(s.proposedMinute)}`,
+      data: digestTimeUseToken(profileId, date),
+      row: "digest-time",
+    },
+    {
+      label: "🔕 No thanks",
       data: digestTimeDismissToken(profileId, date),
       row: "digest-time-decline",
     },

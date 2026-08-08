@@ -83,6 +83,28 @@ test.describe("morning digest modes (issue #2211)", () => {
       "nothing to wait for"
     );
 
+    // And STATIC drops its sleep clause for the same reason (#2255 §3): "whether or
+    // not last night's sleep has arrived by then" is noise on a digest that carries
+    // no sleep. Same section-off fact, stated per mode.
+    await settledSelectSave(
+      page,
+      page.getByTestId("digest-hour"),
+      "static",
+      kindsCard
+    );
+    await expect(page.getByTestId("digest-hour-summary")).toHaveText(
+      "Sends at 06:45 every day."
+    );
+    await settledCheckSave(
+      page,
+      page.getByTestId("digest-sleep-enabled"),
+      true,
+      kindsCard
+    );
+    await expect(page.getByTestId("digest-hour-summary")).toContainText(
+      "whether or not"
+    );
+
     // Off is the ABSENCE of a time: `notify_digest_hour = ""` is the off state, so
     // turning the digest off genuinely forgets the minute — and it persists as off
     // across a reload rather than only in React state.

@@ -30,6 +30,7 @@ import {
   getNotifySchedule,
   getProfileSetting,
   setProfileSetting,
+  setProfileSleepDigest,
   setSetting,
   setTimezone,
 } from "@/lib/settings";
@@ -235,6 +236,35 @@ describe("the 13-night fixture raises the suggestion (#2217)", () => {
     expect(getDigestTimeSuggestion(late)).toBeNull();
   });
 
+  it("is silent with the Sleep section off, on BOTH surfaces (#2255)", () => {
+    const p = seedProfile("Sleepless Sen");
+    // Firing while the section is on — same profile, same distribution.
+    expect(getDigestTimeSuggestion(p)).not.toBeNull();
+    expect(digestLines(p).join("\n")).toContain("usually lands by");
+
+    setProfileSleepDigest(p, false);
+    // ONE server gate silences both, because both resolve through this function.
+    expect(getDigestTimeSuggestion(p)).toBeNull();
+    expect(digestLines(p).join("\n")).not.toContain("usually lands by");
+    expect(
+      buildDigest(gatherDigestInput(p, "Sleepless Sen"))?.timeActions
+    ).toEqual([]);
+    // Nothing was DISMISSED to achieve that — a suppression row would have been a
+    // synthesized decision the user never made.
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM upcoming_dismissals
+            WHERE profile_id = ? AND signal_key LIKE 'digest-time:%'`
+        )
+        .get(p)
+    ).toEqual({ n: 0 });
+
+    // …so turning it back on, with the same time and the same distribution, re-offers.
+    setProfileSleepDigest(p, true);
+    expect(getDigestTimeSuggestion(p)).not.toBeNull();
+  });
+
   it("is silent for a profile with no measured arrivals at all", () => {
     setSetting("notify_tick_interval_min", "5");
     const p = newProfile("Bare Bo");
@@ -259,9 +289,10 @@ describe("the in-digest line (owner decision, 2026-08-06)", () => {
     ]);
     // Its exits ride the keyboard, after everything else the message offers.
     expect(model.timeActions?.map((a) => a.label)).toEqual([
-      "🕘 Use 07:40",
+      // Dynamic first (#2255 §2), mirroring the Settings card's ranking.
       "⏳ As soon as it’s ready",
-      "🔕 Not now",
+      "🕘 Use 07:40",
+      "🔕 No thanks",
     ]);
   });
 
@@ -324,6 +355,7 @@ describe("one finding, one episode key (constraint 5)", () => {
     const drifted = digestTimeSuggestion({
       mode: "static",
       configuredMinute: FLOOR,
+      sleepSectionEnabled: true,
       stats: arrivalStatistics(getSleepArrivals(p)),
       tickMinutes: 5,
     });

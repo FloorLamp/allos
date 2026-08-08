@@ -31,6 +31,7 @@ import {
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
 import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
+import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -222,6 +223,7 @@ function DigestControl({
   sleepSectionEnabled,
   arrivalStats,
   tickMinutes,
+  timeFormat,
   label,
   testId,
 }: {
@@ -237,6 +239,7 @@ function DigestControl({
   sleepSectionEnabled: boolean;
   arrivalStats: ArrivalStatistics;
   tickMinutes: number;
+  timeFormat: TimeFormat;
   label: string;
   testId: string;
 }) {
@@ -250,6 +253,7 @@ function DigestControl({
         sleepSectionEnabled,
         stats: arrivalStats,
         tickMinutes,
+        timeFormat,
       });
   return (
     <div>
@@ -309,9 +313,17 @@ function DigestControl({
           about the schedule comes first, and the proposal is a response to it. It
           renders only while it is firing — nothing occupies this space on an
           ordinary schedule. */}
-      {timeSuggestion && (
+      {/* Conditioned on the LIVE checkbox (#2255 §1), not only on the server's
+          answer: with the Sleep section off the digest carries no sleep, so there is
+          nothing for the send time to miss, and the card's Dynamic exit would move
+          the user into a mode whose own caption immediately says "there is nothing
+          to wait for". Unticking the box drops it at once, the same reactivity the
+          summary above already has; `getDigestTimeSuggestion` gates the same fact
+          server-side, so the next render agrees. */}
+      {timeSuggestion && sleepSectionEnabled && (
         <DigestTimeSuggestionRow
           suggestion={timeSuggestion}
+          timeFormat={timeFormat}
           onApplied={onApplied}
         />
       )}
@@ -339,6 +351,7 @@ export default function NotificationPrefs({
   arrivalStats,
   timeSuggestion,
   tickMinutes,
+  timeFormat,
   subHourlyAtRisk,
   telegramDisabled,
   pushDisabled,
@@ -376,6 +389,10 @@ export default function NotificationPrefs({
   // The scheduler's OBSERVED tick cadence — the same figure the sub-hourly warning
   // reads. The Dynamic deadline is floored at one tick past the floor.
   tickMinutes: number;
+  // The reader's clock convention (#964/#1163), resolved once on the server from the
+  // LOGIN-tier `time_format` pref. DISPLAY only: every stored value, form field value
+  // and wire token on this surface stays "HH:MM" 24-h through `formatNotifyTime`.
+  timeFormat: TimeFormat;
   // Sub-hourly times the scheduler's OBSERVED tick cadence cannot land on time
   // (#2121 constraint 4), or null when everything configured is honoured.
   subHourlyAtRisk: { times: string[]; intervalMin: number } | null;
@@ -433,7 +450,7 @@ export default function NotificationPrefs({
   const autoLabel =
     wakeMinute == null
       ? "Auto (wake time)"
-      : `Auto (~${formatNotifyTime(wakeMinute)})`;
+      : `Auto (~${formatClockMinutes(timeFormat, wakeMinute)})`;
 
   // The minute grid of the scheduler's OBSERVED cadence (#2216) — what every time
   // input's step walks, so the picker offers the minutes a tick can actually land
@@ -687,7 +704,7 @@ export default function NotificationPrefs({
             >
               {HOURS.map((i) => (
                 <option key={i} value={i}>
-                  {String(i).padStart(2, "0")}:00
+                  {formatClockMinutes(timeFormat, i * 60)}
                 </option>
               ))}
             </select>
@@ -703,7 +720,9 @@ export default function NotificationPrefs({
             >
               {HOURS.map((i) => (
                 <option key={i} value={i}>
-                  {String(i).padStart(2, "0")}:59
+                  {/* The inclusive :59 end stays — the window ends when that
+                      minute does, and rounding it to the next hour would widen it. */}
+                  {formatClockMinutes(timeFormat, i * 60 + 59)}
                 </option>
               ))}
             </select>
@@ -841,6 +860,7 @@ export default function NotificationPrefs({
                         }
                         arrivalStats={arrivalStats}
                         tickMinutes={tickMinutes}
+                        timeFormat={timeFormat}
                         label={e.label}
                         testId={e.controlTestId ?? `kind-time-${e.kind}`}
                       />

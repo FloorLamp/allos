@@ -9,7 +9,10 @@
 // resolve here and the dismissal is one row on the shared suppression bus.
 
 import { getSetting } from "../settings";
-import { getNotifySchedule } from "../settings/notifications";
+import {
+  getNotifySchedule,
+  getProfileSleepDigest,
+} from "../settings/notifications";
 import { getSleepArrivals } from "./metrics";
 import { getFindingSuppressions } from "./upcoming/suppressions";
 import { arrivalStatistics } from "../notifications/digest-schedule";
@@ -38,10 +41,21 @@ export function getDigestTimeSuggestion(
   // Dynamic and Off both short-circuit before the arrival read, so a profile the
   // suggestion can never fire for pays nothing for it.
   if (sched.digestMinute == null || sched.digestMode !== "static") return null;
+  // And so does a digest carrying no sleep at all (#2255). ONE gate here silences
+  // BOTH surfaces, because both resolve through this function — the Settings card
+  // conditions on the live checkbox for immediacy, and the next render agrees with it
+  // because of this line. It sits above the arrival read for the same reason the two
+  // gates above it do: a suggestion that cannot fire must not cost a 30-night join.
+  const sleepSectionEnabled = getProfileSleepDigest(profileId);
+  if (!sleepSectionEnabled) return null;
   return activeDigestTimeSuggestion(
     {
       mode: sched.digestMode,
       configuredMinute: sched.digestMinute,
+      // Passed rather than assumed, even though the short-circuit above means it is
+      // always true here: the RULE lives in the pure decision (and is unit-tested
+      // there), and this is only the cheap early exit over it.
+      sleepSectionEnabled,
       stats: arrivalStatistics(getSleepArrivals(profileId)),
       tickMinutes: observedTickMinutesSetting(),
     },
