@@ -346,6 +346,45 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
     expect(res).toMatchObject({ mealSlot: "Morning", mealServings: 1 });
   });
 
+  // #2296 — the ruling, on the online half. The web form sends the CHOICE and the
+  // server resolves it, so no client clock can push a statement into the future here;
+  // what CAN happen is a page that went stale across local midnight, whose "13:00"
+  // resolves onto a day that is no longer the day it is logging to. Same silence,
+  // same fix: the serving lands, and the answer names what was lost.
+  it("keeps the serving AND reports a refused statement, instead of dropping it in silence", async () => {
+    const login = createLogin();
+    const profile = createProfile("stated-refused", login.id);
+    actAs(login, profile);
+    // The stale-page shape: logging to YESTERDAY while stating an hour of today.
+    // 19:00 is past under the frozen 21:30 now, so it resolves to today — the row's
+    // own day is yesterday, and the pair rule refuses it.
+    const yesterday = shiftDateStr(today(profile.id), -1);
+
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: yesterday, eaten_at: "19:00" })
+    );
+    // The write SUCCEEDED — that posture is not negotiable, the serving is the thing
+    // that must never be lost — and it carries the reason the minute did not land.
+    expect(res).toMatchObject({ ok: true, statedTimeRefused: "other-day" });
+    expect(events(profile.id)[0]).toMatchObject({
+      eaten_at: null,
+      time_source: null,
+    });
+  });
+
+  it("says nothing when nobody stated a time — absence is not a refusal", async () => {
+    // The distinction the whole change rests on. A plain "+" is the overwhelmingly
+    // common tap; announcing a lost minute there would be noise about nothing.
+    const login = createLogin();
+    const profile = createProfile("stated-quiet", login.id);
+    actAs(login, profile);
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: today(profile.id) })
+    );
+    expect(res.ok).toBe(true);
+    expect(res).not.toHaveProperty("statedTimeRefused");
+  });
+
   it("an UNUSABLE statement degrades to the declaration, not to nothing", async () => {
     const login = createLogin();
     const profile = createProfile("degrade-decl", login.id);
@@ -374,10 +413,12 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
 //
 // One more field on updateFoodLogEvent with three wire values: absent/empty leaves the
 // row's eating time alone, "none" clears it, "HH:MM" states that wall time on the
-// SUBMITTED day. The pin that matters most is the INVERTED acceptEatenAt posture: on
-// the log path an unusable instant silently costs the statement (the serving must
+// SUBMITTED day. The pin that matters most is the INVERTED judgeEatenAt posture: on
+// the log path an unusable instant costs the statement and not the serving (which must
 // land), but in a correction the statement IS the submission, so a refused instant is
-// a formError the user sees — never a silent clear.
+// a formError the user sees — never a silent clear. Since #2296 the difference is what
+// a refusal COSTS, not whether it is mentioned: both surfaces say it, one as a notice
+// on a write that succeeded and one as the failure it genuinely is.
 describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
   function eventRow(profileId: number) {
     const rows = db
@@ -489,10 +530,10 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
         eaten_at: "12:00",
       })
     );
-    expect(res).toEqual({
-      ok: false,
-      error: "That time isn't on the selected day.",
-    });
+    // #2296: the refusal now names the rule that fired. This one is FUTURE, and the
+    // old copy blamed the day for it — sending the user to correct a date that was
+    // already exactly what they meant.
+    expect(res).toEqual({ ok: false, error: "That time hasn't happened yet." });
     // NOTHING moved — not the day, and (the silent-clear hazard) not the statement.
     expect(eventRow(profile.id)).toEqual(before);
 

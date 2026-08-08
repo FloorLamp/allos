@@ -11,6 +11,7 @@ import {
   isAuthFailure,
   shouldQueueOffline,
   planFlushDisposition,
+  syncedAnnouncement,
   describeIntent,
   classifyDoseReplay,
   classifySetReplay,
@@ -240,6 +241,33 @@ describe("planFlushDisposition (issue #475)", () => {
     expect(plan.deleteKeys.sort()).toEqual(["a", "b"]);
     expect(plan.rejected).toEqual([]);
     expect(plan.retry).toEqual([]);
+  });
+
+  // #2296: a replay that KEPT the row but refused the time it was told is not a
+  // rejection and must never be parked with one — the dead-letter panel says "these
+  // weren't saved", which would be false here and alarming for a cosmetic minute.
+  it("collects a kept-but-timeless entry as a notice, not a rejection", () => {
+    const intents = [intent("a")];
+    const results: ReplayResult[] = [
+      { key: "a", status: "done", timeNotice: "future" },
+    ];
+    const plan = planFlushDisposition(intents, results, now);
+    expect(plan.syncedCount).toBe(1);
+    expect(plan.deleteKeys).toEqual(["a"]);
+    expect(plan.rejected).toEqual([]);
+    expect(plan.timeNotices).toEqual(["future"]);
+  });
+
+  it("does not re-announce a duplicate's notice — one lost minute is said once", () => {
+    // "duplicate" is a racing actor's success being re-reported (the service
+    // worker's Background Sync beat the page's flush). The write already happened
+    // and was already accounted for; announcing its notice again would tell the
+    // user twice about one thing.
+    const intents = [intent("a")];
+    const results: ReplayResult[] = [
+      { key: "a", status: "duplicate", timeNotice: "future" },
+    ];
+    expect(planFlushDisposition(intents, results, now).timeNotices).toEqual([]);
   });
 
   it("parks a server-rejected intent (with its payload + reason) and deletes it from the live queue — never silently discarded", () => {
@@ -501,5 +529,35 @@ describe("dose intent shape (#1427)", () => {
   it("stays valid without the timestamp (an intent queued before it shipped)", () => {
     const legacy = buildIntent("dose", "2026-07-15", { doseId: 42 }, 7);
     expect(legacy.payload).toEqual({ doseId: 42 });
+  });
+});
+
+// #2296 — the reconnect confirmation is where a replayed serving admits it lost the
+// minute it was told. One sentence, on the toast the user was already going to read:
+// the row landed, so nothing here may look like the red "couldn't be applied" panel.
+describe("syncedAnnouncement (#2296)", () => {
+  it("says nothing extra when every statement survived", () => {
+    expect(syncedAnnouncement(1, [])).toBe("Synced 1 offline entry.");
+    expect(syncedAnnouncement(3, [])).toBe("Synced 3 offline entries.");
+  });
+
+  it("names the reason a kept entry lost its stated time", () => {
+    expect(syncedAnnouncement(1, ["future"])).toBe(
+      "Synced 1 offline entry. One was saved without its stated time \u2014 your device's clock is ahead."
+    );
+  });
+
+  it("dedupes the reason but never the count", () => {
+    // Two servings tapped off one fast clock is ONE thing to explain and TWO rows
+    // to be honest about, so the reason collapses and the number does not.
+    expect(syncedAnnouncement(2, ["future", "future"])).toBe(
+      "Synced 2 offline entries. 2 were saved without their stated time \u2014 your device's clock is ahead."
+    );
+  });
+
+  it("joins genuinely different reasons rather than picking one", () => {
+    expect(syncedAnnouncement(2, ["future", "other-day"])).toContain(
+      "your device's clock is ahead, and it isn't on that day"
+    );
   });
 });

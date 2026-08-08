@@ -24,15 +24,18 @@
 //
 // ── WHY EVERY PATH VALIDATES, AND NONE OF THEM DROPS ─────────────────────────
 //
-// `acceptEatenAt` is the one gate, and it is `resolveQueuedTakenAt`'s posture applied to
+// `judgeEatenAt` is the one gate, and it is `resolveQueuedTakenAt`'s posture applied to
 // eating time: an unusable instant costs the STATEMENT, never the serving. Losing the
 // stated minute is cosmetic; refusing the tap would be a lost food log. The rule itself
 // — not meaningfully in the future, and its profile-local date IS the row's own `date` —
 // turned out not to be about food at all, so it lives in lib/stated-time.ts (#2236) as
-// `acceptStatedAt` and is re-exported here under its food name: one computation, worn by
+// `judgeStatedAt` and is re-exported here under its food name: one computation, worn by
 // every surface that records when an observed event happened. What stays genuinely food
 // is the #2053 reach-back-from-now offer below — a LOG-time question no other surface
 // asks, because only at log time is the day implicit.
+//
+// NEVER DROPS also means NEVER SILENTLY (#2296): the gate answers a VERDICT, so the
+// serving still lands and the surface still gets to say the minute went missing and why.
 //
 // NO DB, NO AMBIENT CLOCK — every function takes its `now`.
 
@@ -46,7 +49,7 @@ import {
 } from "./food-slot";
 
 export {
-  acceptStatedAt as acceptEatenAt,
+  judgeStatedAt as judgeEatenAt,
   STATED_FUTURE_SKEW_MS as EATEN_AT_FUTURE_SKEW_MS,
 } from "./stated-time";
 
@@ -83,7 +86,7 @@ export function eatingTimeChoiceValue(choice: EatingTimeChoice): string {
 }
 
 // Parse a submitted choice. Shape only — WHICH hours are legal depends on the current
-// time, which `acceptEatenAt` settles against the resolved instant rather than against a
+// time, which `judgeEatenAt` settles against the resolved instant rather than against a
 // list that may have moved since the page rendered.
 export function parseEatingTimeChoice(raw: unknown): EatingTimeChoice | null {
   if (typeof raw !== "string") return null;
@@ -114,7 +117,7 @@ export function resolveEatingTimeChoice(
 // resolves to and the meal window it files under (#2269) — filtered to those that land
 // on `date`, the day the serving is being logged to. That filter is what makes the offer
 // honest rather than merely validated: shortly after midnight the twelve-hour reach
-// would otherwise mostly point at yesterday, and a chip that `acceptEatenAt` would
+// would otherwise mostly point at yesterday, and a chip that `judgeEatenAt` would
 // refuse should never have been on screen. The slot comes from `foodSlotForHhmm` under
 // the caller's boundaries — the SAME derivation the tallies read — so the chip's claim
 // and the section the serving lands in cannot disagree.
@@ -158,7 +161,7 @@ export type EatingHourOption = EatingTimeOption;
 // born there as #2227's proposed `eatingHoursOnDate`) wearing the one genuinely-food
 // enrichment: the slot. The offer itself stays the neutral module's — truncated at the
 // current local hour when `date` is today, DST-safe, every option acceptable to
-// `acceptEatenAt` by construction. Unlike `eatingTimeOptions` above (which reaches BACK
+// `judgeEatenAt` by construction. Unlike `eatingTimeOptions` above (which reaches BACK
 // from now, because at log time the day is implicit), this enumerates a day the sheet
 // has already named — and the hour is an hour OF that day, so there is no cross-midnight
 // re-dating on this surface: the day field owns the day.
@@ -174,12 +177,13 @@ export function eatingHoursOnDate(
   }));
 }
 
-// `acceptEatenAt` — the eating instant a serving should actually carry, or null meaning
-// "record no eating time" — is re-exported at the top of this module from
-// lib/stated-time.ts (`acceptStatedAt`, #2236). The VALIDATE-NEVER-DROP posture of the
-// log path stays a fact about the CALLERS, not the rule: `null` costs the statement,
-// never the serving, while the correction path (#2227) treats the same `null` as a
-// refusal the user sees. `now` is injected and its clock is the CALLER'S choice,
+// `judgeEatenAt` — the verdict on the eating instant a serving should actually carry —
+// is re-exported at the top of this module from lib/stated-time.ts (`judgeStatedAt`,
+// #2236). The VALIDATE-NEVER-DROP posture of the log path stays a fact about the
+// CALLERS, not the rule: a `refused` verdict costs the statement, never the serving,
+// while the correction path (#2227) treats the same verdict as an error the user sees.
+// Since #2296 BOTH tell the user — the log path as a notice on a write that succeeded,
+// the correction path as the failure it genuinely is. `now` is injected and its clock is the CALLER'S choice,
 // deliberately: the online action resolves the choice against the app's own clock seam
 // and is comparing that seam with itself, while the offline replay is judging an instant
 // off an untrusted CLIENT wall clock and therefore compares against real time — the same

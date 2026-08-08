@@ -415,12 +415,14 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     logFoodServingCore(profileId, "berries", yesterday, tapped, "Morning");
     const eventId = onlyEventId(profileId);
 
-    // Off the row's own day.
+    // Off the row's own day. The refusal carries the gate's own REASON since #2296,
+    // so the correction sheet names the rule that fired rather than guessing — and
+    // this one genuinely IS the day rule, not the clock.
     expect(
       updateFoodLogEventCore(profileId, eventId, {
         eatenAt: new Date(`${twoDaysAgo}T19:00:00Z`),
       })
-    ).toEqual({ kind: "invalid-eaten-at" });
+    ).toEqual({ kind: "invalid-eaten-at", reason: "other-day" });
     // The FINAL date is what the rule judges: the same instant is refused when the
     // patch leaves the day put, and accepted when the patch moves the day to match.
     expect(
@@ -428,7 +430,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
         date: twoDaysAgo,
         eatenAt: new Date(`${yesterday}T19:00:00Z`),
       })
-    ).toEqual({ kind: "invalid-eaten-at" });
+    ).toEqual({ kind: "invalid-eaten-at", reason: "other-day" });
     // Both refusals wrote NOTHING — row and counter alike.
     expect(ledgerRow(profileId, eventId)).toMatchObject({
       date: yesterday,

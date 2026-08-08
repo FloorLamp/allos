@@ -141,7 +141,14 @@ export async function POST(req: Request) {
               reason:
                 outcome.reason ?? "The server couldn't validate this entry.",
             }
-          : { key: raw.key, status: outcome.status }
+          : {
+              key: raw.key,
+              status: outcome.status,
+              // The mirror image of `reason` (#2296): the write APPLIED, and a time
+              // the user stated about it did not survive the acceptance gate. Carried
+              // as the refusal code so the copy stays in one place client-side.
+              ...(outcome.timeNotice ? { timeNotice: outcome.timeNotice } : {}),
+            }
       );
     } catch {
       // Transient server/DB failure — leave it queued for the next flush.

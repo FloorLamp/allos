@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   EATEN_AT_FUTURE_SKEW_MS,
   EATING_TIME_LAST_HOURS_BACK,
-  acceptEatenAt,
+  judgeEatenAt,
   eatingHoursOnDate,
   eatingTimeChoiceValue,
   eatingTimeOptions,
@@ -148,8 +148,8 @@ describe("the offered `earlier…` hours (#2053)", () => {
     const now = new Date("2026-03-10T04:30:00Z");
     for (const option of eatingTimeOptions(now, UTC, "2026-03-10", DEFAULTS)) {
       expect(
-        acceptEatenAt(new Date(option.iso), UTC, "2026-03-10", now)
-      ).not.toBeNull();
+        judgeEatenAt(new Date(option.iso), UTC, "2026-03-10", now).kind
+      ).toBe("accepted");
     }
   });
 
@@ -254,49 +254,72 @@ describe("eatingHoursOnDate — the correction offer (#2227)", () => {
   it("never offers an hour the acceptance gate would refuse (offer↔gate agreement)", () => {
     for (const date of ["2026-03-09", "2026-03-10"]) {
       for (const option of eatingHoursOnDate(date, UTC, now, SHIFTED)) {
-        expect(
-          acceptEatenAt(new Date(option.iso), UTC, date, now)
-        ).not.toBeNull();
+        expect(judgeEatenAt(new Date(option.iso), UTC, date, now).kind).toBe(
+          "accepted"
+        );
       }
     }
   });
 });
 
-describe("acceptEatenAt — validate, never drop (#2053)", () => {
+describe("judgeEatenAt — validate, never drop, never silently (#2053, #2296)", () => {
   const now = new Date("2026-03-10T18:30:00Z");
   const date = "2026-03-10";
 
   it("accepts a same-day instant in the past", () => {
     const at = new Date("2026-03-10T13:00:00Z");
-    expect(acceptEatenAt(at, UTC, date, now)).toEqual(at);
+    expect(judgeEatenAt(at, UTC, date, now)).toEqual({ kind: "accepted", at });
   });
 
   it("tolerates small clock skew but refuses a genuinely future instant", () => {
     const withinSkew = new Date(now.getTime() + EATEN_AT_FUTURE_SKEW_MS);
-    expect(acceptEatenAt(withinSkew, UTC, date, now)).toEqual(withinSkew);
+    expect(judgeEatenAt(withinSkew, UTC, date, now)).toEqual({
+      kind: "accepted",
+      at: withinSkew,
+    });
     const beyondSkew = new Date(now.getTime() + EATEN_AT_FUTURE_SKEW_MS + 1000);
-    expect(acceptEatenAt(beyondSkew, UTC, date, now)).toBeNull();
+    expect(judgeEatenAt(beyondSkew, UTC, date, now)).toEqual({
+      kind: "refused",
+      reason: "future",
+    });
   });
 
   it("refuses an instant whose profile-local date isn't the row's own day", () => {
     expect(
-      acceptEatenAt(new Date("2026-03-09T20:00:00Z"), UTC, date, now)
-    ).toBeNull();
+      judgeEatenAt(new Date("2026-03-09T20:00:00Z"), UTC, date, now)
+    ).toEqual({ kind: "refused", reason: "other-day" });
   });
 
   it("judges that day in the PROFILE's timezone", () => {
     // 02:00Z on the 10th is 21:00 on the 9th in New York — the same instant belongs to
     // two different days depending on whose calendar is asked.
     const at = new Date("2026-03-10T02:00:00Z");
-    expect(acceptEatenAt(at, UTC, "2026-03-10", now)).toEqual(at);
-    expect(acceptEatenAt(at, NY, "2026-03-10", now)).toBeNull();
-    expect(acceptEatenAt(at, NY, "2026-03-09", now)).toEqual(at);
+    expect(judgeEatenAt(at, UTC, "2026-03-10", now)).toEqual({
+      kind: "accepted",
+      at,
+    });
+    expect(judgeEatenAt(at, NY, "2026-03-10", now)).toEqual({
+      kind: "refused",
+      reason: "other-day",
+    });
+    expect(judgeEatenAt(at, NY, "2026-03-09", now)).toEqual({
+      kind: "accepted",
+      at,
+    });
   });
 
-  it("treats absent and unparseable input as `no statement`", () => {
-    expect(acceptEatenAt(null, UTC, date, now)).toBeNull();
-    expect(acceptEatenAt(undefined, UTC, date, now)).toBeNull();
-    expect(acceptEatenAt(new Date("not a date"), UTC, date, now)).toBeNull();
+  it("keeps `no statement` apart from `a statement we threw away`", () => {
+    // The #2296 distinction, at the food door: an absent choice has nothing to
+    // report, an unreadable one does. Both leave `eaten_at` NULL; only one leaves
+    // the user owed an explanation.
+    expect(judgeEatenAt(null, UTC, date, now)).toEqual({ kind: "unstated" });
+    expect(judgeEatenAt(undefined, UTC, date, now)).toEqual({
+      kind: "unstated",
+    });
+    expect(judgeEatenAt(new Date("not a date"), UTC, date, now)).toEqual({
+      kind: "refused",
+      reason: "malformed",
+    });
   });
 });
 

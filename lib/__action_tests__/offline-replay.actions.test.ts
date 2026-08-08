@@ -39,7 +39,14 @@ async function replay(intents: unknown[]): Promise<{
   status: number;
   body: {
     ok: boolean;
-    results?: { key: string; status: string; reason?: string }[];
+    results?: {
+      key: string;
+      status: string;
+      reason?: string;
+      // #2296: set on a `done` result whose write kept the row but refused a stated
+      // time. The mirror image of `reason`, which only ever accompanies a rejection.
+      timeNotice?: string;
+    }[];
   };
 }> {
   const res = await POST(
@@ -796,7 +803,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
   //
   // The chosen instant has to survive the queue, because the whole point of the chips is
   // to say WHEN, and a kitchen-moment tap is exactly the one most likely to be offline.
-  // It is validated rather than trusted (acceptEatenAt) for the same reason a queued
+  // It is validated rather than trusted (judgeEatenAt) for the same reason a queued
   // dose's tap instant is: it came off an untrusted client wall clock.
   it("carries a stated eating instant through replay as time_source='stated'", async () => {
     const admin = createLogin();
@@ -857,23 +864,34 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     ]);
   });
 
-  it("an unusable client instant costs the STATEMENT, never the serving", async () => {
+  // #2296 — the owner ruling: KEEP the five-minute tolerance, LOSE the silence. This
+  // was the reproduction. A device clock running fast is not a forgery and not a bad
+  // tap, and the serving must still land; what could not stand is that the minute
+  // vanished with nothing anywhere saying it had. The replay now answers `done` AND a
+  // `timeNotice` naming which rule fired, which is what the reconnect toast reads.
+  it("an unusable client instant costs the STATEMENT, never the serving — and says so", async () => {
     const admin = createLogin();
     const profile = createProfile(`FoodBadTime ${uniqueKey()}`);
     actAs(admin, profile);
     const date = today(profile.id);
     const tz = getTimezone(profile.id);
 
-    // A phone hours ahead, and an instant sitting on the wrong day — the two failures
-    // the gate exists for. Both replay as a logged serving with no eating time, because
-    // losing the minute is cosmetic and losing the food log is not.
+    // A phone hours ahead, an instant sitting on the wrong day, and unreadable junk —
+    // the three failures the gate exists for, each with its own explanation. All three
+    // replay as a logged serving with no eating time, because losing the minute is
+    // cosmetic and losing the food log is not.
     const future = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
     const wrongDay = zonedWallTimeToUtc(
       tz,
       shiftDateStr(date, -1),
       "12:00"
     )!.toISOString();
-    for (const bad of [future, wrongDay, "not-an-instant"]) {
+    const cases = [
+      { bad: future, reason: "future" },
+      { bad: wrongDay, reason: "other-day" },
+      { bad: "not-an-instant", reason: "malformed" },
+    ] as const;
+    for (const { bad, reason } of cases) {
       const res = await replay([
         servingIntent(
           profile.id,
@@ -885,6 +903,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
         ),
       ]);
       expect(res.body.results?.[0].status).toBe("done");
+      expect(res.body.results?.[0].timeNotice).toBe(reason);
     }
     const times = eventTimes(profile.id, date, "berries");
     expect(times).toHaveLength(3);
@@ -892,6 +911,33 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       times.every((t) => t.eaten_at === null && t.time_source === null)
     ).toBe(true);
     expect(servingsFor(profile.id, date, "berries")).toBe(3);
+  });
+
+  // The other half of the ruling, and the one a "just add a toast" fix gets wrong: a
+  // replay with NOTHING to report must report nothing. `unstated` is not `refused`.
+  it("reports no notice when the statement survived, or when there never was one", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodQuietTime ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    const good = utcInstant(
+      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!
+    );
+
+    for (const stated of [good, undefined]) {
+      const res = await replay([
+        servingIntent(
+          profile.id,
+          date,
+          "legumes",
+          "Morning",
+          `${date}T09:00:00.000Z`,
+          stated
+        ),
+      ]);
+      expect(res.body.results?.[0].status).toBe("done");
+      expect(res.body.results?.[0].timeNotice).toBeUndefined();
+    }
   });
 
   it("dead-letters an unknown food group with a reason, writing nothing", async () => {

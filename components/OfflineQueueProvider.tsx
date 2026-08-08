@@ -21,6 +21,7 @@ import {
   buildIntent,
   chunkIntents,
   planFlushDisposition,
+  syncedAnnouncement,
   describeIntent,
   isAuthFailure,
   MAX_INTENTS,
@@ -29,6 +30,7 @@ import {
   type ReplayResult,
   type RejectedEntry,
 } from "@/lib/offline/queue";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import {
   enqueueIntent,
   allIntents,
@@ -152,12 +154,24 @@ export default function OfflineQueueProvider({
   // via either or both. A short suppression window collapses their reports.
   const lastSyncToastAt = useRef(0);
   const announceSynced = useCallback(
-    (n: number) => {
+    (n: number, timeNotices: readonly StatedTimeRefusal[] = []) => {
       if (n <= 0) return;
       const now = Date.now();
       if (now - lastSyncToastAt.current < 3000) return;
       lastSyncToastAt.current = now;
-      toast(`Synced ${n} offline ${n === 1 ? "entry" : "entries"}.`);
+      // The sync confirmation, amended when a replay kept a row but refused the time
+      // it was told (#2296). Same toast, same default tone, same auto-dismiss: the
+      // entries DID land, so this must not read like the dead-letter alert below,
+      // which says "these weren't saved" and would be false here.
+      //
+      // The service-worker call site passes no notices, and that is exact rather than
+      // lossy: sw.js DELEGATES to an open tab (posting synced: 0, which returns above)
+      // and only replays itself when NO tab is open — where there is no client to post
+      // a notice to and no one to read it. A missing minute is cosmetic, the serving is
+      // on the right day, and the row stays correctable from its own ⋯ sheet, so
+      // "nobody was there" is an acceptable place for this to go unsaid. Claiming the
+      // time WAS recorded would not be, and nothing does.
+      toast(syncedAnnouncement(n, timeNotices));
       // Survives the #1473 sweep: the queue replays through the /api/offline-replay
       // route handler (and the service worker), never a Server Action, so nothing
       // else brings the newly-landed rows into the current view.
@@ -191,6 +205,7 @@ export default function OfflineQueueProvider({
       const chunks = chunkIntents(intents, MAX_INTENTS);
       let totalSynced = 0;
       let totalRejected = 0;
+      const timeNotices: StatedTimeRefusal[] = [];
       let batchTooLarge = false;
       for (const chunk of chunks) {
         let res: Response;
@@ -250,10 +265,11 @@ export default function OfflineQueueProvider({
         await saveRejected(plan.rejected);
         totalSynced += plan.syncedCount;
         totalRejected += plan.rejected.length;
+        timeNotices.push(...plan.timeNotices);
       }
       await refreshCount();
       await refreshRejected();
-      announceSynced(totalSynced);
+      announceSynced(totalSynced, timeNotices);
       if (totalRejected > 0) {
         // A dropped record is data loss — surface it persistently (never
         // auto-dismiss), and the review panel below lets the user re-enter it.

@@ -26,6 +26,16 @@
 // specified as `eatingHoursOnDate` is born here as `statedHoursOnDate`, and the
 // food module keeps only its genuinely-food reach-back-from-now offer.
 //
+// ── AND WHY IT ANSWERS A VERDICT, NOT A NULLABLE DATE ────────────────────────
+//
+// The gate used to answer `Date | null`, which cannot tell "nobody stated a time"
+// apart from "somebody stated one and we refused it". Both are absence at the
+// column; only one is something the user needs to hear. So a phone whose clock ran
+// six minutes fast silently discarded the eating time it had just been told and kept
+// the serving, with nothing on screen (#2296). The five-minute tolerance was never
+// the defect — the SHAPE OF THE ANSWER was. `judgeStatedAt` returns the distinction,
+// and a surface that keeps the row now has something to say about the minute it lost.
+//
 // NO DB, NO AMBIENT CLOCK — every function takes its `now`.
 
 import { dateStrInTz, zonedDateParts, zonedWallTimeToUtc } from "./date";
@@ -52,9 +62,45 @@ export interface StatedHourOption {
 // clock (the same tolerance the dose recorded_at guard uses).
 export const STATED_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
-// The instant a statement should actually carry, or null meaning "record no
-// stated time". THE one acceptance gate (moved from lib/food-eating-time.ts's
-// acceptEatenAt, #2053): two rules, and the second is the load-bearing one —
+// WHY a stated instant was refused. Three reasons, one per rule below, because a
+// surface that has to tell the user what happened cannot say it from a bare "no":
+// "your clock is ahead" and "that isn't on that day" are different things to hear,
+// and only one of them is the user's mistake.
+export type StatedTimeRefusal = "future" | "other-day" | "malformed";
+
+// The gate's answer, with the distinction #2296 turns on: `unstated` (nobody said a
+// time — the common case, and nothing to report) is NOT `refused` (somebody said one
+// and we threw it away). The old `Date | null` shape collapsed the two, which is
+// precisely why a client clock running fast could discard a stated eating time with
+// nothing on screen saying so for as long as the gate has existed.
+export type StatedTimeVerdict =
+  | { kind: "accepted"; at: Date }
+  | { kind: "unstated" }
+  | { kind: "refused"; reason: StatedTimeRefusal };
+
+// The verdict on a statement that definitely exists: accepted, or refused with a
+// reason. What the gate answers when its input is a `Date` rather than a maybe-Date.
+export type JudgedStatement = Exclude<StatedTimeVerdict, { kind: "unstated" }>;
+
+// The explanation a surface that TIMESTAMPED THE STATEMENT ITSELF gives — a tap's
+// "now", an instant a queued capture took off the device clock. A clause, so the
+// surface finishes its own sentence with it ("Serving saved without its time — your
+// device's clock is ahead."), because the reason belongs to the gate and WHAT WAS KEPT
+// belongs to the surface.
+//
+// Deliberately NOT the vocabulary for a surface where the user TYPED the time. There a
+// future instant means they named a future moment, and telling them their clock is
+// ahead would be a diagnosis of the wrong machine — so the correction sheet owns its
+// own phrasing (app/(app)/nutrition/actions.ts) and only the CODE is shared. One
+// question, one computation; the answer still gets to be said in the room it is in.
+export const STATED_TIME_REFUSAL_NOTE: Record<StatedTimeRefusal, string> = {
+  future: "your device's clock is ahead",
+  "other-day": "it isn't on that day",
+  malformed: "it couldn't be read",
+};
+
+// THE one acceptance gate (moved from lib/food-eating-time.ts's acceptEatenAt,
+// #2053): two rules, and the second is the load-bearing one —
 //
 //   1. not meaningfully in the future (beyond STATED_FUTURE_SKEW_MS), and
 //   2. the instant's profile-local date IS the row's `date`.
@@ -63,19 +109,44 @@ export const STATED_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // `date` is what dose, adherence, cadence and the digest key on, and a stated
 // instant that disagrees with it makes the row answer two questions differently.
 //
-// What a refusal COSTS is the caller's decision, deliberately: a log path treats
-// null as "keep the row, drop the statement" (losing the stated minute is
-// cosmetic, losing the serving is not), while a correction path — where the
-// statement IS the whole submission — surfaces it as an error the user sees.
-export function acceptStatedAt(
+// What a refusal COSTS is still the caller's decision, deliberately: a log path
+// keeps the row and drops the statement (losing the stated minute is cosmetic,
+// losing the serving is not), while a correction path — where the statement IS the
+// whole submission — surfaces it as an error. What is NO LONGER the caller's
+// decision is whether to MENTION it (#2296, owner ruling 2026-08-08): the five-minute
+// tolerance stays, the silence does not. A refusal is a NOTICE, never a validation
+// failure that costs the write, and the verdict is what makes one sayable.
+//
+// TWO OVERLOADS, one rule. A caller holding an instant cannot get `unstated` back —
+// it is holding the statement — so it should not have to write a branch for it, and
+// should not get to pass a nullable value off as one it has already checked. The
+// nullable overload is for the boundary that genuinely does not know yet.
+export function judgeStatedAt(
+  statedAt: Date,
+  tz: string,
+  date: string,
+  now: Date
+): JudgedStatement;
+export function judgeStatedAt(
   statedAt: Date | null | undefined,
   tz: string,
   date: string,
   now: Date
-): Date | null {
-  if (!statedAt || Number.isNaN(statedAt.getTime())) return null;
-  if (statedAt.getTime() > now.getTime() + STATED_FUTURE_SKEW_MS) return null;
-  return dateStrInTz(tz, statedAt) === date ? statedAt : null;
+): StatedTimeVerdict;
+export function judgeStatedAt(
+  statedAt: Date | null | undefined,
+  tz: string,
+  date: string,
+  now: Date
+): StatedTimeVerdict {
+  if (statedAt === null || statedAt === undefined) return { kind: "unstated" };
+  if (Number.isNaN(statedAt.getTime()))
+    return { kind: "refused", reason: "malformed" };
+  if (statedAt.getTime() > now.getTime() + STATED_FUTURE_SKEW_MS)
+    return { kind: "refused", reason: "future" };
+  return dateStrInTz(tz, statedAt) === date
+    ? { kind: "accepted", at: statedAt }
+    : { kind: "refused", reason: "other-day" };
 }
 
 // Anchor a wall clock on a named day, enforcing the pair rule by construction:
@@ -85,7 +156,7 @@ export function acceptStatedAt(
 // silently change what the user stated, so it is refused instead.
 //
 // No future check here: whether "later today" is acceptable is the acceptance
-// gate's question (`acceptStatedAt`), asked at the write boundary against the
+// gate's question (`judgeStatedAt`), asked at the write boundary against the
 // server's clock — not this constructor's.
 export function statedInstantOnDate(
   date: string,
@@ -130,6 +201,10 @@ export function statedHoursOnDate(
 // statement), and the result is null — cleared, never guessed — when the wall
 // time does not exist on the new day (a DST gap) or would land meaningfully in
 // the future (moving an afternoon statement onto a morning today).
+//
+// The ONE caller that legitimately swallows a refusal (#2296): this is a live draft
+// re-anchor inside the shared control, so the refusal is already on screen — the
+// time field goes empty in front of the user, in the same gesture that emptied it.
 export function reanchorStatedAt(
   statedAt: string | null,
   newDate: string,
@@ -140,7 +215,8 @@ export function reanchorStatedAt(
   const from = new Date(statedAt);
   if (Number.isNaN(from.getTime())) return null;
   const inst = statedInstantOnDate(newDate, zonedDateParts(tz, from).hhmm, tz);
-  return acceptStatedAt(inst, tz, newDate, now)?.toISOString() ?? null;
+  const verdict = judgeStatedAt(inst, tz, newDate, now);
+  return verdict.kind === "accepted" ? verdict.at.toISOString() : null;
 }
 
 // The display half of a stated instant: its profile-local wall clock, or "" for
