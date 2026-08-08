@@ -7,7 +7,8 @@ import "../../scripts/load-env";
 
 import path from "node:path";
 import { db, today } from "../../lib/db";
-import { shiftDateStr } from "../../lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../../lib/date";
+import { getTimezone } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import {
   E2E_LOGIN_SICK_SELF,
@@ -123,14 +124,22 @@ export function seedIllness(): void {
         .prepare(
           `INSERT INTO medical_records
            (profile_id, date, category, name, value, value_num, unit,
-            canonical_name, source, notes)
+            canonical_name, source, occurred_at)
          VALUES (?, ?, 'vitals', 'Body Temperature', ?, ?, 'degF',
                  'Body Temperature', 'manual', ?)`
         )
-        // An early clock time so a "now" reading a caregiver logs later in the day always
-        // outranks it as the LATEST temp (the multi-sick cross-profile-temp spec asserts the
+        // An early clock time (on the row's own occurred_at, #2154 — the retired
+        // notes-"HH:MM" convention is unrepresentable after migration 170) so a
+        // "now" reading a caregiver logs later in the day always outranks it as
+        // the LATEST temp (the multi-sick cross-profile-temp spec asserts the
         // logged value shows in the accordion line).
-        .run(profileId, on, "101.3", 101.3, "00:05").lastInsertRowid
+        .run(
+          profileId,
+          on,
+          "101.3",
+          101.3,
+          utcInstant(zonedWallTimeToUtc(getTimezone(profileId), on, "00:05")!)
+        ).lastInsertRowid
     );
     reconcileFlags(profileId, [tId]);
 

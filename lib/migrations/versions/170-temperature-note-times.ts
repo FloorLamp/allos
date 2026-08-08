@@ -17,9 +17,12 @@ import { DEFAULT_TIMEZONE, isValidTimezone } from "../../timezone";
 //     zero-padded 24h "HH:MM" (the shape normalizeClockTime always stored) counts.
 //     A note carrying anything else — prose, a "7:30", a "25:99" — is left
 //     untouched: malformed values are not this migration's to guess at.
-//   • Scoped to canonical_name = 'Body Temperature': the only rows any writer ever
-//     minted the convention for. A coincidental "HH:MM" note on some other analyte
-//     is somebody's note, not a smuggled clock.
+//   • Scoped to canonical_name = 'Body Temperature' AND source = 'manual': the
+//     only rows any writer ever minted the convention for (the vitals quick-add,
+//     the temperature-log core and the Telegram reply all stamp 'manual'). A
+//     coincidental "HH:MM" note on some other analyte — or on an IMPORTED
+//     temperature, where it is a lab's own comment on an unknown clock — is
+//     somebody's note, not the app's smuggled clock.
 //   • The wall clock resolves against the profile's CURRENT timezone — the same
 //     honest limit migration 164 states: the note recorded the user's own wall
 //     clock with no zone of its own, the profile's timezone is the best statement
@@ -75,6 +78,7 @@ export function up(db: Database.Database): void {
     .prepare(
       `SELECT id, profile_id, date, notes, occurred_at FROM medical_records
         WHERE canonical_name = 'Body Temperature'
+          AND source = 'manual'
           AND notes IS NOT NULL
           AND length(notes) = 5
           AND notes GLOB '[0-2][0-9]:[0-5][0-9]'
