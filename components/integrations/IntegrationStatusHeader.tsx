@@ -6,6 +6,7 @@ import {
   formatCoverage,
   intermittentReassurance,
   intermittentRunsLabel,
+  successCadenceLabel,
   INTERMITTENT_HEADLINE,
   periodActivityLabel,
   standingBadge,
@@ -95,6 +96,7 @@ export default function IntegrationStatusHeader({
     noun,
     vocabulary
   );
+  const cadence = successCadenceLabel(state.successCadenceMinutes);
 
   return (
     <div data-testid={testid}>
@@ -139,12 +141,17 @@ export default function IntegrationStatusHeader({
               </>
             )}
           </p>
+          {/* The failure tally names the NOISE; the observed success cadence names
+              the signal, which is the reading this surface was missing (#2263 item
+              4). Measured over the standing window for DISPLAY only — the
+              escalation tolerance stays declared in the registry. */}
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             {intermittentRunsLabel(
               state.recentRuns.failed,
               state.recentRuns.total
-            )}{" "}
-            · {intermittentReassurance(vocabulary)}.
+            )}
+            {cadence && <> · {cadence}</>} ·{" "}
+            {intermittentReassurance(vocabulary)}.
           </p>
         </div>
       ) : perRun ? (

@@ -7,6 +7,8 @@ import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
+import { now as clockNow } from "../../lib/clock";
+import { syncInstantBefore } from "../sync-instants";
 import { upsertConnection } from "../../lib/integrations/connections";
 import {
   E2E_LOGIN_WEATHER,
@@ -304,6 +306,13 @@ export function seedSuppressedCenter(): void {
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
+    // The two seeded runs' instants, an hour and two hours before the frozen clock —
+    // the SAME derivation weather-uv.spec.ts reads them back with.
+    const wxNow = clockNow();
+    const WX_SYNC_EVENTS = [
+      syncInstantBefore(wxNow, 2),
+      syncInstantBefore(wxNow, 1),
+    ];
     // Enable the keyless weather connection (the enable flag the tick + grid read).
     upsertConnection(wxId, "weather", { status: "connected", config: null });
     // An outdoor daytime walk today, well inside the daylight window.
@@ -407,14 +416,17 @@ export function seedSuppressedCenter(): void {
     // Two successful weather syncs so the profile's Connected-sources card renders
     // with a latest-state line AND an expandable history (#1614): before that fix
     // Weather was excluded from getConnectedSources by kind, so the "Sync history"
-    // link on its own setup page led nowhere. Dated TODAY in the profile's timezone
-    // (the frozen run clock): since #1880 the standing composes the #1685 staleness
-    // rule, so a fixed past date would read as a silent stop and flip this healthy
-    // fixture to "Sync failing". The WINDOW stamps stay fixed — they are data.
+    // link on its own setup page led nowhere.
+    //
+    // Dated RELATIVE TO THE FROZEN RUN CLOCK, an hour and two hours back. The standing
+    // composes the silence tolerance (#1685, unified in #2263), and weather's is 12
+    // hours — so a fixed time-of-day would read as a silent stop and flip this healthy
+    // fixture to "Sync failing" for every run that starts more than twelve hours after
+    // it. The WINDOW stamps stay fixed — they are data, not freshness.
     ins.run(
       wxId,
       "weather",
-      `${wxToday}T05:00:00Z`,
+      WX_SYNC_EVENTS[0],
       1,
       "2026-06-25",
       "2026-07-09",
@@ -430,7 +442,7 @@ export function seedSuppressedCenter(): void {
     ins.run(
       wxId,
       "weather",
-      `${wxToday}T06:00:00Z`,
+      WX_SYNC_EVENTS[1],
       1,
       "2026-06-25",
       "2026-07-09",
