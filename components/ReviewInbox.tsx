@@ -19,6 +19,8 @@ import ConnectedSources, {
   EscalatedSources,
   isEscalatedSource,
 } from "@/components/ConnectedSources";
+import QuietStreams from "@/components/QuietStreams";
+import type { QuietStreamRow } from "@/lib/queries/continuous-streams";
 import ImportFeed from "@/components/ImportFeed";
 import type {
   ActivityDupRow,
@@ -40,6 +42,11 @@ import type {
 //     actions together. The alert IS the card — nothing below restates it. Synthetic
 //     issues with no source card behind them (an expired Health Connect token, an
 //     unregistered provider id) render here too, as plain rows.
+// (a2) "A device stopped sending" (<QuietStreams>, #2146) — a provider syncing green
+//     while one of its declared CONTINUOUS streams has gone quiet (a watch off the
+//     wrist while the phone keeps pushing aggregates). Slate, not rose, because
+//     nothing is broken: it is a coaching-tier observation, it never sends, and it
+//     yields to (a) so a provider is still one row.
 // (b) DETECTED duplicate/conflict pairs (issue #10, Phase 2) + unit mislabels.
 // (c) "Connected sources" (<ConnectedSources>) — the calm rest of the recurring
 //     streams: partial/not-connected expanded, flapping stated as an amber one-liner,
@@ -62,6 +69,7 @@ function providerHref(id: string): AppRoute | null {
 
 export default function ReviewInbox({
   issues,
+  quietStreams = [],
   sources,
   feed,
   knownNames,
@@ -75,6 +83,10 @@ export default function ReviewInbox({
   isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
+  // Providers that are syncing fine while one of their continuous data streams has
+  // gone quiet (#2146) — a calm, coaching-tier observation, deliberately NOT part of
+  // the rose "Needs attention" card and deliberately not counted by the review badge.
+  quietStreams?: QuietStreamRow[];
   // The recurring per-provider streams for the "Connected sources" section.
   sources: ConnectedSource[];
   // The one-off "Imports" feed (documents + paste jobs), newest-first.
@@ -176,6 +188,12 @@ export default function ReviewInbox({
           )}
         </div>
       )}
+
+      {/* A device that stopped delivering while its provider keeps syncing green
+          (#2146). It sits BELOW the escalated card and above the detected pairs: it is
+          an observation, not a fault, and #2146 constraint 7 already guarantees a
+          provider represented above is not repeated here. */}
+      <QuietStreams rows={quietStreams} />
 
       <DuplicateReview
         activityClusters={activityClusters}

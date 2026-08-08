@@ -60,6 +60,45 @@ export const INTEGRATIONS: IntegrationDef[] = [
     silenceToleranceMinutes: 12 * 60,
     stoppedConsequence:
       "Steps, workouts, and vitals from your phone have stopped arriving.",
+    // THE continuous stream (#2146). `silenceToleranceMinutes` above is about the
+    // CONNECTION; this is about the DATA, and the two are genuinely independent here:
+    // the exporter pushes on its own schedule from the phone, so it keeps recording
+    // ok=1 pushes carrying phone-sourced daily aggregates for as long as the phone is
+    // alive — whether or not the watch feeding heart rate is on anyone's wrist.
+    continuousStreams: [
+      {
+        id: "heart-rate",
+        label: "heart-rate",
+        table: "hr_minutes",
+        // One row per minute while worn. The measured steady state, and what makes
+        // the tolerance below legible: 2.5 hours of silence is ~150 absent rows.
+        rowsPerHour: 60,
+        // The same 2-of-3-days shape #2097 uses for sleep, for the same reason: a
+        // watch nobody has worn for three days is not "quiet", it is put away, and a
+        // row about it every morning is how a surface earns being ignored.
+        expectedActive: { windowDays: 3, minDays: 2 },
+        quiet: {
+          dipToleranceMin: 150,
+          because:
+            "Measured over 56 days of one real profile's hr_minutes. The gap " +
+            "distribution is BIMODAL with an empty valley at 2.1–2.5 h: 16 routine " +
+            "removals of 1–2.5 h (10 starting 19:00–21:00 local — evening charging — " +
+            "and 6 at 10:00/14:00, workout removals; 95 min average), against 5 gaps " +
+            "over 2.5 h in the whole window, about one per 11 days. The threshold is " +
+            "placed in the valley, so ordinary charging never reports and a real " +
+            "event nearly always does. The worst of the five (21:05 → 06:24, the " +
+            "watch left on the charger overnight) cost the profile its only missing " +
+            "sleep night in eight weeks.",
+          prompt:
+            "Is the watch on your wrist and charged? Heart rate — and tonight's " +
+            "sleep — aren't being recorded while it's off.",
+        },
+        // #2161's bedtime reminder watches THIS stream. Declared rather than
+        // hard-coded in the notification module, so "which streams have a reminder"
+        // is a registry question (#2162).
+        reminder: "bedtime-wear",
+      },
+    ],
     docsUrl: "https://github.com/mcnaveen/health-connect-webhook",
   },
   {
@@ -277,6 +316,12 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // re-imported your Takeout export in three days" is not a fault, and nagging about
     // it would be the exact false positive that teaches a user to ignore the signal.
     silenceToleranceMinutes: null,
+    // NO `continuousStreams`, and deliberately, even though this is the app's other
+    // `hr_minutes` writer (#2146). A continuous stream is a declaration that rows are
+    // EXPECTED to keep arriving; an archive import has no live cadence at all, so its
+    // minute-level heart rate is silent between imports by definition. Declaring one
+    // here would report every profile that ever imported a Takeout export as quiet,
+    // forever — the exemption is by construction, not by a detector special case.
     docsUrl: "https://takeout.google.com/",
   },
   {

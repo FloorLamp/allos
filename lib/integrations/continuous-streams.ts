@@ -1,0 +1,93 @@
+// PURE registry readers for the CONTINUOUS STREAM facet (#2146) — the sibling of
+// staleness.ts / pull-cadence.ts / auth-failure.ts, and the same rule as those: the
+// registry field is touched HERE and nowhere else, so "which streams does this
+// provider deliver continuously" has one answer for the detector, the reminder, and
+// whatever asks next.
+//
+// Why the facet exists at all. `silenceToleranceMinutes` asks about the CONNECTION —
+// has any successful run landed lately. A provider can pass that while one of its
+// streams has gone silent, because the two are delivered by different things: the
+// phone exporter keeps pushing daily aggregates whether or not the watch feeding
+// heart rate is on a wrist. Nothing in the app could see that gap, so nothing did.
+//
+// A provider that declares no stream is EXEMPT BY CONSTRUCTION. There is no exemption
+// list here to keep in sync — weather, the outbound calendar feed, attended portals
+// and the Fitbit Takeout archive simply have nothing continuous to be silent, and the
+// registry says so by omission (each with a comment stating why).
+
+import type {
+  ContinuousStreamDef,
+  ContinuousStreamId,
+  ContinuousStreamReminderId,
+  IntegrationDef,
+  IntegrationId,
+} from "../types";
+import { INTEGRATIONS, getIntegration } from "./registry";
+
+// A stream together with the provider that delivers it. Every reader below returns
+// this rather than a bare stream, because a stream id is only unique WITHIN a
+// provider and every consumer needs both halves anyway.
+export interface ProviderStream {
+  provider: IntegrationId;
+  // The provider's display name, so a caller building copy needs no second lookup.
+  providerName: string;
+  stream: ContinuousStreamDef;
+}
+
+const EMPTY: readonly ContinuousStreamDef[] = [];
+
+/** The provider's declared continuous streams — empty for one that declares none. */
+export function continuousStreamsFor(
+  def: IntegrationDef | undefined
+): readonly ContinuousStreamDef[] {
+  return def?.continuousStreams ?? EMPTY;
+}
+
+/**
+ * THE enumeration (#2162): every declared continuous stream across the registry,
+ * paired with its provider, in registry order.
+ *
+ * This is the list a lifecycle feature walks — "which streams could this profile be
+ * onboarded onto", "which of them carry a reminder adapter" — which is why the
+ * declaration is shaped as named streams with optional facets rather than as a bare
+ * tolerance number. A new facet is a new optional key on the entry; nothing here has
+ * to widen to accommodate it.
+ */
+export function allContinuousStreams(): ProviderStream[] {
+  return INTEGRATIONS.flatMap((def) =>
+    continuousStreamsFor(def).map((stream) => ({
+      provider: def.id,
+      providerName: def.name,
+      stream,
+    }))
+  );
+}
+
+/** One provider's stream by id, or null. */
+export function continuousStream(
+  provider: IntegrationId,
+  streamId: ContinuousStreamId
+): ProviderStream | null {
+  const def = getIntegration(provider);
+  const stream = continuousStreamsFor(def).find((s) => s.id === streamId);
+  return def && stream
+    ? { provider: def.id, providerName: def.name, stream }
+    : null;
+}
+
+/**
+ * Every stream watched by a named send adapter (#2161). The wear reminder resolves
+ * its provider and stream through this instead of naming `health-connect` and
+ * `hr_minutes` itself, so the declaration in the registry is the single place a
+ * second wearable is added.
+ */
+export function streamsWithReminder(
+  reminder: ContinuousStreamReminderId
+): ProviderStream[] {
+  return allContinuousStreams().filter((s) => s.stream.reminder === reminder);
+}
+
+/** Every stream that declares the #2146 quiet facet, i.e. is reportable as quiet. */
+export function quietReportableStreams(): ProviderStream[] {
+  return allContinuousStreams().filter((s) => s.stream.quiet != null);
+}

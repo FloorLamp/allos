@@ -42,3 +42,13 @@ export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
 // about a stream nothing else may add to.
 export const E2E_LOGIN_SYNC_HISTORY = "e2e_sync_history";
 export const SYNC_HISTORY_PROFILE = "Sync History (e2e)";
+
+// #2146 — the quiet-stream row on Data → Review. A member granted a dedicated adult
+// profile whose Health Connect connection is HEALTHY (recent ok pushes right up to
+// the frozen clock) while its `hr_minutes` stream stopped hours ago, with the three
+// days behind today carrying data so the shared #2097/#2146 expected-active gate
+// passes. That combination is the whole point of the fixture and it must not be
+// disturbed: on any shared profile a neighbour's push or minute row would move one
+// half of it. Read-only in its spec. Synthetic, no PHI.
+export const E2E_LOGIN_QUIET_STREAM = "e2e_quiet_stream";
+export const QUIET_STREAM_PROFILE = "Quiet Stream (e2e)";

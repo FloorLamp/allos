@@ -9,31 +9,42 @@
 //
 // ── The declared continuous stream ───────────────────────────────────────────
 //
-// One stream, declared rather than discovered: Health Connect's `hr_minutes`. It is the
-// only continuous wear stream the app ingests — the sole other `hr_minutes` writer is
-// the Fitbit Takeout archive import, which has no live cadence to be silent against and
-// is therefore exempt BY CONSTRUCTION rather than by a special case. #2146 moves this
-// declaration into the provider registry alongside `silenceToleranceMinutes`, where it
-// belongs once a second provider needs one; keeping it here until then avoids inventing a
-// registry facet that issue is specced to design.
+// The stream is no longer named here. #2146 moved the declaration into the provider
+// registry (`continuousStreams`, with `reminder: "bedtime-wear"` on the entry this
+// watches), so `streamsWithReminder` below IS the binding: which provider, which
+// table, and — through the shared reader — how its timestamps are read. A second
+// wearable becomes a registry entry rather than an edit here.
 //
-// ── The three timestamp conventions, joined carefully ────────────────────────
+// The sole other `hr_minutes` writer, the Fitbit Takeout archive import, declares no
+// continuous stream at all: it has no live cadence to be silent against, so it is
+// exempt BY CONSTRUCTION rather than by a special case.
 //
-// #2146 constraint 6 / #94 / #1333: `hr_minutes.ts` is PROFILE-LOCAL bare (no zone),
-// `integration_sync_events.at` is UTC bare. This gather touches both, so it converts
-// the stream's local wall time to a real instant through `zonedWallIsoToUtc` ONCE and
-// compares everything in UTC from there. Reading `hr_minutes.ts` as UTC is exactly the
-// #2096 failure class, and subtracting two bare local strings would also quietly report
-// wall-clock difference rather than elapsed time on a DST night.
+// ── The timestamp convention, read from its declaration ──────────────────────
+//
+// This module used to convert `hr_minutes.ts` with `zonedWallIsoToUtc`, because that
+// column WAS a profile-local wall clock (#94/#1333). Migration 164 made it a canonical
+// UTC instant, and `zonedWallIsoToUtc` refuses a stamp carrying `Z` — so the
+// conversion silently returned null, `minutesSinceStream` was always null, and the
+// verdict was permanently `no-stream`. The reminder could not fire at all. Its DB test
+// stayed green because its fixture wrote the retired shape.
+//
+// The fix is not a different hard-coded conversion, it is not hard-coding one:
+// `latestStreamInstant` (lib/queries/continuous-streams.ts) resolves the column
+// through lib/time-columns.ts's declaration of what it means, so the next conversion
+// moves this reader with it. That is exactly the #2096 failure class #2146 constraint
+// 6 names, caught in the module #2146 was told to unify with.
 
-import { db } from "../db";
 import { now } from "../clock";
-import { dateStrInTz, utcSqlString, zonedWallIsoToUtc } from "../date";
+import { dateStrInTz, parseUtcSql, zonedDateParts } from "../date";
 import { getTimezone, getProfileWearReminder } from "../settings";
 import { isSleepTracking } from "../sleep-summary";
 import { getSyncedSleepWakeDays } from "../queries/sleep";
 import { getIntegrationAttention } from "../queries/integrations";
-import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import {
+  latestOkSyncInstant,
+  latestStreamInstant,
+} from "../queries/continuous-streams";
+import { streamsWithReminder } from "../integrations/continuous-streams";
 import {
   BEDTIME_WEAR_TITLE,
   bedtimeWearBody,
@@ -43,33 +54,32 @@ import {
 import type { NotificationMessage } from "./types";
 
 /**
- * The provider whose continuous stream this reminder watches. A profile that has never
- * pushed Health Connect heart-rate minutes gets `no-stream` and no send, enabled or not.
+ * The (provider, stream) pair this reminder watches, resolved from the registry.
+ *
+ * Exactly one entry is declared today. A second would need a per-profile choice of
+ * which device to remind about, which is #2162's lifecycle question, not this one's —
+ * so the first is taken and the rest deliberately ignored until that ships.
  */
-export const WEAR_STREAM_PROVIDER = HEALTH_CONNECT_ID;
-
-/** The newest minute on the declared stream, profile-local bare, or null. */
-function latestStreamMinute(profileId: number): string | null {
-  const row = db
-    .prepare(
-      `SELECT MAX(ts) AS ts FROM hr_minutes
-        WHERE profile_id = ? AND source = ?`
-    )
-    .get(profileId, WEAR_STREAM_PROVIDER) as { ts: string | null } | undefined;
-  return row?.ts ?? null;
+function watchedStream() {
+  return streamsWithReminder("bedtime-wear")[0] ?? null;
 }
 
-/** Did the provider record a SUCCESSFUL sync at or after `sinceUtc`? */
-function syncedSince(profileId: number, sinceUtc: Date): boolean {
-  const row = db
-    .prepare(
-      `SELECT 1 AS hit FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ? AND ok = 1 AND at >= ?
-        LIMIT 1`
-    )
-    .get(profileId, WEAR_STREAM_PROVIDER, utcSqlString(sinceUtc)) as
-    { hit: number } | undefined;
-  return row != null;
+/**
+ * Did the provider record a SUCCESSFUL sync at or after `sinceUtc`?
+ *
+ * Asked through the SHARED reader and compared as epoch milliseconds, not as SQL text.
+ * The hand-rolled `at >= ?` this replaced bound a bare `YYYY-MM-DD HH:MM:SS` against a
+ * column migration 163 had put on the canonical `…Z` shape: ' ' sorts below 'T', so
+ * the bound was always below every row and the predicate matched unconditionally. It
+ * happened to be the permissive direction, which is why nothing noticed.
+ */
+function syncedSince(
+  profileId: number,
+  provider: string,
+  sinceUtc: Date
+): boolean {
+  const latestOk = parseUtcSql(latestOkSyncInstant(profileId, provider));
+  return latestOk != null && latestOk.getTime() >= sinceUtc.getTime();
 }
 
 /**
@@ -80,14 +90,15 @@ export function bedtimeWearReminderState(
   profileId: number,
   at: Date = now()
 ): { verdict: BedtimeWearVerdict; lastSeenLocalHhmm: string | null } {
+  const watched = watchedStream();
   // Consent first, and cheaply: a profile that never opted in pays one settings read
   // and nothing else, which is what "off is exactly today's behaviour" means in
   // practice as well as in the copy.
   const enabled = getProfileWearReminder(profileId);
-  if (!enabled)
+  if (!enabled || !watched)
     return {
       verdict: bedtimeWearVerdict({
-        enabled: false,
+        enabled: enabled && watched != null,
         expectedActive: false,
         providerHealthy: false,
         minutesSinceStream: null,
@@ -111,11 +122,15 @@ export function bedtimeWearReminderState(
   // reconnect item already owns the contact, and "still on the charger?" would be
   // false advice with the pipeline down.
   const providerHealthy = !getIntegrationAttention(profileId).some(
-    (row) => row.id === WEAR_STREAM_PROVIDER
+    (row) => row.id === watched.provider
   );
 
-  const latest = latestStreamMinute(profileId);
-  const latestUtc = latest ? zonedWallIsoToUtc(tz, latest) : null;
+  const latest = latestStreamInstant(
+    profileId,
+    watched.stream.table,
+    watched.provider
+  );
+  const latestUtc = latest ? parseUtcSql(latest) : null;
   const minutesSinceStream =
     latestUtc == null
       ? null
@@ -130,9 +145,13 @@ export function bedtimeWearReminderState(
       // Only asked once there is a gap to ask about; an absent stream short-circuits
       // in the pure decision before this value is read.
       syncedDuringGap:
-        latestUtc == null ? false : syncedSince(profileId, latestUtc),
+        latestUtc == null
+          ? false
+          : syncedSince(profileId, watched.provider, latestUtc),
     }),
-    lastSeenLocalHhmm: latest ? latest.slice(11, 16) : null,
+    // The stored instant PROJECTED to the profile's own wall clock — "since 21:05"
+    // must be the hour the user saw, not the UTC one.
+    lastSeenLocalHhmm: latestUtc ? zonedDateParts(tz, latestUtc).hhmm : null,
   };
 }
 

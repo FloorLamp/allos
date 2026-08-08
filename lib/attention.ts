@@ -66,11 +66,38 @@ import type { IntegrationId } from "./types";
 //               check rather than claiming a cause.
 // Both carry the SAME item key, so a provider is one row on every surface no matter which
 // signal raised it, and the gather guarantees only one of the two can fire per provider.
+//
+// A THIRD kind since #2146, and it is not a third way of being broken:
+//   "quiet-stream" — the connection is FINE and one continuous DATA STREAM stopped (the
+//               watch off the wrist while the phone keeps pushing). Heart rate is an
+//               observation domain — nobody committed to wearing a watch — so this is
+//               COACHING TIER: it renders where the user goes looking and never travels
+//               a send. It also yields to the two above, so a provider is still one row.
+//
+// So `kind` now names the TIER as well as the copy, and the difference is enforced
+// rather than documented: `isEscalatingIntegration` below is the one gate,
+// `buildAttentionModel` and the digest's own integration section both apply it, and
+// the quiet rows arrive through a separate query entry point
+// (`getQuietStreamAttention`) that the badge / hero / digest never call.
 export interface AttentionIntegration {
   id: IntegrationId | null;
   provider: string;
   detail: string | null;
-  kind?: "failing" | "stale";
+  kind?: "failing" | "stale" | "quiet-stream";
+}
+
+/**
+ * May this integration row travel to an ESCALATION surface — the profile-menu badge,
+ * the non-hideable Needs-attention hero, the Upcoming page's review group, and the
+ * morning digest's broken-sync section?
+ *
+ * Only a broken CONNECTION may. A quiet stream is a coaching-tier observation, and the
+ * contact-consent rule (docs/internals/findings.md §2) is one-directional: the system
+ * may reduce contact unilaterally, never increase it. Promoting "your watch seems to
+ * be off" into a send is an increase, and nobody consented to it.
+ */
+export function isEscalatingIntegration(i: AttentionIntegration): boolean {
+  return i.kind !== "quiet-stream";
 }
 
 // A newly-flagged biomarker plus its optional risk-layer reasons (issue #656 item
@@ -205,7 +232,12 @@ export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
   const items: UpcomingItem[] = [...input.upcoming];
   for (const b of input.flaggedBiomarkers)
     items.push(buildFlaggedItem(b, b.riskReasons ?? []));
-  for (const i of input.integrations) items.push(integrationToItem(i));
+  // Escalating integration rows only (#2146). The gather hands this the escalation
+  // list already, so the filter is a second lock on the one direction the doctrine
+  // forbids: a coaching-tier quiet-stream row must never reach the hero, the badge, or
+  // — through this same model — the digest.
+  for (const i of input.integrations.filter(isEscalatingIntegration))
+    items.push(integrationToItem(i));
   const review = reviewToItem(input.reviewCount);
   if (review) items.push(review);
   return items;

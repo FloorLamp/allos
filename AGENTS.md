@@ -351,6 +351,17 @@ See `docs/ai.md` for provider, logging, and extraction details.
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, Calendar
 feed, and the planned Garmin integration.
 
+A provider also declares its **continuous streams** there — the ones expected to
+keep arriving minute after minute while a device is worn — beside
+`silenceToleranceMinutes`, read only through `lib/integrations/continuous-streams.ts`.
+That tolerance is about the CONNECTION; a stream declaration is about the DATA, and
+the two are independent: a phone can keep pushing aggregates while the watch feeding
+heart rate is off a wrist. `quietStreamVerdict` (#2146) reports that — stream silent
+past its DECLARED dip tolerance _while the provider kept syncing ok in that window_,
+which is the clause that keeps it disjoint from #1685 staleness — with no stored
+state, and it renders on Data → Review only: it is coaching tier and never a send.
+A provider with no continuous stream declares none and is exempt by construction.
+
 Sync and import behavior must remain idempotent:
 
 - deduplicate on natural source keys

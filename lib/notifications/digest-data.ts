@@ -39,7 +39,7 @@ import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
 import { groupUpcoming } from "../upcoming";
-import { integrationToItem } from "../attention";
+import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
 import {
   mainSleepNights,
@@ -334,8 +334,13 @@ export function gatherDigestInput(
   //
   // They band as Today (no dueDate, no band override), which is the honest reading — a
   // sync that stopped is not scheduled for a date, it is broken NOW.
-  const integrationItems =
-    getIntegrationAttention(profileId).map(integrationToItem);
+  // Escalating rows only (#2146): the digest is a class-1 SEND, and a coaching-tier
+  // quiet-stream row may never become one. `getIntegrationAttention` returns only
+  // escalation kinds today, so this is the second lock on the doctrine's one forbidden
+  // direction rather than a live filter.
+  const integrationItems = getIntegrationAttention(profileId)
+    .filter(isEscalatingIntegration)
+    .map(integrationToItem);
   const todayGroups = groupUpcoming([...upcoming, ...integrationItems], td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
   // (bus-honored + #558) — the same items the Today section bands over. No local

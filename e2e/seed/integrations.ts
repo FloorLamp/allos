@@ -11,9 +11,13 @@ import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
 import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
 import { generateHealthConnectToken } from "../../lib/integrations/connections";
+import { utcMinute } from "../../lib/date";
+import { getTimezone } from "../../lib/settings";
 import {
   E2E_LOGIN_SYNC_HISTORY,
   SYNC_HISTORY_PROFILE,
+  E2E_LOGIN_QUIET_STREAM,
+  QUIET_STREAM_PROFILE,
 } from "../fixture-logins";
 import { PROFILE_ID, ins, fixtureProfileId, seedMemberLogin } from "./common";
 
@@ -455,4 +459,71 @@ export function seedSyncHistoryDay(): void {
   );
   insRow.run(newestId, "activities", actId, "inserted");
   insRow.run(newestId, "body_metrics", bodyId, "updated");
+}
+
+// ── The quiet stream (#2146) ─────────────────────────────────────────────────
+//
+// The measured off-wrist signature, on its own read-only profile: heart-rate minutes
+// stop FIVE HOURS before the frozen clock (past the declared 2.5 h dip tolerance),
+// the three days behind today carry data (so the shared #2097/#2146 expected-active
+// gate passes), and Health Connect keeps recording SUCCESSFUL pushes right up to the
+// present — which is the clause that separates "the watch is off" from "the phone is
+// off" and keeps this out of the staleness detector's territory.
+//
+// Every instant is placed RELATIVE to the run's frozen clock, never at a fixed hour:
+// the tolerance is measured in hours against `now`, so a fixed stamp would be quiet
+// or live depending on when CI started. `hr_minutes.ts` and `integration_sync_events`
+// both take canonical UTC instants (migrations 164 / 163) — `utcMinute` mints the
+// former's bucket key exactly as ingest does.
+export function seedQuietStream(): void {
+  const profileId = fixtureProfileId(QUIET_STREAM_PROFILE);
+  seedMemberLogin(E2E_LOGIN_QUIET_STREAM, profileId, "read");
+  db.prepare(`DELETE FROM hr_minutes WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM integration_sync_events WHERE profile_id = ?`).run(
+    profileId
+  );
+  upsertConnection(profileId, "health-connect", { status: "connected" });
+
+  const clock = clockNow();
+  const minute = db.prepare(
+    `INSERT OR REPLACE INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, 63, 60, 'health-connect')`
+  );
+  // The gap: nothing on the stream for the last five hours.
+  const quietSince = new Date(clock.getTime() - 5 * 3600_000);
+  for (let back = 0; back < 30; back++) {
+    minute.run(
+      profileId,
+      utcMinute(new Date(quietSince.getTime() - back * 60_000))
+    );
+  }
+  // The days behind today, so the stream counts as one that WAS delivering. Placed a
+  // day apart from the frozen clock, which the pinned timezone guarantees lands at
+  // 13:mm local — so each stamp sits squarely inside its own local day.
+  for (let back = 1; back <= 3; back++) {
+    for (let m = 0; m < 5; m++) {
+      minute.run(
+        profileId,
+        utcMinute(new Date(clock.getTime() - back * 86_400_000 - m * 60_000))
+      );
+    }
+  }
+  // The phone keeps pushing, successfully, carrying its own aggregates and nothing
+  // for this stream. The connection is green; only the device went away.
+  const push = db.prepare(
+    `INSERT INTO integration_sync_events
+       (profile_id, provider, at, ok, received, written, inserted, updated, unchanged)
+     VALUES (?, 'health-connect', ?, 1, 12, 12, 0, 2, 10)`
+  );
+  for (const minutesAgo of [12, 47, 95, 150, 220, 285]) {
+    push.run(
+      profileId,
+      utcMinute(new Date(clock.getTime() - minutesAgo * 60_000))
+    );
+  }
+
+  console.log(
+    `e2e: seeded quiet-stream fixture — profile ${profileId} (${QUIET_STREAM_PROFILE}), ` +
+      `hr_minutes quiet for 5 h in ${getTimezone(profileId)} while pushes continue (#2146)`
+  );
 }

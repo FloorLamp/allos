@@ -10,6 +10,7 @@
 // stored absolute instant to profile-local wall clock via zonedDateParts.
 
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
+import { isStreamActive } from "./stream-activity";
 import { formatLongDate, type DisplayFormatPrefs } from "./format-date";
 import {
   mainSleepPeriod,
@@ -219,18 +220,20 @@ export const SLEEP_TRACKING_MIN_NIGHTS = 2;
 // staleness.ts tracks the CONNECTION's liveness, so a rest week is not reported as
 // a break). Without a data-side predicate, "no last night yet" stays true every
 // morning once someone stops, and anything waiting on it waits forever.
+//
+// THE SLEEP ADAPTER over the shared shape (#2146). The predicate itself —
+// "delivered on at least M of the last N days" — is lib/stream-activity.ts, because
+// #2146's quiet-stream row asks the identical question about heart rate before
+// reporting an intraday gap, and answering it twice is how two surfaces start
+// disagreeing about whether someone has stopped tracking. What stays HERE is what is
+// genuinely sleep's own: that the days are WAKE-days, and the two constants above.
 export function isSleepTracking(
   recordedWakeDays: Iterable<string>,
   todayStr: string,
   windowNights = SLEEP_TRACKING_WINDOW_NIGHTS,
   minNights = SLEEP_TRACKING_MIN_NIGHTS
 ): boolean {
-  const recorded = new Set(recordedWakeDays);
-  let found = 0;
-  for (let back = 1; back <= windowNights; back++) {
-    if (recorded.has(shiftDateStr(todayStr, -back))) found++;
-  }
-  return found >= minNights;
+  return isStreamActive(recordedWakeDays, todayStr, windowNights, minNights);
 }
 
 // Issue #1186: "Last night" is a strict relative-day claim, not a synonym for

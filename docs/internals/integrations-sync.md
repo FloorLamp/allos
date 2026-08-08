@@ -1090,3 +1090,85 @@ something nobody is sending is the message that teaches people to ignore the
 surface. Its terminal state adds nothing new: the existing dated label, then the
 four-night stale CTA, with a genuinely dead connection still handled by
 Data → Review.
+
+**…and the same-day version of it: the quiet stream (#2146).** `isSleepTracking`
+answers the multi-day question. Between it and connection staleness there was a
+gap nothing could see: **connection-level health, data-level silence** — a
+provider syncing green while one of its continuous streams has gone quiet _this
+afternoon_. The measured case, from 56 days of one real profile's `hr_minutes`:
+minutes stop at 21:05, the phone keeps pushing `ok=1` every 15–30 min with
+`inserted=0` for that stream while its own daily aggregates keep updating, the
+watch spends the night on the charger, and the profile loses its only missing
+sleep night in eight weeks. #1685 saw a healthy connection, `currentlyFailingProviders`
+saw no recorded failure, and `isSleepTracking` was still true.
+
+**The declaration.** A provider states its CONTINUOUS streams in the registry
+beside `silenceToleranceMinutes` (`continuousStreams`, read only through
+`lib/integrations/continuous-streams.ts`). Health Connect declares one:
+`heart-rate` on `hr_minutes`, ~60 rows/hour, a **2.5 h** dip tolerance, and the
+2-of-3-days activity window it shares with #2097. The tolerance is **declared,
+never inferred** — there is no wear-pattern learner and there must not be one —
+and its evidence rides the declaration as data: the measured gap distribution is
+bimodal with an empty valley at 2.1–2.5 h, separating 16 routine removals
+(1–2.5 h, average 95 min, ten of them the 19:00–21:00 evening charge) from 5 real
+events in the whole window.
+
+A provider with **no** continuous stream declares none and is exempt **by
+construction** — there is no exemption list to keep in sync. Weather is pulled by
+allos and still declares nothing (hourly forecast is not a continuous stream);
+Fitbit Takeout is the app's other `hr_minutes` writer and still declares nothing
+(an archive has no live cadence to be silent against, so a declaration would
+report every profile that ever imported one, forever). The declaration is shaped
+as **named streams with independently-optional facets** — `quiet` for detection,
+`reminder` for #2161's bedtime send — so it can be enumerated and extended rather
+than widened.
+
+**The predicate** (`lib/integrations/quiet-stream.ts`, pure; gathered by
+`lib/queries/continuous-streams.ts`):
+
+> the declared stream has been silent longer than its tolerance, **while the
+> provider kept syncing ok in that window**.
+
+The second clause is load-bearing. A gap window with **no** ok syncs is the
+staleness detector's case — the phone is off, not the watch — and #1685 already
+owns and names it; without the clause this would be a second row, in a second
+voice, for one outage. It is two cheap reads: `MAX(ts)` on the stream and
+`MAX(at)` over the provider's ok events, with "an ok sync landed inside the gap"
+being exactly `maxOkSyncAt > lastStreamAt`. There is **no stored state**: nothing
+is written, no marker is set, and a backfill heals the row retroactively because
+it moves `MAX(ts)` forward.
+
+**Three timestamp conventions, joined through their declarations.** The predicate
+spans `hr_minutes.ts` (a canonical UTC instant since migration 164 — it _was_ a
+profile-local wall clock), `integration_sync_events.at` (canonical since
+migration 163, with pre-163 rows still on SQLite's bare shape) and
+`metric_samples`. Nothing here parses a stored stamp by hand: every read goes
+through `eventInstant` (`lib/row-instants.ts`) against the column's declared
+meaning in `lib/time-columns.ts`, and every comparison is on epoch milliseconds,
+never on text — a bare stamp sorts below a `Z` stamp, which is wrong in a way
+that leaves the query looking right (#2096). The DB-tier fixture runs under
+`America/New_York` for that reason: under UTC a wall clock and its instant read
+alike, so a misread convention passes.
+
+**Where it renders, and where it may not.** Heart rate is an observation
+domain — nobody committed to wearing a watch — so the row is **coaching tier,
+classes 2/3 only**: a calm card on Data → Review (`components/QuietStreams.tsx`,
+slate, not the rose Needs-attention card), with **no push, no digest line, and no
+`notify_*` marker**. `AttentionIntegration.kind` gained `"quiet-stream"` beside
+`failing`/`stale`, and the tier is enforced rather than documented:
+`getQuietStreamAttention` is a separate entry point that the badge, hero and
+digest never call, and `isEscalatingIntegration` (`lib/attention.ts`) filters the
+kind inside `buildAttentionModel` and the digest's own integration section. The
+row also **yields**: a provider already carrying a `failing`/`stale` row is never
+also reported quiet, so one row names the cause. It does not count toward the
+Data → Review badge — a coaching observation must not inflate an escalation
+count.
+
+The one **send** in this family is #2161's opt-in bedtime wear reminder, which
+exists only because an explicit Settings → Notifications toggle is the user's
+consent. It now resolves its provider and stream from the same registry
+declaration (`reminder: "bedtime-wear"`) and reads the stream through the same
+`latestStreamInstant`, so the two cannot drift apart on a convention again — they
+did: the reminder still converted `hr_minutes.ts` with `zonedWallIsoToUtc` after
+migration 164, which refuses a stamp carrying `Z`, so it resolved null for every
+real row and could not fire at all.

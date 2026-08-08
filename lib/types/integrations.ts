@@ -101,6 +101,94 @@ export interface IntegrationPullFacet {
   revalidates: readonly RevalidateTarget[];
 }
 
+// ── The CONTINUOUS STREAM facet (#2146) ──────────────────────────────────────
+//
+// A provider's connection can be green while one of its data streams has gone
+// silent — a watch off the wrist while the phone keeps pushing daily aggregates.
+// Seeing that needs one thing the app did not have: a DECLARATION of which of a
+// provider's streams are supposed to be arriving continuously, and what "quiet"
+// means for each. This is that declaration, and it lives beside
+// `silenceToleranceMinutes` for the same reason that one does — the right numbers
+// are properties of how the provider delivers, not of any one detector.
+//
+// A provider with NO continuous streams (weather, the calendar feed, patient
+// portals, a Takeout archive) simply declares none and is exempt BY CONSTRUCTION
+// rather than by a special case in the detector.
+//
+// SHAPED TO BE THE ENUMERATION, not just a tolerance (#2162). Each entry is a
+// NAMED stream with independently-optional facets hanging off it — `quiet` is the
+// #2146 detection facet, `reminder` is the #2161 send adapter that watches the same
+// stream — so a later lifecycle feature enumerates streams and asks which facets
+// they carry, instead of needing this shape widened first. Adding a facet is adding
+// an optional key; adding a stream is adding an entry.
+
+// Which physical store a stream's rows land in. A UNION, not a free string: the
+// query layer binds one reader per member (lib/queries/continuous-streams.ts), the
+// same DATA-HERE / RUNNABLE-THERE split the `pull` facet uses, so the registry stays
+// importable from the pure tier and no SQL is ever built from a declaration.
+export type ContinuousStreamTable = "hr_minutes";
+
+// Stable, provider-local stream id. It keys the #2162 lifecycle and the date-scoped
+// suppression key, so it must not be renamed once shipped.
+export type ContinuousStreamId = "heart-rate";
+
+// The send adapter watching a stream, when one exists (#2161). Declared here so
+// "which streams have a reminder" is answered by reading the registry rather than by
+// a module knowing a provider id by heart.
+export type ContinuousStreamReminderId = "bedtime-wear";
+
+// How long a stream may DIP before its silence means something, and why that number.
+// DECLARED, never inferred (#2146 constraint 2): there is no wear-pattern learner
+// here and there must not be one — the threshold is a policy about when it is worth
+// telling someone, and measurement's job is to check the policy clears the stream's
+// ordinary variance, not to set it.
+export interface ContinuousStreamQuietFacet {
+  dipToleranceMin: number;
+  // The evidence behind the number, carried as data so it is impossible to move the
+  // threshold without restating why. Rendered nowhere; read by humans and by the
+  // registry completeness test.
+  because: string;
+  // The rendered row's TAIL: what to check, and what this particular stream's silence
+  // costs while it lasts. Distinct from the provider-wide `stoppedConsequence`, which
+  // is about the whole connection dying. It ASKS rather than instructs (#2097's copy
+  // rule) — an observation domain carries no obligation, so "put your watch on" would
+  // be an implied *should* the app has no standing to state.
+  prompt: string;
+}
+
+// "Is this stream expected to be active at all?" — the SHARED #2097/#2146 shape, in
+// the declaration rather than in either predicate. #2097 answers it for sleep as
+// "at least `minDays` of the last `windowDays` carry a recorded night"; this is the
+// same question about the same kind of stream, so it is the same predicate
+// (lib/stream-activity.ts) with the window declared per stream.
+//
+// Without it, a watch abandoned three weeks ago is "quiet" every single day forever:
+// the phone keeps syncing, so nothing else can see it either. With it, the row
+// describes an interruption in something that WAS happening, which is the only thing
+// it is honest to describe.
+export interface ContinuousStreamActivityWindow {
+  windowDays: number;
+  minDays: number;
+}
+
+export interface ContinuousStreamDef {
+  id: ContinuousStreamId;
+  // What the user calls this stream, lowercase, for mid-sentence use
+  // ("no heart-rate data has arrived since …").
+  label: string;
+  table: ContinuousStreamTable;
+  // Rows per hour while the stream is genuinely active. Not used as a threshold —
+  // the tolerance is — but it is what makes the tolerance readable: 60 rows/hour
+  // means a 2.5-hour tolerance is ~150 missing rows, not a rounding error.
+  rowsPerHour: number;
+  expectedActive: ContinuousStreamActivityWindow;
+  // The #2146 detection facet. Absent = this stream is enumerated (so #2162 can
+  // offer it) but never reported quiet.
+  quiet?: ContinuousStreamQuietFacet;
+  // The #2161 send adapter watching this stream, when one exists.
+  reminder?: ContinuousStreamReminderId;
+}
+
 export interface IntegrationBackfillFacet {
   // Stable provider-local operation id. It keys the durable job checkpoint and the
   // runnable binding; a provider may eventually expose several independent fills.
@@ -152,6 +240,14 @@ export interface IntegrationDef {
   // push, archive, feed, attended-external, and `planned` entries — there is nothing
   // to run for those, so nothing dispatches them.
   pull?: IntegrationPullFacet;
+  // The provider's CONTINUOUS streams (#2146) — the ones expected to keep arriving
+  // minute after minute while the device is worn, as opposed to the daily aggregates
+  // and event rows that arrive when something happens. Absent = none, which is a
+  // statement about the provider (weather, an outbound feed, attended portals and a
+  // one-off archive have no continuous stream to be silent), and the reason the
+  // quiet-stream detector needs no per-provider exemption list. Read ONLY through
+  // lib/integrations/continuous-streams.ts.
+  continuousStreams?: readonly ContinuousStreamDef[];
   // Optional enrichment of rows already imported. Metadata stays registry-pure;
   // executable runners bind separately in lib/integrations/backfill-runners.ts.
   backfills?: readonly IntegrationBackfillFacet[];
