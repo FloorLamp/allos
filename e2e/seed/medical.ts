@@ -990,7 +990,7 @@ export function seedPanelGroups(): void {
 // The nine PhenoAge inputs are seeded in their CANONICAL units, so the derived
 // indices compute without a unit conversion the fixture would then be pinning. Those
 // derived rows are part of the point: eGFR joins Kidney, HOMA-IR joins Glucose &
-// insulin, Non-HDL and TG/HDL join Lipids, and PhenoAge is the only member of
+// insulin, the lipid indices join Lipids, and PhenoAge is the only member of
 // Biological age — which is the end-to-end proof of #1581 section D's "verify before
 // removing" (the panel is reachable, so the facet keeps offering it).
 //
