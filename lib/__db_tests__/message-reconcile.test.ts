@@ -383,11 +383,9 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
     expect(markDoseTaken(pid, doseId, itemId, D)).toBe("logged");
 
     // Resolved for real now, so the message closes as HANDLED — not as out of date.
-    // Since #2170 "handled" is stated as the outcome tally the resolution produced.
+    // Since #2274 "handled" is the dose NAMED, in the domain's own word.
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
-    expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "1 logged. In the app."
-    );
+    expect(String(editText.mock.calls.at(-1)![2])).toContain("Bea D3 taken.");
   });
 
   it("closes past the window, naming the consequence rather than the calendar", async () => {
@@ -1044,8 +1042,8 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
 
     expect(out.closed).toBe(1);
     const closingText = editText.mock.calls.at(-1)![2];
-    // The tally (#2170) rides the SAME attributed subject this issue put there.
-    expect(closingText).toBe(`${title} — 1 logged. In the app.`);
+    // The outcome (#2170/#2274) rides the SAME attributed subject this issue put there.
+    expect(closingText).toBe(`${title} — Norton D3 taken.`);
     expect(closingText).toContain("[Norton]");
   });
 
@@ -1126,15 +1124,16 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
   });
 });
 
-// ---- The closing edit states the OUTCOME (issue #2170) ---------------------
+// ---- The closing edit states the OUTCOME (#2170 → #2274) -------------------
 //
 // A fully-resolved close replaced the ENTIRE message text, so the chat history ended up
 // less informative than the reminder had been: the reader knew something was recorded,
-// not what. The counts below are the reconcile's own resolution facts restated — the
-// same ledger reads that decided the close.
+// not what. #2170 answered with counts, which still said LESS than the reminder — it
+// named every item. The names below are the reconcile's own resolution facts restated,
+// from the same ledger reads that decided the close, in the words the buttons used.
 
-describe("a resolved close states the outcome tally (#2170)", () => {
-  it("counts what the ledger says: logged and skipped", async () => {
+describe("a resolved close states the outcome (#2170/#2274)", () => {
+  it("names what the ledger says: taken and skipped", async () => {
     const pid = newProfile("Tally Tara");
     const a = seedDose(pid, "Tara A");
     const b = seedDose(pid, "Tara B");
@@ -1148,14 +1147,15 @@ describe("a resolved close states the outcome tally (#2170)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const text = String(editText.mock.calls.at(-1)![2]);
-    expect(text).toContain("2 logged, 1 skipped. In the app.");
+    expect(text).toContain("Tara A, Tara B taken · Tara C skipped.");
     // The message's own subject still leads it (#1822 item 7).
     expect(text.startsWith("💊 Morning supplements —")).toBe(true);
-    // Counts only — no item is named in the closing line.
-    expect(text).not.toContain("Tara A");
+    // The domain's own words, and no app pointer (#2274).
+    expect(text).not.toContain("logged");
+    expect(text).not.toContain("In the app.");
   });
 
-  it("all taken reads as a single count", async () => {
+  it("all taken reads as one clean clause — the empty group is omitted", async () => {
     const pid = newProfile("Whole Wren");
     const a = seedDose(pid, "Wren A");
     const b = seedDose(pid, "Wren B");
@@ -1167,7 +1167,7 @@ describe("a resolved close states the outcome tally (#2170)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "2 logged. In the app."
+      "Wren A, Wren B taken."
     );
   });
 
@@ -1183,7 +1183,7 @@ describe("a resolved close states the outcome tally (#2170)", () => {
     markDoseTaken(pid, a.doseId, a.itemId, today(pid));
     await reconcileProfileMessages(pid);
     const closingText = String(editText.mock.calls.at(-1)![2]);
-    expect(closingText).toContain("1 logged. In the app.");
+    expect(closingText).toContain("Sana A taken.");
     expect(liveMessagePointers(pid)).toEqual([]);
 
     // Correct it in the app afterwards…

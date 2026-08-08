@@ -12,6 +12,8 @@ import {
   keyboardTokens,
   parseProseGatherRecord,
   reconcileClosingText,
+  closeDetailText,
+  closingTallyDetail,
   closingTallyText,
   RECONCILE_CLOSING,
   stripTokens,
@@ -327,45 +329,76 @@ describe("reconcileClosingText (#1822 item 7)", () => {
   });
 });
 
-// ---- THE OUTCOME TALLY (issue #2170) ----
+// ---- THE OUTCOME A RESOLVED CLOSE STATES (#2170 → #2274 → #2275) ----
 //
 // A resolved close replaced the ENTIRE message text, so the chat ended up knowing LESS
-// than the reminder had said: something was recorded, but not what. The counts below are
-// the reconcile's own resolution facts restated — no new read, no second computation.
+// than the reminder had said: something was recorded, but not what. #2170 answered with
+// counts; #2274 answers with the NAMES, in the domain's own words, because the reminder
+// was already a list — an integer is strictly less than the message it replaces.
 
-describe("reconcileClosingText outcome tally (#2170)", () => {
+describe("reconcileClosingText outcome detail (#2274)", () => {
   const DOSES = "[Norton] 💊 Evening supplements";
+  const tally = (taken: string[], skipped: string[]) =>
+    closingTallyDetail({ taken, skipped });
 
-  it("states the tally on a resolved close", () => {
+  it("names the doses, taken first, on a resolved close", () => {
     expect(
-      reconcileClosingText("resolved", DOSES, { logged: 5, skipped: 1 })
+      reconcileClosingText(
+        "resolved",
+        DOSES,
+        tally(["Vitamin D", "Magnesium"], ["Omega-3"])
+      )
     ).toBe(
-      "[Norton] 💊 Evening supplements — 5 logged, 1 skipped. In the app."
+      "[Norton] 💊 Evening supplements — Vitamin D, Magnesium taken · Omega-3 skipped."
     );
   });
 
-  it("says only what happened — all logged, or all skipped", () => {
+  it("omits the empty group — all taken, or all skipped", () => {
     expect(
-      reconcileClosingText("resolved", DOSES, { logged: 6, skipped: 0 })
-    ).toBe("[Norton] 💊 Evening supplements — 6 logged. In the app.");
+      reconcileClosingText(
+        "resolved",
+        "[Norton] 💊 Midday supplements",
+        tally(["Vitamin D", "Magnesium", "Omega-3"], [])
+      )
+    ).toBe(
+      "[Norton] 💊 Midday supplements — Vitamin D, Magnesium, Omega-3 taken."
+    );
     expect(
-      reconcileClosingText("resolved", DOSES, { logged: 0, skipped: 2 })
-    ).toBe("[Norton] 💊 Evening supplements — 2 skipped. In the app.");
+      reconcileClosingText(
+        "resolved",
+        "[Norton] 💊 Bedtime supplements",
+        tally([], ["Melatonin"])
+      )
+    ).toBe("[Norton] 💊 Bedtime supplements — Melatonin skipped.");
   });
 
-  it("falls back to today's sentence with nothing to count", () => {
-    for (const tally of [null, undefined, { logged: 0, skipped: 0 }]) {
-      expect(reconcileClosingText("resolved", DOSES, tally)).toBe(
+  it("never says the reconcile's private word", () => {
+    // Everything the user has ever seen says TAKEN: the button is `✅ <name>`, the write
+    // core is markDoseTaken. "logged" made the reader translate.
+    const text = reconcileClosingText(
+      "resolved",
+      DOSES,
+      tally(["Vitamin D"], ["Omega-3"])
+    );
+    expect(text).not.toContain("logged");
+    // And no app pointer: a sentence fragment doing two jobs (#2274).
+    expect(text).not.toContain("In the app.");
+  });
+
+  it("falls back to today's sentence with nothing to state", () => {
+    for (const detail of [null, undefined, tally([], [])]) {
+      expect(reconcileClosingText("resolved", DOSES, detail)).toBe(
         "[Norton] 💊 Evening supplements — handled in the app."
       );
     }
   });
 
   it("the other close reasons are byte-identical to today", () => {
-    // They close for time/lifecycle reasons, where a tally would be wrong or unknowable.
-    const tally = { logged: 5, skipped: 1 };
+    // They close for time/lifecycle reasons, where an outcome would be wrong or
+    // unknowable.
+    const detail = tally(["Vitamin D"], ["Omega-3"]);
     for (const reason of ["rollover", "expired", "superseded"] as const) {
-      expect(reconcileClosingText(reason, DOSES, tally)).toBe(
+      expect(reconcileClosingText(reason, DOSES, detail)).toBe(
         reconcileClosingText(reason, DOSES)
       );
     }
@@ -373,39 +406,113 @@ describe("reconcileClosingText outcome tally (#2170)", () => {
 
   it("a subjectless pointer has no per-item facts either", () => {
     expect(
-      reconcileClosingText("resolved", null, { logged: 5, skipped: 1 })
+      reconcileClosingText("resolved", null, tally(["Vitamin D"], []))
     ).toBe(RECONCILE_CLOSING.resolved);
   });
 
-  it("counts only — never an item list, never a judgment", () => {
-    const text = reconcileClosingText("resolved", DOSES, {
-      logged: 5,
-      skipped: 1,
-    });
-    // The pin the design promises: a tally reassures that it is recorded; a list turns
-    // a correction of the app's own display into a report.
-    expect(text.split("—")[1]).toMatch(/^[\s\d,a-z.]+ In the app\.$/);
+  it("names only — no amounts, and never a judgment", () => {
+    // The half of #2170's rule that survives: the app ledger stays the complete
+    // surface, so the receipt answers WHICH and not how much.
+    const text = reconcileClosingText(
+      "resolved",
+      DOSES,
+      tally(["Vitamin D 1000 IU"], [])
+    );
+    // The name is passed through verbatim and nothing is appended to it: no amount, no
+    // unit, no count, no adherence tail. (A name that carries its own dosage is the
+    // item's own label, which the reminder already showed.)
+    expect(text).toBe(
+      "[Norton] 💊 Evening supplements — Vitamin D 1000 IU taken."
+    );
     expect(text.toLowerCase()).not.toMatch(/great|well done|nice|you /);
   });
 
   it("the attributed subject survives exactly as it does today (#1822 item 7)", () => {
     expect(
-      reconcileClosingText("resolved", "  [Ada] 💊 Morning doses  \nTake 2…", {
-        logged: 2,
-        skipped: 0,
-      })
-    ).toBe("[Ada] 💊 Morning doses — 2 logged. In the app.");
+      reconcileClosingText(
+        "resolved",
+        "  [Ada] 💊 Morning doses  \nTake 2…",
+        tally(["Vitamin D", "Iron"], [])
+      )
+    ).toBe("[Ada] 💊 Morning doses — Vitamin D, Iron taken.");
   });
 });
 
-describe("closingTallyText (#2170)", () => {
-  it("renders each present count, in ledger order", () => {
-    expect(closingTallyText({ logged: 5, skipped: 1 })).toBe(
-      "5 logged, 1 skipped"
+describe("closingTallyText (#2274)", () => {
+  it("renders each present group, taken first, in keyboard order", () => {
+    expect(
+      closingTallyText({
+        taken: ["Vitamin D", "Magnesium"],
+        skipped: ["Omega-3"],
+      })
+    ).toBe("Vitamin D, Magnesium taken · Omega-3 skipped");
+    expect(closingTallyText({ taken: ["Melatonin"], skipped: [] })).toBe(
+      "Melatonin taken"
     );
-    expect(closingTallyText({ logged: 1, skipped: 0 })).toBe("1 logged");
-    expect(closingTallyText({ logged: 0, skipped: 3 })).toBe("3 skipped");
-    expect(closingTallyText({ logged: 0, skipped: 0 })).toBeNull();
+    expect(closingTallyText({ taken: [], skipped: ["Omega-3"] })).toBe(
+      "Omega-3 skipped"
+    );
+    expect(closingTallyText({ taken: [], skipped: [] })).toBeNull();
+  });
+
+  it("preserves the order the keyboard showed, and never re-sorts", () => {
+    // The tokens are read in keyboard order, which is already the reminder's
+    // obligation-then-name sort. A second sort here is exactly the drift to avoid.
+    expect(
+      closingTallyText({ taken: ["Zinc", "Alpha-lipoic", "Magnesium"], skipped: [] })
+    ).toBe("Zinc, Alpha-lipoic, Magnesium taken");
+  });
+
+  it("collapses a duplicate WITHIN a group but not across them", () => {
+    // Two doses of one item in a slot is one name; the same item taken at one dose and
+    // skipped at another is two facts.
+    expect(
+      closingTallyText({
+        taken: ["Magnesium", "Magnesium"],
+        skipped: ["Magnesium"],
+      })
+    ).toBe("Magnesium taken · Magnesium skipped");
+  });
+});
+
+describe("closeDetailText — the ONE close formatter (#2275)", () => {
+  it("joins groups with the reminder's own separator", () => {
+    expect(
+      closeDetailText({
+        groups: [
+          { names: ["Vitamin D"], outcome: "taken" },
+          { names: ["Omega-3"], outcome: "skipped" },
+        ],
+      })
+    ).toBe("Vitamin D taken · Omega-3 skipped");
+  });
+
+  it("distinguishes 'no items' from 'names no items'", () => {
+    // Present-and-empty ⇒ this group was about items and there are none, so it is
+    // omitted. ABSENT ⇒ the outcome names no items at all and stands alone — which is
+    // how workout-draft says "finished" and "discarded" differently at all.
+    expect(closeDetailText({ groups: [{ names: [], outcome: "taken" }] })).toBeNull();
+    expect(closeDetailText({ groups: [{ outcome: "session discarded" }] })).toBe(
+      "session discarded"
+    );
+  });
+
+  it("leads a group with its attribution (#377), for the household round", () => {
+    expect(
+      closeDetailText({
+        groups: [
+          { lead: "Ada", names: ["Vitamin D"], outcome: "taken" },
+          { lead: "Ada", names: [], outcome: "skipped" },
+          { lead: "Bo", names: ["Iron"], outcome: "skipped" },
+        ],
+      })
+    ).toBe("Ada: Vitamin D taken · Bo: Iron skipped");
+  });
+
+  it("renders nothing for a detail with nothing in it", () => {
+    expect(closeDetailText(null)).toBeNull();
+    expect(closeDetailText(undefined)).toBeNull();
+    expect(closeDetailText({ groups: [] })).toBeNull();
   });
 });
 
