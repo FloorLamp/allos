@@ -1242,7 +1242,7 @@ A safety kind may never be declared a member: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
 is the one policy that must not move.
 
-## The tick has a memo of its own (#2118, #2111, #2249)
+## The tick has a memo of its own (#2118, #2111, #2249, #2283)
 
 **A tick is not a request, so `cache()` does nothing in it.**
 `lib/request-cache.ts` degrades React's `cache()` to identity outside a Next
@@ -1263,16 +1263,40 @@ DYNAMIC digest tick asked TWICE for the same profile — once through
 `digestDeadline` for the deadline, and again through `logDigestTick` for the
 evidence line the decision writes.
 
+#2283 adds the pair the SEND tick repeats, and names the shape all four share:
+the digest asks its questions **twice by construction**. A DECIDE phase
+(`planProfileDigestTick` → `digestSleepPendingTrace` → `logDigestTick`) and, on
+the tick that resolves to "send", a BUILD phase (`gatherDigestInput`). Two of
+their shared inputs were real gathers with nothing bridging the phases:
+`getSleepSessions`, the row-capped session read behind "has last night landed?"
+and behind the Sleep section that answer produces, and
+`getIntegrationAttention`, the per-provider standing walk behind the decision's
+`providerHealthy` (#2192) and the banded broken-sync section (#1685).
+
 **`lib/tick-cache.ts` supplies the missing lifetime.** `runInTickScope` opens a
 scope, `tickCached(name, keyOf, fn)` memoizes inside it, and outside a scope the
 wrapper is a plain passthrough — so a DB test, a `manual` send and the `poll`
 loop all compute every call, exactly as before. `scripts/notify.ts` opens one
-scope per profile, around `tickProfile`. All three gathers are wrapped in
+scope per profile, around `tickProfile`. Every one of these gathers is wrapped in
 `cache()` **and** `tickCached`, so a render and a tick each get the memo whose
-lifetime it can justify. For `getSleepArrivals` the scope's safety argument is
-that `syncIntegrations` — the only tick step that writes `metric_samples` or
-`integration_sync_rows` — is the FIRST statement of `tickProfile`, so the pull
-pass has finished before anything in the scope reads what it wrote.
+lifetime it can justify.
+
+**Each memo argues its own safety, and the argument is always the same shape:
+nothing in the scope writes the rows after the first read.** For
+`getSleepArrivals` and `getSleepSessions` it is that `syncIntegrations` — the
+only tick step that writes `metric_samples` or `integration_sync_rows` — is the
+FIRST statement of `tickProfile`, so the pull pass has finished before anything
+in the scope reads what it wrote; every other writer of those tables is a Server
+Action or a route handler. For `getIntegrationAttention` the same statement
+carries it: `syncIntegrations` is also the only tick step that appends to
+`integration_sync_events` or moves a connection to `needs_reauth`, no pull runner
+reads the attention list (so the sync cannot seed a memo it then invalidates),
+and the retention sweep `pruneSyncEvents` runs in `tick()` **after** the profile
+loop, outside every scope. Its one non-row input is NOW — `resolveProviderFacts`
+compares `instantNow()` against the last successful run — so the memo pins the
+tick's first clock reading for that profile; sound because the quantity compared
+is a silence tolerance measured in hours (#2263) while a profile's tick is
+seconds long.
 
 **Why not a TTL memo**, the `tzMemo` / schedule-history (#2066) shape. That
 shape is right for a value whose miss "degrades to the documented fallback,
@@ -1301,6 +1325,9 @@ only when and how often its inputs are computed moved.
 profile tick is driven with the statement counts of each gather's own signature
 recorded — 5 preventive assessments, 3 family gathers and 2 arrival joins
 unscoped, exactly 1 each scoped, with the verdicts asserted equal either way. The
+send-triggering tick is counted the same way (#2283): 10 session reads and 2
+attention walks unscoped, exactly 1 each scoped, with the digest's own sleep line
+and broken-sync item asserted identical either way. The
 lazy half is counted in the same file: a pre-floor tick and a Static profile
 perform ZERO arrival joins at any minute of the day. The lifetime is pinned
 in the same file: a sibling scope re-reads, a throwing tick still closes its

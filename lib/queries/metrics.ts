@@ -537,7 +537,39 @@ function readSleepSessions(
   }));
 }
 
-export function getSleepSessions(
+// The profile's recent session windows, row-capped. THE sleep-session read: the SRI,
+// the consistency strip, the typical wake time, the digest's Sleep section and the
+// digest's own send decision all start here.
+//
+// MEMOIZED ON BOTH LIFETIMES (#2283). This is a three-statement read — the DISTINCT
+// source scan, the recent-wake-day window, then every session row in it — followed by
+// per-source/day origin selection in JS, and ONE digest tick asks it TWICE for the
+// same profile: `digestSleepPendingTrace` asks "has last night landed?" to reach the
+// decision, and `gatherDigestSleep` asks again to build the section that decision
+// sends. `cache()` is identity in a tick (lib/request-cache.ts says so deliberately),
+// so the collapse that matters here is `tickCached`; the `cache()` beside it collapses
+// the Sleep page's own repeated reads (the SRI, the consistency strip and the wake-time
+// derivation each start from this list) into one per request.
+//
+// Nothing inside a tick writes these rows AFTER the first read: `syncIntegrations` is
+// the first statement of `tickProfile`, so the pull pass has finished writing
+// `metric_samples` before anything in the scope reads them, and every other writer of
+// that table (lib/reading-writes.ts, lib/offline/writes.ts, lib/ttc-store.ts,
+// lib/bulk-correction-db.ts) is reached from a Server Action or a route handler — the
+// web request or the sidecar's separate `poll` mode, never from inside the scope. The
+// scope closes with the profile — see lib/tick-cache.ts for the rule this depends on.
+//
+// The returned array is treated as read-only by every caller (the pure sleep cores
+// copy before sorting), which is what makes one array safe to hand to all of them.
+export const getSleepSessions = cache(
+  tickCached(
+    "getSleepSessions",
+    (profileId: number, limit = 800) => `${profileId}:${limit}`,
+    getSleepSessionsUncached
+  )
+);
+
+function getSleepSessionsUncached(
   profileId: number,
   limit = 800
 ): SleepSessionRow[] {

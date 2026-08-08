@@ -1,4 +1,5 @@
-// DB INTEGRATION TIER — the tick's redundant heavy gathers, counted (#2118, #2111, #2249).
+// DB INTEGRATION TIER — the tick's redundant heavy gathers, counted (#2118, #2111,
+// #2249, #2283).
 //
 // `lib/request-cache.ts` degrades React's `cache()` to identity outside a Next request,
 // so the hourly tick had no memoization anywhere and re-ran the same profile's heaviest
@@ -19,6 +20,12 @@
 // evidence line the decision writes — and which every pre-floor tick paid for before
 // `planDigestTick` could decline. Both halves are counted here: one gather on a
 // re-check tick, and ZERO on a tick that short-circuits before the floor.
+//
+// #2283 adds the pair the SEND tick repeats. The digest asks its questions twice by
+// construction — a decide phase and, on the tick that resolves to "send", a build
+// phase — and two of their shared inputs were real gathers with nothing bridging the
+// phases: the session list behind "has last night landed?" and the broken-provider
+// list behind `providerHealthy`. Counted on the ordinary morning send.
 //
 // Behaviour preservation is asserted alongside every count: the scoped run's answers
 // must equal the unscoped run's, item for item. And because a memo over a SAFETY
@@ -60,8 +67,15 @@ import {
   getPrnOverMaxItems,
   recordPreventiveDone,
 } from "@/lib/queries";
-import { getSleepArrivals } from "@/lib/queries/metrics";
-import { planProfileDigestTick } from "@/lib/notifications/digest-data";
+import { getSleepArrivals, getSleepSessions } from "@/lib/queries/metrics";
+import { getIntegrationAttention } from "@/lib/queries/integrations";
+import { now as clockNow } from "@/lib/clock";
+import {
+  gatherDigestInput,
+  planProfileDigestTick,
+} from "@/lib/notifications/digest-data";
+import type { DigestInput } from "@/lib/notifications/digest";
+import type { DigestTickAction } from "@/lib/notifications/digest-schedule";
 import { assessProfilePreventive } from "@/lib/queries/upcoming/preventive";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runRedoseNotices } from "@/lib/notifications/redose";
@@ -83,14 +97,25 @@ const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-tick-scope";
 //   • the family-member projection — issued only by getActiveMedicationFamilies, at
 //     the head of getMedicationFamilyStates.
 function countPrepares(signature: RegExp): { calls: () => number } {
-  let n = 0;
+  const [counter] = countPrepareSet(signature);
+  return counter;
+}
+
+// Several signatures, ONE spy. `vi.spyOn` returns the SAME spy for a method that is
+// already spied, so two independent countPrepares calls would leave the second
+// binding its call-through to the spy itself and recursing until the stack ends. A
+// tick that repeats two different gathers has to count both at once anyway.
+function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
+  const counts = signatures.map(() => 0);
   // Captured BEFORE the spy replaces the method, so calling through can't recurse.
   const real = db.prepare.bind(db);
   vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
-    if (signature.test(sql)) n++;
+    signatures.forEach((s, i) => {
+      if (s.test(sql)) counts[i]++;
+    });
     return real(sql);
   }) as typeof db.prepare);
-  return { calls: () => n };
+  return signatures.map((_, i) => ({ calls: () => counts[i] }));
 }
 
 const PREVENTIVE_SIGNATURE = /SELECT rule_key AS ruleKey, kind/;
@@ -511,6 +536,200 @@ describe("the Dynamic digest tick gathers sleep arrivals ONCE, and not before th
     // The next scope re-reads: a memo whose lifetime is a scope cannot outlive it.
     await runInTickScope(async () => getSleepArrivals(a));
     expect(counter.calls()).toBe(4);
+  });
+});
+
+// ── the send-triggering digest tick (#2283) ──────────────────────────────────
+//
+// The digest asks its questions TWICE by construction: a DECIDE phase
+// (`planProfileDigestTick` → `digestSleepPendingTrace` → `logDigestTick`) and, on the
+// tick that resolves to "send", a BUILD phase (`gatherDigestInput`). Two of the inputs
+// they share are real gathers — the session list behind "has last night landed?" and
+// the broken-provider list behind `providerHealthy` — and nothing bridged the phases.
+//
+// The fixture is the ORDINARY send: a Dynamic 07:00 digest whose last night HAS
+// landed, past the floor, before the deadline, with no failed attempt on record. That
+// is the tick scripts/notify.ts:820-823 runs every morning.
+const SEND_FLOOR = 7 * 60;
+const SEND_TZ = "UTC";
+const SEND_SLEEP_SOURCE = "oura";
+// Weather is the broken provider because its silence tolerance is a plain declared
+// number of hours (12 polls × its hourly cadence), so "no success inside it" is a
+// fixture the clock cannot make flaky.
+const SEND_BROKEN_PROVIDER = "weather";
+const SEND_TOLERANCE_HOURS = 12;
+const SEND_SYNC_ERROR = "weather fetch failed (503)";
+
+//   • the sleep-session window scan — issued by readSleepSessions ONLY on the
+//     row-capped path, i.e. only by getSleepSessions (#2283). The since/range readers
+//     pass a cutoff and skip it, so this counts the one reader under test.
+const SLEEP_SESSION_SIGNATURE =
+  /SELECT date FROM metric_samples\s+WHERE profile_id = \? AND metric = 'sleep_min'/;
+//   • the DISTINCT-provider scan at the head of getLatestSyncEventPerProvider, whose
+//     only caller is getImportIssues — which inside a tick is reached only through
+//     getIntegrationAttention (#2283). Anchored past the profile predicate so it
+//     cannot also match the recent-changes digest's own DISTINCT-provider read, which
+//     asks a different question (`AND ok = 1 AND at <= ?`) of the same table.
+const INTEGRATION_ATTENTION_SIGNATURE =
+  /SELECT DISTINCT provider FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
+
+function seedSendNight(
+  profileId: number,
+  wakeDay: string,
+  wakeMinute: number
+): void {
+  const end = new Date(
+    `${wakeDay}T${String(Math.floor(wakeMinute / 60)).padStart(2, "0")}:${String(
+      wakeMinute % 60
+    ).padStart(2, "0")}:00Z`
+  );
+  const start = new Date(end.getTime() - 420 * 60_000);
+  db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, origin, metric, date, start_time, end_time, value)
+     VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
+  ).run(
+    profileId,
+    SEND_SLEEP_SOURCE,
+    wakeDay,
+    utcInstant(start),
+    utcInstant(end)
+  );
+}
+
+function seedSendProfile(name: string): number {
+  const p = newProfile(name);
+  setTimezone(p, SEND_TZ);
+  const td = today(p);
+  // `back = 0` is the night that woke TODAY — the whole difference from the #2249
+  // fixture above, and what turns the re-check window's answer from "wait" into
+  // "send". No provenance rows: with no measurable arrivals the deadline falls back
+  // to floor + 60, so the tick under test sits inside the re-check window by
+  // construction rather than by whatever the arrival sample happens to say.
+  for (let back = 0; back <= 13; back++)
+    seedSendNight(p, shiftDateStr(td, -back), 6 * 60 + 30 + (back % 5) * 3);
+  setProfileSetting(p, "notify_digest_hour", "07:00");
+  setProfileSetting(p, DIGEST_MODE_KEY, "dynamic");
+
+  // A provider that has genuinely stopped: connected, a recorded failure, and no
+  // success inside its tolerance — the one shape that escalates onto the attention
+  // list both phases read.
+  db.prepare(
+    `INSERT INTO integration_connections (profile_id, provider, status)
+     VALUES (?, ?, 'connected')`
+  ).run(p, SEND_BROKEN_PROVIDER);
+  const at = (hoursAgo: number) =>
+    utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
+  db.prepare(
+    `INSERT INTO integration_sync_events
+       (profile_id, provider, at, ok, inserted, error)
+     VALUES (?, ?, ?, 1, 1, NULL)`
+  ).run(p, SEND_BROKEN_PROVIDER, at(SEND_TOLERANCE_HOURS + 1));
+  db.prepare(
+    `INSERT INTO integration_sync_events
+       (profile_id, provider, at, ok, inserted, error)
+     VALUES (?, ?, ?, 0, NULL, ?)`
+  ).run(p, SEND_BROKEN_PROVIDER, at(1), SEND_SYNC_ERROR);
+  return p;
+}
+
+/** Both phases of one profile's digest tick, in the order scripts/notify.ts runs them. */
+function digestSendTick(profileId: number): {
+  action: DigestTickAction;
+  input: DigestInput | null;
+} {
+  const action = planProfileDigestTick(
+    profileId,
+    getNotifySchedule(profileId),
+    SEND_FLOOR + 15,
+    15,
+    today(profileId)
+  );
+  return {
+    action,
+    input:
+      action === "send"
+        ? gatherDigestInput(profileId, "Digest Send Tick")
+        : null,
+  };
+}
+
+describe("a send-triggering digest tick gathers sleep sessions and integration attention ONCE (#2283)", () => {
+  it("unscoped: decide and build each pay for both gathers", () => {
+    const p = seedSendProfile("TickSendBaseline");
+    const [sleep, attention] = countPrepareSet(
+      SLEEP_SESSION_SIGNATURE,
+      INTEGRATION_ATTENTION_SIGNATURE
+    );
+    const { action, input } = digestSendTick(p);
+
+    expect(action).toBe("send");
+    // The answers the two gathers produced, so the scoped run below has something to
+    // be identical to rather than merely cheaper than.
+    expect(input?.sleep?.lastNightMin).toBe(420);
+    expect(input?.todayGroups.flatMap((g) => g.items)).toContainEqual(
+      expect.objectContaining({ domain: "integration" })
+    );
+    // Floors, in the house style: the counts observed on this fixture are 10 and 2.
+    // The attention list is exactly the decide/build pair the issue names; the session
+    // list is asked far more often than twice, because the build phase alone reaches it
+    // through the sleep signal, the Sleep section, the SRI and the derived-situation
+    // resolver. Either number rising is fine; either falling below the pair means the
+    // gather stopped being asked at all.
+    expect(sleep.calls()).toBeGreaterThanOrEqual(2);
+    expect(attention.calls()).toBeGreaterThanOrEqual(2);
+  });
+
+  it("scoped: the same tick gathers each exactly once, for the same answers", async () => {
+    const p = seedSendProfile("TickSendScoped");
+    const [sleep, attention] = countPrepareSet(
+      SLEEP_SESSION_SIGNATURE,
+      INTEGRATION_ATTENTION_SIGNATURE
+    );
+    const { action, input } = await runInTickScope(async () =>
+      digestSendTick(p)
+    );
+
+    // The MESSAGE is untouched — this issue changes only how often its inputs are
+    // computed.
+    expect(action).toBe("send");
+    expect(input?.sleep?.lastNightMin).toBe(420);
+    expect(input?.todayGroups.flatMap((g) => g.items)).toContainEqual(
+      expect.objectContaining({ domain: "integration" })
+    );
+    expect(sleep.calls()).toBe(1);
+    expect(attention.calls()).toBe(1);
+  });
+
+  it("each memo is per profile and dies with the scope", async () => {
+    const a = seedSendProfile("TickSendKeyA");
+    const b = seedSendProfile("TickSendKeyB");
+    const [sleep, attention] = countPrepareSet(
+      SLEEP_SESSION_SIGNATURE,
+      INTEGRATION_ATTENTION_SIGNATURE
+    );
+    await runInTickScope(async () => {
+      getSleepSessions(a);
+      getSleepSessions(a);
+      getSleepSessions(b);
+      // A different row cap is a different question, memoized separately.
+      getSleepSessions(a, 7);
+      getIntegrationAttention(a);
+      getIntegrationAttention(a);
+      getIntegrationAttention(b);
+    });
+    expect(sleep.calls()).toBe(3);
+    expect(attention.calls()).toBe(2);
+
+    // The next scope re-reads both: a memo whose lifetime is a scope cannot outlive
+    // it, which is what lets the tick's own pull pass write these rows before the
+    // scope's first read and still be seen.
+    await runInTickScope(async () => {
+      getSleepSessions(a);
+      getIntegrationAttention(a);
+    });
+    expect(sleep.calls()).toBe(4);
+    expect(attention.calls()).toBe(3);
   });
 });
 
