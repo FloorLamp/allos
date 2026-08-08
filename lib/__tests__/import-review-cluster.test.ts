@@ -11,8 +11,9 @@ import {
   type ActivityDupInput,
 } from "@/lib/import-review/detect";
 
-// Build a candidate activity row; every duplicate lives in the SAME (date, type)
-// bucket. Overlapping clock windows drive the HIGH cross-source detection.
+// Build a candidate activity row; every duplicate lives in the SAME DATE bucket
+// (#2271 dropped `type` from the bucket key). Overlapping clock windows drive the
+// HIGH cross-source detection.
 function row(
   over: Partial<ActivityDupInput> & { id: number }
 ): ActivityDupInput {
@@ -182,6 +183,38 @@ describe("autoMergeCluster (#1081)", () => {
     expect(d!.dropIds).toContain(1);
     expect(d!.keepId).not.toBe(1);
     expect([d!.keepId, ...d!.dropIds].sort()).toEqual([1, 2, 3]);
+  });
+
+  it("fires on an overlapping cluster whose members DISAGREE about the type (#2271)", () => {
+    // autoMergeCluster never looked at `type` — the candidacy gate upstream was the
+    // only obstacle. This pins that: one gym session, one provider that declined to
+    // classify it and one that called it `strength`, overlapping windows.
+    const crossType = clusterActivityDuplicates(
+      findActivityDuplicates([
+        row({
+          id: 384,
+          type: "unclassified",
+          source: "health-connect",
+          external_id: "hc:gym",
+          start_time: "14:30",
+          end_time: "15:30",
+          distance_km: null,
+        }),
+        row({
+          id: 385,
+          type: "strength",
+          source: "strava",
+          external_id: "strava:gym",
+          start_time: "14:30",
+          end_time: "15:29",
+          distance_km: null,
+        }),
+      ])
+    );
+    expect(crossType).toHaveLength(1);
+    const d = autoMergeCluster(crossType[0].members);
+    expect(d).not.toBeNull();
+    expect([d!.keepId, ...d!.dropIds].sort()).toEqual([384, 385]);
   });
 
   it("bails when the cluster is same-source only (no cross-source provenance)", () => {
