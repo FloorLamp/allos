@@ -41,8 +41,8 @@ import {
   foodProteinCallbackData,
   foodMoreCallbackData,
   foodLessCallbackData,
-  FOOD_NUDGE_BUTTON_COUNT,
 } from "@/lib/notifications/food-format";
+import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 import {
   answerCallbackQuery,
   editMessageTextRaw,
@@ -340,7 +340,7 @@ describe("'Show less' collapse (#1807)", () => {
 
     // Expanding past every ranked key drops "Show more" and leaves "Show less" alone.
     const ranked = rankFoodGroups(p.profileId, "Morning").length;
-    expect(ranked).toBeGreaterThan(FOOD_NUDGE_BUTTON_COUNT);
+    expect(ranked).toBeGreaterThan(FOOD_QUICK_COUNT);
     await handleCallbackQuery(
       cqWithFoodButtons(
         foodMoreCallbackData(p.profileId, "Morning", t),

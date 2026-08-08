@@ -8,6 +8,7 @@
 // and only refreshes the per-button count + the tally line.
 
 import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
+import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
 import { bold, joinBody, rich, richFrom, type MessageBody } from "./rich-text";
 import {
@@ -36,13 +37,14 @@ export const FOOD_NUDGE_WINDOWS: readonly FoodNudgeWindow[] = [
 ];
 
 // How many of the top-ranked groups become quick-log buttons — and, since #1075, the
-// PAGE SIZE both directions of the expansion step by. Kept small so the keyboard stays
-// scannable on a phone; the long tail is reached with "➕ Show more", never by leaving
-// the chat (#1807 retired the "＋ More…" deep link: the nudge's job is one-tap logging
-// in place, and a link to /nutrition on every send bought a keyboard row that answered
-// a question the ranked buttons already answer). Two buttons per row (see rowFor) → an
-// even count fills rows cleanly.
-export const FOOD_NUDGE_BUTTON_COUNT = 6;
+// PAGE SIZE both directions of the expansion step by — is FOOD_QUICK_COUNT, imported
+// from lib/food-rank beside the ranking whose head it takes (#2225). It is the SAME
+// number of fast affordances the web log bar renders, and it is one constant so the two
+// surfaces agree by construction rather than by coincidence. The long tail is reached
+// with "➕ Show more", never by leaving the chat (#1807 retired the "＋ More…" deep link:
+// the nudge's job is one-tap logging in place, and a link to /nutrition on every send
+// bought a keyboard row that answered a question the ranked buttons already answer).
+// Two buttons per row (see rowFor) → an even count fills rows cleanly.
 
 // The callback token a food quick-log button carries:
 //   food:<profileId>:<window>:<date>:<slug>
@@ -78,7 +80,7 @@ export function foodProteinCallbackData(
 //   foodmore:<profileId>:<window>:<date>
 // It carries NO count — expansion state IS the rendered keyboard, so the handler derives
 // the current visible count by counting the ranked buttons already present and rebuilds at
-// count + FOOD_NUDGE_BUTTON_COUNT (stateless; a fresh nudge always resets to the compact
+// count + FOOD_QUICK_COUNT (stateless; a fresh nudge always resets to the compact
 // default).
 export function foodMoreCallbackData(
   profileId: number,
@@ -92,7 +94,7 @@ export function foodMoreCallbackData(
 //   foodless:<profileId>:<window>:<date>
 // The exact mirror of foodMoreCallbackData and equally stateless — it carries NO count,
 // so the handler derives the current visible count from the keyboard and rebuilds at
-// max(FOOD_NUDGE_BUTTON_COUNT, current − FOOD_NUDGE_BUTTON_COUNT). The clamp is what makes
+// max(FOOD_QUICK_COUNT, current − FOOD_QUICK_COUNT). The clamp is what makes
 // a double-tap harmless: collapsing bottoms out at the compact default a fresh send uses,
 // never at an empty keyboard.
 export function foodLessCallbackData(
@@ -209,7 +211,7 @@ export interface FoodNudgeRenderOpts {
   // against, so it states the figure and claims NOTHING about a goal.
   proteinLine?: ProteinNudgeLineParts | string | null;
   // How many ranked buttons to show (#1075 progressive expansion). Defaults to
-  // FOOD_NUDGE_BUTTON_COUNT so every existing send starts compact; "Show more" bumps it.
+  // FOOD_QUICK_COUNT so every existing send starts compact; "Show more" bumps it.
   visibleCount?: number;
   // Grams for the "+Xg protein" button label (#1073) — the profile's last-used scoop
   // preset. Only used when the reserved __protein__ key falls within the visible window.
@@ -241,7 +243,7 @@ export interface FoodNudgeRenderOpts {
 // Build the food-log nudge for a window from the profile's RANKED keys (all of them,
 // staples first, possibly including the reserved __protein__ pseudo-group, #1073), the
 // SLOT-scoped per-group counts (#1016 button "(n)" suffix), and the DAY-total counts (the
-// tally line). Renders the top `visibleCount` (default FOOD_NUDGE_BUTTON_COUNT) ranked keys
+// tally line). Renders the top `visibleCount` (default FOOD_QUICK_COUNT) ranked keys
 // as quick-log buttons — a food group logs one serving, the __protein__ key logs the grams
 // preset — plus a view-control row carrying "➕ Show more" while ranked keys remain below
 // the fold (#1075) and "➖ Show less" once the keyboard is expanded past the compact
@@ -265,7 +267,7 @@ export function renderFoodNudge(
   dayServings: Map<string, number>,
   opts: FoodNudgeRenderOpts = {}
 ): NotificationMessage {
-  const visibleCount = opts.visibleCount ?? FOOD_NUDGE_BUTTON_COUNT;
+  const visibleCount = opts.visibleCount ?? FOOD_QUICK_COUNT;
   const visible = rankedKeys.slice(0, Math.max(0, visibleCount));
   const presetGrams = opts.proteinPresetGrams ?? DEFAULT_PROTEIN_PRESET_GRAMS;
 
@@ -308,7 +310,7 @@ export function renderFoodNudge(
     });
   });
 
-  // #1075: reveal the next FOOD_NUDGE_BUTTON_COUNT ranked buttons in place — present only
+  // #1075: reveal the next FOOD_QUICK_COUNT ranked buttons in place — present only
   // while ranked keys remain below the fold (drops automatically once all are shown).
   if (visibleCount < rankedKeys.length) {
     actions.push({
@@ -330,7 +332,7 @@ export function renderFoodNudge(
   // same keyboard (a profile with 4 ranked keys at visibleCount 12 shows 4 either way), and
   // a button whose tap changes nothing is a small lie of the kind this codebase does not
   // ship.
-  if (visible.length > FOOD_NUDGE_BUTTON_COUNT) {
+  if (visible.length > FOOD_QUICK_COUNT) {
     actions.push({
       label: "➖ Show less",
       data: foodLessCallbackData(profileId, window, date),

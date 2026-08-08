@@ -482,9 +482,11 @@ access-filtered member checklist and a send-test.
 
 **The food nudge's keyboard (#682/#1016/#1073/#1075/#1807).** The nudge rides the
 morning/midday/evening supplement slots and is opt-in per profile. Its keyboard is
-the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
-per row — the SAME `rankFoodGroups` the `/nutrition` log bar calls (#221/#1980 —
-one function, not two that claim to agree) — each carrying a day-total "(n)" suffix,
+the whole surface: `FOOD_QUICK_COUNT` (6, exported from `lib/food-rank.ts`)
+top-ranked quick-log buttons two per row — the SAME `rankFoodGroups` the
+`/nutrition` log bar calls, sliced at the SAME constant the bar's quick rows use
+(#221/#1980/#2225 — one function and one count, not two that claim to agree) —
+each carrying a day-total "(n)" suffix,
 plus the reserved `__protein__`
 pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
 "✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
@@ -664,6 +666,25 @@ deleted, comment and all, so the argument for it cannot invite a re-add. The `li
 tier keeps its meaning everywhere else (targets, the inverted-cap reads, the web
 bar's tier headings); it just never moves a button. The web bar ranks the protein
 pseudo-entry too, from the same call.
+
+**…and neither does SELECTION (#2225).** The same line one level up. The web bar
+composed its six quick rows from a tier QUOTA (4 `encourage` / 1 `neutral` /
+1 `limit`, each slot filled with the top-ranked unselected group of that tier), so
+a profile whose staples are all `encourage` saw a different six on the page than in
+the chat — the capped demotion again, expressed as selection instead of weight. The
+quota is **deleted**, along with the slot-`logged` pre-sort that existed only to feed
+it (`rankFoodGroups` already carries the #2019 slot signal; the boost was a second,
+cruder derivation of one question). Both surfaces now take the first
+`FOOD_QUICK_COUNT` of the one ranking. Tier still LABELS a row (the `food-tier-<slug>`
+badge) and SECTIONS the "More food groups" overflow; it does not decide which are
+fast. The convergence was reached by removing code from the web bar — the keyboard
+gained nothing, since there is no room for a tier badge on a Telegram button.
+
+One asymmetry stands, deliberately: `getFoodBarOrder` strips the `__protein__`
+pseudo-entry out of `groups` and returns its rank separately, so the page shows six
+food groups **plus** its protein stepper, while the nudge leaves `__protein__` in
+`rankedKeys` where it consumes one of the six keyboard slots. The six budget slots in
+their own medium — one control that is a button in a chat and a stepper on a page.
 
 **One label grammar, one protein line.** Every quick-log button leads with a glyph
 (#1710); `PROTEIN_NUDGE_EMOJI` gave the protein button the one it was missing

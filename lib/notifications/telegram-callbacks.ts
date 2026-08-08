@@ -139,10 +139,8 @@ import {
   renderMergedIntakeMessage,
 } from "./supplement-format";
 import { buildFoodNudge } from "./food";
-import {
-  countVisibleFoodButtons,
-  FOOD_NUDGE_BUTTON_COUNT,
-} from "./food-format";
+import { countVisibleFoodButtons } from "./food-format";
+import { FOOD_QUICK_COUNT } from "../food-rank";
 import { messagePointerIdAt } from "./message-pointers";
 import {
   answerCallbackQuery,
@@ -1225,7 +1223,7 @@ async function handleFoodProtein(
 }
 
 // Handle a "➕ Show more" (#1075) / "➖ Show less" (#1807) tap: page the ranked buttons one
-// FOOD_NUDGE_BUTTON_COUNT step up or down in place. STATELESS in BOTH directions — the
+// FOOD_QUICK_COUNT step up or down in place. STATELESS in BOTH directions — the
 // current visible count is derived by counting the ranked buttons already in the keyboard,
 // so no token field / stored count is needed; a double-tap is harmless (expanding
 // re-resolves to the next window, collapsing clamps at the compact default a fresh send
@@ -1260,8 +1258,8 @@ async function handleFoodExpand(
   // at the compact default rather than at an empty keyboard.
   const next =
     token.action === "more"
-      ? current + FOOD_NUDGE_BUTTON_COUNT
-      : Math.max(FOOD_NUDGE_BUTTON_COUNT, current - FOOD_NUDGE_BUTTON_COUNT);
+      ? current + FOOD_QUICK_COUNT
+      : Math.max(FOOD_QUICK_COUNT, current - FOOD_QUICK_COUNT);
   const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
     ref: { chatId, messageId },
   });

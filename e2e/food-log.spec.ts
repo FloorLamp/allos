@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
@@ -10,6 +10,7 @@ import {
   FOOD_PIN_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
@@ -90,13 +91,57 @@ test("compact food rows identify eat-more and eat-less guidance", async ({
     page.getByTestId("food-group-cruciferous").getByTestId("food-group-icon")
   ).toHaveClass(/text-emerald-500/);
 
+  // A `limit` group is no longer guaranteed a quick slot (#2225 deleted the tier quota),
+  // so this may now reach `processed_meat` through the overflow disclosure. The badge is
+  // rendered by the SAME row component either way; asserting the ROW is on screen is what
+  // keeps this a badge test rather than one that passes on a row nobody can reach. (The
+  // badge span itself carries the testid on the mobile name block, which is `md:hidden`
+  // at this viewport — its DESKTOP twin renders the same TIER_LABEL text.)
   await revealFoodGroup(page, "processed_meat");
+  await expect(page.getByTestId("food-group-processed_meat")).toBeVisible();
   await expect(page.getByTestId("food-tier-processed_meat")).toHaveText(
     "Eat less"
   );
   await expect(
     page.getByTestId("food-group-processed_meat").getByTestId("food-group-icon")
   ).toHaveClass(/text-amber-500/);
+});
+
+test("the quick rows are the head of the ranking — nothing in the overflow outranks them (#2225)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  const quick = page.getByTestId("food-quick-log");
+  await expect(quick).toBeVisible();
+
+  // The quick rows carry their position in the frozen ranked order. The tier quota this
+  // issue deleted composed the six by tier (4 encourage / 1 neutral / 1 limit), which
+  // routinely skipped a higher-ranked group for a lower-ranked one of the "right" tier —
+  // exactly the disagreement with the Telegram nudge, which has always sliced the head of
+  // the same ranking. The six are now that same head.
+  const ranksIn = (rows: Locator) =>
+    rows.evaluateAll((els) =>
+      els.map((el) => Number(el.getAttribute("data-rank")))
+    );
+
+  const quickRanks = await ranksIn(
+    quick.locator('li[data-testid^="food-group-"]')
+  );
+  expect(quickRanks).toHaveLength(FOOD_QUICK_COUNT);
+  expect(quickRanks.every((rank) => Number.isInteger(rank))).toBe(true);
+  // The head of the ranking, in rank order and starting at the top.
+  expect(quickRanks).toEqual([...Array(FOOD_QUICK_COUNT).keys()]);
+
+  // Everything else is one disclosure away (#559) and every one of it ranks BELOW the
+  // last quick row. The overflow is sectioned by tier, so rank is read off the attribute
+  // rather than off DOM order.
+  const more = page.getByTestId("food-more-groups");
+  await more.getByTestId("food-more-groups-summary").click();
+  const overflow = more.locator('li[data-testid^="food-group-"]');
+  await expect(overflow.first()).toBeVisible(); // first-ok: the disclosure's own rows, opened by this test
+  const overflowRanks = await ranksIn(overflow);
+  expect(overflowRanks.length).toBeGreaterThan(0);
+  expect(Math.min(...overflowRanks)).toBeGreaterThan(Math.max(...quickRanks));
 });
 
 test("dietary preferences can be edited in a modal without leaving the food log", async ({

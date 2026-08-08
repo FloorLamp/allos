@@ -1194,8 +1194,15 @@ Nutrition is a food-group serving log at the **habit tier**, deliberately _not_
 a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
-as **servings, one tap each** (undo decrements), grouped by whether the guidance
-is to eat _more_, _balance_, or _less_. The day's servings are listed beneath the
+as **servings, one tap each** (undo decrements), each row badged by whether the
+guidance is to eat _more_, _balance_, or _less_. The **six quick rows are the head
+of one ranking** — recency-decayed frequency plus how near to this meal window you
+usually eat the group, minus your own dietary exclusions — and the Telegram nudge
+slices the same six off the same list, at the same shared constant (#2225). Tier
+labels a row and sections the "More food groups" disclosure that holds the rest;
+it never decides which are fast, because a group you log often is a group you need
+to log fast (#1980). Every catalog group stays one disclosure away (#559). The day's
+servings are listed beneath the
 meal cards, each with ⋯ row actions to **correct** it — the food group, the day,
 or the meal it belongs to — or to **remove** that one serving. A correction MOVES
 the serving: the day's totals and the per-meal tallies follow it, so a serving tapped into the wrong meal is repaired
