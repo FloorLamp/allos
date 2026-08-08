@@ -516,12 +516,25 @@ export function rideTraces(streams: CyclingStreams): RideTrace[] {
   });
 }
 
-const CURVE_DURATIONS = [
+// The durations a power curve is taken at. Exported because the cycling OVERVIEW
+// no longer parses streams to build its curve — it reads a summary precomputed at
+// ingest (#2292) — and that summary's validity is keyed on this list: change it and
+// every stored summary is answering the previous question. lib/cycling-stream-summary
+// folds these seconds into the stored signature so the boot reconcile re-derives
+// them, and re-attaches the label on the way out rather than freezing presentation
+// text into a stored row.
+export const POWER_CURVE_DURATIONS = [
   { seconds: 5, label: "5 sec" },
   { seconds: 60, label: "1 min" },
   { seconds: 300, label: "5 min" },
   { seconds: 1200, label: "20 min" },
 ] as const;
+
+export function powerCurveLabel(seconds: number): string | null {
+  return (
+    POWER_CURVE_DURATIONS.find((d) => d.seconds === seconds)?.label ?? null
+  );
+}
 
 // Maximum rolling mean over the actual stream time axis. The provider normally
 // samples each second; using timestamps (rather than array length) still prevents
@@ -531,7 +544,7 @@ export function powerCurve(streams: CyclingStreams): PowerCurvePoint[] {
   const watts = numeric(streams.watts);
   const length = Math.min(times.length, watts.length);
   if (length < 2) return [];
-  return CURVE_DURATIONS.flatMap(({ seconds, label }) => {
+  return POWER_CURVE_DURATIONS.flatMap(({ seconds, label }) => {
     let left = 0;
     let sum = 0;
     let count = 0;

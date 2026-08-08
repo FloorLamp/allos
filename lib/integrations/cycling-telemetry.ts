@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
 import {
+  serializeCyclingStreamSummary,
+  summarizeCyclingStreams,
+} from "@/lib/cycling-stream-summary";
+import {
   classifyUpsert,
   emptyCounts,
   tallyUpsert,
@@ -127,14 +131,16 @@ export function upsertCyclingTelemetry(
   const upsert = db.prepare(
     `INSERT INTO activity_telemetry
        (profile_id, activity_id, source, streams_json, ftp_w,
-        heart_rate_zones_json, power_zones_json, snapshot_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        heart_rate_zones_json, power_zones_json, snapshot_at,
+        stream_summary_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
        streams_json = excluded.streams_json,
        ftp_w = excluded.ftp_w,
        heart_rate_zones_json = excluded.heart_rate_zones_json,
        power_zones_json = excluded.power_zones_json,
-       snapshot_at = excluded.snapshot_at`
+       snapshot_at = excluded.snapshot_at,
+       stream_summary_json = excluded.stream_summary_json`
   );
   const counts = emptyCounts();
   for (const row of rows) {
@@ -186,7 +192,18 @@ export function upsertCyclingTelemetry(
         post.ftp_w,
         post.heart_rate_zones_json,
         post.power_zones_json,
-        post.snapshot_at
+        post.snapshot_at,
+        // The cycling overview reads THIS instead of parsing every ride's streams
+        // on every page load (#2292). It is a pure function of the two columns
+        // written beside it, so it is derived from `post` — the values actually
+        // stored — and never from `incoming`, which a partial pull may have left
+        // empty. An "unchanged" disposition writes nothing, which is correct: the
+        // stored summary already describes those same bytes. A LOGIC change (a new
+        // curve duration) invalidates it by signature instead, and the boot
+        // reconcile re-derives it.
+        serializeCyclingStreamSummary(
+          summarizeCyclingStreams(post.streams_json, post.power_zones_json)
+        )
       );
     }
     tallyUpsert(counts, disposition);

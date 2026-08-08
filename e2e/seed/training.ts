@@ -10,6 +10,10 @@ import { db, today } from "../../lib/db";
 import { shiftDateStr, utcMinute, zonedWallTimeToUtc } from "../../lib/date";
 import { localDayRange } from "../../lib/local-day-window";
 import {
+  serializeCyclingStreamSummary,
+  summarizeCyclingStreams,
+} from "../../lib/cycling-stream-summary";
+import {
   E2E_LOGIN_FORM_DELOAD,
   E2E_LOGIN_FORM_PLATEAU,
   E2E_LOGIN_FORM_INJURY,
@@ -141,25 +145,35 @@ export function seedJournalCard(): void {
         original_size: times.length,
       },
     };
+    const streamsJson = JSON.stringify(streams);
+    const powerZonesJson = JSON.stringify([
+      { min: 0, max: 150 },
+      { min: 151, max: 205 },
+      { min: 206, max: 250 },
+      { min: 251, max: -1 },
+    ]);
     db.prepare(
       `INSERT INTO activity_telemetry
          (profile_id, activity_id, source, streams_json, ftp_w,
-          power_zones_json, snapshot_at)
-       VALUES (?, ?, 'strava', ?, 250, ?, datetime('now'))
+          power_zones_json, snapshot_at, stream_summary_json)
+       VALUES (?, ?, 'strava', ?, 250, ?, datetime('now'), ?)
        ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
          streams_json = excluded.streams_json,
          ftp_w = excluded.ftp_w,
-         power_zones_json = excluded.power_zones_json`
+         power_zones_json = excluded.power_zones_json,
+         stream_summary_json = excluded.stream_summary_json`
     ).run(
       PROFILE_ID,
       ride.id,
-      JSON.stringify(streams),
-      JSON.stringify([
-        { min: 0, max: 150 },
-        { min: 151, max: 205 },
-        { min: 206, max: 250 },
-        { min: 251, max: -1 },
-      ])
+      streamsJson,
+      powerZonesJson,
+      // The cycling overview reads this instead of parsing every ride's streams
+      // (#2292), so a raw fixture INSERT has to write it the way the sync path
+      // does — same as any other derived column. (A boot would heal a NULL, but a
+      // fixture that depends on that is a fixture that lies about the write path.)
+      serializeCyclingStreamSummary(
+        summarizeCyclingStreams(streamsJson, powerZonesJson)
+      )
     );
     const insertRideHr = db.prepare(
       `INSERT OR REPLACE INTO hr_minutes

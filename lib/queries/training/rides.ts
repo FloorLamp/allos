@@ -10,6 +10,7 @@ import {
   distanceSplits,
   parseCyclingStreams,
   powerCurve,
+  powerCurveLabel,
   powerZoneTimes,
   rideDynamics,
   rideTimedRoutePoints,
@@ -24,6 +25,10 @@ import {
   type RideTrace,
   type RideTimedRoutePoint,
 } from "../../cycling-analytics";
+import {
+  parseCyclingStreamSummary,
+  parsePowerZones,
+} from "../../cycling-stream-summary";
 import { speedKmh } from "../../coaching/cardio";
 import {
   cyclingOverviewRollup,
@@ -179,23 +184,6 @@ export interface CyclingOverviewData {
   segmentPersonalBestCount: number;
 }
 
-function parsedZones(value: string | null): PowerZoneRange[] {
-  if (!value) return [];
-  try {
-    const zones = JSON.parse(value);
-    if (!Array.isArray(zones)) return [];
-    return zones.flatMap((zone) => {
-      if (!zone || typeof zone !== "object") return [];
-      const rec = zone as Record<string, unknown>;
-      const valueOrNull = (v: unknown) =>
-        typeof v === "number" && Number.isFinite(v) ? v : null;
-      return [{ min: valueOrNull(rec.min), max: valueOrNull(rec.max) }];
-    });
-  } catch {
-    return [];
-  }
-}
-
 // One profile-scoped read model for the ride detail page. It enriches the same
 // editor payload used by Journal with the ride's route, measured energy, gear,
 // as-of bodyweight, and HR buckets bounded to this activity's clock window.
@@ -266,7 +254,7 @@ export function getRideDetailData(
   const streams = parseCyclingStreams(telemetry?.streams_json ?? null);
   const traces = rideTraces(streams);
   const curve = powerCurve(streams);
-  const powerZones = parsedZones(telemetry?.power_zones_json ?? null);
+  const powerZones = parsePowerZones(telemetry?.power_zones_json ?? null);
   const laps = db
     .prepare(
       `SELECT id, lap_index AS lapIndex, name, distance_m AS distanceM,
@@ -463,10 +451,21 @@ export function getCyclingOverviewData(
       plural: presentation.pluralNoun,
     });
 
+    // #2292: this read deliberately does NOT select `streams_json`. The two things
+    // the overview derives from a ride's streams — the power curve and per-zone
+    // seconds — are precomputed at ingest into `stream_summary_json`, which is a
+    // few numbers per ride rather than a ride's worth of per-second samples. The
+    // page used to parse every stream blob the profile owned on every load, so its
+    // cost grew with total ride history IN BYTES PARSED.
+    //
+    // NOT WINDOWED, unlike the heart-rate distribution a few lines below (#2197).
+    // Both values here are ALL-TIME CLAIMS: the card says "Personal best rolling
+    // efforts", and bounding it to a training block would leave it saying "personal
+    // best" while meaning "best since March". Different answers on one page, on
+    // purpose — see lib/cycling-stream-summary.ts for the full reasoning.
     const telemetryRows = db
       .prepare(
-        `SELECT id, activity_id, streams_json, ftp_w, power_zones_json,
-                snapshot_at
+        `SELECT id, activity_id, stream_summary_json, ftp_w, snapshot_at
            FROM activity_telemetry
           WHERE profile_id = ?
           ORDER BY snapshot_at, id`
@@ -474,9 +473,8 @@ export function getCyclingOverviewData(
       .all(profileId) as {
       id: number;
       activity_id: number;
-      streams_json: string;
+      stream_summary_json: string | null;
       ftp_w: number | null;
-      power_zones_json: string | null;
       snapshot_at: string;
     }[];
     // One effective telemetry snapshot per ride. A profile may have rows from
@@ -493,12 +491,22 @@ export function getCyclingOverviewData(
     for (const ride of rides) {
       const telemetry = telemetryByRide.get(ride.id);
       if (!telemetry) continue;
-      const streams = parseCyclingStreams(telemetry.streams_json);
-      for (const point of powerCurve(streams)) {
+      // Null when the row has no summary yet or carries one made by a different
+      // rule. That ride contributes no power values this load; the boot reconcile
+      // (lib/cycling-stream-summary-db.ts) re-derives it. Deliberately NOT a
+      // fallback to parsing the streams — that would restore the unbounded read.
+      const summary = parseCyclingStreamSummary(telemetry.stream_summary_json);
+      for (const point of summary?.powerCurve ?? []) {
+        // The label is presentation and is re-attached here rather than frozen
+        // into the stored row; a duration the app no longer shows is dropped.
+        const label = powerCurveLabel(point.seconds);
+        if (label == null) continue;
         const prior = powerBestBySeconds.get(point.seconds);
         if (!prior || point.watts >= prior.watts) {
           powerBestBySeconds.set(point.seconds, {
-            ...point,
+            seconds: point.seconds,
+            label,
+            watts: point.watts,
             activityId: ride.id,
             date: ride.date,
             title: ride.title,
@@ -521,11 +529,9 @@ export function getCyclingOverviewData(
       if (telemetry.ftp_w != null && telemetry.ftp_w > 0) {
         latestFtpW = telemetry.ftp_w;
       }
-      const zones = parsedZones(telemetry.power_zones_json);
-      for (const zone of powerZoneTimes(streams, zones)) {
-        powerZoneSeconds[zone.zone - 1] =
-          (powerZoneSeconds[zone.zone - 1] ?? 0) + zone.seconds;
-      }
+      (summary?.powerZoneSeconds ?? []).forEach((seconds, index) => {
+        powerZoneSeconds[index] = (powerZoneSeconds[index] ?? 0) + seconds;
+      });
     }
     const totalPowerZoneSeconds = powerZoneSeconds.reduce(
       (sum, seconds) => sum + seconds,
