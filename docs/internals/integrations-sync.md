@@ -242,8 +242,142 @@ layer). #1772 kept the rule and **moved the one place**: a recurring provider's
 setup page is its HOME, so it renders the history table itself
 (`components/integrations/SyncHistoryTable.tsx`) and Data → Review became an
 inbox that links back to it. `components/IntegrationSyncHistoryLink.tsx` now
-serves only the ONE-OFF archive importers (Fitbit Takeout, patient portals),
-whose entries really do live in Review's chronological Imports feed.
+serves only the ATTENDED providers (Fitbit Takeout, patient portals — the
+`KIND_DELIVERY` family, #2301), whose entries really do live in Review's
+chronological Imports feed.
+
+**The DELIVERY axis (#2301): who moves the data.** The state model below is one
+vocabulary of connection verdicts, and four of the nine registered providers have
+no connection at all. `lib/integrations/delivery.ts` declares the axis that was
+always implied:
+
+```ts
+export type IntegrationDelivery = "scheduled" | "attended" | "outbound";
+export const KIND_DELIVERY: Record<IntegrationKind, IntegrationDelivery> = {
+  push: "scheduled",
+  oauth: "scheduled",
+  token: "scheduled",
+  public: "scheduled",
+  archive: "attended",
+  "external-attended": "attended",
+  feed: "outbound",
+};
+```
+
+- **`scheduled`** — data moves without a person present: allos polls, or the source
+  pushes on its own schedule. **The only family for which "is the connection
+  working?" is a question.**
+- **`attended`** — a person must act for anything to arrive. Allos cannot start it,
+  cannot retry it, and may never call it late.
+- **`outbound`** — allos publishes; nothing arrives, and no runs are recorded.
+
+**Derived from the KIND, never declared per provider**, because the kind already
+encodes it and two providers of one kind cannot differ — a per-provider field would
+be a second source of truth for a fact the kind already states. The
+`Record<IntegrationKind, …>` IS the enforcement: a new kind is a build error until it
+declares its delivery, the same idiom as `FAMILIES: Record<ReconcileFamily, …>`.
+
+It replaced four hand-rolled subsets, each a different one:
+
+| Retired                                                        | Was                                                                                                                                                                                   | Now                                                                                                                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RECURRING_SOURCE_KINDS` (`lib/queries/integrations.ts`)       | a `Set<string>` naming 4 of the 7 kinds; `public` was once missing, which left Weather's successful history unreachable while its failures still showed under Needs attention (#1614) | `isScheduledKind(kind)`                                                                                                                                                                         |
+| `WHERE provider = 'fitbit-takeout'` (`lib/queries/imports.ts`) | the two-member attended family enumerated in SQL by naming ONE member                                                                                                                 | a bound `IN (…)` over `integrationsWithDelivery("attended")`                                                                                                                                    |
+| `syncVocabularyForKind(kind: string)`                          | untyped, so `archive`/`external-attended` fell into the polled dialect with no exhaustiveness to fail                                                                                 | `kind: IntegrationKind`, exhaustive switch (same VALUES — the typing is the guard)                                                                                                              |
+| `syncRunNounForKind(kind: string)`                             | two `if`s and a default `"sync"`                                                                                                                                                      | `kind: IntegrationKind` → `SyncRunNoun \| null`, with `"import"` (archive), `"upload"` (external-attended) and **`null` for `feed`** — a noun for a run is a fiction where no runs are recorded |
+
+`pluralRunNoun` became a declared `Record<SyncRunNoun, string>` at the same time: its
+`${noun}es` suffix rule was right for exactly the three nouns that existed and yields
+"importes"/"uploades" for the two added.
+
+**Three standing families, one union, one consumer table each (#2301).** Verified on
+a prod snapshot: Fitbit Takeout rendered **"Connected", green** for a ten-day-old file
+import; the calendar feed rendered **"Connected" plus a permanent "No syncs yet"**
+because nothing will ever sync in; patient portals rendered **"Intermittent"**, a
+flapping-CONNECTION word for a hand-run tool whose silence tolerance is `null`, making
+the standing's own contract vacuous. `standingBadge` returned `tone: "good"` for
+`healthy` and `never-synced`, and _good_ is a health verdict — the one claim allos
+cannot make about a source it does not drive.
+
+```ts
+type ScheduledStanding =
+  | "healthy"
+  | "partial"
+  | "intermittent"
+  | "failing"
+  | "needs-reauth"
+  | "not-connected"
+  | "never-synced";
+type AttendedStanding =
+  "imported" | "attempt-failed" | "never-imported" | "not-set-up";
+type OutboundStanding = "feed-enabled" | "feed-off";
+```
+
+`providerStanding()` takes the delivery and dispatches to one private derivation per
+family, each returning its own subtype — **the producer is where illegal combinations
+become unrepresentable**, so no future code path can hand an attended provider
+`failing`. The seven-state derivation moved into the `scheduled` branch verbatim: the
+#2263 silence rule, `intermittent`, and the flap window are untouched for the providers
+they were written for, and no scheduled verdict moved.
+
+The attended vocabulary was **promoted, not invented**. Two surfaces had already opted
+out of the shared model rather than be described wrongly by it, and both had
+hand-rolled the honest words — the Fitbit page's `Last import ${when}.` /
+"Set up, but nothing imported yet." / "No archive imported yet.", and `lib/portal-status.ts`
+("this integration is attended, so a quiet login is a login nobody has run yet, not a
+broken one"). `attempt-failed` is the state both lacked; before this a failed Takeout
+import read `intermittent`.
+
+| State            | When                         | Badge                         | Tone        | Headline                         |
+| ---------------- | ---------------------------- | ----------------------------- | ----------- | -------------------------------- |
+| `imported`       | last attempt succeeded       | "Last import" / "Last upload" | **neutral** | "Imported" / "Uploaded" (+ when) |
+| `attempt-failed` | last recorded attempt failed | "Last import failed"          | caution     | "The last import failed"         |
+| `never-imported` | set up, nothing in yet       | "Nothing imported yet"        | neutral     | "Set up — nothing imported yet"  |
+| `not-set-up`     | no connection, no history    | "Not set up"                  | neutral     | "Not set up"                     |
+| `feed-enabled`   | outbound feed live           | "Feed enabled"                | neutral     | "Publishing to your calendar"    |
+| `feed-off`       | outbound feed disabled       | "Feed off"                    | neutral     | "Feed off"                       |
+
+- **Tone is never `good` outside the scheduled family.** Green asserts health; for a
+  source allos does not drive the honest statement is only _when_ something last
+  arrived, and the reader decides whether that is fine.
+- **No `needs-reauth` for attended.** A revoked upload token surfaces as a failed
+  attempt, which is what the user sees and acts on. Fewer states, same information.
+- **`not-set-up` rather than `not-connected`**, because "Not connected" frames a file
+  import as a link you failed to make.
+- **`attempt-failed` is an attention item and never an escalation.** It joins
+  `partial` and `not-connected` in `needsAttention` — expanded in Review, no badge, no
+  digest 🔌 line. `standingEscalates` stays exactly `failing || needs-reauth`, both
+  scheduled-only, so **no attended or outbound state can ever escalate**. That is the
+  property that makes the split worth doing rather than three more members on a flat
+  union: only the user knows whether they will run the tool again, and a digest line
+  about a portal tool last touched on someone's laptop is the crying-wolf failure
+  #1880 exists to prevent.
+- **Nothing about runs renders for an outbound provider.** `StatusFact` returns null
+  and the status header suppresses "No syncs yet" — that string is a promise a sync is
+  coming, and the calendar card had been making it permanently since it shipped.
+- **`escalationPolicyLabel` gained the attended inverse.** It returned `null` for an
+  exempt provider (honest silence); an attended page now states the positive instead —
+  _"This source is only ever as fresh as your last import — allos never marks it late,
+  because only you can start it."_ Outbound stays silent.
+- **`standingUnconfigured`** answers "was this ever set up at all" across all three
+  families (`not-connected` / `not-set-up` / `feed-off`), so the Import grid's
+  status-card-vs-pitch-card decision is one rule rather than a member list.
+
+**The Imports feed reads the FAMILY, not the provider (#2301).** `getImportDocumentsFeed`
+merges documents, paste/CSV jobs and every **attended** provider's runs — a bound
+`IN (…)` built from `integrationsWithDelivery("attended")`. Before this it named
+`fitbit-takeout` alone, so patient-portals' recorded runs, failures included, appeared
+on **no** Review surface at all: Connected sources excludes the kind, this feed
+excluded the provider, and `getImportIssues` cannot reach it (an attended provider is
+exempt from the silence rule, so it can never be `failing`).
+
+**Still scoped out, decided rather than deferred.** `silenceToleranceMinutes` stays a
+nullable field on `IntegrationDef` rather than becoming part of a delivery-discriminated
+union — `null` = exempt already reads correctly and is covered by #2263's completeness
+test. `PortalStatusTone` is not merged into `StatusTone`: portal rows are per-**login**
+and deliberately profile-less, a different grain about a different subject. And the two
+attended pages keep their hand-rolled status this round; adopting `IntegrationStatusHeader`
+there is a follow-up whose whole value is that it no longer lies.
 
 **One state model (#1772).** One provider used to be described by four surfaces
 in three visual languages: the Integrations grid card, the setup page's status
@@ -772,8 +906,10 @@ SELECT-before-compare and routes the insert/update/unchanged split through the
 shared `classifyUpsert`/`tallyUpsert`, and each run appends one
 `integration_sync_events` row under the acting profile (the cache has no
 manually-entered rows, so the "never overwrite a manual row" invariant is
-satisfied by there being none). Since #1614 the `public` kind is admitted to
-`RECURRING_SOURCE_KINDS`, so Weather renders as a Connected source in Data →
+satisfied by there being none). Since #1614 the `public` kind counts as a
+recurring source — declared since #2301 as `KIND_DELIVERY.public === "scheduled"`,
+which retired the hand-written `RECURRING_SOURCE_KINDS` set that had omitted it — so
+Weather renders as a Connected source in Data →
 Review instead of surfacing only under Needs attention when failing; since #1772
 that means a one-line healthy row there and the full history on its own setup
 page, reported in the CACHE dialect (revised forecast readings, not records). The two-sided **UV-dose model** is ONE pure

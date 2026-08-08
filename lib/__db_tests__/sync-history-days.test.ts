@@ -127,7 +127,7 @@ describe("a day of ~70 pushes, as the source page receives it", () => {
     expect(day.runs).toBe(state.history.length);
     expect(day.runs).toBeGreaterThan(1);
     expect(
-      syncDayLabel(day, syncRunNounForKind(state.kind), state.vocabulary)
+      syncDayLabel(day, syncRunNounForKind(state.kind)!, state.vocabulary)
     ).toMatch(/^\d+ pushes · \d+ new · \d+ changed$/);
   });
 

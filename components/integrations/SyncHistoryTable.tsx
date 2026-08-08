@@ -62,9 +62,13 @@ export default function SyncHistoryTable({
   const norm = runWindowNorm(history, vocabulary);
   // The visible escalation policy (#1880 item 1): the page states the one shared
   // rule, so the amber/red the badge and digest will show is never a surprise.
+  // #2301: for an ATTENDED source this states the inverse instead of nothing — allos
+  // never marks it late, because only the reader can start it — and for an OUTBOUND
+  // one it stays silent, since nothing arrives to be late.
   const policy = escalationPolicyLabel(
     silenceToleranceMinutes(getIntegration(state.id)),
-    noun
+    noun,
+    state.delivery
   );
 
   const toRun = (ev: IntegrationSyncEvent): SyncRunView => {
@@ -94,36 +98,38 @@ export default function SyncHistoryTable({
     };
   };
 
-  const days: SyncDayView[] = groupSyncDays(history, state.timeZone).map(
-    (day) => ({
-      day: day.day,
-      label: syncDayLabel(day, noun, vocabulary),
-      attention: syncDayAttention(day),
-      newestAt: day.newestAt,
-      entries: day.entries.map((entry): SyncDayEntryView => {
-        if (entry.kind === "run") {
-          return { kind: "run", reason: entry.reason, run: toRun(entry.ev) };
-        }
-        if (entry.kind === "failure-run") {
+  // A provider with no run NOUN records no runs (the outbound feed, #2301), so it has
+  // no history to group — and the day labels, which count runs, have nothing to name.
+  const days: SyncDayView[] = !noun
+    ? []
+    : groupSyncDays(history, state.timeZone).map((day) => ({
+        day: day.day,
+        label: syncDayLabel(day, noun, vocabulary),
+        attention: syncDayAttention(day),
+        newestAt: day.newestAt,
+        entries: day.entries.map((entry): SyncDayEntryView => {
+          if (entry.kind === "run") {
+            return { kind: "run", reason: entry.reason, run: toRun(entry.ev) };
+          }
+          if (entry.kind === "failure-run") {
+            return {
+              kind: "failure-run",
+              count: entry.runs.length,
+              newestAt: entry.runs[0].at,
+              oldestAt: entry.runs[entry.runs.length - 1].at,
+              reason: failureRunReason(entry.runs.length, entry.error),
+              runs: entry.runs.map(toRun),
+            };
+          }
           return {
-            kind: "failure-run",
-            count: entry.runs.length,
+            kind: "range",
+            label: syncRangeLabel(entry.runs, noun, vocabulary),
             newestAt: entry.runs[0].at,
             oldestAt: entry.runs[entry.runs.length - 1].at,
-            reason: failureRunReason(entry.runs.length, entry.error),
             runs: entry.runs.map(toRun),
           };
-        }
-        return {
-          kind: "range",
-          label: syncRangeLabel(entry.runs, noun, vocabulary),
-          newestAt: entry.runs[0].at,
-          oldestAt: entry.runs[entry.runs.length - 1].at,
-          runs: entry.runs.map(toRun),
-        };
-      }),
-    })
-  );
+        }),
+      }));
 
   return (
     <div className="card" data-testid="sync-history">

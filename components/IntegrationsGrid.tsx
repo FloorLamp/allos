@@ -9,6 +9,8 @@ import {
   formatSyncOutcome,
   standingBadge,
   standingEscalates,
+  standingUnconfigured,
+  syncRunNounForKind,
 } from "@/lib/integrations/provider-state";
 import StatusBadge from "./integrations/StatusBadge";
 import SyncTimestamp from "./integrations/SyncTimestamp";
@@ -42,6 +44,23 @@ interface GridEntry {
 // ask first. All projections of the shared state model — no second accounting.
 function StatusFact({ state }: { state: IntegrationState }) {
   const { latest, standing } = state;
+  // OUTBOUND states nothing about runs (#2301). "No syncs yet" is a promise that a
+  // sync is coming, and for a feed the calendar client pulls, none ever is — the
+  // calendar card had been making that promise permanently since it shipped.
+  if (state.delivery === "outbound") return null;
+  if (standing === "attempt-failed") {
+    // Caution, not alarm: the run that failed is the one the person started, and
+    // whether there is another is theirs to decide.
+    return (
+      <p className="mt-2 break-words text-sm text-amber-700 dark:text-amber-300">
+        {latest?.error ?? "The last import failed"}
+      </p>
+    );
+  }
+  // An attended provider with nothing in yet says so in its BADGE ("Nothing imported
+  // yet"), so there is no second sentence to write — and "No syncs yet" would be the
+  // wrong word for it anyway.
+  if (state.delivery === "attended" && !latest) return null;
   if (standing === "intermittent") {
     return (
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -93,7 +112,7 @@ function StatusCard({
   state: IntegrationState;
 }) {
   const attention = standingEscalates(state.standing);
-  const badge = standingBadge(state.standing);
+  const badge = standingBadge(state.standing, syncRunNounForKind(state.kind));
   return (
     <div
       className={`card h-full transition hover:shadow-md ${
@@ -180,12 +199,15 @@ function LinkedCard({
 }
 
 // Is this provider's card a compact STATUS card? Anything set up and still linked:
-// escalated, flapping, partial, healthy, or waiting on its first run. A removed
-// (`not-connected`) provider gets the pitch again — its owner unbought it.
+// escalated, flapping, partial, healthy, waiting on its first run, or — for the
+// families allos does not drive — imported, failed, or publishing. A provider that was
+// never set up or was later removed gets the pitch again; `standingUnconfigured` owns
+// that decision across all three delivery families (#2301), so this component no
+// longer names `not-connected` and misses its attended and outbound twins.
 function isStatusCard(
   state: IntegrationState | null
 ): state is IntegrationState {
-  return !!state && state.standing !== "not-connected";
+  return !!state && !standingUnconfigured(state.standing);
 }
 
 export default function IntegrationsGrid({ profileId }: { profileId: number }) {
