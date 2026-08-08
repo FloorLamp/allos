@@ -93,9 +93,9 @@ export interface Reading {
   date: string;
   /**
    * The absolute instant, where the row records one: `metric_samples.start_time`,
-   * or `body_metrics.occurred_at` when a time was stated (#2235). Null means the
-   * reading is day-grain — `medical_records` still always answers null here
-   * (#2154 is the filed fix for its half).
+   * or the stated `occurred_at` on `body_metrics` (#2235) and `medical_records`
+   * (#2154). Null means the reading is day-grain — honest absence, one meaning
+   * across all three stores.
    */
   measuredAt: string | null;
   source: ReadingSource;
@@ -223,6 +223,8 @@ export interface MetricSampleReadingRow {
 export interface ObservationReadingRow {
   id: number;
   date: string;
+  /** The stated event instant (migration 165, #2154), or NULL = not stated. */
+  occurred_at?: string | null;
   value_num: number | null;
   unit?: string | null;
   name?: string | null;
@@ -308,7 +310,11 @@ export function readingFromObservation(
     value: row.value_num,
     unit: row.unit?.trim() ?? "",
     date: row.date,
-    measuredAt: null,
+    // The row's stated `occurred_at` (#2154): the instant the reading was
+    // taken, when somebody — the user, or the source document/device — said
+    // so. NULL stays NULL: honest day-grain absence, exactly as the two stream
+    // stores answer it.
+    measuredAt: row.occurred_at ?? null,
     source: readingSourceFor({
       sourceKey: row.source,
       documentId: row.document_id,
@@ -329,7 +335,7 @@ export function readingFromObservation(
 /**
  * Collapse readings that are the SAME physical measurement presented twice.
  *
- * The key is (identity, date, SOURCE, value), where `source` is the NORMALIZED
+ * The GROUP is (identity, date, SOURCE, value), where `source` is the NORMALIZED
  * `ReadingSource` this model classifies with — not the row's raw `source` column
  * (#2005).
  *
@@ -340,34 +346,75 @@ export function readingFromObservation(
  * already treats those as ONE provenance. Two spellings of one fact must not make
  * two readings out of one, so the collapse asks the same question the shape does.
  *
- * The VALUE is in the key because it must be: a same-day fever curve is several
+ * The VALUE is in the group because it must be: a same-day fever curve is several
  * genuinely different Body Temperature readings from one source on one date
  * (#800/#843), and a (date, source) key alone would silently drop all but one of
  * them.
  *
+ * THE INSTANT SHARPENS THE GROUP — where both sides actually carry one (#2154).
+ * Two readings of one value on one day that BOTH state instants, and state
+ * DIFFERENT ones, are two real readings (the fever curve's same-value case,
+ * finally distinguishable) and both survive. An instant-less reading makes no
+ * claim about when, so it still collapses into its group rather than doubling a
+ * timed twin of the same value/day — the #2005 rule the instant must not undo: a
+ * hand-entered untimed reading beside a timed import of the same measurement is
+ * one reading, not two. (When several timed members exist, the untimed one folds
+ * into the group's first — caller order decides, exactly as ties always have.)
+ * Instants are compared as the strings the stores hand over; the only place two
+ * conventions could meet in one group has no real member today (a manual
+ * metric_samples stamp vs. a manual observation of the same quantity — placement
+ * routes those to one store).
+ *
  * The consequence to state out loud: two DEVICES that report the same value on the
- * same day now collapse, because both classify as `wearable`. That is the right
- * answer for a SERIES — charting one day's 52 bpm twice skews every average drawn
- * over it — and "which device said what" is a different question with its own
- * reader (`getStreamReadings`, and the source-comparison surfaces), not something
- * a folded series was ever going to answer.
+ * same day (with no instants, or the same one) still collapse, because both
+ * classify as `wearable`. That is the right answer for a SERIES — charting one
+ * day's 52 bpm twice skews every average drawn over it — and "which device said
+ * what" is a different question with its own reader (`getStreamReadings`, and the
+ * source-comparison surfaces), not something a folded series was ever going to
+ * answer.
  *
  * The representative is the reading that carries the MOST: an observation with
- * provenance wins over a bare stream row, so folding stores together never costs a
- * document link. Ties keep the first, so the caller's order decides.
+ * provenance wins over a bare stream row (even over one carrying an instant —
+ * folding stores together never costs a document link), then a timed reading wins
+ * over an untimed twin. Remaining ties keep the first, so the caller's order
+ * decides.
  */
 export function dedupeReadings(readings: readonly Reading[]): Reading[] {
-  const byKey = new Map<string, Reading>();
+  const kept: Reading[] = [];
+  // Group key -> indices into `kept` (one entry per surviving instant slot).
+  const groups = new Map<string, number[]>();
+  const carriesMore = (kept: Reading, r: Reading): boolean => {
+    if (!kept.provenance && r.provenance) return true;
+    if (kept.provenance && !r.provenance) return false;
+    return kept.measuredAt == null && r.measuredAt != null;
+  };
   for (const r of readings) {
     const key = `${r.identity.toLowerCase()}|${r.date}|${r.source}|${r.value}`;
-    const kept = byKey.get(key);
-    if (!kept) {
-      byKey.set(key, r);
+    const members = groups.get(key);
+    if (!members) {
+      groups.set(key, [kept.push(r) - 1]);
       continue;
     }
-    if (!kept.provenance && r.provenance) byKey.set(key, r);
+    let target = -1;
+    if (r.measuredAt != null) {
+      // A timed reading merges with its exact instant, else with an untimed
+      // member (the same measurement presented without its time), else it is a
+      // new reading of the group's value at a different moment.
+      target =
+        members.find((i) => kept[i].measuredAt === r.measuredAt) ??
+        members.find((i) => kept[i].measuredAt == null) ??
+        -1;
+    } else {
+      // An untimed reading claims nothing about when: collapse into the group.
+      target = members[0];
+    }
+    if (target === -1) {
+      members.push(kept.push(r) - 1);
+      continue;
+    }
+    if (carriesMore(kept[target], r)) kept[target] = r;
   }
-  return [...byKey.values()];
+  return kept;
 }
 
 /** Oldest → newest, the order every series surface reads in. */
@@ -402,10 +449,12 @@ export interface FoldedPoint {
 // It is deliberately SOURCE-BLIND, which is the one place `dedupeReadings`' key
 // cannot be applied verbatim: a stream series point is a DAILY FOLD of that day's
 // rows (source-priority resolved upstream), so it has no single provenance to
-// compare — asking it for one would invent an answer. Every comparison where both
-// sides really are `Reading`s goes through `dedupeReadings`; this is that same key
-// projected onto the one side that lost its source on the way to becoming a chart
-// point.
+// compare — asking it for one would invent an answer. INSTANT-BLIND for the same
+// reason (#2154): the folded point lost its rows' instants on the way to becoming
+// a chart point, so a timed observation of the same (date, value) still reads as
+// covered rather than doubling the day. Every comparison where both sides really
+// are `Reading`s goes through `dedupeReadings`; this is that same key projected
+// onto the one side that lost its source on the way to becoming a chart point.
 function streamCoverageKey(p: { date: string; value: number }): string {
   return `${p.date}|${p.value}`;
 }

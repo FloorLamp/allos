@@ -183,9 +183,11 @@ describe("registration — the domain is an instance of the substrate", () => {
 
   it("logs through the measurements quick-add's VITALS group", () => {
     // No new one-tap affordance class: the blow rides the form every other vital
-    // rides, which is why no #2130 census row is needed for it.
+    // rides, which is why no #2130 census row is needed for it. Its clock time is
+    // the form's ONE shared Time since #2154's fold — the per-measure
+    // `m-peak-flow-time` input is gone with the convention it fed.
     expect(measurementFieldGroup("m-peak-flow")).toBe("vitals");
-    expect(measurementFieldGroup("m-peak-flow-time")).toBe("vitals");
+    expect(measurementFieldGroup("m-peak-flow-time")).toBeNull();
   });
 });
 

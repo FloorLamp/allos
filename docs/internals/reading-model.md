@@ -33,8 +33,8 @@ interface Reading {
   unit: string;
   date: string; // profile-local day
   measuredAt: string | null; // the instant, where the row records one:
-  // metric_samples.start_time, or a stated body_metrics.occurred_at (#2235).
-  // medical_records still always answers null — #2154 is its filed half.
+  // metric_samples.start_time, or the stated occurred_at on body_metrics
+  // (#2235) and medical_records (#2154). Null = day-grain, in every store.
   source: "wearable" | "manual" | "import" | "lab";
   store: ReadingStore; // the physical row a surface can still reach
   rowId: number;
@@ -101,8 +101,12 @@ surfaces read rather than a parallel realization of it. The two halves run insid
 `readTx` so they describe one snapshot.
 
 `dedupeReadings()` collapses one physical measurement presented twice — the same
-reading recorded in two stores, or a re-push beside its own earlier row. Its key
-is **(identity, date, normalized `ReadingSource`, value)**.
+reading recorded in two stores, or a re-push beside its own earlier row. Its
+group is **(identity, date, normalized `ReadingSource`, value)**, sharpened by
+the instant **only where both sides state one** (#2154): two same-value readings
+with different stated instants are two real readings (the fever curve's
+same-value case), while an instant-less reading claims nothing about when and
+still collapses into its group — the #2005 collapse the instant must not undo.
 
 - **The source in the key is the NORMALIZED one** (#2005), never the row's raw
   `source` column. The stores spell one provenance two ways — a hand-entered
@@ -119,8 +123,9 @@ is **(identity, date, normalized `ReadingSource`, value)**.
   different question with its own reader (`getStreamReadings`, the
   source-comparison surfaces).
 
-The representative is the reading carrying the most, so a fold never costs a
-document link.
+The representative is the reading carrying the most — provenance first, then a
+stated instant — so a fold never costs a document link, and never costs a stated
+time to an untimed twin.
 
 `streamSourcesForIdentity()` **resolves its argument** through `readingIdentity`
 rather than comparing it raw, so a canonical name and its identity answer the

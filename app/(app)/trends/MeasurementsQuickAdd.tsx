@@ -308,11 +308,9 @@ export default function MeasurementsQuickAdd({
       spo2: s("spo2"),
       temperature: s("temperature"),
       tempUnit: s("temp_unit"),
-      temperatureTime: s("temp_time"),
       sleepHours: s("sleep_hours"),
       hrv: s("hrv"),
       peakFlow: s("peak_flow"),
-      peakFlowTime: s("peak_flow_time"),
     };
     const growth = {
       height: s("height"),
@@ -408,7 +406,16 @@ export default function MeasurementsQuickAdd({
           occurredAt: s("occurred_at"),
         });
       }
-      if (hasVitals) await enqueue("vitals", date, vitals);
+      if (hasVitals) {
+        // The sitting's one stated time travels with the vitals intent too
+        // (#2154): a queued evening BP keeps its statement, and an explicitly
+        // empty Time replays as "no time" — the same trichotomy the online
+        // action reads off the same hidden field.
+        await enqueue("vitals", date, {
+          ...vitals,
+          occurredAt: s("occurred_at"),
+        });
+      }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
@@ -593,8 +600,10 @@ export default function MeasurementsQuickAdd({
         </UnitSuffix>
       </Field>
     ),
-    // The #800/#843 fever-curve time field rides WITH temperature — inside the same
-    // field, so no reflow can separate a temperature from when it was taken.
+    // WHEN a temperature was taken is the sitting's one Time (the shared
+    // WhenControl above the groups) — the per-measure time input folded into it
+    // (#2154), and the write boundary lands the statement on the row's own
+    // occurred_at, keeping the #800/#843 fever curve keyed by real instants.
     temperature: (
       <Field
         key="temperature"
@@ -625,19 +634,6 @@ export default function MeasurementsQuickAdd({
             Detected °{tempUnitDetection.detectedUnit} from the reading.
           </p>
         )}
-        <label
-          className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
-          htmlFor="m-temp-time"
-        >
-          Time taken (optional)
-        </label>
-        <input
-          id="m-temp-time"
-          data-testid="measurements-temp-time"
-          type="time"
-          name="temp_time"
-          className="input mt-1"
-        />
       </Field>
     ),
     sleep: (
@@ -686,22 +682,10 @@ export default function MeasurementsQuickAdd({
             className="input pr-14"
           />
         </UnitSuffix>
-        {/* Peak flow is monitored once or twice a day during a flare (#1850), so the
-            blow carries the clock time it was taken at — without it the evening
-            reading would correct the morning's instead of joining it. */}
-        <label
-          className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
-          htmlFor="m-peak-flow-time"
-        >
-          Time taken (optional)
-        </label>
-        <input
-          id="m-peak-flow-time"
-          data-testid="measurements-peak-flow-time"
-          type="time"
-          name="peak_flow_time"
-          className="input mt-1"
-        />
+        {/* Peak flow is monitored once or twice a day during a flare (#1850), so
+            the blow carries a clock time — the sitting's one Time above (#2154's
+            fold), which is what lets an evening reading join the morning's
+            instead of correcting it. */}
       </Field>
     ),
     restingHr: (
@@ -806,9 +790,11 @@ export default function MeasurementsQuickAdd({
           and the hidden pair below is what actually posts — so the Server Action
           and the offline queue read the same two names whatever the control
           renders. The Time never defaults to now (#2053); the control offers a
-          one-tap "Now" while the chosen day is today. The two per-measure time
-          inputs (temperature, peak flow) deliberately stay: #2154 lands second
-          and folds them into this one control. */}
+          one-tap "Now" while the chosen day is today. This ONE Time is the whole
+          sitting's statement — #2154 folded the two per-measure time inputs
+          (temperature, peak flow) into it, and the write boundary carries it to
+          body_metrics and medical_records `occurred_at` and the peak-flow
+          sample's own instant alike. */}
       <input type="hidden" name="date" value={when.date} readOnly />
       <input
         type="hidden"

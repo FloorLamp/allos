@@ -36,16 +36,15 @@ export type TempUnit = "C" | "F";
 export type GlucoseUnit = "mg/dL" | "mmol/L";
 
 // A vital destined for medical_records (reference-range flagged). `canonical`/
-// `unit`/`category` are the exact canonical shape the HC parser writes. `note` rides
-// the row's `notes` column — for a temperature reading it's the profile-local "HH:MM"
-// clock time (#800/#843), so repeat same-day readings build a fever curve. Absent for
-// every other vital (and untimed temperatures), so it never widens the persisted row.
+// `unit`/`category` are the exact canonical shape the HC parser writes. WHEN the
+// reading was taken is no longer part of this row: the sitting's one stated time
+// lands on `medical_records.occurred_at` at the write boundary (#2154), retiring
+// the #800/#843 "HH:MM"-in-notes convention (migration 171 moved the stored ones).
 export interface VitalMedicalRow {
   canonical: string;
   category: "vitals" | "lab";
   unit: string;
   value_num: number; // canonical unit
-  note?: string;
 }
 
 // A vital destined for metric_samples, keyed by `metric`. `value` is canonical.
@@ -62,9 +61,9 @@ export interface VitalSampleRow {
 // It exists because peak flow needs something the per-day sample upsert cannot give
 // it: `at` is the profile-local "HH:MM" the blow was taken, and it becomes the row's
 // own instant, which is what lets a morning and an evening reading on one flare day
-// be TWO readings instead of the evening overwriting the morning. (A temperature
-// solved the same problem in `medical_records` with a clock-time note, #800/#843; the
-// tall store has a real column for it, so the reading keeps a sortable instant.)
+// be TWO readings instead of the evening overwriting the morning. Since #2154 the
+// live source of `at` is the sitting's one stated time (applied in insertVitals);
+// the legacy `peakFlowTime` field feeds it only for pre-fold queued intents.
 export interface VitalReadingRow {
   canonical: string;
   unit: string;
@@ -81,14 +80,19 @@ export interface VitalsRawInput {
   spo2?: string | null;
   temperature?: string | null;
   tempUnit?: string | null; // 'C' | 'F' (defaults F — the canonical/display unit)
-  temperatureTime?: string | null; // optional "HH:MM" reading time (#800/#843 fever curve)
+  // LEGACY per-measure "HH:MM" times (#800/#843 temperature, #1850 peak flow).
+  // The form's two per-measure time inputs folded into the ONE sitting-scoped Time
+  // control (#2154), so a live client never posts these — they survive only so an
+  // offline intent queued before the fold still replays with its stated time
+  // (lib/offline/writes.ts::insertVitals maps them at the boundary).
+  temperatureTime?: string | null;
   sleepHours?: string | null;
   hrv?: string | null;
   gripStrength?: string | null; // kg
   chairStand?: string | null; // reps in 30 s
   balance?: string | null; // single-leg stance seconds
   peakFlow?: string | null; // L/min
-  peakFlowTime?: string | null; // optional "HH:MM" reading time (#1850 flare monitoring)
+  peakFlowTime?: string | null; // legacy "HH:MM" reading time — see temperatureTime
 }
 
 // Canonical names/units — the single source of truth shared by the action + tests,
@@ -287,9 +291,10 @@ export function temperatureRangeError(degF: number): string | null {
 
 // Normalize a caller-supplied clock time to a canonical "HH:MM" (24h, zero-padded)
 // string, or null when it isn't a plausible time. The ONE clock-time parser shared by
-// the vitals temperature note and the temperature-log write core (#800/#843), so a
-// native <input type="time"> value ("07:00") and a hand-typed "7:00" both land as the
-// same day-agnostic display note. Never parsed for day attribution — that's `date`.
+// the temperature-log write core, the legacy queued-intent times, and the peak-flow
+// reading time, so a native <input type="time"> value ("07:00") and a hand-typed
+// "7:00" both land as the same wall clock. Never parsed for day attribution —
+// that's `date`.
 export function normalizeClockTime(
   time: string | null | undefined
 ): string | null {
@@ -465,17 +470,15 @@ export function normalizeVitalsInput(
 
   const tempRaw = numOrNull(input.temperature);
   if (tempRaw != null) {
-    // A timed reading rides its "HH:MM" clock time on the row's note for the fever
-    // curve (#800/#843); an untimed one leaves `note` absent so the persisted row is
-    // unchanged. Only temperature carries a time (the only vital with a fever curve).
-    const note = normalizeClockTime(input.temperatureTime);
+    // WHEN the reading was taken is the sitting's one stated time, applied at the
+    // write boundary (`medical_records.occurred_at`, #2154) — no more "HH:MM"
+    // riding the note (#800/#843, retired; migration 171 moved the stored ones).
     medical.push({
       ...VITAL_CANONICAL.temperature,
       value_num: toCanonicalTempF(
         tempRaw,
         resolveTemperatureUnit(tempRaw, input.tempUnit)
       ),
-      ...(note ? { note } : {}),
     });
   }
 

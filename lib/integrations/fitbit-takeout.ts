@@ -505,6 +505,10 @@ export function parseDailyVitalCsv(
     out.vitals.push({
       external_id: `${FITBIT_TAKEOUT_ID}:${spec.canonical}:${iso}`,
       date,
+      // NO occurred_at, deliberately (#2154): these are the vendor's DAILY
+      // AGGREGATE files, so the row is a day-grain reading — the timestamp in
+      // the dedupe key is a day label, not an event instant, and writing its
+      // midnight into occurred_at would claim a moment nobody measured.
       category: "vitals",
       name: spec.canonical,
       canonical: spec.canonical,

@@ -154,10 +154,11 @@ describe("the Reading mapping from each store's row shape", () => {
     ).toBeNull();
   });
 
-  it("dedupeReadings is unchanged by a body_metrics instant (#2235 non-goal)", () => {
-    // occurred_at is descriptive, never identity: two presentations of the same
-    // (identity, date, source, value) collapse whether or not one carries the
-    // instant — and differing instants do NOT make two readings out of one row.
+  it("dedupeReadings: an instant-less reading still collapses into its timed twin (#2154, the #2005 pin)", () => {
+    // occurred_at is descriptive, never identity: an untimed presentation of the
+    // same (identity, date, source, value) collapses against a timed one —
+    // whichever order they arrive in — or the double-count returns the moment a
+    // manual untimed row meets a timed import of the same measurement.
     const bare = readingFromBodyMetric(
       { id: 7, date: "2026-07-04", value: 52, source: null },
       RHR
@@ -172,10 +173,86 @@ describe("the Reading mapping from each store's row shape", () => {
       },
       RHR
     );
-    expect(dedupeReadings([bare, timed])).toHaveLength(1);
+    // Both orders, and the surviving representative carries the MOST: the timed
+    // reading wins the (equal-provenance) tie, so folding never costs a stated time.
+    expect(dedupeReadings([bare, timed])).toEqual([timed]);
+    expect(dedupeReadings([timed, bare])).toEqual([timed]);
     // Distinct values still stay distinct — the instant changed nothing about
-    // what the key reads.
+    // what the group reads.
     expect(dedupeReadings([timed, { ...bare, value: 53 }])).toHaveLength(2);
+  });
+
+  it("dedupeReadings: the instant SHARPENS the group where both sides state one (#2154)", () => {
+    // Two readings of ONE value on one day that both state instants — and state
+    // DIFFERENT ones — are two real readings (the fever curve's same-value case),
+    // while the same stated instant is the same reading presented twice.
+    const at0712 = readingFromBodyMetric(
+      {
+        id: 21,
+        date: "2026-07-05",
+        value: 51,
+        source: null,
+        occurred_at: "2026-07-05T07:12:00Z",
+      },
+      RHR
+    );
+    const at2140 = readingFromBodyMetric(
+      {
+        id: 22,
+        date: "2026-07-05",
+        value: 51,
+        source: null,
+        occurred_at: "2026-07-05T21:40:00Z",
+      },
+      RHR
+    );
+    expect(dedupeReadings([at0712, at2140])).toEqual([at0712, at2140]);
+    expect(
+      dedupeReadings([at0712, { ...at2140, measuredAt: at0712.measuredAt }])
+    ).toHaveLength(1);
+    // An untimed third reading of the same value claims nothing about when: it
+    // folds into the group (deterministically, the first member) rather than
+    // becoming a third point.
+    const bare = readingFromBodyMetric(
+      { id: 23, date: "2026-07-05", value: 51, source: null },
+      RHR
+    );
+    expect(dedupeReadings([at0712, at2140, bare])).toEqual([at0712, at2140]);
+  });
+
+  it("dedupeReadings: provenance still outranks an instant when picking the representative", () => {
+    // Folding stores together never costs a document link (#2005's rule kept):
+    // an untimed observation WITH provenance beats a timed bare stream row.
+    const provenanced = readingFromObservation({
+      id: 31,
+      date: "2026-07-06",
+      value_num: 52,
+      unit: "bpm",
+      canonical_name: "Resting Heart Rate",
+      source: null,
+      document_id: 9,
+    })!;
+    const timedBare = readingFromBodyMetric(
+      {
+        id: 32,
+        date: "2026-07-06",
+        value: 52,
+        source: null,
+        occurred_at: "2026-07-06T06:45:00Z",
+      },
+      RHR
+    );
+    // Same normalized source ('manual'... except provenance classifies as 'lab')
+    // — a lab reading and a manual one are DIFFERENT sources, so first pin that
+    // they never collapsed at all, then exercise the tie inside one source.
+    expect(dedupeReadings([provenanced, timedBare])).toHaveLength(2);
+    const provenancedManual = { ...provenanced, source: "manual" as const };
+    expect(dedupeReadings([timedBare, provenancedManual])).toEqual([
+      provenancedManual,
+    ]);
+    expect(dedupeReadings([provenancedManual, timedBare])).toEqual([
+      provenancedManual,
+    ]);
   });
 
   it("maps a metric_samples row, keeping its absolute instant", () => {
@@ -224,6 +301,35 @@ describe("the Reading mapping from each store's row shape", () => {
     // though its source stamp names the import.
     expect(r?.source).toBe("lab");
     expect(r?.store).toBe("medical_records");
+  });
+
+  it("maps an observation's stated occurred_at onto measuredAt (#2154)", () => {
+    // measuredAt finally means ONE thing across all three stores. The hard-coded
+    // null this replaces was the read model waiting for the column to exist.
+    const r = readingFromObservation({
+      id: 14,
+      date: "2026-06-30",
+      occurred_at: "2026-06-30T11:12:00Z",
+      value_num: 118,
+      unit: "mmHg",
+      canonical_name: "Blood Pressure Systolic",
+      source: "manual",
+    });
+    expect(r?.measuredAt).toBe("2026-06-30T11:12:00Z");
+    // Descriptive: the day attribution stays the row's `date`.
+    expect(r?.date).toBe("2026-06-30");
+    // NULL stays null — honest day-grain absence, never a midnight anchor.
+    expect(
+      readingFromObservation({
+        id: 15,
+        date: "2026-06-30",
+        occurred_at: null,
+        value_num: 76,
+        unit: "mmHg",
+        canonical_name: "Blood Pressure Diastolic",
+        source: "manual",
+      })?.measuredAt
+    ).toBeNull();
   });
 
   it("refuses a qualitative observation (no numeric value, no reading)", () => {

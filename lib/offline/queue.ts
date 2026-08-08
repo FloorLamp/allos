@@ -173,14 +173,23 @@ export interface VitalsPayload {
   tempUnit: string | null;
   sleepHours: string | null;
   hrv: string | null;
-  // The optional "HH:MM" reading time a temperature carries for the fever curve
-  // (#800/#843) — captured so a replayed reading keeps its clock time.
+  // The sitting's stated instant (#2154) — the ONE WhenControl time the form
+  // posts for the whole submission, generalizing the retired per-measure
+  // `temperatureTime` rather than growing siblings per vital. ISO instant, or
+  // null for the form's explicitly-empty Time. Absent on intents queued before
+  // the fold — replay then falls back to the legacy fields below. Validated
+  // server-side by the same acceptance gate the online path runs; never trusted.
+  occurredAt?: string | null;
+  // LEGACY: the per-measure "HH:MM" times the pre-fold form captured — the
+  // temperature's fever-curve time (#800/#843) and the peak-flow blow time
+  // (#1850). A NEW intent never carries them; an intent queued before the fold
+  // still sits in IndexedDB, and the replay keeps accepting both so its stated
+  // times survive (insertVitals maps them at the boundary).
   temperatureTime?: string | null;
-  // Peak expiratory flow and the clock time it was blown at (#1850). OPTIONAL for the
-  // same backward-compatibility reason as the fitness markers below: an intent queued
-  // before this shipped carries neither, and the server core treats an absent field
-  // exactly as an unfilled one. The TIME is what makes an offline morning blow and an
-  // offline evening blow replay as two readings rather than one.
+  // Peak expiratory flow (#1850). OPTIONAL for the same backward-compatibility
+  // reason as the fitness markers below: an intent queued before it shipped
+  // carries neither, and the server core treats an absent field exactly as an
+  // unfilled one.
   peakFlow?: string | null;
   peakFlowTime?: string | null;
   // The three #158 functional-fitness markers. OPTIONAL since #1486: they left the

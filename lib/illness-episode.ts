@@ -25,6 +25,7 @@ import { getConditions } from "./queries/clinical";
 import type { Condition } from "./types";
 import { symptomLabel } from "./symptoms";
 import { VITAL_CANONICAL, storedTempToF } from "./vitals-input";
+import { vitalReadingTime } from "./vitals-day";
 import {
   getIllnessSituations,
   getSituationEvents,
@@ -103,17 +104,24 @@ export function assembleIllnessEpisode(
   );
 
   // ── Temperature / fever curve (#800) ────────────────────────────────────────
+  // Reading times come off the row's own `occurred_at` (#2154 — migration 171
+  // moved the old "HH:MM"-in-notes convention into it), through the SAME
+  // vitalReadingTime the Trends vitals surfaces read, so the curve and the Today
+  // strip can never disagree about when a reading was taken. Untimed rows sort
+  // first within their day ('' < any instant), as the note-less rows always did.
   const tempRows = db
     .prepare(
-      `SELECT id, date, notes, value_num, unit, flag FROM medical_records
+      `SELECT id, date, occurred_at, external_id, value_num, unit, flag
+         FROM medical_records
         WHERE profile_id = ? AND canonical_name = ?
           AND date >= ? AND date <= ? AND value_num IS NOT NULL
-        ORDER BY date ASC, COALESCE(notes, '') ASC`
+        ORDER BY date ASC, COALESCE(occurred_at, '') ASC, id ASC`
     )
     .all(profileId, TEMP_CANONICAL, from, to) as {
     id: number;
     date: string;
-    notes: string | null;
+    occurred_at: string | null;
+    external_id: string | null;
     value_num: number;
     unit: string | null;
     flag: string | null;
@@ -132,7 +140,7 @@ export function assembleIllnessEpisode(
     temperatures.push({
       id: r.id,
       date: r.date,
-      time: /^\d{2}:\d{2}$/.test(r.notes ?? "") ? r.notes : null,
+      time: vitalReadingTime(r, tz),
       degF,
       flag: r.flag,
     });
@@ -238,7 +246,7 @@ export function assembleIllnessEpisode(
         promotedExternal != null && c.external_id === promotedExternal,
     }));
 
-  // ── Notes (symptom notes + timed temperature notes), oldest first ───────────
+  // ── Notes (symptom notes), oldest first ─────────────────────────────────────
   const notes: { date: string; text: string }[] = [];
   for (const series of symptoms) {
     for (const p of series.points) {

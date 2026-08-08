@@ -83,13 +83,12 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   "m-resting-hr": "vitals",
   "m-spo2": "vitals",
   "m-temperature": "vitals",
-  "m-temp-time": "vitals",
   "m-glucose": "vitals",
-  // Peak expiratory flow (#1850) and the clock time it was blown at. In VITALS
-  // because that is what it is — a measured respiratory vital sign, taken on purpose
-  // and then logged, which is exactly what the group's own copy describes.
+  // Peak expiratory flow (#1850). In VITALS because that is what it is — a
+  // measured respiratory vital sign, taken on purpose and then logged, which is
+  // exactly what the group's own copy describes. (Its clock time — like the
+  // temperature's — is the form's ONE shared Time since #2154's fold.)
   "m-peak-flow": "vitals",
-  "m-peak-flow-time": "vitals",
   "m-weight": "body",
   "m-body-fat": "body",
   "m-height": "body",

@@ -41,28 +41,27 @@ export interface VitalReadingRow {
   id?: number;
   date: string;
   value_num: number | null;
-  notes?: string | null;
   external_id?: string | null;
-  // The stated event instant (migration 165, #2235): canonical UTC `Z` shape, or
-  // null/absent for a day-grain reading. Highest-precedence time source below —
-  // it is the column that MEANS "when this reading was taken", where the notes
-  // HH:MM (#800) and the external_id instant are conventions riding other fields.
+  // The stated event instant (migration 165, #2154/#2235): canonical UTC `Z`
+  // shape, or null/absent for a day-grain reading. THE time source — the column
+  // that MEANS "when this reading was taken". (The retired #800 notes-"HH:MM"
+  // convention moved into it in migration 171, so notes are not read here at
+  // all.)
   occurred_at?: string | null;
 }
-
-// A wall-clock "HH:MM". Manual temperature readings store theirs in `notes` (the
-// #800 convention — medical_records.date is day-granular, so the clock time rides
-// the note).
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // The trailing ISO instant of an ingest external_id
 // ("health-connect:Blood Pressure Systolic:2026-07-25T07:10:00Z"). The canonical
 // name segment never contains a date, so the first date-shaped match IS the
-// timestamp.
+// timestamp. LEGACY-ROW SUPPORT ONLY (#2154): every current writer states the
+// instant in `occurred_at`, but a device row imported before that has it nowhere
+// else — the rolling-window re-sync backfills recent rows, the older tail keeps
+// only this encoding, and a backfill migration for a dedupe key's freetext was
+// deliberately not written. Remove this fallback only with that decision.
 const TRAILING_INSTANT = /(\d{4}-\d{2}-\d{2}T\S+)$/;
 
 // The reading's local clock time, or null when the row is genuinely day-granular
-// (a manual BP entry, a daily aggregate) and therefore has no time to show.
+// (an untimed manual entry, a daily aggregate) and therefore has no time to show.
 //
 // The row's `date` stays authoritative for WHICH day the reading belongs to. A
 // derived clock is only trusted when it lands back on that same day: if it doesn't,
@@ -72,11 +71,11 @@ export function vitalReadingTime(
   row: VitalReadingRow,
   tz: string
 ): string | null {
-  // The declared event column first (#2235): a stated `occurred_at` is the
-  // reading's own answer to "when", so the riding conventions below never
-  // override it. Same same-day gate as the ingest instant — a statement whose
-  // wall time no longer lands on the row's day (the profile's timezone changed
-  // since it was stated) shows no time rather than a wrong one.
+  // The declared event column first: a stated `occurred_at` is the reading's own
+  // answer to "when", so the legacy encoding below never overrides it. Same
+  // same-day gate as the ingest instant — a statement whose wall time no longer
+  // lands on the row's day (the profile's timezone changed since it was stated)
+  // shows no time rather than a wrong one.
   if (row.occurred_at) {
     const at = new Date(row.occurred_at);
     if (!Number.isNaN(at.getTime())) {
@@ -84,8 +83,6 @@ export function vitalReadingTime(
       if (parts.date === row.date) return parts.hhmm;
     }
   }
-  const note = (row.notes ?? "").trim();
-  if (HHMM.test(note)) return note;
   const match = TRAILING_INSTANT.exec(row.external_id ?? "");
   if (!match) return null;
   const at = new Date(match[1]);

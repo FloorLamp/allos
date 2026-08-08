@@ -36,23 +36,32 @@ import { resolveEpisodeAcrossProfiles } from "@/lib/illness-episode-store";
 import type { IllnessEpisode } from "@/lib/symptom-episode";
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  // Deterministic reading-time math whatever zone the host runs in: the fever
+  // curve's occurred_at instants below are on their row's day in UTC.
+  db.prepare(
+    "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')"
+  ).run(id);
+  return id;
 }
 
 function logTemp(profileId: number, date: string, time: string, degF: number) {
+  // The reading's clock time on the row's own occurred_at (#2154 — the retired
+  // notes-"HH:MM" convention is unrepresentable after migration 171).
   const id = Number(
     db
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, value_num, unit,
-            canonical_name, source, notes)
+            canonical_name, source, occurred_at)
          VALUES (?, ?, 'vitals', 'Body Temperature', ?, ?, 'degF',
                  'Body Temperature', 'manual', ?)`
       )
-      .run(profileId, date, String(degF), degF, time).lastInsertRowid
+      .run(profileId, date, String(degF), degF, `${date}T${time}:00Z`)
+      .lastInsertRowid
   );
   reconcileFlags(profileId, [id]);
 }
@@ -157,7 +166,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(a.temperatures.length).toBe(5);
     expect(a.maxTempF).toBe(102.4);
     expect(a.temperatures.filter((t) => t.flag === "high").length).toBe(4);
-    expect(a.temperatures[0].time).toBe("09:00"); // "HH:MM" from notes
+    expect(a.temperatures[0].time).toBe("09:00"); // profile-local, from occurred_at
     expect(a.latestTemp?.degF).toBe(98.9);
 
     // PRN meds: ibuprofen 3× with snapshotted amounts.

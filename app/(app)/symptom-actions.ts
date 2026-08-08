@@ -261,10 +261,11 @@ export async function deleteCustomSymptom(
 // a thermometer reading (°F/°C) that joins the EXISTING vitals series (canonical "Body
 // Temperature", degF) via the auth-blind logTemperatureCore — the same table/identity as
 // a Health Connect push, so it charts + flags like any other reading. The reading is
-// timestamped: the entry is "now", so its profile-local clock time rides `notes` for the
-// fever curve (multiple readings/day), and the caller may override with an explicit
-// "HH:MM" for a backfilled reading. Temperature surfaces on the dashboard, Timeline,
-// Trends, and the biomarkers browser, so all are revalidated.
+// timestamped: the entry is "now", so its profile-local clock time becomes the row's
+// own `occurred_at` (#2154) for the fever curve (multiple readings/day), and the
+// caller may override with an explicit "HH:MM" for a backfilled reading. Temperature
+// surfaces on the dashboard, Timeline, Trends, and the biomarkers browser, so all are
+// revalidated.
 export type TemperatureLogResult =
   | { ok: true; degF: number; flag: string | null; redFlag?: string | null }
   | { ok: false; error: string };
