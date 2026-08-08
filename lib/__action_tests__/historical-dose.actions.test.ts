@@ -61,17 +61,17 @@ describe("logHistoricalDose", () => {
 
     const log = db
       .prepare(
-        `SELECT date, amount, given_at, status
+        `SELECT date, amount, recorded_at, status
            FROM intake_item_logs WHERE dose_id = ? AND date = ?`
       )
       .get(doseId, date) as {
       date: string;
       amount: string;
-      given_at: string;
+      recorded_at: string;
       status: string;
     };
     expect(log).toMatchObject({ date, amount: "7.5 mg", status: "taken" });
-    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
       "8:30am"
     );
     expect(
@@ -193,12 +193,12 @@ describe("logHistoricalDose", () => {
     expect(result).toEqual({ ok: true });
     const log = db
       .prepare(
-        "SELECT date, occurred_at, given_at, amount, supply_adjusted FROM intake_item_logs WHERE id = ?"
+        "SELECT date, occurred_at, recorded_at, amount, supply_adjusted FROM intake_item_logs WHERE id = ?"
       )
       .get(logId) as {
       date: string;
       occurred_at: string;
-      given_at: string;
+      recorded_at: string;
       amount: string;
       supply_adjusted: number;
     };
@@ -207,12 +207,12 @@ describe("logHistoricalDose", () => {
       amount: "7.5 mg",
       supply_adjusted: 0,
     });
-    // The stated time lands in the event column; given_at is record history for
+    // The stated time lands in the event column; recorded_at is record history for
     // the amend path (#2228 decision 1) and keeps the original backfill's stamp.
     expect(formatGivenAtClock(getTimezone(profile.id), log.occurred_at)).toBe(
       "9:45am"
     );
-    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
       "8:00am"
     );
     expect(
@@ -399,18 +399,18 @@ describe("empty time: accepted on amend, refused on backfill", () => {
     expect(result).toEqual({ ok: true });
     const log = db
       .prepare(
-        "SELECT date, occurred_at, given_at, amount FROM intake_item_logs WHERE id = ?"
+        "SELECT date, occurred_at, recorded_at, amount FROM intake_item_logs WHERE id = ?"
       )
       .get(logId) as {
       date: string;
       occurred_at: string | null;
-      given_at: string;
+      recorded_at: string;
       amount: string;
     };
     expect(log.amount).toBe("10 mg");
     expect(log.occurred_at).toBeNull();
     expect(log.date).toBe(date);
-    expect(formatGivenAtClock(getTimezone(profile.id), log.given_at)).toBe(
+    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
       "8:00am"
     );
   });

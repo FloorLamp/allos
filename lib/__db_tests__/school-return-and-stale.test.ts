@@ -49,13 +49,13 @@ function makeSick(p: number, startDaysAgo: number) {
   ).run(p, shiftDateStr(today(p), -startDaysAgo));
 }
 
-// Insert a taken PRN administration of a named item at a fixed UTC given_at.
+// Insert a taken PRN administration of a named item at a fixed UTC recorded_at.
 // Returns the ids so a test can drive the real amend path against the log row.
 function addAntipyretic(
   p: number,
   name: string,
   date: string,
-  givenAtUtc: string
+  recordedAtUtc: string
 ): { itemId: number; logId: number } {
   const itemId = Number(
     db
@@ -76,10 +76,10 @@ function addAntipyretic(
   const logId = Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
          VALUES (?, ?, ?, '200 mg', ?, 'taken')`
       )
-      .run(dose, itemId, date, givenAtUtc).lastInsertRowid
+      .run(dose, itemId, date, recordedAtUtc).lastInsertRowid
   );
   return { itemId, logId };
 }
@@ -182,9 +182,9 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(after.lastAntipyreticClockLabel).toBe("4:00am");
     expect(
       db
-        .prepare(`SELECT given_at FROM intake_item_logs WHERE id = ?`)
+        .prepare(`SELECT recorded_at FROM intake_item_logs WHERE id = ?`)
         .get(logId)
-    ).toEqual({ given_at: `${yd} 07:00:00` });
+    ).toEqual({ recorded_at: `${yd} 07:00:00` });
   });
 
   it("a NON-antipyretic PRN doesn't count as a fever reducer", () => {

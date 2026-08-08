@@ -22,16 +22,16 @@ const NY = "America/New_York";
 
 describe("pattern 1 — the event/record pair", () => {
   // intake_item_logs is the pattern's harder half after the owner's #2205 ruling:
-  // `given_at` is INFERRED from the tap, so it is a RECORD instant, and `taken_at` is
+  // `recorded_at` is INFERRED from the tap, so it is a RECORD instant, and `taken_at` is
   // the row's insert stamp behind it. The dozen hand-rolled
-  // `COALESCE(given_at, taken_at)` readers were falling WITHIN one question, not
+  // `COALESCE(recorded_at, taken_at)` readers were falling WITHIN one question, not
   // substituting a record instant for an event one. Phase 2 wave 1 (migration 165)
   // added the event column this chain never had: a nullable `occurred_at`, filled only
   // when somebody states a time.
   const dose = {
     date: "2026-03-10",
     occurred_at: null,
-    given_at: "2026-03-10 13:05:00",
+    recorded_at: "2026-03-10 13:05:00",
     taken_at: "2026-03-10 18:40:00",
   };
 
@@ -63,19 +63,19 @@ describe("pattern 1 — the event/record pair", () => {
   });
 
   it("reads the record instant from the more precise link of the chain", () => {
-    // given_at first: an offline replay carries the client's real tap instant into it,
+    // recorded_at first: an offline replay carries the client's real tap instant into it,
     // while taken_at is only when the row reached the database.
     expect(recordInstant("intake_item_logs", dose)).toEqual({
       known: true,
       at: "2026-03-10T13:05:00Z",
-      column: "given_at",
+      column: "recorded_at",
       derived: false,
     });
   });
 
-  it("falls through the record chain for a row written before given_at existed", () => {
+  it("falls through the record chain for a row written before recorded_at existed", () => {
     expect(
-      recordInstant("intake_item_logs", { ...dose, given_at: null })
+      recordInstant("intake_item_logs", { ...dose, recorded_at: null })
     ).toEqual({
       known: true,
       at: "2026-03-10T18:40:00Z",
@@ -95,7 +95,7 @@ describe("pattern 1 — the event/record pair", () => {
     expect(bestKnownInstant("intake_item_logs", dose)).toEqual({
       known: true,
       at: "2026-03-10T13:05:00Z",
-      column: "given_at",
+      column: "recorded_at",
       semantic: "record",
       derived: false,
     });
@@ -359,7 +359,7 @@ describe("rowLocalDay", () => {
 describe("instantDate", () => {
   it("re-reads a resolved instant, and stays null for an absence", () => {
     const r = recordInstant("intake_item_logs", {
-      given_at: "2026-03-10 13:05:00",
+      recorded_at: "2026-03-10 13:05:00",
     });
     expect(instantDate(r)?.toISOString()).toBe("2026-03-10T13:05:00.000Z");
     expect(
@@ -371,14 +371,16 @@ describe("instantDate", () => {
 describe("value hygiene", () => {
   it("treats an empty or non-string cell as not recorded", () => {
     expect(
-      recordInstant("intake_item_logs", { given_at: "   " })
+      recordInstant("intake_item_logs", { recorded_at: "   " })
     ).toMatchObject({
       why: "not-recorded",
-      column: "given_at",
+      column: "recorded_at",
     });
-    expect(recordInstant("intake_item_logs", { given_at: 0 })).toMatchObject({
-      why: "not-recorded",
-    });
+    expect(recordInstant("intake_item_logs", { recorded_at: 0 })).toMatchObject(
+      {
+        why: "not-recorded",
+      }
+    );
     expect(recordInstant("intake_item_logs", {})).toMatchObject({
       why: "not-recorded",
     });
@@ -386,13 +388,13 @@ describe("value hygiene", () => {
 
   it("refuses an unparseable stored instant instead of returning a bad Date", () => {
     // And reports the FIRST link's refusal, not the fallback's: the caller asked about
-    // given_at, so a chain that ran out has to name it.
+    // recorded_at, so a chain that ran out has to name it.
     expect(
-      recordInstant("intake_item_logs", { given_at: "not a time" })
+      recordInstant("intake_item_logs", { recorded_at: "not a time" })
     ).toEqual({
       known: false,
       why: "unreadable",
-      column: "given_at",
+      column: "recorded_at",
     });
   });
 

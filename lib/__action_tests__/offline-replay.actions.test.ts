@@ -287,10 +287,10 @@ describe("offline replay — dose confirms (issue #1427)", () => {
   function logFor(doseId: number, date: string) {
     return db
       .prepare(
-        "SELECT status, amount, given_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        "SELECT status, amount, recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
       )
       .get(doseId, date) as
-      | { status: string; amount: string | null; given_at: string | null }
+      | { status: string; amount: string | null; recorded_at: string | null }
       | undefined;
   }
 
@@ -302,7 +302,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     const doseId = seedDose(itemId);
     const date = today(profile.id);
     // Local midnight of the log's own day: inside the day in the profile timezone and
-    // (bar the first instant of the day) hours before the replay, so a stored given_at
+    // (bar the first instant of the day) hours before the replay, so a stored recorded_at
     // matching it could not have come from the server's own clock.
     const tapped = zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!;
 
@@ -314,7 +314,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     const log = logFor(doseId, date);
     expect(log?.status).toBe("taken");
     expect(log?.amount).toBe("1 tab"); // amount snapshotted from the dose row at replay
-    expect(log?.given_at).toBe(utcSqlString(tapped));
+    expect(log?.recorded_at).toBe(utcSqlString(tapped));
     // Supply moved through the same core, exactly once.
     expect(
       (

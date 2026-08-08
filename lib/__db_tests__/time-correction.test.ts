@@ -6,7 +6,7 @@
 //
 //   • FOOD. The food ledger had no eating time at all. Two features needed one and both
 //     routed around it, because `logged_at` is TAP time and says so in migration 056.
-//   • DOSES. `given_at` DOES have consumers — the PRN redose window arms off it — and a
+//   • DOSES. `recorded_at` DOES have consumers — the PRN redose window arms off it — and a
 //     late tap wrote the tap moment into it with no way to correct. Take a painkiller at
 //     22:00, confirm at 07:00, and the window believes you are nine hours fresher.
 //
@@ -622,7 +622,7 @@ function seedDose(
 // real write path has created the row.
 function stampTap(logId: number, sqlUtc: string): void {
   db.prepare(
-    `UPDATE intake_item_logs SET taken_at = ?, given_at = ? WHERE id = ?`
+    `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ? WHERE id = ?`
   ).run(sqlUtc, sqlUtc, logId);
 }
 
@@ -630,7 +630,7 @@ function doseLogs(profileId: number) {
   return db
     .prepare(
       `SELECT l.id AS id, l.date AS date, l.taken_at AS takenAt,
-              l.given_at AS givenAt
+              l.recorded_at AS recordedAt
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
@@ -640,7 +640,7 @@ function doseLogs(profileId: number) {
     id: number;
     date: string;
     takenAt: string;
-    givenAt: string | null;
+    recordedAt: string | null;
   }[];
 }
 
@@ -677,7 +677,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     await handleCallbackQuery(
       cq("5552034", `dosetime:${pid}:${anchor}:60`, [])
     );
-    expect(doseLogs(pid)[0].givenAt).toBe("2026-08-05 18:20:00");
+    expect(doseLogs(pid)[0].recordedAt).toBe("2026-08-05 18:20:00");
 
     // The burst the HANDLER resolved was read before the write; the row it rebuilds must
     // be read after it, or the chat re-asserts the value it was told to stop asserting.
@@ -696,14 +696,14 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     await handleCallbackQuery(
       cq("5552034", `dosetime:${pid}:${anchor}:30`, [])
     );
-    expect(doseLogs(pid)[0].givenAt).toBe("2026-08-05 17:50:00");
+    expect(doseLogs(pid)[0].recordedAt).toBe("2026-08-05 17:50:00");
     expect(doseLogs(pid)[0].takenAt).toBe("2026-08-05 19:20:00");
     expect(getDoseCorrectionBursts(pid, clockNow())[0].endAt).toBe(
       "2026-08-05T19:20:00.000Z"
     );
   });
 
-  it("re-stamps given_at, leaves the adherence DAY where the schedule put it", async () => {
+  it("re-stamps recorded_at, leaves the adherence DAY where the schedule put it", async () => {
     const pid = newProfile("Bedtime Bec");
     const { itemId, doseId } = seedDose(pid, "Bedtime Melatonin");
     seedLoginTelegram(pid, "5552031");
@@ -724,7 +724,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     );
 
     const after = doseLogs(pid)[0];
-    expect(after.givenAt).toBe("2026-08-05 20:00:00");
+    expect(after.recordedAt).toBe("2026-08-05 20:00:00");
     // THE DELIBERATE CONTRAST WITH FOOD: a dose's day is schedule-owned (#614), so the
     // correction crossing midnight moves the instant and nothing else.
     expect(after.date).toBe("2026-08-06");
@@ -767,7 +767,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     // Two administrations, hours apart, both confirmed in one burst.
     const doseId = doseIdOf(itemId);
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, taken_at, given_at)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, taken_at, recorded_at)
        VALUES (?,?,?,?,'taken',?,?)`
     ).run(
       doseId,
@@ -778,7 +778,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
       "2026-08-05 19:02:00"
     );
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, taken_at, given_at)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, taken_at, recorded_at)
        VALUES (?,?,?,?,'taken',?,?)`
     ).run(
       doseId,
@@ -799,7 +799,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     // correction may legitimately move two administrations close together, and merging
     // or deleting one would destroy a real record of something that was taken.
     expect(after.map((r) => r.id)).toEqual(before.map((r) => r.id));
-    expect(after.map((r) => r.givenAt)).toEqual([
+    expect(after.map((r) => r.recordedAt)).toEqual([
       "2026-08-05 18:02:00",
       "2026-08-05 18:04:00",
     ]);
@@ -874,7 +874,7 @@ describe("a correction anchored on another profile's row writes nothing (#2059)"
     }
     expect(doseLogs(owner)).toEqual(ownerBefore);
     // His own anchor still works — the scoping refuses the stranger, not the feature.
-    expect(doseLogs(stranger).map((r) => r.givenAt)).toEqual([
+    expect(doseLogs(stranger).map((r) => r.recordedAt)).toEqual([
       "2026-08-05 18:04:00",
     ]);
     expect(doseLogs(stranger).map((r) => r.takenAt)).toEqual(

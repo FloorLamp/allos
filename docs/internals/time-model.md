@@ -3,7 +3,9 @@
 Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
 chokepoint, the declared column index and the row-level readers. Phase 2, the
 column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
-stores (migration 165); the `given_at` → `recorded_at` rename is still to come.)
+stores (migration 165) and wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
+(migration 173); the food columns (`eaten_at` / `logged_at`), `food_log_events.time_source`
+and the remaining bare-instant conversions are still to come.)
 
 Two questions look the same and are not:
 
@@ -111,7 +113,7 @@ Known gaps, stated rather than implied:
 
 `lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
 about a ROW — "when did this dose happen", "which day does this serving count for" — and
-until phase 3 nothing owned it, so `COALESCE(given_at, taken_at)` was hand-rolled in six
+until phase 3 nothing owned it, so `COALESCE(recorded_at, taken_at)` was hand-rolled in six
 places and food paired `eaten_at ?? logged_at` in four more.
 
 `lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`

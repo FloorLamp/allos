@@ -6,14 +6,14 @@
 // instant has (`utcInstant`), how to read one back (`parseUtcSql`), how to attribute
 // one to a profile-local day (`localDayOf`, in lib/local-day-window.ts). What no
 // module owned was the question one level up — "when did THIS ROW happen?" — so every
-// surface answered it itself, and the answers diverged. `COALESCE(given_at, taken_at)`
+// surface answered it itself, and the answers diverged. `COALESCE(recorded_at, taken_at)`
 // is hand-rolled a dozen times; food pairs `eaten_at ?? logged_at` in four more;
 // practice reads a bare `time` that is not an instant at all. Two of those hand-rolls
 // are what produced the wrong analyses this issue exists to prevent.
 //
 // The dose pairing turned out to be the more interesting one. Read as an event/record
 // substitution it looked like the worst offender; the owner's ruling on #2205 settled
-// that `given_at` is INFERRED from the tap and is therefore a RECORD instant, so the
+// that `recorded_at` is INFERRED from the tap and is therefore a RECORD instant, so the
 // COALESCE was a fallback WITHIN one question all along and the hand-rolls had the
 // right value under the wrong name. The consequence for this module was sharper, not
 // softer: `intake_item_logs` had NO event column at all, so "when was this dose
@@ -186,9 +186,10 @@ export function resolveInstant(
 
 // A table may declare a CHAIN for a semantic — more than one column, in priority
 // order. `intake_item_logs` is the case that forced it: the owner's #2205 ruling made
-// `given_at` a RECORD instant (it is inferred from the tap, so it always was one), and
-// `taken_at` is the row's insert stamp behind it, reached only by rows written before
-// `given_at` existed. The `COALESCE(given_at, taken_at)` a dozen readers hand-roll is
+// `recorded_at` a RECORD instant (it is inferred from the tap, so it always was one — and
+// migration 173 gave it that name), and `taken_at` is the row's insert stamp behind it,
+// reached by a row that wrote no `recorded_at` at all: a skip, or anything written before
+// the column existed. The `COALESCE(recorded_at, taken_at)` a dozen readers hand-roll is
 // therefore a fallback WITHIN the record question, not a record instant standing in
 // for an event one — the hand-rolls had the right value under the wrong name.
 //
@@ -254,7 +255,7 @@ export type BestInstant =
 // not, and the `semantic` field is what makes the difference visible at the call site
 // instead of two columns deep in SQL.
 //
-// Not to be confused with a record CHAIN (see `read` above): falling from `given_at` to
+// Not to be confused with a record CHAIN (see `read` above): falling from `recorded_at` to
 // `taken_at` stays inside `recordInstant`, because both answer "when did this enter the
 // app". Falling from `eaten_at` to `logged_at` crosses questions, and that is the fall
 // this function exists to make visible.

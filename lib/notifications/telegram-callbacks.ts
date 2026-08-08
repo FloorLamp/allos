@@ -309,7 +309,7 @@ export async function handleCallbackQuery(
     await handleFoodTimeAt(cq, foodTimeAt);
     return;
   }
-  // The dose twin (#2020), over `given_at` — the safety-relevant one, because the PRN
+  // The dose twin (#2020), over `recorded_at` — the safety-relevant one, because the PRN
   // redose window arms off exactly the instant these buttons correct.
   const doseTimeChip = parseCorrectionChipToken(
     cq.data,
@@ -796,7 +796,7 @@ async function handleDoseTap(
   //
   // A take records WHICH MESSAGE it came from (#2264): the (chat, message) resolves to
   // its notify_messages pointer, so the dose-time correction burst this confirm joins
-  // renders on THIS reminder and never on a sibling. A skip writes no `given_at` and
+  // renders on THIS reminder and never on a sibling. A skip writes no `recorded_at` and
   // can never join a burst, so it carries none.
   const messageId = cq.message?.message_id;
   const outcome =

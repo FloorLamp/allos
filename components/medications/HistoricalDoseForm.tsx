@@ -31,7 +31,7 @@ export interface HistoricalDoseOption {
 //     which the write path records as occurred_at = NULL — amending only the amount
 //     of a dose whose intake time was never stated changes the amount and nothing
 //     else. The time seeds from `editing.statedAt` (the row's occurred_at), NEVER
-//     from the given_at/taken_at record chain — a row with no stated intake time
+//     from the recorded_at/taken_at record chain — a row with no stated intake time
 //     opens with an EMPTY time field instead of laundering a filing timestamp into
 //     an administration time (#2228's defect).
 //
