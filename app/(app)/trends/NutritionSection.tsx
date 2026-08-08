@@ -10,6 +10,9 @@ import {
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
 import { shiftDateStr } from "@/lib/date";
+import { dayFillWindow } from "@/lib/day-fill";
+import { filterSeriesByRange } from "@/lib/trends";
+import { MACROS_SERIES_KEY } from "@/lib/trend-sparkline";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   buildMacroFiberSeries,
@@ -73,12 +76,18 @@ export default async function NutritionSection({
   const to = range.to ?? todayStr;
 
   // Part 1 — macros + fiber daily series (tracked totals; fiber the uncharted signal).
-  const macroFiber = buildMacroFiberSeries({
-    protein: getMetricDailyTotals(profile.id, "protein_g"),
-    carbs: getMetricDailyTotals(profile.id, "carbs_g"),
-    fat: getMetricDailyTotals(profile.id, "fat_g"),
-    fiber: getMetricDailyTotals(profile.id, "fiber_g"),
-  });
+  // WINDOWED like every sibling chart (#2258 §4): this was the one Trends chart that
+  // ignored the selected range outright, which also left it with no window to
+  // densify against. Filtering is the precondition of the fill, not a separate fix.
+  const macroFiber = filterSeriesByRange(
+    buildMacroFiberSeries({
+      protein: getMetricDailyTotals(profile.id, "protein_g"),
+      carbs: getMetricDailyTotals(profile.id, "carbs_g"),
+      fat: getMetricDailyTotals(profile.id, "fat_g"),
+      fiber: getMetricDailyTotals(profile.id, "fiber_g"),
+    }),
+    range
+  );
 
   // Part 2 — food-goal adherence trend: the per-habit #954 consistency cells rolled up
   // into a weekly overall hit-rate (reused gather, no second engine).
@@ -119,6 +128,11 @@ export default async function NutritionSection({
           <StackedBarCard
             data={macroFiber}
             unit=" g"
+            // A day with no food logs means "didn't log" — the missing days become
+            // empty slots at their own calendar position, never a zero-gram row
+            // asserting a fast nobody recorded (#2258). The within-row zero-fill
+            // (a day with only protein logged) is untouched: that day HAS a row.
+            gapFill={{ seriesKey: MACROS_SERIES_KEY, ...dayFillWindow(range) }}
             series={[
               { key: "protein", label: "Protein", color: chartSeries.violet },
               { key: "carbs", label: "Carbs", color: chartSeries.amber },

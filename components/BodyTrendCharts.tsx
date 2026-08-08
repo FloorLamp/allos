@@ -13,6 +13,13 @@ import {
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
+import {
+  isBodyMetricSlug,
+  savedMetricIdForBodySlug,
+} from "@/lib/trends-body-metrics";
+import { metricSeriesKey } from "@/lib/saved-items";
+import type { DayFillWindow } from "@/lib/day-fill";
+import type { DayFillSpec } from "@/lib/trend-sparkline";
 
 // One body-composition trend chart's props (weight / body-fat / resting-HR),
 // pre-windowed + in display units by the server section.
@@ -115,8 +122,17 @@ export default function BodyTrendCharts({
   annotations,
   windows = [],
   singleColumn = false,
+  gapWindow,
 }: {
   charts?: BodyChartSpec[];
+  // The selected date range, so every chart in the stack can densify its series to
+  // the CALENDAR (#2258) instead of plotting only the days it has rows for. One
+  // prop for the whole stack rather than one per spec: WHICH policy each chart
+  // follows is derived from its own `key` through the single body-slug ↔ series-key
+  // mapping (#1643) and the per-series gap registry, so a card and its tile cannot
+  // disagree about whether a missing steps day is a zero. Omitted → no fill (the
+  // caller has no window, e.g. a fixed-history card).
+  gapWindow?: DayFillWindow;
   // The census's FLAT ranked stack (#1674) — mutually exclusive with `charts` in
   // practice. One toggle bar sits above the whole stack, which is the #1486
   // one-bar rule in its simplest case rather than an exception to it.
@@ -138,6 +154,18 @@ export default function BodyTrendCharts({
   const { enabled, onToggle, hoisted } = useAnnotationToggles(presentKinds);
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? windows : [];
+
+  // The chart's own gap declaration, resolved from its card id. A non-metric card
+  // (growth percentiles, the sleep tile, the intraday `hr-day` swap) maps to no
+  // series key and is left alone — its x is not a calendar day at this grain.
+  const gapFillFor = (chart: BodyChartSpec): DayFillSpec | undefined => {
+    if (!gapWindow || !isBodyMetricSlug(chart.key)) return undefined;
+    return {
+      seriesKey: metricSeriesKey(savedMetricIdForBodySlug(chart.key)),
+      from: gapWindow.from,
+      to: gapWindow.to,
+    };
+  };
 
   const chartCard = (chart: BodyChartSpec) => (
     <ChartCard
@@ -179,6 +207,7 @@ export default function BodyTrendCharts({
         referenceValue={chart.referenceValue ?? null}
         yDomain={chart.yDomain}
         groupYTicks={chart.groupYTicks}
+        gapFill={gapFillFor(chart)}
       />
     </ChartCard>
   );

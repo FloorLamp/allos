@@ -528,6 +528,15 @@ See `docs/internals/e2e-hygiene.md`.
 - Chart colors come from `lib/chart-colors.ts`, and charts use the shared
   scaffolding in `components/chart-scaffold.tsx`. See
   `docs/internals/charts.md`.
+- A DAY-GRAIN series is densified to the CALENDAR before it is plotted
+  (`lib/day-fill.ts`, the day twin of `lib/weekly-fill.ts`): on a recharts
+  category axis x is the array INDEX, so a missing day that is not in the array
+  compresses away and a multi-day outage renders as consecutive days. Leading
+  empty days are trimmed, trailing ones to the window's end are KEPT — that run
+  of nulls is the live outage. Whether a filled day is a `null` hole or a real
+  `0`, and whether the mark bridges it, is a per-SERIES declaration beside the
+  mark decision in `lib/trend-sparkline.ts` (`metric:` / `bio:` keys); a surface
+  passes `gapFill={{ seriesKey, from, to }}` and never a policy of its own.
 
 ### Routes and APIs
 

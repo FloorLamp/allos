@@ -111,6 +111,8 @@ export default function PracticeTrends({
           footer={<WeeksInRange practice={practice} />}
         >
           <LineChartCard
+            // gap-exempt: WEEK-grain cadence (days logged per completed week),
+            // already contiguous over the fixed 26-week lens.
             data={cadence}
             label="Days logged"
             color={chartSeries.brand}
@@ -143,6 +145,7 @@ export default function PracticeTrends({
             plotHeightClass="sm:h-48"
           >
             <LineChartCard
+              // gap-exempt: week-grain average session length, same lens.
               data={practice.duration}
               label="Minutes"
               color={chartSeries.violet}

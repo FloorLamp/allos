@@ -91,6 +91,8 @@ export default async function CardioSection() {
                     Minutes per week, by activity
                   </p>
                   <StackedBarCard
+                    // gap-exempt: a WEEK-grain axis already zero-filled by
+                    // lib/weekly-fill.ts (#406), which is this fill's twin.
                     data={weekly.data}
                     series={weekly.series}
                     unit=" min"

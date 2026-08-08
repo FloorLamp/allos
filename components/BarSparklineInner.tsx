@@ -22,6 +22,7 @@ import { chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
+import { applyDayFill, type DayFillSpec } from "@/lib/trend-sparkline";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,8 +47,14 @@ export default function BarSparklineInner({
   decimals,
   heightClass = "h-20",
   groupYTicks = false,
+  gapFill,
 }: {
   data: { date: string; value: number | null }[];
+  // Densify a DAY-GRAIN quantity to the calendar (#2258). The tile follows the
+  // SERIES' declaration exactly as the full chart does — a rest day in training
+  // volume is a real zero and gets an empty slot at its own calendar position,
+  // instead of the next training day sliding left to touch the previous one.
+  gapFill?: DayFillSpec;
   label: string;
   color?: string;
   unit?: string;
@@ -61,6 +68,7 @@ export default function BarSparklineInner({
   const c = useChartColors();
   const motion = useChartMotion();
   const isoDates = data.length > 0 && ISO_DATE.test(data[0].date);
+  const filled = applyDayFill(data, isoDates ? gapFill : null);
   const labelFmt = isoDates
     ? (v: string) => formatLongDate(v, formatPrefs)
     : undefined;
@@ -77,17 +85,24 @@ export default function BarSparklineInner({
   return (
     <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={chartSparklineMargin}>
+        <BarChart data={filled.data} margin={chartSparklineMargin}>
           <XAxis dataKey="date" {...chartSparklineAxisProps()} />
           <YAxis {...chartSparklineAxisProps()} />
           <Tooltip
             cursor={chartSparklineBarCursorProps(c)}
+            // See LineChartCardInner: nulls must reach the formatter so a gap
+            // day says "No data" instead of opening an empty box (#2258).
+            filterNull={false}
             formatter={(v) => [
-              `${
-                groupYTicks
-                  ? groupChartValue(Number(v), decimals)
-                  : roundChartValue(Number(v), decimals)
-              }${unit}`,
+              // Number(null) is 0; a gap day must say "No data" rather than
+              // print a total nobody recorded (#2258).
+              v == null || !Number.isFinite(Number(v))
+                ? "No data"
+                : `${
+                    groupYTicks
+                      ? groupChartValue(Number(v), decimals)
+                      : roundChartValue(Number(v), decimals)
+                  }${unit}`,
               label,
             ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}

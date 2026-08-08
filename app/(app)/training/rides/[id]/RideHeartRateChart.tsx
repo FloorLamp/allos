@@ -48,6 +48,7 @@ export default function RideHeartRateChart({
   );
   return (
     <LineChartCard
+      // gap-exempt: intra-ride telemetry on an elapsed-time axis.
       data={elapsedData}
       label="Heart rate"
       unit=" bpm"

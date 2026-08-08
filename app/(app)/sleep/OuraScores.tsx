@@ -1,6 +1,7 @@
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import type { OuraScores } from "@/lib/queries";
+import { OURA_SCORE_SERIES_KEY } from "@/lib/trend-sparkline";
 
 // Oura's own daily scores, surfaced on the Sleep page (issue #1069) as ATTRIBUTION,
 // not assessment: each tile names the vendor ("Oura sleep score" / "Oura
@@ -16,6 +17,7 @@ function ScoreTile({
   label,
   score,
   color,
+  today,
 }: {
   testid: string;
   label: string;
@@ -25,6 +27,10 @@ function ScoreTile({
     trend: { date: string; value: number }[];
   };
   color: string;
+  // The profile's today, so the trend densifies through to it (#2258): a score
+  // that stopped arriving four days ago must render four empty days, not a line
+  // that runs confidently to its right edge.
+  today: string;
 }) {
   return (
     <div className="card" data-testid={testid}>
@@ -55,6 +61,11 @@ function ScoreTile({
             label={label}
             color={color}
             heightClass="h-40"
+            gapFill={{
+              seriesKey: OURA_SCORE_SERIES_KEY,
+              from: null,
+              to: today,
+            }}
           />
         </div>
       )}
@@ -62,7 +73,13 @@ function ScoreTile({
   );
 }
 
-export default function OuraScores({ scores }: { scores: OuraScores }) {
+export default function OuraScores({
+  scores,
+  today,
+}: {
+  scores: OuraScores;
+  today: string;
+}) {
   if (!scores.sleep && !scores.readiness) return null;
   return (
     <section data-testid="oura-scores">
@@ -78,6 +95,7 @@ export default function OuraScores({ scores }: { scores: OuraScores }) {
             label="Oura sleep score"
             score={scores.sleep}
             color={chartSeries.violet}
+            today={today}
           />
         )}
         {scores.readiness && (
@@ -86,6 +104,7 @@ export default function OuraScores({ scores }: { scores: OuraScores }) {
             label="Oura readiness"
             score={scores.readiness}
             color={chartSeries.sky}
+            today={today}
           />
         )}
       </div>

@@ -123,6 +123,8 @@ export default async function FitnessStrengthSection({
         ) : (
           <>
             <LineChartCard
+              // gap-exempt: one point per SESSION of the lead lift, not per
+              // calendar day — the index is the event (#2258 out-of-scope list).
               data={lead.points.map((p) => ({
                 date: p.date,
                 value: dispWeight(p.value, wu, 1),
@@ -188,6 +190,7 @@ export default async function FitnessStrengthSection({
           <EmptyState message="No records set in this window yet." />
         ) : (
           <StackedBarCard
+            // gap-exempt: week-grain PR counts, already week-filled.
             data={prRate.map((w) => ({ date: w.week, count: w.count }))}
             series={[{ key: "count", label: "PRs", color: chartSeries.amber }]}
             labelPrefix="Week of "

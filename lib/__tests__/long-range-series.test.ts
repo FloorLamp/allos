@@ -114,11 +114,50 @@ describe("aggregateLongRange", () => {
     const agg = aggregateLongRange(series);
     expect(agg).not.toBeNull();
     expect(agg!.grain).toBe("week");
-    // No bucket is minted for the empty gap weeks.
-    const inGap = agg!.points.filter(
+    // The density gate counts only the buckets that HOLD readings, so the empty
+    // run neither blocks aggregation nor drags the average density down.
+    const occupied = agg!.points.filter((p) => p.count > 0);
+    expect(occupied.length).toBeGreaterThan(45);
+  });
+
+  it("emits NULL buckets for an interior calendar gap (#2258)", () => {
+    // Same shape as above: without this, the 5-month outage compressed away at
+    // bucket grain exactly as it used to at day grain — July 2025 sitting next to
+    // January 2026 with the stroke bridging them.
+    const series = [...daily("2025-07-01", 180), ...daily("2026-07-08", 180)];
+    const agg = aggregateLongRange(series)!;
+    const inGap = agg.points.filter(
       (p) => p.date > "2025-07-05" && p.date < "2026-01-01"
     );
-    expect(inGap).toHaveLength(0);
+    expect(inGap.length).toBeGreaterThan(10);
+    for (const p of inGap) {
+      expect(p.value).toBeNull();
+      expect(p.lo).toBeNull();
+      expect(p.hi).toBeNull();
+      expect(p.count).toBe(0);
+    }
+    // The axis is CONTIGUOUS between the first and last occupied bucket, and is
+    // trimmed to them — no leading or trailing empties.
+    expect(agg.points[0].count).toBeGreaterThan(0);
+    expect(agg.points[agg.points.length - 1].count).toBeGreaterThan(0);
+    for (let i = 1; i < agg.points.length; i++) {
+      expect(agg.points[i].date > agg.points[i - 1].date).toBe(true);
+    }
+  });
+
+  it("enumerates MONTH buckets across a year boundary without drifting", () => {
+    const series = [
+      ...daily("2024-02-15", 60, () => 10),
+      ...daily("2027-01-10", 60, () => 20),
+    ];
+    const agg = aggregateLongRange(series)!;
+    expect(agg.grain).toBe("month");
+    const dates = agg.points.map((p) => p.date);
+    expect(dates).toContain("2024-12-01");
+    expect(dates).toContain("2025-01-01");
+    // Every bucket is a first-of-month, in order, with no repeats.
+    expect(new Set(dates).size).toBe(dates.length);
+    for (const d of dates) expect(d.slice(8)).toBe("01");
   });
 
   it("drops null gap markers before bucketing and never averages them", () => {

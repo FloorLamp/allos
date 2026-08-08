@@ -1,4 +1,5 @@
 import LineChartCard from "@/components/LineChartCard";
+import { metricSeriesKey } from "@/lib/saved-items";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { WeightUnit } from "@/lib/settings";
 import WidgetHeader from "./WidgetHeader";
@@ -72,7 +73,16 @@ export default function WeightTrendWidget({
   return (
     <div className="card">
       <WidgetHeader title="Weight trend" href="/trends#body" />
-      <LineChartCard data={data} label="Weight" unit={` ${weightUnit}`} />
+      <LineChartCard
+        data={data}
+        label="Weight"
+        unit={` ${weightUnit}`}
+        gapFill={{
+          seriesKey: metricSeriesKey("weight"),
+          from: null,
+          to: today,
+        }}
+      />
       {footer}
     </div>
   );

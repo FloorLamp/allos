@@ -146,6 +146,8 @@ export default async function CyclePage() {
             </p>
             {trendData.length >= 2 && (
               <LineChartCard
+                // gap-exempt: one point per CYCLE — the index is the event, and
+                // a cycle has no calendar cadence to densify to.
                 data={trendData}
                 label="Cycle length"
                 unit=" d"

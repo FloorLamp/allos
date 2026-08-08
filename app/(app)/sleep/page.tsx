@@ -26,6 +26,7 @@ import SleepHero from "./SleepHero";
 import ConsistencyStrip from "./ConsistencyStrip";
 import SleepMoodSection from "./SleepMoodSection";
 import SleepLogAction from "./SleepLogAction";
+import { SLEEP_REGULARITY_SERIES_KEY } from "@/lib/trend-sparkline";
 import OuraScores from "./OuraScores";
 import SleepTrendsSection from "./SleepTrendsSection";
 import SourceComparison from "../trends/SourceComparison";
@@ -227,6 +228,13 @@ export default async function SleepPage() {
                     label="SRI"
                     color={chartSeries.violet}
                     decimals={0}
+                    // A per-day regularity READING: a night that never synced
+                    // breaks the stroke rather than being skipped over (#2258).
+                    gapFill={{
+                      seriesKey: SLEEP_REGULARITY_SERIES_KEY,
+                      from: null,
+                      to: todayStr,
+                    }}
                     yDomain={[
                       Math.min(
                         60,
@@ -291,7 +299,7 @@ export default async function SleepPage() {
       <div className="min-w-0 space-y-6">
         {(ouraScores.sleep || ouraScores.readiness) && (
           <div className="min-w-0">
-            <OuraScores scores={ouraScores} />
+            <OuraScores scores={ouraScores} today={todayStr} />
           </div>
         )}
 

@@ -80,6 +80,7 @@ export default function SportDetailPanel({
             Minutes per session
           </p>
           <LineChartCard
+            // gap-exempt: one point per SESSION of this sport, an event axis.
             data={chart}
             label="Duration"
             unit=" min"

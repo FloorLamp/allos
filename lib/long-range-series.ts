@@ -34,7 +34,7 @@
 // bucket instead of re-cutting every one. All arithmetic is the UTC-anchored
 // calendar math in lib/date.ts — no DST, no timezone.
 
-import { daysBetweenDateStr, startOfWeekStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr, startOfWeekStr } from "./date";
 
 export type LongRangeGrain = "week" | "month";
 
@@ -53,12 +53,16 @@ export const LONG_RANGE_MIN_DENSITY = 2;
 export interface LongRangeBucket {
   // Bucket start (the week's first day / the month's first) — the plotted x.
   date: string;
-  // Arithmetic mean of the bucket's readings — the plotted line.
-  value: number;
-  // The bucket's spread — the band. lo === hi for a single-reading bucket.
-  lo: number;
-  hi: number;
-  // How many readings the bucket summarises.
+  // Arithmetic mean of the bucket's readings — the plotted line. NULL for an
+  // EMPTY calendar bucket between two occupied ones (#2258): a six-week outage
+  // inside a 1Y window must not bridge at bucket grain either, or the day-grain
+  // fix is undone one level up. A bucket that summarises nothing has no mean.
+  value: number | null;
+  // The bucket's spread — the band. lo === hi for a single-reading bucket, and
+  // both are null for an empty bucket (there is no spread to draw).
+  lo: number | null;
+  hi: number | null;
+  // How many readings the bucket summarises. Zero for an empty bucket.
   count: number;
 }
 
@@ -81,6 +85,34 @@ function bucketStart(
   return grain === "week"
     ? startOfWeekStr(date, weekStart)
     : `${date.slice(0, 7)}-01`;
+}
+
+// The next calendar bucket start after `date` — +7 days at week grain, the first
+// of the following month at month grain. Pure string/UTC arithmetic, matching the
+// calendar anchoring `bucketStart` uses.
+function nextBucket(date: string, grain: LongRangeGrain): string {
+  if (grain === "week") return shiftDateStr(date, 7);
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  return month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+}
+
+// Every calendar bucket start from `first` to `last` inclusive. Bounded (a decade
+// of months / two decades of weeks) so a pathological pair can never loop away.
+function bucketStartsInclusive(
+  first: string,
+  last: string,
+  grain: LongRangeGrain
+): string[] {
+  const out: string[] = [];
+  let b = first;
+  for (let i = 0; b <= last && i < 1200; i++) {
+    out.push(b);
+    b = nextBucket(b, grain);
+  }
+  return out;
 }
 
 // Aggregate a chronological dated series into calendar buckets, or return null
@@ -119,20 +151,38 @@ export function aggregateLongRange(
   }
 
   // The density gate — see the module header. Occupied buckets only: a gapped
-  // series is judged on the data it has, not on the calendar it missed.
+  // series is judged on the data it has, not on the calendar it missed. Computed
+  // BEFORE the empty buckets below join the output, so densifying the axis can
+  // never push a legible sparse series over (or under) the bar.
   if (real.length < byBucket.size * LONG_RANGE_MIN_DENSITY) return null;
 
+  // Emit the CALENDAR, not just the occupied buckets (#2258). Aggregation runs on
+  // a category axis exactly like the raw plot does, so an interior run of empty
+  // weeks/months would otherwise compress away and a six-week outage inside a 1Y
+  // window would bridge at bucket grain — the day-grain fix undone one level up.
+  // Leading/trailing empties do not arise: the enumeration is bounded by the first
+  // and last OCCUPIED bucket, which is the same trimming rule lib/day-fill.ts
+  // applies at the head (the window's trailing tail is already densified into
+  // `points` before this runs, so its empty buckets are interior here).
+  const occupied = [...byBucket.keys()].sort();
+  const axis = bucketStartsInclusive(
+    occupied[0],
+    occupied[occupied.length - 1],
+    grain
+  );
   return {
     grain,
-    points: [...byBucket.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([date, b]) => ({
+    points: axis.map((date) => {
+      const b = byBucket.get(date);
+      if (!b) return { date, value: null, lo: null, hi: null, count: 0 };
+      return {
         date,
         value: b.sum / b.count,
         lo: b.lo,
         hi: b.hi,
         count: b.count,
-      })),
+      };
+    }),
   };
 }
 

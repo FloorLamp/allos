@@ -67,6 +67,7 @@ export default async function FitnessZonesSection({
           />
         ) : (
           <StackedBarCard
+            // gap-exempt: week-grain, zero-filled by lib/weekly-fill.ts (#406).
             data={weekly.data}
             series={weekly.series}
             unit=" min"

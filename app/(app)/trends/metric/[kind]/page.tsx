@@ -24,6 +24,7 @@ import {
 import { getGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
 import { dispWeight, round } from "@/lib/units";
 import { filterSeriesByRange } from "@/lib/trends";
+import { dayFillWindow } from "@/lib/day-fill";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
@@ -624,6 +625,11 @@ export default async function BodyMetricDetailPage(props: {
                 annotations={annotations}
                 windows={protocolWindows}
                 singleColumn
+                // #2258: the plot densifies to the selected window's calendar, so
+                // a sync outage renders as a hole with real width. `data-points`
+                // above still counts the fold's REAL readings (#2029) — the fill
+                // happens inside the card, below this boundary.
+                gapWindow={dayFillWindow(range)}
               />
             )}
           </div>

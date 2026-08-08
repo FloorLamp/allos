@@ -93,6 +93,7 @@ export default async function StrengthSection() {
             />
           ) : (
             <LineChartCard
+              // gap-exempt: one point per strength SESSION, not per calendar day.
               data={volume}
               label="Volume"
               unit={` ${wu}`}

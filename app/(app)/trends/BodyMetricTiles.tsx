@@ -103,6 +103,7 @@ function renderMetricTile(t: BodyMetricTile): ReactNode {
       unit={t.unit}
       color={t.color}
       decimals={t.decimals}
+      gapFill={t.gapFill}
       testid={`body-tile-${t.slug}`}
     />
   );
