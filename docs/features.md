@@ -732,8 +732,12 @@ records what you want left alone, and you can be as precise as the situation
 warrants: a whole region, a movement pattern (pushing, pulling, legs, core),
 specific lifts, or a side. Naming a pattern or a lift keeps the rest of the
 region in your suggestions — marking one sore press no longer costs you every
-chest recommendation. An **active** constraint takes the affected work off the
-card; a **recovering** one eases it back, and you can say how much: the app's
+chest recommendation. Lifts are named through the same search-and-pick control
+the activity logger uses, over the lifts you actually train plus your own custom
+ones, and a variant is recorded as the lift it belongs to: choosing "Dumbbell
+Curl" constrains curls, and the form says so before you save. An **active**
+constraint takes the affected work off the card; a **recovering** one eases it
+back, and you can say how much: the app's
 **60% is a default it names as a default**, and your own setting always wins.
 Every exclusion and every eased target is disclosed on the recommendation, at the
 level you declared it. Where the app can't honor what you said — the suggestion

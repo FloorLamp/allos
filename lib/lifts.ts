@@ -1038,6 +1038,28 @@ export function exerciseHistoryKey(name: string): string {
 }
 
 /**
+ * The DISPLAY name for a stored `exerciseHistoryKey` — the presentation inverse of the
+ * key above, for the surfaces that PERSIST the identity and later have to render it
+ * (the #2024 injury constraint's `exercises`; anything else that stores a key rather
+ * than a logged label). A surface that already holds a logged name renders that name;
+ * this is only for a key that has lost its casing.
+ *
+ * A catalog key renders in the catalog's own casing ("bench press" → "Bench Press"),
+ * looked up EXACTLY — deliberately NOT through `liftInfo`, whose loose contains fallback
+ * would render a custom "sled push" as whichever catalog lift happens to share a word.
+ * A custom key has no canonical casing to recover, so its words are capitalized, the
+ * same treatment the activity logger gives a free-text name on the way in.
+ */
+export function exerciseDisplayName(key: string): string {
+  const k = key.trim().toLowerCase();
+  if (!k) return "";
+  return (
+    MAP.get(k)?.name ??
+    k.replace(/\b[\w']+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1))
+  );
+}
+
+/**
  * The finite set of logged names that all collapse to `exerciseHistoryKey(name)`
  * — the canonical key's preimage, lowercased/trimmed. For a catalog variant group
  * this is the bare base plus every composed equipment variant ("Curl",

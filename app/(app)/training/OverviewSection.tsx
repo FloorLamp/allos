@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   getActivityDates,
+  getActivitySuggestions,
   getCardioByActivity,
   getDayLoadInputs,
   getFrequencyTargetProgress,
@@ -229,6 +230,11 @@ export default async function OverviewSection() {
   const hasInjurySituation = getActiveSituations(profile.id).some(
     isBuiltInInjurySituation
   );
+  // The injury form's exercise picker (#2199) reads the SAME frequency-ranked lift list
+  // the activity form, GoalForm and the routine builder consume (#1676) — catalog base
+  // names plus this profile's own custom lifts, most-trained first — rather than a
+  // second, catalog-ordered vocabulary. cache()d per request, so this is free here.
+  const liftOptions = getActivitySuggestions(profile.id).lifts;
 
   // Endurance event plans (#839): the active plans' recomputed this-week trajectory,
   // shaped into the display view (distances formatted server-side in the login's unit).
@@ -624,6 +630,7 @@ export default async function OverviewSection() {
           door to logging the first injury/plan) rather than vanishing entirely. */}
       <InjuryBar
         injuries={injuries}
+        liftOptions={liftOptions}
         suggestActivateSituation={!hasInjurySituation}
       />
 

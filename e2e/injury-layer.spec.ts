@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #838 — the injury layer. Logging a user-declared injury makes the shared
@@ -114,5 +114,75 @@ test("a movement-scoped constraint narrows the exclusion and says so (#2024)", a
   await settledClick(page, chip.getByTestId("injury-set-resolved"));
   await expect(
     bar.getByTestId("injury-chip").filter({ hasText: "pressing pain" })
+  ).toHaveCount(0);
+});
+
+// Issue #2199 — the FINEST level of the #2024 precedence finally has a door. The picker
+// writes into the `exercises` field the actions already accepted, at the identity the read
+// side already expects: a variant collapses to its base on the way in (exerciseHistoryKey),
+// and the stored key renders back in the catalog's own casing on the chip. An
+// exercise-scoped constraint takes out THOSE lifts and leaves their region alone.
+test("an exercise-scoped constraint is loggable from the form and names the lift (#2199)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=overview");
+
+  const bar = page.getByRole("main").getByTestId("injury-bar");
+  await expect(bar).toBeVisible();
+  await bar.getByTestId("injury-add-toggle").click();
+  const form = bar.getByTestId("injury-form");
+  await expect(form).toBeVisible();
+
+  await form.getByTestId("injury-label-input").fill("tender elbow");
+  await form.getByTestId("injury-region-Arms").check();
+
+  // The picker is the shared Combobox, so the lift is found the way a user finds it:
+  // typed, then chosen from the listbox by its accessible name. The pick lands as a
+  // removable chip, not in the input. settledFill owns the hydration retry.
+  const field = form.getByLabel("Add an affected lift");
+  await settledFill(page, field, "Curl");
+  const option = page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Curl", exact: true });
+  await expect(option).toBeVisible();
+  await option.click();
+  await expect(
+    form.getByTestId("injury-exercise-chip").filter({ hasText: "Curl" })
+  ).toBeVisible();
+
+  // A typed VARIANT is offered as the base it collapses to — exerciseHistoryKey folds
+  // "Dumbbell Curl" onto "curl", so the row promises exactly the lift the engine can
+  // keep apart — and choosing it is therefore not a second constraint.
+  await settledFill(page, field, "Dumbbell Curl");
+  const collapsed = page
+    .getByRole("listbox")
+    .getByRole("button", { name: /^Use .Curl.$/ });
+  await expect(collapsed).toBeVisible();
+  await collapsed.click();
+  await expect(form.getByTestId("injury-exercise-chip")).toHaveCount(1);
+
+  // Naming lifts is the precedence-winning level, and the form says so before saving.
+  await expect(form.getByTestId("injury-exercise-precedence")).toBeVisible();
+
+  await settledClick(page, form.getByTestId("injury-submit"));
+
+  // The saved constraint reads back at the level declared — the LIFT, in the catalog's
+  // own casing, not the lowercase key it is stored as and not the Arms fallback.
+  const chip = bar
+    .getByTestId("injury-chip")
+    .filter({ hasText: "tender elbow" });
+  await expect(chip).toBeVisible();
+  const scope = chip.getByTestId("injury-scope");
+  await expect(scope).toContainText("Curl");
+  await expect(scope).not.toContainText("Arms");
+
+  // …and the whole-region exclusion never fires: naming one lift must not cost the user
+  // every Arms recommendation.
+  await expect(page.getByTestId("injury-exclusion-note")).toHaveCount(0);
+
+  // Clean up so this file's other tests (and a --repeat-each rerun) start from zero.
+  await settledClick(page, chip.getByTestId("injury-set-resolved"));
+  await expect(
+    bar.getByTestId("injury-chip").filter({ hasText: "tender elbow" })
   ).toHaveCount(0);
 });
