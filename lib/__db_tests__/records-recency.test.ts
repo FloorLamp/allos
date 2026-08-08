@@ -239,12 +239,14 @@ describe("#2164 — the archive refresh ask", () => {
     const high = takeoutProfile("score-high", HORIZON + 7, 99);
     const a = archiveRefreshItems(low.profileId, low.today)[0];
     const b = archiveRefreshItems(high.profileId, high.today)[0];
+    const aDetail = a.detail ?? "";
+    const bDetail = b.detail ?? "";
     expect(a.title).toBe(b.title);
-    expect(a.detail.replace(low.frontier, "F")).toBe(
-      b.detail.replace(high.frontier, "F")
+    expect(aDetail.replace(low.frontier, "F")).toBe(
+      bDetail.replace(high.frontier, "F")
     );
-    expect(a.detail).not.toContain("12");
-    expect(b.detail).not.toContain("99");
+    expect(aDetail).not.toContain("12");
+    expect(bDetail).not.toContain("99");
   });
 });
 
