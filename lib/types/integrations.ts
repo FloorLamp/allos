@@ -117,22 +117,30 @@ export interface IntegrationDef {
   blurb: string;
   dataTypes: string[];
   docsUrl?: string;
-  // How many whole days a CONNECTED provider may go without a successful sync before
-  // it is treated as silently stopped (#1685). The transient-vs-definitive classifier
-  // (lib/integrations/auth-failure.ts, #326) deliberately keeps a 429/5xx/timeout from
-  // tearing down a healthy connection, and the failing-provider detector only fires
-  // when the provider's LATEST event is a failure — neither covers a connection that
-  // records nothing at all (a phone exporter that stopped pushing, a refresh that
-  // never gets far enough to log). This threshold is that cover: it belongs beside the
-  // provider's other metadata because the right number is a property of how the
-  // provider delivers, not of the detector.
+  // How many MINUTES a CONNECTED provider may go without a successful run before it
+  // is treated as broken (#2263). This is THE escalation rule — the one question
+  // "how long may this provider be silent before it is broken?", asked once. It
+  // replaced a pair that answered it at two incompatible grains: a consecutive-failed-
+  // RUN count (three runs = three hours for an hourly provider, below that provider's
+  // own p90 gap between successes) and a whole-DAY staleness threshold. Silence is
+  // silence whether it was recorded as failures, recorded as nothing, or a mix, so
+  // one measure covers both — and neither over-reports an idempotent provider whose
+  // next good run catches everything up.
+  //
+  // It belongs beside the provider's other metadata because the right number is a
+  // property of how the provider delivers, not of the detector.
+  //
+  // ABSENT = derive it from the provider's declared poll cadence
+  // (DEFAULT_SILENCE_TOLERANCE_POLLS × cadence). A provider with NO declared cadence
+  // — a `push` provider has no poll interval — must state a number or an explicit
+  // null; a registry completeness test fails an undeclared one.
   //
   // NULL = exempt, and exemption is a statement about the provider: a manual archive
   // import has no cadence to be late against, and a planned/outbound entry never syncs
-  // inbound at all. Read ONLY through syncStalenessThreshold (lib/integrations/
+  // inbound at all. Read ONLY through silenceToleranceMinutes (lib/integrations/
   // staleness.ts) so the badge, the attention item, and the digest line share one
   // derivation (#221).
-  staleAfterDays?: number | null;
+  silenceToleranceMinutes?: number | null;
   // The consequence of THIS provider being broken, in user terms (#1880 item 2):
   // what stops arriving, named the way the user thinks of it ("measurements from
   // your scale and cuff"), not by transport. Rendered on the escalated Review card

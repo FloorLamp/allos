@@ -4,7 +4,7 @@ import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { WEATHER_PROFILE } from "./logins/findings";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenSyncInstant } from "./worker-env";
 
 // Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). The
 // fixture profile (E2E_LOGIN_WEATHER) is seeded with a home location, skin type, the
@@ -19,19 +19,13 @@ import { workerDbPath, frozenNow } from "./worker-env";
 // test must not pretend otherwise — see restoreWeatherFixture() for how the run's
 // side effects are undone.
 
-// The two events e2e/seed/findings.ts seeds for the weather profile — dated on the
-// run's frozen "today" in the profile's timezone (America/New_York), because since
-// #1880 the standing composes the #1685 staleness rule and a fixed past date would
-// read as a silent stop. Anything else on the provider was written by a kicked sync
-// during this file's run. Computed exactly the way the seed computes `wxToday`.
-const WX_TODAY = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-}).format(frozenNow());
-// The sync ledger stores UTC with an explicit `Z` (#2205, migration 163).
-const SEEDED_SYNC_EVENTS = [`${WX_TODAY}T05:00:00Z`, `${WX_TODAY}T06:00:00Z`];
+// The two events e2e/seed/findings.ts seeds for the weather profile — an hour and two
+// hours before the run's frozen clock, through the SAME derivation the seed writes
+// them with. Relative rather than fixed because the standing composes the silence
+// tolerance (#1685, unified in #2263) and weather's is twelve hours: a fixed
+// time-of-day would read as a silent stop on any run starting later in the day.
+// Anything else on the provider was written by a kicked sync during this file's run.
+const SEEDED_SYNC_EVENTS = [frozenSyncInstant(2), frozenSyncInstant(1)];
 
 // Undo what the re-enable's kicked sync wrote. Whatever the network did, the run
 // appends an integration_sync_events row — ok:1 with a today-relative window where

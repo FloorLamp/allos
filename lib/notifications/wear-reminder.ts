@@ -13,8 +13,8 @@
 // only continuous wear stream the app ingests — the sole other `hr_minutes` writer is
 // the Fitbit Takeout archive import, which has no live cadence to be silent against and
 // is therefore exempt BY CONSTRUCTION rather than by a special case. #2146 moves this
-// declaration into the provider registry alongside `staleAfterDays`, where it belongs
-// once a second provider needs one; keeping it here until then avoids inventing a
+// declaration into the provider registry alongside `silenceToleranceMinutes`, where it
+// belongs once a second provider needs one; keeping it here until then avoids inventing a
 // registry facet that issue is specced to design.
 //
 // ── The three timestamp conventions, joined carefully ────────────────────────
