@@ -26,6 +26,7 @@ import {
   resolveWeightKg,
   submittedWeightUnit,
   submittedDistanceUnit,
+  type Km,
 } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
@@ -199,7 +200,16 @@ export function saveActivityCore(
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
-  const components = rawComponents
+  // The PERSISTED component shape (it is what `components` JSON stores). `distance_km`
+  // is annotated with the canonical brand (#2149) so that dropping the `toKm` below —
+  // writing the submitted display-unit number straight into storage, the exact silent
+  // corruption a units-preference app is prone to — stops compiling.
+  const components: {
+    name: string;
+    type: ActivityType;
+    distance_km: Km | null;
+    duration_min: number | null;
+  }[] = rawComponents
     .filter((c) => c.name?.trim())
     .map((c) => {
       const distance = num(c.distance);
@@ -224,11 +234,22 @@ export function saveActivityCore(
     enteredDurationValue != null && enteredDurationValue > 0
       ? enteredDurationValue
       : null;
-  const { distanceKm, durationMin, elapsedMin, hasStrength } = compositeRollup(
+  const {
+    distanceKm: rolledDistanceKm,
+    durationMin,
+    elapsedMin,
+    hasStrength,
+  } = compositeRollup(
     components,
     clockDurationMin ?? enteredDurationMin,
     clockDurationMin
   );
+  // Σ of the legs' kilometres is kilometres — but ARITHMETIC erases the brand, since
+  // TypeScript cannot know that km + km is km while km × km is not. So the rollup's
+  // total is re-minted here through the identity conversion (free at runtime) to keep
+  // the value bound into `activities.distance_km` a `Km` (#2149).
+  const distanceKm: Km | null =
+    rolledDistanceKm == null ? null : toKm(rolledDistanceKm, "km");
   const explicitComponentDuration = components.reduce(
     (total, component) => total + (component.duration_min ?? 0),
     0

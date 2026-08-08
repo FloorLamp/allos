@@ -298,6 +298,22 @@ Canonical storage uses kilograms, kilometers, and the documented time units.
 Convert only at the boundaries: `toKg`/`toKm` on write and the helpers in
 `lib/units.ts` on display. Unit preferences belong to the login.
 
+The kilogram and kilometer halves of that rule are **types**, not review. `Kg` and
+`Km` (`lib/units.ts`) are compile-time brands, `toKg`/`toKm` are their ONLY minters,
+and the storage writers demand them: `NormBodyMetric.weight_kg`,
+`DocBodyMetric.weight_kg`, `NormActivity.distance_km`, the manual activity path's own
+`distance_km`, and `recordReading`'s `value` whenever its `unit` is `"kg"` or `"km"`.
+A surface handing display-unit pounds to storage does not compile. There are three
+ways to satisfy a branded field, all of them a minter call: convert a display value
+(`toKg(entered, unit)`); declare an already-canonical number canonical — a value read
+back out of the database, a provider payload the API documents in kg —
+(`toKg(v, "kg")`, the identity conversion, free at runtime); or re-mint a value
+derived by ARITHMETIC from canonical ones, since summing erases the brand. Never
+reach for a cast. Reads stay unbranded: a value coming out of storage is canonical by
+construction, and the brands guard the direction where the mistake is silent.
+`lib/__tests__/canonical-unit-brands.test.ts` holds the minters' unit tests and one
+`@ts-expect-error` per narrowed writer.
+
 ### Biomarkers and AI
 
 Canonical biomarker ranges come from `lib/canonical-biomarkers.json`.

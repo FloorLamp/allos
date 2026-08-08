@@ -41,6 +41,7 @@ import { now } from "./clock";
 import { getTimezone } from "./settings";
 import type { MedicalCategory } from "./types";
 import type { BodyMetricColumn } from "./metric-readings";
+import type { Kg, Km } from "./units";
 
 // ---- body_metrics statements ----------------------------------------------
 //
@@ -216,13 +217,42 @@ function bodyMetricFind(column: BodyMetricColumn) {
 
 // ---- recordReading: the placement-deciding write --------------------------
 
-/** One dated reading offered to the write core, keyed by IDENTITY rather than store. */
-export interface ReadingWriteInput {
+/**
+ * The type a reading's `value` must have for a given canonical `unit` (#2149).
+ *
+ * A reading is unit-bearing but polymorphic — one core writes kilograms, mmHg, mg/dL
+ * and L/min — so the value cannot be branded outright. It is branded WHERE THE UNIT
+ * SAYS SO: a reading that states `unit: "kg"` must carry a `Kg`, one that states
+ * `unit: "km"` must carry a `Km`, and every other unit passes a plain number through
+ * unchanged. A caller whose unit is only known as `string` at compile time (the vitals
+ * vocabulary, a fitness battery definition) resolves to `number`, exactly as before —
+ * as does a mixed batch, whose union of units distributes to `Kg | number`. The brand
+ * bites where the unit is STATED, which is where a hand-written write lives; it does
+ * not pretend to type a unit the caller only learns at runtime.
+ */
+export type CanonicalReadingValue<U extends string> = U extends "kg"
+  ? Kg
+  : U extends "km"
+    ? Km
+    : number;
+
+/**
+ * One dated reading offered to the write core, keyed by IDENTITY rather than store.
+ *
+ * Generic in its unit so the canonical-unit brands can reach the `value` — see
+ * `CanonicalReadingValue`. The parameter defaults to `string`, so an existing
+ * `ReadingWriteInput` annotation keeps meaning exactly what it did.
+ */
+export interface ReadingWriteInput<U extends string = string> {
   /** The canonical name of the quantity — what the placement policy decides on. */
   name: string;
-  /** In the identity's canonical unit; the boundary converted already. */
-  value: number;
-  unit: string;
+  /**
+   * In the identity's canonical unit; the boundary converted already. Branded when
+   * that canonical unit is kilograms or kilometres (`CanonicalReadingValue`), so a
+   * display-unit number cannot be handed to the write core as one.
+   */
+  value: CanonicalReadingValue<U>;
+  unit: U;
   /** The profile-local day. */
   date: string;
   /**
@@ -287,9 +317,9 @@ function hasProvenance(p: ReadingProvenance | undefined): boolean {
  * `medical_records` row is a dated clinical EVENT, and a second same-day temperature is
  * a fever curve (#800/#843), not a correction of the first.
  */
-export function recordReading(
+export function recordReading<U extends string>(
   profileId: number,
-  input: ReadingWriteInput
+  input: ReadingWriteInput<U>
 ): ReadingRecordOutcome {
   if (!Number.isFinite(input.value)) return { ok: false, error: "invalid" };
   if (!input.date.trim()) return { ok: false, error: "invalid" };
@@ -493,9 +523,9 @@ export function recordReading(
  * ONLY through `tallyUpsert`, so a caller's inserted/updated/unchanged split is the same
  * split every sync reports.
  */
-export function recordReadings(
+export function recordReadings<U extends string>(
   profileId: number,
-  inputs: readonly ReadingWriteInput[],
+  inputs: readonly ReadingWriteInput<U>[],
   counts: UpsertCounts
 ): ReadingRecordOutcome[] {
   const out: ReadingRecordOutcome[] = [];

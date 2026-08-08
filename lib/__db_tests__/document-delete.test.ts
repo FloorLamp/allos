@@ -21,6 +21,7 @@
 //      starred-biomarker cleanup hold end to end.
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
 import {
   persistDocumentImport,
@@ -161,7 +162,7 @@ function makeInput(opts: InputOpts = {}): PersistInput {
     careGoals: [],
     appointments: [],
     bodyMetrics: [
-      { date, weight_kg: 82, body_fat_pct: null, resting_hr: null },
+      { date, weight_kg: toKg(82, "kg"), body_fat_pct: null, resting_hr: null },
     ],
     heights: [{ date, height_cm: 178 }],
     headCircs: [{ date, head_circumference_cm: 47 }],

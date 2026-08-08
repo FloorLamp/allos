@@ -1,7 +1,7 @@
 import type { ExtractedResult } from "./medical-extract";
 import type { BodyMetricKind } from "./types";
 import { normalizeCanonicalKey } from "./canonical-name";
-import { round, toKg } from "./units";
+import { round, toKg, type Kg } from "./units";
 
 // Derives body_metrics rows from a medical document's extracted results, so a
 // DEXA scan or vitals panel that reports weight / body fat % / resting HR also
@@ -19,7 +19,9 @@ export { DOCUMENT_SOURCE_PREFIX, documentSource } from "./document-source";
 // weightless vitals reading has a home in body_metrics rather than being split off.
 export interface DocBodyMetric {
   date: string;
-  weight_kg: number | null;
+  // BRANDED (#2149), like the sync path's `NormBodyMetric.weight_kg`: this row is
+  // written to `body_metrics.weight_kg`, so it must have gone through `weightToKg`.
+  weight_kg: Kg | null;
   body_fat_pct: number | null;
   resting_hr: number | null;
 }
@@ -72,7 +74,10 @@ function isoOrNull(s: string | null): string | null {
 // lower bound is 2 kg (a small term newborn) so infant/toddler weights import
 // and feed the pediatric growth charts — the old 20 kg floor silently
 // dropped them. 400 kg caps mis-unitted garbage.
-function weightToKg(value: number, unit: string | null): number | null {
+// Returns the CANONICAL brand (#2149): this function IS the document path's weight
+// unit boundary, so it is where a reported pound becomes a storable kilogram, and
+// `DocBodyMetric.weight_kg` below will not accept anything else.
+function weightToKg(value: number, unit: string | null): Kg | null {
   const u = (unit ?? "").toLowerCase().replace(/[^a-z]/g, "");
   let kg: number;
   if (u === "kg" || u === "kgs" || u === "kilogram" || u === "kilograms")
@@ -87,7 +92,10 @@ function weightToKg(value: number, unit: string | null): number | null {
     kg = toKg(value, "lb");
   else if (u === "g" || u === "gram" || u === "grams") kg = value / 1000;
   else return null;
-  return kg >= 2 && kg <= 400 ? round(kg, 2) : null;
+  // `round` erases the brand (arithmetic does), so the sanity band re-mints through
+  // the identity conversion — free at runtime, and the point the value is finally
+  // declared to be kilograms.
+  return kg >= 2 && kg <= 400 ? toKg(round(kg, 2), "kg") : null;
 }
 
 // DEXA reports print "Total Body Fat" both as a percentage and as a MASS
@@ -144,7 +152,7 @@ export function bodyMetricsFromReadings(
   documentDate: string | null
 ): DocBodyMetric[] {
   interface Partial {
-    weight_kg: number | null;
+    weight_kg: Kg | null;
     body_fat_pct: number | null;
     resting_hr: number | null;
   }

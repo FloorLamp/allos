@@ -1,6 +1,7 @@
 import type { ActivityType } from "@/lib/types";
 import { utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import { toKg, toKm, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type {
@@ -671,7 +672,7 @@ export function parseHealthConnectPayload(
   // weightless row (HR/body-fat only) is valid now that body_metrics.weight_kg is
   // nullable, so nothing has to be diverted to metric_samples to avoid loss.
   interface DayAgg {
-    weight_kg: number | null;
+    weight_kg: Kg | null;
     bfSum: number;
     bfN: number;
     rhrSum: number;
@@ -711,7 +712,10 @@ export function parseHealthConnectPayload(
       continue;
     }
     noteInstant(w.time);
-    dayFor(p.date).weight_kg = kg; // last reading of the day wins
+    // Health Connect's Weight record is stated in KILOGRAMS (the field aliases read
+    // above name it), so the canonical mint is the identity conversion — and it is
+    // what makes the day aggregate carry a `Kg` all the way to the upsert (#2149).
+    dayFor(p.date).weight_kg = toKg(kg, "kg"); // last reading of the day wins
   }
   for (const b of asArray(payload.body_fat)) {
     const p = parts(b.time, tz);
@@ -1214,10 +1218,14 @@ export function parseHealthConnectPayload(
         (secs != null ? Math.round(secs / 60) : null)
     );
     const meters = num(e.distance_meters, e.meters, e.distance);
-    const distance_km = boundedOrNull(
+    // METRES → the canonical kilometres the column stores. The bounds filter runs on
+    // the converted number and hands back a plain one, so the canonical mint sits on
+    // the far side of it, at the point the value is declared to be kilometres (#2149).
+    const boundedKm = boundedOrNull(
       "distance_km",
       meters != null ? meters / 1000 : null
     );
+    const distance_km = boundedKm == null ? null : toKm(boundedKm, "km");
     const endParts = end ? parts(end, tz) : null;
     const externalId = `${HEALTH_CONNECT_ID}:${start}`;
     out.activities.push({

@@ -1,5 +1,6 @@
 import type { ActivityType } from "@/lib/types";
 import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
+import { toKm } from "@/lib/units";
 import type {
   NormActivity,
   NormBodyMetric,
@@ -286,8 +287,10 @@ export function mapOuraWorkout(
       ? Math.round((endMs - startMs) / 60000)
       : null;
   const meters = num(rec.distance);
+  // Oura reports workout distance in METRES; this division is the unit boundary, so
+  // the canonical value is minted here (#2149) — see the same pattern in strava.ts.
   const distanceKm =
-    meters != null ? Math.round((meters / 1000) * 100) / 100 : null;
+    meters != null ? toKm(Math.round((meters / 1000) * 100) / 100, "km") : null;
 
   // Core-field plausibility: an impossible distance/duration makes the whole workout
   // untrustworthy (#132). Optional fields (calories) are sanitized individually below.

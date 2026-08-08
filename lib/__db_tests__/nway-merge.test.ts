@@ -10,6 +10,7 @@
 //   - autoMerge LEAVING a materially-conflicting cluster for manual Review.
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { toKm } from "@/lib/units";
 import { db } from "@/lib/db";
 import { writeActivityFold } from "@/lib/merge-activity";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -235,7 +236,7 @@ describe("autoMergeActivityDuplicates (#1081)", () => {
       type: "cardio",
       title: "Run",
       duration_min: 30,
-      distance_km: 5,
+      distance_km: toKm(5, "km"),
       start_time: "08:02",
       end_time: "08:32",
     };

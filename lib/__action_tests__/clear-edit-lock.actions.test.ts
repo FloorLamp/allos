@@ -7,6 +7,7 @@
 // keyed upsert — the round-trip the badge promises.
 
 import { describe, it, expect } from "vitest";
+import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
 import { clearEditLock } from "@/app/(app)/data/review-actions";
 import { upsertBodyMetrics } from "@/lib/integrations/normalize";
@@ -40,7 +41,7 @@ describe("clearEditLock", () => {
     // While locked, a re-sync with a fresh value is held out (counted `edited`).
     const before = upsertBodyMetrics(
       profile.id,
-      [{ date: DATE, weight_kg: 80 }],
+      [{ date: DATE, weight_kg: toKg(80, "kg") }],
       SRC
     );
     expect(before).toMatchObject({ edited: 1, updated: 0 });
@@ -53,7 +54,7 @@ describe("clearEditLock", () => {
     // Now the same push updates the row (the provider's value wins).
     const after = upsertBodyMetrics(
       profile.id,
-      [{ date: DATE, weight_kg: 80 }],
+      [{ date: DATE, weight_kg: toKg(80, "kg") }],
       SRC
     );
     expect(after).toMatchObject({ updated: 1, edited: 0 });

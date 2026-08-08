@@ -1,5 +1,6 @@
 import { utcMinute, zonedDateParts, zonedWallIsoToUtc } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import { toKg, toKm } from "@/lib/units";
 import { resolveActivityType } from "@/lib/activity-meta";
 import type { ActivityType } from "@/lib/types";
 import type {
@@ -424,7 +425,10 @@ function parseBodyCompositionCsv(
   }
   out.bodyMetrics = [...byDate.entries()].map(([date, v]) => ({
     date,
-    ...(kind === "weight" ? { weight_kg: v } : { body_fat_pct: v }),
+    // The weight branch's `v` came from the archive's "weight grams" column divided
+    // by 1000 above, so it is kilograms; the canonical mint states that (#2149) and
+    // is the identity conversion at runtime. Body fat % is not a unit-branded column.
+    ...(kind === "weight" ? { weight_kg: toKg(v, "kg") } : { body_fat_pct: v }),
   }));
   return out;
 }
@@ -1118,13 +1122,17 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
     }
     const identity = fitbitActivityIdentity(name);
     const type = identity.type;
-    const distanceKm = boundedOrNull(
+    // `fitbitDistanceKm` is this archive's unit boundary (it reads the log's own
+    // `distanceUnit` — miles, metres or kilometres) and the bounds filter hands back
+    // a plain number, so the canonical mint sits after both (#2149).
+    const boundedKm = boundedOrNull(
       "distance_km",
       fitbitDistanceKm(
         typeof log.distance === "number" ? log.distance : null,
         typeof log.distanceUnit === "string" ? log.distanceUnit : null
       )
     );
+    const distanceKm = boundedKm == null ? null : toKm(boundedKm, "km");
     out.activities.push({
       external_id: externalId,
       date: stamp.date,

@@ -1,5 +1,6 @@
 import { utcInstant, zonedDateParts } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import { toKg } from "@/lib/units";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 
 // Maps Withings API responses (https://developer.withings.com/api-reference) into
@@ -162,7 +163,10 @@ export function mapWithingsMeasureGroup(
           // same-day weigh-ins deterministically (#605 — Withings returns groups
           // newest-first with no per-date collapse).
           measured_at: loc.iso,
-          ...(weight != null ? { weight_kg: weight } : {}),
+          // Withings reports mass in kilograms already (the `unit` exponent above only
+          // scales it), so the canonical mint is the identity conversion — free at
+          // runtime, and the one place this parser STATES the unit it read (#2149).
+          ...(weight != null ? { weight_kg: toKg(weight, "kg") } : {}),
           ...(bodyFat != null ? { body_fat_pct: bodyFat } : {}),
           ...(restingHr != null ? { resting_hr: restingHr } : {}),
         }

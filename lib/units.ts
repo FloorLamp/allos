@@ -4,17 +4,60 @@ import type { DistanceUnit, TemperatureUnit, WeightUnit } from "./settings";
 export const LB_PER_KG = 2.2046226218;
 export const MI_PER_KM = 0.62137119224;
 
+// ---- THE CANONICAL-UNIT BRANDS (#2149 item 2) -----------------------------
+//
+// "Canonical storage uses kilograms and kilometers; convert only at the boundaries"
+// used to be enforced by review alone — a surface that handed a display-unit number
+// (the user's POUNDS) straight to a storage writer compiled fine and silently stored
+// a number 2.2× too large. `Kg` and `Km` make that unwritable: a storage writer that
+// demands the brand cannot be fed a raw `number` at all, so the conversion is no
+// longer something a reviewer has to notice.
+//
+// COMPILE-TIME ONLY. A brand is `number` intersected with a phantom property that
+// exists only in the type system, so a `Kg` IS a number everywhere at runtime — it
+// arithmetics, formats, and binds to SQL exactly as before, and the brands erase to
+// nothing in the emitted JavaScript. Nothing about the stored values changes.
+//
+// `toKg` / `toKm` ARE THE ONLY MINTERS. They hold the only two casts that MAY produce
+// a branded value; writing `x as Kg` anywhere else forges the guarantee and defeats
+// the guard entirely, and review is the backstop for that exactly as it is for
+// `as any`. Three ways a canonical number legitimately arises, all of them a call:
+//
+//   • a display-unit number converted at a write boundary — `toKg(entered, unit)`,
+//     the ordinary case;
+//   • a number that is ALREADY canonical (a value read back out of the database, a
+//     provider payload the API documents in kg) — `toKg(stored, "kg")`, which is the
+//     identity conversion and therefore free at runtime, and which reads as the
+//     declaration it is: "this number is in kilograms";
+//   • a number derived by ARITHMETIC from canonical ones (summing a session's legs).
+//     Arithmetic on branded numbers yields a plain `number` — TypeScript cannot know
+//     that kg + kg is kg but kg × kg is not — so a derived canonical value re-mints
+//     through the same identity call at the point it is declared canonical again.
+//
+// Reads are deliberately NOT branded: a value coming OUT of storage is already
+// canonical by construction, and branding the read side would mean touching every
+// chart, formatter, and aggregate for no additional safety. The brands guard the
+// direction where the mistake is silent and permanent — the write.
+declare const CANONICAL_UNIT: unique symbol;
+
+/** A mass in canonical KILOGRAMS. Minted only by `toKg`. */
+export type Kg = number & { readonly [CANONICAL_UNIT]: "kg" };
+/** A distance in canonical KILOMETERS. Minted only by `toKm`. */
+export type Km = number & { readonly [CANONICAL_UNIT]: "km" };
+
 export function kgTo(kg: number, unit: WeightUnit): number {
   return unit === "lb" ? kg * LB_PER_KG : kg;
 }
-export function toKg(value: number, unit: WeightUnit): number {
-  return unit === "lb" ? value / LB_PER_KG : value;
+/** Mint canonical kilograms from a value stated in `unit`. THE weight minter. */
+export function toKg(value: number, unit: WeightUnit): Kg {
+  return (unit === "lb" ? value / LB_PER_KG : value) as Kg;
 }
 export function kmTo(km: number, unit: DistanceUnit): number {
   return unit === "mi" ? km * MI_PER_KM : km;
 }
-export function toKm(value: number, unit: DistanceUnit): number {
-  return unit === "mi" ? value / MI_PER_KM : value;
+/** Mint canonical kilometers from a value stated in `unit`. THE distance minter. */
+export function toKm(value: number, unit: DistanceUnit): Km {
+  return (unit === "mi" ? value / MI_PER_KM : value) as Km;
 }
 
 export function round(n: number, decimals = 1): number {
@@ -55,17 +98,21 @@ export function submittedDistanceUnit(
 // number equals the rounded display of the stored kg, keep the stored kg
 // exactly rather than re-deriving it from the rounded display (issue #194). A
 // genuinely changed value still converts through toKg as before.
+//
+// Returns `Kg` either way: the stored branch re-mints the value it read back out of
+// the database through the identity conversion (see the brand note above), which is
+// a no-op at runtime and keeps the write boundary's output branded.
 export function resolveWeightKg(
   submitted: number,
   storedKg: number | null | undefined,
   unit: WeightUnit,
   decimals = 1
-): number {
+): Kg {
   if (
     storedKg != null &&
     round(kgTo(storedKg, unit), decimals) === round(submitted, decimals)
   ) {
-    return storedKg;
+    return toKg(storedKg, "kg");
   }
   return toKg(submitted, unit);
 }
