@@ -467,7 +467,8 @@ const CARDIO_HINTS = [
 // string spellings converge on ONE code path: the name flows through the same
 // title-casing and CARDIO_HINTS matching below, so `56` and `"running"` classify
 // identically and a hint added for one spelling covers both. Note `0` → "workout",
-// which reproduces the pre-existing default ("Workout" / sport) exactly.
+// which is the UNSPECIFIED sentinel (see UNSPECIFIED_EXERCISE_LABEL below): the title
+// still reads "Workout", but the activity type is `unclassified`, not `sport` (#2272).
 //
 // The gaps in the sequence (1, 3, 6, 7, …) are reserved/removed values in the
 // upstream enum, not omissions here. A numeric type ABSENT from this table (a newer
@@ -536,16 +537,43 @@ const EXERCISE_TYPE_NAMES: Record<string, string> = {
   "83": "yoga",
 };
 
+// The label a session gets when the source named no exercise type at all. AndroidX's
+// EXERCISE_TYPE_OTHER_WORKOUT ("0") maps to the snake_case "workout" above, and a
+// missing or unrecognized value lands here too — all three mean the same thing: a
+// workout, unspecified.
+const UNSPECIFIED_EXERCISE_LABEL = "workout";
+
 // Resolve a raw `type` to the label the classifier works from: an all-digits value is
 // looked up as an AndroidX constant (unknown numbers → the generic default, never a
 // bare digit as a title); anything else passes through as the string it already is.
 function exerciseTypeLabel(rawType: unknown): string {
   const raw = typeof rawType === "string" ? rawType.trim() : "";
-  if (!raw) return "Workout";
-  if (/^\d+$/.test(raw)) return EXERCISE_TYPE_NAMES[raw] ?? "Workout";
+  if (!raw) return UNSPECIFIED_EXERCISE_LABEL;
+  if (/^\d+$/.test(raw))
+    return EXERCISE_TYPE_NAMES[raw] ?? UNSPECIFIED_EXERCISE_LABEL;
   return raw;
 }
 
+// A STATED ABSENCE, not a category (#2272). Health Connect's own vocabulary has a way
+// to say "a workout, unspecified" — EXERCISE_TYPE_OTHER_WORKOUT — and Fitbit's
+// exporter uses it for exactly the sessions Fitbit itself never categorized. A missing
+// or unrecognized `type` says the same thing from the other direction.
+function declinedToClassify(label: string): boolean {
+  return label.trim().toLowerCase() === UNSPECIFIED_EXERCISE_LABEL;
+}
+
+// Classify one exercise session into an activity type + a display title.
+//
+// The `sport` else-branch used to be the WHOLE defect (#2272): Health Connect sent
+// "a workout, unspecified", CARDIO_HINTS found no hit, and the row came out asserting
+// `sport` — a classification no source ever made. `sport` was doing double duty as a
+// real category AND as the we-don't-know placeholder, so nothing downstream (the
+// user, a tally, a weekly target, the duplicate detector) could tell an asserted type
+// from a guessed one. Now the parser can say the true thing instead.
+//
+// The absence of a STRENGTH branch here is a separate, secondary defect the issue
+// names and deliberately leaves: when the source DID state strength_training, the
+// mapping is wrong rather than invented, and that is its own fix.
 function classifyExercise(rawType: unknown): {
   type: ActivityType;
   title: string;
@@ -555,9 +583,11 @@ function classifyExercise(rawType: unknown): {
   const title = raw
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-  const type: ActivityType = CARDIO_HINTS.some((h) => norm.includes(h))
-    ? "cardio"
-    : "sport";
+  const type: ActivityType = declinedToClassify(raw)
+    ? "unclassified"
+    : CARDIO_HINTS.some((h) => norm.includes(h))
+      ? "cardio"
+      : "sport";
   return { type, title };
 }
 

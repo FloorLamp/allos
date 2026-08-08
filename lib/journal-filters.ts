@@ -22,14 +22,8 @@
 import { regionForExercise } from "./lifts";
 import { activityProvenanceKey } from "./journal-format";
 import type { DayGroup, JournalCardData } from "./journal-card";
+import { ACTIVITY_TYPES } from "./types";
 import type { ActivityType } from "./types";
-
-const ACTIVITY_TYPES: readonly ActivityType[] = [
-  "strength",
-  "cardio",
-  "sport",
-  "recovery",
-];
 
 // A muscle/region badge filter, set by clicking a badge in the detail panel.
 export interface JournalTagFilter {
@@ -106,7 +100,11 @@ export function normalizeJournalFilters(raw: unknown): JournalFilters {
   const o = raw as Record<string, unknown>;
   const query =
     typeof o.query === "string" ? o.query.slice(0, MAX_QUERY_LEN) : "";
-  const type = ACTIVITY_TYPES.find((t) => t === o.type) ?? null;
+  // The filter vocabulary is the DECLARED tuple, not a hand-listed copy (#2272): the
+  // copy silently omitted any new type, and an unlisted type is an unfilterable one —
+  // the row exists, the chip does not, and nothing says why.
+  const type: ActivityType | null =
+    ACTIVITY_TYPES.find((t) => t === o.type) ?? null;
   let tag: JournalTagFilter | null = null;
   if (o.tag != null && typeof o.tag === "object") {
     const t = o.tag as Record<string, unknown>;

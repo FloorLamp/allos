@@ -91,6 +91,9 @@ export interface ActivityEditData {
 // deliberately a complete ActivityEditData value because ActivityForm already has
 // one tested prefill path; the provider passes it as `prefill` (never `editData`),
 // so it creates a fresh activity while seeding only the protocol-owned type.
+// The form's input union stays three-valued and NEVER admits `unclassified` (#2272):
+// that value means "the source did not say", and a human at a form always has an
+// answer. It is reachable by import alone.
 export function buildActivityTypePrefill(
   type: "strength" | "cardio" | "sport",
   todayDate: string

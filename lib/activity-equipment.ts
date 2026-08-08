@@ -17,19 +17,23 @@ import { kindOf } from "./types";
 // picker, so the activity-level picker is not shown for it, but the mapping is
 // defined for completeness. A recovery (mobility) session offers recovery gear —
 // sauna, cold plunge, red light, massage device (issue #840, folding in #344).
+//
+// `unclassified` (#2272) is an IMPORTED session whose source declined to say what it
+// was, so no kind can be narrowed away without guessing: it offers every kind. This
+// is a Record over the declared tuple rather than a bare switch so a sixth activity
+// type is a type error here rather than an implicit `undefined`.
+const EQUIPMENT_KINDS_BY_TYPE: Record<ActivityType, EquipmentKind[]> = {
+  strength: ["strength"],
+  cardio: ["cardio"],
+  sport: ["cardio", "other"],
+  recovery: ["recovery"],
+  unclassified: ["strength", "cardio", "recovery", "other"],
+};
+
 export function equipmentKindsForActivityType(
   type: ActivityType
 ): EquipmentKind[] {
-  switch (type) {
-    case "strength":
-      return ["strength"];
-    case "cardio":
-      return ["cardio"];
-    case "sport":
-      return ["cardio", "other"];
-    case "recovery":
-      return ["recovery"];
-  }
+  return EQUIPMENT_KINDS_BY_TYPE[type];
 }
 
 // Whether the activity-level gear picker applies to this type at all. Strength gear

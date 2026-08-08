@@ -58,15 +58,31 @@ function matchesIncidental(name: string): boolean {
   return INCIDENTAL_KEYWORDS.some((k) => t.includes(k));
 }
 
-// The effort class of one session. `recovery` is incidental BY TYPE (that is what the
-// type means); otherwise the activity NAME decides, because a walk is stored as cardio
-// and classifying on type alone would let a dog walk mark the day trained — exactly the
-// #921 line this must uphold.
+// Which types settle their effort class BY TYPE ALONE, declared per type (#2272).
+// `null` means "the NAME decides" — a walk is stored as cardio, and classifying on
+// type alone would let a dog walk mark the day trained, exactly the #921 line this
+// must uphold.
+const TYPE_EFFORT_CLASS: Record<ActivityType, EffortClass | null> = {
+  strength: null,
+  cardio: null,
+  sport: null,
+  // That is what the type MEANS (#840).
+  recovery: "incidental",
+  // The source did not say (#2272). "Unspecified" is not "light": a provider that
+  // declined to name a session still recorded a session, so it falls through to the
+  // name keywords like every other performance-tier type. Deciding otherwise would
+  // let a real gym hour stop counting as training because of a missing label.
+  unclassified: null,
+};
+
+// The effort class of one session: settled by TYPE where the type itself answers
+// (see above), otherwise by the activity NAME.
 export function effortClass(
   type: ActivityType | string | null | undefined,
   name: string | null | undefined
 ): EffortClass {
-  if (type === "recovery") return "incidental";
+  const byType = type ? TYPE_EFFORT_CLASS[type as ActivityType] : null;
+  if (byType) return byType;
   return matchesIncidental(name ?? "") ? "incidental" : "training";
 }
 

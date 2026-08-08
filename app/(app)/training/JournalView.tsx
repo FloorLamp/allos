@@ -82,11 +82,17 @@ type Detail =
   | { kind: "sport"; name: string }
   | null;
 
+// The type chips. `recovery` is deliberately absent — mobility sessions have their own
+// surface — but every type a card can CARRY needs a chip, or the row is unfilterable:
+// it renders in the feed with a type the filter bar cannot name. `unclassified` (#2272)
+// is such a type, so it gets a chip labelled for what it is: an import whose source
+// never said what the session was.
 const TYPE_FILTERS: { value: "all" | ActivityType; label: string }[] = [
   { value: "all", label: "All" },
   { value: "strength", label: "Strength" },
   { value: "cardio", label: "Cardio" },
   { value: "sport", label: "Sport" },
+  { value: "unclassified", label: "Unspecified" },
 ];
 
 const JOURNAL_DESKTOP_QUERY = "(min-width: 1280px)";

@@ -1392,6 +1392,10 @@ export const REGION_SCOPES: MuscleRegion[] = [
   "Core",
 ];
 export const GROUP_SCOPES: BodyGroup[] = ["Upper", "Lower", "Core", "Full"];
+// The activity types a weekly frequency TARGET may be scoped to — deliberately NOT
+// the full ActivityType set. `recovery` has its own mobility scope, and `unclassified`
+// (#2272) is excluded on purpose: a "Cardio 2×/week" target is rightly unaffected by a
+// session nobody said was cardio, and no one sets a target for the unspecified.
 export const TYPE_SCOPES = ["strength", "cardio", "sport"] as const;
 
 const PATTERN_TITLES: Record<MovementPattern, string> = {
