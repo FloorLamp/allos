@@ -397,6 +397,11 @@ describe("episode event ledger actions", () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile("Event Editor", login.id);
     actAs(login, profile);
+    // Deterministic occurred_at math whatever zone the host runs in: the
+    // corrected reading time below resolves on the profile's own wall clock.
+    db.prepare(
+      "INSERT OR REPLACE INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')"
+    ).run(profile.id);
     const episodeId = makeSick(profile.id);
     const date = today(profile.id);
 
@@ -450,13 +455,20 @@ describe("episode event ledger actions", () => {
         })
       )
     ).toEqual({ ok: true });
+    // The corrected reading time lands on the row's own occurred_at (#2154 —
+    // the retired notes-"HH:MM" convention is never written again), resolved on
+    // the profile's wall clock (UTC in this harness).
     expect(
       db
         .prepare(
-          "SELECT value_num, notes FROM medical_records WHERE id = ? AND profile_id = ?"
+          "SELECT value_num, occurred_at, notes FROM medical_records WHERE id = ? AND profile_id = ?"
         )
         .get(temperature.id, profile.id)
-    ).toMatchObject({ value_num: 100.4, notes: "09:45" });
+    ).toMatchObject({
+      value_num: 100.4,
+      occurred_at: `${date}T09:45:00Z`,
+      notes: null,
+    });
 
     expect(
       await updateEpisodeSymptomAction(
