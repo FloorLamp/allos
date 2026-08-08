@@ -1959,6 +1959,75 @@ replacing; re-deriving it would run a whole builder and would produce TODAY's
 title for YESTERDAY's message on a rollover close. A pointer without one (written
 before 139) degrades to the bare line: a close never invents a subject.
 
+**…and it states the OUTCOME (#2170 → #2274 → #2275).** A subject alone still left
+the chat history less informative than the reminder had been — the reader learned
+that something was recorded, not what. #2170 answered with counts ("3 logged"),
+which is still strictly less than the message it replaces, because **the reminder
+was already a list**: it named every item, in the same chat, under the same `[Name]`
+prefix. So a resolved close now names what happened, in the domain's own words:
+
+```
+[Norton] 💊 Midday supplements — Vitamin D, Magnesium, Omega-3 taken.
+[Norton] 💊 Evening supplements — Vitamin D, Magnesium taken · Omega-3 skipped.
+[Norton] 🏁 Still working out? — session discarded.
+```
+
+- **The domain's vocabulary**, never the reconcile's private one: `taken` / `skipped`,
+  because the button is `✅ <name>` and the write core is `markDoseTaken`.
+- **Two groups, taken first, joined by `·`** — the reminder's own separator. An empty
+  group is omitted, so the common all-taken case is one clean clause.
+- **Names only.** The app ledger stays the complete surface: no amounts, no food notes,
+  no adherence tails, no per-dose marks. The receipt answers WHICH; how much is in the app.
+- **Order is the order the message showed them.** Tokens are read in keyboard order,
+  which is already the reminder's obligation-then-name sort — no second sort to drift.
+- **No cap, and none needed.** A close lists the same items with less per item, so it can
+  never be longer than the reminder it replaces.
+- **No app pointer.** "In the app." was a fragment doing two jobs; naming what happened
+  already tells the reader it is recorded.
+- **It is a snapshot.** The claim deletes the pointer, so a later in-app edit makes the
+  line historical rather than wrong — which is what "closing is forgetting" always meant.
+- **Household exposure is unchanged.** The reminder already named these items under the
+  same attribution prefix, so the close preserves what the message said rather than
+  disclosing anything new. That parity argument is what licenses every family below.
+
+**What a close says is part of the reconciler's TYPE (#2275).** Nine of the eleven
+families used to collapse to "handled in the app." _while holding the outcome_ —
+`mood`'s own resolution predicate reads the recorded mood and keeps only the null
+check; `workoutDraft` knows whether the session was **finished or discarded**, two
+opposite outcomes that rendered identically. The cause was mechanical: the old
+`tally?()` was OPTIONAL, so "this family declares no detail" was expressed by
+OMISSION — indistinguishable from nobody having looked. `FamilyReconciler`
+(`lib/notifications/reconcile.ts`) is therefore intersected with a discriminated
+`CloseContent`: `outcome-detail` (with a REQUIRED `detail()`), `subject-only` (with a
+REQUIRED `why`), or `not-applicable` (likewise). The compiler then guarantees that
+every family answers, that none can claim detail without producing it, that none can
+decline without a stated reason, and that none can half-declare. **There is no scan**
+— scans are for what types cannot see (source text, SQL); a closed vocabulary with a
+per-member obligation is the `RECAP_COMPARISON_KINDS` case, where a new key is a type
+error until its author declares one. The rendering is ONE pure formatter
+(`closeDetailText`, `lib/notifications/reconcile-core.ts`) over the declared facts,
+never a per-family sentence.
+
+| Family            | `closeStates`    | What the close states                                                                                      |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `intake-dose`     | `outcome-detail` | doses taken / skipped, by name                                                                             |
+| `escalation`      | `outcome-detail` | the same, via the shared dose detail                                                                       |
+| `household-round` | `outcome-detail` | per member, the member's name leading its group (#377)                                                     |
+| `preventive`      | `outcome-detail` | done / not applicable (⏰ Remind later is a bus snooze, so a deferred rule never reaches a resolved close) |
+| `refill`          | `outcome-detail` | which item is no longer low                                                                                |
+| `symptom`         | `outcome-detail` | the symptom and the severity recorded                                                                      |
+| `mood`            | `outcome-detail` | the recorded mood, in the shared 5-point vocabulary                                                        |
+| `workout-draft`   | `outcome-detail` | **session finished** vs **session discarded**                                                              |
+| `practice`        | `outcome-detail` | which practice is done for the week / back on pace                                                         |
+| `food-optin`      | `outcome-detail` | which way the setting went                                                                                 |
+| `food`            | `not-applicable` | additive — the keyboard never resolves, so it closes on rollover only                                      |
+
+The contract governs the **`resolved`** close only. `rollover`, `expired` and
+`superseded` close for time or lifecycle reasons where there is no outcome to state,
+and their tails are verbatim what they were. The food nudge's rollover line
+deliberately does NOT carry the day's final tally: a rolled-over additive nudge is
+not a receipt for anything, and the day's totals are what the app and the digest are for.
+
 **Edits, never sends.** Everything routes through the chokepoint's
 `closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not
 notify on an edit, so no interruption is spent; reconciliation only ever REDUCES

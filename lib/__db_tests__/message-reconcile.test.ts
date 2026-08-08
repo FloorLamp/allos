@@ -55,8 +55,15 @@ import {
   setTelegramBotConfig,
   setTimezone,
   setUserBirthdate,
+  setUserSex,
 } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
+import {
+  recordPreventiveDone,
+  setPreventiveOverride,
+} from "@/lib/queries/upcoming/preventive";
+import { setProfileFoodTelegram } from "@/lib/settings/notifications";
+import { discardWorkoutSession } from "@/lib/workout-finish";
 import { dispatch, prefixForProfile } from "@/lib/notifications";
 import { prefixMessage } from "@/lib/notifications/types";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
@@ -383,11 +390,9 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
     expect(markDoseTaken(pid, doseId, itemId, D)).toBe("logged");
 
     // Resolved for real now, so the message closes as HANDLED — not as out of date.
-    // Since #2170 "handled" is stated as the outcome tally the resolution produced.
+    // Since #2274 "handled" is the dose NAMED, in the domain's own word.
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
-    expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "1 logged. In the app."
-    );
+    expect(String(editText.mock.calls.at(-1)![2])).toContain("Bea D3 taken.");
   });
 
   it("closes past the window, naming the consequence rather than the calendar", async () => {
@@ -1044,8 +1049,8 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
 
     expect(out.closed).toBe(1);
     const closingText = editText.mock.calls.at(-1)![2];
-    // The tally (#2170) rides the SAME attributed subject this issue put there.
-    expect(closingText).toBe(`${title} — 1 logged. In the app.`);
+    // The outcome (#2170/#2274) rides the SAME attributed subject this issue put there.
+    expect(closingText).toBe(`${title} — Norton D3 taken.`);
     expect(closingText).toContain("[Norton]");
   });
 
@@ -1126,15 +1131,16 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
   });
 });
 
-// ---- The closing edit states the OUTCOME (issue #2170) ---------------------
+// ---- The closing edit states the OUTCOME (#2170 → #2274) -------------------
 //
 // A fully-resolved close replaced the ENTIRE message text, so the chat history ended up
 // less informative than the reminder had been: the reader knew something was recorded,
-// not what. The counts below are the reconcile's own resolution facts restated — the
-// same ledger reads that decided the close.
+// not what. #2170 answered with counts, which still said LESS than the reminder — it
+// named every item. The names below are the reconcile's own resolution facts restated,
+// from the same ledger reads that decided the close, in the words the buttons used.
 
-describe("a resolved close states the outcome tally (#2170)", () => {
-  it("counts what the ledger says: logged and skipped", async () => {
+describe("a resolved close states the outcome (#2170/#2274)", () => {
+  it("names what the ledger says: taken and skipped", async () => {
     const pid = newProfile("Tally Tara");
     const a = seedDose(pid, "Tara A");
     const b = seedDose(pid, "Tara B");
@@ -1148,14 +1154,15 @@ describe("a resolved close states the outcome tally (#2170)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const text = String(editText.mock.calls.at(-1)![2]);
-    expect(text).toContain("2 logged, 1 skipped. In the app.");
+    expect(text).toContain("Tara A, Tara B taken · Tara C skipped.");
     // The message's own subject still leads it (#1822 item 7).
     expect(text.startsWith("💊 Morning supplements —")).toBe(true);
-    // Counts only — no item is named in the closing line.
-    expect(text).not.toContain("Tara A");
+    // The domain's own words, and no app pointer (#2274).
+    expect(text).not.toContain("logged");
+    expect(text).not.toContain("In the app.");
   });
 
-  it("all taken reads as a single count", async () => {
+  it("all taken reads as one clean clause — the empty group is omitted", async () => {
     const pid = newProfile("Whole Wren");
     const a = seedDose(pid, "Wren A");
     const b = seedDose(pid, "Wren B");
@@ -1167,7 +1174,7 @@ describe("a resolved close states the outcome tally (#2170)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "2 logged. In the app."
+      "Wren A, Wren B taken."
     );
   });
 
@@ -1183,7 +1190,7 @@ describe("a resolved close states the outcome tally (#2170)", () => {
     markDoseTaken(pid, a.doseId, a.itemId, today(pid));
     await reconcileProfileMessages(pid);
     const closingText = String(editText.mock.calls.at(-1)![2]);
-    expect(closingText).toContain("1 logged. In the app.");
+    expect(closingText).toContain("Sana A taken.");
     expect(liveMessagePointers(pid)).toEqual([]);
 
     // Correct it in the app afterwards…
@@ -1513,5 +1520,468 @@ describe("the digest rebuild is gated by a cheap pre-check (#2069)", () => {
     // Profile-scoped like every other statement in lib/: one subject's ledger write must
     // not make every other profile pay for a rebuild.
     expect(digestDependencyStamp(bystander)).toBe(bystanderBefore);
+  });
+});
+
+// ---- EVERY family states its outcome (issue #2275) -------------------------
+//
+// Nine of eleven families closed a fully-resolved message to "handled in the app." while
+// HOLDING the outcome. #2275 makes the declaration part of `FamilyReconciler`'s type, so
+// a family can no longer say nothing by omission; what the type cannot reach is whether
+// `detail()` actually returns the real thing on a real resolution, which is this block.
+//
+// The pointer is recorded directly here rather than driven through nine send paths: the
+// close is a function of the KEYBOARD's tokens and the ledger, and each send path already
+// has its own builder test. What matters is that a real ledger write produces the real
+// sentence.
+
+// Record one keyboard, sweep, and hand back the text the chat was closed with.
+async function closeTextFor(
+  profileId: number,
+  chatId: string,
+  messageId: number,
+  kind: string,
+  title: string,
+  tokens: { text: string; callback_data: string }[]
+): Promise<string> {
+  recordMessagePointer({
+    profileId,
+    chatId,
+    messageId,
+    kind,
+    date: today(profileId),
+    keyboard: [tokens],
+    title,
+  });
+  editText.mockClear();
+  const out = await reconcileProfileMessages(profileId);
+  expect(out.closed).toBe(1);
+  return String(editText.mock.calls.at(-1)![2]);
+}
+
+describe("mood: the close states the mood that was recorded (#2275)", () => {
+  it("names the recorded value, in the shared 5-point vocabulary", async () => {
+    const pid = newProfile("Mood Mira");
+    seedLoginTelegram(pid, "5552275");
+    const d = today(pid);
+    db.prepare(
+      "INSERT INTO mood_logs (profile_id, date, valence) VALUES (?, ?, 4)"
+    ).run(pid, d);
+
+    const text = await closeTextFor(
+      pid,
+      "5552275",
+      7001,
+      "mood",
+      "[Mira] 🙂 How are you feeling?",
+      [
+        { text: "🙂", callback_data: `mood:${pid}:4:${d}` },
+        { text: "😄", callback_data: `mood:${pid}:5:${d}` },
+      ]
+    );
+    // Restating a person's own answer is not a score and not a comparison — the
+    // #992/#716 tone contract forbids JUDGING the value, never repeating it.
+    expect(text).toBe("[Mira] 🙂 How are you feeling? — Good recorded.");
+  });
+});
+
+describe("workout-draft: finished and discarded are OPPOSITE outcomes (#2275)", () => {
+  const draftFor = (profileId: number, title: string) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, start_time)
+           VALUES (?, ?, 'strength', ?, '07:00')`
+        )
+        .run(profileId, today(profileId), title).lastInsertRowid
+    );
+
+  it("a FINISHED session closes as finished", async () => {
+    const pid = newProfile("Finish Fern");
+    seedLoginTelegram(pid, "5552276");
+    const id = draftFor(pid, "Squat day");
+    db.prepare("UPDATE activities SET end_time = '08:10' WHERE id = ?").run(id);
+
+    const text = await closeTextFor(
+      pid,
+      "5552276",
+      7002,
+      "other",
+      "[Fern] ⏱️ Still working out?",
+      [
+        { text: "🏁 Finish workout", callback_data: `wofinish:${pid}:${id}` },
+        { text: "🗑 Discard", callback_data: `wodiscard:${pid}:${id}` },
+      ]
+    );
+    expect(text).toBe("[Fern] ⏱️ Still working out? — session finished.");
+  });
+
+  it("a DISCARDED session closes as discarded — the two must not read the same", async () => {
+    const pid = newProfile("Discard Dev");
+    seedLoginTelegram(pid, "5552277");
+    const id = draftFor(pid, "Abandoned draft");
+    // The real core: discardWorkoutSession deletes the draft and its sets.
+    expect(discardWorkoutSession(pid, id).kind).toBe("discarded");
+
+    const text = await closeTextFor(
+      pid,
+      "5552277",
+      7003,
+      "other",
+      "[Dev] ⏱️ Still working out?",
+      [
+        { text: "🏁 Finish workout", callback_data: `wofinish:${pid}:${id}` },
+        { text: "🗑 Discard", callback_data: `wodiscard:${pid}:${id}` },
+      ]
+    );
+    expect(text).toBe("[Dev] ⏱️ Still working out? — session discarded.");
+  });
+});
+
+describe("refill: the close names which item is no longer low (#2275)", () => {
+  // An item with a daily dose and a countable supply — the shape isLowSupply reads.
+  function seedSupply(profileId: number, name: string, qty: number): number {
+    const { itemId } = seedDose(profileId, name);
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = ?, qty_per_dose = 1 WHERE id = ?"
+    ).run(qty, itemId);
+    return itemId;
+  }
+
+  it("says only the outcome when the nudge's own title was the item's name", async () => {
+    const pid = newProfile("Refill Ria");
+    seedLoginTelegram(pid, "5552278");
+    const itemId = seedSupply(pid, "Ria D3", 300);
+
+    const text = await closeTextFor(
+      pid,
+      "5552278",
+      7004,
+      "refill",
+      "[Ria] 📦 Refill — Ria D3",
+      [
+        {
+          text: "📦 Ordered — remind me in 3 days",
+          callback_data: `rfsnooze:${pid}:${itemId}`,
+        },
+      ]
+    );
+    expect(text).toBe("[Ria] 📦 Refill — Ria D3 — no longer low.");
+  });
+
+  it("names them when the nudge covered several", async () => {
+    const pid = newProfile("Refill Rex");
+    seedLoginTelegram(pid, "5552279");
+    const a = seedSupply(pid, "Rex D3", 300);
+    const b = seedSupply(pid, "Rex Zinc", 300);
+
+    const text = await closeTextFor(
+      pid,
+      "5552279",
+      7005,
+      "refill",
+      "[Rex] 📦 2 items running low",
+      [
+        { text: "📦 Ordered", callback_data: `rfsnooze:${pid}:${a}` },
+        { text: "📦 Ordered", callback_data: `rfsnooze:${pid}:${b}` },
+      ]
+    );
+    expect(text).toBe(
+      "[Rex] 📦 2 items running low — Rex D3, Rex Zinc no longer low."
+    );
+  });
+
+  it("does not close, and states nothing, while the shortage stands", async () => {
+    const pid = newProfile("Still Low Lin");
+    seedLoginTelegram(pid, "5552280");
+    const itemId = seedSupply(pid, "Lin D3", 1);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5552280",
+      messageId: 7006,
+      kind: "refill",
+      date: today(pid),
+      keyboard: [
+        [
+          {
+            text: "📦 Ordered",
+            callback_data: `rfsnooze:${pid}:${itemId}`,
+          },
+        ],
+      ],
+      title: "[Lin] 📦 Refill — Lin D3",
+    });
+    expect((await reconcileProfileMessages(pid)).closed).toBe(0);
+  });
+});
+
+describe("preventive: the close states which action resolved (#2275)", () => {
+  const RULE = "colorectal_cancer";
+  function preventiveProfile(name: string): number {
+    const pid = newProfile(name);
+    setUserBirthdate(pid, "1980-01-01");
+    setUserSex(pid, "male");
+    return pid;
+  }
+  const pvKeyboard = (pid: number) => [
+    { text: "✅ Done", callback_data: `pvdone:${pid}:${RULE}` },
+    { text: "🚫 Not applicable", callback_data: `pvna:${pid}:${RULE}` },
+    { text: "⏰ Remind later", callback_data: `pvlater:${pid}:${RULE}` },
+  ];
+
+  it("marked done in the app closes as done", async () => {
+    const pid = preventiveProfile("Preventive Pia");
+    seedLoginTelegram(pid, "5552281");
+    recordPreventiveDone(pid, RULE, today(pid));
+
+    const text = await closeTextFor(
+      pid,
+      "5552281",
+      7007,
+      "preventive",
+      "[Pia] 🩺 Preventive care: Colorectal cancer screening",
+      pvKeyboard(pid)
+    );
+    expect(text).toBe(
+      "[Pia] 🩺 Preventive care: Colorectal cancer screening — done."
+    );
+  });
+
+  it("overridden in the app closes as not applicable", async () => {
+    const pid = preventiveProfile("Preventive Per");
+    seedLoginTelegram(pid, "5552282");
+    setPreventiveOverride(pid, RULE, "not_applicable");
+
+    const text = await closeTextFor(
+      pid,
+      "5552282",
+      7008,
+      "preventive",
+      "[Per] 🩺 Preventive care: Colorectal cancer screening",
+      pvKeyboard(pid)
+    );
+    expect(text).toBe(
+      "[Per] 🩺 Preventive care: Colorectal cancer screening — not applicable."
+    );
+  });
+});
+
+describe("symptom: the close states the symptom and its severity (#2275)", () => {
+  it("names both — parity with the follow-up that asked", async () => {
+    const pid = newProfile("Symptom Sam");
+    seedLoginTelegram(pid, "5552283");
+    db.prepare(
+      "INSERT INTO symptom_logs (profile_id, date, symptom, severity) VALUES (?, ?, 'headache', 2)"
+    ).run(pid, today(pid));
+
+    const text = await closeTextFor(
+      pid,
+      "5552283",
+      7009,
+      "symptom",
+      "[Sam] 🤒 Log a symptom: Headache",
+      [
+        { text: "Headache", callback_data: `symp:${pid}:headache` },
+        { text: "Moderate", callback_data: `symsev:${pid}:2:headache` },
+      ]
+    );
+    expect(text).toBe(
+      "[Sam] 🤒 Log a symptom: Headache — Headache logged, moderate."
+    );
+  });
+});
+
+describe("practice: the close names which practice caught up (#2275)", () => {
+  it("states the week's verdict for the target the button covered", async () => {
+    const pid = newProfile("Practice Pat");
+    seedLoginTelegram(pid, "5552284");
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', 'Meditation', 'meditation', 1)`
+        )
+        .run(pid).lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'Meditation', ?)"
+    ).run(pid, today(pid));
+
+    const text = await closeTextFor(
+      pid,
+      "5552284",
+      7010,
+      "practice",
+      "[Pat] 🧘 Practices behind pace",
+      [{ text: "✓ Meditation", callback_data: `pdone:${pid}:${targetId}:n1` }]
+    );
+    expect(text).toBe("[Pat] 🧘 Practices behind pace — done for the week.");
+  });
+});
+
+describe("food-optin: the close states which way the setting went (#2275)", () => {
+  it("names the setting, read from the setting itself", async () => {
+    const pid = newProfile("Optin Ola");
+    seedLoginTelegram(pid, "5552285");
+    setProfileFoodTelegram(pid, true);
+
+    const text = await closeTextFor(
+      pid,
+      "5552285",
+      7011,
+      "food",
+      "[Ola] 🍽️ Log food from here?",
+      [
+        { text: "Yes", callback_data: `foodoptin:${pid}:yes` },
+        { text: "Not now", callback_data: `foodoptin:${pid}:no` },
+      ]
+    );
+    expect(text).toBe("[Ola] 🍽️ Log food from here? — food logging turned on.");
+  });
+});
+
+describe("household-round: the close is per MEMBER (#2275)", () => {
+  it("attributes each member's doses, in the round's own order", async () => {
+    const receiver = newProfile("Carer Cam");
+    const ada = newProfile("Ada");
+    const bo = newProfile("Bo");
+    seedLoginTelegram(receiver, "5552286");
+    const adaDose = seedDose(ada, "Ada D3");
+    const boDose = seedDose(bo, "Bo Iron");
+    markDoseTaken(ada, adaDose.doseId, adaDose.itemId, today(ada));
+    markDoseSkipped(bo, boDose.doseId, boDose.itemId, today(bo));
+    const d = today(receiver);
+
+    const text = await closeTextFor(
+      receiver,
+      "5552286",
+      7012,
+      "dose",
+      "[Cam] 💊 Household doses — 2 due across 2 members",
+      [
+        {
+          text: "✓ Ada · Ada D3",
+          callback_data: `hh:${receiver}:${ada}:${adaDose.doseId}:${adaDose.itemId}:${d}`,
+        },
+        {
+          text: "✓ Bo · Bo Iron",
+          callback_data: `hh:${receiver}:${bo}:${boDose.doseId}:${boDose.itemId}:${d}`,
+        },
+      ]
+    );
+    expect(text).toBe(
+      "[Cam] 💊 Household doses — 2 due across 2 members — Ada: Ada D3 taken · Bo: Bo Iron skipped."
+    );
+  });
+});
+
+describe("escalation: a caregiver's chat is named too (#2274)", () => {
+  it("closes with the dose named, through the shared dose detail", async () => {
+    const pid = newProfile("Escalation Esme");
+    seedLoginTelegram(pid, "5552287");
+    const { itemId, doseId } = seedDose(pid, "Esme D3");
+    const d = today(pid);
+    markDoseTaken(pid, doseId, itemId, d);
+
+    const text = await closeTextFor(
+      pid,
+      "5552287",
+      7013,
+      "dose",
+      "[Esme] ⚠️ Missed dose",
+      [
+        {
+          text: "✅ Esme D3",
+          callback_data: `esctake:${pid}:${doseId}:${itemId}:${d}`,
+        },
+        {
+          text: "⏭ Skip",
+          callback_data: `escskip:${pid}:${doseId}:${itemId}:${d}`,
+        },
+        {
+          text: "👀 Seen",
+          callback_data: `escack:${pid}:${doseId}:${itemId}:${d}`,
+        },
+      ]
+    );
+    expect(text).toBe("[Esme] ⚠️ Missed dose — Esme D3 taken.");
+  });
+});
+
+describe("the name lookup is profile-scoped (#2274)", () => {
+  it("a shared chat's close names only the subject's own items", async () => {
+    const shared = "5552288";
+    const a = newProfile("Scope Ann");
+    const b = newProfile("Scope Ben");
+    const ad = seedDose(a, "Ann Magnesium");
+    const bd = seedDose(b, "Ben Magnesium");
+    seedLoginTelegram(a, shared);
+    seedLoginTelegram(b, shared);
+    markDoseTaken(a, ad.doseId, ad.itemId, today(a));
+    markDoseTaken(b, bd.doseId, bd.itemId, today(b));
+
+    const aText = await closeTextFor(
+      a,
+      shared,
+      7014,
+      "dose",
+      "[Ann] 💊 Morning",
+      [
+        {
+          text: "✅ Ann Magnesium",
+          callback_data: `take:${a}:${ad.doseId}:${ad.itemId}:${today(a)}`,
+        },
+      ]
+    );
+    const bText = await closeTextFor(
+      b,
+      shared,
+      7015,
+      "dose",
+      "[Ben] 💊 Morning",
+      [
+        {
+          text: "✅ Ben Magnesium",
+          callback_data: `take:${b}:${bd.doseId}:${bd.itemId}:${today(b)}`,
+        },
+      ]
+    );
+
+    expect(aText).toBe("[Ann] 💊 Morning — Ann Magnesium taken.");
+    expect(aText).not.toContain("Ben");
+    expect(bText).toBe("[Ben] 💊 Morning — Ben Magnesium taken.");
+    expect(bText).not.toContain("Ann");
+  });
+});
+
+describe("the three non-resolved tails are untouched (#2275)", () => {
+  it("rollover, expired and superseded still read exactly as they did", async () => {
+    // They close for time or lifecycle reasons where there is no outcome to state — a
+    // rolled-over nudge says nothing about what the day's ledger holds.
+    const pid = newProfile("Tail Tess");
+    seedLoginTelegram(pid, "5552289");
+    const yd = shiftDateStr(today(pid), -1);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5552289",
+      messageId: 7016,
+      kind: "food",
+      date: yd,
+      keyboard: [
+        [
+          {
+            text: "🥬 Leafy greens",
+            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
+          },
+        ],
+      ],
+      title: "[Tess] 🍽️ Morning food log",
+    });
+    editText.mockClear();
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toBe(
+      "[Tess] 🍽️ Morning food log — this was yesterday's message."
+    );
   });
 });
