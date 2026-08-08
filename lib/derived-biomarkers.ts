@@ -41,6 +41,10 @@ export const DERIVED_NAMES = [
   "HOMA-IR",
   "eGFR",
   "PhenoAge",
+  "Microalbumin/Creatinine Ratio, Urine",
+  "HDL as % of Cholesterol",
+  "Protein/Creatinine Ratio, Urine",
+  "Omega-6 Total",
 ] as const;
 export type DerivedName = (typeof DERIVED_NAMES)[number];
 
@@ -397,6 +401,129 @@ const DERIVED_DEFS: DerivedDef[] = [
         wbcThousandUl: v["White Blood Cell Count"],
         ageYears: age,
       });
+    },
+  },
+  // ── The four #2300 indices ──────────────────────────────────────────────────
+  //
+  // Same contract as everything above: MEASURED components only (this file never
+  // chains a derivation off another derivation), same-draw pairing, canonical-unit
+  // conversion before the arithmetic, and a printed value winning its draw.
+  //
+  // ONE-DIRECTIONAL, deliberately. Each relation below is algebraically invertible
+  // (given a ratio and one component the other follows), and none of them is
+  // inverted. A printed ratio carries fewer significant figures than the components
+  // it came from, so backing a component out of it manufactures precision in a value
+  // that was measured exactly; inversion also multiplies the places a wrong
+  // same-named component can be picked, and makes the no-chaining rule unenforceable
+  // since any member could be an input or an output.
+  //
+  // And the index that is NOT here: `Bilirubin, Indirect` (total − direct) has a
+  // canonical entry but no spec, because censoring breaks the subtraction — when
+  // either component is reported below the detection limit the difference is
+  // undefined over a wide range, which is why labs print "Can't Calc" instead of
+  // guessing. Reading it in is right; computing it is not.
+  {
+    name: "Microalbumin/Creatinine Ratio, Urine",
+    unit: "mg/g",
+    decimals: 1,
+    formulaLabel: "Urine albumin (mg/dL) ÷ urine creatinine (mg/dL) × 1000",
+    // The specimen is the whole game here. A panel commonly carries BOTH a serum
+    // "Creatinine" and a "Creatinine, Urine", and they differ by ~100× in mg/dL — a
+    // spot urine creatinine near 100 mg/dL against a serum creatinine near 1.0. Take
+    // the serum one and a urine albumin of 30 mg/L reads 3000 mg/g instead of 30,
+    // dropping a normal result deep inside albuminuria staging. The per-input
+    // `canonical` declaration is the guard: it is an EXACT canonical-name lookup into
+    // the caller's series map, so the serum entry is a different key and can never be
+    // substituted. It must never be relaxed into a stem or fuzzy match.
+    //
+    // Urine albumin is declared in the CANONICAL dataset unit (mg/dL), not the mg/L a
+    // lab usually prints. Both give the identical mg/g for any reading that carries a
+    // unit — convertToCanonical rescales mg/L by 0.1 first — but they differ for a
+    // reading with NO unit, which convertToCanonical passes through as "already
+    // canonical". Declaring the analyte's own canonical unit keeps that assumption
+    // the SAME one the entry's flag path makes; declaring mg/L here would make this
+    // module and the dataset disagree about what an unlabelled urine albumin means,
+    // and read it 10× low. (Same reasoning as PhenoAge above, which declares each
+    // input in the app's canonical unit and converts to the formula's unit inside
+    // compute().)
+    inputs: [
+      { canonical: "Albumin, Urine", unit: "mg/dL", label: "Alb" },
+      { canonical: "Creatinine, Urine", unit: "mg/dL", label: "UCr" },
+    ],
+    // mg/dL ÷ mg/dL is dimensionless; ×1000 turns mg of albumin per mg of creatinine
+    // into mg per GRAM, the unit KDIGO's albuminuria categories are written in.
+    compute: (v) => {
+      const cr = v["Creatinine, Urine"];
+      if (cr <= 0) return null;
+      return (v["Albumin, Urine"] / cr) * 1000;
+    },
+  },
+  {
+    name: "HDL as % of Cholesterol",
+    unit: "%",
+    decimals: 1,
+    formulaLabel: "HDL ÷ Total Cholesterol × 100 (mg/dL)",
+    inputs: [
+      { canonical: "Total Cholesterol", unit: "mg/dL", label: "Total" },
+      { canonical: "HDL Cholesterol", unit: "mg/dL", label: "HDL" },
+    ],
+    compute: (v) => {
+      const total = v["Total Cholesterol"];
+      if (total <= 0) return null;
+      return (v["HDL Cholesterol"] / total) * 100;
+    },
+  },
+  {
+    name: "Protein/Creatinine Ratio, Urine",
+    unit: "mg/g",
+    decimals: 1,
+    formulaLabel: "Urine protein (mg/dL) ÷ urine creatinine (mg/dL) × 1000",
+    // `Protein, Urine`'s canonical entry is UNITLESS — it is curated as the
+    // qualitative dipstick pad (Negative/Trace/1+), and convertToCanonical treats a
+    // null canonical unit as "already canonical". So a mg/dL row and a mg/L row would
+    // BOTH pass through unconverted and divide incomparably, 10× apart, with nothing
+    // in the output saying which one it was. The input unit is declared HERE rather
+    // than stamped onto the dataset entry: the entry describes a pad reading that
+    // genuinely has no unit, and a unit there would assert mg/dL for every unitless
+    // dipstick row everywhere in the app, while this declaration confines the
+    // assumption to the one place that does arithmetic. Purely qualitative rows never
+    // reach the formula at all — the query layer drops anything without a numeric
+    // value (componentNumeric).
+    inputs: [
+      { canonical: "Protein, Urine", unit: "mg/dL", label: "Prot" },
+      { canonical: "Creatinine, Urine", unit: "mg/dL", label: "UCr" },
+    ],
+    compute: (v) => {
+      const cr = v["Creatinine, Urine"];
+      if (cr <= 0) return null;
+      return (v["Protein, Urine"] / cr) * 1000;
+    },
+  },
+  {
+    name: "Omega-6 Total",
+    unit: "% by wt",
+    decimals: 1,
+    formulaLabel: "Omega-6/Omega-3 ratio × omega-3 total (% by wt)",
+    // NOT the sum of the itemized omega-6 lines. Arachidonic + linoleic is the
+    // obvious derivation and it is quietly WRONG: the printed total also counts DGLA
+    // and the minor omega-6 species the panel does not itemize, so the sum
+    // understates it by several points — a shortfall observed against a real report,
+    // and invisible in the output because it still looks like a plausible total. The
+    // ratio route reproduces the printed value because the ratio's own numerator IS
+    // that total.
+    inputs: [
+      { canonical: "Omega-6/Omega-3 Ratio", unit: "ratio", label: "n6:n3" },
+      {
+        canonical: "Omega-3 Total (OmegaCheck)",
+        unit: "% by wt",
+        label: "n-3",
+      },
+    ],
+    compute: (v) => {
+      const ratio = v["Omega-6/Omega-3 Ratio"];
+      const omega3 = v["Omega-3 Total (OmegaCheck)"];
+      if (ratio <= 0 || omega3 <= 0) return null;
+      return ratio * omega3;
     },
   },
 ];

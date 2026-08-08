@@ -618,6 +618,108 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       expect(isGarbageCanonical(real)).toBe(false);
   });
 
+  // #2300 — the last two spelling-drift routes, and (more importantly) the names that
+  // deliberately DON'T get one.
+  it("routes the two urinalysis spelling-drift aliases (#2300)", () => {
+    expect(snapCanonicalName("Epithelial Cells, Urine", index)).toBe(
+      "Squamous Epithelial Cells, Urine"
+    );
+    expect(snapCanonicalName("Urine Clarity", index)).toBe("Urine Appearance");
+    // Both targets are real entries the same report also prints under their own name.
+    expect(snapCanonicalName("Urine Appearance", index)).toBe(
+      "Urine Appearance"
+    );
+    expect(snapCanonicalName("Urine Color", index)).toBe("Urine Color");
+  });
+
+  it("keeps the differential's extra lines OFF their parent fraction (#2300)", () => {
+    // A CBC prints these ALONGSIDE the parent %, so an alias would put two distinct
+    // same-date values on one series and lose one of them.
+    expect(snapCanonicalName("Atypical Lymphocytes", index)).toBe(
+      "Atypical Lymphocytes"
+    );
+    expect(snapCanonicalName("Band Neutrophils", index)).toBe(
+      "Band Neutrophils"
+    );
+    expect(snapCanonicalName("Lymphocytes", index)).toBe("Lymphocytes");
+    expect(snapCanonicalName("Neutrophils", index)).toBe("Neutrophils");
+  });
+
+  it("leaves ALL THREE race-branched eGFR variants unresolved (#2300)", () => {
+    // Including the NON-African-American branch: it is the other side of a
+    // race-ADJUSTED equation, not a race-free result, so folding it onto the bare
+    // "eGFR" entry would file it as one. Unresolved is what lets the race-free
+    // CKD-EPI 2021 derivation fill the draw instead.
+    for (const variant of [
+      "eGFR, African American",
+      "eGFR, Non-African-American",
+      "eGFR, Thai",
+    ])
+      expect(snapCanonicalName(variant, index)).toBe(variant);
+    expect(snapCanonicalName("Estimated GFR", index)).toBe("eGFR");
+  });
+
+  // The issue's acceptance criterion, run over SYNTHETIC names rather than the
+  // owner's corpus: every remaining unresolved analyte name resolves to a seeded
+  // canonical entry — which is exactly what the AI import path's unresolved tally
+  // asks (lib/import-shape: snap the model's canonical_name, then test the snapped
+  // key against the seeded vocabulary) — except the five deliberate exclusions.
+  it("resolves every #2300 name, and still surfaces the five deliberate exclusions", () => {
+    const resolves = (name: string) =>
+      rawKeys.has(normalizeCanonicalKey(snapCanonicalName(name, index)));
+
+    const closed = [
+      // §1 aliases, spelled as the drifting lab prints them.
+      "Epithelial Cells, Urine",
+      "Urine Clarity",
+      // §2 urinalysis microscopy + physical description.
+      "Urine Color",
+      "Urine Appearance",
+      "Bacteria, Urine",
+      "Casts, Hyaline, Urine",
+      "Casts, Granular, Urine",
+      "Casts, RBC, Urine",
+      "Crystals, Urine",
+      "Crystal Amount, Urine",
+      // §2 stool.
+      "Fecal Occult Blood",
+      "Stool Color",
+      "Stool Consistency",
+      "Stool Ova and Parasites",
+      "Stool Red Blood Cells",
+      "Stool White Blood Cells",
+      // §2 CBC differential.
+      "Atypical Lymphocytes",
+      "Band Neutrophils",
+      "Red Blood Cell Morphology",
+      // §2 chemistry / renal / lipid / fatty acids.
+      "Bilirubin, Indirect",
+      "Microalbumin/Creatinine Ratio, Urine",
+      "Protein/Creatinine Ratio, Urine",
+      "HDL as % of Cholesterol",
+      "Omega-6 Total",
+      // §2 immunology.
+      "ANA Screen, IFA",
+      // Word-order / punctuation variants the normalizer already folds, exercised
+      // here because they are how a report prints them.
+      "Urine Bacteria",
+      "Hyaline Casts, Urine",
+      "Urine Crystals",
+    ];
+    expect(closed.filter((n) => !resolves(n))).toEqual([]);
+
+    // …and the five that stay unresolved on purpose: the three race-branched eGFR
+    // equations (§4) and the two toxicology screens, which are not biomarkers.
+    const excluded = [
+      "eGFR, African American",
+      "eGFR, Non-African-American",
+      "eGFR, Thai",
+      "Beta Adrenergic Blocker Screen",
+      "Diuretic Screen, Urine",
+    ];
+    expect(excluded.filter(resolves)).toEqual([]);
+  });
+
   it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
     for (const [alias, canonical] of canonicalAliases()) {
       // Target is a real seeded canonical name.

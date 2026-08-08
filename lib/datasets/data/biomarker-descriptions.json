@@ -1557,6 +1557,127 @@
       "abbreviation": "FEV1/FVC",
       "full_name": "FEV1 to FVC Ratio",
       "description": "The proportion of your total forced breath out that leaves in the first second, as a percentage. It is the one spirometry number with a universal cutoff: a value under about 70 percent after a bronchodilator is the standard criterion for persistent airflow obstruction. Informational and part of a clinical picture, not a diagnosis on its own."
+    },
+    {
+      "name": "Urine Color",
+      "full_name": "Urine Color",
+      "description": "The color of a urine sample, described in words rather than measured (straw, yellow, amber, red). It mostly reflects how concentrated the urine is, so it darkens with dehydration and lightens when you drink more; foods, vitamins and medicines can also change it. An unexpected red or brown is the finding worth asking about."
+    },
+    {
+      "name": "Urine Appearance",
+      "full_name": "Urine Appearance (Clarity)",
+      "description": "How clear the urine sample looks, reported as clear, hazy or cloudy. Cloudiness can come from cells, crystals, mucus or simply from how the sample was collected, so it is read together with the rest of the urinalysis rather than on its own."
+    },
+    {
+      "name": "Bacteria, Urine",
+      "full_name": "Bacteria in Urine",
+      "description": "Bacteria seen when a drop of urine is examined under the microscope, usually reported as none, few, moderate or many. Bacteria can indicate a urinary-tract infection, but they also appear when a sample picks up skin or genital bacteria during collection, so the result is interpreted alongside white blood cells and nitrite."
+    },
+    {
+      "name": "Casts, Hyaline, Urine",
+      "full_name": "Hyaline Casts in Urine",
+      "description": "Casts are tiny cylinders formed in the kidney tubules and washed out into the urine. Hyaline casts are the plain protein kind and the least specific: a few are common in healthy people after exercise, dehydration or diuretics."
+    },
+    {
+      "name": "Casts, Granular, Urine",
+      "full_name": "Granular Casts in Urine",
+      "description": "Granular casts are kidney-tubule casts filled with cellular debris. A small number can follow exercise or dehydration, while larger or persistent numbers suggest injury to the kidney tubules and are followed up with kidney function tests."
+    },
+    {
+      "name": "Casts, RBC, Urine",
+      "full_name": "Red Blood Cell Casts in Urine",
+      "description": "Red blood cell casts are red cells packed into a kidney-tubule cast. Because the cast forms inside the kidney, they indicate that blood in the urine is coming from the filtering units themselves rather than from the bladder or urethra, so they are always worth medical follow-up."
+    },
+    {
+      "name": "Crystals, Urine",
+      "full_name": "Crystals in Urine",
+      "description": "The type of crystal seen when urine is examined under the microscope, such as calcium oxalate, uric acid or triple phosphate. Many crystals form normally as a sample cools or sits, and the type is only sometimes a clue to a kidney stone or a metabolic problem."
+    },
+    {
+      "name": "Crystal Amount, Urine",
+      "full_name": "Crystal Amount in Urine",
+      "description": "How many crystals were seen under the microscope, reported in words such as few, moderate or many. It qualifies the crystal type rather than standing on its own."
+    },
+    {
+      "name": "Microalbumin/Creatinine Ratio, Urine",
+      "abbreviation": "ACR",
+      "full_name": "Urine Albumin-to-Creatinine Ratio",
+      "description": "This compares the small amount of albumin protein in a urine sample with the creatinine in the same sample, which corrects for how dilute the urine is. It is the standard early test for kidney damage from diabetes or high blood pressure, and results under about 30 milligrams per gram are generally considered normal. A raised value is usually repeated over months before it means anything, because exercise, fever and infection can all raise it temporarily."
+    },
+    {
+      "name": "Protein/Creatinine Ratio, Urine",
+      "abbreviation": "UPCR",
+      "full_name": "Urine Protein-to-Creatinine Ratio",
+      "description": "This compares total protein in a urine sample with the creatinine in the same sample, so a random sample can stand in for a 24-hour urine collection. It is used to estimate how much protein the kidneys are leaking overall, where the albumin ratio looks specifically at albumin."
+    },
+    {
+      "name": "Fecal Occult Blood",
+      "abbreviation": "FOBT",
+      "full_name": "Fecal Occult Blood Test",
+      "description": "A test for blood in the stool that is present in amounts too small to see. It is used to screen for colorectal cancer and to look for bleeding in the digestive tract; a negative result is normal, and a positive result is a reason for follow-up rather than a diagnosis on its own."
+    },
+    {
+      "name": "Stool Color",
+      "full_name": "Stool Color",
+      "description": "The color of a stool sample, described in words. It is heavily influenced by food, iron supplements and medicines; black or red stool is the finding that prompts a look for bleeding."
+    },
+    {
+      "name": "Stool Consistency",
+      "full_name": "Stool Consistency",
+      "description": "How formed or loose a stool sample is, described as formed, soft, loose or watery. It provides context for the rest of a stool study rather than being a test result in its own right."
+    },
+    {
+      "name": "Stool Ova and Parasites",
+      "abbreviation": "O&P",
+      "full_name": "Stool Ova and Parasites Examination",
+      "description": "A microscopic search of a stool sample for parasite eggs (ova) and parasites themselves. It is ordered for persistent diarrhea, especially after travel; none seen is the normal result, and several samples are often examined because shedding is intermittent."
+    },
+    {
+      "name": "Stool Red Blood Cells",
+      "full_name": "Red Blood Cells in Stool",
+      "description": "Red blood cells seen when a stool sample is examined under the microscope. Their presence points to bleeding somewhere in the digestive tract and is interpreted with the rest of the stool study and the clinical picture."
+    },
+    {
+      "name": "Stool White Blood Cells",
+      "full_name": "White Blood Cells in Stool",
+      "description": "White blood cells seen when a stool sample is examined under the microscope. They suggest that diarrhea has an inflammatory or invasive cause, such as certain bacterial infections or inflammatory bowel disease, rather than a purely secretory one."
+    },
+    {
+      "name": "Atypical Lymphocytes",
+      "full_name": "Atypical (Reactive) Lymphocytes",
+      "description": "Lymphocytes that look enlarged or activated under the microscope, reported as a percentage of white blood cells. They are most often a normal immune reaction to a viral infection such as mononucleosis. This is a separate line from the overall lymphocyte percentage, not another way of stating it."
+    },
+    {
+      "name": "Band Neutrophils",
+      "abbreviation": "Bands",
+      "full_name": "Band Neutrophils",
+      "description": "Immature neutrophils, named for their band-shaped nucleus, reported as a percentage of white blood cells. A rise is called a left shift and suggests the bone marrow is releasing cells early, typically during an acute infection. This is a separate line from the mature (segmented) neutrophil percentage."
+    },
+    {
+      "name": "Red Blood Cell Morphology",
+      "full_name": "Red Blood Cell Morphology",
+      "description": "A description of how red blood cells look on a blood smear, covering their size, shape and color with terms such as normocytic normochromic or anisocytosis. It adds context to the numeric red-cell indices and can point toward a particular type of anemia."
+    },
+    {
+      "name": "Bilirubin, Indirect",
+      "full_name": "Indirect (Unconjugated) Bilirubin",
+      "description": "The portion of bilirubin that the liver has not yet processed, calculated as total minus direct bilirubin. It rises when red blood cells break down faster than usual or in harmless inherited conditions such as Gilbert syndrome. Labs leave it blank rather than estimate it when either component is reported as below the detection limit."
+    },
+    {
+      "name": "HDL as % of Cholesterol",
+      "full_name": "HDL as a Percentage of Total Cholesterol",
+      "description": "The share of your total cholesterol that is carried as HDL, printed by some lipid panels. A larger share is generally the more favorable pattern, but it is read alongside the actual LDL and HDL numbers rather than as a target of its own."
+    },
+    {
+      "name": "Omega-6 Total",
+      "full_name": "Total Omega-6 Fatty Acids",
+      "description": "The combined amount of omega-6 fatty acids in red blood cells or plasma, as a percentage of all fatty acids by weight. It includes omega-6 species that a panel does not list individually, so it is larger than the printed arachidonic and linoleic acid lines added together. It is mainly read next to the omega-3 total as a balance."
+    },
+    {
+      "name": "ANA Screen, IFA",
+      "abbreviation": "ANA",
+      "full_name": "Antinuclear Antibody Screen by Immunofluorescence",
+      "description": "A screening test for antibodies against the body's own cell nuclei, read by immunofluorescence on cultured cells. It is the usual first step when an autoimmune connective-tissue disease such as lupus is suspected. A positive result is normally followed by a titer and pattern, and low-level positives are common in healthy people, so it is never a diagnosis on its own."
     }
   ]
 }

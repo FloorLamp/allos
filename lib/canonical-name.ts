@@ -260,6 +260,14 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Leukocyte Esterase", "Leukocyte Esterase, Urine"],
   ["Urobilinogen", "Urobilinogen, Urine"],
   ["Occult Blood, Urine", "Blood, Urine"],
+  // Urinalysis spelling drift from ONE lab whose naming diverges from the rest of the
+  // corpus (#2300). Both are the SAME measurement under a different word, not a
+  // different analyte: the microscopy line every other report prints as "Squamous
+  // Epithelial Cells" (its token set {cells, epithelial, urine} misses the curated
+  // {cells, epithelial, squamous, urine}), and the physical-description line other
+  // reports call "Appearance".
+  ["Epithelial Cells, Urine", "Squamous Epithelial Cells, Urine"],
+  ["Urine Clarity", "Urine Appearance"],
   // Drift a FRESH re-extraction surfaced (#918): the model, given the same
   // vocabulary, still coined off-list names. The neutrophil %-form is bare
   // "Neutrophils" (no "Relative" suffix, unlike mono/eos/baso); the CBC counts often
@@ -313,9 +321,19 @@ const CANONICAL_ALIASES: [string, string][] = [
   // NOT aliased, on purpose:
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.
-  //  • "eGFR, African American" / "eGFR, Thai" — race/ethnicity-specific eGFR
-  //    equations give DIFFERENT numbers; a report listing two would collapse two
-  //    distinct values onto one date. Left surfaced rather than mis-grouped.
+  //  • ALL THREE race/ethnicity-branched eGFR variants — "eGFR, African American",
+  //    "eGFR, Non-African-American" and "eGFR, Thai" (#2300). Each equation gives a
+  //    DIFFERENT number, so a report listing several would collapse distinct values
+  //    onto one date. The NON-African-American branch belongs here with the other two
+  //    and is the easy one to get wrong: it is the other side of a RACE-ADJUSTED
+  //    equation, not a race-free result, so routing it to the bare "eGFR" entry would
+  //    quietly file a race-adjusted number as the race-free one. Leaving all three
+  //    unresolved is also what lets the race-free CKD-EPI 2021 derivation
+  //    (lib/derived-biomarkers.ts) fill that draw's eGFR instead, which it does.
+  //  • "Atypical Lymphocytes" / "Band Neutrophils" — NOT aliased onto "Lymphocytes" /
+  //    "Neutrophils" (#2300). A differential reports them ALONGSIDE the parent
+  //    fraction, so an alias would land two distinct same-date percentages on one
+  //    series and silently drop one. Each has its OWN canonical entry instead.
 
   // NB: a "Full Name (ABBR)" entry does NOT need its bare abbreviation or bare full
   // name listed here — buildCanonicalIndex auto-derives both (see FULL_ABBR_RE). Only
