@@ -123,11 +123,18 @@ export function inWindow(date: string, start: string, end: string): boolean {
   return date >= start && date <= end;
 }
 
+// The recap's BREAKDOWN vocabulary — deliberately NOT the full ActivityType set.
+// `recovery` and `unclassified` (#2272) are excluded on purpose: this names the three
+// buckets the "4 workouts (strength 2, cardio 1)" line speaks, not what a row is.
 export type WorkoutType = "strength" | "cardio" | "sport";
 
 export interface RecapWorkout {
   date: string;
-  type: WorkoutType;
+  // NULL when the session has no breakdown bucket — an `unclassified` import, whose
+  // source declined to say what it was (#2272). It still COUNTS as a workout (it
+  // happened), it just contributes no bucket; calling it strength would re-assert the
+  // very claim the type exists to withhold.
+  type: WorkoutType | null;
 }
 
 export interface RecapWeight {
@@ -317,7 +324,7 @@ export interface WeeklyRecap {
 
 function countByType(workouts: RecapWorkout[]): Record<WorkoutType, number> {
   const out: Record<WorkoutType, number> = { strength: 0, cardio: 0, sport: 0 };
-  for (const w of workouts) out[w.type]++;
+  for (const w of workouts) if (w.type) out[w.type]++;
   return out;
 }
 

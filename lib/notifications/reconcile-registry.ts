@@ -170,6 +170,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
     inert:
       "flips one digest category's demotion (#1714); a preference is whatever it currently is and cannot go stale",
   },
+  {
+    prefix: "actype",
+    inert:
+      "the post-workout type ask (#2272) — 'your tracker didn't say what this was'. It rides the recap the way `demote` rides a dose reminder, carries an activity id and no date, and its write is a COMPARE-AND-SWAP on the row still being `unclassified`: a session classified in the app since, or absorbed by the duplicate auto-merge (#2271), refuses the tap and says which happened (already-classified / out-of-date) instead of confirming a write that did not occur. That is the difference from the correction chips, which are NOT inert — those expire on a CLOCK nothing can re-check at tap time, so only the sweep can stop them lying. This one cannot lie: it is asked ONCE, and the answer it can still write is the only one it will ever accept.",
+  },
 ];
 
 // ── THE DATE-GUARD DECLARATION (issue #2018) ─────────────────────────────────
@@ -509,7 +514,7 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   {
     kind: "workout-recap",
     prose: null,
-    why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false.",
+    why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false. Since #2272 the line can be followed by the type ASK when the session's source declined to classify it — a question, not a claim, and its buttons refuse a stale tap on their own (see the `actype` entry above), so there is still no sentence here for a prose reconciler to correct.",
   },
   {
     kind: "milestone",

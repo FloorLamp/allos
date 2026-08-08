@@ -11,6 +11,9 @@ import {
   parseSkipCallback,
   parseTakeCallback,
   parseWorkoutFinishCallback,
+  activityTypeAskCallback,
+  parseActivityTypeAskCallback,
+  activityTypeAskAnswerText,
   workoutFinishCallback,
   workoutFinishAnswerText,
   workoutDiscardAnswerText,
@@ -553,6 +556,51 @@ describe("parseWorkoutFinishCallback", () => {
     expect(parseWorkoutFinishCallback("wofinish:0:42")).toBeNull();
     expect(parseWorkoutFinishCallback("wofinish:3:0")).toBeNull();
     expect(parseWorkoutFinishCallback(null)).toBeNull();
+  });
+});
+
+describe("parseActivityTypeAskCallback (#2272)", () => {
+  it("round-trips each of the three offered answers", () => {
+    for (const t of ["strength", "cardio", "sport"] as const) {
+      expect(
+        parseActivityTypeAskCallback(activityTypeAskCallback(1, 384, t))
+      ).toEqual({ profileId: 1, activityId: 384, type: t });
+    }
+  });
+  it("refuses a type outside the three answers, a foreign prefix, and bad ids", () => {
+    // `unclassified` is the QUESTION, never an answer to it; `recovery` has its own
+    // surface. Neither may arrive through a tampered token.
+    expect(
+      parseActivityTypeAskCallback("actype:1:384:unclassified")
+    ).toBeNull();
+    expect(parseActivityTypeAskCallback("actype:1:384:recovery")).toBeNull();
+    expect(parseActivityTypeAskCallback("wofinish:1:384")).toBeNull();
+    expect(parseActivityTypeAskCallback("actype:0:384:cardio")).toBeNull();
+    expect(parseActivityTypeAskCallback("actype:1:0:cardio")).toBeNull();
+    expect(parseActivityTypeAskCallback(null)).toBeNull();
+  });
+});
+
+describe("activityTypeAskAnswerText (#2272)", () => {
+  it("answers honestly per outcome — a keyboard whose row is gone says so", () => {
+    expect(
+      activityTypeAskAnswerText({
+        kind: "classified",
+        activityId: 384,
+        type: "strength",
+      })
+    ).toBe("Saved as strength ✅");
+    expect(
+      activityTypeAskAnswerText({
+        kind: "already-classified",
+        activityId: 384,
+        type: "cardio",
+      })
+    ).toContain("Already saved as cardio");
+    // The row was absorbed by the duplicate auto-merge (#2271), or deleted.
+    expect(activityTypeAskAnswerText({ kind: "not-found" })).toContain(
+      "out of date"
+    );
   });
 });
 

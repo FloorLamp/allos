@@ -24,10 +24,29 @@ import type { ActivityType } from "./types";
 // sport/practice or cardio session happened carries none of the adult fitness
 // framing, so it is never removed by the training restriction. Strength is the
 // complement — the adult e1RM/standards apparatus the gate exists to protect.
-export const DURATION_ACTIVITY_TYPES: readonly ActivityType[] = [
-  "cardio",
-  "sport",
-];
+//
+// DECLARED PER TYPE (#2272), not hand-listed. This list renders SQL
+// (restrictedActivityTypeClause → `AND type IN (…)`) shared by Timeline, the sidebar
+// calendar and Search, so a type omitted here vanishes from three surfaces at once
+// with no error anywhere. The Record makes a new type a build failure until someone
+// answers for it.
+const DURATION_BY_TYPE: Record<ActivityType, boolean> = {
+  strength: false,
+  cardio: true,
+  sport: true,
+  // A mobility session is not the adult strength framing either, but it is also not
+  // duration-based logging in the #489 sense; it keeps its pre-#2272 answer.
+  recovery: false,
+  // The source did not say (#2272) — so it carries NONE of the adult strength framing
+  // the gate exists to protect, and a restricted profile's own imported workout must
+  // not disappear from its Timeline, calendar and Search because a provider declined
+  // to name it. An unspecified session is included.
+  unclassified: true,
+};
+
+export const DURATION_ACTIVITY_TYPES: readonly ActivityType[] = (
+  Object.keys(DURATION_BY_TYPE) as ActivityType[]
+).filter((t) => DURATION_BY_TYPE[t]);
 
 // True when an activity of `type` is duration-based (sport/cardio) rather than
 // the adult-framed strength domain. Pure — unit-tested directly.

@@ -40,6 +40,7 @@ import {
   type WeeklyRecap,
   type WorkoutType,
 } from "../weekly-recap";
+import type { ActivityType } from "../types/training";
 import { getRecentNarratives } from "../queries";
 import {
   getActiveSituations,
@@ -63,9 +64,24 @@ import { createLogger } from "../log";
 
 const log = createLogger("notify");
 
+// Which BREAKDOWN bucket each activity type contributes to, declared per type (#2272)
+// rather than derived from an else-branch. The else-branch swept every unmatched type
+// into `strength`, so a session whose source declined to classify it would have been
+// reported to the user as strength training — the same invented claim this issue is
+// about. `null` means "counts as a workout, contributes no bucket".
+const RECAP_WORKOUT_BUCKET: Record<ActivityType, WorkoutType | null> = {
+  strength: "strength",
+  cardio: "cardio",
+  sport: "sport",
+  // Pre-#2272 behavior, preserved deliberately: a mobility session has counted in the
+  // strength bucket since the recap shipped, and re-cutting that line is its own
+  // decision, not a side effect of adding a type.
+  recovery: "strength",
+  unclassified: null,
+};
+
 function asWorkout(a: { date: string; type: string }): RecapWorkout {
-  const type: WorkoutType =
-    a.type === "cardio" ? "cardio" : a.type === "sport" ? "sport" : "strength";
+  const type = RECAP_WORKOUT_BUCKET[a.type as ActivityType] ?? null;
   return { date: a.date, type };
 }
 

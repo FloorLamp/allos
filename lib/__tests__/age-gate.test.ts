@@ -43,7 +43,15 @@ describe("isDurationActivityType", () => {
   it("treats sport and cardio as duration-based (age-neutral)", () => {
     expect(isDurationActivityType("sport")).toBe(true);
     expect(isDurationActivityType("cardio")).toBe(true);
-    expect(DURATION_ACTIVITY_TYPES).toEqual(["cardio", "sport"]);
+    // #2272: an `unclassified` import — a session whose source declined to say what
+    // it was — carries none of the adult strength framing the gate protects, and this
+    // list renders the SQL that Timeline, the sidebar calendar and Search all share.
+    expect(isDurationActivityType("unclassified")).toBe(true);
+    expect(DURATION_ACTIVITY_TYPES).toEqual([
+      "cardio",
+      "sport",
+      "unclassified",
+    ]);
   });
 
   it("treats strength as the adult-framed domain (not duration-based)", () => {
