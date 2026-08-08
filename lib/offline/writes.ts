@@ -35,7 +35,8 @@ import {
 import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { acceptEatenAt } from "@/lib/food-eating-time";
+import { judgeEatenAt } from "@/lib/food-eating-time";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
@@ -616,7 +617,11 @@ function applyFoodIntent(
   payload: FoodPayload,
   date: string,
   capturedAt: unknown
-): { status: "done" | "rejected"; reason?: string } {
+): {
+  status: "done" | "rejected";
+  reason?: string;
+  timeNotice?: StatedTimeRefusal;
+} {
   if (!payload || typeof payload !== "object" || !isRealIsoDate(date)) {
     return { status: "rejected" };
   }
@@ -636,7 +641,13 @@ function applyFoodIntent(
     // app's test-clock seam (see resolveQueuedTakenAt's "real time on purpose" note). An
     // instant that is in the future, or whose profile-local date isn't the day this
     // serving is landing on, costs the STATEMENT and never the serving.
-    const stated = acceptEatenAt(
+    //
+    // THIS is where a fast device clock actually bites (#2296): the offline capture is
+    // the one food path that carries a client INSTANT rather than a choice the server
+    // resolves, so a phone six minutes ahead loses the minute it stated, here, against
+    // real time. The serving still lands — but the verdict rides back out as a
+    // `timeNotice` so the reconnect confirmation can say the minute did not.
+    const verdict = judgeEatenAt(
       typeof payload.eatenAt === "string" ? new Date(payload.eatenAt) : null,
       getTimezone(profileId),
       date,
@@ -648,8 +659,8 @@ function applyFoodIntent(
       date,
       loggedAt,
       mealSlot,
-      stated
-        ? { eatenAt: utcInstant(stated), source: "stated" as const }
+      verdict.kind === "accepted"
+        ? { eatenAt: utcInstant(verdict.at), source: "stated" as const }
         : undefined
     );
     if (outcome.kind === "unknown-group") {
@@ -659,7 +670,10 @@ function applyFoodIntent(
           "This food group is no longer available, so the serving wasn't logged.",
       };
     }
-    return { status: "done" };
+    return {
+      status: "done",
+      ...(verdict.kind === "refused" ? { timeNotice: verdict.reason } : {}),
+    };
   }
   if (payload.entry === "protein") {
     const grams = payload.grams;
@@ -733,6 +747,12 @@ export type ReplayApplied = "done" | "duplicate" | "rejected";
 export interface ReplayOutcome {
   status: ReplayApplied;
   reason?: string;
+  // A statement the write KEPT NOTHING OF while keeping the row (#2296). Only a
+  // `done` outcome carries one: the intent applied, and something the user said about
+  // WHEN did not survive the gate. It is not a failure and must never be shown as
+  // one — see components/OfflineQueueProvider for how loud "tell them" is allowed to
+  // be once the user may have walked away from the tap.
+  timeNotice?: StatedTimeRefusal;
 }
 
 // Apply one queued intent for `profileId`, exactly once. The idempotency-key check
@@ -747,6 +767,10 @@ export function applyIntent(
   intent: QueuedIntent
 ): ReplayOutcome {
   let outcome: ReplayOutcome = { status: "rejected" };
+  // Set by a flow that APPLIED while refusing a stated time (#2296) — carried out on
+  // the "done" outcome below, never on a rejection (the two mean opposite things: one
+  // kept the row, the other kept nothing).
+  let timeNotice: StatedTimeRefusal | undefined;
   writeTx(() => {
     if (alreadyReplayed(profileId, intent.key)) {
       outcome = { status: "duplicate" };
@@ -815,6 +839,7 @@ export function applyIntent(
         outcome = applied;
         return;
       }
+      timeNotice = applied.timeNotice;
       ok = true;
     } else if (intent.flow === "mobility") {
       // A queued mobility ON tap (#2130) replays through the SAME auth-blind core
@@ -875,7 +900,7 @@ export function applyIntent(
       return;
     }
     recordReplayKey(profileId, intent.key, intent.flow);
-    outcome = { status: "done" };
+    outcome = { status: "done", ...(timeNotice ? { timeNotice } : {}) };
   });
   return outcome;
 }

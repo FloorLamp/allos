@@ -13,10 +13,11 @@ import {
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
 import {
-  acceptEatenAt,
+  judgeEatenAt,
   parseEatingTimeChoice,
   resolveEatingTimeChoice,
 } from "@/lib/food-eating-time";
+import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
@@ -37,8 +38,27 @@ export type FoodLogResult =
       servings: number;
       mealSlot?: FoodSlot;
       mealServings?: number;
+      // The user STATED an eating time and the gate refused it (#2296). The serving
+      // landed — that posture is the whole point of the log path — but the minute did
+      // not, so the tap's answer carries WHY and the bar says so. Absent whenever
+      // nobody stated a time, which is the common case and nothing to report. A plain
+      // string union, so the Server Action record stays serializable.
+      statedTimeRefused?: StatedTimeRefusal;
     }
   | { ok: false; error: string };
+
+// The correction sheet's phrasing for a refused statement (#2296). The sheet is the
+// one food surface where the statement IS the whole submission, so this is a genuine
+// error — and its own sentence, because HERE the user typed the time: the shared
+// device-clock note would diagnose the wrong machine. What is shared is the REASON,
+// and that is the fix: the old copy said "That time isn't on the selected day"
+// whatever had gone wrong, so a time the user had put in the future sent them to
+// correct a day that was already right.
+const CORRECTION_TIME_ERROR: Record<StatedTimeRefusal, string> = {
+  future: "That time hasn't happened yet.",
+  "other-day": "That time isn't on the selected day.",
+  malformed: "Enter a valid time.",
+};
 
 // The largest sane weekly serving target — mirrors the protocol practice clamp so a
 // fat-fingered "70" can't create a permanently-behind habit.
@@ -84,16 +104,23 @@ export async function logFoodServing(
   // it against its own clock and the profile's timezone, so a page that has been open for
   // an hour cannot stamp a stale "now" and no browser has to convert a profile-local hour
   // with its own locale. An absent or unusable choice records NO eating time — the
-  // validate-never-drop rule: the serving always lands, the statement is what is lost.
+  // validate-never-drop rule: the serving always lands, the statement is what is lost,
+  // and since #2296 the answer SAYS SO rather than dropping it in silence.
+  //
+  // ONE clock read for the whole decision, and one VERDICT rather than a nullable
+  // instant (#2296): "nobody stated a time" and "a time was stated and refused" are
+  // different answers, and only the second is something to tell the user about. A
+  // choice that won't resolve at all (a wall time inside a DST gap) is a refusal too,
+  // not an absence — it was stated.
+  const at = clockNow();
+  const tz = getTimezone(profile.id);
   const choice = parseEatingTimeChoice(formData.get("eaten_at"));
-  const eatenAt = choice
-    ? acceptEatenAt(
-        resolveEatingTimeChoice(choice, clockNow(), getTimezone(profile.id)),
-        getTimezone(profile.id),
-        fields.date,
-        clockNow()
-      )
-    : null;
+  const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
+  const verdict: StatedTimeVerdict = !choice
+    ? { kind: "unstated" }
+    : resolved === null
+      ? { kind: "refused", reason: "malformed" }
+      : judgeEatenAt(resolved, tz, fields.date, at);
   const outcome = logFoodServingCore(
     profile.id,
     fields.group,
@@ -102,7 +129,9 @@ export async function logFoodServing(
     fields.mealSlot,
     // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
     // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
-    eatenAt ? { eatenAt: utcInstant(eatenAt), source: "stated" } : undefined
+    verdict.kind === "accepted"
+      ? { eatenAt: utcInstant(verdict.at), source: "stated" }
+      : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidateRoute("/nutrition");
@@ -114,6 +143,9 @@ export async function logFoodServing(
     ...(outcome.mealSlot ? { mealSlot: outcome.mealSlot } : {}),
     ...(outcome.mealServings != null
       ? { mealServings: outcome.mealServings }
+      : {}),
+    ...(verdict.kind === "refused"
+      ? { statedTimeRefused: verdict.reason }
       : {}),
   };
 }
@@ -167,10 +199,13 @@ export type FoodEventEditResult =
 //
 // The `eaten_at` field has three wire values (#2227): absent/empty = unchanged, "none"
 // = clear (back to the honest "nobody said"), "HH:MM" = state that local wall time on
-// the submitted day. `acceptEatenAt`'s POSTURE INVERTS here relative to the log path,
+// the submitted day. `judgeEatenAt`'s POSTURE INVERTS here relative to the log path,
 // deliberately: at log time an unusable instant costs the statement and never the
 // serving, but in a correction the statement IS the whole submission, so a refused
-// instant is an error the user sees — never a silent clear.
+// instant is an error the user sees — never a silent clear. Both postures now name the
+// same REASON (#2296), from the one refusal vocabulary, so the sheet can distinguish
+// "that isn't on the selected day" from "your device's clock is ahead" instead of
+// blaming the day for a clock.
 export async function updateFoodLogEvent(
   formData: FormData
 ): Promise<FoodEventEditResult> {
@@ -209,15 +244,17 @@ export async function updateFoodLogEvent(
       return formError("Enter a valid time.");
     // A wall time is only meaningful ON a day; the sheet always submits its day
     // alongside. Resolved in the profile's timezone against the SUBMITTED day, then
-    // gated — the same acceptEatenAt every eaten_at write passes, with the inverted
+    // gated — the same judgeEatenAt every eaten_at write passes, with the inverted
     // consequence described above (the core re-checks against the final date too).
     if (!patch.date) return formError("Enter a valid date.");
     const tz = getTimezone(profile.id);
     const instant = zonedWallTimeToUtc(tz, patch.date, rawEatenAt);
-    const accepted =
-      instant && acceptEatenAt(instant, tz, patch.date, clockNow());
-    if (!accepted) return formError("That time isn't on the selected day.");
-    patch.eatenAt = accepted;
+    const verdict = instant
+      ? judgeEatenAt(instant, tz, patch.date, clockNow())
+      : ({ kind: "refused", reason: "malformed" } as const);
+    if (verdict.kind !== "accepted")
+      return formError(CORRECTION_TIME_ERROR[verdict.reason]);
+    patch.eatenAt = verdict.at;
   }
 
   const outcome = updateFoodLogEventCore(profile.id, eventId, patch);
@@ -226,7 +263,7 @@ export async function updateFoodLogEvent(
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   if (outcome.kind === "invalid-date") return formError("Enter a valid date.");
   if (outcome.kind === "invalid-eaten-at")
-    return formError("That time isn't on the selected day.");
+    return formError(CORRECTION_TIME_ERROR[outcome.reason]);
   if (outcome.kind === "not-correctable")
     return formError("Protein logs are corrected from the protein total.");
   revalidateRoute("/nutrition");

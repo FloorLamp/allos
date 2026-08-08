@@ -21,7 +21,8 @@
 import { db, writeTx } from "./db";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
-import { acceptEatenAt } from "./food-eating-time";
+import { judgeEatenAt } from "./food-eating-time";
+import type { StatedTimeRefusal } from "./stated-time";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
 import { type FoodSlot } from "./food-slot";
@@ -300,11 +301,13 @@ export interface FoodEventPlacement {
 //                    profile's row — the statement is id + profile_id scoped).
 //   unknown-group  — the requested group isn't in the catalog; nothing written.
 //   invalid-date   — the requested date isn't a real calendar date; nothing written.
-//   invalid-eaten-at — the requested eating instant fails the acceptEatenAt rule against
+//   invalid-eaten-at — the requested eating instant fails the judgeEatenAt rule against
 //                    the FINAL date of the patch (off the row's own day, or meaningfully
 //                    future); nothing written. Enforced HERE, at the auth-blind boundary,
 //                    beside invalid-date — the day rule is the ledger's own invariant,
-//                    not a courtesy of whichever action called it.
+//                    not a courtesy of whichever action called it. It carries the gate's
+//                    own `reason` (#2296) so the surface can say WHICH rule refused it
+//                    rather than blaming the day for a fast device clock.
 //   not-correctable — the row is the reserved `__protein__` ranking event, which is not
 //                    a food-group serving: its truth is the protein_log grams total, and
 //                    re-keying it onto a catalog group would mint a serving from a shake.
@@ -318,7 +321,7 @@ export type FoodEventEditOutcome =
   | { kind: "not-found" }
   | { kind: "unknown-group" }
   | { kind: "invalid-date" }
-  | { kind: "invalid-eaten-at" }
+  | { kind: "invalid-eaten-at"; reason: StatedTimeRefusal }
   | { kind: "not-correctable" };
 
 // The post-write placement of one (date, group, window) coordinate. Read INSIDE the
@@ -403,21 +406,23 @@ export function updateFoodLogEventCore(
     if (!isRealIsoDate(nextDate)) return { kind: "invalid-date" as const };
     const nextSlot = patch.mealSlot ?? row.meal_slot;
 
-    // A STATED instant must satisfy the same acceptEatenAt rule every other eaten_at
+    // A STATED instant must satisfy the same judgeEatenAt rule every other eaten_at
     // write goes through — judged against the FINAL date, so a patch that moves the day
     // and states an hour is checked against the day the row will actually sit on. What
     // a refusal costs stays the caller's posture: the correction action surfaces it as
     // an error the user sees, never a silent clear (#2227's inversion of the log path).
-    if (
-      patch.eatenAt != null &&
-      acceptEatenAt(
+    // The gate's REASON travels with the refusal (#2296) — the surface has to name it,
+    // and this core is the only thing that knows which rule fired.
+    if (patch.eatenAt != null) {
+      const verdict = judgeEatenAt(
         patch.eatenAt,
         getTimezone(profileId),
         nextDate,
         clockNow()
-      ) === null
-    )
-      return { kind: "invalid-eaten-at" as const };
+      );
+      if (verdict.kind !== "accepted")
+        return { kind: "invalid-eaten-at" as const, reason: verdict.reason };
+    }
     // The eating instant the row carries AFTER this patch; `time_source` travels with
     // it (a stated instant is 'stated', a cleared one is honest NULL, an untouched one
     // keeps whatever contract wrote it — a Telegram 'tap' stays a tap).

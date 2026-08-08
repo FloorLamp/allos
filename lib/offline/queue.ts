@@ -51,6 +51,10 @@ import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
 // skew's Server Action half — and the argued-exclusion brand is the #2130
 // registry vocabulary's.
 import { isStaleActionError } from "@/lib/sw-update";
+import {
+  STATED_TIME_REFUSAL_NOTE,
+  type StatedTimeRefusal,
+} from "@/lib/stated-time";
 import { arguedExclusion, type ArguedExclusion } from "@/lib/loggable-domains";
 
 export type FlowKind =
@@ -261,11 +265,13 @@ export interface FoodPayload {
   // instant the SERVER computed when it rendered that option, so a profile-local hour is
   // never converted in the browser.
   //
-  // The replay VALIDATES it (acceptEatenAt) exactly as `resolveQueuedTakenAt` validates a
+  // The replay VALIDATES it (judgeEatenAt) exactly as `resolveQueuedTakenAt` validates a
   // queued dose's tap instant, and for the same reason: it came off an untrusted client
   // wall clock, and an instant whose profile-local date isn't the row's own `date` would
   // make the serving contradict itself. An unusable value costs the statement, never the
-  // serving. OPTIONAL: absent on an intent queued before this shipped, and absent —
+  // serving — and since #2296 never in silence, because a device clock running fast is
+  // exactly how a statement gets thrown away while the user's tap was perfectly right.
+  // OPTIONAL: absent on an intent queued before this shipped, and absent —
   // overwhelmingly — whenever the user simply didn't state a time.
   eatenAt?: string | null;
 }
@@ -404,6 +410,11 @@ export interface ReplayResult {
   // Optional coarse reason for a `rejected` status, set by the replay route so the
   // client can tell the user WHY an entry couldn't be applied (issue #475).
   reason?: string;
+  // The opposite of `reason` (#2296): the entry DID apply, and a time the user stated
+  // about it did not survive the acceptance gate. A refusal code, not prose — the copy
+  // lives once, in lib/stated-time.ts, so the reconnect toast and the food bar's own
+  // notice cannot drift. Only ever set alongside `status: "done"`.
+  timeNotice?: StatedTimeRefusal;
 }
 
 // A settled intent is one that must be removed from the LIVE queue: it either
@@ -444,6 +455,11 @@ export interface FlushDisposition {
   deleteKeys: string[]; // remove from the LIVE queue (synced + rejected + exhausted)
   rejected: RejectedEntry[]; // move into the dead-letter store (server-rejected + exhausted)
   retry: QueuedIntent[]; // re-put with attempts incremented (still under the cap)
+  // One entry per intent that APPLIED while losing a stated time (#2296). Deliberately
+  // NOT part of `rejected`: those entries were not saved at all, and the dead-letter
+  // panel says so in red — a cosmetic missing minute shown there would be a lie AND an
+  // alarm. These ride the sync confirmation instead (`syncedAnnouncement`).
+  timeNotices: StatedTimeRefusal[];
 }
 
 const DEFAULT_REJECT_REASON = "The server couldn't apply this entry.";
@@ -460,12 +476,18 @@ export function planFlushDisposition(
     deleteKeys: [],
     rejected: [],
     retry: [],
+    timeNotices: [],
   };
   for (const r of results) {
     const intent = byKey.get(r.key);
     if (r.status === "done" || r.status === "duplicate") {
       disposition.syncedCount++;
       disposition.deleteKeys.push(r.key);
+      // Collected only from the flush that actually APPLIED the write: a "duplicate"
+      // is a racing actor's success being re-reported, and announcing its notice again
+      // would tell the user twice about one lost minute.
+      if (r.status === "done" && r.timeNotice)
+        disposition.timeNotices.push(r.timeNotice);
       continue;
     }
     if (r.status === "rejected") {
@@ -496,6 +518,36 @@ export function planFlushDisposition(
     }
   }
   return disposition;
+}
+
+// The reconnect confirmation, amended when a replay kept a row but lost the minute it
+// was told (#2296). ONE sentence, on the toast the user already gets for syncing —
+// deliberately not a second surface and deliberately not the red dead-letter panel:
+//
+//   • The serving LANDED. Nothing needs re-entering, so nothing should look like it
+//     does. The attention doctrine's right-sizing cuts against an alarm here — the
+//     loudest correct answer is the confirmation the user was already going to read.
+//   • By replay time the user may be on another page or gone. That is tolerable
+//     precisely BECAUSE the loss is cosmetic and the row stays correctable from the
+//     serving's own ⋯ sheet. What would not be tolerable is claiming the time WAS
+//     recorded, and no surface does that any more.
+//
+// The reasons are deduped (two servings off one fast clock is one thing to say) but the
+// COUNT is not, so the sentence never understates how many rows it is about.
+export function syncedAnnouncement(
+  synced: number,
+  notices: readonly StatedTimeRefusal[]
+): string {
+  const head = `Synced ${synced} offline ${synced === 1 ? "entry" : "entries"}.`;
+  if (notices.length === 0) return head;
+  const why = [...new Set(notices)]
+    .map((reason) => STATED_TIME_REFUSAL_NOTE[reason])
+    .join(", and ");
+  const tail =
+    notices.length === 1
+      ? "One was saved without its stated time"
+      : `${notices.length} were saved without their stated time`;
+  return `${head} ${tail} \u2014 ${why}.`;
 }
 
 // A short human description of what an intent tried to log, for the review list —

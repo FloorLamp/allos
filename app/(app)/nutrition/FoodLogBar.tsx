@@ -16,7 +16,11 @@ import {
   type FoodSlot,
   type FoodSlotBoundaries,
 } from "@/lib/food-slot";
-import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import {
+  statedHhmm,
+  statedInstantOnDate,
+  STATED_TIME_REFUSAL_NOTE,
+} from "@/lib/stated-time";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import FoodGroupIcon, {
@@ -692,7 +696,7 @@ export default function FoodLogBar({
         // The statement travels as a RESOLVED instant, because a replay has no server to
         // resolve a choice against: "now" is this device's clock at the tap, and an
         // "earlier…" hour is the instant the server computed when it rendered that
-        // option. The replay validates both (acceptEatenAt) rather than trusting them,
+        // option. The replay validates both (judgeEatenAt) rather than trusting them,
         // and an unusable one costs the statement, never the serving.
         eatenAt: statedInstant(),
       });
@@ -752,6 +756,20 @@ export default function FoodLogBar({
         }
         const outcome = tap.outcome;
         if (outcome.ok) {
+          // The serving landed and the stated minute did not (#2296). The write is a
+          // success, so this is a NOTICE on a normal toast — never an error tone that
+          // would read as "your tap failed" for a row that is sitting right there. It
+          // is only reachable online when the page went stale across local midnight
+          // (the form sends the CHOICE and the server resolves it, so no client clock
+          // can push it into the future); the offline capture, which carries a client
+          // instant, is where a fast clock actually costs the minute.
+          if (outcome.statedTimeRefused) {
+            toast(
+              `Serving saved without its time \u2014 ${
+                STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
+              }.`
+            );
+          }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {

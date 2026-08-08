@@ -29,7 +29,7 @@ import {
   isHistoricalDoseTimeAccepted,
   resolveQueuedTakenAt,
 } from "../../dose-log-window";
-import { acceptStatedAt } from "../../stated-time";
+import { judgeStatedAt } from "../../stated-time";
 import {
   burstFrom,
   correctionBursts,
@@ -716,7 +716,7 @@ export function logHistoricalDose(
 // before and after an amendment (the issue's constraint 3).
 //
 // `date` IS PASSED EXPLICITLY, not derived from the instant (#2228 decision 3): a
-// present instant must AGREE with it (`acceptStatedAt` — the pair rule) or the whole
+// present instant must AGREE with it (`judgeStatedAt` — the pair rule) or the whole
 // amendment is refused, never silently re-dated; a null instant means "no intake time
 // stated" — the amendment changes what it names and NOTHING else, and the date-only
 // path still validates the day against the same any-past-day window
@@ -762,8 +762,10 @@ export function updateHistoricalDose(
     }
     // The pair rule (#2236's acceptance gate, reused rather than re-derived): the
     // stated instant's profile-local date IS the submitted `date`, or the amendment
-    // is refused — never silently re-dated onto the instant's own day.
-    if (!acceptStatedAt(occurredAt, tz, date, clockNow())) {
+    // is refused — never silently re-dated onto the instant's own day. Already NOT
+    // silent (#2296): a correction's statement is its whole submission, so the typed
+    // `invalid-time` refusal is what the surface renders.
+    if (judgeStatedAt(occurredAt, tz, date, clockNow()).kind !== "accepted") {
       return { kind: "invalid-time" };
     }
   } else if (!isHistoricalDoseDateAccepted(todayStr, date)) {

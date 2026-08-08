@@ -221,9 +221,68 @@ correction. Two stores say NULL, one says midnight; that difference is real and
 an eventual readings merge has to resolve it, which is why it is named here
 rather than hidden behind a uniform-looking anchor.
 
+## The stated-time acceptance gate
+
+A STATED instant — one somebody actually said, as opposed to a stamp the app took
+— goes through one gate, `judgeStatedAt` (`lib/stated-time.ts`, #2236), worn by
+every surface that records when an observed event happened. Two rules:
+
+1. not meaningfully in the future, tolerating `STATED_FUTURE_SKEW_MS` (five
+   minutes — "neither a forgery nor a broken clock"), and
+2. the instant's profile-local date IS the row's own `date`.
+
+What a refusal COSTS is the caller's, deliberately. A **log path** keeps the row and
+drops the statement: losing the stated minute is cosmetic, losing the food serving is
+not. A **correction path**, where the statement is the whole submission, refuses the
+write.
+
+What a refusal costs is _not_ silence (#2296, owner ruling 2026-08-08). The gate used
+to answer `Date | null`, which cannot distinguish **"nobody stated a time"** from
+**"somebody stated one and we refused it"** — so a device whose clock ran more than
+five minutes fast discarded the eating time it had just been told, kept the serving,
+and said nothing. The tolerance is defensible and stays at five minutes; the shape of
+the answer was the defect. `judgeStatedAt` returns a verdict:
+
+| verdict                       | means                                               |
+| ----------------------------- | --------------------------------------------------- |
+| `{ kind: "accepted", at }`    | use it                                              |
+| `{ kind: "unstated" }`        | nobody said — nothing to record, nothing to report  |
+| `{ kind: "refused", reason }` | somebody said; `future` / `other-day` / `malformed` |
+
+A refusal is a **notice, never a validation failure that costs the write**. Where it
+surfaces:
+
+- **Web food bar** (`app/(app)/nutrition/actions.ts` → `FoodLogBar`) — the ok result
+  carries `statedTimeRefused`, and the bar raises an ordinary success-tone toast:
+  _"Serving saved without its time — …"_. Online this is only reachable when a page
+  goes stale across local midnight, because the form sends the CHOICE and the server
+  resolves it; no client clock can push it into the future.
+- **Offline replay** (`lib/offline/writes.ts` → `/api/offline-replay` →
+  `OfflineQueueProvider`) — the one food path that carries a client INSTANT, and
+  therefore the one a fast clock actually bites. The replay stays `done` and adds a
+  `timeNotice`; the client folds it into the sync confirmation it already shows
+  (`syncedAnnouncement`). Deliberately **not** the red dead-letter panel: that panel
+  says "these weren't saved", which would be false here and an alarm for a cosmetic
+  loss. See `docs/internals/findings.md` on right-sizing.
+- **Correction sheet** — unchanged posture (the statement is the submission, so it
+  errors) with the reason now naming the rule that fired, instead of blaming the day
+  for a time the user deliberately put in the future.
+
+Phrasing is per surface; the REASON CODE is shared. `STATED_TIME_REFUSAL_NOTE` is the
+clause for a surface that timestamped the statement ITSELF ("your device's clock is
+ahead"); a surface where the user TYPED the time owns its own words, because there a
+future instant is not a diagnosis of the device.
+
+**Known gap, stated rather than implied.** `resolveStatedOccurredAt`
+(`lib/reading-writes.ts`) still drops a refused body-metrics statement without saying
+so. The verdict is available there; surfacing it means widening `insertBodyMetric` and
+its four callers from `boolean` to a typed outcome, which #2296 did not cover.
+
 ## Related
 
 - #2205 — the umbrella issue, its phasing, and its constraints.
+- #2296 — the acceptance gate's verdict, and the ruling that a refused statement is
+  never silent.
 - #94 — the day-attribution decision this deliberately does not revisit.
 - #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
   `SourceTime`, and the narrowing ledger.
