@@ -1601,7 +1601,14 @@ BOTH surfaces.
   two times already on its buttons, rather than asserting it with button colour, and
   the in-digest keyboard (`digestTimeActions`) carries the same order. Declining is
   **"No thanks"**, not "Not now": the exit is an episode-scoped dismissal that survives
-  statistical jitter, and a snooze-shaped label under-promises it.
+  statistical jitter, and a snooze-shaped label under-promises it. The three exits get
+  three visual weights out of the two button classes the app has, **plus a link** (owner
+  ruling on §2): `btn` for Dynamic, `btn-ghost` for "Use &lt;proposed&gt;", and a muted
+  text-link `<button>` — still a button, so it keeps its name and both activation keys —
+  for the decline. An exit should not compete visually with the two real choices, and
+  minting a third button weight to say so would be a design-system change every surface
+  pays for. A Telegram keyboard has no ghost/link distinction, so only the ORDER carries
+  there.
 - **The proposal is grid-snapped UP** onto the picker grid #2216 derives from the
   OBSERVED tick cadence (`tickGridMinutes`, `lib/notifications/schedule.ts` —
   divisors of 60 only, coarsening a non-divisor cadence; `snapProposalMinute` is
