@@ -1,4 +1,6 @@
 import { db, today } from "@/lib/db";
+import { cache } from "@/lib/request-cache";
+import { tickCached } from "@/lib/tick-cache";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { instantNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
@@ -577,7 +579,43 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // lib/notifications/digest-data.ts import lib/queries/attention.ts, which already imports
 // digest-data for the newly-flagged-biomarker read — a cycle. One home, no cycle, and the
 // badge/page/digest provably read the same list.
-export function getIntegrationAttention(
+//
+// MEMOIZED ON BOTH LIFETIMES (#2283). `getImportIssues` behind it walks EVERY provider
+// with a recorded event — a DISTINCT-provider scan, an indexed seek per provider, then
+// a `resolveProviderFacts` standing window plus a last-success seek for each — and one
+// digest tick asks it TWICE for the same profile: `logDigestTick` reports
+// `providerHealthy` on the decision (#2192), and `gatherDigestInput` builds the banded
+// broken-sync section (#1685) from the same list. `cache()` is identity in a tick
+// (lib/request-cache.ts says so deliberately), so the collapse that matters here is
+// `tickCached`; the `cache()` beside it collapses the request-side readers — the
+// dashboard hero and the Upcoming page both reach this through the attention model,
+// and the Sleep page's source card asks separately.
+//
+// Nothing inside a tick writes these rows AFTER the first read. `syncIntegrations` is
+// the FIRST statement of `tickProfile`, and it is the only thing in the tick that
+// writes `integration_sync_events` or moves a connection to `needs_reauth` — the pull
+// pass has finished before anything in the scope reads them, and no pull runner reads
+// this list, so the sync cannot seed a memo it then invalidates. The other writers
+// (the Health Connect ingest route, the Fitbit Takeout import route, the OAuth
+// callbacks) are request paths, and the retention sweep `pruneSyncEvents` runs in
+// `tick()` AFTER the profile loop, outside every scope. The scope closes with the
+// profile — see lib/tick-cache.ts for the rule this depends on.
+//
+// The one input that is not a row is NOW: `resolveProviderFacts` compares
+// `instantNow()` against the last successful run, so the memo pins the tick's first
+// reading of the clock for the rest of that profile's tick. That is sound because the
+// quantity being compared is a SILENCE TOLERANCE measured in hours (the registry's
+// declared cadence, #2263) while a profile's tick is seconds long — a standing that
+// flips mid-tick would have flipped mid-read anyway.
+export const getIntegrationAttention = cache(
+  tickCached(
+    "getIntegrationAttention",
+    (profileId: number) => String(profileId),
+    getIntegrationAttentionUncached
+  )
+);
+
+function getIntegrationAttentionUncached(
   profileId: number
 ): AttentionIntegration[] {
   return getImportIssues(profileId).map((ev) => {
