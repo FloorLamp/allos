@@ -275,7 +275,7 @@ export function observedSuccessCadenceMinutes(
 // not a promise, so it rounds to a unit a person can hold.
 export function successCadenceLabel(minutes: number | null): string | null {
   if (minutes == null) return null;
-  if (minutes < 90) return `succeeding about every ${minutes} min`;
+  if (minutes < 60) return `succeeding about every ${minutes} min`;
   const hours = Math.round(minutes / 60);
   if (hours < 36)
     return `succeeding about every ${hours} ${hours === 1 ? "hour" : "hours"}`;

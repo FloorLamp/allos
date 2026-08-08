@@ -10,26 +10,38 @@ import {
   escalationPolicyLabel,
   eventVerdict,
   failureConsequence,
-  FAILING_CONSECUTIVE_RUNS,
   formatCoverage,
   formatSyncChange,
   formatSyncOutcome,
   intermittentReassurance,
   intermittentRunsLabel,
   needsAttention,
+  observedSuccessCadenceMinutes,
   providerStanding,
   runWindowNorm,
   standingBadge,
   standingEscalates,
+  successCadenceLabel,
   syncVocabularyForKind,
+  STANDING_RUN_WINDOW,
   type SyncEventFacts,
 } from "@/lib/integrations/provider-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
 
+// The instant every fixture below is measured against, and the shape the sync ledger
+// actually stores ('YYYY-MM-DDTHH:MM:SSZ', #2205 / migration 163).
+const NOW = "2026-08-01T12:00:00Z";
+const HOUR = 60;
+const DAY = 24 * HOUR;
+
+function minutesBefore(minutes: number): string {
+  return `${new Date(Date.parse(NOW) - minutes * 60_000).toISOString().slice(0, 19)}Z`;
+}
+
 function ev(over: Partial<SyncEventFacts> = {}): SyncEventFacts {
   return {
     id: 1,
-    at: "2026-08-01 09:00:00",
+    at: minutesBefore(3 * HOUR),
     ok: 1,
     inserted: 0,
     updated: 0,
@@ -61,9 +73,9 @@ function runs(fails: number, oks: number): SyncEventFacts[] {
   return out;
 }
 
-// A connected provider's standing over a window, with the staleness facts a real
-// caller (getIntegrationState) supplies. Defaults: last success well inside the
-// threshold.
+// A connected provider's standing over a window, with the freshness facts a real
+// caller (getIntegrationState) supplies. Defaults: an hourly provider on the 12-hour
+// silence tolerance, last success well inside it.
 function standingOf(
   window: SyncEventFacts[],
   over: Partial<Parameters<typeof providerStanding>[0]> = {}
@@ -73,9 +85,9 @@ function standingOf(
     needsReauth: false,
     latest: window[0] ?? null,
     recentRuns: window,
-    lastSuccessAt: "2026-08-01 08:00:00",
-    thresholdDays: 2,
-    today: "2026-08-01",
+    lastSuccessAt: minutesBefore(4 * HOUR),
+    toleranceMinutes: 12 * HOUR,
+    now: NOW,
     ...over,
   });
 }
@@ -108,14 +120,28 @@ describe("providerStanding + standingBadge", () => {
     expect(standingOf(runs(0, 6))).toBe("healthy");
   });
 
-  // THE #1880 headline: flapping is not failing. The boundary is
-  // FAILING_CONSECUTIVE_RUNS — 2 consecutive failures with a recent success stay a
-  // calm amber `intermittent`; the third escalates.
-  it("classifies 2 consecutive failures as intermittent and 3 as failing", () => {
-    expect(FAILING_CONSECUTIVE_RUNS).toBe(3);
-    expect(standingOf(runs(1, 5))).toBe("intermittent");
-    expect(standingOf(runs(2, 5))).toBe("intermittent");
-    expect(standingOf(runs(3, 5))).toBe("failing");
+  // THE #2263 headline: escalation is decided by SILENCE, not by a run count. A run
+  // count is not a measure of whether data is arriving, and for an hourly provider
+  // three runs is three hours — below that provider's own p90 gap between successes.
+  it("never escalates on a consecutive-failure streak while a success sits inside the tolerance", () => {
+    for (const failures of [1, 2, 3, 6, 10]) {
+      expect(standingOf(runs(failures, 5))).toBe("intermittent");
+    }
+    // THE case this issue is about, stated exactly: an hourly provider with a success
+    // 2 h ago and six recorded failures since is intermittent …
+    expect(
+      standingOf(runs(6, 4), { lastSuccessAt: minutesBefore(2 * HOUR) })
+    ).toBe("intermittent");
+    // … and the same provider whose last success is 13 h ago is failing, whatever the
+    // failure pattern beneath it.
+    expect(
+      standingOf(runs(6, 4), { lastSuccessAt: minutesBefore(13 * HOUR) })
+    ).toBe("failing");
+  });
+
+  it("keeps consecutiveLeadingFailures for CHOOSING THE COPY, not for escalating", () => {
+    // It no longer decides anything; getImportIssues still prefers a real failure row
+    // over the synthetic one, which is the reading that survives.
     expect(consecutiveLeadingFailures(runs(2, 5))).toBe(2);
     // A success at the head resets the streak — a flap is not an outage.
     expect(consecutiveLeadingFailures(runs(0, 3))).toBe(0);
@@ -129,50 +155,44 @@ describe("providerStanding + standingBadge", () => {
     expect(standingOf(window)).toBe("intermittent");
   });
 
-  // The staleness interplay (#1685 composed, not duplicated): the SAME failure
-  // pattern escalates or not depending on whether a success landed inside the
-  // provider's staleness window.
-  it("escalates a flap once the last success falls outside the staleness window", () => {
+  // The SAME failure pattern escalates or not purely on whether a success landed
+  // inside the provider's tolerance. One rule, one axis.
+  it("escalates a flap once the last success falls outside the tolerance", () => {
     const window = runs(1, 5);
     expect(
-      standingOf(window, {
-        lastSuccessAt: "2026-07-31 08:00:00",
-        today: "2026-08-01",
-      })
-    ).toBe("intermittent"); // success inside the 2-day window
+      standingOf(window, { lastSuccessAt: minutesBefore(11 * HOUR) })
+    ).toBe("intermittent");
     expect(
-      standingOf(window, {
-        lastSuccessAt: "2026-07-25 08:00:00",
-        today: "2026-08-01",
-      })
-    ).toBe("failing"); // success outside it — the #1685 breach escalates
+      standingOf(window, { lastSuccessAt: minutesBefore(13 * HOUR) })
+    ).toBe("failing");
   });
 
-  it("escalates a QUIET stop too — no failures recorded, just no success in the window", () => {
+  it("escalates a QUIET stop the same way — no failures recorded, just no success", () => {
+    // The shape the Health Connect outage came in as: the device-side failures never
+    // reached the server, so there was nothing to classify. Only absence.
+    const quiet = [ev({ at: minutesBefore(20 * HOUR) })];
     expect(
-      standingOf([ev({ at: "2026-07-20 08:00:00" })], {
-        lastSuccessAt: "2026-07-20 08:00:00",
-        today: "2026-08-01",
-      })
+      standingOf(quiet, { lastSuccessAt: minutesBefore(20 * HOUR) })
     ).toBe("failing");
-    // An exempt provider (null threshold) never goes stale (#1685).
+    // An exempt provider (null tolerance) is never silent, however long the gap.
     expect(
-      standingOf([ev({ at: "2026-07-20 08:00:00" })], {
-        lastSuccessAt: "2026-07-20 08:00:00",
-        thresholdDays: null,
-        today: "2026-08-01",
+      standingOf(quiet, {
+        lastSuccessAt: minutesBefore(20 * HOUR),
+        toleranceMinutes: null,
       })
     ).toBe("healthy");
   });
 
-  it("stays calm for a provider that has only ever failed once or twice", () => {
-    // No success EVER: staleness cannot fire (#1685's never-succeeded exemption)
-    // and the streak is below the escalation threshold — the provider's own page
-    // shows the failure; nothing escalates until the third consecutive miss.
-    expect(standingOf(runs(2, 0), { lastSuccessAt: null })).toBe(
-      "intermittent"
-    );
-    expect(standingOf(runs(3, 0), { lastSuccessAt: null })).toBe("failing");
+  it("stays calm for a provider that has NEVER succeeded, however many runs failed", () => {
+    // No success EVER: the tolerance rule cannot fire (its never-succeeded
+    // exemption), and there is no other escalation path. The provider's own page
+    // shows the failures — this is a setup problem, not a stopped connection, and
+    // flagging it would flag every freshly-created connection before its first tick.
+    for (const failures of [2, 3, 10]) {
+      expect(standingOf(runs(failures, 0), { lastSuccessAt: null })).toBe(
+        "intermittent"
+      );
+    }
   });
 
   it("routes exactly the escalating standings to the badge/digest, and intermittent to nowhere", () => {
@@ -216,15 +236,41 @@ describe("flap + escalation copy (#1880)", () => {
     expect(intermittentReassurance("records")).toContain("catches up");
   });
 
-  it("states the escalation policy with the provider's own staleness threshold", () => {
-    const withStale = escalationPolicyLabel(2);
-    expect(withStale).toContain("after 3 consecutive failures");
-    expect(withStale).toContain("no run has succeeded in 2 days");
-    expect(withStale).toContain("the same rule the Review badge");
-    // An exempt provider states only the consecutive half — no invented threshold.
-    const exempt = escalationPolicyLabel(null);
-    expect(exempt).toContain("after 3 consecutive failures");
-    expect(exempt).not.toContain("no run has succeeded");
+  it("states the escalation policy as the ONE silence tolerance, in the provider's noun", () => {
+    const hourly = escalationPolicyLabel(12 * HOUR, "refresh")!;
+    expect(hourly).toContain("no refresh has succeeded in 12 hours");
+    expect(hourly).toContain("the same rule the Review badge");
+    // And it says plainly what no longer escalates — the promise the page makes.
+    expect(hourly).toContain("Individual failures");
+    expect(hourly).not.toContain("consecutive");
+    expect(escalationPolicyLabel(3 * DAY)).toContain(
+      "no sync has succeeded in 3 days"
+    );
+    // An EXEMPT provider has no policy to promise, so the page states none rather
+    // than inventing a sentence.
+    expect(escalationPolicyLabel(null)).toBeNull();
+  });
+
+  // #2263 decision 4: the amber surfaces state the failure tally, which is the noise.
+  // The observed success cadence is the signal, measured for DISPLAY only.
+  it("states the observed success cadence beside the failure tally", () => {
+    // Six successes two hours apart, with failures interleaved — weather's own shape.
+    const window: SyncEventFacts[] = [];
+    for (let i = 0; i < 6; i++) {
+      window.push(ev({ id: 200 - i * 2, at: minutesBefore(i * 2 * HOUR) }));
+      window.push(
+        ev({ id: 199 - i * 2, ok: 0, at: minutesBefore(i * 2 * HOUR + HOUR) })
+      );
+    }
+    expect(observedSuccessCadenceMinutes(window)).toBe(2 * HOUR);
+    expect(successCadenceLabel(2 * HOUR)).toBe("succeeding about every 2 hours");
+    expect(successCadenceLabel(45)).toBe("succeeding about every 45 min");
+    expect(successCadenceLabel(60)).toBe("succeeding about every 1 hour");
+    expect(successCadenceLabel(3 * DAY)).toBe("succeeding about every 3 days");
+    // One success states no cadence, and neither does none.
+    expect(observedSuccessCadenceMinutes([ev()])).toBeNull();
+    expect(observedSuccessCadenceMinutes(runs(3, 0))).toBeNull();
+    expect(successCadenceLabel(null)).toBeNull();
   });
 
   it("prefers the provider's declared consequence and falls back generically", () => {

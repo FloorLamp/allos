@@ -20,7 +20,8 @@
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { now as clockNow } from "@/lib/clock";
+import { shiftDateStr, utcInstant } from "@/lib/date";
 import { setTelegramBotConfig, getProfileSetting } from "@/lib/settings";
 import { runDigest, gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest } from "@/lib/notifications/digest";
@@ -41,21 +42,25 @@ function connect(profileId: number, provider: string): void {
   ).run(profileId, provider);
 }
 
+// A recorded sync `hoursAgo` hours back from the app's own now. Measured against the
+// CLOCK, not the calendar: the escalation rule is minute-grain silence since #2263.
 function syncEvent(
   profileId: number,
   provider: string,
-  daysAgo: number,
+  hoursAgo: number,
   ok = 1,
   error: string | null = null
 ): void {
   // The sync ledger stores UTC with an explicit `Z` since migration 163 (#2205);
   // the fixture writes the shape the column actually holds.
-  const at = `${shiftDateStr(today(profileId), -daysAgo)}T04:00:00Z`;
+  const at = utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok, error)
      VALUES (?, ?, ?, ?, ?)`
   ).run(profileId, provider, at, ok, error);
 }
+
+const DAYS = 24;
 
 function seedActivityYesterday(profileId: number): void {
   db.prepare(
@@ -98,11 +103,12 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const p = newProfile("DigestReauth");
     const td = today(p);
     connect(p, "strava");
-    // Three consecutive failures — the #1880 escalation threshold. A lone failed
-    // run is `intermittent` now and deliberately never reaches the digest.
+    // Silence past Strava's declared 3-day tolerance, with recorded failures inside
+    // it. The silence is what escalates (#2263); the recorded failure is what the
+    // line then names. Failures with a recent success behind them reach nothing.
+    syncEvent(p, "strava", 5 * DAYS);
     syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401): expired");
     syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401): expired");
-    syncEvent(p, "strava", 0, 0, "Strava token refresh failed (401): expired");
     seedActivityYesterday(p); // ordinary content, so this isn't a sync-only digest
     configureTelegram(p, "555685");
     const fetchMock = stubFetch();
@@ -124,7 +130,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const p = newProfile("DigestStale");
     const td = today(p);
     connect(p, "withings");
-    syncEvent(p, "withings", 25); // last success 25 days ago, nothing since
+    syncEvent(p, "withings", 25 * DAYS); // last success 25 days ago, nothing since
     seedActivityYesterday(p);
     configureTelegram(p, "555686");
     const fetchMock = stubFetch();
@@ -140,7 +146,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
   it("adds NOTHING to a healthy profile's digest — no new line, no empty section", () => {
     const p = newProfile("DigestHealthy");
     connect(p, "strava");
-    syncEvent(p, "strava", 0); // a good sync this morning
+    syncEvent(p, "strava", 1); // a good sync an hour ago
     seedActivityYesterday(p);
 
     const model = buildDigest(gatherDigestInput(p, "DigestHealthy"));
@@ -155,7 +161,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const p = newProfile("DigestOnlySync");
     const td = today(p);
     connect(p, "oura");
-    syncEvent(p, "oura", 40);
+    syncEvent(p, "oura", 40 * DAYS);
     configureTelegram(p, "555687");
     const fetchMock = stubFetch();
 
@@ -174,7 +180,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
   it("stops appearing the morning after a healthy sync", () => {
     const p = newProfile("DigestSelfClear");
     connect(p, "strava");
-    syncEvent(p, "strava", 12);
+    syncEvent(p, "strava", 12 * DAYS);
     const broken = buildDigest(gatherDigestInput(p, "DigestSelfClear"));
     expect(JSON.stringify(broken)).toContain("sync has stopped");
 
@@ -202,8 +208,12 @@ describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)
   it("says nothing about an INTERMITTENT source — a failure with a success beside it", () => {
     const p = newProfile("DigestFlap");
     connect(p, "weather");
-    syncEvent(p, "weather", 1); // yesterday's run was fine
-    syncEvent(p, "weather", 0, 0, "weather fetch failed (503)");
+    // A success two hours ago and three failures since. Under the retired rule this
+    // read "Sync failing" and reached the digest; the data is plainly arriving.
+    syncEvent(p, "weather", 2);
+    syncEvent(p, "weather", 1, 0, "weather fetch failed (503)");
+    syncEvent(p, "weather", 0.5, 0, "weather fetch failed (503)");
+    syncEvent(p, "weather", 0.2, 0, "weather fetch failed (503)");
     seedActivityYesterday(p);
 
     const text = digestText(p, "DigestFlap");
@@ -215,9 +225,10 @@ describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)
   it("renders a FAILING source as exactly one entry", () => {
     const p = newProfile("DigestFailing");
     connect(p, "weather");
-    // Three consecutive failures — the escalation threshold.
-    for (const d of [2, 1, 0])
-      syncEvent(p, "weather", d, 0, "weather fetch failed (503)");
+    // No success inside weather's 12-hour tolerance — the escalation rule.
+    syncEvent(p, "weather", 20);
+    for (const h of [2, 1, 0])
+      syncEvent(p, "weather", h, 0, "weather fetch failed (503)");
     seedActivityYesterday(p);
 
     const text = digestText(p, "DigestFailing");

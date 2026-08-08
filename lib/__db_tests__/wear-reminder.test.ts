@@ -148,18 +148,35 @@ describe("bedtime wear reminder (#2161)", () => {
     expect(buildWearReminder(profileId)).not.toBeNull();
   });
 
-  it("yields when the provider is failing — a reconnect item owns that contact", () => {
+  it("yields when the provider needs attention — a reconnect item owns that contact", () => {
     seedLostNightSignature();
     setProfileWearReminder(profileId, true);
     expect(buildWearReminder(profileId)).not.toBeNull();
-    // Three consecutive failures — the shared FAILING_CONSECUTIVE_RUNS escalation
-    // (#1880), read through the same attention model every other surface reads, not a
-    // second rule. "Still on the charger?" would be false advice with the pipeline
-    // down, and #1685's one-row rule forbids two contacts for one fault.
+    // Read through the same attention model every other surface reads, not a second
+    // rule. "Still on the charger?" would be false advice with the pipeline down, and
+    // #1685's one-row rule forbids two contacts for one fault.
+    //
+    // The credential dying (#326) is what escalates a provider that is still pushing:
+    // since #2263 the OTHER escalation is a silence tolerance, and a provider whose
+    // pushes are landing has no silence to measure.
+    db.prepare(
+      `UPDATE integration_connections SET status = 'needs_reauth'
+        WHERE profile_id = ? AND provider = ?`
+    ).run(profileId, PROVIDER);
+    sync("2026-07-14 22:04:00", false);
+    expect(buildWearReminder(profileId)).toBeNull();
+  });
+
+  // The #2263 behaviour change, pinned where the old rule lived: a run of failed
+  // pushes with good ones beside them is NOT an outage, so it must not silence this
+  // send. The pipeline is up; the watch is off the wrist; that is what to say.
+  it("still sends through a run of failed pushes with successes beside them", () => {
+    seedLostNightSignature();
+    setProfileWearReminder(profileId, true);
     sync("2026-07-14 22:01:00", false);
     sync("2026-07-14 22:02:00", false);
     sync("2026-07-14 22:03:00", false);
-    expect(buildWearReminder(profileId)).toBeNull();
+    expect(buildWearReminder(profileId)).not.toBeNull();
   });
 
   it("stays silent when the phone stopped pushing during the gap", () => {
