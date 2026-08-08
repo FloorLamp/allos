@@ -126,6 +126,7 @@ import {
   claimMessagePointerBody,
   claimMessagePointerClose,
   claimMessagePointerKeyboard,
+  correctionMessageBinding,
   releaseMessagePointerBody,
   dropMessagePointer,
   liveMessagePointers,
@@ -262,12 +263,21 @@ function doseClosingTally(
 // all:       `all:<profileId>:<slot>:<date>`
 // demote:    `demote:<profileId>:<itemId>:<date>`
 const intakeDose: FamilyReconciler = {
-  dead(profileId, tokens) {
+  dead(profileId, tokens, p) {
+    // The fresh-and-bound anchors for THIS message (#2264): a correction token whose
+    // burst has aged out — or belongs to another message — is dead here.
     const dead = deadCorrectionTokens(
       tokens,
       DOSE_TIME_PREFIXES,
       new Set(
-        getDoseCorrectionBursts(profileId, clockNow()).map((b) => b.fromId)
+        getDoseCorrectionBursts(
+          profileId,
+          clockNow(),
+          correctionMessageBinding(profileId, "dose", {
+            chatId: p.chatId,
+            messageId: p.messageId,
+          })
+        ).map((b) => b.fromId)
       )
     );
     const byDate = new Map<string, Set<number>>();
@@ -312,7 +322,7 @@ const intakeDose: FamilyReconciler = {
   // Rebuild through the identical computation the TAP rebuild uses
   // (slotSessionForKeyboard → renderMergedIntakeMessage), so a partially reconciled
   // reminder is byte-identical to what tapping the same doses would have produced.
-  rebuild(profileId, tokens) {
+  rebuild(profileId, tokens, p) {
     const doseIds: number[] = [];
     const slots: IntakeSendSlot[] = [];
     let date: string | null = null;
@@ -339,6 +349,7 @@ const intakeDose: FamilyReconciler = {
       {
         now: clockNow(),
         pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),
+        ref: { chatId: p.chatId, messageId: p.messageId },
       }
     );
   },
@@ -421,13 +432,22 @@ const householdRound: FamilyReconciler = {
 // hands that case back to the builder's own default rather than rendering an empty keyboard.
 const food: FamilyReconciler = {
   // The quick-log buttons never die — another serving is always loggable — but the
-  // correction chips riding beside them do, on their own hour-long clock (#2019).
-  dead(profileId, tokens) {
+  // correction chips riding beside them do, on their own hour-long clock (#2019) and
+  // now on their own message (#2264): a chip for a burst another message produced is
+  // dead here whatever its age.
+  dead(profileId, tokens, p) {
     return deadCorrectionTokens(
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
-        getFoodCorrectionBursts(profileId, clockNow()).map((b) => b.fromId)
+        getFoodCorrectionBursts(
+          profileId,
+          clockNow(),
+          correctionMessageBinding(profileId, "food", {
+            chatId: p.chatId,
+            messageId: p.messageId,
+          })
+        ).map((b) => b.fromId)
       )
     );
   },
@@ -440,20 +460,25 @@ const food: FamilyReconciler = {
       if (!FOOD_NUDGE_WINDOWS.includes(window) || !date) continue;
       const visibleCount = countVisibleFoodButtons(p.keyboard) || undefined;
       const now = clockNow();
+      const ref = { chatId: p.chatId, messageId: p.messageId };
       // An OPEN eating-time picker is the user's current view, exactly as the expansion
       // is (#1807), so the rebuild preserves it rather than editing the question away
-      // while it is being answered. It survives only while its burst is still fresh —
-      // once it is not, the anchor is gone from the offer set and the plain nudge comes
-      // back, which is how an ABANDONED picker gets closed by the ordinary sweep.
+      // while it is being answered. It survives only while its burst is still fresh
+      // AND still bound to this message (#2264) — once it is not, the anchor is gone
+      // from the offer set and the plain nudge comes back, which is how an ABANDONED
+      // picker gets closed by the ordinary sweep.
       const anchor = openPickerAnchor(tokens, FOOD_TIME_PREFIXES);
       const picker =
         anchor != null
-          ? getFoodCorrectionBursts(profileId, now).find(
-              (b) => b.fromId === anchor
-            )
+          ? getFoodCorrectionBursts(
+              profileId,
+              now,
+              correctionMessageBinding(profileId, "food", ref)
+            ).find((b) => b.fromId === anchor)
           : undefined;
       return buildFoodNudge(profileId, window, date, visibleCount, {
         now,
+        ref,
         ...(picker ? { picker } : {}),
       });
     }

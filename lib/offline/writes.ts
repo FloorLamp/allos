@@ -604,9 +604,13 @@ function applySetIntent(
 // cores the online actions (and the Telegram buttons) use, so a replay runs the
 // identical catalog validation and per-add bounds. Additive only — the "−" undo
 // taps never queue (see the queue.ts scope comment). The intent's capturedAt is
-// the ledger's tap instant (resolveCapturedInstant), and a captured meal slot is
-// asserted at replay exactly like the Telegram nudge's baked-in slot, so the
-// serving counts for the meal the user was logging, not the reconnect moment.
+// the ledger's tap instant (resolveCapturedInstant). The captured meal slot and
+// the captured eating time both travel, and the CORE arbitrates them (#2269,
+// logFoodServingCore): a usable stated time wins and no slot is stored — the meal
+// derives from the instant — while a statement-less capture keeps its declared
+// slot, so the serving counts for the meal the user was logging, not the
+// reconnect moment. One chokepoint, so this replay cannot drift from the web
+// action or the quick-log sheet.
 function applyFoodIntent(
   profileId: number,
   payload: FoodPayload,

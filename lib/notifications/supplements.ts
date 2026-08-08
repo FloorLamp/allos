@@ -59,10 +59,15 @@ import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   correctionActions,
+  correctionBodyStatement,
   correctionPickerActions,
   correctionPickerTitle,
   DOSE_TIME_PREFIXES,
 } from "./correction-rows";
+import {
+  correctionMessageBinding,
+  type CorrectionMessageRef,
+} from "./message-pointers";
 import { plainBody } from "./rich-text";
 
 export type { ReminderWindow, IntakeSendSlot };
@@ -85,10 +90,22 @@ export type { ReminderWindow, IntakeSendSlot };
 export function withDoseCorrections(
   profileId: number,
   message: NotificationMessage,
-  opts: { now?: Date; pickerAnchor?: number | null } = {}
+  // `ref` is the MESSAGE being rebuilt (#2264): tap rebuilds and the sweep pass their
+  // own (chat, message), so the rows are bound to the message whose taps produced their
+  // bursts; a fresh send omits it and carries only unattributed bursts, being about to
+  // be the newest live dose message in every chat it lands in.
+  opts: {
+    now?: Date;
+    pickerAnchor?: number | null;
+    ref?: CorrectionMessageRef | null;
+  } = {}
 ): NotificationMessage {
   const now = opts.now ?? clockNow();
-  const bursts = getDoseCorrectionBursts(profileId, now);
+  const bursts = getDoseCorrectionBursts(
+    profileId,
+    now,
+    correctionMessageBinding(profileId, "dose", opts.ref ?? null)
+  );
   if (bursts.length === 0) return message;
   const tz = getTimezone(profileId);
   // An OPEN picker survives the rebuild (see `openPickerAnchor`): the sweep re-renders
@@ -100,9 +117,18 @@ export function withDoseCorrections(
   const extra = open
     ? correctionPickerActions(DOSE_TIME_PREFIXES, profileId, open, now, tz)
     : correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz, now);
-  const body = open
-    ? `${plainBody(message.body)}\n${correctionPickerTitle("when did you take these", open, tz)}`
-    : message.body;
+  // The statement of record (#2264 bug 1): a corrected burst's stored time is stated in
+  // the BODY — the label button states it too, but Telegram truncates buttons. One
+  // computation with the food side (correctionBodyStatement over burstLabel).
+  const statement = correctionBodyStatement(bursts, tz);
+  const lines = [
+    plainBody(message.body),
+    ...(open
+      ? [correctionPickerTitle("when did you take these", open, tz)]
+      : []),
+    ...(statement ? [statement] : []),
+  ];
+  const body = lines.length > 1 ? lines.join("\n") : message.body;
   return {
     ...message,
     body,

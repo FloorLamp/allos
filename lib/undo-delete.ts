@@ -549,6 +549,18 @@ const KIND_SPECS = {
           { column: "dose_id", ref: "doses" },
           { column: "item_id", ref: "item" },
         ],
+        // Tap-message provenance (#2264, migration 170): the notify_messages row whose
+        // chat tap wrote this log. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, exactly the "unattributed" degradation the live ON DELETE
+        // SET NULL performs. Profile-owned, so probed WITH the profile_id scope.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere: "item_id = ?",
         childBinds: 1,
       },
@@ -637,6 +649,16 @@ const KIND_SPECS = {
         entity: "events",
         table: "food_log_events",
         fks: [],
+        // Tap-message provenance (#2264): reconciled like every other outward link —
+        // a pointer row pruned inside the undo window restores the event NULLed
+        // (unattributed), mirroring the live ON DELETE SET NULL.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere:
           "profile_id = (SELECT profile_id FROM food_log WHERE id = ?) AND group_key = 'alcohol' AND date = (SELECT date FROM food_log WHERE id = ?)",
         childBinds: 2,
@@ -875,7 +897,21 @@ const KIND_SPECS = {
     kind: "food-serving",
     ownedTable: "food_log_events",
     entities: [
-      { entity: "event", table: "food_log_events", fks: [] },
+      {
+        entity: "event",
+        table: "food_log_events",
+        fks: [],
+        // Tap-message provenance (#2264): a serving deleted and undone after its
+        // originating message's pointer was pruned restores honestly UNATTRIBUTED
+        // (link NULLed) — the same degradation the live ON DELETE SET NULL performs.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
+      },
       {
         entity: "counter",
         table: "food_log",

@@ -26,6 +26,8 @@ import {
   foodGroupSlugs,
 } from "@/lib/food-groups";
 import { plainBody } from "@/lib/notifications/rich-text";
+import { correctionBursts } from "@/lib/correction-time";
+import { correctionBodyStatement } from "@/lib/notifications/correction-rows";
 import {
   proteinTodayNudgeLine,
   proteinTodayNudgeParts,
@@ -396,5 +398,53 @@ describe("token builders", () => {
   });
   it("the reserved protein key is not a catalog slug", () => {
     expect(foodGroupSlugs()).not.toContain(PROTEIN_NUDGE_KEY);
+  });
+});
+
+// ---- #2264 bug 1: the nudge BODY states a corrected burst's stored time ------
+//
+// The row's label button carries the whole corrected value and Telegram clips it on a
+// phone, so the body is the statement of record. Rendered from the SAME
+// correctionBodyStatement/burstLabel computation the dose side uses — pinned here
+// through the real renderer so the line actually reaches the wire body.
+describe("renderFoodNudge corrected-burst body statement (#2264)", () => {
+  const NOW = new Date("2026-07-13T19:30:00Z");
+  const TZ = "UTC";
+
+  it("keeps today's copy for an uncorrected burst", () => {
+    const bursts = correctionBursts(
+      [{ id: 5, tapAt: "2026-07-13T19:02:00Z", label: "Salmon" }],
+      NOW
+    );
+    const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map(), {
+      corrections: { bursts, now: NOW },
+      tz: TZ,
+    });
+    expect(plainBody(msg.body)).toContain("Ate earlier than you tapped?");
+    expect(plainBody(msg.body)).not.toContain("Recorded:");
+  });
+
+  it("states the stored instant once the burst is corrected, via the one computation", () => {
+    const bursts = correctionBursts(
+      [
+        {
+          id: 5,
+          tapAt: "2026-07-13T19:02:00Z",
+          statedAt: "2026-07-13T18:02:00Z",
+          label: "Salmon",
+        },
+      ],
+      NOW
+    );
+    const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map(), {
+      corrections: { bursts, now: NOW },
+      tz: TZ,
+    });
+    const body = plainBody(msg.body);
+    expect(body).toContain(correctionBodyStatement(bursts, TZ)!);
+    expect(body).toContain("🕐 Recorded: Salmon 18:02 (corrected)");
+    // The instruction line stays — the statement is in addition, not a replacement,
+    // because the chips are still on the keyboard and still compose.
+    expect(body).toContain("Ate earlier than you tapped?");
   });
 });

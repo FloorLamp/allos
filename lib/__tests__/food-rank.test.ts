@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { blendFoodOrder, proteinSplitIndex } from "@/lib/food-rank";
 
 // Pure slot-aware blend (issue #950): slot frecency LEADS, overall frecency BACKFILLS,
@@ -170,5 +172,32 @@ describe("proteinSplitIndex (#2061)", () => {
 
   it("a rank of 0 puts the control above everything", () => {
     expect(proteinSplitIndex([0, 1, 2], 0)).toBe(0);
+  });
+});
+
+// ---- #2269 decision 2: the slot-signal gather does not read meal_slot --------
+//
+// Ranking learns WHEN THIS PERSON EATS, so it weights each event at its eating minute
+// and never at an asserted meal's anchor — decided (not incidental) in #2269, recorded
+// in the gather's comment. This scan keeps the gather's SQL honest about it: the
+// slot-signal SELECT names no `meal_slot`, so the column it never read cannot quietly
+// come back as an input.
+describe("the ranking gather's slot signal (#2269)", () => {
+  it("SELECTs no meal_slot in gatherFoodRankingSignals", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "lib/queries/nutrition.ts"),
+      "utf8"
+    );
+    const start = src.indexOf("function gatherFoodRankingSignals");
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf("\nexport function", start);
+    const gather = src.slice(start, end === -1 ? undefined : end);
+    // The decision comment stays with the code it governs…
+    expect(gather).toContain("#2269 decision 2");
+    // …and the SQL carries no meal_slot read. The match is the backticked SQL string
+    // itself, so prose ABOUT the column (the decision comment) does not trip it.
+    const selects = gather.match(/`SELECT[^`]*food_log_events[^`]*`/g) ?? [];
+    expect(selects.length).toBeGreaterThan(0);
+    for (const select of selects) expect(select).not.toContain("meal_slot");
   });
 });
