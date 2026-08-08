@@ -90,7 +90,10 @@ function replay(
   const standings: string[] = [];
   let escalatedRuns = 0;
   for (let i = 0; i < history.length; i++) {
-    const window = history.slice(Math.max(0, i - STANDING_RUN_WINDOW + 1), i + 1);
+    const window = history.slice(
+      Math.max(0, i - STANDING_RUN_WINDOW + 1),
+      i + 1
+    );
     window.reverse(); // newest-first, the shape the derivation is fed
     const lastSuccess = history.slice(0, i + 1).findLast((e) => e.ok);
     const standing = providerStanding({
@@ -162,9 +165,9 @@ describe("the replayed weather history (#2263)", () => {
     expect(standings).not.toContain("failing");
     // It is not silently downgraded to green either: the flap is still STATED, as the
     // calm amber fact whose reassurance copy was being suppressed 29% of the time.
-    expect(standings.filter((s) => s === "intermittent").length).toBeGreaterThan(
-      0.5 * HISTORY.length
-    );
+    expect(
+      standings.filter((s) => s === "intermittent").length
+    ).toBeGreaterThan(0.5 * HISTORY.length);
   });
 });
 

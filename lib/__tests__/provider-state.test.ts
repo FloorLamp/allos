@@ -171,9 +171,9 @@ describe("providerStanding + standingBadge", () => {
     // The shape the Health Connect outage came in as: the device-side failures never
     // reached the server, so there was nothing to classify. Only absence.
     const quiet = [ev({ at: minutesBefore(20 * HOUR) })];
-    expect(
-      standingOf(quiet, { lastSuccessAt: minutesBefore(20 * HOUR) })
-    ).toBe("failing");
+    expect(standingOf(quiet, { lastSuccessAt: minutesBefore(20 * HOUR) })).toBe(
+      "failing"
+    );
     // An exempt provider (null tolerance) is never silent, however long the gap.
     expect(
       standingOf(quiet, {
@@ -263,7 +263,9 @@ describe("flap + escalation copy (#1880)", () => {
       );
     }
     expect(observedSuccessCadenceMinutes(window)).toBe(2 * HOUR);
-    expect(successCadenceLabel(2 * HOUR)).toBe("succeeding about every 2 hours");
+    expect(successCadenceLabel(2 * HOUR)).toBe(
+      "succeeding about every 2 hours"
+    );
     expect(successCadenceLabel(45)).toBe("succeeding about every 45 min");
     expect(successCadenceLabel(60)).toBe("succeeding about every 1 hour");
     expect(successCadenceLabel(3 * DAY)).toBe("succeeding about every 3 days");

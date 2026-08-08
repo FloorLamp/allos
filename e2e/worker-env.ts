@@ -88,6 +88,22 @@ export function frozenNow(): Date {
 }
 
 /**
+ * A recorded sync-event instant `hoursAgo` hours before the frozen clock, in the
+ * ledger's stored convention (`YYYY-MM-DDTHH:MM:SSZ`, #2205 / migration 163).
+ *
+ * ONE derivation, shared by the seed that WRITES these rows and the specs that read
+ * them back, so the two can never drift apart on a string comparison. Sync freshness
+ * is minute-grain silence since #2263 — a provider whose last success is more than its
+ * tolerance old is `failing` — so a fixture stamped at a fixed time of day would be
+ * healthy or broken depending on the hour CI happened to start.
+ */
+export function frozenSyncInstant(hoursAgo: number): string {
+  return `${new Date(frozenNow().getTime() - hoursAgo * 3600_000)
+    .toISOString()
+    .slice(0, 19)}Z`;
+}
+
+/**
  * The frozen instant as `HH:MM` in `zone` — the value the app's own client-side
  * "now" shortcuts prefill a time field with, computed from the FROZEN clock so a
  * spec can back-date from it without reading the browser's wall clock.

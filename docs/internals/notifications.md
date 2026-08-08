@@ -1008,7 +1008,7 @@ rows for one fault is exactly what the one-row rule forbids. The declared stream
 is Health Connect's `hr_minutes`, the only continuous wear stream the app
 ingests (the Fitbit Takeout archive import has no live cadence to be silent
 against and is exempt by construction). #2146 moves that declaration into the
-provider registry beside `staleAfterDays` once a second provider needs one.
+provider registry beside `silenceToleranceMinutes` once a second provider needs one.
 
 Two gates sit in front of the predicate. The **expected-active** gate is the
 SHARED #2097 vocabulary — `isSleepTracking` over `getSyncedSleepWakeDays` — so a

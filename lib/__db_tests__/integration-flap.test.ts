@@ -94,7 +94,8 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
     connect(p, "weather");
     syncEvent(p, "weather", 3, 1);
     syncEvent(p, "weather", 2, 1);
-    for (const h of [1.5, 1.2, 1.0, 0.8, 0.5, 0.2]) syncEvent(p, "weather", h, 0, ERR);
+    for (const h of [1.5, 1.2, 1.0, 0.8, 0.5, 0.2])
+      syncEvent(p, "weather", h, 0, ERR);
 
     expect(getIntegrationState(p, "weather")!.standing).toBe("intermittent");
     expect(getImportIssues(p)).toEqual([]);

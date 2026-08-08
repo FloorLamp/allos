@@ -1,14 +1,14 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { workerDbPath, frozenNow } from "./worker-env";
-import { utcInstant } from "../lib/date";
+import { workerDbPath, frozenSyncInstant } from "./worker-env";
 
-// #1880: flapping is not failing. A provider alternating Failed/Refreshed with a
-// recent success is `intermittent` — a calm amber fact on Review's Connected
-// sources, the Import grid, and its own source page — and NEVER enters Needs
-// attention, the Data badge, or Upcoming. Three consecutive failures escalate the
-// ONE standing, and every surface flips at once, with the failing source rendered
-// exactly once on Review (the duplicate-text tripwire).
+// #1880/#2263: flapping is not failing, and what separates them is SILENCE. A
+// provider alternating Failed/Refreshed with a recent success is `intermittent` — a
+// calm amber fact on Review's Connected sources, the Import grid, and its own source
+// page — and NEVER enters Needs attention, the Data badge, or Upcoming. Once no run
+// has succeeded inside the provider's declared tolerance the ONE standing escalates,
+// and every surface flips at once, with the failing source rendered exactly once on
+// Review (the duplicate-text tripwire).
 //
 // Weather on PROFILE 1 is this spec's own fixture (the shared seed leaves it
 // untouched there — the healthy weather fixture lives on its own findings profile),
@@ -18,6 +18,8 @@ import { utcInstant } from "../lib/date";
 const PROFILE_ID = 1;
 const PROVIDER = "weather";
 const ERR = "weather fetch failed (503)";
+// Weather's declared silence tolerance: 12 polls × its hourly cadence.
+const TOLERANCE_HOURS = 12;
 // Weather's blurb opening — the pitch a COMPACT card must no longer carry.
 const BLURB_SNIPPET = "Bring in the actual UV index";
 
@@ -32,11 +34,8 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 }
 
 // The run's frozen clock minus N hours, in the sync ledger's own convention
-// ('YYYY-MM-DDTHH:MM:SSZ', #2205 / migration 163) — recent enough that weather's
-// 2-day staleness threshold never fires from these fixtures.
-function at(hoursAgo: number): string {
-  return utcInstant(new Date(frozenNow().getTime() - hoursAgo * 3600000));
-}
+// ('YYYY-MM-DDTHH:MM:SSZ', #2205 / migration 163).
+const at = frozenSyncInstant;
 
 // One fixed forecast window across every seeded run, so the history's window norm
 // is quiet and the rows under test are the outcomes.
@@ -86,11 +85,13 @@ function seedFlapping(): void {
   ]);
 }
 
-// Three CONSECUTIVE failures on top of recent successes — the escalation boundary.
+// No run has succeeded inside the tolerance — the escalation boundary. The failure
+// PATTERN is the same shape the calm fixture above has; the only thing that changed is
+// how long ago the last success was, which is the whole point of #2263.
 function seedEscalated(): void {
   seedEvents([
-    { hoursAgo: 5, ok: true },
-    { hoursAgo: 4, ok: true },
+    { hoursAgo: TOLERANCE_HOURS + 2, ok: true },
+    { hoursAgo: TOLERANCE_HOURS + 1, ok: true },
     { hoursAgo: 3, ok: false },
     { hoursAgo: 2, ok: false },
     { hoursAgo: 1, ok: false },
@@ -128,6 +129,9 @@ test("a flapping source is amber Intermittent on all three surfaces and escalate
   const fact = row.getByTestId(`intermittent-fact-${PROVIDER}`);
   await expect(fact).toContainText("3 of the last 6 runs failed");
   await expect(fact).toContainText("last success");
+  // The SIGNAL beside the failure tally (#2263 item 4): the successes are two hours
+  // apart, which is what "3 of 6 failed" never said.
+  await expect(fact).toContainText("succeeding about every 2 hours");
   await expect(fact).toContainText("nothing missing");
   // NO Needs-attention entry for it — flapping never escalates.
   await expect(
@@ -165,9 +169,11 @@ test("a flapping source is amber Intermittent on all three surfaces and escalate
   const summary = page.getByTestId("intermittent-summary");
   await expect(summary).toContainText("Working, with interruptions");
   await expect(summary).toContainText("3 of the last 6 runs failed");
+  await expect(summary).toContainText("succeeding about every 2 hours");
+  // The visible escalation policy states the ONE rule the badge and digest use.
   const policy = page.getByTestId("escalation-policy");
-  await expect(policy).toContainText("after 3 consecutive failures");
-  await expect(policy).toContainText("no run has succeeded in 2 days");
+  await expect(policy).toContainText("no refresh has succeeded in 12 hours");
+  await expect(policy).not.toContainText("consecutive");
 
   // Upcoming carries no item for it — intermittent never increases contact.
   await page.goto("/upcoming");
@@ -178,7 +184,7 @@ test("a flapping source is amber Intermittent on all three surfaces and escalate
   ).toHaveCount(0);
 });
 
-test("three consecutive failures escalate every surface at once, rendered once on Review", async ({
+test("silence past the tolerance escalates every surface at once, rendered once on Review", async ({
   page,
 }) => {
   seedEscalated();
@@ -220,7 +226,8 @@ test("three consecutive failures escalate every surface at once, rendered once o
   await expect(gridCard.getByText("Reconnect")).toBeVisible();
 
   // The source page: same standing, and the history SHOWS the streak as one
-  // grouped ×3 row (#1880 item 3) instead of three stripes.
+  // grouped ×3 row (#1880 item 3) instead of three stripes. The streak is what the
+  // history renders; it is no longer what escalates.
   await page.goto("/integrations/weather");
   await expect(page.getByTestId(`sync-status-${PROVIDER}`)).toContainText(
     "Sync failing"
