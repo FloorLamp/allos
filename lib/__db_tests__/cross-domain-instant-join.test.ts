@@ -11,7 +11,7 @@
 // The fixture spans every pattern the issue enumerates:
 //
 //   1. event/record pair — food_log_events (eaten_at canonical / logged_at canonical),
-//                          and intake_item_logs, whose given_at/taken_at turned out
+//                          and intake_item_logs, whose recorded_at/taken_at turned out
 //                          under the owner's ruling to be a RECORD CHAIN rather than
 //                          an event/record pair — so its event instant is the separate
 //                          `occurred_at` phase 2 wave 1 added, NULL here because this
@@ -63,10 +63,10 @@ beforeAll(() => {
       .run(itemId, "1 tab").lastInsertRowid
   );
 
-  // Pattern 1a — a PRN administration. `given_at` is on SQLite's BARE shape; the dose
+  // Pattern 1a — a PRN administration. `recorded_at` is on SQLite's BARE shape; the dose
   // was taken at 13:30Z, i.e. ten minutes AFTER the meal below.
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, taken_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, taken_at, status)
      VALUES (?, ?, ?, ?, ?, 'taken')`
   ).run(doseId, itemId, DAY, "2026-03-10 13:30:00", "2026-03-10 18:05:00");
 
@@ -121,7 +121,7 @@ function doseAndMeal() {
   const dose = db
     .prepare(
       `SELECT l.date AS date, l.occurred_at AS occurred_at,
-              l.given_at AS given_at, l.taken_at AS taken_at
+              l.recorded_at AS recorded_at, l.taken_at AS taken_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.date = ?`
@@ -139,13 +139,13 @@ function doseAndMeal() {
 
 describe("the comparison that produced the wrong answers", () => {
   it("is still wrong when two conventions are compared as strings", () => {
-    // This is not a hypothetical. `given_at` is bare ('2026-03-10 13:30:00') and
+    // This is not a hypothetical. `recorded_at` is bare ('2026-03-10 13:30:00') and
     // `eaten_at` carries a Z ('2026-03-10T13:20:00Z'); within one day ' ' (0x20) sorts
     // before 'T' (0x54), so the LATER dose compares as EARLIER — and the query returns
     // a clean, confident, wrong row rather than an error.
     const row = db
       .prepare(
-        `SELECT (l.given_at > f.eaten_at) AS dose_came_after
+        `SELECT (l.recorded_at > f.eaten_at) AS dose_came_after
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
            JOIN food_log_events f
@@ -185,7 +185,7 @@ describe("the comparison that produced the wrong answers", () => {
     // caller should not have to remember which of the two a column is on.
     const row = db
       .prepare(
-        `SELECT (julianday(l.given_at) > julianday(f.eaten_at)) AS dose_came_after
+        `SELECT (julianday(l.recorded_at) > julianday(f.eaten_at)) AS dose_came_after
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
            JOIN food_log_events f
@@ -217,7 +217,7 @@ describe("one ordering across all five patterns", () => {
 
     const dose = db
       .prepare(
-        `SELECT l.date AS date, l.given_at AS given_at, l.taken_at AS taken_at
+        `SELECT l.date AS date, l.recorded_at AS recorded_at, l.taken_at AS taken_at
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
           WHERE ii.profile_id = ? AND l.date = ?`

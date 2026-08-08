@@ -108,7 +108,20 @@ test.describe("Weather & UV integration (#1172)", () => {
       // A CACHE provider speaks cache language: its counts are revised forecast
       // cells of a global location-keyed cache, not user records, so the run reads
       // "16 readings revised" — never "16 changed · 320 unchanged".
-      await expect(history.getByText("16 readings revised")).toBeVisible();
+      //
+      // `exact` is load-bearing, not decoration. The day header states the same
+      // phrase with its own tally in front of it ("1 refresh · 16 readings
+      // revised"), so a SUBSTRING match claims both the header and the run, and
+      // whether that is one element or two depends on how many day groups the
+      // seeded pair falls into — which is a function of the run's frozen hour
+      // (see SEEDED_SYNC_EVENTS above: the pair is placed 1h and 2h back, and the
+      // fixture profile keeps a FIXED America/New_York clock while the frozen
+      // instant rotates, so the pair straddles local midnight for runs frozen in
+      // [05:00, 06:00) UTC — [06:00, 07:00) under EST). Asserting on the run's own
+      // whole text is true in every grouping; the header is asserted separately.
+      await expect(
+        history.getByText("16 readings revised", { exact: true })
+      ).toBeVisible();
       await expect(history.getByText(/320 unchanged/)).toHaveCount(0);
       // The window both runs cover is stated once above the table, as coverage.
       await expect(history.getByTestId("sync-history-window")).toContainText(

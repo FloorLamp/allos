@@ -8,9 +8,9 @@
 //      cannot fall behind the declaration.
 //
 //   2. A SOURCE SCAN over the fallbacks the row readers exist to replace. A dozen
-//      surfaces hand-roll `COALESCE(given_at, taken_at)` and four more pair
+//      surfaces hand-roll `COALESCE(recorded_at, taken_at)` and four more pair
 //      `eaten_at ?? logged_at`. Both are declared fallbacks now — the first WITHIN the
-//      record question (the owner's #2205 ruling made given_at a record instant), the
+//      record question (the owner's #2205 ruling made recorded_at a record instant), the
 //      second ACROSS questions, which is the one that has to stay visible. Each is
 //      frozen at its current count with a reason; a NEW one fails, and converting one
 //      must LOWER the count, so the ledger only shrinks.
@@ -115,7 +115,7 @@ describe("the declared index is internally consistent", () => {
   });
 
   it("declares at most one event column per table", () => {
-    // A RECORD chain is legitimate — intake_item_logs falls from given_at to taken_at,
+    // A RECORD chain is legitimate — intake_item_logs falls from recorded_at to taken_at,
     // and both answer "when did this enter the app". An EVENT chain never is: falling
     // from one event column to another would be a substitution wearing a declaration.
     const bad = (Object.keys(TIME_COLUMNS) as TemporalTable[])
@@ -234,7 +234,7 @@ describe("the published index cannot fall behind the declaration", () => {
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
     count: 7,
-    why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the given_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR.",
+    why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the recorded_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,
@@ -304,7 +304,7 @@ function pairPatterns(): PairPattern[] {
     // The table's declared FALLBACK ORDER: its event column, then its record chain.
     // Any ordered pair drawn from it is a substitution a reader can hand-roll —
     // whether it crosses the event/record line (`eaten_at ?? logged_at`) or stays
-    // inside the record question (`COALESCE(given_at, taken_at)`). Both belong to
+    // inside the record question (`COALESCE(recorded_at, taken_at)`). Both belong to
     // lib/row-instants.ts now, so both are counted here.
     const chain = [
       ...timeColumnsFor(table, "event"),
@@ -318,7 +318,7 @@ function pairPatterns(): PairPattern[] {
       }
     }
     for (const [e, r] of pairs) {
-      // `\b` already lets `a.given_at` and `admins[0].given_at` match, so no member
+      // `\b` already lets `a.recorded_at` and `admins[0].recorded_at` match, so no member
       // path has to be spelled out — which is also what keeps the regex linear.
       out.push({
         needle: e,
@@ -409,10 +409,10 @@ describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
     // A silently-empty match set would make the ledger pass vacuously.
     const patterns = pairPatterns();
     const hits = (s: string) => countPairings(s, patterns);
-    expect(hits("ORDER BY COALESCE(l.given_at, l.taken_at) ASC")).toBe(1);
-    expect(hits("const stored = r.given_at ?? r.taken_at;")).toBe(1);
+    expect(hits("ORDER BY COALESCE(l.recorded_at, l.taken_at) ASC")).toBe(1);
+    expect(hits("const stored = r.recorded_at ?? r.taken_at;")).toBe(1);
     expect(hits("new Date(eatenAt ?? loggedAt)")).toBe(1);
     // The other direction is not a substitution and must not be flagged.
-    expect(hits("const stamp = r.taken_at ?? r.given_at;")).toBe(0);
+    expect(hits("const stamp = r.taken_at ?? r.recorded_at;")).toBe(0);
   });
 });

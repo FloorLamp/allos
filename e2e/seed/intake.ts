@@ -148,13 +148,13 @@ export function seedMedicationCards(): void {
 export function seedPrnLedger(): void {
   // ── PRN administration ledger fixture (issue #797) ───────────────────────────
   // A CURRENT, active PRN (`may`) medication with refill tracking and TWO
-  // administrations already logged TODAY (real given_at times), so BOTH the
+  // administrations already logged TODAY (real recorded_at times), so BOTH the
   // Medications-page card ("2 today · last …") and the dashboard "Log a PRN dose"
   // widget render a populated PRN med, and the widget's "Log" button can add a
   // third. Fully synthetic name with no rxcui → matches no interaction/PGx/food-drug
   // dataset, so other specs are undisturbed; supply stays HIGH (60 units) so it never
   // joins the low-supply widget/Upcoming fixtures. Idempotent: recreated each boot so
-  // the administrations stay today-relative. given_at is stored UTC ("YYYY-MM-DD
+  // the administrations stay today-relative. recorded_at is stored UTC ("YYYY-MM-DD
   // HH:MM:SS"); the profile tz labels the displayed clock.
   const PRN_MED_NAME = "PRN Quicklog Med (e2e)";
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
@@ -182,15 +182,15 @@ export function seedPrnLedger(): void {
     `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
    VALUES (?, ?, NULL, NULL, 'PRN — e2e fixture')`
   ).run(prnMedId, shiftDateStr(today(PROFILE_ID), -5));
-  // Two administrations earlier today, so the card shows "2 today". given_at is
+  // Two administrations earlier today, so the card shows "2 today". recorded_at is
   // computed from seed-time minus a fixed offset (45m / 90m ago) — always well outside
   // the widget's ~2-minute double-tap dedup window from the later test-run "now", so a
   // subsequent widget "Log" click deterministically becomes the third. `date` is pinned
-  // to today() (not derived from given_at) so the count stays "today" even if an offset
+  // to today() (not derived from recorded_at) so the count stays "today" even if an offset
   // crosses UTC midnight at boot.
   const prnToday = today(PROFILE_ID);
   const insAdmin = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
    VALUES (?, ?, ?, ?, '400 mg', 'taken')`
   );
   for (const minutesAgo of [90, 45]) {
@@ -239,7 +239,7 @@ export function seedPrnLedger(): void {
    VALUES (?, ?, NULL, NULL, 'PRN redose — e2e fixture')`
   ).run(redoseMedId, shiftDateStr(today(PROFILE_ID), -30));
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
    VALUES (?, ?, ?, ?, '200 mg', 'taken')`
   ).run(
     redoseDoseId,
@@ -381,7 +381,7 @@ export function seedPrnCounter(): void {
   );
   // The sibling administration: 1h before the frozen clock, on the profile-local day.
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
    VALUES (?, ?, ?, ?, 'taken')`
   ).run(
     prnRxDoseId,
@@ -593,7 +593,7 @@ export function seedUpcomingAggregate(): void {
   );
   for (const backMs of [7_200_000, 3_600_000]) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'taken')`
     ).run(
       prnDoseId,

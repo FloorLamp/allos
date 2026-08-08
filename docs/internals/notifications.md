@@ -553,7 +553,7 @@ form carries the CHOICE and the server resolves it — a tab open for an hour ca
 a stale "now"; offline the capture carries a resolved instant and the replay validates it
 through the same `acceptEatenAt` gate, which is `resolveQueuedTakenAt`'s untrusted-client-
 clock posture applied to eating time. On the dose side there is no
-schema at all: `intake_item_logs.given_at` has carried the administration instant
+schema at all: `intake_item_logs.recorded_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
 
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
@@ -578,7 +578,7 @@ repeat taps reach the middle of the range and the absolute labels need the width
 
 **A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
 COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
-`given_at` IS the ledger the row set is already a query over — so the chips still
+`recorded_at` IS the ledger the row set is already a query over — so the chips still
 survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
 which turned into the wrong answer once the row started showing its result: "tap again
 to go further" is the only reading a visibly-moving value supports, and a silent no-op
@@ -633,7 +633,7 @@ re-date falls out of the same computation.
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the
 `food_log` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
-(#614), so `dosetime` moves `given_at` and nothing else, and the toast says so. The
+(#614), so `dosetime` moves `recorded_at` and nothing else, and the toast says so. The
 dose correction also never re-runs the phantom-dose proximity guard (it runs at
 INSERT time and a correction may legitimately move two administrations together) and
 never re-arms an escalation (#1933) — it is a correction of history. It can only
@@ -1283,7 +1283,7 @@ own stale answer.
 Migration 156 belongs to the same fix: the family's arming-administration read
 carries no date bound (the interval clock is armed whenever the last dose was),
 and on the baseline indexes it scanned the whole append-only dose ledger and
-sorted the survivors. `intake_item_logs(item_id, given_at)` turns that into a
+sorted the survivors. `intake_item_logs(item_id, recorded_at)` turns that into a
 seek. The `(item_id, date)` alternative was measured and deliberately not
 shipped: the date-shaped reads all pin one day, so `idx_intake_log_date` already
 bounds them to a set that stays flat as history grows.

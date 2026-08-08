@@ -5,7 +5,7 @@
 // offsets are retired), the double-tap dedup, and the invalid-custom-time /
 // stale-item error returns. The core's own semantics (multiples, supply, window
 // guard) are pinned in the DB tier; this tier proves the ACTION wires the offset →
-// given_at → core correctly and returns the right FormResult.
+// recorded_at → core correctly and returns the right FormResult.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -121,11 +121,11 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(res.ok).toBe(true);
     const row = db
       .prepare(
-        "SELECT given_at FROM intake_item_logs WHERE item_id = ? ORDER BY id DESC LIMIT 1"
+        "SELECT recorded_at FROM intake_item_logs WHERE item_id = ? ORDER BY id DESC LIMIT 1"
       )
-      .get(itemId) as { given_at: string };
+      .get(itemId) as { recorded_at: string };
     // Stored as a UTC "YYYY-MM-DD HH:MM:SS" instant (not the raw wall string).
-    expect(row.given_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(row.recorded_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 
   it("rejects a malformed custom time without writing", async () => {

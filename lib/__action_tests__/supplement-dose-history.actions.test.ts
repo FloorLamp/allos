@@ -211,10 +211,10 @@ describe("updateHistoricalDose action — supplements", () => {
     expect(result.ok).toBe(true);
     const row = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0];
     expect(row.amount).toBe("45 mg");
-    // The stated time lands in the event column (#2228 decision 1); given_at is
+    // The stated time lands in the event column (#2228 decision 1); recorded_at is
     // record history for the amend path and keeps the backfill's stamp.
     expect(row.occurred_at).toContain("20:15");
-    expect(row.given_at).toContain("08:00");
+    expect(row.recorded_at).toContain("08:00");
 
     expect(auditRows(profile.id).map((r) => r.action)).toEqual([
       AUDIT_ACTIONS.doseLogBackfill,
@@ -222,7 +222,7 @@ describe("updateHistoricalDose action — supplements", () => {
     ]);
   });
 
-  // #2031: the write cores judge a given_at against the CLOCK SEAM's now, not the
+  // #2031: the write cores judge a recorded_at against the CLOCK SEAM's now, not the
   // wall clock. Under a frozen clock that LEADS real time — exactly what #1464's
   // forward nudge produces for ~30 minutes before UTC midnight — an entry at the
   // app's own now is in the real future, and judging it on the wall clock refused

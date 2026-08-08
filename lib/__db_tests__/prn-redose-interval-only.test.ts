@@ -59,11 +59,11 @@ function logAdministration(
   date: string,
   hoursAgo: number
 ): void {
-  const givenAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
+  const recordedAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
      VALUES (?, ?, ?, ?, 'taken')`
-  ).run(doseId, itemId, date, givenAt);
+  ).run(doseId, itemId, date, recordedAt);
 }
 
 // The redose line for an item on each of the two gathers the loader emits.

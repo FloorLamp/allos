@@ -6,12 +6,12 @@ import {
   isHistoricalDoseTimeAccepted,
 } from "../dose-log-window";
 
-// WHICH CLOCK the dose-log future guards judge a given_at against (#2031).
+// WHICH CLOCK the dose-log future guards judge a recorded_at against (#2031).
 //
 // Both guards take `now` as a required argument, and every production call site
 // passes `now()` from the clock seam. That is not a stylistic choice: the guards
-// also compare the given_at's profile-local DATE against `todayStr`, which always
-// comes from `today()` — the seam — and the given_at itself is seam-derived too
+// also compare the recorded_at's profile-local DATE against `todayStr`, which always
+// comes from `today()` — the seam — and the recorded_at itself is seam-derived too
 // (a stored stamp is written by `sqlNow()`, a form-entered one is built from a
 // `today()`-anchored date field). Feeding the guard a real `new Date()` while its
 // other half reads the frozen clock is what opened the ~30-minute daily band:

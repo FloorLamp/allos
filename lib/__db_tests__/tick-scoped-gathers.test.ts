@@ -292,11 +292,11 @@ function logAdministration(
   hoursAgo: number,
   amount: string
 ): void {
-  const givenAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
+  const recordedAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status, amount)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
      VALUES (?, ?, ?, ?, 'taken', ?)`
-  ).run(doseId, itemId, date, givenAt, amount);
+  ).run(doseId, itemId, date, recordedAt, amount);
 }
 
 function seedFamilyProfile(name: string): {

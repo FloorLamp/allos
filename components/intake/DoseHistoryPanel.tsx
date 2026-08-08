@@ -22,7 +22,7 @@ import {
 // `statedAt` is the row's stated event instant (occurred_at, ISO UTC) or null — the
 // ONLY thing the edit form's time field may seed from (#2228 decision 1): a row
 // whose intake time was never stated opens its editor with an EMPTY time field,
-// never with the given_at/taken_at record chain wearing an administration time's
+// never with the recorded_at/taken_at record chain wearing an administration time's
 // clothes.
 export interface DoseHistoryEntry {
   id: number;

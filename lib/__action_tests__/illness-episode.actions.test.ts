@@ -437,7 +437,7 @@ describe("episode event ledger actions", () => {
       db
         .prepare(
           `INSERT INTO intake_item_logs
-             (dose_id, item_id, date, given_at, amount, status)
+             (dose_id, item_id, date, recorded_at, amount, status)
            VALUES (?, ?, ?, '2026-01-01 14:00:00', '100 mg', 'taken')`
         )
         .run(doseId, itemId, date).lastInsertRowid
@@ -506,11 +506,11 @@ describe("episode event ledger actions", () => {
       )
     ).toEqual({ ok: true });
     // The stated time lands in occurred_at through the ONE amend core (#2228
-    // decision 6); given_at is record history and keeps its original stamp.
+    // decision 6); recorded_at is record history and keeps its original stamp.
     expect(
       db
         .prepare(
-          `SELECT l.amount, l.date, l.occurred_at, l.given_at
+          `SELECT l.amount, l.date, l.occurred_at, l.recorded_at
              FROM intake_item_logs l
              JOIN intake_items i ON i.id = l.item_id
             WHERE l.id = ? AND i.profile_id = ?`
@@ -519,7 +519,7 @@ describe("episode event ledger actions", () => {
     ).toMatchObject({
       amount: "200 mg",
       date: doseDate,
-      given_at: "2026-01-01 14:00:00",
+      recorded_at: "2026-01-01 14:00:00",
     });
     expect(
       (
@@ -586,7 +586,7 @@ describe("episode event ledger actions", () => {
        VALUES (?, ?, NULL)`
     ).run(itemId, yesterday);
     const insertLog = db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
        VALUES (?, ?, ?, ?, '100 mg', 'taken')`
     );
     insertLog.run(doseId, itemId, yesterday, `${yesterday} 08:00:00`);
@@ -595,7 +595,7 @@ describe("episode event ledger actions", () => {
         .lastInsertRowid
     );
 
-    // Stating a time within the proximity window of the sibling's given_at is now
+    // Stating a time within the proximity window of the sibling's recorded_at is now
     // refused from the episode surface — identically to the medication card.
     expect(
       await updateEpisodeDoseAction(
@@ -710,7 +710,7 @@ describe("episode event ledger actions", () => {
       db
         .prepare(
           `INSERT INTO intake_item_logs
-             (dose_id, item_id, date, given_at, amount, status)
+             (dose_id, item_id, date, recorded_at, amount, status)
            VALUES (?, ?, ?, '2026-01-01 14:00:00', '100 mg', 'taken')`
         )
         .run(doseId, itemId, date).lastInsertRowid

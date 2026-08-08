@@ -26,7 +26,7 @@ export type { WhenValue } from "@/lib/stated-time";
 //      change re-anchors (or clears — never invents) the stated instant. Two
 //      independent widgets cannot enforce a property of the pair; one can.
 //   2. `statedAt: string | null`, NEVER a pre-coalesced string. A caller
-//      physically cannot hand it `given_at ?? taken_at` and have it read as a
+//      physically cannot hand it `recorded_at ?? taken_at` and have it read as a
 //      statement — null renders empty and means "not stated" (#2228's laundering
 //      defect made unrepresentable rather than merely fixed once).
 //   3. IT NEVER DEFAULTS TO NOW, AND OFFERS "NOW" (#2053). An untouched time

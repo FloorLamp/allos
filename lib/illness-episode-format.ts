@@ -52,7 +52,7 @@ export interface AdministrationPoint {
   date: string;
   time: string | null; // profile-local clock of the best-known instant, or null
   time24?: string | null; // profile-local HH:MM for the edit control
-  // True when `time` came from the RECORD chain (given_at → taken_at) rather than a
+  // True when `time` came from the RECORD chain (recorded_at → taken_at) rather than a
   // stated administration instant (`occurred_at`). The timeline is a clinical
   // document, so it marks such a clock "recorded 7:02am" instead of presenting a
   // filing timestamp as an administration time (#2228 decision 4). Optional so

@@ -83,7 +83,7 @@ function seedMed(
   ).run(itemId, created);
   if (opts.administeredOn) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, given_at)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at)
        VALUES (?, ?, ?, 'taken', ?)`
     ).run(
       doseId,

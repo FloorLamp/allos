@@ -325,7 +325,7 @@ function seedDose(
 // real write path has created the row.
 function stampTap(logId: number, sqlUtc: string): void {
   db.prepare(
-    `UPDATE intake_item_logs SET taken_at = ?, given_at = ? WHERE id = ?`
+    `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ? WHERE id = ?`
   ).run(sqlUtc, sqlUtc, logId);
 }
 

@@ -116,7 +116,7 @@ export default async function MedicationDetailPage(props: {
   ).map((dose) => {
     // The row-level time question, asked once (#2205 phase 3): the stated event
     // instant (`occurred_at`) when somebody named one, else the record chain
-    // (given_at → taken_at) — with the answer saying WHICH question it came from.
+    // (recorded_at → taken_at) — with the answer saying WHICH question it came from.
     const when = bestKnownInstant("intake_item_logs", dose);
     const stored = when.known ? when.at : null;
     // Only attach relative age when the dose's logical date is today; otherwise its

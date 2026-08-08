@@ -140,7 +140,7 @@ export function seedNutritionTrio(): void {
         .run(fiberItemId).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
      VALUES (?, ?, ?, '1 capsule', ?, 'taken')`
     ).run(fiberDoseId, fiberItemId, nToday, utcSqlString(clockNow()));
 

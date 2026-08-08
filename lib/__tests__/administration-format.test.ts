@@ -147,7 +147,7 @@ describe("administrationOutcomeText", () => {
   });
 });
 
-describe("isGivenAtAccepted (#614 window guard for given_at)", () => {
+describe("isGivenAtAccepted (#614 window guard for recorded_at)", () => {
   const tz = "UTC";
   const now = new Date("2026-07-15T12:00:00Z");
   const todayStr = "2026-07-15";

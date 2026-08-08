@@ -106,14 +106,16 @@ function logAdmin(
   // logAdministration stamps from the dose row). Null = a legacy/amount-less row.
   amount: string | null = null
 ): number {
-  const givenAt = utcSqlString(new Date(now.getTime() - hoursAgo * 3_600_000));
+  const recordedAt = utcSqlString(
+    new Date(now.getTime() - hoursAgo * 3_600_000)
+  );
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status, amount)
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
          VALUES (?, ?, ?, ?, 'taken', ?)`
       )
-      .run(doseId, itemId, date, givenAt, amount).lastInsertRowid
+      .run(doseId, itemId, date, recordedAt, amount).lastInsertRowid
   );
 }
 
