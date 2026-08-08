@@ -72,6 +72,12 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
 // (#800 specced timed readings; it previously had none), so a manual temperature can
 // build the same fever curve a synced thermometer does. Drive a timed reading and
 // confirm it persisted without error.
+//
+// The TIME half moved (#2154): the temperature's own time input folded into the
+// form's ONE shared WhenControl Time for the whole sitting, whose statement the
+// write boundary lands on the reading's `occurred_at`. The property under test is
+// unchanged — a manual temperature still carries the reading time that makes a
+// fever curve possible — so this drives the control that now states it.
 test("the measurements form logs a temperature with an optional reading time (#843)", async ({
   page,
 }) => {
@@ -82,7 +88,7 @@ test("the measurements form logs a temperature with an optional reading time (#8
   await openMeasurementGroup(page, form, "vitals");
   await form.getByLabel("Body Temperature unit").selectOption("F");
   await form.getByLabel("Body Temperature", { exact: true }).fill("101.2");
-  const timeField = form.getByTestId("measurements-temp-time");
+  const timeField = form.getByTestId("m-time");
   await expect(timeField).toBeVisible();
   await timeField.fill("07:00");
 
