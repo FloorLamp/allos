@@ -140,12 +140,12 @@ export function getTakenDoseTimes(
 ): Map<number, string> {
   const rows = db
     .prepare(
-      `SELECT l.dose_id, COALESCE(l.given_at, l.taken_at) AS taken_at
+      `SELECT l.dose_id, COALESCE(l.recorded_at, l.taken_at) AS taken_at
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
-        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+        ORDER BY COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, date) as { dose_id: number; taken_at: string }[];
   const out = new Map<number, string>();
@@ -310,13 +310,13 @@ function applyDoseStatusCore(
     // records no amount — nothing was consumed.
     const amount = target === "taken" ? owned.amount : null;
     if (!existing) {
-      // given_at is the tap moment for a scheduled confirm: the schedule dictates WHEN,
-      // so a precise intake time isn't captured here (the PRN path is what makes given_at
+      // recorded_at is the tap moment for a scheduled confirm: the schedule dictates WHEN,
+      // so a precise intake time isn't captured here (the PRN path is what makes recorded_at
       // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
       // captured on the client and validated above (#1427). An unusable/absent stamp
       // COALESCEs to the server's own now, but from the CLOCK SEAM (sqlNow, #1534), not
       // SQL's `datetime('now')`: `date` came from `today()`, so a real-clock fallback
-      // would write a self-contradicting row (a given_at whose profile-local date isn't
+      // would write a self-contradicting row (a recorded_at whose profile-local date isn't
       // the row's own date) on any run that crosses midnight. A skip carries none.
       const stamp = opts.takenAt
         ? resolveQueuedTakenAt(
@@ -329,7 +329,7 @@ function applyDoseStatusCore(
         : null;
       db.prepare(
         `INSERT INTO intake_item_logs
-           (dose_id, item_id, date, amount, status, given_at, notify_message_id)
+           (dose_id, item_id, date, amount, status, recorded_at, notify_message_id)
          VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN COALESCE(?, ?) ELSE NULL END, ?)`
       ).run(
         doseId,
@@ -343,7 +343,7 @@ function applyDoseStatusCore(
         opts.notifyMessageId ?? null
       );
     } else {
-      // A flip between the two resolved states. `given_at` is deliberately left alone:
+      // A flip between the two resolved states. `recorded_at` is deliberately left alone:
       // it records when the dose was TAPPED, and a correction of the status is not a
       // second intake. supply_adjusted follows the write below, so the row always states
       // whether its decrement is currently applied.
@@ -449,7 +449,7 @@ export function setDoseStatusCore(
 // click) rather than a second real intake. PRN logging is deliberately NOT
 // idempotent — multiple/day is the whole point (#797) — so this replaces the
 // dropped UNIQUE(dose_id,date) as the accidental-repeat guard, keeping a stray tap
-// from inventing a phantom dose (and burning supply). Keyed on given_at PROXIMITY,
+// from inventing a phantom dose (and burning supply). Keyed on recorded_at PROXIMITY,
 // so two retro entries at genuinely different times (4:00 and 4:30) both land while
 // two taps within ~2 min collapse to one.
 export const ADMIN_DEDUP_WINDOW_SEC = 120;
@@ -458,7 +458,7 @@ export const ADMIN_DEDUP_WINDOW_SEC = 120;
 // lib-write-core convention, mirroring logFoodServingCore): both the
 // logMedicationAdministration Server Action (dashboard quick-log) and the Telegram
 // /dose tap call this, so the ingestion path is one computation regardless of
-// surface, and the auth gate stays entirely in the action. `givenAt` is the real
+// surface, and the auth gate stays entirely in the action. `recordedAt` is the real
 // intake time (undefined = now), bounded by isGivenAtAccepted (#614). Each accepted,
 // non-duplicate administration is a NEW intake_item_logs row (the per-administration
 // ledger) that decrements on-hand supply once. One IMMEDIATE transaction (#468) so
@@ -468,16 +468,16 @@ export const ADMIN_DEDUP_WINDOW_SEC = 120;
 export function logAdministration(
   profileId: number,
   itemId: number,
-  givenAt?: Date
+  recordedAt?: Date
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
-  const when = givenAt ?? clockNow();
+  const when = recordedAt ?? clockNow();
   const todayStr = today(profileId);
-  if (givenAt && !isGivenAtAccepted(tz, todayStr, when, clockNow())) {
+  if (recordedAt && !isGivenAtAccepted(tz, todayStr, when, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, when);
-  const givenAtStr = utcSqlString(when);
+  const recordedAtStr = utcSqlString(when);
   return writeTx((): AdministrationOutcome => {
     // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
     // the profile through the parent item. A PRN med always has at least one dose row
@@ -504,23 +504,23 @@ export function logAdministration(
     const dup = db
       .prepare(
         `SELECT id FROM intake_item_logs
-          WHERE dose_id = ? AND status = 'taken' AND given_at IS NOT NULL
-            AND ABS(strftime('%s', given_at) - strftime('%s', ?)) <= ?
+          WHERE dose_id = ? AND status = 'taken' AND recorded_at IS NOT NULL
+            AND ABS(strftime('%s', recorded_at) - strftime('%s', ?)) <= ?
           LIMIT 1`
       )
-      .get(dose.dose_id, givenAtStr, ADMIN_DEDUP_WINDOW_SEC) as
+      .get(dose.dose_id, recordedAtStr, ADMIN_DEDUP_WINDOW_SEC) as
       { id: number } | undefined;
     if (!dup) {
       db.prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
          VALUES (?,?,?,?,?)`
-      ).run(dose.dose_id, itemId, date, dose.amount, givenAtStr);
+      ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
       decrementSupply(profileId, itemId);
     }
     // The item's running total + latest intake time for the day it landed on.
     const summary = db
       .prepare(
-        `SELECT COUNT(*) AS count, MAX(given_at) AS last
+        `SELECT COUNT(*) AS count, MAX(recorded_at) AS last
            FROM intake_item_logs
           WHERE item_id = ? AND date = ? AND status = 'taken'`
       )
@@ -528,7 +528,7 @@ export function logAdministration(
     return {
       kind: dup ? "duplicate" : "logged",
       count: summary.count,
-      lastGivenAt: summary.last ?? givenAtStr,
+      lastGivenAt: summary.last ?? recordedAtStr,
       date,
     };
   });
@@ -585,19 +585,19 @@ export function logHistoricalDose(
   profileId: number,
   itemId: number,
   doseId: number,
-  givenAt: Date,
+  recordedAt: Date,
   amountOverride: string | null,
   adjustSupply: boolean
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
   // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
-  // so is the stored given_at this may be re-validating, so all three must agree.
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt, clockNow())) {
+  // so is the stored recorded_at this may be re-validating, so all three must agree.
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, recordedAt, clockNow())) {
     return { kind: "invalid-time" };
   }
-  const date = dateStrInTz(tz, givenAt);
-  const givenAtStr = utcSqlString(givenAt);
+  const date = dateStrInTz(tz, recordedAt);
+  const recordedAtStr = utcSqlString(recordedAt);
 
   return writeTx((tx): HistoricalDoseOutcome => {
     const dose = db
@@ -672,11 +672,11 @@ export function logHistoricalDose(
              FROM intake_item_logs l
              JOIN intake_items s ON s.id = l.item_id
             WHERE l.dose_id = ? AND l.status = 'taken'
-              AND s.profile_id = ? AND l.given_at IS NOT NULL
-              AND ABS(strftime('%s', l.given_at) - strftime('%s', ?)) <= ?
+              AND s.profile_id = ? AND l.recorded_at IS NOT NULL
+              AND ABS(strftime('%s', l.recorded_at) - strftime('%s', ?)) <= ?
             LIMIT 1`
         )
-        .get(doseId, profileId, givenAtStr, ADMIN_DEDUP_WINDOW_SEC);
+        .get(doseId, profileId, recordedAtStr, ADMIN_DEDUP_WINDOW_SEC);
       if (duplicate) return { kind: "duplicate" };
     }
 
@@ -688,9 +688,9 @@ export function logHistoricalDose(
     }
     db.prepare(
       `INSERT INTO intake_item_logs
-         (dose_id, item_id, date, amount, given_at, supply_adjusted)
+         (dose_id, item_id, date, amount, recorded_at, supply_adjusted)
        VALUES (?,?,?,?,?,?)`
-    ).run(doseId, itemId, date, amount, givenAtStr, adjustSupply ? 1 : 0);
+    ).run(doseId, itemId, date, amount, recordedAtStr, adjustSupply ? 1 : 0);
     if (adjustSupply) decrementSupply(profileId, itemId);
     return { kind: "logged", date };
   });
@@ -708,11 +708,11 @@ export function logHistoricalDose(
 // their own surface predicates (the episode scopes its read to `may` items inside the
 // episode window); the shared rules live here once.
 //
-// IT WRITES `occurred_at`, NEVER `given_at` (#2228 decision 1). Under the #2229
-// ruling `given_at` is a RECORD instant (the tap), so a human's stated administration
-// time lands in the stated-only event column (migration 165) and `given_at` is
+// IT WRITES `occurred_at`, NEVER `recorded_at` (#2228 decision 1). Under the #2229
+// ruling `recorded_at` is a RECORD instant (the tap), so a human's stated administration
+// time lands in the stated-only event column (migration 165) and `recorded_at` is
 // read-only history for this path — which also keeps the PRN redose window and the
-// phantom-dose proximity guard, both keyed on `given_at`, behaving identically
+// phantom-dose proximity guard, both keyed on `recorded_at`, behaving identically
 // before and after an amendment (the issue's constraint 3).
 //
 // `date` IS PASSED EXPLICITLY, not derived from the instant (#2228 decision 3): a
@@ -842,7 +842,7 @@ export function updateHistoricalDose(
       }
     } else if (occurredAt) {
       // The phantom-dose proximity guard, unchanged: other rows still participate
-      // by their `given_at` (the issue's constraint 3 — moving the guard onto
+      // by their `recorded_at` (the issue's constraint 3 — moving the guard onto
       // `occurred_at` is its own decision), judged against the stated instant. An
       // amendment that clears the time states nothing to be near, so it has no
       // proximity to check and lands as an ordinary `logged` outcome.
@@ -852,8 +852,8 @@ export function updateHistoricalDose(
              FROM intake_item_logs l
              JOIN intake_items s ON s.id = l.item_id
             WHERE l.dose_id = ? AND l.id <> ? AND l.status = 'taken'
-              AND s.profile_id = ? AND l.given_at IS NOT NULL
-              AND ABS(strftime('%s', l.given_at) - strftime('%s', ?)) <= ?
+              AND s.profile_id = ? AND l.recorded_at IS NOT NULL
+              AND ABS(strftime('%s', l.recorded_at) - strftime('%s', ?)) <= ?
             LIMIT 1`
         )
         .get(
@@ -898,8 +898,11 @@ export function updateHistoricalDose(
 }
 
 // The day's PRN administrations for one item, most-recent first — for the med
-// card's "2 today · last 4:02pm" line. given_at is the real intake time; taken_at
-// is when it was recorded. Profile-scoped via the parent item (the denormalized
+// card's "2 today · last 4:02pm" line. `recorded_at` and `taken_at` are the row's
+// RECORD CHAIN (#2229, migration 173): the first is the tap the app filed the
+// administration under, the second the insert stamp behind it. Neither is the event
+// instant — that is `occurred_at`, and only when somebody stated one.
+// Profile-scoped via the parent item (the denormalized
 // item_id, kept consistent by migration 011).
 export function getAdministrationsForItemOnDate(
   profileId: number,
@@ -907,23 +910,23 @@ export function getAdministrationsForItemOnDate(
   date: string
 ): {
   id: number;
-  given_at: string | null;
+  recorded_at: string | null;
   taken_at: string;
   amount: string | null;
   product: string | null;
 }[] {
   return db
     .prepare(
-      `SELECT l.id, l.given_at, l.taken_at, l.amount, l.product
+      `SELECT l.id, l.recorded_at, l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
           AND l.status = 'taken'
-        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+        ORDER BY COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, itemId, date) as {
     id: number;
-    given_at: string | null;
+    recorded_at: string | null;
     taken_at: string;
     amount: string | null;
     product: string | null;
@@ -944,7 +947,7 @@ export function getAdministrationsForItemsOnDate(
   number,
   {
     id: number;
-    given_at: string | null;
+    recorded_at: string | null;
     taken_at: string;
     amount: string | null;
     product: string | null;
@@ -954,7 +957,7 @@ export function getAdministrationsForItemsOnDate(
     number,
     {
       id: number;
-      given_at: string | null;
+      recorded_at: string | null;
       taken_at: string;
       amount: string | null;
       product: string | null;
@@ -964,17 +967,17 @@ export function getAdministrationsForItemsOnDate(
   const placeholders = itemIds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT l.item_id, l.id, l.given_at, l.taken_at, l.amount, l.product
+      `SELECT l.item_id, l.id, l.recorded_at, l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.date = ?
           AND l.status = 'taken'
-        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+        ORDER BY COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, ...itemIds, date) as {
     item_id: number;
     id: number;
-    given_at: string | null;
+    recorded_at: string | null;
     taken_at: string;
     amount: string | null;
     product: string | null;
@@ -983,7 +986,7 @@ export function getAdministrationsForItemsOnDate(
     const arr = out.get(r.item_id) ?? [];
     arr.push({
       id: r.id,
-      given_at: r.given_at,
+      recorded_at: r.recorded_at,
       taken_at: r.taken_at,
       amount: r.amount,
       product: r.product,
@@ -995,7 +998,7 @@ export function getAdministrationsForItemsOnDate(
 
 // One taken ledger row as the dose-history surfaces render it. It carries the row's
 // declared temporal columns — `occurred_at` (the event instant, stated-only, migration
-// 165) alongside the `given_at` → `taken_at` record chain — so a caller can ask
+// 165) alongside the `recorded_at` → `taken_at` record chain — so a caller can ask
 // lib/row-instants.ts the row-level question instead of pairing columns by hand, and
 // so an unstated row can render "recorded 7:02am" rather than a bare clock (#2228
 // decision 4). A type alias rather than an interface so it satisfies the readers'
@@ -1005,7 +1008,7 @@ export type IntakeDoseHistoryRow = {
   dose_id: number;
   date: string;
   occurred_at: string | null;
-  given_at: string | null;
+  recorded_at: string | null;
   taken_at: string;
   amount: string | null;
   product: string | null;
@@ -1024,13 +1027,13 @@ export function getIntakeDoseHistory(
 ): IntakeDoseHistoryRow[] {
   return db
     .prepare(
-      `SELECT l.id, l.dose_id, l.date, l.occurred_at, l.given_at, l.taken_at,
+      `SELECT l.id, l.dose_id, l.date, l.occurred_at, l.recorded_at, l.taken_at,
               l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
           AND l.date >= ?
-        ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+        ORDER BY l.date DESC, COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, itemId, sinceDate) as IntakeDoseHistoryRow[];
 }
@@ -1050,13 +1053,13 @@ export function getIntakeDoseHistoryForItems(
   const placeholders = itemIds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.given_at,
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
               l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
           AND l.status = 'taken' AND l.date >= ?
-        ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+        ORDER BY l.date DESC, COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, ...itemIds, sinceDate) as (IntakeDoseHistoryRow & {
     item_id: number;
@@ -1068,7 +1071,7 @@ export function getIntakeDoseHistoryForItems(
       dose_id: r.dose_id,
       date: r.date,
       occurred_at: r.occurred_at,
-      given_at: r.given_at,
+      recorded_at: r.recorded_at,
       taken_at: r.taken_at,
       amount: r.amount,
       product: r.product,
@@ -1101,7 +1104,7 @@ interface CapturedAdministration {
   item_id: number;
   date: string;
   taken_at: string;
-  given_at: string | null;
+  recorded_at: string | null;
   amount: string | null;
   product: string | null;
   status: string;
@@ -1137,7 +1140,7 @@ export function deleteAdministrationLog(
   return writeTx((): AdministrationDeleteOutcome | null => {
     const row = db
       .prepare(
-        `SELECT l.id, l.dose_id, l.item_id, l.date, l.taken_at, l.given_at,
+        `SELECT l.id, l.dose_id, l.item_id, l.date, l.taken_at, l.recorded_at,
                 l.amount, l.product, l.status, l.supply_adjusted
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
@@ -1153,7 +1156,7 @@ export function deleteAdministrationLog(
       item_id: row.item_id,
       date: row.date,
       taken_at: row.taken_at,
-      given_at: row.given_at,
+      recorded_at: row.recorded_at,
       amount: row.amount,
       product: row.product,
       status: row.status,
@@ -1233,7 +1236,7 @@ export function restoreAdministrationLog(
     const supplyAdjusted = captured.supply_adjusted ?? 1;
     db.prepare(
       `INSERT INTO intake_item_logs
-         (dose_id, item_id, date, taken_at, given_at, amount, product, status,
+         (dose_id, item_id, date, taken_at, recorded_at, amount, product, status,
           supply_adjusted)
        VALUES (?,?,?,?,?,?,?,?,?)`
     ).run(
@@ -1241,7 +1244,7 @@ export function restoreAdministrationLog(
       captured.item_id,
       captured.date,
       captured.taken_at,
-      captured.given_at,
+      captured.recorded_at,
       captured.amount,
       captured.product ?? null,
       captured.status,
@@ -1313,15 +1316,15 @@ export function getRedoseArmingState(
   // profiles.
   const latest = db
     .prepare(
-      `SELECT l.id AS id, l.given_at AS givenAt
+      `SELECT l.id AS id, l.recorded_at AS recordedAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND l.given_at IS NOT NULL
-        ORDER BY l.given_at DESC, l.id DESC
+          AND l.recorded_at IS NOT NULL
+        ORDER BY l.recorded_at DESC, l.id DESC
         LIMIT 1`
     )
-    .get(profileId, itemId) as { id: number; givenAt: string } | undefined;
+    .get(profileId, itemId) as { id: number; recordedAt: string } | undefined;
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
@@ -1333,7 +1336,7 @@ export function getRedoseArmingState(
     .get(profileId, itemId, date) as { n: number };
   return {
     latestId: latest?.id ?? null,
-    latestGivenAt: latest?.givenAt ?? null,
+    latestGivenAt: latest?.recordedAt ?? null,
     countToday: count.n,
   };
 }
@@ -1483,7 +1486,7 @@ export function getPrnMedicationsForQuickLog(
               (SELECT COUNT(*) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
                 AS count,
-              (SELECT MAX(COALESCE(l.given_at, l.taken_at)) FROM intake_item_logs l
+              (SELECT MAX(COALESCE(l.recorded_at, l.taken_at)) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken')
                 AS lastGivenAt,
               s.min_interval_hours AS minIntervalHours,
@@ -1769,8 +1772,8 @@ export function getOfferedIntakeForSlot(
 
 // One recent dose confirmation as the correction offer reads it. `tapAt` is `taken_at`,
 // the IMMUTABLE audit stamp — burst identity and FRESHNESS key on it, never on
-// `given_at`, because a correction is not a tap and must not renew the correction window
-// (#2206). `statedAt` is `given_at`: the administration instant itself, which is what the
+// `recorded_at`, because a correction is not a tap and must not renew the correction window
+// (#2206). `statedAt` is `recorded_at`: the administration instant itself, which is what the
 // row's header states and what a chip counts back from, so repeat taps compose.
 export interface DoseTapRow {
   id: number;
@@ -1789,8 +1792,8 @@ export interface DoseTapRow {
 // dose → item JOIN.
 //
 // SCHEDULED CONFIRMS ONLY IS NOT THE RULE — a PRN administration is exactly the case
-// #2020 is about (the redose window arms off `given_at`), so both are here. What IS
-// excluded is a row with no `given_at` at all: there is no administration instant to
+// #2020 is about (the redose window arms off `recorded_at`), so both are here. What IS
+// excluded is a row with no `recorded_at` at all: there is no administration instant to
 // correct, and inventing one would be the guess this feature exists to end.
 export function getRecentDoseTaps(
   profileId: number,
@@ -1802,13 +1805,13 @@ export function getRecentDoseTaps(
   const rows = db
     .prepare(
       `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-              l.taken_at AS takenAt, l.given_at AS givenAt,
+              l.taken_at AS takenAt, l.recorded_at AS recordedAt,
               l.notify_message_id AS messageRef, s.name AS name
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.status = 'taken'
-          AND l.given_at IS NOT NULL AND l.taken_at >= ?
+          AND l.recorded_at IS NOT NULL AND l.taken_at >= ?
         ORDER BY l.taken_at, l.id
         LIMIT 100`
     )
@@ -1817,7 +1820,7 @@ export function getRecentDoseTaps(
     doseId: number;
     date: string;
     takenAt: string;
-    givenAt: string | null;
+    recordedAt: string | null;
     messageRef: number | null;
     name: string;
   }[];
@@ -1827,7 +1830,7 @@ export function getRecentDoseTaps(
     // `new Date`, which would read them in the process-local zone.
     const tap = parseUtcSql(r.takenAt);
     if (!tap) continue;
-    const given = r.givenAt ? parseUtcSql(r.givenAt) : null;
+    const given = r.recordedAt ? parseUtcSql(r.recordedAt) : null;
     out.push({
       id: r.id,
       tapAt: tap.toISOString(),
@@ -1854,7 +1857,7 @@ export function getDoseCorrectionBursts(
 }
 
 // The typed result of a dose-time correction:
-//   restamped — `count` log rows now carry a corrected `given_at`; `crossedMidnight`
+//   restamped — `count` log rows now carry a corrected `recorded_at`; `crossedMidnight`
 //               says whether any of them landed on a different calendar day, which the
 //               toast has to mention because the row's DAY deliberately does not move.
 //               `anchor` names the dose + day the message can be rebuilt from once the
@@ -1877,7 +1880,7 @@ export type DoseRestampOutcome =
 // THE ROW'S `date` DOES NOT MOVE, and this is the deliberate contrast with the food
 // side. A serving's day is a fact about the serving, so #2019's correction re-dates it;
 // a dose's day is SCHEDULE-OWNED (#614 — the token's date is the day the reminder was
-// asking about), so a correction that crosses midnight moves only `given_at` and leaves
+// asking about), so a correction that crosses midnight moves only `recorded_at` and leaves
 // the adherence day where the schedule put it. A bedtime dose confirmed at 07:00 and
 // corrected to 22:00 was still last night's bedtime dose.
 //
@@ -1893,7 +1896,7 @@ export type DoseRestampOutcome =
 //   • It only ever moves an instant EARLIER (chips step back, picker hours are all past),
 //     so the PRN redose window can only become MORE conservative — the safe direction
 //     for the one consumer that is safety-relevant. Repeat chip taps COMPOSE off the
-//     stored `given_at` (#2206), which keeps that direction and bounds how far it can go
+//     stored `recorded_at` (#2206), which keeps that direction and bounds how far it can go
 //     through the resolver's own floor rather than through idempotence.
 export function restampDoseLogsCore(
   profileId: number,
@@ -1904,12 +1907,12 @@ export function restampDoseLogsCore(
     const rows = db
       .prepare(
         `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-                l.taken_at AS takenAt, l.given_at AS givenAt, s.name AS name
+                l.taken_at AS takenAt, l.recorded_at AS recordedAt, s.name AS name
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = d.item_id
           WHERE s.profile_id = ? AND l.id >= ? AND l.status = 'taken'
-            AND l.given_at IS NOT NULL
+            AND l.recorded_at IS NOT NULL
           ORDER BY l.taken_at, l.id
           LIMIT 200`
       )
@@ -1918,7 +1921,7 @@ export function restampDoseLogsCore(
       doseId: number;
       date: string;
       takenAt: string;
-      givenAt: string | null;
+      recordedAt: string | null;
       name: string;
     }[];
     const taps: {
@@ -1929,7 +1932,7 @@ export function restampDoseLogsCore(
     for (const r of rows) {
       const tap = parseUtcSql(r.takenAt);
       if (!tap) continue;
-      const given = r.givenAt ? parseUtcSql(r.givenAt) : null;
+      const given = r.recordedAt ? parseUtcSql(r.recordedAt) : null;
       taps.push({
         row: r,
         tapAt: tap.toISOString(),
@@ -1974,7 +1977,7 @@ export function restampDoseLogsCore(
       // Scoped through dose → item rather than the row's own `item_id`, so the write
       // and the burst SELECT walk the identical join.
       db.prepare(
-        `UPDATE intake_item_logs SET given_at = ?
+        `UPDATE intake_item_logs SET recorded_at = ?
           WHERE id = ? AND dose_id IN (
             SELECT d.id FROM intake_item_doses d
             JOIN intake_items s ON s.id = d.item_id

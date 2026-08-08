@@ -135,14 +135,14 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(history[0].date).toBe(date);
     // The row carries `occurred_at` (the stated event instant, migration 165) so the
     // panel call sites can ask the row-level question (#2228 decision 1a). The
-    // backfill's stated time still lands in `given_at` (only the AMENDMENT writes
+    // backfill's stated time still lands in `recorded_at` (only the AMENDMENT writes
     // the event column — decision 2 keeps the backfill as it is), so it is NULL
     // here, and the display tier renders the record chain marked "recorded".
     expect(history[0].occurred_at).toBeNull();
     const logId = history[0].id;
 
     // AMEND: a stated wall time and a corrected amount, same day. The stated time
-    // lands in `occurred_at` — never in `given_at`, which is record history now
+    // lands in `occurred_at` — never in `recorded_at`, which is record history now
     // (#2228 decision 1) and keeps the backfill's stamp.
     expect(
       updateHistoricalDose(p, itemId, logId, date, at(date, "21:15"), "400 mg")
@@ -150,7 +150,7 @@ describe("supplement dose history — the ungated shared cores", () => {
     const amended = getIntakeDoseHistory(p, itemId, "0001-01-01")[0];
     expect(amended.amount).toBe("400 mg");
     expect(amended.occurred_at).toContain("21:15");
-    expect(amended.given_at).toContain("08:30");
+    expect(amended.recorded_at).toContain("08:30");
 
     // DELETE with undo, then RESTORE — the row comes back with a new id.
     const removed = deleteAdministrationLog(p, logId);
@@ -374,7 +374,7 @@ describe("supplement dose history — the ungated shared cores", () => {
   });
 });
 
-describe("the amend path writes occurred_at, never given_at (#2228)", () => {
+describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
   // A PRN (`may`) medication with no course rows — unbounded history, the
   // per-administration ledger the proximity guard and redose window apply to.
   function seedPrnMed(profileId: number): { itemId: number; doseId: number } {
@@ -402,18 +402,18 @@ describe("the amend path writes occurred_at, never given_at (#2228)", () => {
     date: string;
     amount: string | null;
     occurred_at: string | null;
-    given_at: string | null;
+    recorded_at: string | null;
   } {
     return db
       .prepare(
-        `SELECT date, amount, occurred_at, given_at
+        `SELECT date, amount, occurred_at, recorded_at
            FROM intake_item_logs WHERE id = ?`
       )
       .get(logId) as {
       date: string;
       amount: string | null;
       occurred_at: string | null;
-      given_at: string | null;
+      recorded_at: string | null;
     };
   }
 
@@ -431,10 +431,10 @@ describe("the amend path writes occurred_at, never given_at (#2228)", () => {
     const after = logRow(logId);
     expect(after.amount).toBe("999 mg");
     // No intake time was ever stated, and none was invented: occurred_at stays
-    // NULL, the row's day stays put, and given_at is read-only history.
+    // NULL, the row's day stays put, and recorded_at is read-only history.
     expect(after.occurred_at).toBeNull();
     expect(after.date).toBe(before.date);
-    expect(after.given_at).toBe(before.given_at);
+    expect(after.recorded_at).toBe(before.recorded_at);
   });
 
   it("an empty time submission clears a stated instant without moving the row's day", () => {
@@ -454,7 +454,7 @@ describe("the amend path writes occurred_at, never given_at (#2228)", () => {
     const cleared = logRow(logId);
     expect(cleared.occurred_at).toBeNull();
     expect(cleared.date).toBe(date);
-    expect(cleared.given_at).toContain("09:00");
+    expect(cleared.recorded_at).toContain("09:00");
   });
 
   it("a stated instant whose local date disagrees with the submitted date is refused, nothing written", () => {
@@ -489,7 +489,7 @@ describe("the amend path writes occurred_at, never given_at (#2228)", () => {
     expect(logRow(logId)).toEqual(before);
   });
 
-  it("the PRN interval clock and proximity guard keep keying on given_at, identically", () => {
+  it("the PRN interval clock and proximity guard keep keying on recorded_at, identically", () => {
     const p = newProfile();
     const { itemId, doseId } = seedPrnMed(p);
     // A fully past day, so no wall time here can trip the future guard whatever
@@ -510,7 +510,7 @@ describe("the amend path writes occurred_at, never given_at (#2228)", () => {
     expect(after.latestId).toBe(before.latestId);
 
     // The phantom-dose proximity guard is likewise unmoved: a new entry within
-    // the dedup window of the row's given_at still collapses…
+    // the dedup window of the row's recorded_at still collapses…
     expect(
       logHistoricalDose(p, itemId, doseId, at(date, "10:01"), null, false)
     ).toEqual({ kind: "duplicate" });

@@ -9,7 +9,7 @@
 //
 // This module is the correction half, and it is deliberately DOMAIN-BLIND: food
 // servings (`food_log_events.eaten_at`, #2019) and dose administrations
-// (`intake_item_logs.given_at`, #2020) are the same shape — an immutable audit stamp
+// (`intake_item_logs.recorded_at`, #2020) are the same shape — an immutable audit stamp
 // for WHEN THE TAP LANDED, and a separate, correctable instant for WHEN IT HAPPENED.
 // One model, one chip vocabulary, one picker, so the two chats cannot drift.
 //
@@ -44,7 +44,7 @@
 // silently landed on the same instant was the worst possible answer to it.
 //
 // So repeat taps COMPOSE, and doing so costs no new state: the stored `eaten_at` /
-// `given_at` IS ledger state, the same ledger the row set is already a query over. Two
+// `recorded_at` IS ledger state, the same ledger the row set is already a query over. Two
 // taps of `−1h` mean two hours back; the re-render after each is what makes the step
 // visible; a rebuild, a pointer rotation or a restart changes nothing.
 //
@@ -139,7 +139,7 @@ export interface TapEvent {
   // a correction is not a tap, so a multi-tap correction session must not extend its own
   // hour (#2206).
   tapAt: string;
-  // The instant the ledger CURRENTLY holds for this row (`eaten_at` / `given_at`), or
+  // The instant the ledger CURRENTLY holds for this row (`eaten_at` / `recorded_at`), or
   // null when it holds none. This is what a chip counts back from and what the row's
   // header states, so both the label and the write read one value (#2206). Ledger state,
   // not a memory of some earlier message — the row set was already a query over exactly

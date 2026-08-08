@@ -1,6 +1,6 @@
 // Pure acceptance windows for dose/administration timestamps — no DB/network, so
 // unit-tested in lib/__tests__. Shared by the scheduled-dose date guard
-// (isDoseDateAccepted) and the PRN given_at guard (#614 extended to #797's
+// (isDoseDateAccepted) and the PRN recorded_at guard (#614 extended to #797's
 // user-suppliable intake time).
 
 import { daysBetweenDateStr, dateStrInTz } from "./date";
@@ -27,7 +27,7 @@ export function isDoseDateAccepted(todayStr: string, date: string): boolean {
   return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
 }
 
-// A user-suppliable given_at (PRN retro entry, #797) additionally must not be
+// A user-suppliable recorded_at (PRN retro entry, #797) additionally must not be
 // meaningfully in the FUTURE — a genuinely future time is a typo/forgery. A small
 // skew tolerates clock differences between the client and server.
 export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
@@ -36,12 +36,12 @@ export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // argument — deliberately, with no `new Date()` default — because picking the wrong
 // clock is silent and only fails for ~30 minutes a day.
 //
-// Both guards compare a given_at against `now` AND its profile-local date against
+// Both guards compare a recorded_at against `now` AND its profile-local date against
 // `todayStr`, and `todayStr` always comes from `today()`, i.e. from the app's clock
 // seam (lib/clock.ts). So `now` must come from that SAME seam: a guard whose two
 // halves read two different clocks is not one predicate, it is two, and the caller
 // gets to find out which one disagreed. Concretely, the timestamp being validated is
-// itself app-clock-derived — the amend form prefills the log's stored given_at, which
+// itself app-clock-derived — the amend form prefills the log's stored recorded_at, which
 // `sqlNow()` (#1534) wrote from the seam — so judging it against the real wall clock
 // asks whether the app's own "now" is in the future, which inside #1464's forward
 // nudge is exactly what it is.
@@ -57,7 +57,7 @@ export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // genuinely between two independent real clocks rather than inside the app's own
 // calendar frame.
 
-// Whether a supplied given_at instant is acceptable, given the profile timezone, its
+// Whether a supplied recorded_at instant is acceptable, given the profile timezone, its
 // today (YYYY-MM-DD), and "now": not in the future past the skew, and its profile-
 // local date within DOSE_LOG_DATE_WINDOW_DAYS of today (so a same-day or recent retro
 // time lands, a far-off/forged one doesn't). Pure — `now` is injected (see the clock
@@ -65,21 +65,22 @@ export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export function isGivenAtAccepted(
   tz: string,
   todayStr: string,
-  givenAt: Date,
+  recordedAt: Date,
   now: Date
 ): boolean {
-  if (Number.isNaN(givenAt.getTime())) return false;
-  if (givenAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS) return false;
-  const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, givenAt));
+  if (Number.isNaN(recordedAt.getTime())) return false;
+  if (recordedAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS)
+    return false;
+  const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, recordedAt));
   return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
 }
 
-// The given_at stamp for a dose confirm that was CAPTURED on the client and replayed
+// The recorded_at stamp for a dose confirm that was CAPTURED on the client and replayed
 // later (the offline write queue, #1427). The queued tap carries the moment the user
 // actually took the dose; the log should say so rather than claiming the replay
 // instant. But the client clock is untrusted — a phone hours ahead, or a stamp that
 // doesn't even fall on the day the log is being attributed to, would write a
-// self-contradicting row (a given_at whose profile-local date isn't the row's own
+// self-contradicting row (a recorded_at whose profile-local date isn't the row's own
 // `date`, which is exactly what the adherence reads render against).
 //
 // So: VALIDATE, never drop. Returns the instant to stamp when it is usable, or NULL
@@ -118,12 +119,13 @@ export function resolveQueuedTakenAt(
 export function isHistoricalDoseTimeAccepted(
   tz: string,
   todayStr: string,
-  givenAt: Date,
+  recordedAt: Date,
   now: Date
 ): boolean {
-  if (Number.isNaN(givenAt.getTime())) return false;
-  if (givenAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS) return false;
-  const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, givenAt));
+  if (Number.isNaN(recordedAt.getTime())) return false;
+  if (recordedAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS)
+    return false;
+  const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, recordedAt));
   return diff != null && diff <= 0;
 }
 

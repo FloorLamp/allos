@@ -166,7 +166,7 @@ describe("runPostWorkoutFinish orchestrator", () => {
     const activityId = seedManualFinished(p, date, 15);
     // Log the dose taken today.
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'taken')`
     ).run(doseId, itemId, date, utcSqlString(NOW));
     configureHA(p);

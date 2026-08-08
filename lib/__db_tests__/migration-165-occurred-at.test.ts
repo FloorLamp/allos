@@ -66,6 +66,8 @@ function preMigrationDb(): Database.Database {
       dose_id INTEGER,
       item_id INTEGER,
       date TEXT NOT NULL,
+      -- Spelled the way migration 165's own world spelled it: the rename to
+      -- \`recorded_at\` is migration 173 (#2205 phase 2 wave 2), eight slots later.
       given_at TEXT
     );
     INSERT INTO medical_records (id, profile_id, date, category, name, value)
@@ -202,14 +204,14 @@ describe("migration 165 against the full migrated schema", () => {
   });
 
   it("does not disturb the record chain it sits beside", () => {
-    // `given_at` → `taken_at` still answers "when did this enter the app". The new
+    // `recorded_at` → `taken_at` still answers "when did this enter the app". The new
     // column answers a different question and takes nothing from that one.
     expect(
       recordInstant("intake_item_logs", {
         occurred_at: null,
-        given_at: "2026-01-09 07:02:11",
+        recorded_at: "2026-01-09 07:02:11",
         taken_at: "2026-01-09 07:02:14",
       })
-    ).toMatchObject({ known: true, column: "given_at" });
+    ).toMatchObject({ known: true, column: "recorded_at" });
   });
 });
