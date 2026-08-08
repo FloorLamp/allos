@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import {
   normalizeShareFields,
@@ -51,7 +51,7 @@ export async function createShareLinkAction(
     target: String(id),
   });
 
-  revalidatePath("/profile");
+  revalidateRoute("/profile");
   return { ok: true, path: `/share/${token}` };
 }
 
@@ -72,6 +72,6 @@ export async function revokeShareLinkAction(
     target: String(id),
   });
 
-  revalidatePath("/profile");
+  revalidateRoute("/profile");
   return { ok: true, message: "Link revoked." };
 }

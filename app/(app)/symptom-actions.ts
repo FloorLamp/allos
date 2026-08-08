@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
@@ -55,8 +55,8 @@ function parseSeverity(formData: FormData): number {
 }
 
 function revalidateSymptoms(): void {
-  revalidatePath("/");
-  revalidatePath("/timeline");
+  revalidateRoute("/");
+  revalidateRoute("/timeline");
 }
 
 // Cross-profile write gating for the illness hero (issue #858). The hero lets a caregiver
@@ -223,7 +223,7 @@ export async function setSymptomEpisode(
   if (outcome.kind !== "ok")
     return { ok: false, error: "Couldn't update that symptom." };
   revalidateSymptoms();
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true, symptom, severity: 0 };
 }
 
@@ -298,10 +298,10 @@ export async function logTemperature(
     time
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
-  revalidatePath("/");
-  revalidatePath("/timeline");
-  revalidatePath("/trends");
-  revalidatePath("/results");
+  revalidateRoute("/");
+  revalidateRoute("/timeline");
+  revalidateRoute("/trends");
+  revalidateRoute("/results");
   // Event-driven red-flag push (#1025): a reading that crosses a cited line
   // dispatches the co-caregiver nudge NOW (fire-and-forget; quiet-hours exempt like
   // redose) instead of waiting for the tick. The per-finding marker + suppression
@@ -365,8 +365,8 @@ export async function activateIllnessForSymptoms(): Promise<FormResult> {
     active.add(BUILTIN_ILLNESS_SITUATION);
     setActiveSituations(profile.id, [...active]);
   }
-  revalidatePath("/");
-  revalidatePath("/nutrition");
-  revalidatePath("/timeline");
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/timeline");
   return formOk();
 }

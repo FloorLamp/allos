@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { addCoverageGap, removeCoverageGap } from "@/lib/queries";
 import { COVERAGE_GAP_KINDS, type CoverageGapKind } from "@/lib/coverage-gaps";
 import { enrichCoverageGap, type EnrichOutcome } from "@/lib/coverage-enrich";
@@ -24,7 +24,7 @@ export async function trackCoverageGap(formData: FormData) {
   const label = String(formData.get("label") ?? "").trim();
   if (!kind || !itemKey || !label) return;
   addCoverageGap(profile.id, kind, itemKey, label);
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 // Stop tracking a gap.
@@ -33,7 +33,7 @@ export async function untrackCoverageGap(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return;
   removeCoverageGap(profile.id, id);
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 // Fill a gap with private/local AI descriptive context (fill path 1). Returns the
@@ -46,6 +46,6 @@ export async function enrichCoverageGapAction(
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { status: "not-found" };
   const outcome = await enrichCoverageGap(profile.id, id);
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return outcome;
 }

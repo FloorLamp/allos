@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -48,8 +48,8 @@ export async function enableCalendarFeedAction(
     target: "calendar-feed",
     detail: `expiry:${choice}`,
   });
-  revalidatePath("/integrations/calendar-feed");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/calendar-feed");
+  revalidateRoute("/data");
   return { ok: true, path: `/api/calendar/${token}.ics` };
 }
 
@@ -64,8 +64,8 @@ export async function disableCalendarFeedAction(): Promise<FeedResult> {
     action: AUDIT_ACTIONS.tokenRevoke,
     target: "calendar-feed",
   });
-  revalidatePath("/integrations/calendar-feed");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/calendar-feed");
+  revalidateRoute("/data");
   return { ok: true, message: "Feed disabled." };
 }
 
@@ -78,7 +78,7 @@ export async function setCalendarFeedDetailAction(
   const detail: CalendarFeedDetail =
     String(formData.get("detail")) === "full" ? "full" : "minimal";
   setCalendarFeedDetail(profile.id, detail);
-  revalidatePath("/integrations/calendar-feed");
+  revalidateRoute("/integrations/calendar-feed");
   return { ok: true, message: `Detail set to ${detail}.` };
 }
 
@@ -103,7 +103,7 @@ export async function setCalendarFeedOptionsAction(
     pastWindowDays,
     futureWindowDays,
   });
-  revalidatePath("/integrations/calendar-feed");
+  revalidateRoute("/integrations/calendar-feed");
   return { ok: true, message: "Feed options saved." };
 }
 
@@ -132,7 +132,7 @@ export async function enableConsolidatedCalendarFeedAction(
     target: "family-calendar-feed",
     detail: `expiry:${choice}`,
   });
-  revalidatePath("/integrations/calendar-feed");
+  revalidateRoute("/integrations/calendar-feed");
   return { ok: true, path: `/api/calendar/family/${token}.ics` };
 }
 
@@ -146,6 +146,6 @@ export async function disableConsolidatedCalendarFeedAction(): Promise<FeedResul
     action: AUDIT_ACTIONS.tokenRevoke,
     target: "family-calendar-feed",
   });
-  revalidatePath("/integrations/calendar-feed");
+  revalidateRoute("/integrations/calendar-feed");
   return { ok: true, message: "Family feed disabled." };
 }

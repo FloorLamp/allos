@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PULL_INTEGRATIONS } from "@/lib/integrations/registry";
 
 // Static consistency guard for the sidebar ↔ App-Router routes, in the same
 // "pure" spirit as profile-scoping.test.ts: it reads the repo's own source as
@@ -133,92 +132,68 @@ function dueSignalPaths(file: string): string[] {
   return [...out];
 }
 
-// ── revalidatePath targets (issue #1636) ────────────────────────────────────────
+// ── the one remaining revalidate assertion (issues #1636 → #2149) ──────────────
 //
-// `revalidatePath` takes a PLAIN STRING, so `typedRoutes` can never catch a dead
-// one: after the #1042/#1079 route merges several Server Actions kept revalidating
-// URLs that no longer serve anything (`/encounters`, `/journal`, `/body`), which
-// made the refresh a silent no-op and left the moved surface stale. This guard
-// closes that gap the same way the nav/due-signal guards close theirs.
+// This section USED to re-derive the whole route tree and regex every
+// `revalidatePath` literal out of app/ sources, because "`revalidatePath` takes a
+// plain string, so `typedRoutes` cannot check it" — after the #1042/#1079 route
+// merges, several Server Actions kept revalidating URLs that no longer served
+// anything (`/encounters`, `/journal`, `/body`), so the refresh was a silent no-op
+// and the moved surface stayed stale.
 //
-// The target set is the FULL route tree — dynamic segments included, kept as their
-// literal `[param]` form — because a dynamic route is a legitimate revalidation
-// target both as a written literal (`revalidatePath("/medical/episodes/[id]",
-// "page")`) and as an interpolated one (`revalidatePath(`/providers/${id}`)`),
-// which normalizes to `/providers/*` below.
-function collectAllRoutePaths(dir: string, urlSegments: string[]): Set<string> {
-  const routes = new Set<string>();
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isFile() && PAGE_FILES.has(entry.name)) {
-      routes.add("/" + urlSegments.join("/"));
-    }
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const name = entry.name;
-    if (name.startsWith("@")) continue;
-    const isRouteGroup = name.startsWith("(") && name.endsWith(")");
-    const nextSegments = isRouteGroup ? urlSegments : [...urlSegments, name];
-    for (const r of collectAllRoutePaths(path.join(dir, name), nextSegments)) {
-      routes.add(r);
-    }
-  }
-  return routes;
-}
+// #2149 replaced that text sweep with a TYPE: every target now goes through
+// `revalidateRoute` (lib/revalidate.ts), whose parameter is Next's generated route
+// union, so a dead target — single, interpolated, or inside an array fan-out — is a
+// compile error at the call site (under `npm run build`, which is where the route
+// types exist). The registry's `pull.revalidates` list (#2040) is compile-checked
+// the same way, by its `RevalidateTarget[]` element type.
+//
+// What a text sweep can still see, and a type cannot, is a module going AROUND the
+// wrapper. That is the single assertion left here; the wrapper's own narrowing is
+// pinned by lib/__tests__/revalidate-route.test.ts.
 
-const ALL_ROUTES = [...collectAllRoutePaths(APP_DIR, [])].map(normalize);
+// Every `.ts`/`.tsx` in the repo's own source roots, so the check can never miss a
+// file by being enumerated by hand.
+const SOURCE_ROOTS = ["app", "components", "lib", "scripts", "e2e"];
 
-// Every `.ts`/`.tsx` under app/ (the only place Server Actions and route handlers
-// live), so the sweep can never miss a file by being enumerated by hand.
-function appSourceFiles(dir: string): string[] {
+function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...appSourceFiles(full));
+    if (entry.isDirectory()) out.push(...sourceFiles(full));
     else if (/\.tsx?$/.test(entry.name)) out.push(full);
   }
   return out;
 }
 
-// Path literals handed to `revalidatePath` in one file: the direct call form
-// (quoted or template), plus every ARRAY LITERAL whose elements are ALL `/`-rooted
-// strings — the `for (const p of [...]) revalidatePath(p)` and
-// `EDIT_LOCK_REVALIDATE`-style fan-outs that carry most of the targets and that a
-// call-site-only regex would miss. Template expressions collapse to `*`, which the
-// matcher below accepts against a `[param]` segment.
-function revalidateTargets(file: string): string[] {
-  const src = stripComments(fs.readFileSync(file, "utf8"));
-  if (!src.includes("revalidatePath")) return [];
-  const out = new Set<string>();
-  const call = /revalidatePath\(\s*(["`])([^"`]*)\1/g;
-  let m: RegExpExecArray | null;
-  while ((m = call.exec(src)) !== null) out.add(m[2]);
-  const arrays = /\[\s*((?:["`][^"`]*["`]\s*,\s*)*["`][^"`]*["`]\s*,?)\s*\]/g;
-  while ((m = arrays.exec(src)) !== null) {
-    const items = [...m[1].matchAll(/["`]([^"`]*)["`]/g)].map((x) => x[1]);
-    if (items.length > 0 && items.every((i) => i.startsWith("/"))) {
-      for (const i of items) out.add(i);
-    }
-  }
-  return [...out].filter((p) => p.startsWith("/"));
+// The files allowed to name Next's raw API:
+//   - lib/revalidate.ts IS the wrapper.
+//   - lib/__action_tests__/** mocks `next/cache` and asserts on that mock, which is
+//     how the action tier observes what a wrapped call did. Mocking the module the
+//     wrapper calls is not going around it.
+function mayImportRaw(rel: string): boolean {
+  return (
+    rel === path.join("lib", "revalidate.ts") ||
+    rel.startsWith(path.join("lib", "__action_tests__") + path.sep)
+  );
 }
 
-// A revalidation target resolves when some real route matches it segment for
-// segment, where an interpolated segment (`*`) matches a dynamic one (`[id]`).
-// EXACT segment count — unlike a nav href, a revalidation path is the page being
-// refreshed, not a section root, so `/encounters` must NOT pass on the strength of
-// `/encounters/[id]` existing (that was the #1636 bug).
-function revalidateResolves(target: string): boolean {
-  const clean = target.split(/[?#]/)[0].replace(/\$\{[^}]*\}/g, "*");
-  const want = clean === "/" ? [] : clean.replace(/^\/|\/$/g, "").split("/");
-  return ALL_ROUTES.some((route) => {
-    const have = route === "/" ? [] : route.replace(/^\//, "").split("/");
-    if (have.length !== want.length) return false;
-    return have.every(
-      (seg, i) => seg === want[i] || (seg.startsWith("[") && want[i] === "*")
-    );
-  });
+// Whether a file pulls `revalidatePath` in from `next/cache` — static import or
+// dynamic `await import(...)`. A call is impossible without one of these, and
+// keying on the IMPORT rather than on the bare identifier keeps prose that merely
+// mentions the old API from tripping the check.
+const RAW_IMPORT =
+  /(?:import|const|let|var)\s*\{([^}]*)\}\s*(?:from\s*|=\s*await\s+import\s*\(\s*)["']next\/cache["']/g;
+
+function importsRawRevalidate(file: string): boolean {
+  const src = stripComments(fs.readFileSync(file, "utf8"));
+  if (!src.includes("revalidatePath")) return false;
+  RAW_IMPORT.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RAW_IMPORT.exec(src)) !== null) {
+    if (/\brevalidatePath\b/.test(m[1])) return true;
+  }
+  return false;
 }
 
 // Extract internal redirect destinations from next.config.js. Source-scanned
@@ -297,49 +272,22 @@ describe("nav ↔ route consistency", () => {
       ).toEqual([]);
     }
   });
-  it("every revalidatePath target under app/ resolves to a real route (issue #1636)", () => {
-    const files = appSourceFiles(APP_DIR);
-    const bad: string[] = [];
+  it("nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)", () => {
+    const offenders: string[] = [];
     let seen = 0;
-    for (const file of files) {
-      for (const target of revalidateTargets(file)) {
+    for (const root of SOURCE_ROOTS) {
+      for (const file of sourceFiles(path.join(REPO, root))) {
         seen++;
-        if (!revalidateResolves(target)) {
-          bad.push(`${path.relative(REPO, file)} → ${target}`);
-        }
+        const rel = path.relative(REPO, file);
+        if (mayImportRaw(rel)) continue;
+        if (importsRawRevalidate(file)) offenders.push(rel);
       }
     }
-    // Sanity anchor: the sweep must not go quietly empty.
+    // Sanity anchor: the walker must not go quietly empty.
+    expect(seen, "no source files found — walker broken?").toBeGreaterThan(500);
     expect(
-      seen,
-      "no revalidatePath targets found — extractor broken?"
-    ).toBeGreaterThan(50);
-    expect(
-      bad,
-      `revalidatePath targets with no matching route under app/ (the refresh is a silent no-op):\n${bad.join("\n")}`
-    ).toEqual([]);
-  });
-  it("every registry pull `revalidates` route resolves (issue #2040)", () => {
-    // The four per-provider sync actions each carried their own hand-written
-    // revalidate fan-out under app/, where the sweep above found them. #2040 moved
-    // those lists into the registry's pull facet — outside app/ — so the same
-    // guarantee needs the same sweep here, or a retired route would go quietly
-    // un-revalidated on every manual sync.
-    const bad: string[] = [];
-    let seen = 0;
-    for (const def of PULL_INTEGRATIONS) {
-      for (const target of def.pull.revalidates) {
-        seen++;
-        if (!revalidateResolves(target)) bad.push(`${def.id} → ${target}`);
-      }
-    }
-    expect(
-      seen,
-      "no pull providers registered — extractor broken?"
-    ).toBeGreaterThan(0);
-    expect(
-      bad,
-      `registry pull revalidates with no matching route under app/:\n${bad.join("\n")}`
+      offenders,
+      `these import revalidatePath directly instead of the revalidateRoute wrapper, which is what makes the target compile-checked:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 });

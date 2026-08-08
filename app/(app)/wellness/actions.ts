@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -23,11 +23,11 @@ import {
 } from "@/lib/types";
 
 function revalidatePracticeSurfaces() {
-  revalidatePath("/wellness");
-  revalidatePath("/longevity");
-  revalidatePath("/timeline");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/wellness");
+  revalidateRoute("/longevity");
+  revalidateRoute("/timeline");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 function optionalNumber(formData: FormData, key: string): number | null {

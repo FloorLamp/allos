@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
@@ -21,16 +21,16 @@ import {
 // lib/audiogram.ts). Nothing here builds SQL.
 
 function revalidateHearing() {
-  revalidatePath("/records");
+  revalidateRoute("/records");
   // The thresholds ARE biomarker readings, so every surface that reads them must
   // refresh with them: the Results catalog + per-analyte views, the dashboard's
   // recent/needs-attention summaries, and the medication safety strips + Upcoming,
   // whose ototoxic note now cites this baseline.
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/medications");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/results");
+  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/medications");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // An audiometer reads roughly −10 dB HL (better than "normal") to 120 dB HL (the

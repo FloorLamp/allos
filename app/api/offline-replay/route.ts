@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   getCurrentSession,
   getAccessibleProfiles,
@@ -152,16 +152,14 @@ export async function POST(req: Request) {
   // Refresh the surfaces the replayed writes feed, but only when something actually
   // landed (a pure duplicate/rejected batch changed nothing).
   if (anyApplied) {
-    for (const p of [
+    revalidateRoute([
       "/",
       "/nutrition",
       "/medications",
       "/trends",
       "/results",
       "/training",
-    ]) {
-      revalidatePath(p);
-    }
+    ]);
   }
 
   return Response.json({ ok: true, results });

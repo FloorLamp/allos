@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { emptyTrash, purgeDeletedRow } from "@/lib/undo-delete-db";
 
@@ -39,7 +39,7 @@ export async function purgeTrashEntry(
       message: "Already gone — it expired or was restored elsewhere.",
     };
   // The row leaves the list on the next render, which is the honest feedback.
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ok: true };
 }
 
@@ -49,6 +49,6 @@ export async function purgeTrashEntry(
 export async function emptyTrashNow(): Promise<{ purged: number }> {
   const { profile } = await requireWriteAccess();
   const purged = emptyTrash(profile.id);
-  if (purged > 0) revalidatePath("/data");
+  if (purged > 0) revalidateRoute("/data");
   return { purged };
 }

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -34,9 +34,9 @@ export type CycleCreateResult =
   { ok: true; id: number } | { ok: false; error: string };
 
 function revalidateCycle() {
-  revalidatePath("/medical/cycles");
-  revalidatePath("/timeline");
-  revalidatePath("/");
+  revalidateRoute("/medical/cycles");
+  revalidateRoute("/timeline");
+  revalidateRoute("/");
 }
 
 function parseFlow(formData: FormData): FlowLevel | null {

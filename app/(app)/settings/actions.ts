@@ -26,7 +26,7 @@ import {
   regenerateRecoveryCodes,
   verifyLoginSecondFactor,
 } from "@/lib/two-factor";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
@@ -90,7 +90,7 @@ export async function saveUnitPrefs(formData: FormData) {
   ) as TemperatureUnit;
   setUnitPrefs(login.id, { weightUnit, distanceUnit, temperatureUnit });
   // Units affect display across the whole app.
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
 }
 
 // Date/time display preferences (#964) — like unit prefs, keyed by the signed-in
@@ -108,7 +108,7 @@ export async function saveDisplayFormatPrefs(formData: FormData) {
   ) as DateFormat;
   setDisplayFormatPrefs(login.id, { timeFormat, dateFormat });
   // Date/time formatting is applied across the whole app.
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
 }
 
 // ---- Own-profile association (issue #1013) ----
@@ -138,7 +138,7 @@ export async function saveOwnProfile(
     };
   }
   // The own-profile link drives the not-self write labels across the whole app.
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
   return { ok: true };
 }
 
@@ -194,7 +194,7 @@ export async function revokeSessionAction(formData: FormData) {
   const { login } = await requireLoginWriteAccess();
   const id = String(formData.get("session_id") ?? "");
   if (id) revokeSession(login.id, id);
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
 }
 
 // "Sign out everywhere else": drop every session for this login except the one
@@ -203,7 +203,7 @@ export async function revokeSessionAction(formData: FormData) {
 export async function signOutOtherSessions() {
   const { login } = await requireLoginWriteAccess();
   await destroyOtherSessionsForCurrent(login.id);
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
 }
 
 // ---- Web Push (login scope, issue #17) ----
@@ -248,7 +248,7 @@ export async function savePushSubscriptionAction(
   const sub = parsePushSubscription(parsed);
   if (!sub) return { ok: false, error: "Invalid subscription." };
   savePushSubscription(login.id, sub);
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
   return { ok: true };
 }
 
@@ -259,7 +259,7 @@ export async function deletePushSubscriptionAction(
   const { login } = await requireSession();
   const endpoint = String(formData.get("endpoint") ?? "");
   if (endpoint) deletePushSubscription(login.id, endpoint);
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
   return { ok: true };
 }
 
@@ -278,7 +278,7 @@ export async function savePushNotifyKinds(
     String(formData.get("disabled_kinds") ?? "")
   );
   setLoginPushDisabledKinds(login.id, disabled);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -364,7 +364,7 @@ export async function saveLoginTelegram(formData: FormData): Promise<{
       // A failed prompt send is non-critical — the toggle still lives in Settings.
     }
   }
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -377,7 +377,7 @@ export async function saveLoginTelegramNotifyKinds(
     String(formData.get("disabled_kinds") ?? "")
   );
   setLoginTelegramDisabledKinds(login.id, disabled);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -395,7 +395,7 @@ export async function saveProfileNotifyMute(
     return { ok: false };
   const muted = formData.get("muted") === "on" || formData.get("muted") === "1";
   setProfileMutedForLogin(session.login.id, profileId, muted);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -412,7 +412,7 @@ export async function saveDigestDemotions(
     login.id,
     parseDigestDemotions(String(formData.get("demoted") ?? ""))
   );
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -471,7 +471,7 @@ export async function saveLoginEmailNotify(formData: FormData): Promise<{
     emailEnabled: enabledRaw === "on" || enabledRaw === "1",
     emailFullContent: fullRaw === "on" || fullRaw === "1",
   });
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -484,7 +484,7 @@ export async function saveLoginEmailNotifyKinds(
     String(formData.get("disabled_kinds") ?? "")
   );
   setLoginEmailDisabledKinds(login.id, disabled);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -573,7 +573,7 @@ export async function activate2fa(
     action: AUDIT_ACTIONS.twofaEnable,
     target: String(login.id),
   });
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
   return { ok: true, recoveryCodes };
 }
 
@@ -601,7 +601,7 @@ export async function disable2fa(
     action: AUDIT_ACTIONS.twofaDisable,
     target: String(login.id),
   });
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
   return { ok: true, message: "Two-factor authentication turned off." };
 }
 
@@ -620,6 +620,6 @@ export async function regenerate2faRecoveryCodes(
   if (!verifyLoginSecondFactor(login.id, code).ok)
     return { ok: false, error: "That code didn't match." };
   const recoveryCodes = regenerateRecoveryCodes(login.id);
-  revalidatePath("/settings");
+  revalidateRoute("/settings");
   return { ok: true, recoveryCodes };
 }

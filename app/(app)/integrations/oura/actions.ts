@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import { setOuraToken, disconnectOura } from "@/lib/integrations/connections";
 import { validateOuraToken } from "@/lib/integrations/oura-sync";
@@ -32,13 +32,13 @@ export async function connectOura(formData: FormData) {
     );
   }
   setOuraToken(profile.id, token, res.info);
-  revalidatePath("/integrations/oura");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/oura");
+  revalidateRoute("/data");
 }
 
 export async function disconnectOuraAction() {
   const { profile } = await requireWriteAccess();
   disconnectOura(profile.id);
-  revalidatePath("/integrations/oura");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/oura");
+  revalidateRoute("/data");
 }

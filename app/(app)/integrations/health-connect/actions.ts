@@ -3,7 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   generateHealthConnectToken,
   disconnectHealthConnect,
@@ -34,9 +34,9 @@ export async function connectHealthConnect(
     target: "health-connect",
     detail: `expiry:${choice}`,
   });
-  revalidatePath("/integrations/health-connect");
+  revalidateRoute("/integrations/health-connect");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ok: true, token };
 }
 
@@ -50,8 +50,8 @@ export async function disconnect(): Promise<{ ok: true }> {
     action: AUDIT_ACTIONS.tokenRevoke,
     target: "health-connect",
   });
-  revalidatePath("/integrations/health-connect");
+  revalidateRoute("/integrations/health-connect");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ok: true };
 }

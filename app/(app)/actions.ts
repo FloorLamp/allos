@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   getAccessibleProfiles,
   requireSession,
@@ -31,7 +31,7 @@ import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 export async function saveDashboardLayout(order: string[], hidden: string[]) {
   const { profile } = await requireWriteAccess();
   setDashboardLayout(profile.id, { order, hidden });
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // Persist the acting profile's illness-hero collapse/expand state (issue #858): whether
@@ -93,7 +93,7 @@ export async function dismissRecentlyResolved(episodeId: number) {
     accessible.map((p) => p.id),
     typeof episodeId === "number" ? episodeId : Number(episodeId)
   );
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // "Snooze" on the dashboard Coaching widget (findings bus, #39; renamed from "Not
@@ -108,7 +108,7 @@ export async function snoozeCoaching(formData: FormData) {
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("coaching:")) return;
   snoozeFinding(profile.id, dedupeKey, shiftDateStr(today(profile.id), 1));
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // The rest-nudge reason ids the "Training anyway" acknowledgment may carry — a tampered
@@ -135,7 +135,7 @@ export async function acknowledgeRest(formData: FormData) {
     .map((s) => s.trim())
     .filter((s) => REST_REASON_IDS.has(s));
   acknowledgeRestToday(profile.id, reasonIds);
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // Dismiss a coaching observation from the dashboard rollup (issue #449). The rollup
@@ -149,7 +149,7 @@ export async function dismissCoachingObservation(formData: FormData) {
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKeyHasKnownPrefix(dedupeKey)) return;
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // The Data quality widget's dismiss (#1045/#1219 nit): TODAY it shares the
@@ -173,8 +173,8 @@ export async function snoozeAttention(formData: FormData) {
   const until = snoozeUntil(today(profile.id), Number(formData.get("days")));
   if (!signalKey || until == null) return;
   snoozeFinding(profile.id, signalKey, until);
-  revalidatePath("/");
-  revalidatePath("/upcoming");
+  revalidateRoute("/");
+  revalidateRoute("/upcoming");
 }
 
 // Dismiss one attention item from the hero: hide it indefinitely (until restored
@@ -184,8 +184,8 @@ export async function dismissAttention(formData: FormData) {
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
   dismissFinding(profile.id, signalKey);
-  revalidatePath("/");
-  revalidatePath("/upcoming");
+  revalidateRoute("/");
+  revalidateRoute("/upcoming");
 }
 
 // Inline "mark taken" for a due dose surfaced on the hero. Reuses the idempotent
@@ -205,9 +205,9 @@ export async function markAttentionDose(
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
   const outcome = markDoseTaken(profile.id, doseId, null, today(profile.id));
-  revalidatePath("/");
-  revalidatePath("/upcoming");
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
+  revalidateRoute("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
   return { ok: true, outcome };
 }

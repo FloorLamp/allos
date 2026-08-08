@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { ingestVideo } from "@/lib/video/ingest";
@@ -22,9 +22,9 @@ import type { ActivityVideoView } from "@/components/activity/ActivityVideoStrip
 // profile, so a forged activity id is rejected past the gate.
 
 function revalidateActivitySurfaces() {
-  revalidatePath("/training");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // Attach a clip to one of the profile's activities. `exercise` optionally names a

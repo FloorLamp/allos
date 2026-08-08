@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { revalidateTarget, type RevalidateTarget } from "./revalidate";
 import { summarizeExercise, type SetRow } from "./journal-format";
 import { baseLiftName } from "./lifts";
 import { toCsv } from "./csv";
@@ -1413,7 +1414,12 @@ export const DATASETS: ExportDataset[] = [
 // button whose action resolves to "Unknown dataset" (the pre-existing
 // immunizations bug) or vice-versa.
 export interface DatasetDeletePolicy {
-  revalidate: string[];
+  // Compile-checked revalidation targets (#2149): the manage action fans these out
+  // through `revalidateRoute`, so a dataset pointing at a retired route is a build
+  // error rather than a silent no-op refresh. A dynamic route is written in its
+  // `[param]` literal form through `revalidateTarget`, which checks the literal
+  // against the real route tree before widening it for storage here.
+  revalidate: readonly RevalidateTarget[];
   cleanupStars?: boolean;
   // Whether removing rows can orphan an `immunization:<code>` due-nudge dismissal
   // (upcoming_dismissals) — set for the immunizations dataset so a bulk delete runs
@@ -1441,7 +1447,12 @@ export const DELETE_POLICY = {
   body_metrics: { revalidate: ["/trends", "/"] },
   medical_records: {
     // Also refresh the import document subpages, which list these readings.
-    revalidate: ["/results", "/biomarkers/view", "/import/[id]", "/"],
+    revalidate: [
+      "/results",
+      "/biomarkers/view",
+      revalidateTarget("/import/[id]"),
+      "/",
+    ],
     cleanupStars: true,
   },
   immunizations: {

@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -18,9 +18,9 @@ import {
 // shared GLOBAL providers registry via a create-on-type name.
 
 function revalidateProcedures() {
-  revalidatePath("/records");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>

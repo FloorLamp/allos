@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { toFamilyLineage, toFamilyRelationType } from "@/lib/family-relation";
@@ -12,9 +12,9 @@ import { toFamilyLineage, toFamilyRelationType } from "@/lib/family-relation";
 // import delete-set never touches them.
 
 function revalidateFamilyHistory() {
-  revalidatePath("/records");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>

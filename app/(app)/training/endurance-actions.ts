@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -23,11 +23,11 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // feed, so those are revalidated.
 
 function revalidateEndurance(): void {
-  revalidatePath("/training");
-  revalidatePath("/timeline");
+  revalidateRoute("/training");
+  revalidateRoute("/timeline");
   // The plan-aware cardio arm rides the dashboard coaching widget + Upcoming too.
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // Parse the target time from HH:MM:SS or MM:SS (or blank) into seconds, or null.

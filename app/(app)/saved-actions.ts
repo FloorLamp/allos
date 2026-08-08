@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { toggleBiomarkerSaved } from "@/lib/queries";
 import { setSavedOrder, toggleItemSaved } from "@/lib/queries/saved";
@@ -41,11 +41,11 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   // A biomarker save is membership on three surfaces (status card, Trends tile,
   // passport summary), so every kind revalidates the same set — cheap, and it can't
   // drift as kinds are added.
-  revalidatePath("/trends");
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/trends/metric/[kind]", "page");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/results");
+  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/trends/metric/[kind]", "page");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -80,6 +80,6 @@ export async function reorderSaved(formData: FormData): Promise<FormResult> {
   }
   if (refs.length === 0) return formError("Couldn't read that order.");
   setSavedOrder(profile.id, refs);
-  revalidatePath("/trends");
+  revalidateRoute("/trends");
   return formOk();
 }

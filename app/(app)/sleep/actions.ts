@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today, writeTx } from "@/lib/db";
 import { isRealIsoDate, shiftDateStr } from "@/lib/date";
@@ -68,9 +68,9 @@ export async function saveSleepMoodEntry(
   });
   if (writeError) return formError(writeError);
 
-  revalidatePath("/");
-  revalidatePath("/sleep");
-  revalidatePath("/trends");
-  revalidatePath("/results");
+  revalidateRoute("/");
+  revalidateRoute("/sleep");
+  revalidateRoute("/trends");
+  revalidateRoute("/results");
   return formOk();
 }

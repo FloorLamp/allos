@@ -4,11 +4,11 @@
 // content (names, biomarkers) across every profile, so a member must never
 // reach it. Mirrors the Errors tab's clearErrors.
 import { requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { clearAiLog } from "@/lib/ai-log";
 
 export async function clearAiLogAction(): Promise<void> {
   await requireAdmin();
   clearAiLog();
-  revalidatePath("/settings/logs");
+  revalidateRoute("/settings/logs");
 }

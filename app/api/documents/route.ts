@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
@@ -195,7 +195,7 @@ export async function POST(req: Request): Promise<Response> {
         target.target.patientLabel,
         "unmapped-upload"
       );
-      revalidatePath("/integrations/patient-portals");
+      revalidateRoute("/integrations/patient-portals");
       // TYPED refusal, not a generic 400: the tool surfaces `unmapped-identity` as "this
       // patient isn't mapped yet" and the card turns it into a one-tap binding. Answered
       // with 404 because the identity genuinely does not resolve — distinct from the 403
@@ -318,7 +318,7 @@ export async function POST(req: Request): Promise<Response> {
     });
     return jsonError("internal error", 500);
   }
-  revalidatePath("/data");
+  revalidateRoute("/data");
 
   return Response.json({
     ok: true,

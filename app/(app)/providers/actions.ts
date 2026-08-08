@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import {
@@ -71,8 +71,8 @@ export async function updateProviderAction(
     target: String(id),
     detail: name,
   });
-  revalidatePath(`/providers/${id}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${id}`);
+  revalidateRoute("/records");
   return {};
 }
 
@@ -118,8 +118,8 @@ export async function mergeProviderAction(
       impact,
     }),
   });
-  revalidatePath("/records");
-  revalidatePath(`/providers/${survivorId}`);
+  revalidateRoute("/records");
+  revalidateRoute(`/providers/${survivorId}`);
   redirect(`/providers/${survivorId}?merged=1`);
 }
 
@@ -135,8 +135,8 @@ export async function setProviderArchivedAction(
   if (!id) return { error: "Missing provider." };
   const archived = String(formData.get("archived")) === "1";
   setProviderArchived(id, archived);
-  revalidatePath(`/providers/${id}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${id}`);
+  revalidateRoute("/records");
   return {};
 }
 
@@ -166,9 +166,9 @@ export async function linkAffiliationAction(
     return {
       error: "Affiliations link an individual clinician to an organization.",
     };
-  revalidatePath(`/providers/${id}`);
-  revalidatePath(`/providers/${otherId}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${id}`);
+  revalidateRoute(`/providers/${otherId}`);
+  revalidateRoute("/records");
   return {};
 }
 
@@ -181,9 +181,9 @@ export async function acceptAffiliationAction(
   const organizationId = Number(formData.get("organization_id"));
   if (!individualId || !organizationId) return { error: "Missing provider." };
   linkAffiliation(individualId, organizationId, "suggested");
-  revalidatePath(`/providers/${individualId}`);
-  revalidatePath(`/providers/${organizationId}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${individualId}`);
+  revalidateRoute(`/providers/${organizationId}`);
+  revalidateRoute("/records");
   return {};
 }
 
@@ -196,9 +196,9 @@ export async function declineAffiliationAction(
   const organizationId = Number(formData.get("organization_id"));
   if (!individualId || !organizationId) return { error: "Missing provider." };
   declineAffiliation(individualId, organizationId);
-  revalidatePath(`/providers/${individualId}`);
-  revalidatePath(`/providers/${organizationId}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${individualId}`);
+  revalidateRoute(`/providers/${organizationId}`);
+  revalidateRoute("/records");
   return {};
 }
 
@@ -211,8 +211,8 @@ export async function unlinkAffiliationAction(
   const otherId = Number(formData.get("other_id"));
   if (!id || !otherId) return { error: "Missing provider." };
   unlinkAffiliation(id, otherId);
-  revalidatePath(`/providers/${id}`);
-  revalidatePath(`/providers/${otherId}`);
-  revalidatePath("/records");
+  revalidateRoute(`/providers/${id}`);
+  revalidateRoute(`/providers/${otherId}`);
+  revalidateRoute("/records");
   return {};
 }

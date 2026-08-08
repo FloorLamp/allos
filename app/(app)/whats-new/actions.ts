@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireSession } from "@/lib/auth";
 import { loadReleaseNotes, newestNoteDate } from "@/lib/release-notes";
 import { setWhatsNewSeenDate } from "@/lib/settings";
@@ -25,7 +25,7 @@ export async function markWhatsNewSeenAction(): Promise<FormResult> {
     setWhatsNewSeenDate(login.id, newest);
     // The unread dot lives in the app shell (the shared sidebar footer), so the
     // whole layout has to re-render for it to clear.
-    revalidatePath("/", "layout");
+    revalidateRoute("/", "layout");
   }
   return formOk();
 }

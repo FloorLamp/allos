@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import {
   getAccessibleProfiles,
@@ -107,9 +107,9 @@ export async function startOnboardingRoutine(
     return adoptedId;
   });
 
-  revalidatePath("/");
-  revalidatePath("/onboarding");
-  revalidatePath("/training");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
+  revalidateRoute("/training");
   return { ok: true, routineId, routineName: template.name };
 }
 
@@ -118,7 +118,7 @@ export async function dismissOnboardingChecklist() {
   const state = getOnboardingState(profile.id);
   if (!state || state.status !== "complete") return;
   setOnboardingState(profile.id, { ...state, checklistDismissed: true });
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 export async function saveOnboardingProfilePath(formData: FormData) {
@@ -133,8 +133,8 @@ export async function saveOnboardingProfilePath(formData: FormData) {
     profile.id,
     onboardingWithProfilePath(state, profilePath, utcInstant())
   );
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/onboarding?step=2");
 }
 
@@ -142,8 +142,8 @@ export async function deferOnboarding() {
   const { profile } = await requireWriteAccess();
   const state = getOnboardingState(profile.id) ?? initialOnboardingState();
   setOnboardingState(profile.id, onboardingDeferred(state, utcInstant()));
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/");
 }
 
@@ -173,8 +173,8 @@ export async function saveOnboardingFocuses(formData: FormData) {
       setProteinGoalLevel(profile.id, DEFAULT_PROTEIN_GOAL_LEVEL);
     }
   });
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect(`/onboarding?step=${state.basicsComplete ? 4 : 3}`);
 }
 
@@ -219,8 +219,8 @@ export async function saveOnboardingDashboard(formData: FormData) {
     });
     setOnboardingState(profile.id, nextState);
   });
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/onboarding?step=6");
 }
 
@@ -234,8 +234,8 @@ export async function continueOnboardingData() {
     profile.id,
     onboardingWithDataReviewed(state, utcInstant())
   );
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/onboarding?step=5");
 }
 
@@ -264,8 +264,8 @@ export async function saveOnboardingNotifications(formData: FormData) {
       onboardingWithNotificationIntent(state, intent, utcInstant())
     );
   });
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/onboarding?step=7");
 }
 
@@ -337,8 +337,8 @@ export async function saveOnboardingBasics(formData: FormData) {
   }
   if (demographicsChanged) reconcileFlags(profile.id);
 
-  revalidatePath("/", "layout");
-  revalidatePath("/onboarding");
+  revalidateRoute("/", "layout");
+  revalidateRoute("/onboarding");
   redirect("/onboarding?step=4");
 }
 
@@ -361,8 +361,8 @@ export async function completeOnboarding() {
   }
 
   setOnboardingState(profile.id, completeOnboardingState(state, utcInstant()));
-  revalidatePath("/");
-  revalidatePath("/onboarding");
+  revalidateRoute("/");
+  revalidateRoute("/onboarding");
   redirect("/");
 }
 

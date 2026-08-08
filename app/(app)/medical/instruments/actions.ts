@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -30,10 +30,10 @@ export type InstrumentActionResult =
 function revalidateInstruments() {
   // Mental-health instruments folded into Health record (#1042 final tail): the
   // surface is now /records#mental-health.
-  revalidatePath("/records");
-  revalidatePath("/timeline");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/timeline");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // Record ONE instrument score. Two shapes:

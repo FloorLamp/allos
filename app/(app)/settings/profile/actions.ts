@@ -5,7 +5,7 @@
 // login with write access to the active profile). Re-exported from ../actions for
 // back-compat import paths.
 import { requireWriteAccess, requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   getUserSex,
   setUserSex,
@@ -173,8 +173,8 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   // age are persisted so the reconcile reads the new demographics.
   if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
     reconcileFlags(profile.id);
-    revalidatePath("/results");
-    revalidatePath("/biomarkers/view", "page");
+    revalidateRoute("/results");
+    revalidateRoute("/biomarkers/view", "page");
   }
 
   // Full/legal name of the tracked person — distinct from the profile's display
@@ -241,7 +241,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (isValidWeekMode(wm)) setWeekMode(profile.id, wm);
 
   // These affect display across the whole app.
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
 }
 
 // Smoking history (#83) and health risk factors (#517) moved to the Medical
@@ -294,8 +294,8 @@ export async function saveTrainingZones(formData: FormData) {
     }
   }
 
-  revalidatePath("/settings/training");
-  revalidatePath("/trends");
+  revalidateRoute("/settings/training");
+  revalidateRoute("/trends");
 }
 
 // Dietary preferences (#975) — the profile's excluded food-group set. Profile-scoped,
@@ -316,8 +316,8 @@ export async function saveFreeDays(formData: FormData) {
     .map((v) => Number(String(v)))
     .filter((n) => Number.isInteger(n));
   setFreeDays(profile.id, days);
-  revalidatePath("/settings/health");
-  revalidatePath("/trends");
+  revalidateRoute("/settings/health");
+  revalidateRoute("/trends");
   return { ok: true };
 }
 
@@ -325,8 +325,8 @@ export async function saveDietaryPreferences(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const slugs = formData.getAll("excluded").map((v) => String(v));
   setExcludedFoodGroups(profile.id, slugs);
-  revalidatePath("/settings/nutrition");
-  revalidatePath("/nutrition");
+  revalidateRoute("/settings/nutrition");
+  revalidateRoute("/nutrition");
   return { ok: true };
 }
 
@@ -344,9 +344,9 @@ export async function saveProteinGoal(formData: FormData) {
   );
   if (!level) return { ok: false as const, error: "Choose a protein goal." };
   setProteinGoalLevel(profile.id, level);
-  revalidatePath("/settings/nutrition");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/settings/nutrition");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return { ok: true as const };
 }
 
@@ -468,7 +468,7 @@ export async function saveNotificationPrefs(formData: FormData) {
     wakingStartHour: wakingHour("waking_start_hour", WAKING_START_HOUR),
     wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
 }
 
 // ---- The digest time suggestion's three exits (#2217) ----------------------
@@ -488,7 +488,7 @@ export async function applyDigestTimeSuggestion(): Promise<DigestTimeExitResult>
   const suggestion = getDigestTimeSuggestion(profile.id);
   if (!suggestion) return { ok: false, reason: "stale" };
   setDigestMinute(profile.id, suggestion.proposedMinute);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true, minute: suggestion.proposedMinute };
 }
 
@@ -500,7 +500,7 @@ export async function switchDigestToDynamic(): Promise<DigestTimeExitResult> {
   const suggestion = getDigestTimeSuggestion(profile.id);
   if (!suggestion) return { ok: false, reason: "stale" };
   setDigestMode(profile.id, "dynamic");
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true, minute: suggestion.configuredMinute };
 }
 
@@ -513,7 +513,7 @@ export async function dismissDigestTimeSuggestion(): Promise<DigestTimeExitResul
   const suggestion = getDigestTimeSuggestion(profile.id);
   if (!suggestion) return { ok: false, reason: "stale" };
   dismissFinding(profile.id, suggestion.dedupeKey);
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true, minute: suggestion.configuredMinute };
 }
 
@@ -556,7 +556,7 @@ export async function saveHomeAssistantPrefs(
     secret,
     disabledKinds: getProfileHomeAssistant(profile.id).disabledKinds,
   });
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -581,7 +581,7 @@ export async function saveHomeAssistantNotifyKinds(
   );
   const cur = getProfileHomeAssistant(profile.id);
   setProfileHomeAssistant(profile.id, { ...cur, disabledKinds: disabled });
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
   return { ok: true };
 }
 
@@ -592,7 +592,7 @@ export async function saveRecommendationCadence(formData: FormData) {
   const { profile } = await requireAdmin();
   const cadence = parseCadence(String(formData.get("recommendation_cadence")));
   setRecommendationCadence(profile.id, cadence);
-  revalidatePath("/settings/coaching");
+  revalidateRoute("/settings/coaching");
   return { ok: true };
 }
 
@@ -605,8 +605,8 @@ export async function saveMentalHealthShareFull(formData: FormData) {
     formData.get("mental_health_share_full") === "1" ||
     formData.get("mental_health_share_full") === "on";
   setMentalHealthShareFull(profile.id, on);
-  revalidatePath("/settings/privacy");
-  revalidatePath("/");
+  revalidateRoute("/settings/privacy");
+  revalidateRoute("/");
 }
 
 // The check-in Calm (anxiety) scale opt-in (issue #1313, signal 6). Flipping it on is
@@ -619,8 +619,8 @@ export async function saveAnxietyScaleOptIn(formData: FormData) {
     formData.get("anxiety_scale_enabled") === "1" ||
     formData.get("anxiety_scale_enabled") === "on";
   setAnxietyScaleOptIn(profile.id, on);
-  revalidatePath("/settings/coaching");
-  revalidatePath("/");
+  revalidateRoute("/settings/coaching");
+  revalidateRoute("/");
 }
 
 // Per-profile crisis-resources OVERRIDE (#996) for a mixed-region household. Empty
@@ -631,8 +631,8 @@ export async function saveProfileCrisisResources(formData: FormData) {
     profile.id,
     parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
   );
-  revalidatePath("/settings/privacy");
-  revalidatePath("/crisis-resources");
+  revalidateRoute("/settings/privacy");
+  revalidateRoute("/crisis-resources");
 }
 
 // Send a test announcement to the profile's HA webhook, independent of the
@@ -682,7 +682,7 @@ export async function saveHouseholdRound(formData: FormData) {
     enabled,
     memberIds: submitted.filter((id) => offerable.has(id)),
   });
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/settings/notifications");
 }
 
 // Send the round as it stands RIGHT NOW to the receiving profile's channels — the §5

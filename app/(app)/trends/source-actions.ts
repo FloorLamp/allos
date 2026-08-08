@@ -1,5 +1,5 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { setMetricSourcePriorityEntry } from "@/lib/settings";
 import {
@@ -30,7 +30,7 @@ export async function setMetricPrimarySource(formData: FormData) {
     source === "" ? null : source,
     source !== "" && strict
   );
-  revalidatePath("/trends", "layout");
-  revalidatePath("/sleep");
-  revalidatePath("/");
+  revalidateRoute("/trends", "layout");
+  revalidateRoute("/sleep");
+  revalidateRoute("/");
 }

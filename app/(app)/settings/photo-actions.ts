@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   requireSession,
   requireWriteAccess,
@@ -47,9 +47,9 @@ async function resolveTargetProfile(
 function revalidatePhotoSurfaces() {
   // The switcher avatar lives in the app-shell layout; the two settings screens
   // show their own previews.
-  revalidatePath("/", "layout");
-  revalidatePath("/settings/health");
-  revalidatePath("/settings/family");
+  revalidateRoute("/", "layout");
+  revalidateRoute("/settings/health");
+  revalidateRoute("/settings/family");
 }
 
 export async function uploadProfilePhoto(

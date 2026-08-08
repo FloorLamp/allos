@@ -7,6 +7,11 @@ The rule, in one line: **an awaited Server Action that calls `revalidatePath` (o
 `router.refresh()` after it is a second full fetch of the same page.** Decided and
 applied codebase-wide in #1473.
 
+Since #2149 no app module calls `revalidatePath` by name: every target goes through
+`revalidateRoute` (`lib/revalidate.ts`), the typed wrapper that forwards to it. Read
+`revalidatePath` below as "the Next primitive `revalidateRoute` calls" — the
+mechanism is unchanged, only the spelling at the call site.
+
 ## Why — the mechanism, not a vibe
 
 This is a property of Next.js's action handler, verified against the version this
@@ -65,7 +70,7 @@ The argument for deleting a `router.refresh()` is **the action's own
 `revalidatePath` call**, not the shape of the code around it. Concretely:
 
 - Follow the awaited call to its `"use server"` module and confirm it calls
-  `revalidatePath`/`revalidateTag` on the success path.
+  `revalidateRoute` (or `revalidateTag`) on the success path.
 - If the component takes the action as a **prop**, check _every_ caller. The
   record forms (`ConditionForm`, `AllergyForm`, …), `PhotoPicker`,
   `VideoClipGrid`, `useUndoableDelete` and friends all rely on this.
@@ -73,12 +78,12 @@ The argument for deleting a `router.refresh()` is **the action's own
   when the **first** one runs. If a later, non-revalidating action writes
   something the page shows, that write is not in the tree and the refresh stays.
   That is exactly the SMTP case.
-- An early `return` before `revalidatePath` is fine when it is a refusal path —
+- An early `return` before `revalidateRoute` is fine when it is a refusal path —
   nothing was written, so nothing needs repainting.
 
 ## What did _not_ change
 
-`revalidatePath(X)` still has to name the routes that actually render the changed
+`revalidateRoute(X)` still has to name the routes that actually render the changed
 data. Removing the client refresh does not make the path argument cosmetic: it is
 what keeps **other** routes' cache entries honest for the next navigation to
 them. `app/(app)/results/imaging/actions.ts` carries the worked example.

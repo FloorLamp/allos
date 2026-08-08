@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute, type RevalidateTarget } from "@/lib/revalidate";
 import { requireWriteAccess, requireSession } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
 import {
@@ -73,7 +73,7 @@ function parseStringList(raw: FormDataEntryValue | null): string[] {
 // revalidation after the lock is cleared. Whitelisted KEYS only ever reach the SQL
 // below (never a raw client string), so the interpolated table name is one of these
 // three constants.
-const EDIT_LOCK_REVALIDATE: Record<string, string[]> = {
+const EDIT_LOCK_REVALIDATE: Record<string, readonly RevalidateTarget[]> = {
   activities: ["/data", "/training", "/trends", "/"],
   body_metrics: ["/data", "/trends", "/"],
   medical_records: ["/data", "/results", "/biomarkers/view", "/"],
@@ -107,9 +107,9 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
     .prepare(`UPDATE ${table} SET edited = 0 WHERE id = ? AND profile_id = ?`)
     .run(id, profile.id);
   if (info.changes === 0) return formError("Record not found.");
-  for (const p of paths) revalidatePath(p);
+  revalidateRoute(paths);
   if (table === "activities")
-    revalidatePath("/training/rides/[id]", "page");
+    revalidateRoute("/training/rides/[id]", "page");
   return formOk();
 }
 
@@ -123,16 +123,16 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
 // rollups a folded/deleted row feeds — the Journal on /training, the /trends fitness
 // chart + workout heatmap (issue #333), and the dashboard.
 function revalidateActivitySurfaces() {
-  revalidatePath("/data");
-  revalidatePath("/training");
-  revalidatePath("/training/rides/[id]", "page");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/training");
+  revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 function revalidateBodyMetricSurfaces() {
-  revalidatePath("/data");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // MERGE two duplicate activities into the user-chosen keeper: fold every field the
@@ -336,8 +336,8 @@ export async function resolvePair(formData: FormData) {
     signature,
     decision as PairDecision
   );
-  revalidatePath("/data");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/");
 }
 
 // KEEP ALL / DISMISS a whole duplicate CLUSTER (issue #1081): record the decision for
@@ -360,8 +360,8 @@ export async function resolveActivityCluster(formData: FormData) {
       sig,
       decision as PairDecision
     );
-  revalidatePath("/data");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/");
 }
 
 // --- Unit-mislabel correction (issue #761) -----------------------------------
@@ -375,7 +375,7 @@ export async function resolveActivityCluster(formData: FormData) {
 
 // The surfaces a unit correction changes: the Review inbox + every biomarker/trend
 // surface that renders the reading's flag.
-const MISLABEL_REVALIDATE = [
+const MISLABEL_REVALIDATE: readonly RevalidateTarget[] = [
   "/data",
   "/results",
   "/biomarkers/view",
@@ -394,7 +394,7 @@ export async function applyUnitMislabel(
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "Invalid record." };
   const res = applyUnitMislabelCore(profile.id, id);
-  if (res.ok) for (const p of MISLABEL_REVALIDATE) revalidatePath(p);
+  if (res.ok) revalidateRoute(MISLABEL_REVALIDATE);
   return res;
 }
 
@@ -413,7 +413,7 @@ export async function undoUnitMislabel(
     flag: undo.flag ?? null,
     edited: undo.edited ? 1 : 0,
   });
-  if (ok) for (const p of MISLABEL_REVALIDATE) revalidatePath(p);
+  if (ok) revalidateRoute(MISLABEL_REVALIDATE);
   return { ok };
 }
 
@@ -426,8 +426,8 @@ export async function dismissUnitMislabel(
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return formError("Invalid record.");
   dismissUnitMislabelCore(profile.id, id);
-  revalidatePath("/data");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -458,7 +458,7 @@ export async function allowDocumentReacquisition(
       message: "That document was already allowed.",
     };
   }
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return {
     status: "done",
     message: "Allowed — portal sync can bring this document back again.",

@@ -2,7 +2,7 @@
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
@@ -116,9 +116,9 @@ import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 // suggestions, adherence dismissals) revalidate just "/nutrition" at their call
 // site.
 function revalidateIntake() {
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
 }
 
 // Supplement-level fields (timing/amount/food live on doses).
@@ -630,7 +630,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     }
   });
   // A newly pooled item changes what the cabinet and its doors show.
-  if (supplyId != null) revalidatePath("/supplies");
+  if (supplyId != null) revalidateRoute("/supplies");
   revalidateIntake();
   return formOk();
 }
@@ -1127,7 +1127,7 @@ export async function logHistoricalDose(
       detail: outcome.date,
     });
     revalidateIntake();
-    revalidatePath(`/medications/${itemId}`);
+    revalidateRoute(`/medications/${itemId}`);
     return formOk();
   }
   return historicalDoseError(outcome);
@@ -1182,7 +1182,7 @@ export async function updateHistoricalDose(
       detail: outcome.date,
     });
     revalidateIntake();
-    revalidatePath(`/medications/${itemId}`);
+    revalidateRoute(`/medications/${itemId}`);
     return formOk();
   }
   return historicalDoseError(outcome);
@@ -1217,7 +1217,7 @@ export async function deleteAdministration(
       target: String(removed.itemId),
       detail: removed.date,
     });
-    revalidatePath(`/medications/${removed.itemId}`);
+    revalidateRoute(`/medications/${removed.itemId}`);
   }
   revalidateIntake();
   return { undoId: removed?.undoId ?? null };
@@ -1460,7 +1460,7 @@ export async function toggleSituationIllnessType(
   );
   setSituationIllnessType(profile.id, situation, !(current?.illness_type ?? 0));
   revalidateIntake();
-  revalidatePath("/");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -1481,7 +1481,7 @@ export async function generateSuggestions(
     { loginId: login.id, profileId: profile.id },
     () => generateAndStoreSuggestions(profile.id, feedback)
   );
-  revalidatePath("/nutrition");
+  revalidateRoute("/nutrition");
   if (note) return { ok: false, message: note };
   return {
     ok: true,
@@ -1599,7 +1599,7 @@ export async function dismissSuggestion(
   db.prepare(
     "UPDATE intake_item_suggestions SET status = 'dismissed' WHERE id = ? AND profile_id = ?"
   ).run(id, profile.id);
-  revalidatePath("/nutrition");
+  revalidateRoute("/nutrition");
   return formOk();
 }
 
@@ -1643,7 +1643,7 @@ export async function dismissAdherencePattern(
   if (!dedupeKey.startsWith(ADHERENCE_PREFIX))
     return formError("Couldn't dismiss that observation.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/nutrition");
+  revalidateRoute("/nutrition");
   return formOk();
 }
 
@@ -1673,9 +1673,9 @@ export async function acceptDemotionSuggestion(
   const outcome = demoteIntakeObligation(profile.id, itemId);
   if (outcome !== "demoted") return formError(DEMOTION_OUTCOME_TEXT[outcome]);
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/nutrition");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -1690,7 +1690,7 @@ export async function dismissDemotionSuggestion(
   if (!dedupeKey.startsWith(DEMOTION_PREFIX))
     return formError("Couldn't dismiss that suggestion.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/nutrition");
+  revalidateRoute("/nutrition");
   return formOk();
 }
 
@@ -1731,7 +1731,7 @@ export async function dismissIntakeFinding(formData: FormData) {
   if (!INTAKE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p)))
     return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
   return formOk();
 }

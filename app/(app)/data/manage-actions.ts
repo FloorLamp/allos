@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import {
   getDataset,
@@ -62,7 +62,7 @@ function tombstoneAllPreImages(
 // there lets a test assert the delete-button UI and the policy stay in sync.
 // Child rows are removed by the schema's ON DELETE CASCADE (exercise_sets,
 // supplement doses/logs/pairs). A path containing "[" is revalidated as a dynamic
-// page (revalidatePath type).
+// page (the revalidateRoute scope argument).
 
 // Resolve a dataset key to its table + policy, guarding against unknown keys.
 function resolve(key: string) {
@@ -103,11 +103,11 @@ function afterDelete(
     cleanupOrphanPrDismissals(profileId);
   }
   // Always refresh the Data page (the management table lives there).
-  revalidatePath("/data");
+  revalidateRoute("/data");
   // A "[param]" path is a dynamic route and must be revalidated with the "page"
   // type; plain paths use the default.
   for (const p of policy.revalidate)
-    p.includes("[") ? revalidatePath(p, "page") : revalidatePath(p);
+    p.includes("[") ? revalidateRoute(p, "page") : revalidateRoute(p);
 }
 
 // Delete the selected rows (by id) from a dataset's table. Ids are coerced to

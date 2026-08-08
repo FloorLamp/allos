@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -20,9 +20,9 @@ import { logBbtCore, logLhTestCore, logMucusCore } from "@/lib/ttc-store";
 export type TtcActionResult = { ok: true } | { ok: false; error: string };
 
 function revalidateTtc() {
-  revalidatePath("/medical/cycles");
-  revalidatePath("/timeline");
-  revalidatePath("/");
+  revalidateRoute("/medical/cycles");
+  revalidateRoute("/timeline");
+  revalidateRoute("/");
 }
 
 const LOCKED_ERROR =

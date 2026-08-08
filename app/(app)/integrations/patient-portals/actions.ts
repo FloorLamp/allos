@@ -24,7 +24,7 @@
 //
 // The lib/portals.ts cores are auth-blind by house rule; every gate lives here.
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   accessForProfile,
   getAccessibleProfiles,
@@ -104,7 +104,7 @@ export async function addPortalAction(
   // login, so a single-login household never meets the account concept.
   const r = createPortal(name, software);
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -120,7 +120,7 @@ export async function renamePortalAction(
   // is the entire reason allos mints it rather than letting a human type it.
   const r = renamePortal(id, String(formData.get("name") ?? ""));
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -137,7 +137,7 @@ export async function editPortalSoftwareAction(
   }
   const r = setPortalSoftware(id, String(formData.get("software") ?? ""));
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -151,7 +151,7 @@ export async function removePortalAction(
   }
   if (!deletePortal(id))
     return { ok: false, error: "That portal is already gone." };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -169,7 +169,7 @@ export async function addAccountAction(
   // createPortalAccount mints the slug and refuses address-shaped text.
   const r = createPortalAccount(portalId, String(formData.get("name") ?? ""));
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -187,7 +187,7 @@ export async function renameAccountAction(
   }
   const r = renamePortalAccount(id, String(formData.get("name") ?? ""));
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -208,7 +208,7 @@ export async function removeAccountAction(
         "That login is already gone, or it is the portal's only one — remove the portal instead.",
     };
   }
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -252,7 +252,7 @@ export async function bindIdentityAction(
         error: "This mapping changed while you were editing — check it again.",
       };
     }
-    revalidatePath(CARD);
+    revalidateRoute(CARD);
     return { ok: true };
   }
 
@@ -263,7 +263,7 @@ export async function bindIdentityAction(
 
   const r = bindPortalIdentity(accountId, label, profileId);
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -293,7 +293,7 @@ export async function unbindIdentityAction(
     if (!unignorePortalIdentity(id)) {
       return { ok: false, error: "That mapping is already gone." };
     }
-    revalidatePath(CARD);
+    revalidateRoute(CARD);
     return { ok: true };
   }
   const owner = state.profileId;
@@ -312,7 +312,7 @@ export async function unbindIdentityAction(
   if (!unbindPortalIdentity(id, owner)) {
     return { ok: false, error: "That mapping is already gone." };
   }
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -364,7 +364,7 @@ export async function remapIdentityAction(
       error: "This mapping changed while you were editing — check it again.",
     };
   }
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -414,7 +414,7 @@ export async function bindPendingIdentityAction(
     profileId
   );
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -442,7 +442,7 @@ export async function ignorePendingIdentityAction(
   }
   const r = ignorePortalIdentity(pending.accountId, pending.patientLabel);
   if (!r.ok) return { ok: false, error: r.error };
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -460,7 +460,7 @@ export async function dismissPendingIdentityAction(
   if (!dismissPendingIdentity(pendingId)) {
     return { ok: false, error: "That pending patient is already handled." };
   }
-  revalidatePath(CARD);
+  revalidateRoute(CARD);
   return { ok: true };
 }
 
@@ -503,7 +503,7 @@ export async function requestSyncAction(
       error: "A sync is already requested for this login.",
     };
   }
-  revalidatePath(CARD);
-  revalidatePath("/upcoming");
+  revalidateRoute(CARD);
+  revalidateRoute("/upcoming");
   return { ok: true };
 }

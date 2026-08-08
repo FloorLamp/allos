@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   requireSession,
   requireProfileWriteAccess,
@@ -48,9 +48,9 @@ export async function confirmDoseAction(
     return { ok: false, error: "Couldn't find that dose." };
   await requireProfileWriteAccess(profileId);
   const outcome = markDoseTaken(profileId, doseId, null, today(profileId));
-  revalidatePath("/household");
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/household");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return { ok: true, outcome };
 }

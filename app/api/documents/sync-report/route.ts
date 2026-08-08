@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { authenticateApiToken } from "@/lib/api-tokens";
@@ -292,7 +292,7 @@ export async function POST(req: Request): Promise<Response> {
       // broadcasting to everyone who manages a mapped profile.
       reportedByLoginId: login.id,
     });
-    revalidatePath("/integrations/patient-portals");
+    revalidateRoute("/integrations/patient-portals");
     return Response.json({
       ok: true,
       portal: target.target.portalSlug,
@@ -349,7 +349,7 @@ export async function POST(req: Request): Promise<Response> {
       reportAccount = account.account;
       if (discovered.length > 0) {
         newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
-        revalidatePath("/integrations/patient-portals");
+        revalidateRoute("/integrations/patient-portals");
       }
       // PER-IDENTITY OUTCOMES (#1889): what this run actually managed for each patient on
       // the login, which one run routinely answers differently per person. Recorded
@@ -384,7 +384,7 @@ export async function POST(req: Request): Promise<Response> {
           reportedByLoginId: login.id,
         });
       }
-      revalidatePath("/integrations/patient-portals");
+      revalidateRoute("/integrations/patient-portals");
       // Unknown, IGNORED, and ambiguous-account all answer identically — the endpoint is
       // deliberately non-oracular about a household's choices.
       return Response.json(
@@ -503,8 +503,8 @@ export async function POST(req: Request): Promise<Response> {
     return jsonError("internal error", 500);
   }
 
-  revalidatePath("/data");
-  revalidatePath("/integrations/patient-portals");
+  revalidateRoute("/data");
+  revalidateRoute("/integrations/patient-portals");
   return Response.json({
     ok: true,
     profile: profileId,

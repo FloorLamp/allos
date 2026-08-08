@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import {
@@ -57,12 +57,12 @@ function trimmedOrNull(raw: unknown): string | null {
 // for an unrecognized name — never dropped), the same path the extractor uses.
 
 function revalidateImmunizations() {
-  revalidatePath("/records");
+  revalidateRoute("/records");
   // Every per-vaccine detail page too: a dose (esp. a combination shot) credits
   // multiple vaccines, and edit/delete now runs from the detail view, so the
   // list-only revalidate above wouldn't refresh the page the user is on.
-  revalidatePath("/immunizations/[vaccine]", "page");
-  revalidatePath("/");
+  revalidateRoute("/immunizations/[vaccine]", "page");
+  revalidateRoute("/");
 }
 
 function codeFor(raw: string): string {
@@ -222,7 +222,7 @@ export async function setImmunizationOverride(
        created_at = datetime('now')`
   ).run(profile.id, vaccine, kind, reason, exemptionType, note);
   revalidateImmunizations();
-  revalidatePath(`/immunizations/${vaccine}`);
+  revalidateRoute(`/immunizations/${vaccine}`);
   return formOk();
 }
 
@@ -236,7 +236,7 @@ export async function clearImmunizationOverride(
     "DELETE FROM immunization_overrides WHERE profile_id = ? AND vaccine = ?"
   ).run(profile.id, vaccine);
   revalidateImmunizations();
-  revalidatePath(`/immunizations/${vaccine}`);
+  revalidateRoute(`/immunizations/${vaccine}`);
   return formOk();
 }
 
@@ -268,7 +268,7 @@ export async function createImmunizationShareLinkAction(
   });
   // The revoke list lives with the passport's share management (one surface for
   // every kind of link this profile has handed out).
-  revalidatePath("/records/history/immunizations");
-  revalidatePath("/profile");
+  revalidateRoute("/records/history/immunizations");
+  revalidateRoute("/profile");
   return { ok: true, path: `/share/${token}` };
 }

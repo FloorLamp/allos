@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { setPeakFlowPersonalBest } from "@/lib/settings";
 import { PEAK_FLOW_SLUG } from "@/lib/peak-flow";
@@ -32,6 +32,6 @@ export async function savePeakFlowPersonalBest(formData: FormData) {
   }
   // Interpolated so the #1636 sweep resolves it against the dynamic `[kind]` route,
   // the same form every other metric-scoped revalidate here takes.
-  revalidatePath(`/trends/metric/${PEAK_FLOW_SLUG}`);
-  revalidatePath("/trends");
+  revalidateRoute(`/trends/metric/${PEAK_FLOW_SLUG}`);
+  revalidateRoute("/trends");
 }

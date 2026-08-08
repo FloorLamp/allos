@@ -3,11 +3,11 @@
 // server error log is a global, admin-gated operation — the error detail mixes
 // PHI-adjacent content across profiles, so a member must never reach it.
 import { requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { clearErrorLog } from "@/lib/error-log";
 
 export async function clearErrors(): Promise<void> {
   await requireAdmin();
   clearErrorLog();
-  revalidatePath("/settings/errors");
+  revalidateRoute("/settings/errors");
 }

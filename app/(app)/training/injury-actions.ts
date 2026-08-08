@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -36,10 +36,10 @@ import type { MovementPattern, MuscleId, MuscleRegion } from "@/lib/lifts";
 // Training overview + the Timeline, so both are revalidated.
 
 function revalidateInjuries(): void {
-  revalidatePath("/training");
-  revalidatePath("/timeline");
+  revalidateRoute("/training");
+  revalidateRoute("/timeline");
   // The recommendation exclusion/tempering rides the dashboard coaching widget too.
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // Parse the multi-valued `regions[]` / `muscles[]` form fields into valid vocabulary.
@@ -197,8 +197,8 @@ export async function activateInjurySituation(): Promise<FormResult> {
     active.add(BUILTIN_INJURY_SITUATION);
     setActiveSituations(profile.id, [...active]);
   }
-  revalidatePath("/training");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return formOk();
 }

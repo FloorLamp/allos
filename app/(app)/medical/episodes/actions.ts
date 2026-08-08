@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   requireWriteAccess,
   requireProfileWriteAccess,
@@ -88,11 +88,11 @@ function eventDateInEpisode(
 }
 
 function revalidateEpisodeEvents() {
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/medications");
-  revalidatePath("/results");
-  revalidatePath("/timeline");
-  revalidatePath("/");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/medications");
+  revalidateRoute("/results");
+  revalidateRoute("/timeline");
+  revalidateRoute("/");
 }
 
 export async function updateEpisodeTemperatureAction(
@@ -255,7 +255,7 @@ export async function updateEpisodeDoseAction(
     detail: outcome.date,
   });
   revalidateEpisodeEvents();
-  revalidatePath(`/medications/${existing.item_id}`);
+  revalidateRoute(`/medications/${existing.item_id}`);
   return { ok: true };
 }
 
@@ -366,7 +366,7 @@ export async function createEpisodeShareLinkAction(
     action: AUDIT_ACTIONS.shareLinkCreate,
     target: String(linkId),
   });
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true, path: `/share/${token}` };
 }
 
@@ -390,8 +390,8 @@ export async function promoteEpisodeToConditionAction(
   const outcome = promoteEpisodeToConditionCore(profileId, row.id);
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't create the condition." };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/records");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/records");
   return { ok: true };
 }
 
@@ -412,8 +412,8 @@ export async function unpromoteEpisodeConditionAction(
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
   unpromoteEpisodeConditionCore(profileId, row.id);
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/records");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/records");
   return { ok: true };
 }
 
@@ -462,8 +462,8 @@ export async function editEpisodeAction(
   );
   if (!updated)
     return { ok: false, error: "That episode is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/medical/episodes");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes");
   return { ok: true };
 }
 
@@ -484,7 +484,7 @@ export async function createEpisodeAction(
   if (endDate < startDate)
     return { ok: false, error: "The end date can't be before the start date." };
   const newId = createEpisodeRow(profile.id, situation, startDate, endDate);
-  revalidatePath("/medical/episodes");
+  revalidateRoute("/medical/episodes");
   return { ok: true, id: newId };
 }
 
@@ -504,8 +504,8 @@ export async function mergeEpisodesAction(
       ok: false,
       error: "One of those episodes is no longer available.",
     };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/medical/episodes");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes");
   return { ok: true };
 }
 
@@ -532,9 +532,9 @@ export async function endEpisodeAction(
   const outcome = endEpisodeCore(profileId, id);
   if (outcome.kind === "missing")
     return { ok: false, error: "That episode is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/");
-  revalidatePath("/nutrition");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
   return { ok: true };
 }
 
@@ -578,10 +578,10 @@ export async function reopenEpisodeAction(
   if (outcome.kind === "conflict") {
     return { ok: false, error: "A current episode is already active." };
   }
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/medical/episodes");
-  revalidatePath("/");
-  revalidatePath("/nutrition");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes");
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
   return { ok: true };
 }
 
@@ -608,9 +608,9 @@ export async function endStaleEpisodeAction(
   const outcome = endEpisodeAsOfCore(profileId, id, lastActiveDay);
   if (outcome.kind === "missing")
     return { ok: false, error: "That episode is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/");
-  revalidatePath("/nutrition");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
   return { ok: true };
 }
 
@@ -661,10 +661,10 @@ export async function endEpisodeWithMedsAction(
   );
   if (outcome.kind === "missing")
     return { ok: false, error: "That episode is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/");
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
   return { ok: true };
 }
 
@@ -713,7 +713,7 @@ export async function uploadSymptomPhotoAction(
     caption
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -736,7 +736,7 @@ export async function updateSymptomPhotoCaptionAction(
   const caption = String(formData.get("caption") ?? "");
   if (!updateSymptomPhotoCaptionCore(profileId, id, caption))
     return { ok: false, error: "That photo is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -757,7 +757,7 @@ export async function deleteSymptomPhotoAction(
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "That photo is no longer available." };
   deleteSymptomPhotoCore(profileId, id);
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -804,7 +804,7 @@ export async function uploadSymptomVideoAction(
     poster
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -827,7 +827,7 @@ export async function updateSymptomVideoCaptionAction(
   const caption = String(formData.get("caption") ?? "");
   if (!updateSymptomVideoCaptionCore(profileId, id, caption))
     return { ok: false, error: "That clip is no longer available." };
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -848,7 +848,7 @@ export async function deleteSymptomVideoAction(
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "That clip is no longer available." };
   deleteSymptomVideoCore(profileId, id);
-  revalidatePath("/medical/episodes/[id]", "page");
+  revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }
 
@@ -869,7 +869,7 @@ export async function dismissStaleNudgeAction(
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
   ackStaleNudge(profileId, id);
-  revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/");
+  revalidateRoute("/medical/episodes/[id]", "page");
+  revalidateRoute("/");
   return { ok: true };
 }

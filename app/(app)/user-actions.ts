@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   destroySession,
   getCurrentSession,
@@ -34,7 +34,7 @@ export async function switchProfileAction(formData: FormData) {
   await requireSession();
   const profileId = Number(formData.get("profileId"));
   if (profileId) await setActiveProfile(profileId);
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
 
   // Profile-owned links may use the shared switcher chip to change context and
   // continue to their destination in one explicit gesture. Accept internal paths
@@ -55,5 +55,5 @@ export async function setViewProfileAction(formData: FormData) {
   await requireSession();
   const profileId = Number(formData.get("profileId"));
   if (profileId) await toggleViewProfile(profileId);
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
 }

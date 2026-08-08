@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -33,9 +33,9 @@ import {
 function revalidateVision() {
   // Vision folded into Health record (#1042 final tail): the surface is now
   // /records#vision.
-  revalidatePath("/records");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>

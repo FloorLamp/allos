@@ -7,7 +7,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
@@ -33,14 +33,14 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // record mutation, so edits made on /import/[id] also reflect on the records
 // browser (/biomarkers) and per-biomarker detail pages, and vice versa.
 function revalidateMedical() {
-  revalidatePath("/data");
-  revalidatePath("/import/[id]", "page");
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/records");
+  revalidateRoute("/data");
+  revalidateRoute("/import/[id]", "page");
+  revalidateRoute("/results");
+  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/records");
   // The dashboard derives Recent labs and Needs attention from these records, so
   // a new/edited/deleted reading must refresh its summaries too.
-  revalidatePath("/");
+  revalidateRoute("/");
 }
 
 // Light sanitation for a user-entered canonical name: trim, collapse internal

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   requireSession,
   requireWriteAccess,
@@ -40,11 +40,11 @@ const ok = (supply?: SupplyResult["supply"]): SupplyResult =>
 const fail = (error: string): SupplyResult => ({ ok: false, error });
 
 function revalidateSupplies(): void {
-  revalidatePath("/supplies");
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/supplies");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // THE POOL GATE (#1374). A shared bottle has no owning profile, so "who may edit it"

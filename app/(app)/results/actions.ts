@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { dismissFinding } from "@/lib/queries";
@@ -36,8 +36,8 @@ export async function dismissTrajectory(formData: FormData): Promise<void> {
   ).trim();
   if (!ackKey.startsWith("biomarker-flag:")) return;
   dismissFinding(profile.id, ackKey);
-  revalidatePath("/results/biomarkers");
-  revalidatePath("/");
+  revalidateRoute("/results/biomarkers");
+  revalidateRoute("/");
 }
 
 // The readings of ONE panel group, loaded when the reader expands it (#1651).

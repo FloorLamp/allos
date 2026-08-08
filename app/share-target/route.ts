@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { getCurrentSession, accessForProfile } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { ingestMedicalUpload } from "@/lib/medical-pipeline";
@@ -123,7 +123,7 @@ export async function POST(req: Request): Promise<Response> {
       { status: 500 }
     );
   }
-  revalidatePath("/data");
+  revalidateRoute("/data");
 
   // One shared file → its stored document (extraction progress, the reason line if
   // the engine rejected it, and the reassign control). Several → the Review feed,

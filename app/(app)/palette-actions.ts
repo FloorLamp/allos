@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { getUnitPrefs } from "@/lib/settings";
 import { insertBodyMetric } from "@/lib/offline/writes";
@@ -58,7 +58,7 @@ export async function paletteQuickLog(
   });
   if (!wrote) return { ok: false, message: "Couldn't log that weight." };
 
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return { ok: true, message: `Logged weight ${parsed.value} ${parsed.unit}.` };
 }

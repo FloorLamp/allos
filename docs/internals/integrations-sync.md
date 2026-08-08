@@ -873,9 +873,9 @@ above it enumerated providers by hand, and Garmin would have been a fifth copy o
 all three.
 
 - **The facet.** `IntegrationDef.pull` (`lib/types/integrations.ts`) declares
-  `revalidates` — the surfaces a completed run feeds, swept by
-  `lib/__tests__/nav-routes.test.ts` exactly like an in-`app/` `revalidatePath`
-  target — plus an OPTIONAL `paging` block (`timeoutMs`, `maxPages`, `rescanDays`,
+  `revalidates` — the surfaces a completed run feeds, typed
+  `readonly RevalidateTarget[]` so the compiler checks each one exactly like an
+  in-`app/` `revalidateRoute` target (#2149) — plus an OPTIONAL `paging` block (`timeoutMs`, `maxPages`, `rescanDays`,
   `backfillDays`) for a credentialed paged pull. Weather declares no `paging`: it
   is keyless with no cursor and no pagination, and inventing numbers to make the
   shape uniform is exactly the "forcing a non-OAuth provider into the facet" the

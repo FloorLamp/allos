@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -67,11 +67,11 @@ export async function logUpcomingPractice(
   if (!targetId) return { ok: false, error: "Couldn't find that practice." };
   const outcome = logPracticeByTargetId(pid, targetId);
   if (outcome.kind === "logged") {
-    revalidatePath("/upcoming");
-    revalidatePath("/wellness");
-    revalidatePath("/longevity");
-    revalidatePath("/timeline");
-    revalidatePath("/");
+    revalidateRoute("/upcoming");
+    revalidateRoute("/wellness");
+    revalidateRoute("/longevity");
+    revalidateRoute("/timeline");
+    revalidateRoute("/");
   }
   return { ok: true, outcome };
 }
@@ -122,10 +122,10 @@ export async function markTaken(formData: FormData): Promise<MarkTakenResult> {
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
   const outcome = markDoseTaken(pid, doseId, null, today(pid));
-  revalidatePath("/upcoming");
-  revalidatePath("/nutrition");
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return { ok: true, outcome };
 }
 
@@ -143,8 +143,8 @@ export async function markPreventiveDone(
   if (!ruleKey || !preventiveRuleByKey(ruleKey))
     return formError("Couldn't find that preventive item.");
   recordPreventiveDone(pid, ruleKey, today(pid));
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -169,9 +169,9 @@ export async function markCarePlanDone(
   const id = Number(formData.get("care_plan_item_id"));
   if (!id) return formError("Couldn't find that care-plan item.");
   const outcome = markCarePlanItemDone(pid, id);
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return carePlanDoneResult(outcome);
 }
 
@@ -190,8 +190,8 @@ export async function overridePreventive(
   if (kind !== "declined" && kind !== "not_applicable")
     return formError("Choose an override option.");
   setPreventiveOverride(pid, ruleKey, kind);
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -219,10 +219,10 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
     return formError("Choose resolved, stable, or changed.");
   if (res.kind === "not-found")
     return formError("Couldn't find that follow-up.");
-  revalidatePath("/upcoming");
-  revalidatePath("/results");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/results");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -259,11 +259,11 @@ export async function settleFollowUp(formData: FormData): Promise<FormResult> {
     return formError("This follow-up is already closed.");
   if (res.kind === "not-found")
     return formError("Couldn't find that follow-up.");
-  revalidatePath("/upcoming");
-  revalidatePath("/results");
-  revalidatePath("/records");
-  revalidatePath("/records/care/overview");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/results");
+  revalidateRoute("/records");
+  revalidateRoute("/records/care/overview");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -274,7 +274,7 @@ export async function settleFollowUp(formData: FormData): Promise<FormResult> {
 export async function dismissMultiviewHintAction(): Promise<FormResult> {
   const { login } = await requireSession();
   dismissMultiviewHint(login.id);
-  revalidatePath("/upcoming");
+  revalidateRoute("/upcoming");
   return formOk();
 }
 
@@ -291,7 +291,7 @@ export async function snoozeItem(formData: FormData): Promise<FormResult> {
   if (!signalKey) return formError("Couldn't find that item.");
   if (until == null) return formError("Choose how long to snooze.");
   snoozeFinding(pid, signalKey, until);
-  revalidatePath("/upcoming");
+  revalidateRoute("/upcoming");
   return formOk();
 }
 
@@ -303,7 +303,7 @@ export async function dismissItem(formData: FormData): Promise<FormResult> {
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return formError("Couldn't find that item.");
   dismissFinding(pid, signalKey);
-  revalidatePath("/upcoming");
+  revalidateRoute("/upcoming");
   return formOk();
 }
 
@@ -314,6 +314,6 @@ export async function restoreItem(formData: FormData): Promise<FormResult> {
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return formError("Couldn't find that item.");
   restoreFinding(pid, signalKey);
-  revalidatePath("/upcoming");
+  revalidateRoute("/upcoming");
   return formOk();
 }

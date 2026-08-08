@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import crypto from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import {
   setStravaCredentials,
@@ -38,7 +38,7 @@ export async function saveStravaCredentials(formData: FormData) {
     clientSecretInput || getStravaConfig(profile.id).clientSecret || "";
   if (clientId && clientSecret)
     setStravaCredentials(profile.id, clientId, clientSecret);
-  revalidatePath("/integrations/strava");
+  revalidateRoute("/integrations/strava");
 }
 
 // Begin the OAuth flow: store a single-use CSRF state, then redirect to Strava's
@@ -74,9 +74,9 @@ export async function connectStrava() {
 export async function disconnectStravaAction() {
   const { profile } = await requireWriteAccess();
   disconnectStrava(profile.id);
-  revalidatePath("/integrations/strava");
+  revalidateRoute("/integrations/strava");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 export async function backfillStravaRideDetails(): Promise<StravaBackfillActionResult> {
@@ -103,8 +103,8 @@ export async function backfillStravaRideDetails(): Promise<StravaBackfillActionR
       });
     }
   );
-  revalidatePath("/integrations/strava");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/strava");
+  revalidateRoute("/data");
   return {
     status: "done",
     message: "Ride detail backfill started. Progress and ETA are shown below.",

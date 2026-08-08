@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -189,7 +189,7 @@ export async function applyBulkCorrectionAction(
   }
   // The corrected series renders on the dashboard, Trends, Timeline, Training,
   // and Data → Manage — a layout-wide revalidate, the undo-toast precedent.
-  revalidatePath("/", "layout");
+  revalidateRoute("/", "layout");
   return {
     ok: true,
     undoId: outcome.undoId,
@@ -215,7 +215,7 @@ export async function undoBulkCorrectionAction(
       message: "That correction can no longer be undone (already undone, or older than 24 hours).",
     };
   }
-  if (outcome.restored > 0) revalidatePath("/", "layout");
+  if (outcome.restored > 0) revalidateRoute("/", "layout");
   return {
     ok: true,
     restored: outcome.restored,
