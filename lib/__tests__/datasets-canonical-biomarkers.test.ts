@@ -86,9 +86,20 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // is the whole argument in lib/peak-flow.ts), so they add no flag-relevant band; the
 // FEV1/FVC Ratio's ref_low 70 is the one real cutoff and is what a stored ratio row
 // now re-flags against. The signature moves because names are part of it.
+// Updated for #2300: 23 new curated entries close out the last unresolved analyte
+// names (urinalysis microscopy + physical description, a stool group, three CBC smear
+// lines, indirect bilirubin, the two urine ratios, HDL as a % of cholesterol, total
+// omega-6, and the ANA screen). Every one is RANGELESS, so none adds a numeric band —
+// but `name`, `unit` and `direction` are all part of the signature, so it legitimately
+// changes and the boot reconcile runs once. What that pass buys is real: a stored
+// reading that previously matched no entry now resolves to one, and the qualitative
+// classifier (#549/#629) can finally judge it — a positive fecal occult blood or ANA
+// screen reaches its flag instead of staying an unbanded orphan. FLAG_LOGIC_VERSION is
+// deliberately NOT bumped: the derivation LOGIC is unchanged, and the dataset half of
+// the signature already forces the re-reconcile on its own.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "d970afa49ba80f52877c50ae1c1b1a90e729204bb1a4200854d7b6825b14d1be"; // phi-scan-ok
+  "f19a6cb97b28d4b96bee95b6bb94549a75050f130b601dbd4968e477f82ff1e5"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {
