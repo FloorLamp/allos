@@ -9,6 +9,7 @@ import path from "node:path";
 import { db, today } from "../../lib/db";
 import {
   shiftDateStr,
+  utcInstant,
   utcMinute,
   utcSqlString,
   zonedWallTimeToUtc,
@@ -767,14 +768,23 @@ export function seedVitalsToday(): void {
     timedVital("Oxygen Saturation", "%", 96, "09:42");
     timedVital("Respiratory Rate", "/min", 15, "09:45");
 
-    // A manual temperature — the OTHER way a reading carries a clock time.
+    // A manual temperature — its clock time on the row's own occurred_at
+    // (#2154; the retired notes-"HH:MM" convention is an unrepresentable state
+    // after migration 170, so the fixture stops minting it). The timed vitals
+    // ABOVE deliberately keep instants only in external_id: they are the
+    // pre-#2154 device rows whose legacy fallback the intraday surfaces must
+    // keep serving.
     db.prepare(
       `INSERT INTO medical_records
        (profile_id, date, category, name, value, value_num, unit, canonical_name,
-        source, notes)
+        source, occurred_at)
      VALUES (?, ?, 'vitals', 'Body Temperature', '98.6', 98.6, 'degF',
              'Body Temperature', 'manual', ?)`
-    ).run(vdId, vdToday, VITALS_DAY_TEMP_TIME);
+    ).run(
+      vdId,
+      vdToday,
+      utcInstant(zonedWallTimeToUtc(vdTz, vdToday, VITALS_DAY_TEMP_TIME)!)
+    );
 
     // Day-granular body/composition aggregates: values without times. These make
     // the Body → Today card prove that composition is included while the seeded

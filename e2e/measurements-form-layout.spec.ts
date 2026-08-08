@@ -9,6 +9,8 @@ import {
   settledFill,
 } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The "Log measurements" form's LAYOUT and DISCLOSURE (issue #2014).
@@ -214,6 +216,97 @@ test("a collapsed group announces its value and still saves it", async ({
     }
   } finally {
     clearLoggedWeight();
+  }
+});
+
+// The #2154 fold spec below owns today's MANUAL vitals rows for profile 1
+// outright: an observation write always INSERTS (the fever-curve rule), so the
+// cleanup deletes exactly the rows the spec's own submission created.
+function clearTodayManualVitals(): void {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        `DELETE FROM medical_records
+          WHERE profile_id = 1 AND date = ? AND source = 'manual'
+            AND canonical_name = 'Body Temperature'`
+      )
+      .run(TODAY);
+    handle
+      .prepare(
+        `DELETE FROM metric_samples
+          WHERE profile_id = 1 AND date = ? AND source = 'manual'
+            AND metric = 'peak_flow_lmin'`
+      )
+      .run(TODAY);
+  } finally {
+    handle.close();
+  }
+}
+
+test("the one Time drives temperature and peak flow — the folded per-measure inputs are gone (#2154)", async ({
+  page,
+}) => {
+  test.slow();
+  clearTodayManualVitals();
+  try {
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, form, "vitals");
+
+    // THE FOLD: the two per-measure time inputs are gone — the sitting's one
+    // shared Time is the only "when" the form asks (the time-input scan ratchet's
+    // biggest single shrink, 2 → 0).
+    await expect(form.locator("#m-temp-time")).toHaveCount(0);
+    await expect(form.locator("#m-peak-flow-time")).toHaveCount(0);
+    await expect(form.getByTestId("m-time")).toHaveCount(1);
+
+    await settledFill(page, form.locator("#m-temperature"), "99.2");
+    await settledFill(page, form.getByTestId("measurements-peak-flow"), "410");
+    await hydratedClick(page, form.getByTestId("m-now"));
+    const timeInput = form.getByTestId("m-time");
+    await expect(timeInput).toHaveValue(/^\d{2}:\d{2}$/);
+    const statedHhmm = await timeInput.inputValue();
+
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Save measurements" })
+    );
+    await expect(page.getByText("Measurements saved")).toBeVisible();
+
+    // Server truth: the ONE statement landed on BOTH stores, each on its own
+    // convention — the observation's occurred_at in the canonical UTC shape, and
+    // the peak-flow sample's start_time as the same instant's profile-local wall
+    // clock (its natural key).
+    const { zone } = pinnedTimezone(frozenNow().toISOString());
+    const statedInstant = utcInstant(
+      zonedWallTimeToUtc(zone, TODAY, statedHhmm)!
+    );
+    const handle = new Database(DB_PATH);
+    try {
+      const temp = handle
+        .prepare(
+          `SELECT occurred_at, notes FROM medical_records
+            WHERE profile_id = 1 AND date = ? AND source = 'manual'
+              AND canonical_name = 'Body Temperature'`
+        )
+        .all(TODAY) as { occurred_at: string | null; notes: string | null }[];
+      expect(temp).toEqual([{ occurred_at: statedInstant, notes: null }]);
+      const blow = handle
+        .prepare(
+          `SELECT start_time FROM metric_samples
+            WHERE profile_id = 1 AND date = ? AND source = 'manual'
+              AND metric = 'peak_flow_lmin'`
+        )
+        .all(TODAY) as { start_time: string }[];
+      expect(blow).toEqual([{ start_time: `${TODAY}T${statedHhmm}:00` }]);
+    } finally {
+      handle.close();
+    }
+  } finally {
+    clearTodayManualVitals();
   }
 });
 
