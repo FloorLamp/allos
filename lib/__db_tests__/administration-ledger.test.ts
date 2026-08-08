@@ -14,7 +14,7 @@
 //   2. WRITE-CORE SEMANTICS on the migrated schema (via the redirected singleton):
 //      markDoseTaken keeps one-taken-row-per-(dose,date) for a scheduled dose;
 //      logAdministration allows PRN multiples, decrements supply per administration,
-//      dedups a double-tap, and refuses a forged/far-off given_at (#614).
+//      dedups a double-tap, and refuses a forged/far-off recorded_at (#614).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
@@ -156,7 +156,10 @@ describe("migration 041 — administration ledger: scheduled adherence is bit-id
     ).c;
     expect(countAfter).toBe(countBefore);
 
-    // given_at backfilled from taken_at for every row.
+    // given_at backfilled from taken_at for every row. This fixture stops at
+    // migration 041, which is where that column is BORN — migration 173 (#2205 phase
+    // 2 wave 2) renames it to `recorded_at` a hundred and thirty slots later, so the
+    // pre-041 world this test reconstructs still spells it the old way.
     const mismatches = (
       mem
         .prepare(
@@ -351,7 +354,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     expect(mine!.lastGivenAt).toBeTruthy();
     const admins = getAdministrationsForItemOnDate(profileId, itemId, date);
     expect(admins).toHaveLength(1);
-    expect(admins[0].given_at).toBeTruthy();
+    expect(admins[0].recorded_at).toBeTruthy();
     expect(admins[0].product).toBe(
       "Children's oral suspension (100 mg / 5 mL)"
     );
@@ -377,7 +380,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
       .prepare(
         `SELECT product FROM intake_item_logs
           WHERE item_id = ? AND status = 'taken'
-          ORDER BY COALESCE(given_at, taken_at), id`
+          ORDER BY COALESCE(recorded_at, taken_at), id`
       )
       .all(itemId) as { product: string | null }[];
     expect(products.map((row) => row.product)).toEqual([

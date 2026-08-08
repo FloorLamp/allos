@@ -192,7 +192,7 @@ function logAdminAt(
     .replace("T", " ")
     .slice(0, 19);
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
      VALUES (?, ?, ?, ?, 'taken')`
   ).run(med.doseId, med.itemId, today(profileId), at);
 }

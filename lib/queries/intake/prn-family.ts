@@ -42,7 +42,7 @@ export interface MedFamilyState {
   memberNames: string[];
   // Human label for the family ("Ibuprofen") — the duplication/over-max copy.
   label: string;
-  // Latest administration across ALL members (given_at required — the arming dose),
+  // Latest administration across ALL members (recorded_at required — the arming dose),
   // plus WHICH member it belongs to, so a notice can honestly say "6h since OTC
   // Ibuprofen" when a sibling's dose armed the clock.
   latestId: number | null;
@@ -141,16 +141,16 @@ function getMedicationFamilyStatesUncached(
     const placeholders = ids.map(() => "?").join(", ");
     const latest = db
       .prepare(
-        `SELECT l.id AS id, l.given_at AS givenAt, l.item_id AS itemId
+        `SELECT l.id AS id, l.recorded_at AS recordedAt, l.item_id AS itemId
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken' AND l.given_at IS NOT NULL
-          ORDER BY l.given_at DESC, l.id DESC
+            AND l.status = 'taken' AND l.recorded_at IS NOT NULL
+          ORDER BY l.recorded_at DESC, l.id DESC
           LIMIT 1`
       )
       .get(profileId, ...ids) as
-      { id: number; givenAt: string; itemId: number } | undefined;
+      { id: number; recordedAt: string; itemId: number } | undefined;
     // Today's taken administrations WITH their snapshotted amounts — the count is
     // the row count, and the amounts feed the amount-aware exposure (#1854).
     const todaysLogs = db
@@ -182,7 +182,7 @@ function getMedicationFamilyStatesUncached(
       memberNames: family.members.map((m) => m.name),
       label: familyDisplayLabel(family.members),
       latestId: latest?.id ?? null,
-      latestGivenAt: latest?.givenAt ?? null,
+      latestGivenAt: latest?.recordedAt ?? null,
       latestItemId: latest?.itemId ?? null,
       latestItemName: latest
         ? (family.members.find((m) => m.id === latest.itemId)?.name ?? null)

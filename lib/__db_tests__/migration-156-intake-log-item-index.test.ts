@@ -27,12 +27,12 @@ const INDEX = "idx_intake_log_item_given";
 // The latest-administration statement `getMedicationFamilyStates` prepares
 // (lib/queries/intake/prn-family.ts), verbatim for a single-member family. Kept as its
 // own constant so the plan assertion is about the real read, not a paraphrase.
-const LATEST_SQL = `SELECT l.id AS id, l.given_at AS givenAt, l.item_id AS itemId
+const LATEST_SQL = `SELECT l.id AS id, l.recorded_at AS recordedAt, l.item_id AS itemId
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (?)
-            AND l.status = 'taken' AND l.given_at IS NOT NULL
-          ORDER BY l.given_at DESC, l.id DESC
+            AND l.status = 'taken' AND l.recorded_at IS NOT NULL
+          ORDER BY l.recorded_at DESC, l.id DESC
           LIMIT 1`;
 
 let profileId: number;
@@ -72,7 +72,7 @@ beforeAll(() => {
   // A spread of administrations across days, so a whole-ledger scan plus sort would be
   // the visible alternative to an index-ordered seek.
   const ins = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status, amount)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
      VALUES (?, ?, ?, ?, 'taken', '200 mg')`
   );
   const td = today(profileId);
@@ -84,7 +84,7 @@ beforeAll(() => {
   }
 });
 
-describe("migration 156 — the (item_id, given_at) administration index", () => {
+describe("migration 156 — the (item_id, recorded_at) administration index", () => {
   it("applies: the index exists on the migrated schema", () => {
     const row = db
       .prepare(
@@ -98,7 +98,7 @@ describe("migration 156 — the (item_id, given_at) administration index", () =>
     const cols = (
       db.prepare(`PRAGMA index_info(${INDEX})`).all() as { name: string }[]
     ).map((c) => c.name);
-    expect(cols).toEqual(["item_id", "given_at"]);
+    expect(cols).toEqual(["item_id", "recorded_at"]);
   });
 
   it("the arming-dose read SEARCHES the index instead of scanning the ledger", () => {
@@ -110,7 +110,7 @@ describe("migration 156 — the (item_id, given_at) administration index", () =>
   });
 
   it("a single-member family needs no temp b-tree for the ordering either", () => {
-    // One item ⇒ the index already emits given_at order, so LIMIT 1 is a seek.
+    // One item ⇒ the index already emits recorded_at order, so LIMIT 1 is a seek.
     expect(plan(LATEST_SQL, profileId, itemId)).not.toContain("TEMP B-TREE");
   });
 

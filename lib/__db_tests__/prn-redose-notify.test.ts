@@ -71,7 +71,7 @@ function seedRedoseMed(
   return { itemId, doseId };
 }
 
-// Insert one administration with a controlled given_at (hoursAgo before `now`), on
+// Insert one administration with a controlled recorded_at (hoursAgo before `now`), on
 // today's local date so the day count sees it. Returns the inserted row id.
 function logAdmin(
   itemId: number,
@@ -80,14 +80,16 @@ function logAdmin(
   hoursAgo: number,
   now: Date
 ): number {
-  const givenAt = utcSqlString(new Date(now.getTime() - hoursAgo * 3_600_000));
+  const recordedAt = utcSqlString(
+    new Date(now.getTime() - hoursAgo * 3_600_000)
+  );
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
          VALUES (?, ?, ?, ?, 'taken')`
       )
-      .run(doseId, itemId, date, givenAt).lastInsertRowid
+      .run(doseId, itemId, date, recordedAt).lastInsertRowid
   );
 }
 

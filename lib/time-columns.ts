@@ -744,19 +744,30 @@ export const TIME_COLUMNS = {
       convention: "n/a",
     },
   ],
-  // FOR WHOEVER RUNS THE `given_at` RENAME — do not re-derive this.
+  // THE RECORD CHAIN, AS OF MIGRATION 173 — do not re-derive this.
   //
-  // `given_at` and `taken_at` are NOT an event/record pair. Both answer "when did this
-  // enter the app": `given_at` is INFERRED (a scheduled confirm writes the tap moment,
+  // `recorded_at` and `taken_at` are NOT an event/record pair. Both answer "when did this
+  // enter the app": `recorded_at` is INFERRED (a scheduled confirm writes the tap moment,
   // standing in for an intake nothing observed) and `taken_at` is the row's insert
-  // stamp. So the dozen hand-rolled `COALESCE(given_at, taken_at)` readers were falling
-  // back WITHIN one question all along — the right value under the wrong name — and the
-  // remaining job is a RENAME, not a re-pointing of existing readers.
+  // stamp. So the dozen hand-rolled `COALESCE(recorded_at, taken_at)` readers were falling
+  // back WITHIN one question all along — the right value under the wrong name.
   //
-  // The other half of that ruling has landed: `occurred_at` (migration 165, wave 1) is
-  // the event column this chain never had. It is a NEW column, not a re-labelling of an
-  // existing one, which is exactly why it could ship ahead of the rename — the rename
-  // is a rebuild plus a dozen COALESCE readers and carries all of the risk.
+  // Both halves of the #2229 ruling have now landed. `occurred_at` (migration 165, wave 1)
+  // is the event column this chain never had — a NEW column, not a re-labelling, which is
+  // why it could ship ahead of the rename. Migration 173 (wave 2) is the rename itself:
+  // `given_at` → `recorded_at`, the name finally matching the meaning.
+  //
+  // WHY `taken_at` DID NOT MOVE WITH IT. The declared vocabulary has exactly ONE word for
+  // "when it entered the app", and this table has TWO columns that answer it. `recorded_at`
+  // goes to the link readers actually reach. The only other word on offer, `created_at`, is
+  // declared bookkeeping — "a stamp that is not the fact the row records" — and this column
+  // IS reached, as a record answer, whenever nothing more precise was written (a SKIP writes
+  // no `recorded_at` and falls through to it). Renaming it `created_at` while declaring it
+  // `record` would install exactly the name/meaning mismatch this wave removes; declaring it
+  // `bookkeeping` to earn the name would drop a chain link and change what `recordInstant`
+  // returns for every skipped dose — a behaviour change, not a rename. So it keeps its name
+  // until the vocabulary grows a word for "the insert stamp BEHIND a more precise record
+  // instant", which is #2205's call to make, not this wave's.
   intake_item_logs: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
@@ -764,21 +775,28 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `given_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close.",
+      note: "Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `recorded_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close.",
     },
     {
-      column: "given_at",
+      column: "recorded_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed, so it is a `recorded_at` that has been wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. The `occurred_at` half of that ruling landed in migration 165; what is left is the RENAME to `recorded_at`, on its own slot. Neither link is the event instant, and that is the whole point.",
+      note: "RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed. Named `given_at` until migration 173 (#2205 phase 2 wave 2), which is the whole of that wave: it was a record instant wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. Neither link is the event instant, and that is the whole point.",
     },
     {
       column: "taken_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "The row's insert stamp, and the SECOND link of the record chain: only rows written before given_at existed (pre-migration-041) fall through to it. The `COALESCE(given_at, taken_at)` a dozen readers hand-roll is this chain — a fallback WITHIN the record question, not a substitution of a record instant for an event one.",
+      note: "The row's insert stamp (a SQLite clock column DEFAULT, which is what puts it on the bare convention), and the SECOND link of the record chain: a row that wrote no `recorded_at` — a SKIP, or anything written before the column existed (pre-migration-041) — falls through to it. The `COALESCE(recorded_at, taken_at)` a dozen readers hand-roll is this chain — a fallback WITHIN the record question, not a substitution of a record instant for an event one. It kept its name through migration 173 deliberately; see the note above this table for why.",
+    },
+    {
+      column: "given_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+      note: "VESTIGIAL, always NULL (#2205 phase 2 wave 2, the migration-124/169 pattern): migration 173 renamed the live column to `recorded_at` and kept this empty shell so the frozen migrations still work under migrate()'s unconditional replay — 041 guards its whole rebuild on `given_at` being present, and 156 re-creates its index over it. Declared `bookkeeping` rather than `record` on purpose: a dead column must not join the record chain the row readers walk. No application code names it (the SQL orderings all moved to `recorded_at` in the same change).",
     },
   ],
   intake_item_side_effects: [

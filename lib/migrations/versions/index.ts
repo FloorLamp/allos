@@ -170,6 +170,7 @@ import { migration as m168 } from "./168-appointment-day-time-split";
 import { migration as m169 } from "./169-illness-episode-day-window";
 import { migration as m170 } from "./170-tap-message-provenance";
 import { migration as m171 } from "./171-temperature-note-times";
+import { migration as m173 } from "./173-intake-log-recorded-at";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -349,4 +350,5 @@ export const MIGRATIONS: Migration[] = [
   m169,
   m170,
   m171,
+  m173,
 ];

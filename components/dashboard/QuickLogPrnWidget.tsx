@@ -81,11 +81,11 @@ export function QuickLogPrnContent({
   // REQUIRED whenever this content is mounted under a "use client" parent (the
   // illness cockpit/episode logger): in the browser, lib/clock's env override
   // doesn't exist, so a locally-computed now diverges from the clock-stamped
-  // given_at under ALLOS_TEST_NOW (the frozen e2e clock). Server mounts may omit
+  // recorded_at under ALLOS_TEST_NOW (the frozen e2e clock). Server mounts may omit
   // it (the local clockNow() below is the same server clock).
   nowIso?: string;
 }) {
-  // The frozen-clock seam (#1005): given_at is stamped through lib/clock, so the
+  // The frozen-clock seam (#1005): recorded_at is stamped through lib/clock, so the
   // elapsed-window "now" must come from the same source (a production no-op). A
   // client-mounted content receives the server's now via nowIso (see prop note).
   const now = nowIso ? new Date(nowIso) : clockNow();

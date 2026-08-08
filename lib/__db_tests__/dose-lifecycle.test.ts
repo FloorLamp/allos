@@ -128,15 +128,15 @@ function doseIntent(
   };
 }
 
-function givenAt(doseId: number, date: string): string | null {
+function recordedAt(doseId: number, date: string): string | null {
   return (
     (
       db
         .prepare(
-          "SELECT given_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+          "SELECT recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
         )
-        .get(doseId, date) as { given_at: string | null } | undefined
-    )?.given_at ?? null
+        .get(doseId, date) as { recorded_at: string | null } | undefined
+    )?.recorded_at ?? null
   );
 }
 
@@ -469,7 +469,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
 
     // Local midnight of the log's own day: unambiguously inside DATE in the profile
     // timezone and (except for the first instant of the day) hours before "now", so
-    // the stored given_at could not have come from datetime('now').
+    // the stored recorded_at could not have come from datetime('now').
     const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00")!;
 
     expect(
@@ -479,7 +479,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
       )
     ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });
-    expect(givenAt(doseId, DATE)).toBe(utcSqlString(tapped));
+    expect(recordedAt(doseId, DATE)).toBe(utcSqlString(tapped));
     expect(onHand(itemId)).toBe(9);
   });
 
@@ -498,8 +498,8 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
       )
     ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)?.status).toBe("taken");
-    expect(givenAt(doseId, DATE)).not.toBe(utcSqlString(skewed));
-    expect(givenAt(doseId, DATE)).toBeTruthy();
+    expect(recordedAt(doseId, DATE)).not.toBe(utcSqlString(skewed));
+    expect(recordedAt(doseId, DATE)).toBeTruthy();
   });
 
   it("REFUSES a paused item with an honest reason (the parallel-path regression)", () => {
