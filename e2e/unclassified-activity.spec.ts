@@ -95,10 +95,8 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
   // medal. `data-icon` is the icon KEY, so this reads the resolution, not a class name.
-  await expect(card.getByTestId("activity-icon").first()).toHaveAttribute(
-    "data-icon",
-    "activity"
-  );
+  const glyph = card.getByTestId("activity-icon").first(); // first-ok: the card this spec planted, whose header icon is the row's own type glyph
+  await expect(glyph).toHaveAttribute("data-icon", "activity");
 
   // The type chips can NAME this row. Without a chip it would be visible and
   // unfilterable at the same time — present in the feed, absent from the filter bar.
@@ -128,9 +126,8 @@ test("a restricted profile still sees its own unspecified session (#489/#2272)",
   });
   try {
     await member.goto(`/timeline?from=${CHILD_DATE}&to=${CHILD_DATE}`);
-    await expect(member.getByText(CHILD_TITLE).first()).toBeVisible({
-      timeout: 20_000,
-    }); // first-ok: the ONLY row on this deep-past day is the one this spec planted
+    const row = member.getByText(CHILD_TITLE).first(); // first-ok: the ONLY row on this deep-past single-day view is the one this spec planted
+    await expect(row).toBeVisible({ timeout: 20_000 });
   } finally {
     await member.context().close();
   }

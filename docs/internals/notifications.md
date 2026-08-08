@@ -999,6 +999,41 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
+**An IMPORTED finish gets a recap of its own, and is asked what it was (#2272).**
+The recap-line gate above ("real strength working sets") meant a SOURCED row —
+which has no `exercise_sets` — produced nothing at all, so the nudge fell through
+to dose-only and, with no doses due, sent nothing. Measured on a real profile:
+every `notify_last_post_workout_` marker ever written belonged to a MANUAL
+strength session with logged sets, and no imported activity had ever produced a
+recap. Presence detection was never the problem (an import that ends inside
+`FINISHED_WINDOW_MIN` and lands inside `IMPORT_FRESHNESS_MIN` reaches `finished`
+fine) — the message simply had nothing to say. `importedRecapLine`
+(`lib/notifications/workout-recap-format.ts`, pure) gives it the facts the import
+actually carries — duration, distance in canonical km, average/max HR, relative
+effort — in the same `A · B · C` shape, with NO volume, PR or target language,
+and null when the import carries no fact beyond its own existence. Gated on
+`source`, so a manual sessionless finish is unchanged.
+
+**The type ask** rides that message when the finishing row is `unclassified` —
+the #2272 activity type meaning "the source did not say". `ACTIVITY_TYPE_ASK_PROMPT`
+plus three inline buttons (Strength / Cardio / Sport) are APPENDED to a message
+that was already going out; there is no send of its own, which is the whole
+contact-consent posture (the system may reduce contact unilaterally, never
+increase it). With nothing to ride on there is no ask. It is offered ONCE — the
+nudge's existing per-activity one-shot marker IS the re-ask policy; an ignored
+ask leaves the row `unclassified` and correctable in the app forever, because a
+queue that re-asks is how a signal gets trained into noise. The answer applies to
+THAT ROW only: no remembered per-profile inference rule, which would be a second
+engine silently mislabeling every session after it. The tokens
+(`actype:<profileId>:<activityId>:<type>`) carry IDS ONLY and are declared INERT
+in `RECONCILE_PREFIXES` with their reason: `classifyActivityType`
+(`lib/activity-type-write.ts`) is a COMPARE-AND-SWAP on the row still being
+`unclassified`, so a keyboard whose row was classified in the app, or absorbed by
+the #2271 duplicate auto-merge, refuses the tap and says which — never a false
+confirm. The write also sets `edited = 1`, because `upsertActivities` writes
+`type` on every re-sync and `isEditLocked` is the only thing standing between a
+hand correction and the importer.
+
 ## Bedtime wear reminder (#2161)
 
 **The one consented send in the quiet-stream family.** A watch left on the

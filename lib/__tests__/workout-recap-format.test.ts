@@ -275,7 +275,11 @@ describe("the type ask rides an existing message (#2272)", () => {
   });
 
   it("adds a line and buttons to a recap-only message — never a send of its own", () => {
-    const msg = composeFinishNudge("Afternoon Workout done · 60 min", null, ask);
+    const msg = composeFinishNudge(
+      "Afternoon Workout done · 60 min",
+      null,
+      ask
+    );
     expect(msg).not.toBeNull();
     expect(plainBody(msg!.body)).toBe(
       `Afternoon Workout done · 60 min\n\n${ACTIVITY_TYPE_ASK_PROMPT}`

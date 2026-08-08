@@ -345,7 +345,13 @@ describe("findActivityDuplicates", () => {
     // exists for: no clock windows at all, so all the classifier has is a 30-minute
     // 5 km cardio row and a 30-minute 5 km sport row — a run and a swim, not a pair.
     const rows = [
-      act({ id: 1, type: "cardio", source: null, duration_min: 30, distance_km: 5 }),
+      act({
+        id: 1,
+        type: "cardio",
+        source: null,
+        duration_min: 30,
+        distance_km: 5,
+      }),
       act({
         id: 2,
         type: "sport",

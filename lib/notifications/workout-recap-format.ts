@@ -129,9 +129,7 @@ export interface ImportedSessionFacts {
 //
 // Null when the import carries no fact beyond its own existence — "Workout done" on
 // its own is not worth a push.
-export function importedRecapLine(
-  facts: ImportedSessionFacts
-): string | null {
+export function importedRecapLine(facts: ImportedSessionFacts): string | null {
   const segs: string[] = [];
   if (facts.durationMin != null && facts.durationMin > 0)
     segs.push(`${facts.durationMin} min`);
@@ -141,7 +139,9 @@ export function importedRecapLine(
     segs.push(fmtDistance(facts.distanceKm, "km"));
   if (facts.avgHr != null && facts.avgHr > 0) {
     const max =
-      facts.maxHr != null && facts.maxHr > 0 ? ` (max ${Math.round(facts.maxHr)})` : "";
+      facts.maxHr != null && facts.maxHr > 0
+        ? ` (max ${Math.round(facts.maxHr)})`
+        : "";
     segs.push(`avg HR ${Math.round(facts.avgHr)}${max}`);
   } else if (facts.maxHr != null && facts.maxHr > 0) {
     segs.push(`max HR ${Math.round(facts.maxHr)}`);

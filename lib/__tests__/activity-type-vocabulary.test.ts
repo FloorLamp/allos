@@ -77,9 +77,9 @@ describe("every per-type map answers for every type", () => {
     }
     // Deliberately the conditioning-exercise tiers, NOT sport's: the else-branch that
     // invented `sport` also inflated this estimate.
-    expect(metsForActivity("Some Coined Name", "unclassified", "moderate")).toBe(
-      metsForActivity("Some Coined Name", "strength", "moderate")
-    );
+    expect(
+      metsForActivity("Some Coined Name", "unclassified", "moderate")
+    ).toBe(metsForActivity("Some Coined Name", "strength", "moderate"));
   });
 
   it("the effort-class map settles or defers for every type", () => {

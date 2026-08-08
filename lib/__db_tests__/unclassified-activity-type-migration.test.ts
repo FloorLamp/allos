@@ -219,13 +219,17 @@ describe("migration 172 — activities.type admits `unclassified` (#2272)", () =
     seed(mem, 384, "sport");
     seed(mem, 385, "strength");
     up(mem);
-    expect(
-      mem.prepare(`SELECT id FROM activities ORDER BY id`).all()
-    ).toEqual([{ id: 384 }, { id: 385 }]);
+    expect(mem.prepare(`SELECT id FROM activities ORDER BY id`).all()).toEqual([
+      { id: 384 },
+      { id: 385 },
+    ]);
     seed(mem, 0, "cardio", { id: null as unknown as number });
     expect(
-      (mem.prepare(`SELECT MAX(id) AS m FROM activities`).get() as { m: number })
-        .m
+      (
+        mem.prepare(`SELECT MAX(id) AS m FROM activities`).get() as {
+          m: number;
+        }
+      ).m
     ).toBe(386);
     mem.close();
   });

@@ -151,9 +151,9 @@ describe("the tap comes back through the shared core (#2272)", () => {
 
     await tap(`actype:${p}:${activityId}:strength`);
     expect(
-      db.prepare("SELECT type, edited FROM activities WHERE id = ?").get(
-        activityId
-      )
+      db
+        .prepare("SELECT type, edited FROM activities WHERE id = ?")
+        .get(activityId)
     ).toEqual({ type: "strength", edited: 1 });
     expect(answerTap.mock.calls.at(-1)?.[1]).toBe("Saved as strength ✅");
   });
@@ -181,9 +181,9 @@ describe("the tap comes back through the shared core (#2272)", () => {
     await tap(`actype:${stranger}:${activityId}:sport`);
     expect(
       (
-        db.prepare("SELECT type FROM activities WHERE id = ?").get(
-          activityId
-        ) as { type: string }
+        db
+          .prepare("SELECT type FROM activities WHERE id = ?")
+          .get(activityId) as { type: string }
       ).type
     ).toBe("unclassified");
     expect(answerTap.mock.calls.at(-1)?.[1]).toContain("out of date");

@@ -570,7 +570,9 @@ describe("parseActivityTypeAskCallback (#2272)", () => {
   it("refuses a type outside the three answers, a foreign prefix, and bad ids", () => {
     // `unclassified` is the QUESTION, never an answer to it; `recovery` has its own
     // surface. Neither may arrive through a tampered token.
-    expect(parseActivityTypeAskCallback("actype:1:384:unclassified")).toBeNull();
+    expect(
+      parseActivityTypeAskCallback("actype:1:384:unclassified")
+    ).toBeNull();
     expect(parseActivityTypeAskCallback("actype:1:384:recovery")).toBeNull();
     expect(parseActivityTypeAskCallback("wofinish:1:384")).toBeNull();
     expect(parseActivityTypeAskCallback("actype:0:384:cardio")).toBeNull();

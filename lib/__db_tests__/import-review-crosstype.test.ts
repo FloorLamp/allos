@@ -210,14 +210,14 @@ describe("the auto-merge sweep collapses the reported pair (#2271)", () => {
     expect(after[0].duration_min).toBe(59);
 
     expect(
-      db
-        .prepare(`SELECT COUNT(*) AS c FROM activities WHERE id = ?`)
-        .get(hc)
+      db.prepare(`SELECT COUNT(*) AS c FROM activities WHERE id = ?`).get(hc)
     ).toEqual({ c: 0 });
 
     // A durable `merged` decision, so the collapse stays inspectable and reversible in
     // Review exactly like a manual one.
-    const decisions = [...getPairDecisions(profileId, ACTIVITY_DOMAIN).values()];
+    const decisions = [
+      ...getPairDecisions(profileId, ACTIVITY_DOMAIN).values(),
+    ];
     expect(decisions).toEqual(["merged"]);
   });
 

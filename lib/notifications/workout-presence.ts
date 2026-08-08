@@ -158,21 +158,6 @@ export function buildPostWorkoutFinishReminder(
   );
 }
 
-// Deliver the post-workout reminder for ONE activity — the shared dispatch core
-// (#1154 §B / #221): the presence-driven tick flagship AND the write-path
-// delayed dispatch (lib/notifications/post-workout-queue.ts) both call this, so
-// gating (dueness, the #924 recap composition, the #928 channel matrix) and the
-// one-shot marker can never fork. One-shot per activity id; only-when-pending;
-// the marker is stamped only on delivery (under writeTx with a re-read, so the
-// action-timer and the tick racing each other stamp at most once) so a
-// no-channel/failed run retries on the tick backstop.
-//
-// `verifyCompletedToday` (the queued path) re-reads the activity at fire time
-// and skips — without burning the one-shot — unless the row still exists for
-// this profile, is dated today (profile-local), and is COMPLETED
-// (isCompletedSessionRow): a finish that was undone in the delay window, or an
-// edit that moved the session off today, sends nothing. The presence path skips
-// this (presence already proved a just-finished session).
 // The imported row's own facts, for the #2272 recap line, plus the two fields the
 // composition branches on: `source` (is this an import at all) and `type` (is it the
 // stated absence the ask is for). One read; profile-scoped.
@@ -218,6 +203,21 @@ function importedFacts(row: FinishRow): ImportedSessionFacts {
   };
 }
 
+// Deliver the post-workout reminder for ONE activity — the shared dispatch core
+// (#1154 §B / #221): the presence-driven tick flagship AND the write-path
+// delayed dispatch (lib/notifications/post-workout-queue.ts) both call this, so
+// gating (dueness, the #924 recap composition, the #928 channel matrix) and the
+// one-shot marker can never fork. One-shot per activity id; only-when-pending;
+// the marker is stamped only on delivery (under writeTx with a re-read, so the
+// action-timer and the tick racing each other stamp at most once) so a
+// no-channel/failed run retries on the tick backstop.
+//
+// `verifyCompletedToday` (the queued path) re-reads the activity at fire time
+// and skips — without burning the one-shot — unless the row still exists for
+// this profile, is dated today (profile-local), and is COMPLETED
+// (isCompletedSessionRow): a finish that was undone in the delay window, or an
+// edit that moved the session off today, sends nothing. The presence path skips
+// this (presence already proved a just-finished session).
 export async function runPostWorkoutForActivity(
   profileId: number,
   activityId: number,
@@ -226,7 +226,11 @@ export async function runPostWorkoutForActivity(
   const date = today(profileId);
   const finishRow = loadFinishRow(profileId, activityId);
   if (opts.verifyCompletedToday) {
-    if (!finishRow || finishRow.date !== date || !isCompletedSessionRow(finishRow))
+    if (
+      !finishRow ||
+      finishRow.date !== date ||
+      !isCompletedSessionRow(finishRow)
+    )
       return { failed: false };
   }
 

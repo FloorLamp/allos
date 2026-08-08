@@ -755,11 +755,7 @@ async function handleActivityTypeAskTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  const outcome = classifyActivityType(
-    profileId,
-    token.activityId,
-    token.type
-  );
+  const outcome = classifyActivityType(profileId, token.activityId, token.type);
   await answerCallbackQuery(cq.id, activityTypeAskAnswerText(outcome));
   await consumeRow(cq, activityTypeAskAnswerText(outcome));
 }

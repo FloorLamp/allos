@@ -680,9 +680,9 @@ describe("classifyActivityType — the ask's answer (#2272)", () => {
     });
     expect(
       (
-        db
-          .prepare(`SELECT type FROM activities WHERE id = ?`)
-          .get(id) as { type: string }
+        db.prepare(`SELECT type FROM activities WHERE id = ?`).get(id) as {
+          type: string;
+        }
       ).type
     ).toBe("unclassified");
   });
