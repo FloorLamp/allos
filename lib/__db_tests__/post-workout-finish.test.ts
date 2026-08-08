@@ -24,6 +24,7 @@ import {
   postWorkoutFinishMarkerKey,
 } from "@/lib/notifications/workout-presence";
 import { setProfileSetting } from "@/lib/settings";
+import { classifyActivityType } from "@/lib/activity-type-write";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-postworkout";
 const NOW = new Date("2026-07-17T18:00:00Z");
@@ -452,5 +453,237 @@ describe("runPostWorkoutForActivity (the delayed-dispatch core, #1154 §B)", () 
       getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))
     ).toBeUndefined();
     void setProfileSetting; // referenced to keep the shared import stable
+  });
+});
+
+// ── #2272: the recap finally fires for an IMPORT, and asks when nobody classified ──
+//
+// Measured on a real profile before this change: every notify_last_post_workout_
+// marker ever written belonged to a MANUAL strength session with logged sets, and no
+// imported activity had ever produced a recap. Presence detection was never the
+// problem — an import that ends inside FINISHED_WINDOW_MIN and lands inside
+// IMPORT_FRESHNESS_MIN reaches `finished` fine. The message simply had nothing to
+// say: getSessionRecap is honest about a row with no exercise_sets, and
+// recapNudgeLine then declined the whole line.
+
+// An imported session that ended `endMinAgo` before NOW and was first seen just now.
+function seedImportedFinished(
+  profileId: number,
+  date: string,
+  type: string,
+  over: {
+    endMinAgo?: number;
+    durationMin?: number | null;
+    distanceKm?: number | null;
+    avgHr?: number | null;
+    maxHr?: number | null;
+    relativeEffort?: number | null;
+    title?: string;
+    externalId?: string;
+  } = {}
+): number {
+  const o = {
+    endMinAgo: 20,
+    durationMin: 60,
+    distanceKm: null,
+    avgHr: null,
+    maxHr: null,
+    relativeEffort: null,
+    title: "Workout",
+    externalId: `health-connect:${type}:${date}`,
+    ...over,
+  };
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, start_time, end_time, duration_min,
+            distance_km, avg_hr, max_hr, relative_effort, created_at, source, external_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'health-connect', ?)`
+      )
+      .run(
+        profileId,
+        date,
+        type,
+        o.title,
+        hhmmAgo(o.endMinAgo + 60),
+        hhmmAgo(o.endMinAgo),
+        o.durationMin,
+        o.distanceKm,
+        o.avgHr,
+        o.maxHr,
+        o.relativeEffort,
+        utcSqlString(NOW),
+        o.externalId
+      ).lastInsertRowid
+  );
+}
+
+describe("an imported finish gets its own recap line (#2272)", () => {
+  it("recaps the facts the import carries — with no volume, PR or target language", async () => {
+    // The reported shape: 60 minutes, no sets, and a profile with ZERO post_workout
+    // intake items — the case that produced no send at all.
+    const p = newProfile("ImportRecap");
+    const date = today(p);
+    const activityId = seedImportedFinished(p, date, "cardio", {
+      title: "Morning Ride",
+      distanceKm: 24.5,
+      avgHr: 138,
+      maxHr: 161,
+    });
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = lastPayload(fetchMock);
+    expect(payload.kind).toBe("workout-recap");
+    expect(payload.body).toContain("Morning Ride done");
+    expect(payload.body).toContain("60 min");
+    expect(payload.body).toContain("24.5 km");
+    expect(payload.body).toContain("avg HR 138 (max 161)");
+    expect(payload.body).not.toMatch(/set|volume|PR|target/i);
+    // A recap-only imported finish still burns the one-shot.
+    expect(getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))).toBe(
+      date
+    );
+  });
+
+  it("stays silent for an import that carries no fact beyond its own existence", async () => {
+    const p = newProfile("ImportBare");
+    const date = today(p);
+    seedImportedFinished(p, date, "cardio", { durationMin: null });
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves a MANUAL sessionless finish exactly as it was — still no send", async () => {
+    // The import line is gated on `source`, so the pre-#2272 manual behaviour (no sets,
+    // no doses ⇒ nothing to say) is untouched. Pinned again here beside its new sibling.
+    const p = newProfile("ManualUnchanged");
+    const date = today(p);
+    seedManualFinished(p, date, 20);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the type ask rides that recap, and only when nobody classified (#2272)", () => {
+  it("asks for an `unclassified` finish", async () => {
+    // The Home Assistant payload carries no generic actions, so the BUTTONS are pinned
+    // over Telegram in activity-type-ask.test.ts; what this pins is that the ask rode
+    // the message at all, and that it is the row's TYPE that decides.
+    const p = newProfile("AskUnclassified");
+    const date = today(p);
+    seedImportedFinished(p, date, "unclassified");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    expect(lastPayload(fetchMock).body).toContain("didn't say what this was");
+  });
+
+  it("does NOT ask when the source did state a type", async () => {
+    const p = newProfile("AskClassified");
+    const date = today(p);
+    seedImportedFinished(p, date, "cardio", { title: "Morning Ride" });
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    const payload = lastPayload(fetchMock);
+    expect(payload.body).toContain("Morning Ride done");
+    expect(payload.body).not.toContain("didn't say what this was");
+  });
+
+  it("is offered ONCE — the nudge's own one-shot is the whole re-ask policy", async () => {
+    const p = newProfile("AskOnce");
+    const date = today(p);
+    seedImportedFinished(p, date, "unclassified");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A queue that re-asks is how a signal gets trained into noise: the row stays
+    // `unclassified` and stays correctable in the app forever, but it is never asked
+    // about again.
+    await runPostWorkoutFinish(p, NOW);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("classifyActivityType — the ask's answer (#2272)", () => {
+  it("writes that row only, and locks it against the next re-sync", async () => {
+    const p = newProfile("ClassifyWrite");
+    const date = today(p);
+    const target = seedImportedFinished(p, date, "unclassified");
+    const bystander = seedImportedFinished(p, date, "unclassified", {
+      endMinAgo: 200,
+      externalId: "health-connect:other",
+    });
+
+    expect(classifyActivityType(p, target, "strength")).toEqual({
+      kind: "classified",
+      activityId: target,
+      type: "strength",
+    });
+    const row = db
+      .prepare(`SELECT type, edited FROM activities WHERE id = ?`)
+      .get(target) as { type: string; edited: number };
+    expect(row.type).toBe("strength");
+    // `edited` is not decoration: upsertActivities WRITES `type` on every re-sync and
+    // isEditLocked is the only thing standing between a hand correction and the
+    // importer. Without this the answer would silently revert to `unclassified`.
+    expect(row.edited).toBe(1);
+    // The answer applies to THAT ROW — no remembered per-profile inference rule.
+    expect(
+      (
+        db
+          .prepare(`SELECT type FROM activities WHERE id = ?`)
+          .get(bystander) as { type: string }
+      ).type
+    ).toBe("unclassified");
+  });
+
+  it("refuses a second tap and a row that was merged away, honestly", async () => {
+    const p = newProfile("ClassifyRefuse");
+    const date = today(p);
+    const id = seedImportedFinished(p, date, "unclassified");
+    classifyActivityType(p, id, "cardio");
+    // A stale keyboard tapped again: the compare-and-swap consumed the absence it was
+    // offered for, so the second answer cannot overwrite the first.
+    expect(classifyActivityType(p, id, "sport")).toEqual({
+      kind: "already-classified",
+      activityId: id,
+      type: "cardio",
+    });
+    // …and a keyboard whose row was absorbed by the duplicate auto-merge (#2271).
+    db.prepare(`DELETE FROM activities WHERE id = ?`).run(id);
+    expect(classifyActivityType(p, id, "sport")).toEqual({ kind: "not-found" });
+  });
+
+  it("refuses to reach another profile's row", async () => {
+    const owner = newProfile("ClassifyOwner");
+    const other = newProfile("ClassifyOther");
+    const date = today(owner);
+    const id = seedImportedFinished(owner, date, "unclassified");
+    expect(classifyActivityType(other, id, "cardio")).toEqual({
+      kind: "not-found",
+    });
+    expect(
+      (
+        db
+          .prepare(`SELECT type FROM activities WHERE id = ?`)
+          .get(id) as { type: string }
+      ).type
+    ).toBe("unclassified");
   });
 });
