@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { plainBody } from "@/lib/notifications/rich-text";
 import {
+  ACTIVITY_TYPE_ASK_PROMPT,
+  activityTypeAskActions,
   composeFinishNudge,
+  importedRecapLine,
   recapNudgeLine,
   weeklyRemainingLine,
+  type ImportedSessionFacts,
 } from "../notifications/workout-recap-format";
 import type { NotificationMessage } from "../notifications/types";
 import type { Recap } from "../session-recap";
@@ -198,5 +202,109 @@ describe("weeklyRemainingLine (#981 §3, #1122)", () => {
         target("type", "cardio", 0, 3),
       ])
     ).toBeNull();
+  });
+});
+
+// ── The IMPORTED recap line and the type ask (#2272) ────────────────────────────
+
+function facts(over: Partial<ImportedSessionFacts> = {}): ImportedSessionFacts {
+  return {
+    title: "Afternoon Workout",
+    durationMin: 60,
+    distanceKm: null,
+    avgHr: null,
+    maxHr: null,
+    relativeEffort: null,
+    ...over,
+  };
+}
+
+describe("importedRecapLine (#2272)", () => {
+  it("speaks the facts the import actually carries — and no volume/PR language", () => {
+    const line = importedRecapLine(
+      facts({ avgHr: 142.4, maxHr: 157, relativeEffort: 64 })
+    );
+    expect(line).toBe(
+      "Afternoon Workout done · 60 min · avg HR 142 (max 157) · effort 64"
+    );
+    // The strength vocabulary must not appear for a row with no sets at all.
+    expect(line).not.toMatch(/set|volume|PR|target/i);
+  });
+
+  it("includes distance in canonical km (the notification unit policy)", () => {
+    expect(importedRecapLine(facts({ distanceKm: 8.234 }))).toBe(
+      "Afternoon Workout done · 60 min · 8.23 km"
+    );
+  });
+
+  it("falls back to the elapsed span only through its caller, and skips absent facts", () => {
+    expect(importedRecapLine(facts({ durationMin: null, avgHr: 118 }))).toBe(
+      "Afternoon Workout done · avg HR 118"
+    );
+    expect(importedRecapLine(facts({ avgHr: null, maxHr: 168 }))).toBe(
+      "Afternoon Workout done · 60 min · max HR 168"
+    );
+  });
+
+  it("is null when the import carries no fact beyond its own existence", () => {
+    // "Workout done" alone is not worth a push.
+    expect(importedRecapLine(facts({ durationMin: null }))).toBeNull();
+    expect(importedRecapLine(facts({ durationMin: 0 }))).toBeNull();
+  });
+
+  it("names the session Workout when the import supplied no title", () => {
+    expect(importedRecapLine(facts({ title: "  " }))).toBe(
+      "Workout done · 60 min"
+    );
+  });
+});
+
+describe("the type ask rides an existing message (#2272)", () => {
+  const ask = {
+    prompt: ACTIVITY_TYPE_ASK_PROMPT,
+    actions: activityTypeAskActions(1, 384),
+  };
+
+  it("mints three id-only tokens on one keyboard row", () => {
+    expect(ask.actions.map((a) => a.data)).toEqual([
+      "actype:1:384:strength",
+      "actype:1:384:cardio",
+      "actype:1:384:sport",
+    ]);
+    expect(new Set(ask.actions.map((a) => a.row))).toEqual(new Set(["actype"]));
+  });
+
+  it("adds a line and buttons to a recap-only message — never a send of its own", () => {
+    const msg = composeFinishNudge("Afternoon Workout done · 60 min", null, ask);
+    expect(msg).not.toBeNull();
+    expect(plainBody(msg!.body)).toBe(
+      `Afternoon Workout done · 60 min\n\n${ACTIVITY_TYPE_ASK_PROMPT}`
+    );
+    expect(msg!.actions).toHaveLength(3);
+    expect(msg!.kind).toBe("workout-recap");
+  });
+
+  it("appends to a dose message without displacing its own buttons or kind", () => {
+    const msg = composeFinishNudge("Workout done · 60 min", doseMsg, ask);
+    expect(msg!.kind).toBe("dose");
+    expect(plainBody(msg!.body)).toContain(ACTIVITY_TYPE_ASK_PROMPT);
+    expect(msg!.actions!.map((a) => a.data)).toEqual([
+      "take:1:2:3:2026-07-17",
+      "actype:1:384:strength",
+      "actype:1:384:cardio",
+      "actype:1:384:sport",
+    ]);
+  });
+
+  it("has nothing to ride when neither a recap nor a dose section exists", () => {
+    // The contact-consent rule: the system may reduce contact unilaterally, never
+    // increase it. No message ⇒ no ask.
+    expect(composeFinishNudge(null, null, ask)).toBeNull();
+  });
+
+  it("leaves the message untouched when there is no ask", () => {
+    expect(composeFinishNudge("Workout done", doseMsg)!.actions).toEqual(
+      doseMsg.actions
+    );
   });
 });

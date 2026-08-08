@@ -450,8 +450,11 @@ describe("parseHealthConnectPayload — activities", () => {
         { type: "70", start_time: "2026-06-15T09:00:00Z" }, // STRENGTH_TRAINING
       ],
     });
+    // "0" is EXERCISE_TYPE_OTHER_WORKOUT — "a workout, unspecified". That is a stated
+    // ABSENCE, so the row says so (#2272) instead of asserting a `sport` no provider
+    // ever claimed. The three real types are unaffected.
     expect(out.activities.map((a) => [a.title, a.type])).toEqual([
-      ["Workout", "sport"],
+      ["Workout", "unclassified"],
       ["Running", "cardio"],
       ["Biking", "cardio"],
       ["Strength Training", "sport"],
@@ -464,7 +467,8 @@ describe("parseHealthConnectPayload — activities", () => {
       exercise: [{ type: "91", start_time: "2026-06-15T06:00:00Z" }],
     });
     expect(out.activities[0].title).toBe("Workout");
-    expect(out.activities[0].type).toBe("sport");
+    // A constant this build cannot read is also a source that said nothing we can use.
+    expect(out.activities[0].type).toBe("unclassified");
   });
 
   // The numeric and string spellings share one code path, so they must agree.
