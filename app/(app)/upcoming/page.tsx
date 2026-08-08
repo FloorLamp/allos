@@ -16,6 +16,7 @@ import {
   IconPlugConnected,
   IconPlugConnectedX,
   IconInbox,
+  IconFileDownload,
   IconArrowBackUp,
   IconBellOff,
   IconInfoCircle,
@@ -135,6 +136,10 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   // An open portal sync request (#1757) — the same plug family as a broken sync, but
   // connected: nothing is wrong, a person just needs to run the tool.
   "portal-sync": IconPlugConnected,
+  // A records-recency ask (#2164/#2176) — the errand is to BRING DATA IN (download an
+  // archive, upload a result), so the glyph names the fetch rather than a connection:
+  // nothing is plugged in here, and nothing is broken.
+  "records-recency": IconFileDownload,
   review: IconInbox,
 };
 
@@ -975,6 +980,19 @@ function Row({
       label: "Book",
       href: item.bookHref,
       icon: "book",
+    });
+  }
+  // A SECOND destination (#2176): the row's own href is one honest fix and this is the
+  // other. Rendered through the shared descriptor list, so it is a chip at `sm`+ and a
+  // menu item below it like every other secondary action — no per-domain renderer.
+  if (item.altAction) {
+    actions.push({
+      id: "alt",
+      kind: "link",
+      label: item.altAction.label,
+      href: item.altAction.href,
+      icon: "arrow-right",
+      testId: item.altAction.testId,
     });
   }
   if (actionVisible && item.preventiveRuleKey != null) {

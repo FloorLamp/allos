@@ -322,6 +322,55 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // minute-level heart rate is silent between imports by definition. Declaring one
     // here would report every profile that ever imported a Takeout export as quiet,
     // forever — the exemption is by construction, not by a detector special case.
+    //
+    // …but the DATA can still fall behind, and for four streams nothing else in the app
+    // can catch it (#2164). Every connection-level detector is blind here BY the two
+    // decisions above: the provider is exempt from staleness, there is no failing event
+    // to classify, and the phone exporter keeps pushing everything Fitbit DOES forward
+    // — so every signal reads healthy while the scale's readings quietly stop.
+    archiveRefresh: {
+      horizonDays: 30,
+      because:
+        "Measured on the profile this was found on: ~4-5 weigh-ins a month from a scale that syncs to Fitbit, so 30 days loses at most about four readings. It also matches the effort curve — asking Google for an export is a several-minute errand that Google then prepares asynchronously, so a tighter horizon would ask again before the previous ask could plausibly have been answered. Not adaptive, not learned.",
+      streams: [
+        {
+          id: "weight",
+          label: "weight",
+          selector: { table: "body_metrics", column: "weight_kg" },
+          because:
+            "Fitbit does not forward scale weight to Health Connect, so the phone exporter never carries it (the blurb above says the same thing to the user).",
+        },
+        {
+          id: "body-fat",
+          label: "body fat",
+          selector: { table: "body_metrics", column: "body_fat_pct" },
+          because:
+            "Body composition rides the same scale sync Fitbit keeps to itself.",
+        },
+        {
+          id: "sleep-score",
+          label: "sleep score",
+          // The metric key LITERALLY, not imported: this file's imports are
+          // type-only today and that is worth keeping — the parser module that owns
+          // FITBIT_SLEEP_SCORE_METRIC is a thousand lines of CSV handling nothing
+          // rendering the registry needs. lib/__tests__/registry.test.ts pins the two
+          // literals against those constants, so they cannot drift.
+          selector: { table: "metric_samples", metric: "fitbit_sleep_score" },
+          because:
+            "Fitbit's own computed score: it exists only inside Fitbit, and only the export emits it.",
+        },
+        {
+          id: "readiness-score",
+          label: "readiness score",
+          selector: {
+            table: "metric_samples",
+            metric: "fitbit_readiness_score",
+          },
+          because:
+            "Fitbit's own computed score, same as the sleep score — vendor-internal, export-only.",
+        },
+      ],
+    },
     docsUrl: "https://takeout.google.com/",
   },
   {

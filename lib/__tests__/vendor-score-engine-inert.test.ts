@@ -57,6 +57,24 @@ const FITBIT_ALLOWLIST = new Set<string>([
   "lib/integrations/fitbit-takeout.ts",
   // Plausibility bounds (0–100) — storage hygiene, not synthesis.
   "lib/ingest-bounds.ts",
+  // The DECLARATION of which streams only a Takeout archive can deliver (#2164). Two
+  // things make this a safe member rather than a hole in the rule:
+  //
+  //   It is DATA, not code. registry.ts is a literal array with type-only imports; it
+  //   cannot compute with anything, and the two kinds appear only as the `metric`
+  //   selector telling the reader WHICH ROWS to look at.
+  //
+  //   The reader asks `MAX(date)` and nothing else. `archiveExclusiveFrontier`
+  //   (lib/queries/upcoming/records-recency.ts) selects no `value` column at all, so
+  //   the ask it feeds is a fact about DELIVERY — "the last export carried data through
+  //   the 26th" — never about what Fitbit scored. The score's number reaches no
+  //   decision, no pillar, no copy. lib/__db_tests__/records-recency.test.ts pins that
+  //   the verdict is unchanged by the value.
+  //
+  // Note the file itself is NOT the same as the query module: the query module never
+  // names a kind, it reads the selector out of this declaration, which is why it does
+  // not (and must not) appear here.
+  "lib/integrations/registry.ts",
 ]);
 
 const VENDORS: VendorScores[] = [

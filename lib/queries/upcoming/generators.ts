@@ -9,6 +9,7 @@
 
 import { cache } from "../../request-cache";
 import { syncRequestItems } from "./portal-sync";
+import { recordsRecencyItems } from "./records-recency";
 import { shiftDateStr } from "../../date";
 import {
   signalKey,
@@ -632,6 +633,13 @@ const rawUpcoming = cache(function rawUpcoming(
     // section formats the SAME set, so the item and its digest line share one dedupe
     // key and one dismissal (#221), and the feature needs no send of its own.
     ...syncRequestItems(profileId, today),
+    // Records-recency asks (#2164 + #2176) — the other two legs of the same pattern:
+    // "your Takeout export is six weeks behind", "your newest lab result is from last
+    // May". They ride this aggregation for the identical reason the portal request
+    // does, and joining it is their ENTIRE reach: the digest's Today section formats
+    // this same set, so each item and its digest line share one dedupe key and one
+    // dismissal (#221), and neither leg needs — or gets — a send of its own.
+    ...recordsRecencyItems(profileId, today),
   ];
 });
 

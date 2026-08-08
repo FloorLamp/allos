@@ -461,8 +461,14 @@ const CARD_BAND_RANK: Record<CardBand, number> = {
 //
 // A SET, not a special case: the next calm domain that must stay off the hero adds a
 // name here rather than another branch.
+// `records-recency` (#2164/#2176) is the next name, and it arrives for exactly the
+// reason the set exists: it is the same coaching-tier ask one step further out — "your
+// Takeout export is six weeks behind", "your newest lab result is from last May" — and
+// a month-scale drift that a person fixes when they next have twenty minutes has no
+// claim on the one surface a user cannot choose not to look at.
 const CARD_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
   "portal-sync",
+  "records-recency",
 ]);
 
 // Which card band an item belongs to, or null if the card EXCLUDES it. Signals →

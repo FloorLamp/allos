@@ -956,6 +956,47 @@ weeks" is precisely what its owner will not notice — and the severity answer i
 the opposite: portal hygiene is never a safety signal, and a request that nobody
 acts on **expires** rather than escalating.
 
+**The same shape, generalized to every person-operated source (#2164 + #2176).**
+A portal is one of three ways data reaches allos through a human being. The other
+two are a manual archive download (a Google Takeout export, which is the only path
+for Fitbit scale weight, body fat, and Fitbit's own sleep/readiness scores) and a
+photograph of a paper result. Both were silent forever; both now carry the same
+ask, under one namespace (`records-recency:`, coaching tier) and one pure decision
+(`lib/records-recency.ts`).
+
+The generalization deliberately did **not** extend `portal_sync_requests`. #1757
+stores a row because a request has causes the data cannot express — somebody
+pressed "Request sync", a visit happened this morning. These two legs are pure
+staleness over a **data frontier**, so a row could only be a cache that disagrees
+with the facts. What #1757's row supplied that a derived ask still needs is a
+stable identity for the dismissal bus, and the frontier supplies it:
+`records-recency:<source>:<frontier>`. A dismissal therefore means "not this ask";
+the frontier moves only when the source actually delivered something newer, which
+is exactly the event that ends the episode.
+
+Three properties are load-bearing and are the same in both legs:
+
+- **The clock reads the DATA, never the event.** The archive leg keys on the
+  newest archive-**sourced data date**, so importing a stale export answers
+  nothing; the manual leg keys on the newest **collection** date (the #557/#283
+  discipline), so a backfill of decade-old results uploaded this afternoon does
+  not reset it and a result collected last month but photographed today clears it.
+- **Declared, not inferred.** The archive-exclusive streams and their horizon are
+  a registry facet on the provider (`archiveRefresh`), beside
+  `silenceToleranceMinutes` and `continuousStreams` and for the same reason. The
+  lab horizon is read off the preventive catalog's routine check-up rule for the
+  profile's age (interval + the rule's own grace), so a pediatric profile ages
+  against the well-child rhythm — reuse, not a fork, and no learner anywhere.
+- **One ask per problem.** A profile with a mapped patient portal is #1757's to
+  nag, so the manual leg exempts it outright. A profile with _no_ frontier at all
+  gets neither: an empty record base is onboarding's territory (#2173), not
+  staleness.
+
+The reach is the strictest shape the doctrine allows, identical to the portal
+request's: an Upcoming item, one named digest line on a message that was already
+going to send, and nothing else — excluded from the hero by `cardBandForItem`,
+with no `notify_*` marker and no escalation, forever.
+
 **A keyboard edit is not a send; an edit that would notify is.** Telegram's
 `editMessageReplyMarkup` changes a message the user already received and does not
 ring their phone. That is what lets #1505's offer tail stay accurate across slot

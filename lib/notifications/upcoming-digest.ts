@@ -94,6 +94,10 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // phrase rather than rewording it.
   integration: "sync issue",
   "portal-sync": "portal check",
+  // A records-recency ask (#2164/#2176) is a NAMED-LINE domain too, so this noun is
+  // never rendered either — same as the two above, and here for the same exhaustive-
+  // Record reason.
+  "records-recency": "records refresh",
   review: "review item",
 };
 
@@ -112,6 +116,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
   "integration",
   "portal-sync",
+  "records-recency",
   "prn-max",
   "refill",
   "dietary-limit",
@@ -259,6 +264,11 @@ const NAMED_LINE_DOMAINS: Partial<Record<UpcomingDomain, NamedLineDomain>> = {
     glyph: "🙋",
     carriesDeadline: true,
     why: "An errand only a PERSON can run, away from the device reading the message (#1757). 🙋 is deliberately domain-neutral rather than 🖥️: the distinction is who acts, not what hardware is involved, so a future errand line in another domain inherits it. The request EXPIRES, and that expiry is the only deadline the ask has.",
+  },
+  "records-recency": {
+    glyph: "🙋",
+    carriesDeadline: false,
+    why: "The domain-neutral errand glyph, inherited exactly as the portal line's comment anticipated (#2164/#2176): downloading a Takeout archive or photographing a paper result is an errand only a person can run. It carries NO deadline — unlike a portal request, nothing here expires, and the item's `dueText` states the drift ('6 weeks behind'), so printing it as a deadline would invent one.",
   },
 };
 

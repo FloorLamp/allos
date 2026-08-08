@@ -55,6 +55,19 @@ const ALLOWLIST: Record<string, string> = {
     "post-visit > staleness), which the supersession rule already resolves to one " +
     "row per portal login. Risk-ranking portal hygiene would imply a clinical " +
     "urgency this coaching-tier signal deliberately never claims",
+  archiveRefreshItems:
+    "an ARCHIVE REFRESH ask (#2164) — the same shape as syncRequestItems above, one " +
+    'source further out: an errand addressed to a person ("download a fresh Takeout ' +
+    "export\"), not a due signal about the profile's health. Its only ordering axis is " +
+    "how far behind the archive's own data is, and risk-ranking a download would imply " +
+    "a clinical urgency this coaching-tier ask deliberately never claims",
+  clinicalRecencyItems:
+    "the MANUAL-UPLOAD records ask (#2176) — the third leg of the same pattern. It is " +
+    "tempting to risk-rank this one, because the frontier it ages is lab work — but " +
+    "the ask is about the RECORD BASE, not about any analyte: the biomarker retest " +
+    "domain (biomarkerItems) is where a specific marker's risk-modulated cadence " +
+    "belongs, and is already risk-aware. Ranking a profile-level 'your results are a " +
+    "year old' by family history would double-count the same risk in two rows",
   stepsPaceItems:
     "the daily-step afternoon observation (#1723) — a comparison against the user's " +
     "OWN declared daily target, `should`-tier by construction (counted, never " +

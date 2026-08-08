@@ -128,6 +128,14 @@ export type UpcomingDomain =
   // and in the digest line this page's grouping already produces, and deliberately
   // never on the non-hideable "Needs attention" hero (see cardBandForItem).
   | "portal-sync"
+  // A RECORDS-RECENCY ask (#2164 + #2176): the data that only a person can bring in
+  // has aged past its declared horizon — a Fitbit Takeout archive whose exclusive
+  // streams are weeks behind, or a manual-upload household whose newest lab result is
+  // over a year old. The third leg of the #1757 pattern, and the same reach as it:
+  // COACHING tier, calm, dismissible, on this page and in the digest line this page's
+  // grouping produces, never on the non-hideable hero (see cardBandForItem). It carries
+  // NO due date — nothing expires — so it declares its band instead.
+  | "records-recency"
   | "review";
 
 // Stable within-band ordering when two items share an effective due date.
@@ -205,6 +213,11 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // housekeeping review count. It DOES carry a due date, so this rank only breaks ties
   // inside its band.
   "portal-sync": 15.5,
+  // A records-recency ask (#2164/#2176) sorts with the other data-plumbing signals,
+  // just after the portal request it generalizes: both are errands only a person can
+  // run, and a portal request names a machine somebody has to go to today while this
+  // one names a month-scale drift.
+  "records-recency": 15.6,
   review: 16,
 };
 
@@ -251,7 +264,8 @@ export interface UpcomingItem {
   // Optional secondary context line (dosage, last-tested date, progress…).
   detail?: string | null;
   // A SHORT CAUSE FRAGMENT for the digest's named line (#1913 item 6). Only the
-  // named-line domains (`integration`, `portal-sync`) carry one, and only they read it.
+  // named-line domains (`integration`, `portal-sync`, `records-recency`) carry one, and
+  // only they read it.
   //
   // It exists because `detail` is written for a CARD, where the title is a heading and
   // the detail is its supporting line — so a producer is free to write a complete
@@ -284,6 +298,16 @@ export interface UpcomingItem {
   // This is presentation data carried on the shared model so Dashboard and
   // Upcoming never have to infer different actions from the same domain.
   actionLabel?: string;
+  // A SECOND destination, when the item's problem has two honest fixes and naming only
+  // one would hide the better of them (#2176). The records-recency ask deep-links the
+  // upload flow through `href` AND the portal connect flow through this, because
+  // connecting a portal is the fix that retires the ask permanently for the profile.
+  //
+  // Generic on purpose — it is a link descriptor, not a domain field like `bookHref` —
+  // so the Upcoming row renders it through the SAME `RowAction` chip/menu machinery
+  // every other secondary action uses (#1446), and a second adopter needs no renderer
+  // change. Absent for every item with one destination.
+  altAction?: { href: AppRoute; label: string; testId?: string };
   // Optional within-band ordering key (issue #297). Generic — any domain that
   // wants an intra-day order beyond date/domain/title supplies one. Dose items
   // set it from the shared dose-day sort key (bucket → priority → stack → name),

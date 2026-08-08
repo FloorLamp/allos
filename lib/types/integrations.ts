@@ -189,6 +189,60 @@ export interface ContinuousStreamDef {
   reminder?: ContinuousStreamReminderId;
 }
 
+// ── The ARCHIVE REFRESH facet (#2164) ────────────────────────────────────────
+//
+// A `kind: "archive"` provider is a one-off import, not a connection: it has no
+// cadence to be late against, which is why it declares `silenceToleranceMinutes:
+// null` and why no connection-level detector can see it going stale. But some of its
+// data reaches allos through NO OTHER PATH — Fitbit does not forward scale weight,
+// body fat, or its own sleep/readiness scores to Health Connect — so those streams are
+// exactly as fresh as the last manual download, silently and indefinitely.
+//
+// This facet declares WHICH streams only the archive can deliver and HOW LONG they may
+// age, in the same place and for the same reason `silenceToleranceMinutes` and
+// `continuousStreams` live here: the right numbers are properties of how the provider
+// delivers. DECLARED, never inferred (#2164 constraint 2) — there is no learner here
+// and there must not be one.
+//
+// A provider that declares no facet raises nothing, so exemption is by construction
+// rather than by an exemption list in the detector. Read ONLY through
+// lib/integrations/archive-refresh.ts.
+
+// Which physical store an archive-exclusive stream's rows land in. A UNION, not a free
+// string, and a DISCRIMINATED one: the query layer binds one reader per member
+// (lib/queries/upcoming/records-recency.ts), the same DATA-HERE / RUNNABLE-THERE split
+// the `pull` and `continuousStreams` facets use, so the registry stays importable from
+// the pure tier and no SQL is ever built out of a declaration.
+export type ArchiveStreamSelector =
+  | { table: "body_metrics"; column: "weight_kg" | "body_fat_pct" }
+  | { table: "metric_samples"; metric: string };
+
+export interface ArchiveExclusiveStreamDef {
+  // Stable, provider-local stream id. It appears in no persisted key today, but the
+  // registry completeness test pins it, so treat it as shipped vocabulary.
+  id: string;
+  // What the user calls this stream, lowercase, for mid-sentence use
+  // ("weight, body fat and sleep score reach allos only through …").
+  label: string;
+  selector: ArchiveStreamSelector;
+  // WHY only the archive can deliver it, carried as data so it is impossible to add a
+  // stream here without stating the claim. Rendered nowhere; read by humans and by the
+  // registry completeness test.
+  because: string;
+}
+
+export interface IntegrationArchiveRefreshFacet {
+  // How many days the newest archive-sourced DATA may age before the ask is raised.
+  // Stale STRICTLY after it (lib/freshness.ts).
+  horizonDays: number;
+  // The evidence behind the number, carried as data — the same discipline as
+  // ContinuousStreamQuietFacet.because.
+  because: string;
+  // The streams only this archive can deliver. Empty is not allowed: a provider with
+  // nothing exclusive omits the whole facet.
+  streams: readonly ArchiveExclusiveStreamDef[];
+}
+
 export interface IntegrationBackfillFacet {
   // Stable provider-local operation id. It keys the durable job checkpoint and the
   // runnable binding; a provider may eventually expose several independent fills.
@@ -248,6 +302,11 @@ export interface IntegrationDef {
   // quiet-stream detector needs no per-provider exemption list. Read ONLY through
   // lib/integrations/continuous-streams.ts.
   continuousStreams?: readonly ContinuousStreamDef[];
+  // The streams only a `kind: "archive"` import can deliver, and how long they may age
+  // before the refresh ask is raised (#2164). Absent = nothing here is archive-only, so
+  // there is nothing to fall behind — which is every provider except the Takeout
+  // archive. Read ONLY through lib/integrations/archive-refresh.ts.
+  archiveRefresh?: IntegrationArchiveRefreshFacet;
   // Optional enrichment of rows already imported. Metadata stays registry-pure;
   // executable runners bind separately in lib/integrations/backfill-runners.ts.
   backfills?: readonly IntegrationBackfillFacet[];

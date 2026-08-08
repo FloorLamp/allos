@@ -255,6 +255,35 @@ imported health records remain. Re-importing a newer export is safe because
 records deduplicate on their natural keys, and the result appears in
 **Data → Review**.
 
+### When a re-download is due (#2164)
+
+Four of those streams reach allos through **no other path** — weight and body
+fat (Fitbit does not forward them to Health Connect) and Fitbit's own sleep and
+readiness scores (vendor-internal, export-only) — so they are exactly as fresh
+as your last download. Nothing else in the app can see that: an archive is a
+one-off import, so it has no sync cadence to be late against, no failing event
+to report, and the phone exporter keeps pushing everything Fitbit _does_ forward
+while the scale's readings quietly stop.
+
+So the provider **declares** which streams are archive-exclusive and how long
+they may age (`archiveRefresh` in `lib/integrations/registry.ts`; 30 days for
+Fitbit, with the measurement behind that number carried beside it). Past that,
+Upcoming carries one calm row — "Import a fresh Fitbit (Google Takeout) export"
+— naming the streams and the date the last export carried data through.
+
+Two properties are the point:
+
+- **The clock reads the data, not the import.** It is the newest
+  archive-**sourced data date**, so re-importing an old export advances nothing
+  and does not silence the ask; an export that genuinely catches you up closes
+  it, and the next drift is a new ask.
+- **It never sends.** It is a coaching-tier row: Upcoming plus the line the
+  morning digest's own banding yields, dismissible per episode, and never on the
+  non-hideable "Needs attention" hero. A household choosing to export
+  occasionally is not a fault.
+
+A provider that declares no archive-exclusive streams raises nothing.
+
 ## Patient portals
 
 The one **external-attended** integration: allos cannot run this sync itself.
