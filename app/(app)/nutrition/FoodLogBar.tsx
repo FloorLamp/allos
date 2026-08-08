@@ -657,6 +657,25 @@ export default function FoodLogBar({
     );
   }
 
+  // The meal window the statement in force FILES under (#2269) — the section a "+" will
+  // land the serving in, since a stated time wins over the tab at log time. An "earlier…"
+  // hour carries its server-derived slot on the option; "now" derives from the current
+  // wall clock through the same boundaries the server's tallies use. Null when no
+  // statement is in force — the tab's declaration is then the only fact and the serving
+  // files under it.
+  function statedFilingSlot(): FoodSlot | null {
+    if (!statedChoice) return null;
+    if (statedChoice.kind === "at")
+      return (
+        eatingTimeOptions.find((o) => o.hhmm === statedChoice.hhmm)?.slot ??
+        null
+      );
+    return foodSlotForHhmm(
+      statedHhmm(new Date().toISOString(), tz),
+      slotBoundaries
+    );
+  }
+
   // The pair of counts one tap moves: the day's total for the group, and the group's
   // total inside the meal window under the user's finger. They travel together — the
   // optimistic bump, the rollback and the server's authoritative figures all name both
@@ -664,13 +683,18 @@ export default function FoodLogBar({
   type ServingCounts = { day: number; meal: number };
 
   async function bump(slug: string, delta: 1 | -1) {
+    // WHERE the tap lands (#2269): an add with a statement in force files under the
+    // stated time's derived window — the tab stays navigation, the chip stated the
+    // consequence — so the optimistic bump moves THAT section's count, not the cell
+    // being looked at. An undo (and an add with no statement) stays tab-scoped.
+    const filingSlot = (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
     const before: ServingCounts = {
       day: counts[slug] ?? 0,
-      meal: slotCounts[slug] ?? 0,
+      meal: slotCountsByDate[activeDate]?.[filingSlot]?.[slug] ?? 0,
     };
     const commit = (next: ServingCounts) => {
       setCount(slug, () => next.day);
-      setSlotCount(activeSlot, slug, () => next.meal);
+      setSlotCount(filingSlot, slug, () => next.meal);
     };
     // Queue an ADD tap while offline (#1596): the captured slug + the meal window
     // and day under the user's finger replay through the same write core on
@@ -707,8 +731,9 @@ export default function FoodLogBar({
     await ledger.tap<ServingTap>({
       // The key names the WRITE, not the row: a "−" correction straight after a "+"
       // is a different write and must not be absorbed by its cooldown. Two taps of
-      // the same row's "+" — the accidental double — share this key and are.
-      key: `${activeDate}:${activeSlot}:${slug}:${delta}`,
+      // the same row's "+" — the accidental double — share this key and are. Keyed on
+      // the FILING slot (#2269), the coordinate the write actually moves.
+      key: `${activeDate}:${filingSlot}:${slug}:${delta}`,
       from: before,
       // Optimistic: reflect the tap immediately.
       optimistic: {
@@ -752,9 +777,17 @@ export default function FoodLogBar({
             kind: "adopt",
             value: {
               day: outcome.servings,
-              // A write that reports no meal figure (an undo that emptied the
-              // window) leaves the optimistic one standing rather than inventing one.
-              meal: outcome.mealServings ?? Math.max(0, before.meal + delta),
+              // The server's meal figure is adopted only when it names the slot this
+              // tap's optimistic bump moved (#2269) — a tap racing an hour boundary can
+              // derive one window client-side and land in the neighbor server-side, and
+              // adopting that count HERE would write it to the wrong coordinate. The
+              // action's revalidation settles the rare mismatch on the next render.
+              // A write that reports no meal figure (an undo that emptied the window)
+              // also leaves the optimistic one standing rather than inventing one.
+              meal:
+                outcome.mealSlot === filingSlot && outcome.mealServings != null
+                  ? outcome.mealServings
+                  : Math.max(0, before.meal + delta),
             },
           };
         }
@@ -1214,8 +1247,15 @@ export default function FoodLogBar({
                   onClick={() => setEarlierOpen((open) => !open)}
                   className={chipClass(statedChoice?.kind === "at")}
                 >
+                  {/* The pressed chip keeps announcing the filing (#2269): the hour
+                      wins over the tab, so `19:00 \u00b7 Evening` is what the next "+"
+                      will actually do. */}
                   {statedChoice?.kind === "at"
-                    ? statedChoice.hhmm
+                    ? `${statedChoice.hhmm} \u00b7 ${
+                        eatingTimeOptions.find(
+                          (o) => o.hhmm === statedChoice.hhmm
+                        )?.slot ?? activeSlot
+                      }`
                     : "Earlier\u2026"}
                 </button>
               )}
@@ -1225,6 +1265,7 @@ export default function FoodLogBar({
                     key={option.hhmm}
                     type="button"
                     data-testid={`food-eating-at-${option.hhmm}`}
+                    data-slot={option.slot}
                     aria-pressed={
                       statedChoice?.kind === "at" &&
                       statedChoice.hhmm === option.hhmm
@@ -1242,7 +1283,11 @@ export default function FoodLogBar({
                         statedChoice.hhmm === option.hhmm
                     )}
                   >
-                    {option.hhmm}
+                    {/* The chip states the CONSEQUENCE before the tap (#2269): the
+                        hour AND the meal window it files under \u2014 the #2268 correction
+                        sheet's per-hour enrichment, worn at log time. The tab stays
+                        navigation; a stated time wins the filing. */}
+                    {`${option.hhmm} \u00b7 ${option.slot}`}
                   </button>
                 ))}
               <span
@@ -1254,6 +1299,16 @@ export default function FoodLogBar({
                       statedChoice.kind === "now"
                         ? "now"
                         : `at ${statedChoice.hhmm}`
+                    }${
+                      // The filing named OUT LOUD when it leaves the active tab
+                      // (#2269): a serving stating 19:00 from the Morning tab lands
+                      // in Evening, and the answer text says so before the tap does.
+                      (() => {
+                        const filing = statedFilingSlot();
+                        return filing && filing !== activeSlot
+                          ? ` and land in ${filing}`
+                          : "";
+                      })()
                     }.`
                   : "Servings you add record no eating time until you say one."}
               </span>

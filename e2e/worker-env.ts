@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { syncInstantBefore } from "./sync-instants";
 
 // DB-per-worker addressing (issue #1538) — the ONE place that answers "which DB,
 // which port, which directory belongs to THIS Playwright worker".
@@ -85,6 +86,15 @@ export function frozenNow(): Date {
   }
   frozenNowCache = iso ? new Date(iso) : new Date();
   return new Date(frozenNowCache);
+}
+
+/**
+ * A recorded sync-event instant `hoursAgo` hours before the run's frozen clock — the
+ * spec-side half of the seed's own derivation (e2e/sync-instants.ts), so a spec and the
+ * fixture it reads back can never drift apart on a string comparison.
+ */
+export function frozenSyncInstant(hoursAgo: number): string {
+  return syncInstantBefore(frozenNow(), hoursAgo);
 }
 
 /**

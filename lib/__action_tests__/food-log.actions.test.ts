@@ -16,9 +16,11 @@ import {
   untrackFoodHabit,
 } from "@/app/(app)/nutrition/actions";
 import {
+  getFoodMealDays,
   getFoodServingsOnDate,
   getFoodRollupInRange,
   getFrequencyTargets,
+  rankFoodGroups,
 } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { getTimezone } from "@/lib/settings";
@@ -199,6 +201,171 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
       date,
       eaten_at: null,
       time_source: null,
+    });
+  });
+});
+
+// ── #2269: meal_slot is declaration-or-override, never an echo ──────────────────
+//
+// The log path used to store the tab's slot beside a stated time, minting the
+// incoherent (Morning tab, 19:00) pair whose consumers then disagreed — tallies said
+// Morning, ranking said 19:00. Decision 1: at log time a stated time WINS; the tab's
+// declaration is stored only when it is the only fact there is. Enforced in
+// logFoodServingCore, so the web action pinned here, the quick-log sheet and the
+// offline replay all inherit it together.
+describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
+  // Frozen so the stated hours are deterministic: 21:30 UTC — Evening under the
+  // default 11:00/15:00 boundaries — with 19:00 already past and offerable.
+  const NOW_ISO = "2026-07-08T21:30:00Z";
+  let priorNow: string | undefined;
+  beforeEach(() => {
+    priorNow = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = NOW_ISO;
+    return () => {
+      if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = priorNow;
+    };
+  });
+
+  function events(profileId: number) {
+    return db
+      .prepare(
+        `SELECT meal_slot, eaten_at, time_source FROM food_log_events
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      meal_slot: string | null;
+      eaten_at: string | null;
+      time_source: string | null;
+    }[];
+  }
+
+  it("stores eaten_at and NO meal_slot when a time is stated from a disagreeing tab", async () => {
+    const login = createLogin();
+    const profile = createProfile("stated-wins", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    // Standing in the MORNING tab, stating 19:00 — the pair the old path echoed.
+    const res = await logFoodServing(
+      fd({
+        group_key: "berries",
+        date,
+        meal_slot: "Morning",
+        eaten_at: "19:00",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const [row] = events(profile.id);
+    expect(row.meal_slot).toBeNull();
+    expect(row.time_source).toBe("stated");
+    expect(row.eaten_at).toBe(
+      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "19:00")!)
+    );
+    // The action's answer names the DERIVED placement, so the bar lands the serving
+    // visibly in its section rather than under the tab.
+    expect(res).toMatchObject({ mealSlot: "Evening", mealServings: 1 });
+  });
+
+  it("the reported pair's consumers now AGREE: tally and ranking both say Evening", async () => {
+    const login = createLogin();
+    const profile = createProfile("agree-eve", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    // The reported pair, and its mirror image as a control: berries stated 19:00 from
+    // the Morning tab, leafy greens stated 08:00 from the Evening tab. One serving
+    // each, so overall frecency ties and the slot signal is what decides the order.
+    await logFoodServing(
+      fd({
+        group_key: "berries",
+        date,
+        meal_slot: "Morning",
+        eaten_at: "19:00",
+      })
+    );
+    await logFoodServing(
+      fd({
+        group_key: "leafy_greens",
+        date,
+        meal_slot: "Evening",
+        eaten_at: "08:00",
+      })
+    );
+
+    // The section tally files each under its EATEN window (foodEventWindow derives
+    // from the instant — there is no stored tab echo left to win tier 1)…
+    const day = getFoodMealDays(profile.id, [date])[0];
+    expect(day.slotCounts.Evening.berries).toBe(1);
+    expect(day.slotCounts.Morning.berries).toBeUndefined();
+    expect(day.slotCounts.Morning.leafy_greens).toBe(1);
+    // …and the ranking's slot signal weights the same events at their eating minutes,
+    // so the two consumers now name the SAME window for one serving. Before #2269 the
+    // tally said the tab and the ranking said the clock.
+    const evening = rankFoodGroups(profile.id, "Evening");
+    const morning = rankFoodGroups(profile.id, "Morning");
+    expect(evening.indexOf("berries")).toBeLessThan(
+      evening.indexOf("leafy_greens")
+    );
+    expect(morning.indexOf("leafy_greens")).toBeLessThan(
+      morning.indexOf("berries")
+    );
+  });
+
+  it("an explicit `now` wins over a stale tab and files under now's window", async () => {
+    const login = createLogin();
+    const profile = createProfile("now-wins", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    // The tab still says Morning; the user answered "now" (21:30 → Evening).
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date, meal_slot: "Morning", eaten_at: "now" })
+    );
+    expect(res.ok).toBe(true);
+    const [row] = events(profile.id);
+    expect(row.meal_slot).toBeNull();
+    expect(row.time_source).toBe("stated");
+    expect(res).toMatchObject({ mealSlot: "Evening" });
+  });
+
+  it("with no statement the tab's declaration is the only fact, and stores as today", async () => {
+    const login = createLogin();
+    const profile = createProfile("backfill-keeps", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date, meal_slot: "Morning" })
+    );
+    expect(res.ok).toBe(true);
+    const [row] = events(profile.id);
+    // Backfill keeps its meal: the declaration stores, exactly as before #2269.
+    expect(row.meal_slot).toBe("Morning");
+    expect(row.eaten_at).toBeNull();
+    expect(res).toMatchObject({ mealSlot: "Morning", mealServings: 1 });
+  });
+
+  it("an UNUSABLE statement degrades to the declaration, not to nothing", async () => {
+    const login = createLogin();
+    const profile = createProfile("degrade-decl", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    // The statement is refused (garbage), so no time is recorded — and the write is
+    // then a declaration-only backfill, which keeps its tab.
+    const res = await logFoodServing(
+      fd({
+        group_key: "berries",
+        date,
+        meal_slot: "Morning",
+        eaten_at: "whenever",
+      })
+    );
+    expect(res.ok).toBe(true);
+    expect(events(profile.id)[0]).toMatchObject({
+      meal_slot: "Morning",
+      eaten_at: null,
     });
   });
 });

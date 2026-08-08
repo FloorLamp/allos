@@ -1,16 +1,17 @@
-// DB INTEGRATION TIER — #1880: flapping is not failing. The flap-aware standing
-// (`intermittent` vs `failing`) is derived by ONE computation (providerStanding via
-// getIntegrationState / resolveProviderFacts), and the escalation surfaces — the
-// Review badge (getImportReviewCount), the Needs-attention feed (getImportIssues),
-// and the attention/digest gather (getIntegrationAttention) — all read the same
-// standingEscalates rule. This tier proves the real reads over real rows: an
-// alternating Failed/Refreshed provider stays OFF every escalation surface while
-// its state model says `intermittent`; the third consecutive failure (or a #1685
-// staleness breach) flips every surface at once.
+// DB INTEGRATION TIER — #1880: flapping is not failing, and (#2263) what separates
+// them is SILENCE, not a failure count. The standing is derived by ONE computation
+// (providerStanding via getIntegrationState / resolveProviderFacts), and the
+// escalation surfaces — the Review badge (getImportReviewCount), the Needs-attention
+// feed (getImportIssues), and the attention/digest gather (getIntegrationAttention) —
+// all read the same standingEscalates rule. This tier proves the real reads over real
+// rows: a provider whose runs keep failing stays OFF every escalation surface for as
+// long as a success keeps landing inside its tolerance, and the moment the successes
+// stop for longer than that, every surface flips at once.
 
 import { describe, it, expect } from "vitest";
-import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { db } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
+import { utcInstant } from "@/lib/date";
 import {
   getImportIssues,
   getImportReviewCount,
@@ -33,8 +34,9 @@ function connect(profileId: number, provider: string): void {
   ).run(profileId, provider);
 }
 
-// A sync event `hoursAgo` hours back from today's noon — recent enough that the
-// provider's staleness threshold (days) never fires from these.
+// A sync event `hoursAgo` hours back from the app's own now. Measured against the
+// CLOCK, not the calendar: the escalation rule is minute-grain silence since #2263, so
+// a day-derived fixture would drift with the hour CI happens to run at.
 function syncEvent(
   profileId: number,
   provider: string,
@@ -42,19 +44,20 @@ function syncEvent(
   ok: number,
   error: string | null = null
 ): void {
-  const day = shiftDateStr(today(profileId), -Math.floor(hoursAgo / 24));
-  const hour = String(12 - (hoursAgo % 24)).padStart(2, "0");
+  const at = utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
     `INSERT INTO integration_sync_events
        (profile_id, provider, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
     // The ledger stores UTC with an explicit `Z` since migration 163 (#2205).
-  ).run(profileId, provider, `${day}T${hour}:00:00Z`, ok, ok ? 1 : null, error);
+  ).run(profileId, provider, at, ok, ok ? 1 : null, error);
 }
 
 const ERR = "weather fetch failed (503)";
+// Weather's resolved silence tolerance: 12 polls × its declared hourly cadence.
+const WEATHER_TOLERANCE_HOURS = 12;
 
-describe("a flapping provider is intermittent, never escalated (#1880)", () => {
+describe("a flapping provider is intermittent, never escalated (#1880/#2263)", () => {
   it("derives `intermittent` for alternating failures with a recent success", () => {
     const p = newProfile("FlapCalm");
     connect(p, "weather");
@@ -71,6 +74,9 @@ describe("a flapping provider is intermittent, never escalated (#1880)", () => {
     // The honest tally the amber surfaces render: 3 of the last 6 runs failed.
     expect(state.recentRuns).toEqual({ total: 6, failed: 3 });
     expect(state.lastSuccessAt).toBeTruthy();
+    // …and the SIGNAL beside that noise (#2263 item 4): the successes are two hours
+    // apart, which is what the failure count never said.
+    expect(state.successCadenceMinutes).toBe(120);
 
     // NO escalation surface carries it: not the issues list, not the badge, not
     // the attention/digest gather.
@@ -79,20 +85,40 @@ describe("a flapping provider is intermittent, never escalated (#1880)", () => {
     expect(getIntegrationAttention(p)).toEqual([]);
   });
 
-  it("keeps 2 consecutive failures calm and escalates on the 3rd — everywhere at once", () => {
+  // THE #2263 boundary, and the reason the old one was wrong: a run COUNT is not a
+  // measure of whether data is arriving. Six consecutive failures with a success two
+  // hours ago are calm; the same six become an outage only once the last success falls
+  // outside the provider's tolerance.
+  it("keeps a long failure streak calm while a success stays inside the tolerance", () => {
     const p = newProfile("FlapBoundary");
     connect(p, "weather");
-    syncEvent(p, "weather", 4, 1);
     syncEvent(p, "weather", 3, 1);
-    syncEvent(p, "weather", 2, 0, ERR);
-    syncEvent(p, "weather", 1, 0, ERR);
+    syncEvent(p, "weather", 2, 1);
+    for (const h of [1.5, 1.2, 1.0, 0.8, 0.5, 0.2])
+      syncEvent(p, "weather", h, 0, ERR);
 
+    expect(getIntegrationState(p, "weather")!.standing).toBe("intermittent");
+    expect(getImportIssues(p)).toEqual([]);
+    expect(getImportReviewCount(p)).toBe(0);
+    expect(getIntegrationAttention(p)).toEqual([]);
+  });
+
+  it("escalates everywhere at once when no success lands inside the tolerance", () => {
+    const p = newProfile("FlapEscalates");
+    connect(p, "weather");
+    // The last success is exactly at the tolerance — still calm.
+    syncEvent(p, "weather", WEATHER_TOLERANCE_HOURS, 1);
+    syncEvent(p, "weather", 1, 0, ERR);
     expect(getIntegrationState(p, "weather")!.standing).toBe("intermittent");
     expect(getImportReviewCount(p)).toBe(0);
 
-    // The third consecutive failure crosses the threshold: the ONE standing flips,
-    // and every surface that reads it flips with it.
-    syncEvent(p, "weather", 0, 0, ERR);
+    // Push that success one hour past it: the ONE standing flips, and every surface
+    // that reads it flips with it.
+    db.prepare(
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND ok = 1`
+    ).run(p);
+    syncEvent(p, "weather", WEATHER_TOLERANCE_HOURS + 1, 1);
+
     const state = getIntegrationState(p, "weather")!;
     expect(state.standing).toBe("failing");
     const issues = getImportIssues(p);
@@ -107,13 +133,14 @@ describe("a flapping provider is intermittent, never escalated (#1880)", () => {
   it("a fresh success de-escalates back to intermittent, then to healthy as the flap ages out", () => {
     const p = newProfile("FlapClears");
     connect(p, "weather");
+    syncEvent(p, "weather", 20, 1); // the last success, past the tolerance
     syncEvent(p, "weather", 3, 0, ERR);
     syncEvent(p, "weather", 2, 0, ERR);
     syncEvent(p, "weather", 1, 0, ERR);
     expect(getIntegrationState(p, "weather")!.standing).toBe("failing");
 
-    // One good run breaks the streak — but the window still shows the flap, so the
-    // standing is the honest `intermittent`, not a clean green.
+    // One good run and the silence is over — but the window still shows the flap, so
+    // the standing is the honest `intermittent`, not a clean green.
     syncEvent(p, "weather", 0, 1);
     expect(getIntegrationState(p, "weather")!.standing).toBe("intermittent");
     expect(getImportIssues(p)).toEqual([]);
@@ -123,26 +150,21 @@ describe("a flapping provider is intermittent, never escalated (#1880)", () => {
     expect(getIntegrationState(p, "weather")!.standing).toBe("healthy");
   });
 
-  it("escalates a flap whose last success breached the #1685 staleness threshold", () => {
+  it("escalates a QUIET stop with no failures recorded at all", () => {
     const p = newProfile("FlapStale");
     connect(p, "weather");
-    // The only success is 5 days old — past weather's 2-day registry threshold —
-    // and the recent runs are a single failure: below the consecutive threshold,
-    // but the staleness rule composes into the SAME standing.
-    const staleDay = shiftDateStr(today(p), -5);
-    db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
-       VALUES (?, 'weather', ?, 1, 24)`
-    ).run(p, `${staleDay} 04:00:00`);
-    syncEvent(p, "weather", 1, 0, ERR);
+    // Nothing failed, nothing arrived: the shape no event-driven detector can see,
+    // and the only one the tolerance catches. Five days is well past weather's 12 h.
+    syncEvent(p, "weather", 5 * 24, 1);
 
     const state = getIntegrationState(p, "weather")!;
     expect(state.standing).toBe("failing");
-    // The issue row is the recorded failure (it names a cause), not the synthetic
-    // stale row — one row per provider either way.
+    // Nothing recorded a cause, so the synthetic quiet-stop row states the
+    // observation — one row per provider either way.
     const issues = getImportIssues(p);
     expect(issues.map((e) => e.provider)).toEqual(["weather"]);
-    expect(issues[0].error).toBe(ERR);
+    expect(issues[0].error).toContain("No data since");
+    expect(issues[0].error).toContain("5 days");
   });
 
   it("the standing is the same however much display history a surface asked for", () => {

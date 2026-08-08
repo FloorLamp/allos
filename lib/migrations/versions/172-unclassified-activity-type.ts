@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 170 (issue #2272): grow the activities.type CHECK to admit an
+// Migration 172 (issue #2272): grow the activities.type CHECK to admit an
 // 'unclassified' type — THE SOURCE DID NOT SAY. Health Connect's
 // EXERCISE_TYPE_OTHER_WORKOUT means "a workout, unspecified"; the parser answered that
 // stated absence with `sport`, so the row asserted a classification no provider ever
@@ -104,7 +104,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 170,
-  name: "170-unclassified-activity-type",
+  id: 172,
+  name: "172-unclassified-activity-type",
   up,
 };

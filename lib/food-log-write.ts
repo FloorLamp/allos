@@ -47,6 +47,14 @@ export interface FoodEatingTime {
   source: FoodTimeSource;
 }
 
+// WHICH MESSAGE'S TAP a serving write came from (#2264): the `notify_messages` row id
+// resolved by the Telegram handler, or absent/null for every other surface (web,
+// offline replay, a chat whose pointer bookkeeping failed). Attribution for the
+// correction ride-along only — it never influences what the row says about food.
+export interface FoodWriteOrigin {
+  notifyMessageId?: number | null;
+}
+
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
 //   logged        — a serving was recorded; `servings` is the group's new total for the day.
@@ -109,23 +117,42 @@ export function logFoodServingCore(
   group: string,
   date: string,
   // The tap instant (an ISO-8601 UTC string), appended to the food_log_events ledger
-  // (#950). Defaults to NOW and always remains the audit/tap time. `mealSlot`, when
-  // supplied, separately records the consumed window for an honest backfill; callers
-  // without an explicit meal retain the legacy timestamp-derived behavior. The instant
+  // (#950). Defaults to NOW and always remains the audit/tap time. The instant
   // remains injectable so tests can seed a specific legacy slot.
   loggedAt: string = instantNow(),
+  // The tab's DECLARATION — stored only when it is the only fact there is (#2269).
+  // `meal_slot` is declaration-or-override, never an echo: when an eating time
+  // accompanies the write, the meal DERIVES from the instant (exactly as a Telegram
+  // tap's does, #2019) and NO slot is stored, so a correction moves the meal along
+  // with the time instead of leaving a frozen tab echo contradicting it. A backfill
+  // with no stated time keeps its declared meal. The deliberate incoherent pair —
+  // the 02:00 snack that belongs to dinner — is the correction sheet's hand-set Meal
+  // (updateFoodLogEventCore, the override path), never this log path's.
+  //
+  // Enforced HERE, in the one chokepoint, so the web action, the quick-log sheet and
+  // the offline replay (lib/offline/writes.ts) inherit the rule together and cannot
+  // drift.
   mealSlot?: FoodSlot,
   // WHEN IT WAS EATEN (#2019) — a separate fact from `loggedAt`, which stays the tap
   // stamp migration 056 froze. The Telegram button passes its own tap instant with
   // source `tap`, because that button's declared contract IS "I'm eating now"; the web
   // bar passes nothing unless the user states a time, so a backfill records no eating
   // time rather than a confident wrong one.
-  time?: FoodEatingTime
+  time?: FoodEatingTime,
+  // Which message's tap this is (#2264) — Telegram handler only; see FoodWriteOrigin.
+  origin?: FoodWriteOrigin
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
+  // A stated time wins at log time (#2269): the slot is not stored beside it, and the
+  // outcome names the DERIVED window — the section the tallies will actually file the
+  // serving under — so a surface can place it visibly rather than under the tab.
+  const storedSlot = time ? null : (mealSlot ?? null);
+  const placedSlot = time
+    ? foodSlotForProfileEvent(profileId, loggedAt, null, time.eatenAt)
+    : (mealSlot ?? null);
   return writeTx(() => {
     const servings = foodDayCounter.bump(profileId, date, [slug], 1);
     // Append the per-tap event in the SAME transaction (#950): the counter and its
@@ -134,23 +161,25 @@ export function logFoodServingCore(
     // byte-identical to the pre-ledger write.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source,
+          notify_message_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       slug,
       date,
       loggedAt,
-      mealSlot ?? null,
+      storedSlot,
       time?.eatenAt ?? null,
-      time?.source ?? null
+      time?.source ?? null,
+      origin?.notifyMessageId ?? null
     );
     return {
       kind: "logged",
       servings,
-      ...(mealSlot ? { mealSlot } : {}),
-      ...(mealSlot
-        ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
+      ...(placedSlot ? { mealSlot: placedSlot } : {}),
+      ...(placedSlot
+        ? { mealServings: mealServingCount(profileId, slug, date, placedSlot) }
         : {}),
     };
   });

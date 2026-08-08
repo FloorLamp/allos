@@ -233,25 +233,30 @@ surface FORMATS its answers:
 
 - **Standing + badge.** `providerStanding` folds connection status, the RECENT RUN
   WINDOW (`STANDING_RUN_WINDOW`, the same depth for every caller), and the #1685
-  staleness facts into one closed vocabulary (`healthy` / `partial` /
+  freshness facts into one closed vocabulary (`healthy` / `partial` /
   `intermittent` / `failing` / `needs-reauth` / `not-connected` /
   `never-synced`); `standingBadge` names and tones it, and
   `components/integrations/StatusBadge.tsx` is the ONE place a tone becomes
   classes (the sibling of `NOTICE_TONE` for tinted blocks). Since #1880 the
-  standing is FLAP-AWARE — latest-event-wins is gone. `intermittent` means
-  failures in the recent window but no escalation (a calm amber fact);
-  `failing` means `FAILING_CONSECUTIVE_RUNS` (3) consecutive failures OR a
-  breach of the provider's #1685 staleness threshold, COMPOSED via
-  `isSyncStale`, never duplicated. Only `failing` and `needs-reauth` escalate
+  standing is FLAP-AWARE — latest-event-wins is gone — and since #2263 the
+  escalation is ONE rule: `failing` means **no successful run inside the
+  provider's silence tolerance**, COMPOSED via `isSyncStale`, never duplicated.
+  `intermittent` means failures in the recent window with a success still inside
+  that tolerance (a calm amber fact), which now includes a provider failing every
+  run while its data keeps landing. Only `failing` and `needs-reauth` escalate
   (`standingEscalates`): the Data badge (`getImportIssues` /
   `getImportReviewCount`), Review's Needs-attention card, the dashboard hero
   item, and the digest's 🔌 lines all gate on that one predicate, so an
-  intermittent source can never increase contact anywhere. Since #1913 the digest
+  intermittent source can never increase contact anywhere. The amber surfaces state
+  the honest failure tally AND the observed success cadence beside it
+  (`observedSuccessCadenceMinutes` / `successCadenceLabel`, #2263 item 4) —
+  measured for DISPLAY only, never feeding the declared tolerance. Since #1913 the digest
   gives a broken source exactly ONE entry — the named 🔌 line IS its band item, not
   a sibling of a count — and the line's cause fragment comes from the item's
   declared `because`, never from the card sentence its `detail` was written for. The source page
   states the rule visibly (`escalationPolicyLabel`, rendered by
-  `SyncHistoryTable` with the provider's own `staleAfterDays`).
+  `SyncHistoryTable` with the provider's own resolved tolerance; null, and so
+  rendered as nothing, for an exempt provider).
 - **One accounting, two dialects.** `formatSplitLabel` stays the record-language
   engine and is reached only through `formatSyncChange`, which also owns the CACHE
   dialect: a `public` provider writes cells of a global location-keyed cache, not
@@ -893,8 +898,8 @@ Strava calls per profile per day, at or over typical app quotas. That is what ma
 the tick rate a quota decision rather than a scheduling one.
 
 - **Where it is declared.** `pull.cadenceMinutes` in `registry.ts`, beside the
-  provider's other delivery metadata, for the same reason `staleAfterDays` lives
-  there: the right number is a property of the provider's quota, not of the
+  provider's other delivery metadata, for the same reason
+  `silenceToleranceMinutes` lives there: the right number is a property of the provider's quota, not of the
   scheduler. All four pull providers declare `60` today — hourly, exactly what
   they were polled at before — each with its own reasoning. A provider that
   declares none gets `DEFAULT_PULL_CADENCE_MINUTES` (60), so a new provider joins
@@ -938,34 +943,74 @@ line — written through the one `truncatedSyncDetails()` shape in
 "partial" instead of a clean green success. The marker survives the details
 char-budget bounding by construction.
 
-**Silent stop — the staleness signal (#1685).** The two existing "this provider
-needs attention" signals are both event-driven, and neither can see a connection
-that is recording nothing at all. `isAuthRefreshFailure` (#326) only flips a
-connection to `needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay
-transient on purpose, or a passing cloud hiccup would tear down a healthy
-connection — and `currentlyFailingProviders` only fires when a provider's LATEST
-recorded event is a failure. A phone exporter the OS stopped running, or a poll
-that never gets far enough to log, leaves the connection sitting at `connected`
-with a green badge, syncing nothing. The only evidence is negative.
+**Silence is the whole escalation rule (#1685, unified in #2263).** The two
+event-driven "this provider needs attention" signals cannot see a connection that
+is recording nothing at all. `isAuthRefreshFailure` (#326) only flips a connection
+to `needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay transient on
+purpose, or a passing cloud hiccup would tear down a healthy connection — and
+`currentlyFailingProviders` only fires when a provider's LATEST recorded event is a
+failure. A phone exporter the OS stopped running, or a poll that never gets far
+enough to log, leaves the connection sitting at `connected` with a green badge,
+syncing nothing. The only evidence is negative.
 
-So a connected provider whose **last successful sync** is older than a
-per-provider threshold raises the SAME `integration:<id>` attention item, with
-its own copy. Since #1880 the breach also COMPOSES into the standing itself:
-`providerStanding` calls the same `isSyncStale`, so a quiet stop reads
-"Sync failing" on every surface (with the staleness observation as its stated
-reason via `IntegrationState.stale`), and a flapping provider whose last success
-fell outside the threshold escalates even below the consecutive-failure count. The derivation is pure (`lib/integrations/staleness.ts`) and the
-thresholds live beside each provider's other metadata in
-`lib/integrations/registry.ts` as `staleAfterDays` (null = exempt: a manual
-archive import has no cadence to be late against, a `planned` provider has no
-connection, and the calendar feed is outbound). It measures the **sync**, not the
-data: every polled provider records an `ok=1` event for each successful poll
-including a quiet one (`isQuietSync`), so a week between weigh-ins or a rest week
-is not staleness — which is what makes a day threshold safe to state at all.
+So THE rule, asked once:
+
+> A connected provider escalates when **no successful run has landed within its
+> tolerance** — whether the silence was recorded as failures, recorded as nothing,
+> or a mix.
+
+That collapses two rules that were answering the same question at two incompatible
+grains. #1880's escalation counted CONSECUTIVE FAILED RUNS (three), which is not a
+measure of whether data is arriving: for an hourly provider three runs is three
+hours, and Weather & UV's own p90 gap between successes is six — so the threshold
+sat below the provider's ordinary operating variance and it read "Sync failing" for
+**29% of hours** across 171 measured runs while every success re-fetched its full
+381-row window. #1685's quiet-stop rule was at whole-DAY grain. Between "three
+hours" and "two days" there was no rule at all. `FAILING_CONSECUTIVE_RUNS` is
+deleted; `consecutiveLeadingFailures` survives, demoted to choosing WHICH recorded
+error the copy names.
+
+**Accepted consequence, stated plainly:** a provider that fails EVERY run now stays
+`intermittent` until its tolerance expires rather than escalating after three. That
+is the point — it cannot be called broken while its data is still landing, and if
+the data genuinely stops, the tolerance catches it. This is a reach REDUCTION only,
+which the contact-consent rule permits unilaterally.
+
+The derivation is pure (`lib/integrations/staleness.ts`), instant-grained against
+`instantNow()` (the `lib/clock.ts` seam) over `integration_sync_events.at`, which
+migration 163 put on the canonical UTC+`Z` convention. Tolerances live beside each
+provider's other metadata in `lib/integrations/registry.ts` as
+`silenceToleranceMinutes`, read ONLY through `silenceToleranceMinutes()`:
+
+| Provider                                               | Tolerance       | Source                                                                                                                                          |
+| ------------------------------------------------------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| weather                                                | **12 h**        | the default: `DEFAULT_SILENCE_TOLERANCE_POLLS` (12) × its declared 60-minute cadence                                                            |
+| strava / oura / withings                               | 3 days          | explicit override, keeping each provider's shipped number and reason                                                                            |
+| health-connect                                         | **12 h**        | explicit — a `push` provider has no poll cadence to derive from                                                                                 |
+| fitbit-takeout, garmin, patient-portals, calendar-feed | exempt (`null`) | a manual archive has no cadence to be late against, a `planned` provider has no connection, portals run attended, the calendar feed is outbound |
+
+An UNDECLARED tolerance derives from the provider's own poll cadence; a provider
+with neither a declaration nor a cadence is caught by the registry completeness test
+in `lib/__tests__/sync-staleness.test.ts`, in the `METRIC_KNOWLEDGE` /
+fitness-freshness idiom where every entry declares a policy or an explicit exemption
+with a reason.
+
+Health Connect's 12 h is measured, not inherited (#2263 decision 3b): over 1223
+pushes across 19 days its median gap is 16 min, p90 34 min, and its longest
+non-outage silence 1.6 h — while a real outage (a phone-side exporter pushing to a
+retired URL that answered `301`, which it did not follow, so nothing ever reached
+the server) lasted 16.2 h with **no failure events to classify**. The retired 3-day
+value was 45× the observed maximum and would have hidden that for two and a half
+more days.
+
+It measures the **sync**, not the data: every polled provider records an `ok=1`
+event for each successful poll including a quiet one (`isQuietSync`), so a week
+between weigh-ins or a rest week is not silence — which is what makes a per-provider
+tolerance safe to state at all.
 
 Three deliberate non-firings: an exempt provider; a provider already carrying a
 failing/needs-reauth signal (it is reported ONCE — the reauth item names the
-cause, and a staleness line naming the symptom underneath it would be noise); and
+cause, and a silence line naming the symptom underneath it would be noise); and
 a connection that has never synced successfully (the copy is "no data since
 &lt;date&gt;", which needs a date, and firing there would flag every
 freshly-created connection).
@@ -987,6 +1032,8 @@ the user's consent again, so "Reconnect" is correct; a stale connection may be
 perfectly authorized and simply not delivering, so the item states the
 observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
 and asks the user to check, rather than asserting a cause it has no evidence for.
+The duration it states is FLOORED and unit-aware (`formatSilence`) — "in 14 hours"
+as well as "in 4 days" — because a sub-day silence is escalatable now.
 The Data → Review row makes the same distinction — "sync has stopped" instead of
 "sync failed", which would claim a failure that never happened.
 

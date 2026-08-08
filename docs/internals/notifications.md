@@ -558,9 +558,8 @@ since migration 041, and the PRN redose window already arms off it.
 
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
 message rendered — which is why the rows survive a rebuild, a pointer rotation and a
-restart, and simply appear on whichever keyboard is live. `lib/correction-time.ts`
-holds the whole model, domain-blind, and `lib/notifications/correction-rows.ts`
-renders it for both:
+restart. `lib/correction-time.ts` holds the whole model, domain-blind, and
+`lib/notifications/correction-rows.ts` renders it for both:
 
 - taps within ~15 min collapse into a **burst**, because burst-mates share one error
   — dinner logged two hours late is off by two hours for all four servings;
@@ -599,6 +598,32 @@ on asserting the wrong time forever. It now reads `🕐 Salmon 19:11 (corrected)
 rather than to a button. No new machinery: the row set is a query, so every rebuild
 re-reads it. The re-render only ever REDUCES what the message claims; it adds no button
 and no new token.
+
+**A row renders only on the message that produced its burst (#2264).** The query used
+to be message-blind, so a family rebuild let a 7:30 Morning nudge adopt the 12:42
+midday burst's chips — and those chips restamp the midday servings from the wrong
+message. Migration 170 adds a nullable `notify_message_id` provenance link (ON DELETE
+SET NULL against `notify_messages`) to both one-tap ledgers; the Telegram handlers
+resolve the tapped (chat, message) to its pointer row and stamp it on the write, a
+burst carries its FIRST tap's link (matching `fromId` being the anchor), and every
+render site — the send, both tap rebuilds, the sweep — passes its own message identity
+through `correctionMessageBinding` (`lib/notifications/message-pointers.ts`) into the
+pure `burstsForMessage` filter. An attributed burst renders on its own message and
+nowhere else (the wrong-subject case fails closed); an **unattributed** burst — a web
+one-tap, an offline replay, a pruned or closed pointer row — rides only the NEWEST
+live message of its domain in its chat, never an older one, which preserves
+correcting a web-logged serving from chat. The filter runs BEFORE the row cap, so a
+foreign burst can never displace a message's own. Deliberately NOT `meal_slot`
+(recorded in #2264): the slot answers "which meal", wins the window derivation, and
+would freeze the meal against the very correction the chips exist to make.
+
+**The BODY states a corrected burst's stored time (#2264).** The row's label carries
+the whole statement (`×4 12:42 (corrected)`) and Telegram clips buttons on a phone, so
+after a correction the message never stated the resulting instant anywhere readable.
+`correctionBodyStatement` (correction-rows.ts) now adds one sentence — `🕐 Recorded:
+Salmon 12:42 (corrected)`, two bursts joined on one line — built from the same
+`burstLabel` computation as the button, on both domains' renders. An uncorrected
+burst adds nothing and the copy stands.
 
 The picker stays absolute-and-anchored-on-now so the stamp does not drift with the
 seconds between rendering the keyboard and choosing an answer. An offered hour LATER
@@ -1008,7 +1033,7 @@ rows for one fault is exactly what the one-row rule forbids. The declared stream
 is Health Connect's `hr_minutes`, the only continuous wear stream the app
 ingests (the Fitbit Takeout archive import has no live cadence to be silent
 against and is exempt by construction). #2146 moves that declaration into the
-provider registry beside `staleAfterDays` once a second provider needs one.
+provider registry beside `silenceToleranceMinutes` once a second provider needs one.
 
 Two gates sit in front of the predicate. The **expected-active** gate is the
 SHARED #2097 vocabulary — `isSleepTracking` over `getSyncedSleepWakeDays` — so a

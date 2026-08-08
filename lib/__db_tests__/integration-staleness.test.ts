@@ -8,10 +8,16 @@
 // exactly that state from real rows — a connection plus a last successful sync event of a
 // chosen age — and asserts it through the real reads the badge, the Data → Review Issues
 // list and the dashboard hero use.
+//
+// Since #2263 it is also THE escalation rule, at minute grain: silence past the
+// provider's declared tolerance is what makes a connected provider `failing`, whether
+// the silence was recorded as failures, as nothing, or a mix. So the fixtures below
+// are built from INSTANTS relative to the app's own clock, not from calendar days.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { now as clockNow } from "@/lib/clock";
+import { utcInstant } from "@/lib/date";
 import {
   getImportIssues,
   getImportReviewCount,
@@ -40,23 +46,27 @@ function connect(
   ).run(profileId, provider, status);
 }
 
-// A recorded sync event `daysAgo` days back. ok=1 is a successful (possibly quiet) sync —
-// the thing whose absence staleness measures.
+// A recorded sync event `hoursAgo` hours back from the app's own now. ok=1 is a
+// successful (possibly quiet) sync — the thing whose absence the tolerance measures.
+// Measured against the CLOCK, not the calendar: the rule is minute-grain since #2263,
+// so a day-derived fixture would drift with the hour CI happens to run at.
 function syncEvent(
   profileId: number,
   provider: string,
-  daysAgo: number,
+  hoursAgo: number,
   ok = 1,
   error: string | null = null
 ): void {
   // The sync ledger stores UTC with an explicit `Z` since migration 163 (#2205);
   // the fixture writes the shape the column actually holds.
-  const at = `${shiftDateStr(today(profileId), -daysAgo)}T04:00:00Z`;
+  const at = utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok, error)
      VALUES (?, ?, ?, ?, ?)`
   ).run(profileId, provider, at, ok, error);
 }
+
+const DAYS = 24;
 
 // The staleness issues among a profile's import issues.
 function staleIssues(profileId: number) {
@@ -67,7 +77,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
   it("raises a stale issue once the last success passes the provider's threshold", () => {
     const p = newProfile("StaleStrava");
     connect(p, "strava");
-    syncEvent(p, "strava", 12); // last successful poll, 12 days ago — well past 3
+    syncEvent(p, "strava", 12 * DAYS); // last successful poll, 12 days ago — well past 3
 
     const stale = staleIssues(p);
     expect(stale).toHaveLength(1);
@@ -82,7 +92,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
   it("stays quiet for a healthy connection — this is the common case", () => {
     const p = newProfile("HealthyStrava");
     connect(p, "strava");
-    syncEvent(p, "strava", 1);
+    syncEvent(p, "strava", 1 * DAYS);
     expect(staleIssues(p)).toEqual([]);
     expect(getImportIssues(p)).toEqual([]);
   });
@@ -90,7 +100,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
   it("never fires for a manual archive import, however old (registry exemption)", () => {
     const p = newProfile("OldTakeout");
     connect(p, "fitbit-takeout");
-    syncEvent(p, "fitbit-takeout", 400); // a Takeout import from over a year ago
+    syncEvent(p, "fitbit-takeout", 400 * DAYS); // a Takeout import from over a year ago
     expect(staleIssues(p)).toEqual([]);
   });
 
@@ -98,15 +108,15 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     const p = newProfile("NeverSynced");
     connect(p, "oura");
     // Rows exist, but none of them succeeded — a setup problem, not a stopped sync.
-    syncEvent(p, "oura", 9, 0, "Oura request failed (500)");
+    syncEvent(p, "oura", 9 * DAYS, 0, "Oura request failed (500)");
     expect(staleIssues(p)).toEqual([]);
   });
 
   it("does NOT double-report a provider already flagged as failing", () => {
     const p = newProfile("FailingAndOld");
     connect(p, "withings");
-    syncEvent(p, "withings", 20); // last success, long ago …
-    syncEvent(p, "withings", 0, 0, "Withings token refresh failed (401)"); // … then a failure
+    syncEvent(p, "withings", 20 * DAYS); // last success, long ago …
+    syncEvent(p, "withings", 1, 0, "Withings token refresh failed (401)"); // … then a failure
 
     const issues = getImportIssues(p);
     // Exactly ONE row for the provider: the recorded failure, which names the cause.
@@ -118,7 +128,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
   it("ignores a disconnected connection — being off is not being broken", () => {
     const p = newProfile("DisconnectedOld");
     connect(p, "strava", "disconnected");
-    syncEvent(p, "strava", 40);
+    syncEvent(p, "strava", 40 * DAYS);
     expect(staleIssues(p)).toEqual([]);
   });
 
@@ -126,9 +136,9 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     const owner = newProfile("StaleOwner");
     const bystander = newProfile("StaleBystander");
     connect(owner, "oura");
-    syncEvent(owner, "oura", 15);
+    syncEvent(owner, "oura", 15 * DAYS);
     connect(bystander, "oura");
-    syncEvent(bystander, "oura", 1);
+    syncEvent(bystander, "oura", 1 * DAYS);
 
     expect(staleIssues(owner)).toHaveLength(1);
     expect(staleIssues(bystander)).toEqual([]);
@@ -140,14 +150,16 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     const p = newProfile("StaleBadge");
     expect(getImportReviewCount(p)).toBe(0);
     connect(p, "weather");
-    syncEvent(p, "weather", 9);
+    // Weather's tolerance is 12 h since #2263 (12 polls × its declared hourly
+    // cadence); nine days is unambiguously past it.
+    syncEvent(p, "weather", 9 * DAYS);
     expect(getImportReviewCount(p)).toBe(1);
   });
 
   it("becomes an attention item with the stale copy, not the reconnect copy", () => {
     const p = newProfile("StaleAttention");
     connect(p, "withings");
-    syncEvent(p, "withings", 21);
+    syncEvent(p, "withings", 21 * DAYS);
 
     const gathered = getIntegrationAttention(p);
     expect(gathered).toHaveLength(1);
@@ -167,21 +179,38 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
   it("a failing provider still gets the reconnect copy", () => {
     const p = newProfile("FailingAttention");
     connect(p, "strava");
-    // Three consecutive failures — the #1880 escalation threshold. A single failed
-    // run is `intermittent` now and raises nothing (see integration-flap.test.ts).
+    // Silence past Strava's declared 3-day tolerance, WITH recorded failures in it.
+    // The escalation comes from the silence (#2263 — a run count says nothing about
+    // whether data is arriving); the recorded failure is what the copy then names,
+    // which is the surviving job of consecutiveLeadingFailures.
+    syncEvent(p, "strava", 5 * DAYS);
     syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401)");
     syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401)");
-    syncEvent(p, "strava", 0, 0, "Strava token refresh failed (401)");
 
     const item = integrationToItem(getIntegrationAttention(p)[0]);
     expect(item.title).toBe("Strava sync needs attention");
     expect(item.actionLabel).toBe("Reconnect");
   });
 
+  // The #2263 behaviour change, pinned where the old rule lived: three consecutive
+  // failures with a success beside them raise NOTHING. The provider is flapping, its
+  // data is arriving, and calling it broken is the crying-wolf this rule exists to
+  // stop.
+  it("raises nothing for consecutive failures with a recent success behind them", () => {
+    const p = newProfile("FlapNoAttention");
+    connect(p, "strava");
+    syncEvent(p, "strava", 4);
+    syncEvent(p, "strava", 3, 0, "Strava request failed (503)");
+    syncEvent(p, "strava", 2, 0, "Strava request failed (503)");
+    syncEvent(p, "strava", 1, 0, "Strava request failed (503)");
+    expect(getIntegrationAttention(p)).toEqual([]);
+    expect(getImportIssues(p)).toEqual([]);
+  });
+
   it("lands in the shared attention model the hero and Upcoming page render", () => {
     const p = newProfile("StaleModel");
     connect(p, "oura");
-    syncEvent(p, "oura", 30);
+    syncEvent(p, "oura", 30 * DAYS);
 
     const model = collectAttentionModel(p, today(p));
     const item = model.find((i) => i.key === "integration:oura");
@@ -199,10 +228,10 @@ describe("self-clearing", () => {
   it("disappears the moment a healthy sync lands — no lifecycle of its own", () => {
     const p = newProfile("StaleClears");
     connect(p, "strava");
-    syncEvent(p, "strava", 12);
+    syncEvent(p, "strava", 12 * DAYS);
     expect(staleIssues(p)).toHaveLength(1);
 
-    // One successful poll today, and the derivation stops firing on its own.
+    // One successful poll now, and the derivation stops firing on its own.
     syncEvent(p, "strava", 0);
     expect(staleIssues(p)).toEqual([]);
     expect(getImportReviewCount(p)).toBe(0);

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenSyncInstant } from "./worker-env";
 
 // Issue #1685b: a CONNECTED integration that has silently stopped syncing renders with
 // its own copy — "sync has stopped" / "No data since <date>" — rather than the reauth
@@ -19,9 +19,11 @@ import { workerDbPath, frozenNow } from "./worker-env";
 
 const PROFILE_ID = 1;
 const PROVIDER = "weather";
-// Weather's registry threshold is 2 days; 11 days is unambiguously past it and reads as
-// a clear "no data since" date in the copy.
-const DAYS_STALE = 11;
+// Weather's silence tolerance is 12 hours (#2263); 11 days is unambiguously past it
+// and reads as a clear "no data since" date in the copy. Seeded as an exact multiple
+// of 24 hours before the frozen clock so the duration the copy states is exactly
+// eleven days — the copy FLOORS, so a fixture that drifted a few hours short would
+// read "10 days".
 
 function withDb<T>(fn: (db: Database.Database) => T): T {
   const db = new Database(workerDbPath());
@@ -33,10 +35,15 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
-// The YYYY-MM-DD of the seeded last-successful sync, in the run's frozen clock.
+const DAYS_STALE = 11;
+
+// The seeded last-successful sync, as the instant the ledger stores and as the day the
+// copy names.
+function staleAt(): string {
+  return frozenSyncInstant(DAYS_STALE * 24);
+}
 function staleSince(): string {
-  const d = new Date(frozenNow().getTime() - DAYS_STALE * 86400000);
-  return d.toISOString().slice(0, 10);
+  return staleAt().slice(0, 10);
 }
 
 function seedStoppedSync(): void {
@@ -54,7 +61,7 @@ function seedStoppedSync(): void {
     db.prepare(
       `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, updated, unchanged)
        VALUES (?, ?, ?, 1, 0, 0, 24)`
-    ).run(PROFILE_ID, PROVIDER, `${staleSince()}T04:00:00Z`);
+    ).run(PROFILE_ID, PROVIDER, staleAt());
   });
 }
 

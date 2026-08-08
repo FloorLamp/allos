@@ -35,6 +35,7 @@ import {
   correctionBursts,
   CORRECTION_FRESH_MIN,
   type CorrectionBurst,
+  type CorrectionMessageBinding,
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
@@ -216,6 +217,11 @@ interface DoseResolveOptions {
   // resolveQueuedTakenAt and silently falling back to the server's own now when
   // unusable — a skewed phone clock must cost the precise minute, never the dose log.
   takenAt?: Date;
+  // Which MESSAGE'S tap this confirm is (#2264): the `notify_messages` row id the
+  // Telegram handler resolved from its (chat, message), or absent/null everywhere
+  // else. Attribution for the dose-time correction ride-along only — the burst this
+  // row joins renders on the message that produced it, never on a sibling.
+  notifyMessageId?: number | null;
 }
 
 function applyDoseStatusCore(
@@ -322,8 +328,9 @@ function applyDoseStatusCore(
           )
         : null;
       db.prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
-         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN COALESCE(?, ?) ELSE NULL END)`
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, amount, status, given_at, notify_message_id)
+         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN COALESCE(?, ?) ELSE NULL END, ?)`
       ).run(
         doseId,
         owned.item_id,
@@ -332,7 +339,8 @@ function applyDoseStatusCore(
         target,
         target,
         stamp ? utcSqlString(stamp) : null,
-        sqlNow()
+        sqlNow(),
+        opts.notifyMessageId ?? null
       );
     } else {
       // A flip between the two resolved states. `given_at` is deliberately left alone:
@@ -385,13 +393,17 @@ export function markDoseTaken(
   doseId: number,
   supplementId: number | null,
   date: string,
-  takenAt?: Date
+  takenAt?: Date,
+  // Which message's tap this is (#2264) — Telegram reminder handlers only; see
+  // DoseResolveOptions.notifyMessageId.
+  notifyMessageId?: number | null
 ): DoseTakenOutcome {
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "taken", {
       resolveOnly: true,
       supplementId,
       takenAt,
+      notifyMessageId,
     })
   );
 }
@@ -1764,6 +1776,9 @@ export interface DoseTapRow {
   id: number;
   tapAt: string;
   statedAt: string | null;
+  // Which message's tap wrote this row (#2264) — the burst's attribution; null for a
+  // web/offline confirm or a pruned message row.
+  messageRef: number | null;
   label: string;
   doseId: number;
   date: string;
@@ -1787,7 +1802,8 @@ export function getRecentDoseTaps(
   const rows = db
     .prepare(
       `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-              l.taken_at AS takenAt, l.given_at AS givenAt, s.name AS name
+              l.taken_at AS takenAt, l.given_at AS givenAt,
+              l.notify_message_id AS messageRef, s.name AS name
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
@@ -1802,6 +1818,7 @@ export function getRecentDoseTaps(
     date: string;
     takenAt: string;
     givenAt: string | null;
+    messageRef: number | null;
     name: string;
   }[];
   const out: DoseTapRow[] = [];
@@ -1815,6 +1832,7 @@ export function getRecentDoseTaps(
       id: r.id,
       tapAt: tap.toISOString(),
       statedAt: given ? given.toISOString() : null,
+      messageRef: r.messageRef,
       label: r.name,
       doseId: r.doseId,
       date: r.date,
@@ -1824,12 +1842,15 @@ export function getRecentDoseTaps(
 }
 
 // The correction rows a dose keyboard should carry right now. Same computation as the
-// food side (#221), over the ledger the dose reminder itself writes to.
+// food side (#221), over the ledger the dose reminder itself writes to. `binding` is
+// the rendering message's #2264 identity; omitting it returns the profile-wide set,
+// which only a caller that is not rendering a message may use.
 export function getDoseCorrectionBursts(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentDoseTaps(profileId, now), now);
+  return correctionBursts(getRecentDoseTaps(profileId, now), now, binding);
 }
 
 // The typed result of a dose-time correction:

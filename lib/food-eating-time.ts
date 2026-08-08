@@ -60,13 +60,19 @@ export const EATING_TIME_LAST_HOURS_BACK = 12;
 // case — is "nobody said", which stays a real answer rather than being filled in.
 export type EatingTimeChoice = { kind: "now" } | { kind: "at"; hhmm: string };
 
-// One offered "earlier…" hour: the local wall time the chip shows, and the instant it
-// means. Both are resolved SERVER-SIDE from the profile's timezone, so the browser never
-// has to convert a profile-local hour with its own locale — and the instant is what an
-// offline capture carries into replay, where there is no server to ask.
+// One offered "earlier…" hour: the local wall time the chip shows, the instant it
+// means, and — since #2269 — the meal window that hour derives to under the profile's
+// own boundaries, so the chip ANNOUNCES the filing before the tap (`19:00 · Evening`)
+// and the bar can place the serving in its derived section optimistically. All resolved
+// SERVER-SIDE from the profile's timezone and boundaries, so the browser never converts
+// a profile-local hour with its own locale — and the instant is what an offline capture
+// carries into replay, where there is no server to ask. The same enrichment the
+// correction sheet's `eatingHoursOnDate` adapter got in #2268, worn by the log-time
+// offer: one shape, so the two surfaces cannot drift.
 export interface EatingTimeOption {
   hhmm: string;
   iso: string;
+  slot: FoodSlot;
 }
 
 // The wire spelling of a choice: "now", or "HH:MM". One string on a form field and one
@@ -105,14 +111,18 @@ export function resolveEatingTimeChoice(
 }
 
 // The hours the "earlier…" affordance offers, newest first, each with the instant it
-// resolves to — filtered to those that land on `date`, the day the serving is being
-// logged to. That filter is what makes the offer honest rather than merely validated:
-// shortly after midnight the twelve-hour reach would otherwise mostly point at yesterday,
-// and a chip that `acceptEatenAt` would refuse should never have been on screen.
+// resolves to and the meal window it files under (#2269) — filtered to those that land
+// on `date`, the day the serving is being logged to. That filter is what makes the offer
+// honest rather than merely validated: shortly after midnight the twelve-hour reach
+// would otherwise mostly point at yesterday, and a chip that `acceptEatenAt` would
+// refuse should never have been on screen. The slot comes from `foodSlotForHhmm` under
+// the caller's boundaries — the SAME derivation the tallies read — so the chip's claim
+// and the section the serving lands in cannot disagree.
 export function eatingTimeOptions(
   now: Date,
   tz: string,
-  date: string
+  date: string,
+  boundaries: FoodSlotBoundaries
 ): EatingTimeOption[] {
   const out: EatingTimeOption[] = [];
   for (const hhmm of hourOptionsBack(
@@ -124,7 +134,11 @@ export function eatingTimeOptions(
     const instant = statedHourInstant(hhmm, now, tz);
     if (!instant) continue;
     if (dateStrInTz(tz, instant) !== date) continue;
-    out.push({ hhmm, iso: instant.toISOString() });
+    out.push({
+      hhmm,
+      iso: instant.toISOString(),
+      slot: foodSlotForHhmm(hhmm, boundaries),
+    });
   }
   return out;
 }
@@ -134,10 +148,10 @@ export function eatingTimeOptions(
 // One offered hour of the correction sheet's selected day: the neutral day-hours
 // option (lib/stated-time.ts) plus the meal window that hour derives to under the
 // profile's own boundaries — the data #2227 decision 4 runs on, where the sheet's
-// Meal select follows the chosen hour until Meal is touched by hand.
-export interface EatingHourOption extends EatingTimeOption {
-  slot: FoodSlot;
-}
+// Meal select follows the chosen hour until Meal is touched by hand. Since #2269 the
+// log-time offer above carries the same shape, so this is now an alias rather than an
+// extension — one vocabulary for "an offered hour and where it files".
+export type EatingHourOption = EatingTimeOption;
 
 // The hours of `date` a serving may be stated to have been eaten at, each carrying the
 // instant it means and its derived meal window. This is `statedHoursOnDate` (#2236,

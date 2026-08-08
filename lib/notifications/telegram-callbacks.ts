@@ -143,6 +143,7 @@ import {
   countVisibleFoodButtons,
   FOOD_NUDGE_BUTTON_COUNT,
 } from "./food-format";
+import { messagePointerIdAt } from "./message-pointers";
 import {
   answerCallbackQuery,
   closeMessage,
@@ -626,6 +627,12 @@ async function handleEscalationTap(
     // med), and a dose meanwhile resolved as skipped (#280) is answered by the
     // status that actually stands — the toast and the replacement body come from
     // the same outcome so they can't disagree.
+    //
+    // DELIBERATELY NO #2264 MESSAGE PROVENANCE: the escalation closes itself on this
+    // very tap (replaceMessage below), so a burst attributed to it could never render
+    // anywhere. Left unattributed, it behaves like a web one-tap — its correction row
+    // rides the newest live dose message — which keeps the chat-side correction
+    // reachable instead of burying it on a closed message.
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
     await answerCallbackQuery(
       cq.id,
@@ -790,9 +797,24 @@ async function handleDoseTap(
   // rejected there. The message the button lives in is a frozen snapshot — the
   // dose may have been deleted/retired by an edit, or its item paused, since it
   // was sent — so answer with what ACTUALLY happened, never unconditionally.
+  //
+  // A take records WHICH MESSAGE it came from (#2264): the (chat, message) resolves to
+  // its notify_messages pointer, so the dose-time correction burst this confirm joins
+  // renders on THIS reminder and never on a sibling. A skip writes no `given_at` and
+  // can never join a burst, so it carries none.
+  const messageId = cq.message?.message_id;
   const outcome =
     kind === "take"
-      ? markDoseTaken(profileId, tap.doseId, tap.suppId, tap.date)
+      ? markDoseTaken(
+          profileId,
+          tap.doseId,
+          tap.suppId,
+          tap.date,
+          undefined,
+          chatId != null && messageId != null
+            ? messagePointerIdAt(profileId, chatId, messageId)
+            : null
+        )
       : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
   await answerCallbackQuery(
     cq.id,
@@ -802,7 +824,6 @@ async function handleDoseTap(
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  const messageId = cq.message?.message_id;
   // Only act when the message actually had buttons — otherwise an absent
   // keyboard would look "empty" and wrongly overwrite the message text.
   if (chatId == null || messageId == null || rows.length === 0) return;
@@ -836,7 +857,8 @@ async function handleDoseTap(
           parts,
           tap.date,
           getUserAge(profileId)
-        )
+        ),
+        { ref: { chatId, messageId } }
       )
     );
     return;
@@ -910,6 +932,12 @@ async function handleHouseholdDoseTap(
   // setDoseStatusCore) — and markDoseTaken independently re-verifies the
   // dose → item → profile chain, so a forged id cannot cross profiles here.
   // `tap.date` is the MEMBER's own profile-local day, stamped at send time.
+  //
+  // DELIBERATELY NO #2264 MESSAGE PROVENANCE: the round message belongs to the
+  // RECEIVER's profile, so it could never render the member's correction rows anyway
+  // (a pointer lookup under the member's id would miss it by construction). Left
+  // unattributed, the member's burst rides the newest live dose message in the
+  // member's own chat — where they can actually correct it.
   const outcome = markDoseTaken(
     tap.memberProfileId,
     tap.doseId,
@@ -977,6 +1005,13 @@ async function handleAllTaken(
   const entries = notifiableWindowDoses(
     collectWindowDoses(profileId, all.window, all.date)
   );
+  // The originating message (#2264), stamped onto every log this bulk tap writes so
+  // the burst it creates renders on THIS reminder and never on a sibling.
+  const allMessageId = cq.message?.message_id;
+  const notifyMessageId =
+    chatId != null && allMessageId != null
+      ? messagePointerIdAt(profileId, chatId, allMessageId)
+      : null;
   let logged = 0;
   for (const e of entries) {
     // A deliberately-skipped dose (#232) is already resolved — "✅ All" marks the
@@ -984,7 +1019,14 @@ async function handleAllTaken(
     if (
       !e.taken &&
       !e.skipped &&
-      markDoseTaken(profileId, e.dose.id, e.supp.id, all.date) === "logged"
+      markDoseTaken(
+        profileId,
+        e.dose.id,
+        e.supp.id,
+        all.date,
+        undefined,
+        notifyMessageId
+      ) === "logged"
     ) {
       logged++;
     }
@@ -1040,7 +1082,8 @@ async function handleAllTaken(
         parts,
         all.date,
         getUserAge(profileId)
-      )
+      ),
+      { ref: { chatId, messageId } }
     )
   );
 }
@@ -1085,19 +1128,28 @@ async function handleFoodLog(
   // identity and rebuild only. With a real eating instant on the row, the window the
   // serving belongs to is DERIVED from when it was eaten — so a correction moves the
   // meal along with the time, which an asserted slot would have frozen in place.
+  //
+  // THE MESSAGE IS RECORDED ON THE ROW (#2264): the (chat, message) this tap arrived
+  // from resolves to its notify_messages pointer, so the correction burst this serving
+  // joins renders on THIS message and never on a sibling about some other meal.
   const tapAt = instantNow();
+  const messageId = cq.message?.message_id;
+  const origin =
+    chatId != null && messageId != null
+      ? { notifyMessageId: messagePointerIdAt(profileId, chatId, messageId) }
+      : undefined;
   const outcome = logFoodServingCore(
     profileId,
     food.group,
     food.date,
     tapAt,
     undefined,
-    { eatenAt: tapAt, source: "tap" }
+    { eatenAt: tapAt, source: "tap" },
+    origin
   );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  const messageId = cq.message?.message_id;
   // Only rebuild when the message actually had buttons — an absent keyboard would
   // otherwise wrongly overwrite the message text.
   if (chatId == null || messageId == null || rows.length === 0) return;
@@ -1111,7 +1163,8 @@ async function handleFoodLog(
     profileId,
     food.window,
     food.date,
-    visibleCount
+    visibleCount,
+    { ref: { chatId, messageId } }
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
@@ -1140,29 +1193,37 @@ async function handleFoodProtein(
     return;
   }
   // The protein sibling of the food tap's #2019 capture: the same "I'm having this now"
-  // contract, the same recorded instant, and the same reason no explicit `meal_slot` is
-  // written. The __protein__ ledger row rides the identical columns, which is what makes
-  // protein DISTRIBUTION — the actual recommendation — computable from this ledger.
+  // contract, the same recorded instant, the same reason no explicit `meal_slot` is
+  // written, and the same #2264 message provenance — a protein burst's correction row
+  // renders on the message that produced it. The __protein__ ledger row rides the
+  // identical columns, which is what makes protein DISTRIBUTION — the actual
+  // recommendation — computable from this ledger.
   const tapAt = instantNow();
+  const messageId = cq.message?.message_id;
+  const origin =
+    chatId != null && messageId != null
+      ? { notifyMessageId: messagePointerIdAt(profileId, chatId, messageId) }
+      : undefined;
   const outcome = addProteinGramsCore(
     profileId,
     token.date,
     token.grams,
     tapAt,
     undefined,
-    { eatenAt: tapAt, source: "tap" }
+    { eatenAt: tapAt, source: "tap" },
+    origin
   );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  const messageId = cq.message?.message_id;
   if (chatId == null || messageId == null || rows.length === 0) return;
   const visibleCount = countVisibleFoodButtons(rows) || undefined;
   const rebuilt = buildFoodNudge(
     profileId,
     token.window,
     token.date,
-    visibleCount
+    visibleCount,
+    { ref: { chatId, messageId } }
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
@@ -1205,7 +1266,9 @@ async function handleFoodExpand(
     token.action === "more"
       ? current + FOOD_NUDGE_BUTTON_COUNT
       : Math.max(FOOD_NUDGE_BUTTON_COUNT, current - FOOD_NUDGE_BUTTON_COUNT);
-  const rebuilt = buildFoodNudge(profileId, token.window, token.date, next);
+  const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
+    ref: { chatId, messageId },
+  });
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
   await answerCallbackQuery(cq.id);
 }
