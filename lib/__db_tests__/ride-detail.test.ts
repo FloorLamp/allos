@@ -1,6 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { getCyclingOverviewData, getRideDetailData } from "@/lib/queries";
+import { reconcileCyclingStreamSummaries } from "@/lib/cycling-stream-summary-db";
+import {
+  serializeCyclingStreamSummary,
+  streamSummarySignature,
+  summarizeCyclingStreams,
+} from "@/lib/cycling-stream-summary";
 
 const POLYLINE = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
 
@@ -275,6 +281,13 @@ beforeAll(() => {
       )
       .run(profileId).lastInsertRowid
   );
+
+  // The telemetry above is inserted with raw SQL, so it carries no precomputed
+  // stream summary — and since #2292 the cycling OVERVIEW reads that summary
+  // instead of parsing streams. This is the same pass a real boot runs, and it is
+  // how any writer other than upsertCyclingTelemetry is expected to become
+  // complete: write a summary, or leave it NULL for the reconcile to fill.
+  reconcileCyclingStreamSummaries(db);
 });
 
 describe("getRideDetailData", () => {
@@ -521,5 +534,194 @@ describe("getCyclingOverviewData heart-rate window", () => {
     expect(overview.zoneMinutes).toEqual([0, 1, 1, 0, 0]);
     // The all-time surfaces are untouched: both rides still count.
     expect(overview.rollup.totals.rides).toBe(2);
+  });
+});
+
+// Issue #2292: the overview used to JSON.parse EVERY activity_telemetry.streams_json
+// row the profile owned on each load, to derive two things — the power-curve bests
+// and the per-zone seconds. Both are now precomputed at ingest into
+// stream_summary_json, so the page reads a few numbers per ride instead of a ride's
+// worth of per-second samples.
+//
+// These pin the BOUND, in the shape #2290 used for the HR window: the streams stay
+// present and reachable through the ride-detail read, so what the overview leaves
+// out is excluded BY COLUMN, not missing from the fixture.
+describe("getCyclingOverviewData stream summary", () => {
+  let summaryProfileId: number;
+  let summaryRideId: number;
+  let telemetryId: number;
+
+  // 200 W flat for a minute — what parsing the streams yields.
+  const STREAMS = JSON.stringify({
+    time: { data: Array.from({ length: 61 }, (_, index) => index) },
+    watts: { data: Array.from({ length: 61 }, () => 200) },
+  });
+  const ZONES = JSON.stringify([
+    { min: 0, max: 180 },
+    { min: 181, max: -1 },
+  ]);
+
+  beforeAll(() => {
+    summaryProfileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Summary Rider')").run()
+        .lastInsertRowid
+    );
+    summaryRideId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, distance_km,
+              weighted_avg_power_w, components)
+           VALUES (?, '2026-06-10', 'cardio', 'Synthetic summary ride', 60, 20,
+                   205, ?)`
+        )
+        .run(
+          summaryProfileId,
+          JSON.stringify([
+            {
+              name: "Cycling",
+              type: "cardio",
+              distance_km: 20,
+              duration_min: 60,
+            },
+          ])
+        ).lastInsertRowid
+    );
+    telemetryId = Number(
+      db
+        .prepare(
+          `INSERT INTO activity_telemetry
+             (profile_id, activity_id, source, streams_json, ftp_w,
+              power_zones_json, snapshot_at)
+           VALUES (?, ?, 'strava', ?, 250, ?, '2026-06-10T10:00:00Z')`
+        )
+        .run(summaryProfileId, summaryRideId, STREAMS, ZONES).lastInsertRowid
+    );
+  });
+
+  const setSummary = (value: string | null) =>
+    db
+      .prepare(
+        "UPDATE activity_telemetry SET stream_summary_json = ? WHERE id = ?"
+      )
+      .run(value, telemetryId);
+
+  it("reads the stored summary and never parses the streams", () => {
+    // A sentinel no amount of parsing could produce: the streams are flat 200 W.
+    setSummary(
+      JSON.stringify({
+        sig: streamSummarySignature(),
+        powerCurve: [{ seconds: 5, watts: 999 }],
+        powerZoneSeconds: [7, 11],
+      })
+    );
+
+    const overview = getCyclingOverviewData(summaryProfileId);
+    expect(overview.powerBests).toEqual([
+      expect.objectContaining({ seconds: 5, label: "5 sec", watts: 999 }),
+    ]);
+    expect(overview.powerZoneTimes.map((zone) => zone.seconds)).toEqual([
+      7, 11,
+    ]);
+
+    // The streams themselves are intact and still reachable — the ride detail,
+    // which reads ONE row and is bounded by construction, parses them and reports
+    // the real 200 W. So the overview's number came from the summary column, not
+    // from an empty fixture.
+    const detail = getRideDetailData(summaryProfileId, summaryRideId)!;
+    expect(detail.powerCurve).toEqual([
+      { seconds: 5, label: "5 sec", watts: 200 },
+      { seconds: 60, label: "1 min", watts: 200 },
+    ]);
+    // The non-stream telemetry values are untouched by any of this.
+    expect(overview.latestFtpW).toBe(250);
+    expect(overview.telemetryRideCount).toBe(1);
+    expect(overview.loadPoints).toHaveLength(1);
+  });
+
+  it("treats a missing or stale-signature summary as absent, and the reconcile heals it", () => {
+    for (const unusable of [
+      null,
+      // A curve taken at durations the app no longer shows. Nothing about this row
+      // is corrupt — it answers the PREVIOUS question, which is the silent failure
+      // the signature exists to catch.
+      JSON.stringify({
+        sig: "1:5,30,60,300,1200",
+        powerCurve: [{ seconds: 5, watts: 999 }],
+        powerZoneSeconds: [7, 11],
+      }),
+    ]) {
+      setSummary(unusable);
+      const stale = getCyclingOverviewData(summaryProfileId);
+      // No fallback to parsing the streams — that is the cost this change removed.
+      expect(stale.powerBests).toEqual([]);
+      expect(stale.powerZoneTimes).toEqual([]);
+      // The ride still counts everywhere that never needed the streams.
+      expect(stale.telemetryRideCount).toBe(1);
+      expect(stale.rollup.totals.rides).toBe(1);
+
+      expect(reconcileCyclingStreamSummaries(db)).toBeGreaterThan(0);
+      const healed = getCyclingOverviewData(summaryProfileId);
+      expect(healed.powerBests).toEqual([
+        expect.objectContaining({ seconds: 5, label: "5 sec", watts: 200 }),
+        expect.objectContaining({ seconds: 60, label: "1 min", watts: 200 }),
+      ]);
+      expect(healed.powerZoneTimes.map((zone) => zone.seconds)).toEqual([
+        0, 60,
+      ]);
+      // What the reconcile writes is exactly what summarizing the row yields.
+      expect(
+        (
+          db
+            .prepare(
+              "SELECT stream_summary_json AS s FROM activity_telemetry WHERE id = ?"
+            )
+            .get(telemetryId) as { s: string }
+        ).s
+      ).toBe(
+        serializeCyclingStreamSummary(summarizeCyclingStreams(STREAMS, ZONES))
+      );
+    }
+  });
+
+  it("does no work on a boot with nothing to re-derive", () => {
+    // The property the whole design rests on: streams_json is never read again
+    // once every row is signed, so a no-drift boot costs one small-column scan.
+    expect(reconcileCyclingStreamSummaries(db)).toBe(0);
+  });
+
+  it("gives an unsummarisable row a terminal state instead of re-parsing it forever", () => {
+    const brokenRideId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, distance_km, components)
+           VALUES (?, '2026-06-12', 'cardio', 'Synthetic broken telemetry', 40, 12, ?)`
+        )
+        .run(
+          summaryProfileId,
+          JSON.stringify([
+            {
+              name: "Cycling",
+              type: "cardio",
+              distance_km: 12,
+              duration_min: 40,
+            },
+          ])
+        ).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO activity_telemetry
+         (profile_id, activity_id, source, streams_json, snapshot_at)
+       VALUES (?, ?, 'strava', 'not json at all', '2026-06-12T10:00:00Z')`
+    ).run(summaryProfileId, brokenRideId);
+
+    expect(reconcileCyclingStreamSummaries(db)).toBe(1);
+    // Signed but empty: it contributes nothing, and the NEXT boot skips it rather
+    // than parsing the same unusable payload again.
+    expect(reconcileCyclingStreamSummaries(db)).toBe(0);
+    const overview = getCyclingOverviewData(summaryProfileId);
+    expect(overview.telemetryRideCount).toBe(2);
+    expect(overview.powerBests).toHaveLength(2);
   });
 });

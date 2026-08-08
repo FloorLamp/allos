@@ -210,6 +210,27 @@ later athlete-setting change cannot rewrite historical training load. Activity
 merges re-parent these children before deleting a duplicate, and undoable merges
 move them back with the restored activity.
 
+Each telemetry row also carries `stream_summary_json`, computed at ingest: the
+power-curve bests and the per-zone seconds, which are the only two things the
+cycling overview derives from a ride's streams. Before it existed, that page
+parsed every stream blob the profile owned on each load, so its cost grew with
+total ride history in bytes parsed rather than rows returned. Both values are pure
+functions of the telemetry row's own `streams_json` and `power_zones_json` and of
+nothing on the activity row — which is why one computation at ingest stays correct
+for the life of the row, and why re-parenting or restoring a row cannot invalidate
+it. A writer other than the Strava upsert must either write the summary through
+`summarizeCyclingStreams` or leave the column NULL. The summary is stamped with a
+signature naming the rule that produced it (the logic version plus the durations
+the curve was taken at), and the `reconcileCyclingStreamSummaries` boot task
+re-derives any row whose stamp does not match the current rule — the same
+"derived state can go stale without a schema change" reasoning the canonical-flag
+reconcile is a boot task for. That pass is also the backfill: migration 175 adds
+the column empty. A summary that is missing or stale is treated as absent, never
+as a reason to fall back to parsing the streams. The overview's power cards
+therefore stay ALL-TIME, unlike its heart-rate distribution, which is windowed —
+see `docs/features.md` and `lib/cycling-stream-summary.ts` for why those two reads
+on one page answer differently on purpose.
+
 The connected Strava page exposes **Backfill ride details** for cycling
 activities imported before telemetry existed (or whose prior stream request
 failed). This runs through the provider-neutral durable backfill substrate:

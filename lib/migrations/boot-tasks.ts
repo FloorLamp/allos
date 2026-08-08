@@ -16,6 +16,7 @@ import {
 } from "../onboarding";
 import { seedStandardMetricSaves } from "../standard-metric-seeds";
 import { runPhotoMetadataBackfill } from "../photo/metadata-backfill";
+import { reconcileCyclingStreamSummaries } from "../cycling-stream-summary-db";
 import { runBootTx } from "./schema-utils";
 import { clockOverride } from "../clock";
 import { utcInstant } from "../date";
@@ -73,6 +74,15 @@ import { createLogger } from "../log";
 //                                  synchronous); marker-gated like the flag
 //                                  reconcile, and detached so boot never waits on
 //                                  it.
+//   • reconcileCyclingStreamSummaries
+//                                — re-derives a telemetry row's precomputed stream
+//                                  summary when it is missing or was made by a
+//                                  different rule (#2292). The rule (the power-curve
+//                                  durations, the derivation logic) lives in lib/ and
+//                                  changes with NO schema change, so a migration
+//                                  cannot own it — the same reasoning as the flag
+//                                  reconcile. Signature-gated, so a boot with no
+//                                  drift reads one small column and writes nothing.
 //
 // (The old boot path also carried backfillProfileIds, adopting legacy
 // NULL-profile_id rows onto profile 1. On the current schema every owned table is
@@ -161,6 +171,14 @@ export function bootTasks(db: Database.Database): void {
   // tally. See lib/photo/metadata-backfill.ts for why it is a boot task and not a
   // versioned migration.
   runPhotoMetadataBackfill(db);
+
+  // Keep each cycling telemetry row's precomputed stream summary in step with the
+  // rule that produced it (#2292). Backfills a NULL summary (migration 175 adds the
+  // column empty) and re-derives one whose signature no longer matches — the SAME
+  // pass, because POWER_CURVE_DURATIONS and the derivation logic live in lib/ and
+  // change in releases with no schema change, so a migration could never be the
+  // whole answer. Reads only, and no transaction at all, when nothing has drifted.
+  reconcileCyclingStreamSummaries(db);
 }
 
 // Stamp `install_first_boot_at` with the current time on the first boot that lacks
