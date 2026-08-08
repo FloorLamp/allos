@@ -3,8 +3,9 @@
 // auth guard and: converts °C/°F at the boundary to canonical degF, writes ONE
 // medical_records row in the shared "Body Temperature" vitals identity (source
 // 'manual', external_id NULL), derives the reference-range flag ("high" on a fever),
-// stamps the reading's clock time in `notes`, supports multiple same-day readings, and
-// rejects malformed/out-of-range input without writing.
+// stamps the reading's clock time on the row's own `occurred_at` (#2154 — the retired
+// notes-"HH:MM" convention is never written again), supports multiple same-day
+// readings, and rejects malformed/out-of-range input without writing.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -26,6 +27,7 @@ interface TempRow {
   flag: string | null;
   source: string | null;
   external_id: string | null;
+  occurred_at: string | null;
   notes: string | null;
 }
 
@@ -33,7 +35,7 @@ function tempRows(profileId: number): TempRow[] {
   return db
     .prepare(
       `SELECT date, category, name, canonical_name, value, value_num, unit, flag,
-              source, external_id, notes
+              source, external_id, occurred_at, notes
          FROM medical_records
         WHERE profile_id = ? AND canonical_name = 'Body Temperature'
         ORDER BY id`
@@ -45,11 +47,20 @@ beforeEach(() => {
   revalidate.mockClear();
 });
 
+// Deterministic occurred_at math whatever zone the host runs in: the stated
+// times below resolve on the profile's own wall clock.
+function pinUtc(profileId: number): void {
+  db.prepare(
+    "INSERT OR REPLACE INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')"
+  ).run(profileId);
+}
+
 describe("logTemperature — canonical write + fever flag", () => {
   it("logs a °C fever into the shared vitals series flagged high", async () => {
     const login = createLogin();
     const profile = createProfile("Feverish Kid", login.id);
     actAs(login, profile);
+    pinUtc(profile.id);
 
     const res = await logTemperature(
       fd({ temperature: "39.5", temp_unit: "C", date: DATE, time: "02:15" })
@@ -69,7 +80,9 @@ describe("logTemperature — canonical write + fever flag", () => {
       flag: "high",
       source: "manual",
       external_id: null,
-      notes: "02:15", // the reading's clock time rides notes (fever curve)
+      // The reading's clock time is the row's own event instant now (#2154).
+      occurred_at: `${DATE}T02:15:00Z`,
+      notes: null,
     });
     expect(revalidate).toHaveBeenCalledWith("/timeline");
     expect(revalidate).toHaveBeenCalledWith("/results");
@@ -94,6 +107,7 @@ describe("logTemperature — canonical write + fever flag", () => {
     const login = createLogin();
     const profile = createProfile("Curve", login.id);
     actAs(login, profile);
+    pinUtc(profile.id);
 
     await logTemperature(
       fd({ temperature: "100.4", temp_unit: "F", date: DATE, time: "08:00" })
@@ -106,10 +120,15 @@ describe("logTemperature — canonical write + fever flag", () => {
     );
 
     const rows = tempRows(profile.id);
-    // Three distinct same-day rows — none collapsed (distinct values) — each with its
-    // own time in notes, each flagged high.
+    // Three distinct same-day rows — none collapsed (distinct values) — each keyed
+    // by its own real instant (#800/#843, upgraded by #2154), each flagged high.
     expect(rows).toHaveLength(3);
-    expect(rows.map((r) => r.notes)).toEqual(["08:00", "14:00", "20:00"]);
+    expect(rows.map((r) => r.occurred_at)).toEqual([
+      `${DATE}T08:00:00Z`,
+      `${DATE}T14:00:00Z`,
+      `${DATE}T20:00:00Z`,
+    ]);
+    expect(rows.every((r) => r.notes === null)).toBe(true);
     expect(rows.map((r) => r.value_num)).toEqual([100.4, 102.2, 101.1]);
     expect(rows.every((r) => r.flag === "high")).toBe(true);
   });
