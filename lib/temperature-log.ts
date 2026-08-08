@@ -16,7 +16,7 @@
 // contract (every GROUP BY date / dedup / timeline query relies on it), and the
 // reading's clock time lands on the row's OWN event column, `occurred_at`
 // (migration 165; #2154 retired the "HH:MM"-in-notes hack this module minted for
-// #800/#843, and migration 170 moved the stored ones). The caller still states a
+// #800/#843, and migration 171 moved the stored ones). The caller still states a
 // profile-local "HH:MM"; it is the user's own wall clock on the row's own day, so
 // resolving it against the profile's timezone is exactly what the shared
 // WhenControl would do (`statedInstantOnDate`), and the acceptance stays honest —

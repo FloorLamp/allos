@@ -45,7 +45,7 @@ export interface VitalReadingRow {
   // The stated event instant (migration 165, #2154/#2235): canonical UTC `Z`
   // shape, or null/absent for a day-grain reading. THE time source — the column
   // that MEANS "when this reading was taken". (The retired #800 notes-"HH:MM"
-  // convention moved into it in migration 170, so notes are not read here at
+  // convention moved into it in migration 171, so notes are not read here at
   // all.)
   occurred_at?: string | null;
 }

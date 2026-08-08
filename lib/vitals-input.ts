@@ -39,7 +39,7 @@ export type GlucoseUnit = "mg/dL" | "mmol/L";
 // `unit`/`category` are the exact canonical shape the HC parser writes. WHEN the
 // reading was taken is no longer part of this row: the sitting's one stated time
 // lands on `medical_records.occurred_at` at the write boundary (#2154), retiring
-// the #800/#843 "HH:MM"-in-notes convention (migration 170 moved the stored ones).
+// the #800/#843 "HH:MM"-in-notes convention (migration 171 moved the stored ones).
 export interface VitalMedicalRow {
   canonical: string;
   category: "vitals" | "lab";
@@ -472,7 +472,7 @@ export function normalizeVitalsInput(
   if (tempRaw != null) {
     // WHEN the reading was taken is the sitting's one stated time, applied at the
     // write boundary (`medical_records.occurred_at`, #2154) — no more "HH:MM"
-    // riding the note (#800/#843, retired; migration 170 moved the stored ones).
+    // riding the note (#800/#843, retired; migration 171 moved the stored ones).
     medical.push({
       ...VITAL_CANONICAL.temperature,
       value_num: toCanonicalTempF(

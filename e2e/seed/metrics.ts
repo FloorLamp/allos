@@ -770,7 +770,7 @@ export function seedVitalsToday(): void {
 
     // A manual temperature — its clock time on the row's own occurred_at
     // (#2154; the retired notes-"HH:MM" convention is an unrepresentable state
-    // after migration 170, so the fixture stops minting it). The timed vitals
+    // after migration 171, so the fixture stops minting it). The timed vitals
     // ABOVE deliberately keep instants only in external_id: they are the
     // pre-#2154 device rows whose legacy fallback the intraday surfaces must
     // keep serving.

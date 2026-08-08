@@ -129,7 +129,7 @@ export function seedIllness(): void {
                  'Body Temperature', 'manual', ?)`
         )
         // An early clock time (on the row's own occurred_at, #2154 — the retired
-        // notes-"HH:MM" convention is unrepresentable after migration 170) so a
+        // notes-"HH:MM" convention is unrepresentable after migration 171) so a
         // "now" reading a caregiver logs later in the day always outranks it as
         // the LATEST temp (the multi-sick cross-profile-temp spec asserts the
         // logged value shows in the accordion line).

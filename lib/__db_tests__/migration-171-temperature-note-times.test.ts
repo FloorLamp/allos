@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — migration 170 (#2154): the temperature notes-hack data move.
+// DB INTEGRATION TIER — migration 171 (#2154): the temperature notes-hack data move.
 //
 // Driven against a MINIMAL pre-migration schema (the migration-165 test's pattern),
 // so every claim is about the migration and not about whatever else the baseline
@@ -20,7 +20,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { up } from "@/lib/migrations/versions/170-temperature-note-times";
+import { up } from "@/lib/migrations/versions/171-temperature-note-times";
 
 interface Row {
   id: number;
@@ -147,7 +147,7 @@ function rows(mem: Database.Database): Row[] {
     .all() as Row[];
 }
 
-describe("migration 170 — temperature note-times move into occurred_at", () => {
+describe("migration 171 — temperature note-times move into occurred_at", () => {
   it("moves purely-time notes per the profile's own timezone and clears them", () => {
     const mem = preMigrationDb();
     up(mem);

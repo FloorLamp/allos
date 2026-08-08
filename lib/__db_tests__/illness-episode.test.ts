@@ -50,7 +50,7 @@ function newProfile(name: string): number {
 
 function logTemp(profileId: number, date: string, time: string, degF: number) {
   // The reading's clock time on the row's own occurred_at (#2154 — the retired
-  // notes-"HH:MM" convention is unrepresentable after migration 170).
+  // notes-"HH:MM" convention is unrepresentable after migration 171).
   const id = Number(
     db
       .prepare(

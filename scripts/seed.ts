@@ -2608,7 +2608,7 @@ for (const [ago, valence, energy, anxiety, factors, note] of seededMoods) {
 // the evening" note) then trends down, so the illness-episode view's temperature curve
 // and its "fever trending down" headline have real data. Timed readings carry their
 // clock time on the row's own `occurred_at` (#2154 — the retired #800 notes-"HH:MM"
-// convention is unrepresentable after migration 170), resolved in the profile's
+// convention is unrepresentable after migration 171), resolved in the profile's
 // timezone exactly as the live writers resolve a stated time. Canonical
 // "Body Temperature" (degF) so a manual and a Health Connect reading would form ONE
 // series (#482). Fevers (>99°F, the canonical ref-high) flag "high" via

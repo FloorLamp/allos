@@ -104,7 +104,7 @@ export function assembleIllnessEpisode(
   );
 
   // ── Temperature / fever curve (#800) ────────────────────────────────────────
-  // Reading times come off the row's own `occurred_at` (#2154 — migration 170
+  // Reading times come off the row's own `occurred_at` (#2154 — migration 171
   // moved the old "HH:MM"-in-notes convention into it), through the SAME
   // vitalReadingTime the Trends vitals surfaces read, so the curve and the Today
   // strip can never disagree about when a reading was taken. Untimed rows sort

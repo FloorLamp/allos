@@ -3,7 +3,7 @@ import type { Migration } from "../runner";
 import { utcInstant, zonedDateParts, zonedWallTimeToUtc } from "../../date";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "../../timezone";
 
-// Migration 170 (issue #2154): the temperature notes-hack data move.
+// Migration 171 (issue #2154): the temperature notes-hack data move.
 //
 // Before #2154, a manual Body Temperature reading smuggled its clock time through
 // the row's free-text `notes` as a bare "HH:MM" (#800/#843 — medical_records had no
@@ -133,14 +133,14 @@ export function up(db: Database.Database): void {
 
   if (moved + clearedOnly + skipped !== rows.length) {
     throw new Error(
-      `migration 170: temperature note-time accounting does not balance ` +
+      `migration 171: temperature note-time accounting does not balance ` +
         `(candidates ${rows.length}, moved ${moved}, cleared ${clearedOnly}, ` +
         `skipped ${skipped}). Refusing to half-apply the data move.`
     );
   }
   if (rows.length > 0) {
     console.log(
-      `[migration 170] temperature note-times: ${moved} moved into occurred_at, ` +
+      `[migration 171] temperature note-times: ${moved} moved into occurred_at, ` +
         `${clearedOnly} notes cleared beside an existing instant, ${skipped} ` +
         `malformed/DST-gap value(s) left untouched.`
     );
@@ -148,7 +148,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 170,
-  name: "170-temperature-note-times",
+  id: 171,
+  name: "171-temperature-note-times",
   up,
 };
