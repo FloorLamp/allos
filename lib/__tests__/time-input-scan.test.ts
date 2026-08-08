@@ -36,16 +36,9 @@ const HANDROLLED_ALLOW = new Map<
   string,
   { count: number; kind: "event" | "plan"; reason: string }
 >([
-  [
-    "app/(app)/trends/MeasurementsQuickAdd.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "temperature + peak flow reading times; #2235 folds both into the " +
-        "form's one shared Time control when its occurred_at write half lands",
-    },
-  ],
+  // MeasurementsQuickAdd.tsx left the list with #2154's write half: the two
+  // per-measure time inputs (temperature, peak flow) folded into the form's one
+  // shared Time control, whose statement now lands on occurred_at.
   // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
   // write half: both adopt the shared control (backfill = state + timeRequired,
   // amend = correct with "Not stated" reachable).

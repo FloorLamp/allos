@@ -50,12 +50,16 @@
 import { db, today } from "../db";
 import { createLogger } from "../log";
 import {
+  getIntakeItemNames,
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getFrequencyTargetProgress,
 } from "../queries";
+import { getProfileNameById } from "../profile-summary-load";
+import { moodLabel } from "../mood";
+import { severityLabelFor, symptomLabel } from "../symptoms";
 import { getMoodOnDate } from "../queries/mood";
 import { getSymptomDaysInRange } from "../queries/symptoms";
 import { getRefillRates } from "../queries/intake/refill";
@@ -102,12 +106,15 @@ import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
 import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
 import {
+  closingTallyDetail,
   decideProseGather,
   decideReconcile,
   formatProseGatherRecord,
   keyboardTokens,
   messageBodyHash,
   parseProseGatherRecord,
+  type CloseDetail,
+  type CloseGroup,
   type ClosingTally,
   type ReconcileDecision,
   reconcileClosingText,
@@ -149,23 +156,69 @@ const log = createLogger("notify");
 
 // ---- Family predicates -----------------------------------------------------
 
-interface FamilyReconciler {
+// ── WHAT A RESOLVED CLOSE SAYS IS PART OF THE TYPE (issue #2275) ─────────────
+//
+// #1779 specified the reconcile substrate exhaustively and specified what a CLOSED
+// message would say in seven words ("fully resolved → closeMessage with an honest
+// closing line"). That deferral was never recorded, so a placeholder-quality line read
+// as a decision, and the gap had to be rediscovered three times — #1834 added the
+// subject, #2224 added counts, #2274 added names — each time for one family pair. Nine
+// of eleven families still closed to "handled in the app." WHILE HOLDING THE OUTCOME:
+// `mood`'s own resolution predicate reads the recorded mood and keeps only the null
+// check; `workoutDraft` knows whether the session was finished or DISCARDED, two
+// opposite outcomes rendering identically.
+//
+// The cause is mechanical: `tally?()` was OPTIONAL, and "this family declares none" was
+// done by OMISSION — indistinguishable from oversight. So the declaration is now a
+// discriminated union that every reconciler must satisfy, and it lives ON the reconciler
+// rather than in a second registry table, where it cannot drift from the implementation
+// it constrains.
+//
+// WHAT THE COMPILER GUARANTEES, WITH NO TEST OF ANY KIND:
+//
+//   • every family answers — `FAMILIES: Record<ReconcileFamily, FamilyReconciler>`
+//     already makes a new family a build error until it is declared;
+//   • a family cannot CLAIM detail without producing it — `detail()` is required on the
+//     `outcome-detail` variant;
+//   • a family cannot DECLINE detail without a reason — `why` is required on both other
+//     variants, so "we decided against it" and "nobody looked" stay distinguishable by
+//     construction rather than by review;
+//   • a family cannot HALF-declare — the `never` members below make the variants
+//     mutually exclusive, so a `subject-only` carrying a `detail()` is rejected.
+//
+// NO SCAN. Scans are for what types cannot see (source text, SQL — the `notify_` key
+// registry, the stateful-writes scan, the instant-writer scan). A closed vocabulary with
+// a per-member obligation is the other case, and the house precedent is
+// `RECAP_COMPARISON_KINDS`: a new key is a type error until its author declares one.
+export type CloseContent =
+  | {
+      closeStates: "outcome-detail";
+      why?: never;
+      // The outcome the close states — REQUIRED by this variant, which is the member
+      // nine families silently lacked. Consulted ONLY when every claim died (a
+      // `resolved` close) and answered from the SAME ledger read `dead` just asked, so
+      // it is the decision's own inputs restated rather than a second computation
+      // (#221). Null when this particular resolution genuinely has nothing to state,
+      // which then reads as the plain closing sentence.
+      detail(
+        profileId: number,
+        tokens: readonly string[],
+        p: MessagePointer
+      ): CloseDetail | null;
+    }
+  // The subject line and nothing more. No family claims it today; the reason is
+  // required so that if one ever does, it is a decision on the record.
+  | { closeStates: "subject-only"; why: string; detail?: never }
+  // This family has no `resolved` close at all.
+  | { closeStates: "not-applicable"; why: string; detail?: never };
+
+export type FamilyReconciler = {
   // The tokens on this keyboard whose tap is no longer actionable.
   dead(
     profileId: number,
     tokens: readonly string[],
     p: MessagePointer
   ): Set<string>;
-  // HOW the claims resolved, for the closing line (#2170). Consulted ONLY when every
-  // claim died — i.e. for a `resolved` close — and answered from the SAME ledger read
-  // `dead` just asked, so the counts are the decision's own inputs restated rather than
-  // a second adherence computation. A family with nothing countable declares none and
-  // keeps today's sentence.
-  tally?(
-    profileId: number,
-    tokens: readonly string[],
-    p: MessagePointer
-  ): ClosingTally | null;
   // Optional whole-message re-render from CURRENT state, used instead of
   // button-stripping. Returning null means "there is no message left to show".
   rebuild?(
@@ -173,6 +226,25 @@ interface FamilyReconciler {
     tokens: readonly string[],
     p: MessagePointer
   ): NotificationMessage | null;
+} & CloseContent;
+
+// A close that names its items only when the message claimed SEVERAL of them.
+//
+// The refill nudge titles itself with the item's own name when exactly one is low
+// ("💊 Vitamin D"), and the preventive nudge is one message per rule by construction, so
+// repeating that name in the close would print it twice on one line — the #1722 "name
+// twice" defect, one surface over. With several, the names are the whole point. `total`
+// is the count across ALL of the family's groups, not this one's: "done · not
+// applicable" with no names would be unreadable.
+function namedIfSeveral(
+  names: readonly string[],
+  outcome: string,
+  total: number
+): CloseGroup {
+  // Present-and-empty, so the formatter omits the group entirely — a bare `{ outcome }`
+  // here would print "done" for a family where nothing was done.
+  if (names.length === 0) return { names, outcome };
+  return total > 1 ? { names, outcome } : { outcome };
 }
 
 function fields(token: string): string[] {
@@ -210,15 +282,22 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
   return out;
 }
 
-// The dose message's OUTCOME TALLY (#2170) — the same two ledger reads `resolvedDoseIds`
-// splits a resolution out of, counted apart instead of unioned. Reached only on a
-// `resolved` close, so every dose named here is one this pass just proved resolved.
+// The dose message's OUTCOME (#2170, named by #2274) — the same two ledger reads
+// `resolvedDoseIds` splits a resolution out of, kept apart instead of unioned. Reached
+// only on a `resolved` close, so every dose named here is one this pass just proved
+// resolved.
 //
 // The doses are the ones the KEYBOARD claimed, taken from its own take/skip tokens and
 // deduplicated: a dose carries one confirm button and one skip button, and it is one
 // dose either way. Tokens with no dose id (`all`, `demote`, the time-correction chips)
 // carry no per-dose outcome and are ignored — the doses they cover are already named by
 // the take/skip pair beside them.
+//
+// NAMES, in the order the keyboard showed them (#2274). The token carries the item id
+// (`take:<profileId>:<doseId>:<suppId>:<date>`), so the lookup is one profile-scoped
+// read of that profile's item names — never a name from another profile's ledger, even
+// in a shared chat. An item whose name cannot be resolved is named as neither, the same
+// posture as a dose in neither ledger set.
 function doseClosingTally(
   profileId: number,
   tokens: readonly string[],
@@ -229,12 +308,14 @@ function doseClosingTally(
     { taken: Set<number>; skipped: Set<number> }
   >();
   const seen = new Set<string>();
-  let logged = 0;
-  let skipped = 0;
+  const taken: string[] = [];
+  const skipped: string[] = [];
+  let names: Map<number, string> | null = null;
   for (const t of tokens) {
     const f = fields(t);
     if (!prefixes.includes(f[0])) continue;
     const doseId = Number(f[2]);
+    const itemId = Number(f[3]);
     const date = f[4];
     if (!doseId || !date) continue;
     const key = `${date}:${doseId}`;
@@ -248,14 +329,28 @@ function doseClosingTally(
       };
       byDate.set(date, ledger);
     }
-    // Each dose is counted as what the ledger SAYS it is. A dose in neither set is
+    // Each dose is stated as what the ledger SAYS it is. A dose in neither set is
     // unreachable on a resolved close (that is what "every claim died" means) and is
-    // counted as neither rather than inferred into one — a tally that guesses is worse
+    // named as neither rather than inferred into one — a close that guesses is worse
     // than the sentence it replaces.
-    if (ledger.taken.has(doseId)) logged++;
-    else if (ledger.skipped.has(doseId)) skipped++;
+    const isTaken = ledger.taken.has(doseId);
+    if (!isTaken && !ledger.skipped.has(doseId)) continue;
+    names ??= getIntakeItemNames(profileId);
+    const name = itemId ? names.get(itemId) : undefined;
+    if (!name) continue;
+    (isTaken ? taken : skipped).push(name);
   }
-  return logged + skipped > 0 ? { logged, skipped } : null;
+  return taken.length + skipped.length > 0 ? { taken, skipped } : null;
+}
+
+// Both dose families' `detail()`, unchanged between them.
+function doseCloseDetail(
+  profileId: number,
+  tokens: readonly string[],
+  prefixes: readonly string[]
+): CloseDetail | null {
+  const tally = doseClosingTally(profileId, tokens, prefixes);
+  return tally ? closingTallyDetail(tally) : null;
 }
 
 // ── intake-dose ──────────────────────────────────────────────────────────────
@@ -314,10 +409,11 @@ const intakeDose: FamilyReconciler = {
     }
     return dead;
   },
-  // "5 logged, 1 skipped" (#2170) — the resolution facts this family just established,
-  // restated. Nothing new is read that `dead` did not already ask.
-  tally(profileId, tokens) {
-    return doseClosingTally(profileId, tokens, ["take", "skip"]);
+  // "Vitamin D, Magnesium taken · Omega-3 skipped" (#2170/#2274) — the resolution facts
+  // this family just established, restated in the words the buttons used.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    return doseCloseDetail(profileId, tokens, ["take", "skip"]);
   },
   // Rebuild through the identical computation the TAP rebuild uses
   // (slotSessionForKeyboard → renderMergedIntakeMessage), so a partially reconciled
@@ -378,12 +474,13 @@ const escalation: FamilyReconciler = {
     }
     return dead;
   },
-  // Same tally, one message class over (#2170): an escalation closes on exactly the
-  // dose ledger the reminder does, and a caregiver's chat is the last place a bare
-  // "handled in the app" belongs. `escack` carries no dose outcome, so it is not a
-  // counting prefix — the take/skip pair beside it names the same dose.
-  tally(profileId, tokens) {
-    return doseClosingTally(profileId, tokens, ["esctake", "escskip"]);
+  // The same close, one message class over (#2170/#2274): an escalation resolves on
+  // exactly the dose ledger the reminder does, and a caregiver's chat is the last place
+  // a bare "handled in the app" belongs. `escack` carries no dose outcome, so it is not
+  // a naming prefix — the take/skip pair beside it names the same dose.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    return doseCloseDetail(profileId, tokens, ["esctake", "escskip"]);
   },
 };
 
@@ -413,6 +510,73 @@ const householdRound: FamilyReconciler = {
       if (resolved.has(doseId)) dead.add(t);
     }
     return dead;
+  },
+  // PER MEMBER (#2275), because the round's whole subject is who owes what: one
+  // member's doses confirmed and another's skipped is exactly the fact a bare "handled
+  // in the app" destroyed. The member's name LEADS its group, which is the same
+  // attribution the round's own body sections ("Ada:") and button labels
+  // ("✓ Ada · Vitamin D") already carry (#377) — so the close discloses nothing this
+  // chat was not already shown.
+  //
+  // Every read is scoped to the MEMBER whose ledger the button confirms against, never
+  // the receiving profile's — the same rule `dead` above obeys.
+  closeStates: "outcome-detail",
+  detail(_profileId, tokens) {
+    const order: number[] = [];
+    const byMember = new Map<number, { taken: string[]; skipped: string[] }>();
+    const ledgers = new Map<
+      string,
+      { taken: Set<number>; skipped: Set<number> }
+    >();
+    const names = new Map<number, Map<number, string>>();
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "hh") continue;
+      const memberId = Number(f[2]);
+      const doseId = Number(f[3]);
+      const itemId = Number(f[4]);
+      const date = f[5];
+      if (!memberId || !doseId || !itemId || !date) continue;
+      const key = `${memberId}:${date}:${doseId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      let ledger = ledgers.get(`${memberId}:${date}`);
+      if (!ledger) {
+        ledger = {
+          taken: new Set(getTakenDoseIds(memberId, date)),
+          skipped: new Set(getSkippedDoseIds(memberId, date)),
+        };
+        ledgers.set(`${memberId}:${date}`, ledger);
+      }
+      const isTaken = ledger.taken.has(doseId);
+      if (!isTaken && !ledger.skipped.has(doseId)) continue;
+      let memberNames = names.get(memberId);
+      if (!memberNames) {
+        memberNames = getIntakeItemNames(memberId);
+        names.set(memberId, memberNames);
+      }
+      const name = memberNames.get(itemId);
+      if (!name) continue;
+      let bucket = byMember.get(memberId);
+      if (!bucket) {
+        bucket = { taken: [], skipped: [] };
+        byMember.set(memberId, bucket);
+        order.push(memberId);
+      }
+      (isTaken ? bucket.taken : bucket.skipped).push(name);
+    }
+    const groups: CloseGroup[] = [];
+    for (const memberId of order) {
+      const bucket = byMember.get(memberId);
+      if (!bucket) continue;
+      const lead = getProfileNameById(memberId) ?? undefined;
+      groups.push(
+        { ...(lead ? { lead } : {}), names: bucket.taken, outcome: "taken" },
+        { ...(lead ? { lead } : {}), names: bucket.skipped, outcome: "skipped" }
+      );
+    }
+    return groups.length > 0 ? { groups } : null;
   },
 };
 
@@ -484,6 +648,15 @@ const food: FamilyReconciler = {
     }
     return null;
   },
+  // The ONE family with no `resolved` close to govern (#2275). Its keyboard never lies
+  // and never resolves — another serving is always loggable — so `dead` kills only the
+  // hour-long correction chips riding beside it, and the message closes on ROLLOVER
+  // alone (`exact-day`), whose tail is a date fact rather than an outcome. The day's
+  // final tally deliberately does NOT go on that line: a rolled-over additive nudge is
+  // not a receipt for anything, its counts were live in the message until midnight, and
+  // the day's totals are what the app and the digest are for.
+  closeStates: "not-applicable",
+  why: "additive: the quick-log buttons never resolve, so this family never produces a `resolved` close — only the rollover tail, which states a date and not an outcome",
 };
 
 // ── food-optin (class 3: decision) ───────────────────────────────────────────
@@ -493,6 +666,18 @@ const foodOptIn: FamilyReconciler = {
   dead(profileId, tokens) {
     if (!getProfileFoodTelegram(profileId)) return new Set<string>();
     return new Set(tokens.filter((t) => fields(t)[0] === "foodoptin"));
+  },
+  // WHICH WAY THE SETTING WENT (#2275) — read from the setting itself, not from which
+  // button happens to be on the keyboard, so an opt-in performed in Settings closes with
+  // the same sentence a tap would have. Only one direction can reach a resolved close:
+  // `dead` fires exactly when food logging is ON, and a "Not now" tap leaves the choice
+  // genuinely still available. Re-read here rather than assumed, because a close must
+  // never state an outcome its ledger no longer holds.
+  closeStates: "outcome-detail",
+  detail(profileId) {
+    return getProfileFoodTelegram(profileId)
+      ? { groups: [{ outcome: "food logging turned on" }] }
+      : null;
   },
 };
 
@@ -518,6 +703,42 @@ const preventive: FamilyReconciler = {
       })
     );
   },
+  // WHICH ACTION RESOLVED, AND HOW (#2275) — the two outcomes the nudge's own buttons
+  // offer: ✅ Done → recordPreventiveDone, 🚫 Not applicable → setPreventiveOverride.
+  // Read off the SAME assessment `dead` just consulted, so it is that verdict restated.
+  //
+  // "Deferred" is deliberately not one of them: ⏰ Remind later is a findings-bus snooze,
+  // and the reconciler never reads the suppression bus (a dismissal must never close a
+  // message), so a deferred rule stays actionable and never reaches a resolved close at
+  // all. A rule that simply aged out of the catalog has no assessment left to name and
+  // is stated as neither, the dose families' posture.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    const summary = assessProfilePreventive(profileId, today(profileId));
+    const byKey = new Map(summary.assessments.map((a) => [a.key, a]));
+    const done: string[] = [];
+    const na: string[] = [];
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (!f[0].startsWith("pv")) continue;
+      const key = f.slice(2).join(":");
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const a = byKey.get(key);
+      if (!a) continue;
+      if (a.status === "up_to_date") done.push(a.name);
+      else if (a.status === "not_recommended") na.push(a.name);
+    }
+    const total = done.length + na.length;
+    if (total === 0) return null;
+    return {
+      groups: [
+        namedIfSeveral(done, "done", total),
+        namedIfSeveral(na, "not applicable", total),
+      ],
+    };
+  },
 };
 
 // ── refill ───────────────────────────────────────────────────────────────────
@@ -528,20 +749,60 @@ const refill: FamilyReconciler = {
   dead(profileId, tokens) {
     const wanted = tokens.filter((t) => fields(t)[0] === "rfsnooze");
     if (wanted.length === 0) return new Set<string>();
-    const rates = getRefillRates(profileId);
-    const lowIds = new Set<number>();
-    for (const s of getSupplements(profileId)) {
-      if (!s.active || s.quantity_on_hand == null) continue;
-      const daysLeft = daysOfSupplyLeft(
-        s.quantity_on_hand,
-        s.qty_per_dose,
-        rates.get(s.id)?.dosesPerDay ?? 0
-      );
-      if (isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS)) lowIds.add(s.id);
+    const { low } = refillSupplyState(profileId);
+    return new Set(wanted.filter((t) => !low.has(Number(fields(t)[2]))));
+  },
+  // WHICH ITEM IS NO LONGER LOW (#2275), from the SAME daysOfSupplyLeft/isLowSupply pair
+  // `dead` just evaluated. The nudge is multi-item by design ("3 items running low"),
+  // and which of the three was restocked is exactly what the bare sentence destroyed.
+  //
+  // "no longer low" rather than "restocked": the ledger says the shortage is over, not
+  // how it ended — a deactivated item or a cleared count reaches the same state, and a
+  // close must not name a write nobody made.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    const { low, names } = refillSupplyState(profileId);
+    const resolved: string[] = [];
+    const seen = new Set<number>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "rfsnooze") continue;
+      const itemId = Number(f[2]);
+      if (!itemId || seen.has(itemId) || low.has(itemId)) continue;
+      seen.add(itemId);
+      const name = names.get(itemId);
+      if (name) resolved.push(name);
     }
-    return new Set(wanted.filter((t) => !lowIds.has(Number(fields(t)[2]))));
+    return resolved.length > 0
+      ? {
+          groups: [namedIfSeveral(resolved, "no longer low", resolved.length)],
+        }
+      : null;
   },
 };
+
+// The shortage verdict for one profile, plus the names to state it with — one pass over
+// the same read both arms of `refill` need, so the close cannot disagree with the
+// predicate that produced it.
+function refillSupplyState(profileId: number): {
+  low: Set<number>;
+  names: Map<number, string>;
+} {
+  const rates = getRefillRates(profileId);
+  const low = new Set<number>();
+  const names = new Map<number, string>();
+  for (const s of getSupplements(profileId)) {
+    names.set(s.id, s.name);
+    if (!s.active || s.quantity_on_hand == null) continue;
+    const daysLeft = daysOfSupplyLeft(
+      s.quantity_on_hand,
+      s.qty_per_dose,
+      rates.get(s.id)?.dosesPerDay ?? 0
+    );
+    if (isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS)) low.add(s.id);
+  }
+  return { low, names };
+}
 
 // ── symptom ──────────────────────────────────────────────────────────────────
 // `symp:<profileId>:<slug>` opens a severity picker; `symsev:<profileId>:<sev>:<slug>`
@@ -556,15 +817,54 @@ const symptom: FamilyReconciler = {
     return new Set(
       tokens.filter((t) => {
         const f = fields(t);
-        const slug =
-          f[0] === "symp" ? f[2] : f[0] === "symsev" ? f[3] : undefined;
+        const slug = symptomTokenSlug(f);
         return (
           slug != null && logged.has(slug.replace(/_/g, " ").toLowerCase())
         );
       })
     );
   },
+  // THE SYMPTOM AND THE SEVERITY RECORDED (#2275). Parity, not disclosure: the picker
+  // named the symptom when it asked, and the severity is the answer it asked FOR — the
+  // one fact the bare sentence threw away. Grouped by severity in the order the keyboard
+  // listed the symptoms, through `severityLabelFor`, which is the ONE label resolution a
+  // stored 1–4 goes through (a scaled symptom must not render as "Moderate" here and as
+  // its own scale everywhere else, #1680).
+  closeStates: "outcome-detail",
+  detail(profileId, tokens, p) {
+    const days = getSymptomDaysInRange(profileId, p.date, p.date, 20);
+    const severities = new Map<string, number>();
+    for (const d of days)
+      for (const s of d.symptoms)
+        severities.set(
+          s.symptom.toLowerCase(),
+          Math.max(severities.get(s.symptom.toLowerCase()) ?? 0, s.severity)
+        );
+    // Insertion order preserves keyboard order across the severity buckets.
+    const byOutcome = new Map<string, string[]>();
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const slug = symptomTokenSlug(fields(t));
+      if (!slug || seen.has(slug)) continue;
+      const severity = severities.get(slug.replace(/_/g, " ").toLowerCase());
+      if (severity == null) continue;
+      seen.add(slug);
+      const outcome = `logged, ${severityLabelFor(slug, severity).toLowerCase()}`;
+      const bucket = byOutcome.get(outcome);
+      if (bucket) bucket.push(symptomLabel(slug));
+      else byOutcome.set(outcome, [symptomLabel(slug)]);
+    }
+    if (byOutcome.size === 0) return null;
+    return {
+      groups: [...byOutcome].map(([outcome, names]) => ({ names, outcome })),
+    };
+  },
 };
+
+// The symptom slug a `symp:`/`symsev:` token names, or null for neither.
+function symptomTokenSlug(f: readonly string[]): string | undefined {
+  return f[0] === "symp" ? f[2] : f[0] === "symsev" ? f[3] : undefined;
+}
 
 // ── mood ─────────────────────────────────────────────────────────────────────
 // `mood:<profileId>:<valence>:<date>` and `moodkeep:<profileId>:<date>` — both answered
@@ -585,6 +885,29 @@ const mood: FamilyReconciler = {
       if (logged) dead.add(t);
     }
     return dead;
+  },
+  // THE MOOD THE USER RECORDED (#2275). The resolution predicate above already reads it
+  // and keeps only the null check — this is that same read, stated. Through `moodLabel`,
+  // the shared 5-point vocabulary the check-in keyboard, the dashboard tap row and the
+  // trend tooltip all name a rating with.
+  //
+  // Restating a person's own answer is not a score and not a comparison, so the #992/#716
+  // tone contract is untouched: it forbids JUDGING the value, never repeating it.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    const labels: string[] = [];
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const f = fields(t);
+      const date = f[0] === "mood" ? f[3] : f[0] === "moodkeep" ? f[2] : null;
+      if (!date || seen.has(date)) continue;
+      seen.add(date);
+      const logged = getMoodOnDate(profileId, date);
+      if (logged) labels.push(moodLabel(logged.valence));
+    }
+    return labels.length > 0
+      ? { groups: [{ names: labels, outcome: "recorded" }] }
+      : null;
   },
 };
 
@@ -607,6 +930,36 @@ const workoutDraft: FamilyReconciler = {
       })
     );
   },
+  // FINISHED OR DISCARDED (#2275) — the single most valuable case this contract exists
+  // for, because they are OPPOSITE outcomes that rendered identically. `dead` only asks
+  // "is this still the live session?", which both answer the same way; the difference is
+  // in the row, and it is the difference between a session that was kept and one that
+  // was thrown away.
+  //
+  // `discardWorkoutSession` DELETES the draft and its sets, `finishWorkoutSession`
+  // stamps `end_time` — so the row itself is the record, read profile-scoped. A draft
+  // that is still open (no end_time, but old enough that presence no longer covers it)
+  // has no outcome to state and gets the plain sentence rather than a guess.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    const groups: CloseGroup[] = [];
+    const seen = new Set<number>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "wofinish" && f[0] !== "wodiscard") continue;
+      const activityId = Number(f[2]);
+      if (!activityId || seen.has(activityId)) continue;
+      seen.add(activityId);
+      const row = db
+        .prepare(
+          "SELECT end_time FROM activities WHERE id = ? AND profile_id = ?"
+        )
+        .get(activityId, profileId) as { end_time: string | null } | undefined;
+      if (!row) groups.push({ outcome: "session discarded" });
+      else if (row.end_time) groups.push({ outcome: "session finished" });
+    }
+    return groups.length > 0 ? { groups } : null;
+  },
 };
 
 // ── practice ─────────────────────────────────────────────────────────────────
@@ -624,6 +977,42 @@ const practice: FamilyReconciler = {
         .map((p) => p.target.id)
     );
     return new Set(wanted.filter((t) => !behind.has(Number(fields(t)[2]))));
+  },
+  // WHICH PRACTICE CAUGHT UP (#2275), from the SAME progress read `dead` just made. The
+  // nudge carries one `✓ <name>` button per behind practice, so which of them the
+  // session landed on is precisely what the bare sentence erased.
+  //
+  // The two verdicts are the ones the progress row itself states — the week's floor met
+  // (or its ceiling reached, the calm "that's plenty" state), versus merely back on pace
+  // with the week still running. Never "logged": the shortfall can also end because the
+  // window moved, and the close states the STATE, not a write it did not witness.
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    const byId = new Map(
+      getFrequencyTargetProgress(profileId).map((p) => [p.target.id, p])
+    );
+    const done: string[] = [];
+    const onPace: string[] = [];
+    const seen = new Set<number>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "pdone") continue;
+      const targetId = Number(f[2]);
+      if (!targetId || seen.has(targetId)) continue;
+      seen.add(targetId);
+      const p = byId.get(targetId);
+      if (!p) continue;
+      if (p.met || p.atCeiling) done.push(p.target.scope_value);
+      else if (p.pace !== "behind") onPace.push(p.target.scope_value);
+    }
+    const total = done.length + onPace.length;
+    if (total === 0) return null;
+    return {
+      groups: [
+        namedIfSeveral(done, "done for the week", total),
+        namedIfSeveral(onPace, "back on pace", total),
+      ],
+    };
   },
 };
 
@@ -1049,20 +1438,24 @@ function planEdit(
     // no longer leaves an orphan bubble in a shared chat. A pointer without one (recorded
     // before migration 139) degrades to the bare closing line.
     //
-    // AND IT STATES THE OUTCOME (#2170). A fully-resolved close erased everything the
-    // message knew, leaving the chat history less informative than the reminder was.
-    // The tally is asked for ONLY on the `resolved` arm — the date closes below resolve
-    // nothing, so a count there would be answering a question nobody's ledger was asked
-    // — and it is a SNAPSHOT: this claim deletes the pointer, so a later in-app edit
-    // makes the line historical rather than wrong, which is what "closing is forgetting"
-    // has always meant.
-    const tally =
-      decision.reason === "resolved"
-        ? (reconciler?.tally?.(profileId, tokens, pointer) ?? null)
+    // AND IT STATES THE OUTCOME (#2170/#2274/#2275). A fully-resolved close erased
+    // everything the message knew, leaving the chat history less informative than the
+    // reminder was. The detail is asked for ONLY on the `resolved` arm — the date closes
+    // below resolve nothing, so an outcome there would be answering a question nobody's
+    // ledger was asked — and it is a SNAPSHOT: this claim deletes the pointer, so a later
+    // in-app edit makes the line historical rather than wrong, which is what "closing is
+    // forgetting" has always meant.
+    //
+    // ONE formatter over what the family DECLARED, never a per-family rendering: which
+    // families can answer at all is settled by `CloseContent` above, at compile time.
+    const detail =
+      decision.reason === "resolved" &&
+      reconciler?.closeStates === "outcome-detail"
+        ? reconciler.detail(profileId, tokens, pointer)
         : null;
     return {
       kind: "close",
-      text: reconcileClosingText(decision.reason, pointer.title, tally),
+      text: reconcileClosingText(decision.reason, pointer.title, detail),
     };
   }
   if (decision.action === "strip-all") {

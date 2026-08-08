@@ -1,5 +1,5 @@
 import type { ActivityType } from "@/lib/types";
-import { utcMinute, zonedDateParts } from "@/lib/date";
+import { utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
@@ -895,6 +895,10 @@ export function parseHealthConnectPayload(
       out.vitals.push({
         external_id: `${HEALTH_CONNECT_ID}:${canonical}:${t}`,
         date: p.date,
+        // The reading's own instant (#2154) — the same moment the external_id
+        // already encodes, normalized to the canonical shape. external_id stays
+        // the dedupe key, verbatim and unchanged.
+        occurred_at: utcInstant(new Date(t)),
         category,
         name: canonical,
         canonical,
@@ -923,6 +927,7 @@ export function parseHealthConnectPayload(
       out.vitals.push({
         external_id: `${HEALTH_CONNECT_ID}:Blood Pressure Systolic:${t}`,
         date: p.date,
+        occurred_at: utcInstant(new Date(t)),
         category: "vitals",
         name: "Blood Pressure Systolic",
         canonical: "Blood Pressure Systolic",
@@ -933,6 +938,7 @@ export function parseHealthConnectPayload(
       out.vitals.push({
         external_id: `${HEALTH_CONNECT_ID}:Blood Pressure Diastolic:${t}`,
         date: p.date,
+        occurred_at: utcInstant(new Date(t)),
         category: "vitals",
         name: "Blood Pressure Diastolic",
         canonical: "Blood Pressure Diastolic",

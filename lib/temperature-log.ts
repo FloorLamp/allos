@@ -12,17 +12,25 @@
 // a same-window Health Connect push keys its upsert on external_id and so can NEVER
 // match/overwrite a manual row (the structural half of the #133 edit lock).
 //
-// TIME-OF-DAY FOR THE FEVER CURVE: medical_records.date is day-granular by contract
-// (every GROUP BY date / dedup / timeline query relies on it — the Health Connect path
-// keeps the timestamp out of `date` too, in external_id), so a repeat-reading's clock
-// time rides `notes` as a plain "HH:MM" string. Multiple same-day readings are just
-// multiple rows on the same date; with distinct values they coexist in the series
-// (the dedup partition keys on value+unit), giving the fever curve.
+// TIME-OF-DAY FOR THE FEVER CURVE: medical_records.date stays day-granular by
+// contract (every GROUP BY date / dedup / timeline query relies on it), and the
+// reading's clock time lands on the row's OWN event column, `occurred_at`
+// (migration 165; #2154 retired the "HH:MM"-in-notes hack this module minted for
+// #800/#843, and migration 171 moved the stored ones). The caller still states a
+// profile-local "HH:MM"; it is the user's own wall clock on the row's own day, so
+// resolving it against the profile's timezone is exactly what the shared
+// WhenControl would do (`statedInstantOnDate`), and the acceptance stays honest —
+// a wall time that does not exist on that day (a DST gap) costs the statement,
+// never the reading. Multiple same-day readings are just multiple rows on the
+// same date; with distinct values they coexist in the series (the dedup partition
+// keys on value+unit), giving the fever curve — keyed by real instants now.
 
 import { db, writeTx } from "./db";
 import { round } from "./units";
-import { isRealIsoDate } from "./date";
+import { isRealIsoDate, utcInstant } from "./date";
 import { addCanonicalNames, reconcileFlags } from "./queries";
+import { getTimezone } from "./settings";
+import { statedInstantOnDate } from "./stated-time";
 import {
   VITAL_CANONICAL,
   resolveTemperatureUnit,
@@ -50,6 +58,20 @@ export type TemperatureUpdateOutcome =
 
 const TEMP = VITAL_CANONICAL.temperature;
 
+// The stated instant a profile-local "HH:MM" on `date` denotes, in the canonical
+// utcInstant shape — or null when no plausible time was stated (absence, never a
+// midnight anchor) or the wall time does not exist on that day (a DST gap).
+function statedOccurredAt(
+  profileId: number,
+  date: string,
+  time: string | null | undefined
+): string | null {
+  const hhmm = normalizeClockTime(time);
+  if (!hhmm) return null;
+  const inst = statedInstantOnDate(date, hhmm, getTimezone(profileId));
+  return inst ? utcInstant(inst) : null;
+}
+
 // Log one body-temperature reading into medical_records. Converts the entered value
 // to canonical °F at the boundary (°C via toCanonicalTempF), range-checks it, writes
 // the row, registers the canonical name, and re-derives its reference-range flag in
@@ -71,26 +93,28 @@ export function logTemperatureCore(
   const degF = round(toCanonicalTempF(rawValue, resolvedUnit), 1);
   const rangeErr = temperatureRangeError(degF);
   if (rangeErr) return { kind: "invalid", error: rangeErr };
-  const note = normalizeClockTime(time);
+  // The stated reading time → the row's own event column (#2154). `notes` stays
+  // NULL: a note is a note now, never a smuggled clock.
+  const occurredAt = statedOccurredAt(profileId, date, time);
 
   return writeTx(() => {
     const info = db
       .prepare(
         `INSERT INTO medical_records
-           (profile_id, date, category, name, value, value_num, unit,
+           (profile_id, date, occurred_at, category, name, value, value_num, unit,
             canonical_name, source, external_id, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, NULL)`
       )
       .run(
         profileId,
         date,
+        occurredAt,
         TEMP.category,
         TEMP.canonical,
         String(degF),
         degF,
         TEMP.unit,
-        TEMP.canonical,
-        note
+        TEMP.canonical
       );
     const id = Number(info.lastInsertRowid);
     addCanonicalNames([TEMP.canonical]);
@@ -121,7 +145,11 @@ export function updateTemperatureCore(
   const degF = round(rawValue, 1);
   const rangeErr = temperatureRangeError(degF);
   if (rangeErr) return { kind: "invalid", error: rangeErr };
-  const note = normalizeClockTime(time);
+  // The edit sheet's time field IS the statement: a stated "HH:MM" lands on
+  // occurred_at (resolved on the possibly-corrected date), an emptied field
+  // clears it. `notes` is no longer written — a genuine note survives an edit
+  // instead of being clobbered by the retired clock-in-notes convention.
+  const occurredAt = statedOccurredAt(profileId, date, time);
 
   return writeTx((): TemperatureUpdateOutcome => {
     const owned = db
@@ -133,15 +161,15 @@ export function updateTemperatureCore(
     if (!owned) return { kind: "missing" };
     db.prepare(
       `UPDATE medical_records
-          SET date = ?, value = ?, value_num = ?, unit = ?, notes = ?,
+          SET date = ?, occurred_at = ?, value = ?, value_num = ?, unit = ?,
               edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
         WHERE id = ? AND profile_id = ? AND canonical_name = ?`
     ).run(
       date,
+      occurredAt,
       String(degF),
       degF,
       TEMP.unit,
-      note,
       id,
       profileId,
       TEMP.canonical

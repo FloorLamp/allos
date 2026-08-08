@@ -4,7 +4,7 @@ import "./load-env";
 
 import { db, today } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
-import { shiftDateStr } from "../lib/date";
+import { shiftDateStr, utcInstant } from "../lib/date";
 import { episodesForSituation } from "../lib/symptom-episode";
 import { zonedWallTimeToUtc } from "../lib/calendar-ics";
 import { reconcileFlags } from "../lib/queries";
@@ -2606,13 +2606,16 @@ for (const [ago, valence, energy, anxiety, factors, note] of seededMoods) {
 // ── Body temperature over the current episode (#800/#801) ────────────────────
 // A fever curve that peaks on daysAgo(2) (matching the "fever" symptom + "Peaked in
 // the evening" note) then trends down, so the illness-episode view's temperature curve
-// and its "fever trending down" headline have real data. Timed readings ride "HH:MM" in
-// notes (the #800 day-granular convention). Canonical "Body Temperature" (degF) so a
-// manual and a Health Connect reading would form ONE series (#482). Fevers (>99°F, the
-// canonical ref-high) flag "high" via reconcileFlags, exactly like an imported reading.
+// and its "fever trending down" headline have real data. Timed readings carry their
+// clock time on the row's own `occurred_at` (#2154 — the retired #800 notes-"HH:MM"
+// convention is unrepresentable after migration 171), resolved in the profile's
+// timezone exactly as the live writers resolve a stated time. Canonical
+// "Body Temperature" (degF) so a manual and a Health Connect reading would form ONE
+// series (#482). Fevers (>99°F, the canonical ref-high) flag "high" via
+// reconcileFlags, exactly like an imported reading.
 const insTemp = db.prepare(
   `INSERT INTO medical_records
-     (profile_id, date, category, name, value, value_num, unit, canonical_name, source, notes)
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, source, occurred_at)
    VALUES (1, ?, 'vitals', 'Body Temperature', ?, ?, 'degF', 'Body Temperature', 'manual', ?)`
 );
 const tempReadings: [number, string, number][] = [
@@ -2625,9 +2628,20 @@ const tempReadings: [number, string, number][] = [
   [0, "08:00", 99.2],
 ];
 const tempIds: number[] = [];
+const seedTz = getTimezone(SEED_PROFILE_ID);
 for (const [ago, time, degF] of tempReadings) {
+  const day = daysAgo(ago);
+  const [ty, tm, td] = day.split("-").map(Number);
+  const [th, tmin] = time.split(":").map(Number);
   tempIds.push(
-    Number(insTemp.run(daysAgo(ago), String(degF), degF, time).lastInsertRowid)
+    Number(
+      insTemp.run(
+        day,
+        String(degF),
+        degF,
+        utcInstant(zonedWallTimeToUtc(ty, tm, td, th, tmin, seedTz))
+      ).lastInsertRowid
+    )
   );
 }
 reconcileFlags(SEED_PROFILE_ID, tempIds);

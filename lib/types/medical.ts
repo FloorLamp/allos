@@ -154,6 +154,11 @@ export type MedicalFlag =
 export interface MedicalRecord {
   id: number;
   date: string;
+  // The stated event instant (migration 165, #2154): canonical UTC `Z` shape, or
+  // NULL for a day-grain reading — absence, never a midnight anchor. Optional
+  // because minimal read shapes may not select it; the `SELECT *` record queries
+  // always carry it.
+  occurred_at?: string | null;
   category: MedicalCategory;
   name: string;
   value: string | null;

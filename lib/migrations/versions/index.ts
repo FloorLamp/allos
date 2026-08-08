@@ -169,6 +169,7 @@ import { migration as m167 } from "./167-notify-lifecycle-utc-instant";
 import { migration as m168 } from "./168-appointment-day-time-split";
 import { migration as m169 } from "./169-illness-episode-day-window";
 import { migration as m170 } from "./170-tap-message-provenance";
+import { migration as m171 } from "./171-temperature-note-times";
 import { migration as m172 } from "./172-unclassified-activity-type";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -348,5 +349,6 @@ export const MIGRATIONS: Migration[] = [
   m168,
   m169,
   m170,
+  m171,
   m172,
 ];

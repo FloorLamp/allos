@@ -1,4 +1,4 @@
-import { zonedDateParts } from "@/lib/date";
+import { utcInstant, zonedDateParts } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 
@@ -179,6 +179,11 @@ export function mapWithingsMeasureGroup(
     vitals.push({
       external_id: `${WITHINGS_ID}:${grpid}:${canonical}`,
       date: loc.date,
+      // The measure group's true instant (#2154) — the same moment the
+      // body-metric/sample rows already carry. Here the dedupe key encodes the
+      // grpid rather than the time; either way external_id stays the key,
+      // unchanged, and occurred_at is descriptive only.
+      occurred_at: utcInstant(new Date(loc.iso)),
       category,
       name: canonical,
       canonical,

@@ -308,54 +308,129 @@ const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
 //
 // No title (a pointer from before the column existed, or a title-less message) ⇒ the bare
 // closing line above. A close never invents a subject it was not told.
-// ── THE OUTCOME TALLY (issue #2170) ──────────────────────────────────────────
+//
+// ── THE OUTCOME DETAIL (issues #2170 → #2274 → #2275) ────────────────────────
 //
 // A resolved close replaces the ENTIRE message text, so the chat history ended up LESS
 // informative than the reminder had been: the reader learned that something was
-// recorded, not what. The tally states the counts the reconcile ALREADY HAD IN HAND —
-// every claim token was resolved against the ledger to decide the close, so these are
-// the decision's own inputs restated, not a second adherence computation (#221).
+// recorded, not what. The detail states what the reconcile ALREADY HAD IN HAND — every
+// claim token was resolved against the ledger to decide the close, so this is the
+// decision's own inputs restated, not a second adherence computation (#221).
 //
-// COUNTS ONLY, NEVER AN ITEM LIST. What the safety tier owes the reader is "it is
-// recorded"; a list turns a correction of the app's own display into a report, and the
-// app ledger stays the complete surface.
+// IT NAMES WHAT HAPPENED, IN THE DOMAIN'S OWN WORDS (#2274). #2170's rule here was
+// "counts only, never an item list", and it did not survive contact with the message it
+// applies to: THE REMINDER WAS ALREADY A LIST. It named every item, under the same
+// `[Name]` attribution prefix, in the same chat. A close that names the same items is
+// not a new report and discloses nothing the chat did not already contain — it
+// PRESERVES what the message said instead of degrading it to an integer, which is what
+// made the history get less specific as things resolved. And the words are the ones the
+// user has always seen: the button is `✅ <name>`, the write core is `markDoseTaken`, so
+// the close says `taken` / `skipped` and never the reconcile's private "logged".
+//
+// The other half of #2170's rule DOES hold, and is why the parts below carry names and
+// nothing else: THE APP LEDGER STAYS THE COMPLETE SURFACE. No amounts, no food notes, no
+// adherence tails, no per-dose marks — the receipt answers WHICH, and how much is in the
+// app. A close can never be longer than the reminder it replaces, so it needs no cap.
+//
+// ORDER IS THE ORDER THE MESSAGE SHOWED THEM. Callers read their tokens in keyboard
+// order, which is already the reminder's own obligation-then-name sort — parity for
+// free, and no second sort to drift.
 //
 // IT IS A SNAPSHOT, ON PURPOSE. Closing is forgetting: the pointer is deleted in the
 // same claim, so nothing re-edits this text afterwards. A dose edited in the app later
 // makes the chat line HISTORICAL, exactly like every other message in a chat — not
 // wrong, and deliberately not maintained.
-export interface ClosingTally {
-  // Doses confirmed taken, and doses deliberately skipped — a skip is a record the user
-  // made, which is why it is stated rather than folded into the first number.
-  logged: number;
-  skipped: number;
+
+// ONE outcome and the items it applies to: "Vitamin D, Magnesium taken".
+export interface CloseGroup {
+  // An attribution the group's items hang off — the household round's member name,
+  // which its body sections and its button labels already carry (#377). Absent for a
+  // single-subject message, whose subject line already says whose it is.
+  lead?: string;
+  // The items this outcome applies to, in the order the message showed them.
+  //
+  // PRESENT AND EMPTY means "this group is about items and there are none" — the group
+  // is omitted, so an all-taken close is one clean clause. ABSENT means the outcome
+  // names no items at all (a draft session is one thing, a check-in is one value), and
+  // the outcome stands alone.
+  names?: readonly string[];
+  // What happened, in the DOMAIN's own words — `taken`, `skipped`, `session discarded`.
+  outcome: string;
 }
 
-// "5 logged, 1 skipped" / "6 logged" / "2 skipped", or null when there is nothing to
-// count (which then reads as the plain closing sentence).
-export function closingTallyText(tally: ClosingTally): string | null {
+// What a family says about a `resolved` close. One shape for every family (#2275), so
+// the close text is ONE formatter over declared facts rather than eleven renderings.
+export interface CloseDetail {
+  groups: readonly CloseGroup[];
+}
+
+// "Vitamin D, Magnesium taken · Omega-3 skipped", or null when nothing renders (which
+// then reads as the plain closing sentence).
+//
+// ` · ` is the separator the dose reminder's own tail already uses, so the close is
+// punctuated like the message it replaces. Names repeat across groups on purpose — a
+// supplement taken at one dose and skipped at another is two facts — but collapse
+// WITHIN a group, where the same name twice would be a rendering artifact.
+export function closeDetailText(
+  detail: CloseDetail | null | undefined
+): string | null {
+  if (!detail) return null;
   const parts: string[] = [];
-  if (tally.logged > 0) parts.push(`${tally.logged} logged`);
-  if (tally.skipped > 0) parts.push(`${tally.skipped} skipped`);
-  return parts.length > 0 ? parts.join(", ") : null;
+  for (const g of detail.groups) {
+    if (!g.outcome) continue;
+    // Present-and-empty ⇒ this group had items and has none. Absent ⇒ it never had any.
+    if (g.names && g.names.length === 0) continue;
+    const names = g.names ? [...new Set(g.names)].join(", ") : "";
+    const lead = g.lead ? `${g.lead}: ` : "";
+    parts.push(`${lead}${names ? `${names} ` : ""}${g.outcome}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+// The DOSE families' shape of `CloseDetail` (#2274): two name lists, taken first. Both
+// dose families share it unchanged — they are the only ones whose vocabulary is
+// take/skip, which is why it may be dose-specific at all.
+export interface ClosingTally {
+  // Doses confirmed taken, and doses deliberately skipped — a skip is a record the user
+  // made, which is why it is stated rather than folded into the first list.
+  taken: readonly string[];
+  skipped: readonly string[];
+}
+
+export function closingTallyDetail(tally: ClosingTally): CloseDetail {
+  return {
+    groups: [
+      { names: tally.taken, outcome: "taken" },
+      { names: tally.skipped, outcome: "skipped" },
+    ],
+  };
+}
+
+// "Vitamin D, Magnesium taken · Omega-3 skipped" / "Melatonin skipped", or null when
+// neither list has anything in it.
+export function closingTallyText(tally: ClosingTally): string | null {
+  return closeDetailText(closingTallyDetail(tally));
 }
 
 export function reconcileClosingText(
   reason: CloseReason,
   title: string | null | undefined,
   // The resolution facts, for `resolved` only. The other reasons close for time or
-  // lifecycle reasons where a tally would be wrong or unknowable — a rolled-over nudge
-  // says nothing about what the day's ledger holds, and a superseded keyboard was
+  // lifecycle reasons where an outcome would be wrong or unknowable — a rolled-over
+  // nudge says nothing about what the day's ledger holds, and a superseded keyboard was
   // replaced rather than answered.
-  tally?: ClosingTally | null
+  detail?: CloseDetail | null
 ): string {
   const subject = (title ?? "").split("\n")[0]?.trim() ?? "";
-  // No subject ⇒ the bare sentence, tally or not: a pointer that never recorded a
+  // No subject ⇒ the bare sentence, detail or not: a pointer that never recorded a
   // subject has no per-item facts to attribute either.
   if (!subject) return RECONCILE_CLOSING[reason];
-  const counts =
-    reason === "resolved" && tally ? closingTallyText(tally) : null;
-  return counts
-    ? `${subject} — ${counts}. In the app.`
+  const outcome =
+    reason === "resolved" ? closeDetailText(detail ?? null) : null;
+  // No app pointer (#2274): the buttons are gone because everything is resolved, and
+  // naming what happened already tells the reader it is recorded. "In the app." was a
+  // sentence fragment doing two jobs and reading like a truncated string.
+  return outcome
+    ? `${subject} — ${outcome}.`
     : `${subject} — ${RECONCILE_CLOSING_TAIL[reason]}`;
 }

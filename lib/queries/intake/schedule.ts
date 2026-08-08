@@ -27,6 +27,20 @@ export function profileHasIntakeItems(profileId: number): boolean {
     .get(profileId);
 }
 
+// Every intake item's DISPLAY NAME for one profile, id-keyed. The narrowest possible
+// read for a surface that has an item id and needs the word the user sees — the
+// reconcile close (#2274/#2275) names the doses a resolved reminder covered, and paying
+// for `getSupplements`' seven correlated subselects to reach one column would be absurd
+// on the notify tick. Retired and inactive items are included on purpose: a dose logged
+// against an item that has since been retired still happened, and the close is a
+// snapshot of what the message claimed.
+export function getIntakeItemNames(profileId: number): Map<number, string> {
+  const rows = db
+    .prepare("SELECT id, name FROM intake_items WHERE profile_id = ?")
+    .all(profileId) as { id: number; name: string }[];
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
 // ---- Supplements ----
 export function getSupplements(profileId: number): Supplement[] {
   // COALESCE(situations.name, intake_items.situation): a situational item's

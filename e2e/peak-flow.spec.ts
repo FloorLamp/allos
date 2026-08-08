@@ -88,8 +88,11 @@ test.describe("logging a blow and reading its zone (#1850)", () => {
       .getByTestId("measurements-peak-flow")
       .fill(String(PEAK_FLOW_LOG_BLOW_LMIN));
     // The clock time is what makes a second blow on one flare day a second reading
-    // rather than a correction of the first.
-    await page.getByTestId("measurements-peak-flow-time").fill("07:15");
+    // rather than a correction of the first. It is the form's ONE shared Time since
+    // #2154's fold (the per-measure input folded into it) — the write boundary
+    // derives the sample's own `start_time`, its natural key, from that statement,
+    // so the property this asserts is unchanged.
+    await form.getByTestId("m-time").fill("07:15");
     // The metric-scoped form names the one measure it takes, in its button and in
     // its toast.
     await form
