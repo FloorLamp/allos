@@ -298,9 +298,19 @@ export function sleepTrendWindow<T extends { date: string }>(
   endDate: string,
   days: number
 ): T[] {
+  const { from, to } = sleepTrendWindowBounds(endDate, days);
+  return rows.filter((row) => row.date >= from && row.date <= to);
+}
+
+// The [from, to] the filter above applies — the same arithmetic, named, so the
+// chart can densify to the window the pill promises (#2258) instead of
+// re-deriving the bound the filter already knows.
+export function sleepTrendWindowBounds(
+  endDate: string,
+  days: number
+): { from: string; to: string } {
   const boundedDays = Math.max(1, Math.floor(days));
-  const startDate = shiftDateStr(endDate, -(boundedDays - 1));
-  return rows.filter((row) => row.date >= startDate && row.date <= endDate);
+  return { from: shiftDateStr(endDate, -(boundedDays - 1)), to: endDate };
 }
 
 // Build the nested calendar windows for the Sleep range selector and mark a
@@ -320,6 +330,9 @@ export function sleepTrendRangeWindows<
   duration: TDuration[];
   stages: TStages[];
   hasAdditionalData: boolean;
+  // The calendar window this range covers, for the chart's calendar fill (#2258).
+  from: string;
+  to: string;
 }[] {
   let previousObservationCount = 0;
   return ranges.map((days) => {
@@ -328,7 +341,13 @@ export function sleepTrendRangeWindows<
     const observationCount = duration.length + stages.length;
     const hasAdditionalData = observationCount > previousObservationCount;
     previousObservationCount = observationCount;
-    return { days, duration, stages, hasAdditionalData };
+    return {
+      days,
+      duration,
+      stages,
+      hasAdditionalData,
+      ...sleepTrendWindowBounds(endDate, days),
+    };
   });
 }
 

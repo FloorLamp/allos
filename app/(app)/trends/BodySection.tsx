@@ -51,11 +51,18 @@ import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
 import { ordinalPercentile } from "@/lib/growth-format";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
+import { dayFillWindow } from "@/lib/day-fill";
+import { metricSeriesKey } from "@/lib/saved-items";
+import {
+  SLEEP_DURATION_SERIES_KEY,
+  type DayFillSpec,
+} from "@/lib/trend-sparkline";
 import { applyCardOrder, bodyCardOrder } from "@/lib/trends-card-rank";
 import {
   BODY_METRIC_META,
   bodyChartScale,
   buildBodyMetricTile,
+  savedMetricIdForBodySlug,
   stableEmptyLast,
   type BodyMetricSlug,
   type BodyMetricTile,
@@ -693,6 +700,8 @@ export default async function BodySection({
               className="h-full w-full"
             >
               <LineChartCard
+                // gap-exempt: an intraday clock axis (HH:MM slots), not calendar
+                // days — lib/intraday.ts already slots and breaks its own gaps.
                 data={intradayHr}
                 label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`}
                 unit=" bpm"
@@ -716,6 +725,7 @@ export default async function BodySection({
               plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
             >
               <LineChartCard
+                // gap-exempt: intraday HH:MM slot grid, already null-slotted.
                 data={toIntradaySlotSeries(intradaySystolic)}
                 label={`${BODY_METRIC_META.systolic.title} Today`}
                 unit=" mmHg"
@@ -732,6 +742,7 @@ export default async function BodySection({
               plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
             >
               <LineChartCard
+                // gap-exempt: intraday HH:MM slot grid, already null-slotted.
                 data={toIntradaySlotSeries(intradayDiastolic)}
                 label={`${BODY_METRIC_META.diastolic.title} Today`}
                 unit=" mmHg"
@@ -752,6 +763,7 @@ export default async function BodySection({
             plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
           >
             <LineChartCard
+              // gap-exempt: intraday HH:MM slot grid, already null-slotted.
               data={toIntradaySlotSeries(intradaySpo2)}
               label={`${BODY_METRIC_META.spo2.title} Today`}
               unit="%"
@@ -1012,6 +1024,21 @@ export default async function BodySection({
   // `orderBodyCharts` — a raw most-recently-synced sort resequenced this page every
   // time a watch uploaded, which is exactly the jitter a stable default forbids.
 
+  // Every day-grain chart on this page densifies to the CALENDAR (#2258): the
+  // series names itself, the shared range supplies the window, and the per-series
+  // gap registry decides whether a missing day is a hole or a real zero. One
+  // helper so a card and its tile can never be windowed differently.
+  const bodyGapFill = (slug: BodyMetricSlug): DayFillSpec => ({
+    seriesKey: metricSeriesKey(savedMetricIdForBodySlug(slug)),
+    ...dayFillWindow(range),
+  });
+  // Sleep duration is plotted here and on /sleep; it is a per-night READING, so it
+  // declares its policy under the shared render-only key rather than by hand.
+  const sleepGapFill: DayFillSpec = {
+    seriesKey: SLEEP_DURATION_SERIES_KEY,
+    ...dayFillWindow(range),
+  };
+
   const syncedEntries: (ChartChip & {
     present: boolean;
     node: React.ReactNode;
@@ -1034,6 +1061,7 @@ export default async function BodySection({
             data={stepsChart}
             label={BODY_METRIC_META.steps.title}
             color={chartSeries.sky}
+            gapFill={bodyGapFill("steps")}
             {...bodyChartScale(BODY_METRIC_META.steps)}
           />
         </ChartCard>
@@ -1054,6 +1082,7 @@ export default async function BodySection({
             data={activeCaloriesChart}
             label={BODY_METRIC_META["active-calories"].title}
             color={chartSeries.rose}
+            gapFill={bodyGapFill("active-calories")}
             unit=" kcal"
             {...bodyChartScale(BODY_METRIC_META["active-calories"])}
           />
@@ -1121,6 +1150,7 @@ export default async function BodySection({
             unit=" h"
             color={chartSeries.violet}
             decimals={1}
+            gapFill={sleepGapFill}
           />
         </ChartCard>
       ),
@@ -1142,6 +1172,7 @@ export default async function BodySection({
             label={BODY_METRIC_META.hr.title}
             color={chartSeries.rose}
             unit=" bpm"
+            gapFill={bodyGapFill("hr")}
           />
         </ChartCard>
       ),
@@ -1165,6 +1196,7 @@ export default async function BodySection({
           detailHref={metricDetailHref("hr")}
         >
           <LineChartCard
+            // gap-exempt: the per-minute intraday zoom, an HH:MM axis.
             data={hrIntraday}
             label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Over the Day${
               latestHrDay ? ` — ${latestHrDay}` : ""
@@ -1191,6 +1223,7 @@ export default async function BodySection({
             data={bmiChart}
             label={BODY_METRIC_META.bmi.title}
             color={chartSeries.sky}
+            gapFill={bodyGapFill("bmi")}
           />
         </ChartCard>
       ),
@@ -1211,6 +1244,7 @@ export default async function BodySection({
             label={BODY_METRIC_META["lean-mass"].title}
             color={chartSeries.sky}
             unit=" kg"
+            gapFill={bodyGapFill("lean-mass")}
           />
         </ChartCard>
       ),
@@ -1231,6 +1265,7 @@ export default async function BodySection({
             label={BODY_METRIC_META["bone-mass"].title}
             color={chartSeries.violet}
             unit=" kg"
+            gapFill={bodyGapFill("bone-mass")}
           />
         </ChartCard>
       ),
@@ -1251,6 +1286,7 @@ export default async function BodySection({
             label={BODY_METRIC_META.bmr.title}
             color={chartSeries.rose}
             unit=" kcal"
+            gapFill={bodyGapFill("bmr")}
           />
         </ChartCard>
       ),
@@ -1271,6 +1307,7 @@ export default async function BodySection({
             label={BODY_METRIC_META.hydration.title}
             color={chartSeries.sky}
             unit=" L"
+            gapFill={bodyGapFill("hydration")}
             {...bodyChartScale(BODY_METRIC_META.hydration)}
           />
         </ChartCard>
@@ -1292,6 +1329,7 @@ export default async function BodySection({
             label={BODY_METRIC_META.calories.title}
             color={chartSeries.amber}
             unit=" kcal"
+            gapFill={bodyGapFill("calories")}
             {...bodyChartScale(BODY_METRIC_META.calories)}
           />
         </ChartCard>
@@ -1359,6 +1397,7 @@ export default async function BodySection({
         data={data}
         label={BODY_METRIC_META[slug].title}
         color={BODY_METRIC_META[slug].color}
+        gapFill={bodyGapFill(slug)}
       />
     </ChartCard>
   );
@@ -1565,6 +1604,7 @@ export default async function BodySection({
             unit=" h"
             color={chartSeries.violet}
             decimals={1}
+            gapFill={sleepGapFill}
             singleReadingAsChart
             testid="body-tile-sleep"
           />
@@ -1624,6 +1664,7 @@ export default async function BodySection({
               items={bodyStack}
               annotations={annotations}
               windows={protocolWindows}
+              gapWindow={dayFillWindow(range)}
             />
           ) : (
             <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
@@ -1685,6 +1726,7 @@ export default async function BodySection({
                 items={bodyStack}
                 annotations={annotations}
                 windows={protocolWindows}
+                gapWindow={dayFillWindow(range)}
               />
             ) : (
               <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />

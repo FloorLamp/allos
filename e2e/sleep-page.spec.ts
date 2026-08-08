@@ -528,8 +528,27 @@ test.describe("Sleep page (#1066)", () => {
     // Hover a bar directly: a recharts BarChart opens its tooltip only when the
     // pointer is over a bar element (not the plot area), so drive it with the
     // element's own .hover() and re-hover per attempt until the tooltip renders.
-    const stageBar = stagesCard.locator(".recharts-bar-rectangle").first(); // first-ok: the first (deep) bar in the spec-owned stage chart; hovering any bar opens the same stacked tooltip
-    await stageBar.waitFor({ state: "attached", timeout: 15_000 });
+    // Target a bar that CARRIES data. Since #2258 the stage chart densifies to the
+    // calendar, so an unrecorded night is a real category with a zero-height
+    // rectangle in the DOM — hovering that one opens a "No data" tooltip with no
+    // hours in it, and this test is about the ROUNDING of a real value.
+    const stageBars = stagesCard.locator(".recharts-bar-rectangle");
+    await stageBars.first().waitFor({ state: "attached", timeout: 15_000 }); // first-ok: waiting for the layer to exist at all, never selecting the subject
+    // Poll rather than measure once: recharts grows its bars from zero height, so
+    // a single measurement at attach time reads every bar as empty.
+    let dataBarIndex = -1;
+    await expect
+      .poll(
+        async () => {
+          dataBarIndex = await stageBars.evaluateAll((nodes) =>
+            nodes.findIndex((n) => n.getBoundingClientRect().height > 2)
+          );
+          return dataBarIndex;
+        },
+        { message: "the stage chart should draw at least one real bar" }
+      )
+      .toBeGreaterThanOrEqual(0);
+    const stageBar = stageBars.nth(dataBarIndex);
     const stageTip = stagesCard.locator(".recharts-tooltip-wrapper");
     await expect(async () => {
       await page.mouse.move(5, 5); // leave the chart so the next hover re-enters
@@ -554,7 +573,10 @@ test.describe("Sleep page (#1066)", () => {
     // SRI trend line: decimals=0 so the tooltip is an INTEGER — like the headline
     // (which is Math.round(sri)), never the raw "87 vs 87.34" mismatch #403 named.
     const sriCard = main.getByTestId("sleep-regularity");
-    const sriDot = sriCard.locator(".recharts-dot").first(); // first-ok: any point on the spec-owned SRI trend line opens the same tooltip
+    // A DOT is the data-carrying mark by construction: recharts draws none for a
+    // null point, so since #2258's calendar fill every dot is still a real SRI
+    // reading and any of them opens the same tooltip.
+    const sriDot = sriCard.locator(".recharts-dot").first(); // first-ok: every dot is a real reading (nulls draw no dot), so any one proves the rounding
     await sriDot.waitFor({ state: "attached", timeout: 15_000 });
     const sriTip = sriCard.locator(".recharts-tooltip-wrapper");
     await expect(async () => {

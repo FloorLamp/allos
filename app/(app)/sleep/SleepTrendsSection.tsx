@@ -7,6 +7,11 @@ import StackedBarCard from "@/components/StackedBarCard";
 import SegmentedControl from "@/components/SegmentedControl";
 import { chartSeries } from "@/lib/chart-colors";
 import { formatHm, sleepTrendRangeWindows } from "@/lib/sleep-summary";
+import {
+  SLEEP_DURATION_SERIES_KEY,
+  SLEEP_STAGES_SERIES_KEY,
+  type DayFillSpec,
+} from "@/lib/trend-sparkline";
 
 type Range = 14 | 30 | 90;
 const RANGES = [14, 30, 90] as const;
@@ -47,6 +52,20 @@ export default function SleepTrendsSection({
     windows.find((window) => window.value === range) ?? windows[0];
   const durationData = selectedWindow.duration;
   const stageData = selectedWindow.stages;
+  // The selector's window IS the fill window (#2258): `sleepTrendWindow` keeps the
+  // rows in [endDate - days + 1, endDate], so the chart densifies to exactly the
+  // nights the pill promises. A run of nulls at the right edge is the outage —
+  // "the last four nights did not sync" — which is precisely what the old
+  // compressed axis hid.
+  const fillWindow = { from: selectedWindow.from, to: selectedWindow.to };
+  const durationFill: DayFillSpec = {
+    seriesKey: SLEEP_DURATION_SERIES_KEY,
+    ...fillWindow,
+  };
+  const stagesFill: DayFillSpec = {
+    seriesKey: SLEEP_STAGES_SERIES_KEY,
+    ...fillWindow,
+  };
   const average = useMemo(() => {
     if (durationData.length === 0) return null;
     return (
@@ -80,6 +99,7 @@ export default function SleepTrendsSection({
             unit=" h"
             decimals={1}
             heightClass="h-56"
+            gapFill={durationFill}
             referenceValue={
               average == null
                 ? null
@@ -110,6 +130,7 @@ export default function SleepTrendsSection({
             data={stageData}
             unit=" h"
             decimals={1}
+            gapFill={stagesFill}
             series={[
               { key: "deep", label: "Deep", color: chartSeries.violet },
               { key: "rem", label: "REM", color: chartSeries.rose },

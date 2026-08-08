@@ -19,6 +19,8 @@ import { trailingAverage } from "./trailing-average";
 import { metricDetailHref, type AppRoute } from "./hrefs";
 import { metricSeriesKey, savedRefFromSeriesKey } from "./saved-items";
 import { filterSeriesByRange } from "./trends";
+import { dayFillWindow } from "./day-fill";
+import type { DayFillSpec } from "./trend-sparkline";
 import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
 import type { DateRange } from "./timeline-format";
 import type { BodyMetricKind } from "./types";
@@ -514,6 +516,10 @@ export interface BodyMetricTile {
   points: { date: string; value: number }[];
   present: boolean;
   latestDate: string | null;
+  // The tile's day-grain calendar fill (#2258), built HERE so the tile and the
+  // full chart it links to densify the same series against the same window — and
+  // so no grid has to re-derive the series key from the slug.
+  gapFill: DayFillSpec;
 }
 
 // Build one overview tile from a metric's FULL display-unit series (the same array
@@ -541,6 +547,10 @@ export function buildBodyMetricTile(
     present: fullPoints.length > 0,
     latestDate:
       fullPoints.length > 0 ? fullPoints[fullPoints.length - 1].date : null,
+    gapFill: {
+      seriesKey: metricSeriesKey(savedMetricIdForBodySlug(meta.slug)),
+      ...dayFillWindow(range),
+    },
   };
 }
 

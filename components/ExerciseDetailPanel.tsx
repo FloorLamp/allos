@@ -298,6 +298,7 @@ export default function ExerciseDetailPanel({
           {/* The chart's full ISO dates get a compact MM-DD axis + friendly tooltip
               from LineChartCard's date defaults. */}
           <LineChartCard
+            // gap-exempt: one point per SESSION of this exercise, an event axis.
             data={chart}
             label={repsTrend ? "Reps" : "Volume"}
             unit={repsTrend ? "" : ` ${wu}`}

@@ -6,6 +6,8 @@ import {
   getSleepRegularityInsight,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
+import { today } from "@/lib/db";
+import { SLEEP_REGULARITY_SERIES_KEY } from "@/lib/trend-sparkline";
 import LineChartCard from "@/components/LineChartCard";
 import type { LongevitySection } from "@/lib/longevity";
 import PillarStat from "./PillarStat";
@@ -71,7 +73,16 @@ export default async function SleepSection({
       )}
       {trend.length > 1 && (
         <div className="mt-3">
-          <LineChartCard data={trend} label="SRI" color={chartSeries.violet} />
+          <LineChartCard
+            data={trend}
+            label="SRI"
+            color={chartSeries.violet}
+            gapFill={{
+              seriesKey: SLEEP_REGULARITY_SERIES_KEY,
+              from: null,
+              to: today(profile.id),
+            }}
+          />
         </div>
       )}
     </section>

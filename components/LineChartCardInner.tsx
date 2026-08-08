@@ -46,6 +46,7 @@ import {
   longRangeBucketLabel,
   longRangeCaption,
 } from "@/lib/long-range-series";
+import { applyDayFill, type DayFillSpec } from "@/lib/trend-sparkline";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -82,6 +83,7 @@ export default function LineChartCard({
   sparkline = false,
   sparklineDots = false,
   animateTooltip = true,
+  gapFill,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -119,6 +121,15 @@ export default function LineChartCard({
   // DENSE_SERIES_POINTS (issue #1445) — this stays for callers that know their
   // series is dense regardless (e.g. ~1440 intraday HR points).
   showDots?: boolean;
+  // Densify a DAY-GRAIN series to the calendar before plotting (#2258). The
+  // surface passes WHICH series (its `metric:` key) and the window it selected;
+  // the GAP POLICY — null hole vs real zero, bridged vs broken — is looked up
+  // here from lib/trend-sparkline's per-series registry, so a page can never hand
+  // a chart a policy of its own and no two surfaces can disagree about what a
+  // missing steps day means. Omitted → no densification (a per-event or intraday
+  // axis, where the index genuinely IS the x). When present it also OVERRIDES
+  // `connectNulls`, because bridging is half of the declared policy.
+  gapFill?: DayFillSpec;
   // Whether a null hole is bridged by the line. Default true (a daily series with
   // an occasional missing day reads better joined). The Vitals tab's 1D charts
   // (#1466) pass FALSE: their series is a full-day 5-minute slot grid where the
@@ -190,6 +201,18 @@ export default function LineChartCard({
   // date in the tooltip (matching the journal charts). Callers passing their own
   // formatters, or non-date x-values (e.g. HH:MM intraday), are unaffected.
   const isoDates = data.length > 0 && ISO_DATE.test(data[0].date);
+  // Day-grain densification (#2258), applied BEFORE aggregation so the buckets see
+  // the calendar too, and below the page's own `data-points` so a readings table
+  // still counts real readings (the #2029 contract). `realCount` is the reading
+  // count the dot-density threshold must use — after densification `series.length`
+  // is a count of DAYS, and a 90-day window holding 12 weigh-ins would silently
+  // lose its dots.
+  const filled = applyDayFill(
+    data,
+    isoDates && key === "value" ? gapFill : null
+  );
+  const series = filled.data;
+  const bridges = filled.bridges ?? connectNulls;
   // Long-range aggregation (#1938): a dense daily series over a long window (the
   // 1Y pill, All time) plots as calendar-bucket means with a low–high band — the
   // ONE shared decision + computation in lib/long-range-series, applied here in
@@ -199,7 +222,7 @@ export default function LineChartCard({
   const longRange =
     isoDates && key === "value"
       ? aggregateLongRange(
-          (data as { date: string; value: number | null }[]).map((d) => ({
+          series.map((d) => ({
             date: d.date,
             value: d.value,
           }))
@@ -213,9 +236,15 @@ export default function LineChartCard({
     ? longRange.points.map((p) => ({
         date: p.date,
         value: p.value,
-        band: [p.lo, p.hi] as [number, number],
+        // An EMPTY calendar bucket carries no band — omitted rather than a
+        // [null, null] pair, so the Area draws a hole instead of collapsing to
+        // the axis floor.
+        band:
+          p.lo == null || p.hi == null
+            ? undefined
+            : ([p.lo, p.hi] as [number, number]),
       }))
-    : (data as { date: string; value: number | null }[]);
+    : series;
   const tickFmt =
     tickFormatter ??
     (isoDates
@@ -304,13 +333,30 @@ export default function LineChartCard({
             }
           />
           <Tooltip
-            formatter={(v) => {
+            // Nulls must REACH the formatter (#2258). recharts filters them out
+            // by default, which is why a gap day's tooltip was an unlabelled
+            // empty box: with every calendar day now on the axis, hovering an
+            // outage is a thing a reader will do, and the honest answer is a
+            // named absence.
+            filterNull={false}
+            formatter={(v, name) => {
               // The band's [lo, hi] pair renders as one "Range" row; a lone value
               // is the series itself — labelled as an average when aggregated,
               // because a bucket mean is not a reading.
               if (Array.isArray(v)) {
                 const [lo, hi] = v.map(Number);
                 return [`${fmtValue(lo)}–${fmtValue(hi)}${unit}`, "Range"];
+              }
+              // A GAP DAY (#2258). Densification puts every calendar day on the
+              // axis, so hovering an outage is now possible — and it must SAY
+              // so. Number(null) is 0, which is precisely the assertion the fill
+              // exists to avoid ("you walked 0 steps" for a day the watch never
+              // reported). A zero-FILLED day carries a real 0 and still prints it.
+              if (v == null || !Number.isFinite(Number(v))) {
+                // The spread band has no row of its own on an empty bucket —
+                // returning null drops the item rather than printing a second
+                // "No data" beside the series' own.
+                return name === "band" ? null : ["No data", label];
               }
               return [
                 `${fmtValue(Number(v))}${unit}`,
@@ -404,7 +450,7 @@ export default function LineChartCard({
               activeDot={false}
               legendType="none"
               {...chartMarkMotion(motion)}
-              connectNulls={connectNulls}
+              connectNulls={bridges}
             />
           )}
           <Line
@@ -414,14 +460,21 @@ export default function LineChartCard({
             strokeWidth={2}
             dot={chartLineDot(c, {
               color,
-              pointCount: plotData.length,
+              // REAL readings, never calendar days (#2258 §5): the densified
+              // array is a day count, and comparing it against the density
+              // threshold would drop the dots from a sparse-but-short series.
+              // An aggregated plot counts its OCCUPIED buckets for the same
+              // reason.
+              pointCount: longRange
+                ? longRange.points.filter((p) => p.value != null).length
+                : filled.realCount,
               // Tile sparklines opt into resting points; dense series still fall
               // through chartLineDot's shared clutter threshold.
               enabled: showDots && (!sparkline || sparklineDots),
             })}
             activeDot={chartActiveDot(color)}
             {...chartMarkMotion(motion)}
-            connectNulls={connectNulls}
+            connectNulls={bridges}
           />
         </ComposedChart>
       </ResponsiveContainer>

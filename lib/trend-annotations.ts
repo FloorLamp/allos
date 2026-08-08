@@ -206,21 +206,38 @@ export function snapAnnotationsToDates(
   dates: readonly string[]
 ): TrendAnnotation[] {
   if (dates.length === 0) return [];
+  // Parse ONCE per date, then binary-search (#2258). The pairwise scan this
+  // replaces re-parsed both dates of every (annotation, charted-day) pair — fine
+  // over the dozen points a sparse series used to plot, and a main-thread stall
+  // once every chart densifies to the calendar and a wide window carries hundreds
+  // of days per chart. Semantics are unchanged, ties included.
+  const days: { epoch: number; date: string }[] = [];
+  for (const d of dates) {
+    const epoch = Date.parse(`${d.slice(0, 10)}T00:00:00Z`);
+    if (!Number.isNaN(epoch)) days.push({ epoch, date: d });
+  }
+  if (days.length === 0) return [];
+  days.sort((a, b) => a.epoch - b.epoch);
   const out: TrendAnnotation[] = [];
   for (const a of annotations) {
-    let best: string | null = null;
-    let bestDist = Infinity;
-    for (const d of dates) {
-      const gap = daysBetweenDateStr(a.date, d);
-      if (gap == null) continue;
-      const dist = Math.abs(gap);
-      // <= so a later, equidistant date wins the tie (dates are ascending).
-      if (dist < bestDist || (dist === bestDist && best != null && d > best)) {
-        bestDist = dist;
-        best = d;
-      }
+    const target = Date.parse(`${a.date.slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(target)) continue;
+    // First charted day at or after the marker; its neighbour below is the other
+    // candidate. On a tie the LATER day wins, matching the original scan.
+    let lo = 0;
+    let hi = days.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (days[mid].epoch < target) lo = mid + 1;
+      else hi = mid;
     }
-    if (best != null) out.push({ ...a, date: best });
+    const after = days[Math.min(lo, days.length - 1)];
+    const before = days[Math.max(lo - 1, 0)];
+    const best =
+      Math.abs(after.epoch - target) <= Math.abs(target - before.epoch)
+        ? after
+        : before;
+    out.push({ ...a, date: best.date });
   }
   return out;
 }

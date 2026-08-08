@@ -430,6 +430,8 @@ export default async function AnalyzeSection({
             <div className="mb-4">{analysisControls}</div>
           ) : null}
           <LineChartCard
+            // gap-exempt: a per-SESSION progression (the analyze view's own x is
+            // the session, not the calendar).
             data={view.chart}
             label={view.chartLabel}
             unit={view.chartUnit}

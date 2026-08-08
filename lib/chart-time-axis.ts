@@ -5,8 +5,17 @@
 // interpolation implies a smooth short-term trend that never happened. Mapping
 // each ISO date to an epoch lets the axis be `type="number" scale="time"`, making
 // x proportional to elapsed time. Pure (no DB / no React) so it's client-safe and
-// unit-tested. The dense daily charts keep their category axis by DELIBERATE
-// choice (near-dense data, negligible distortion) — see LineChartCardInner.
+// unit-tested.
+//
+// The daily charts keep their CATEGORY axis, and since #2258 that premise is
+// repaired rather than merely asserted: they used to be described as "near-dense
+// by deliberate choice", which was true of the data and false of the series — a
+// day with no reading was not on the axis at all, so a multi-day outage
+// compressed away. lib/day-fill.ts densifies those series to the calendar before
+// the chart sees them, so every category IS a day and the index is proportional
+// to elapsed time again. A genuinely sparse series (a biomarker's lab draws) is
+// declared exempt from that fill and belongs on THIS numeric axis instead — see
+// docs/internals/charts.md § Gaps.
 
 const MS_PER_DAY = 86_400_000;
 

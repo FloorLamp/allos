@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
 import LineChartCard from "./LineChartCard";
 import BarSparkline from "./BarSparkline";
-import type { SparklineShape } from "@/lib/trend-sparkline";
+import type { DayFillSpec, SparklineShape } from "@/lib/trend-sparkline";
 import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
@@ -73,6 +73,7 @@ export default function TrendMiniCard({
   readingDateLabel,
   sparklineShape = "line",
   singleReadingAsChart = false,
+  gapFill,
   testid = "trend-mini-card",
 }: {
   title: string;
@@ -99,6 +100,11 @@ export default function TrendMiniCard({
   // Render as a one-line row rather than a card (#1485 A). Only meaningful for a
   // tile with no points AND no out-of-window reading.
   compact?: boolean;
+  // The tile's day-grain calendar fill (#2258). A sparkline follows the SERIES'
+  // declaration, not the tile's: the same registry that picks the mark picks the
+  // gap, so a tile and the full chart it links to draw the same shape. Omitted for
+  // a series with no calendar grain (biomarker tiles are declared exempt anyway).
+  gapFill?: DayFillSpec;
   // Overridable card test hook (defaults to the generic "trend-mini-card"); the
   // Body tile grid passes a per-metric id (`body-tile-steps`) so a spec can open a
   // specific tile's detail page.
@@ -335,6 +341,7 @@ export default function TrendMiniCard({
                 color={color}
                 decimals={decimals}
                 heightClass="h-20"
+                gapFill={gapFill}
               />
             ) : (
               <LineChartCard
@@ -345,6 +352,7 @@ export default function TrendMiniCard({
                 decimals={decimals}
                 heightClass="h-20"
                 yDomain={chartYDomain}
+                gapFill={gapFill}
                 sparkline
                 // Dots are part of the shared tile grammar. The chart scaffold
                 // still suppresses them for genuinely dense series.

@@ -529,6 +529,7 @@ export default function CyclingOverviewDetails({
               </div>
               <div className="mt-3">
                 <LineChartCard
+                  // gap-exempt: per-RIDE training load, an event axis.
                   data={data.loadPoints.map((point) => ({
                     date: point.date,
                     value: point.trainingLoad,

@@ -111,6 +111,7 @@ export default function CardioDetailPanel({
             {showDistance ? `${du} per session` : "Minutes per session"}
           </p>
           <LineChartCard
+            // gap-exempt: one point per cardio SESSION, an event axis.
             data={chart}
             label={showDistance ? "Distance" : "Duration"}
             unit={showDistance ? ` ${du}` : " min"}
@@ -129,6 +130,7 @@ export default function CardioDetailPanel({
             {du}/h per session
           </p>
           <LineChartCard
+            // gap-exempt: one point per cardio SESSION, an event axis.
             data={speedChart}
             label="Avg speed"
             unit={` ${du}/h`}
@@ -147,6 +149,7 @@ export default function CardioDetailPanel({
             Total {du} logged to date
           </p>
           <LineChartCard
+            // gap-exempt: a running total indexed by SESSION, an event axis.
             data={cumChart}
             label="Cumulative"
             unit={` ${du}`}

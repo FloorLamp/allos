@@ -13,6 +13,7 @@ import { formatMonthDay } from "@/lib/format-date";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { isSeriesKeySaved, metricSeriesKey } from "@/lib/saved-items";
 import { sparklineShapeForSeriesKey } from "@/lib/trend-sparkline";
+import { dayFillWindow } from "@/lib/day-fill";
 import type { DateRange } from "@/lib/timeline-format";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import TrendTileMenu from "@/components/TrendTileMenu";
@@ -135,6 +136,11 @@ export default async function StarredSection({ range }: { range: DateRange }) {
       // lib/trend-sparkline.ts — training volume's rest days are real zeros, so a
       // line through them draws a slope over training that never happened.
       sparklineShape={sparklineShapeForSeriesKey(t.key)}
+      // …and so does the GAP (#2258): the same registry declares whether this
+      // series' missing days are holes, real zeros, or (for `bio:`) not to be
+      // densified at all. Passing the KEY, never a policy, is what keeps the tile
+      // and the detail chart from disagreeing.
+      gapFill={{ seriesKey: t.key, ...dayFillWindow(range) }}
       // The tile's own controls. Its reorder items resolve their list from the
       // grid's context (#1485 C), so nothing about ordering is computed here.
       menu={<TrendTileMenu itemKey={t.key} label={t.label} />}

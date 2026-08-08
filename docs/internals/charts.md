@@ -229,6 +229,78 @@ no surface can bucket the same series two ways:
   a chart re-rendered tomorrow shifts by one bucket instead of re-cutting all
   of them; annotations snap onto the plotted bucket starts.
 
+### Gaps (#2258)
+
+**A missing day must occupy space.** recharts positions a category axis by array
+INDEX, so a day-precision series that only carries the days it HAS a reading for
+compresses its gaps away: a four-night sync outage plots as four adjacent,
+evenly spaced points with the stroke bridging them — visually identical to four
+consecutive nights. `lib/weekly-fill.ts` (#406) fixed exactly this for weekly
+bars; `lib/day-fill.ts` is its day-grain twin.
+
+**The fill helper's contract.** Given a dated series and a window,
+`fillDailySeries` / `fillDailyRows` emit one entry per calendar day:
+
+- **Leading empty days are TRIMMED.** The axis starts at the first reading — a
+  90-day window opened before you owned a scale draws no two months of nothing.
+- **Trailing days to the window's end are KEPT.** The run of nulls at the right
+  edge IS the live-outage signal; trimming it back to the last reading is the
+  lie this fix exists to remove. An all-time window (no `to`) ends at the last
+  reading — its span is its data.
+- An empty series stays empty (the card draws its empty state), and a span past
+  `MAX_FILL_DAYS` degrades to the raw series rather than truncating one.
+
+**The gap is a per-SERIES declaration, not a per-surface prop.** It lives beside
+the mark decision in `lib/trend-sparkline.ts`, on the same `metric:` / `bio:`
+vocabulary — the mark follows the data, and so does the gap. A surface passes
+`gapFill={{ seriesKey, from, to }}`; the card looks the policy up. That is what
+keeps the Body card, the tile and the metric detail page from disagreeing about
+whether a missing steps day is a zero.
+
+| Policy      | Fill   | Bridges? | Series                                                                                                                                                                          |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bridge`    | `null` | yes      | LEVELS — weight, body fat, BMI, lean/bone mass, BMR, hydration, resting HR, HRV, skin-temp, daily HR, height, head circumference, the clinical vitals, the 1–5 check-in ratings |
+| `break`     | `null` | no       | per-night / per-day READINGS — sleep duration, sleep stages, sleep regularity, the Oura scores                                                                                  |
+| `slot-zero` | `0`    | —        | per-day TOTALS whose missing day is a real zero — training volume (a rest day)                                                                                                  |
+| `slot-null` | `null` | no       | per-day TOTALS that were NOT measured — steps, active calories, sun minutes, intake calories, macros/fiber                                                                      |
+| `exempt`    | —      | —        | every `bio:` series: lab draws are sparse by nature, and 365 mostly-null categories around three draws degrade the tile for no honesty gain                                     |
+
+A level bridges because the quantity exists on the days you didn't sample it;
+what densification buys it is honest calendar-PROPORTIONAL spacing (two weigh-ins
+a month apart stop rendering adjacent). A reading breaks because a missed night
+is a real absence. A total slots because each day is its own quantity — and
+whether the missing day is `0` or `null` is the difference between "rested" and
+"not measured", which is why manually-logged nutrition totals fill `null`: a
+zero there would assert a fast nobody recorded.
+
+**Consequences the cards own:**
+
+- **Dots count REAL readings, not calendar days.** `chartLineDot`'s
+  `DENSE_SERIES_POINTS` threshold is fed `applyDayFill(...).realCount`; feeding
+  it the densified length would silently drop the dots from a 90-day window
+  holding 12 weigh-ins.
+- **A gap day's tooltip says "No data".** recharts filters null payloads by
+  default, which is why hovering an outage used to open an unlabelled empty box;
+  the cards pass `filterNull={false}` and name the absence. `Number(null)` is
+  `0`, so an unguarded formatter would print "0 steps" for a day the watch never
+  reported. A zero-FILLED day still prints its real `0`.
+- **Gaps survive aggregation.** `aggregateLongRange` emits a null bucket for an
+  empty calendar week/month between occupied ones, so a six-week outage inside a
+  1Y window does not bridge at bucket grain either. The density gate still counts
+  OCCUPIED buckets only — a gapped series is judged on the data it has.
+- **Annotation snapping becomes near-lossless.** Every calendar day is a real
+  category now, so `snapAnnotationsToDates` / `snapWindowsToDates` stop drifting
+  markers onto the nearest charted reading and stop collapsing short windows.
+
+**Out of scope, and correct as-is:** intraday slot charts (already null-slotted
+with `connectNulls={false}`), per-event x-axes (strength sessions, rides, cycles
+— the index IS the event), week-grain charts already filled by
+`lib/weekly-fill.ts`, and every chart already on the NUMERIC time axis — the
+biomarker detail chart, `CompareChartInner` and `SourceCompareChartInner` all
+pass `type="number" scale="time"`, so their x is already proportional to elapsed
+time and there is nothing to densify. Each day-grain call site that opts out
+carries a `// gap-exempt: <reason>` comment, which is what the scan below reads.
+
 ---
 
 ## 4. Identity is never color-alone
@@ -309,6 +381,7 @@ at once:
 | `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]`, numeric `fontSize: 9`, **and** a viewBox size that _renders_ under 9px (below)                                                                          |
 | `lib/__tests__/chart-detail-href.test.ts`   | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve      |
 | `lib/__tests__/chart-svg.test.ts`           | the shared viewBox text math itself: the scale ratio, the computed floor, the label clamp and the row-collision rule                                                  |
+| `lib/__tests__/day-fill-scan.test.ts`       | a day-grain chart card with neither `gapFill` nor a `gap-exempt:` reason; a metric with no declared gap policy; a stale registry entry                                |
 
 ### Hand-drawn fixed-viewBox panels get a COMPUTED floor, not an exemption
 

@@ -75,6 +75,7 @@ export default function RideTelemetryChart({
       ) : null}
       <div className="mt-3" data-testid="ride-telemetry-chart">
         <LineChartCard
+          // gap-exempt: intra-ride telemetry on an elapsed-time axis.
           data={selected.points}
           label={selected.label}
           unit={selected.unit}

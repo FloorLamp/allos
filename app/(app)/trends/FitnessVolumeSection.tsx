@@ -55,6 +55,7 @@ export default async function FitnessVolumeSection({
           />
         ) : (
           <StackedBarCard
+            // gap-exempt: week-grain, zero-filled by lib/weekly-fill.ts (#406).
             data={volume}
             unit={` ${wu}`}
             series={[
