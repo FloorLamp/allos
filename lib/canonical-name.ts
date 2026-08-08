@@ -348,40 +348,85 @@ const CANONICAL_ALIASES: [string, string][] = [
 // name present in this vocabulary: a real entry always wins a key collision, so
 // an alias can only ADD a route to an existing analyte, never hijack a distinct one.
 export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
+  const index = canonicalEntryIndex(vocabulary);
+  // THE BLOCK LIVES HERE, and only here: canonicalAliasRoutes() computes every
+  // route the curated table + the auto-derivation WOULD install, and this loop
+  // drops the ones whose key a real entry already claimed. Keeping the two apart
+  // is what lets lib/canonical-alias-merge.ts ask the question #2306 needed asked
+  // — "which routes is this vocabulary blocking?" — instead of re-deriving the
+  // alias set a second time and drifting from it.
+  for (const [key, target] of canonicalAliasRoutes(vocabulary))
+    if (!index.has(key)) index.set(key, target);
+  return index;
+}
+
+// The vocabulary's OWN entries as a normalized-key -> spelling map. On key collision
+// the first entry wins (the vocabulary arrives in the caller's preferred order —
+// getCanonicalVocabulary sorts seeded/curated names ahead of ai-coined ones), so this
+// map answers "which spelling of this key does the vocabulary consider canonical?".
+export function canonicalEntryIndex(
+  vocabulary: readonly string[]
+): Map<string, string> {
   const index = new Map<string, string>();
   for (const name of vocabulary) {
     const key = normalizeCanonicalKey(name);
     if (key && !index.has(key)) index.set(key, name);
   }
-  // Auto-derived aliases for a "Full Name (ABBR)" entry. Its combined-token key
-  // matches NEITHER the bare full name NOR the bare abbreviation alone (an extractor
-  // emits one or the other), so every such entry would otherwise need two hand-written
-  // CANONICAL_ALIASES — an easy-to-half-do footgun. Derive both here instead:
-  //   • the bare full name (strip the trailing parenthetical) — always safe.
-  //   • the bare abbreviation — ONLY when the parenthetical LOOKS like an acronym
-  //     (no spaces, ≥2 uppercase or a digit), so a word-parenthetical ("(Bicarbonate)",
-  //     "(Retinol)") or a value ("(50 g)") is NOT mistaken for an abbreviation. Those
-  //     word-synonyms keep their explicit curated alias.
-  // A real entry always wins a key collision (added first above), so a derived alias
-  // can only fill a gap, never hijack a distinct analyte.
+  return index;
+}
+
+// Every alias route this vocabulary defines — curated CANONICAL_ALIASES plus the
+// auto-derived "Full Name (ABBR)" ones — keyed by normalized alias key, valued by
+// the TARGET's own vocabulary spelling. Routes with no target in the vocabulary are
+// omitted (an alias can only ADD a route to an analyte that exists).
+//
+// Deliberately does NOT apply the "a real entry wins a key collision" block:
+// buildCanonicalIndex applies it, and the merge pass (lib/canonical-alias-merge.ts)
+// needs the UNBLOCKED set to see which routes an ai-coined vocabulary row is
+// shadowing. Route order still matters and is preserved: derived routes are laid
+// down first and a curated route may resolve its target THROUGH one of them
+// (SGPT → ALT → "Alanine Aminotransferase (ALT)"), first route wins a key.
+//
+// Auto-derived aliases for a "Full Name (ABBR)" entry exist because its combined-token
+// key matches NEITHER the bare full name NOR the bare abbreviation alone (an extractor
+// emits one or the other), so every such entry would otherwise need two hand-written
+// CANONICAL_ALIASES — an easy-to-half-do footgun. Derived here instead:
+//   • the bare full name (strip the trailing parenthetical) — always safe.
+//   • the bare abbreviation — ONLY when the parenthetical LOOKS like an acronym
+//     (no spaces, ≥2 uppercase or a digit), so a word-parenthetical ("(Bicarbonate)",
+//     "(Retinol)") or a value ("(50 g)") is NOT mistaken for an abbreviation. Those
+//     word-synonyms keep their explicit curated alias.
+export function canonicalAliasRoutes(
+  vocabulary: readonly string[]
+): Map<string, string> {
+  const entries = canonicalEntryIndex(vocabulary);
+  const routes = new Map<string, string>();
+  // A target is resolved against the real entries FIRST (so a route never points at
+  // another route's alias when a real entry owns that key), then against the routes
+  // laid down so far.
+  const resolve = (key: string) => entries.get(key) ?? routes.get(key);
+  const addRoute = (alias: string, canonical: string) => {
+    const key = normalizeCanonicalKey(alias);
+    if (key && !routes.has(key)) routes.set(key, canonical);
+  };
   for (const name of vocabulary) {
     const m = FULL_ABBR_RE.exec(name);
     if (!m) continue;
     const [, full, abbr] = m;
     // Resolve to the entry's OWN spelling (case/whitespace-normalized) so the alias
     // targets the real vocabulary name, not the raw regex capture.
-    const canonical = index.get(normalizeCanonicalKey(name));
+    const canonical = entries.get(normalizeCanonicalKey(name));
     if (!canonical) continue;
-    addAlias(index, full, canonical);
-    if (looksLikeAbbreviation(abbr)) addAlias(index, abbr, canonical);
+    addRoute(full, canonical);
+    if (looksLikeAbbreviation(abbr)) addRoute(abbr, canonical);
   }
   for (const [alias, canonical] of CANONICAL_ALIASES) {
     const aliasKey = normalizeCanonicalKey(alias);
-    if (!aliasKey || index.has(aliasKey)) continue;
-    const target = index.get(normalizeCanonicalKey(canonical));
-    if (target) index.set(aliasKey, target);
+    if (!aliasKey || routes.has(aliasKey)) continue;
+    const target = resolve(normalizeCanonicalKey(canonical));
+    if (target) routes.set(aliasKey, target);
   }
-  return index;
+  return routes;
 }
 
 // A canonical name written "Full Name (ABBR)" — captures the full name and the
@@ -397,15 +442,6 @@ function looksLikeAbbreviation(s: string): boolean {
   if (/\s/.test(s)) return false;
   const uppers = (s.match(/[A-Z]/g) ?? []).length;
   return uppers >= 2 || /\d/.test(s);
-}
-
-function addAlias(
-  index: Map<string, string>,
-  alias: string,
-  canonical: string
-): void {
-  const key = normalizeCanonicalKey(alias);
-  if (key && !index.has(key)) index.set(key, canonical);
 }
 
 // The curated alias routes, exposed for the vocabulary-integrity test (it pins

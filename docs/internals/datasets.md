@@ -177,6 +177,53 @@ names for dedup/series/dismissal — different layers. New datasets should still
 prefer a `data/` file; the external-source hatch is for a generator-owned,
 boot-seeded file only.
 
+### Superseded spellings: a curated alias must not be inert (#2306)
+
+The `canonical_biomarkers` table holds two kinds of row: the curated dataset
+entries (`source = 'seed'`, re-UPSERTed by `seedCanonicalBiomarkers` on every
+boot) and the spellings an extraction coined (`source = 'ai'`, registered by
+`addCanonicalNames` as documents arrive). `buildCanonicalIndex`
+(`lib/canonical-name.ts`) fills its index from the whole vocabulary first and
+only then lays the alias routes down, so **a real entry always wins a key
+collision** — which is what stops an alias hijacking a distinct analyte.
+
+The cost of that precedence is that an **ai-coined row counts as a real entry**.
+Since importing a lab's own spelling is _how you discover an alias is needed_,
+every `CANONICAL_ALIASES` route added in response to a real document used to be
+dead on arrival on the database that motivated it, and re-importing could not
+clear it (the route is blocked at the moment the import snaps). The same shape
+one step over: a reading stored **before** a curated entry existed keeps the
+losing spelling forever even though `snapCanonicalName` resolves it for every
+fresh import.
+
+`mergeSupersededCanonicalNames` (`lib/canonical-alias-merge-db.ts`, deciding
+through the pure `lib/canonical-alias-merge.ts`) closes both. An `ai` row is
+**superseded** when the vocabulary would resolve its key to a different
+spelling — either _shadowed_ (another entry already wins the key) or _blocked_
+(it wins its own key but an alias route wants that key elsewhere) — and the pass
+deletes it, re-points every stored reading of it, and carries the state keyed on
+its name: the ★ save, the retest snooze and flagged-result acknowledgment, a
+biomarker-linked goal, a tracked coverage gap, and a protocol's outcome key. A
+`seed` row is never deleted, and a route with no target in the vocabulary is
+never followed — the same guarantee `buildCanonicalIndex` already makes.
+
+It runs in **two places, for two different reasons**:
+
+- **migration 174** — the one-shot data move for the drift already on disk, so
+  the retroactive rename has a version, a transaction, and a replay test;
+- **`bootTasks`**, right after `seedCanonicalBiomarkers` and before the flag
+  reconcile — the recurring guard, because `CANONICAL_ALIASES` and the dataset
+  grow in releases with **no schema change**, and any import between two boots
+  can mint a fresh blocking row. Exactly why the seed itself is a boot task.
+
+Cheap when there is nothing to do: the plan is computed read-only and the write
+transaction is opened only when it is non-empty. When it _does_ move something
+it clears `settings.canonical_flags_sig`, so the flag reconcile that follows
+re-derives once — a reading that just landed on a curated entry can finally
+carry a band. `FLAG_LOGIC_VERSION` is deliberately **not** bumped for this: no
+range and no derivation logic changed, and a bump would force a full re-scan on
+every database that has no drift to repair.
+
 ## Migrating the next dataset (a thin PR)
 
 1. Reshape its `scripts/gen-*.ts` (or hand-authored JSON) to emit a framework
