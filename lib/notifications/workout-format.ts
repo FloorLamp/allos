@@ -4,6 +4,8 @@
 // ./recommend (recommendWorkout); ./workouts wires the two together.
 
 import { suggestTitle, type MuscleRegion } from "../lifts";
+import { hasExerciseGuide } from "../exercise-guides";
+import { isNewLift } from "../exercise-familiarity";
 import { frequencyScopeLabel } from "../goals";
 import {
   workoutAcknowledgmentLine,
@@ -73,6 +75,17 @@ export interface WorkoutRecommendation {
   // nudge never reads as having forgotten Saturday's session. Absent on every ordinary
   // day (loose weeks yield the rest reframe instead).
   recoveryOverride?: string | null;
+  // Sessions of the LEAD exercise (`exercises[0]`) inside the gather's 56-day window,
+  // counted through `exerciseHistoryKey` — the SAME identity the guide index uses, so
+  // a profile that logs "Dumbbell Curl" and is recommended "Barbell Curl" is not told
+  // it has never done the lift whose guide it would receive (#2223).
+  //
+  // ABSENT MEANS UNKNOWN, NOT ZERO — the one field on this interface where absent does
+  // NOT mean "prior behavior". `undefined` and `0` are different values: positive
+  // evidence that the lift is new is what earns the how-to button, so a path that
+  // forgets to thread the count goes quiet instead of resurrecting the old
+  // unconditional send. `isNewLift` owns that reading.
+  leadExerciseSessions?: number;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -82,7 +95,8 @@ export interface WorkoutRecommendation {
 // `deepLinkBase` (the instance's public URL) enables the "How to" deep-link
 // button to the lead exercise's detail panel (#734). Two-way principle: it's a
 // URL button — it carries the exercise NAME and deep-links, never a mutation.
-// Empty base (unset public URL / unit tests) ⇒ no button.
+// Empty base (unset public URL / unit tests) ⇒ no button. The base is necessary
+// but no longer sufficient: see the guideActions block for the #2223 bound.
 export function formatWorkoutReminder(
   rec: WorkoutRecommendation | null,
   deepLinkBase = ""
@@ -98,11 +112,25 @@ export function formatWorkoutReminder(
       : rec.focus.join(" / ");
 
   // The lead exercise's how-to guide, as a deep-link button to the Analyze panel
-  // (#734). Only when a public URL is configured and a lead lift exists.
+  // (#734) — BOUNDED (#2223). The button used to ride on every send, so someone who
+  // had benched every week for years got a bench-press form reference forever, and a
+  // custom lift got a button to a panel documented to have no how-to section. Four
+  // conditions now, one expression, computed ONCE and spread into both branches (the
+  // rest reframe below has strictly less reason to carry a form reference than the
+  // nudge does):
+  //   • a public URL is configured, and there is a lead lift (the original two);
+  //   • the reader has NOT done the lift — zero sessions in the recommendation
+  //     window, per `isNewLift`, which also reads an ABSENT count as "don't send";
+  //   • the lift actually HAS a guide — `hasExerciseGuide` resolves through the same
+  //     `exerciseHistoryKey` the familiarity count uses, so both halves agree on what
+  //     a lift is, and a custom lift no longer promises content it can't show.
   const base = deepLinkBase.replace(/\/$/, "");
   const primary = rec.exercises[0];
   const guideActions: NotificationAction[] =
-    base && primary
+    base &&
+    primary &&
+    isNewLift(rec.leadExerciseSessions) &&
+    hasExerciseGuide(primary)
       ? [
           {
             label: `📖 How to: ${primary}`,
