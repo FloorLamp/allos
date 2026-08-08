@@ -201,6 +201,46 @@ column for a zone anywhere (#2243 owns that question). The parser preserves the
 offset; the drop happens at the MAPPER, which knows the destination, rather than at
 the parser, which does not.
 
+## Which clock stamps a record instant (#2287)
+
+Storing a stamp in the right SHAPE is not the whole of it. A value SQL stamps
+itself — `datetime('now')` in a statement, or a column DEFAULT that reads it —
+comes off the **real** clock, which `lib/clock.ts`'s seam cannot reach. Any code
+that then compares that value against the seam's `now()` is comparing two
+clocks, and answers by the distance between them rather than by the data.
+
+That distance is not always zero. The e2e suite freezes the seam, and
+`lib/e2e-freeze-instant.ts` nudges the frozen instant **forward across UTC
+midnight** for a run that starts inside its hazard window — so inside that
+window the seam leads real time by 30–60 minutes. #2287 reproduced what that
+costs, twice:
+
+- `activities.created_at` / `updated_at` are the LIVENESS signal
+  `computeWorkoutPresence` subtracts from the seam's now. Stamped by SQL, a
+  draft saved seconds earlier read as 58 minutes quiet — past `STALE_MIN` (45)
+  — and the dock rendered "Still working out? Finish or discard".
+- the offline food replay judged a queued eating-time statement against a bare
+  `new Date()` while the statement had been resolved against the seam, so
+  `acceptEatenAt` refused a seconds-old statement as being in the future and
+  `food_log_events.time_source` landed NULL instead of `'stated'`.
+
+The rule, then: **bind the record instant at the write site from the seam** —
+`sqlNow()` for a bare-shaped column, `instantNow()` for a canonical one — and
+pass the seam's `now()` to any pure gate that judges a stored or captured
+instant. A column DEFAULT lives in a shipped, immutable migration and stays
+where it is; binding explicitly at every write path makes it a backstop rather
+than the writer. Nothing about this changes production behaviour: with the
+override unset the seam **is** the real clock, so the bound value is
+byte-identical to what SQLite would have written.
+
+The question to ask of an audit stamp is therefore not "is it merely displayed"
+but "does anything ever compare it to the app's now — as a DAY, or as an ELAPSED
+interval?" `activities.updated_at` was allowlisted in
+`lib/__tests__/sql-clock-seam.test.ts` as a plain last-modified stamp and was
+still wrong, because presence subtracts it. `lib/__db_tests__/record-instant-clock-seam.test.ts`
+pins both consequences by freezing the seam AHEAD of real time, the way the
+nudge does.
+
 ## The day-midnight anchor
 
 Three write paths file a day-only reading at `` `${date}T00:00:00` ``
@@ -291,6 +331,10 @@ its four callers from `boolean` to a typed outcome, which #2296 did not cover.
 - #1534 / `lib/__tests__/sql-clock-seam.test.ts` — the sibling ratchet: WHICH
   clock a now-read comes from. This one is about WHAT SHAPE the value is stored
   in. A write site usually has to satisfy both.
+- #2287 — the owner ruling that record instants are stamped through the seam
+  rather than by SQL's own clock, and the two reproductions behind it. Part A of
+  that issue (a fixture-zone scan and a fixture-timezone registry) is a separate,
+  still-open proposal.
 - `docs/internals/time-columns.md` — the per-column index (generated from
   `lib/time-columns.ts`) and the row-level readers over it.
 - `docs/versioned-migrations-spec.md` — how a converting migration ships.

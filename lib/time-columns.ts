@@ -148,12 +148,14 @@ export const TIME_COLUMNS = {
       semantic: "record",
       grain: "instant",
       convention: "bare",
+      note: "Still bare, but no longer written by SQL: every app write path BINDS it from the clock seam (`sqlNow()`, #2287) instead of leaning on the column's own SQL-clock DEFAULT. `computeWorkoutPresence` reads it as a draft's first-seen instant (and as an imported row's freshness anchor) and subtracts it from a seam-derived now, so a stamp off SQL's real clock made a seconds-old draft read as an hour quiet whenever the two clocks diverged. The DEFAULT stays — it lives in a shipped migration — and is now only a backstop.",
     },
     {
       column: "updated_at",
       semantic: "bookkeeping",
       grain: "instant",
       convention: "bare",
+      note: "The #451 auto-save stamp, and the LIVENESS signal workout presence prefers over `created_at` (lastTouchMs = updated_at ?? created_at). Bound from the clock seam (`sqlNow()`, #2287) at every writer for the same reason: it is compared to the app's now, not merely displayed.",
     },
   ],
   activity_telemetry: [

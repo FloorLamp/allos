@@ -183,8 +183,18 @@ export function eatingHoursOnDate(
 // CALLERS, not the rule: a `refused` verdict costs the statement, never the serving,
 // while the correction path (#2227) treats the same verdict as an error the user sees.
 // Since #2296 BOTH tell the user — the log path as a notice on a write that succeeded,
-// the correction path as the failure it genuinely is. `now` is injected and its clock is the CALLER'S choice,
-// deliberately: the online action resolves the choice against the app's own clock seam
-// and is comparing that seam with itself, while the offline replay is judging an instant
-// off an untrusted CLIENT wall clock and therefore compares against real time — the same
-// seam distinction `resolveQueuedTakenAt` documents at length.
+// the correction path as the failure it genuinely is.
+//
+// `now` is injected because the rule is PURE, not because the clock is a per-caller
+// taste. Every caller — the online action, the correction path and the offline replay
+// — judges against the app's own clock seam (`clockNow()`). #2287 settled that: the
+// replay used to pass a bare `new Date()`, on the reasoning that a client instant is
+// off an independent REAL clock. It is not independent — under the e2e freeze the
+// BROWSER is put on the same frozen clock the server reads, so a statement resolved
+// against the seam was being refused as "in the future" by a now that was not the
+// seam's. Validating an untrusted instant is still right; validating it against a
+// different clock than the one that produced it never was.
+//
+// The two changes are complements, and the order matters: #2287 removes the SPURIOUS
+// refusals (a clock the app itself moved), #2296 makes the ones that remain — a
+// genuinely fast device clock, a statement on another day — audible instead of silent.

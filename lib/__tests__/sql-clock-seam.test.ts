@@ -30,6 +30,17 @@ import { sqlNow } from "../clock";
 // plain "last modified" audit stamps. Those are the allowlist below — every entry
 // carries the reason it is not date-semantic.
 //
+// ONE REFINEMENT, from #2287: "a plain last-modified audit stamp" is not by itself a
+// reason to keep SQL's clock. `activities.updated_at` carried exactly that reason and
+// was still wrong, because `computeWorkoutPresence` SUBTRACTS it from a seam-derived
+// now to decide whether a live draft has gone quiet — so the stamp was not merely
+// displayed, it was compared. Under the e2e freeze nudge (lib/e2e-freeze-instant.ts)
+// the seam leads real time by 30–60 minutes, and a draft saved seconds earlier read
+// as 58 minutes quiet, past STALE_MIN. The test to apply is not "is this a display
+// stamp" but "does anything ever compare this value to the seam's now — as a DAY or
+// as an ELAPSED interval?" If it does, bind sqlNow(). An audit stamp only nothing
+// reads back against the app's clock may still stay here, with that said out loud.
+//
 // This test reads the repo's own source as TEXT (no DB, no network) so it stays
 // "pure" in the vitest sense — the same shape as lib/__tests__/immediate-tx.test.ts
 // and lib/__tests__/telegram-chokepoint.test.ts.
@@ -65,10 +76,6 @@ const ALLOW: Record<string, { count: number; why: string }> = {
   "app/(app)/immunizations/actions.ts": {
     count: 1,
     why: "immunization_overrides.created_at — audit stamp on an upsert keyed by (profile_id, vaccine). Never day-reduced.",
-  },
-  "lib/activity-write.ts": {
-    count: 1,
-    why: "journal updated_at — a 'last modified' audit stamp. (Moved with saveActivityCore's extraction out of app/(app)/training/activity-actions.ts, #1596.)",
   },
   "app/(app)/settings/family/page.tsx": {
     count: 1,
@@ -129,10 +136,6 @@ const ALLOW: Record<string, { count: number; why: string }> = {
   "lib/migrations/boot-tasks.ts": {
     count: 5,
     why: "stuck-extraction / stuck-import boot sweeps — duration cutoffs plus the updated_at audit stamps they write. Down from 8: the integration-backfill sweep's three (retry_after_at, updated_at, and its own cutoff) now BIND from utcInstant() because that table stores ISO-8601 UTC with `Z` and SQLite's bare 'now' put a second serialization in the same column (#2205).",
-  },
-  "lib/mobility-log-write.ts": {
-    count: 3,
-    why: "activities.updated_at — a 'last modified' audit stamp; the activity's day is its own `date` column.",
   },
   "lib/notifications/digest-data.ts": {
     count: 2,
@@ -205,10 +208,6 @@ const ALLOW: Record<string, { count: number; why: string }> = {
   "lib/unit-mislabel-correction.ts": {
     count: 1,
     why: "upcoming_dismissals.dismissed_at — presence only, same as the suppressions writer.",
-  },
-  "lib/workout-finish.ts": {
-    count: 1,
-    why: "activities.updated_at — a 'last modified' audit stamp (end_time is bound from the clock seam).",
   },
 };
 

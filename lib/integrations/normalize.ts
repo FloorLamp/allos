@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import type { ActivityType, ActivityComponent, MedicalFlag } from "@/lib/types";
 import {
   normalizeResultStatus,
@@ -845,10 +846,15 @@ export function upsertActivities(
             start_time, end_time, source, components, ${metricCols}
        FROM activities WHERE profile_id = ? AND external_id = ?`
   );
+  // `created_at` is BOUND from the clock seam (#2287), not left to the column's
+  // `datetime('now')` DEFAULT. For an IMPORTED row this stamp is the FIRST-SEEN
+  // freshness anchor `computeWorkoutPresence` compares against a seam-derived now
+  // (IMPORT_FRESHNESS_MIN), so the two have to come off one clock. Byte-identical to
+  // SQLite's own value in production, where the seam is the real clock.
   const insert = db.prepare(
     `INSERT INTO activities
-       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?)`
+       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?, ?)`
   );
   // NOTE (#342): equipment_id is deliberately absent from BOTH this UPDATE's column
   // set and the compareCols above, so a re-sync never clobbers a hand-set session
@@ -947,7 +953,8 @@ export function upsertActivities(
         ...metrics,
         componentsJson,
         source,
-        r.external_id
+        r.external_id,
+        sqlNow()
       );
       tallyUpsert(counts, classifyUpsert(false, false));
       sink?.push({

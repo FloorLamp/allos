@@ -15,8 +15,16 @@
 // profileId-first, auth-blind (no lib/auth import) — the calling Server Action owns the
 // auth gate + revalidate (lib/ write-core convention). Every mutation is a single
 // writeTx (BEGIN IMMEDIATE, #468).
+//
+// `created_at` and `updated_at` are BOUND from the clock seam (`sqlNow()`, #2287),
+// never left to the column DEFAULT or written by SQL's own `datetime('now')`. These
+// are the two columns `computeWorkoutPresence` reads as a mobility row's LIVENESS
+// (lastTouchMs = updated_at ?? created_at) and subtracts from a seam-derived now, so
+// both sides of that subtraction have to come off one clock. In production the seam
+// IS the real clock, so the values are byte-identical to what SQLite would write.
 
 import { db, writeTx, today } from "./db";
+import { sqlNow } from "./clock";
 import { parseComponents, type ActivityComponent } from "./types";
 import { canonicalMobilityMove, mobilityMoveName } from "./mobility-moves";
 
@@ -114,15 +122,15 @@ export function logMobilityMoveCore(
     const json = JSON.stringify(componentsFor(moves));
     if (row) {
       db.prepare(
-        `UPDATE activities SET components = ?, updated_at = datetime('now')
+        `UPDATE activities SET components = ?, updated_at = ?
            WHERE id = ? AND profile_id = ?`
-      ).run(json, row.id, profileId);
+      ).run(json, sqlNow(), row.id, profileId);
       return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
     }
     db.prepare(
-      `INSERT INTO activities (date, type, title, components, profile_id)
-       VALUES (?, 'recovery', ?, ?, ?)`
-    ).run(date, MOBILITY_TITLE, json, profileId);
+      `INSERT INTO activities (date, type, title, components, profile_id, created_at)
+       VALUES (?, 'recovery', ?, ?, ?, ?)`
+    ).run(date, MOBILITY_TITLE, json, profileId, sqlNow());
     return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
   });
 }
@@ -150,9 +158,9 @@ export function unlogMobilityMoveCore(
       return { kind: "logged", session: sessionOf(undefined) };
     }
     db.prepare(
-      `UPDATE activities SET components = ?, updated_at = datetime('now')
+      `UPDATE activities SET components = ?, updated_at = ?
          WHERE id = ? AND profile_id = ?`
-    ).run(JSON.stringify(componentsFor(moves)), row.id, profileId);
+    ).run(JSON.stringify(componentsFor(moves)), sqlNow(), row.id, profileId);
     return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
   });
 }
@@ -170,9 +178,9 @@ export function setMobilityDurationCore(
     if (!row) {
       if (dur === null) return sessionOf(undefined);
       db.prepare(
-        `INSERT INTO activities (date, type, title, components, duration_min, profile_id)
-         VALUES (?, 'recovery', ?, '[]', ?, ?)`
-      ).run(date, MOBILITY_TITLE, dur, profileId);
+        `INSERT INTO activities (date, type, title, components, duration_min, profile_id, created_at)
+         VALUES (?, 'recovery', ?, '[]', ?, ?, ?)`
+      ).run(date, MOBILITY_TITLE, dur, profileId, sqlNow());
       return sessionOf(dayRow(profileId, date));
     }
     if (dur === null && movesOf(row).length === 0) {
@@ -183,9 +191,9 @@ export function setMobilityDurationCore(
       return sessionOf(undefined);
     }
     db.prepare(
-      `UPDATE activities SET duration_min = ?, updated_at = datetime('now')
+      `UPDATE activities SET duration_min = ?, updated_at = ?
          WHERE id = ? AND profile_id = ?`
-    ).run(dur, row.id, profileId);
+    ).run(dur, sqlNow(), row.id, profileId);
     return sessionOf(dayRow(profileId, date));
   });
 }
