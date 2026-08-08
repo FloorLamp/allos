@@ -134,8 +134,9 @@ describe("addMeasurements — one form, three stores", () => {
       notes: null,
     });
     // The legacy per-measure time reaches ONLY its own row.
-    expect(medRows(profile.id, "Blood Pressure Systolic")[0].occurred_at)
-      .toBeNull();
+    expect(
+      medRows(profile.id, "Blood Pressure Systolic")[0].occurred_at
+    ).toBeNull();
 
     // metric_samples — sleep (minutes) + HRV + the growth height.
     expect(sampleValue(profile.id, "sleep_min")).toBe(450);
@@ -250,8 +251,9 @@ describe("addMeasurements — one form, three stores", () => {
     await addMeasurements(
       fd({ date: DATE, systolic: "118", diastolic: "76", occurred_at: "" })
     );
-    expect(medRows(profile.id, "Blood Pressure Systolic")[1].occurred_at)
-      .toBeNull();
+    expect(
+      medRows(profile.id, "Blood Pressure Systolic")[1].occurred_at
+    ).toBeNull();
   });
 
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {

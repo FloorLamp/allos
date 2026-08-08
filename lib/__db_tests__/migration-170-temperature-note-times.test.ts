@@ -53,23 +53,52 @@ function preMigrationDb(): Database.Database {
   `);
   // Profile 1 states a real zone; profile 2 has none and falls back to the
   // instance default (UTC here — the same resolution order getTimezone runs).
-  mem.prepare(
-    "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'timezone', 'America/New_York')"
-  ).run();
-  mem.prepare(
-    "INSERT INTO settings (key, value) VALUES ('timezone', 'UTC')"
-  ).run();
+  mem
+    .prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'timezone', 'America/New_York')"
+    )
+    .run();
+  mem
+    .prepare("INSERT INTO settings (key, value) VALUES ('timezone', 'UTC')")
+    .run();
 
   const ins = mem.prepare(
     `INSERT INTO medical_records (id, profile_id, date, canonical_name, value_num, source, notes, occurred_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   // 1: the convention — a winter "07:30" in New York is 12:30Z.
-  ins.run(1, 1, "2026-01-05", "Body Temperature", 100.4, "manual", "07:30", null);
+  ins.run(
+    1,
+    1,
+    "2026-01-05",
+    "Body Temperature",
+    100.4,
+    "manual",
+    "07:30",
+    null
+  );
   // 2: same profile, a summer reading — DST-aware: "19:40" EDT is 23:40Z.
-  ins.run(2, 1, "2025-07-10", "Body Temperature", 99.1, "manual", "19:40", null);
+  ins.run(
+    2,
+    1,
+    "2025-07-10",
+    "Body Temperature",
+    99.1,
+    "manual",
+    "19:40",
+    null
+  );
   // 3: the fallback-zone profile — "08:05" resolves as UTC.
-  ins.run(3, 2, "2026-02-01", "Body Temperature", 98.6, "manual", "08:05", null);
+  ins.run(
+    3,
+    2,
+    "2026-02-01",
+    "Body Temperature",
+    98.6,
+    "manual",
+    "08:05",
+    null
+  );
   // 4: a genuine free-text note — untouched.
   ins.run(
     4,
@@ -82,7 +111,16 @@ function preMigrationDb(): Database.Database {
     null
   );
   // 5: GLOB-passing garbage the JS re-validation must refuse.
-  ins.run(5, 1, "2026-01-07", "Body Temperature", 98.9, "manual", "29:30", null);
+  ins.run(
+    5,
+    1,
+    "2026-01-07",
+    "Body Temperature",
+    98.9,
+    "manual",
+    "29:30",
+    null
+  );
   // 6: another analyte wearing a time-shaped note — somebody's note, not a clock.
   ins.run(6, 1, "2026-01-08", "Glucose", 94, "manual", "07:30", null);
   // 7: an instant already stands (an edit made between deploy and boot): kept,

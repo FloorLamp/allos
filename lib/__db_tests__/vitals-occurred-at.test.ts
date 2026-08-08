@@ -104,17 +104,16 @@ describe("the manual vitals core (insertVitals)", () => {
     }
     // The reading model presents the same instant — measuredAt now means one
     // thing across all three stores.
-    const reading = getReadingSeries(
-      profileId,
-      "Blood Pressure Systolic"
-    ).find((r) => r.date === "2026-03-02");
+    const reading = getReadingSeries(profileId, "Blood Pressure Systolic").find(
+      (r) => r.date === "2026-03-02"
+    );
     expect(reading?.measuredAt).toBe("2026-03-02T07:12:00Z");
   });
 
   it("stores NULL for an untimed sitting, which reads back day-grain", () => {
-    expect(
-      insertVitals(profileId, "2026-03-03", { spo2: "97" }, null)
-    ).toBe(true);
+    expect(insertVitals(profileId, "2026-03-03", { spo2: "97" }, null)).toBe(
+      true
+    );
     const rows = medRows("Oxygen Saturation", "2026-03-03");
     expect(rows).toHaveLength(1);
     // Honest absence — never a `${date}T00:00:00` anchor.
@@ -159,9 +158,7 @@ describe("the manual vitals core (insertVitals)", () => {
           WHERE profile_id = ? AND metric = 'peak_flow_lmin' AND date = '2026-03-05'`
       )
       .all(profileId) as { start_time: string; value: number }[];
-    expect(sample).toEqual([
-      { start_time: "2026-03-05T07:30:00", value: 410 },
-    ]);
+    expect(sample).toEqual([{ start_time: "2026-03-05T07:30:00", value: 410 }]);
     expect(
       insertVitals(
         profileId,
@@ -197,8 +194,9 @@ describe("the manual vitals core (insertVitals)", () => {
     // The retired #800/#843 note is never minted again.
     expect(temp[0].notes).toBeNull();
     // The per-measure time was only ever the temperature's statement.
-    expect(medRows("Blood Pressure Systolic", "2026-03-06")[0].occurred_at)
-      .toBeNull();
+    expect(
+      medRows("Blood Pressure Systolic", "2026-03-06")[0].occurred_at
+    ).toBeNull();
   });
 });
 
@@ -219,11 +217,7 @@ describe("the importer write (upsertVitals)", () => {
   }
 
   it("writes the instant beside the external_id that already encoded it", () => {
-    const { counts } = upsertVitals(
-      profileId,
-      [spo2()],
-      "health-connect"
-    );
+    const { counts } = upsertVitals(profileId, [spo2()], "health-connect");
     expect(counts.inserted).toBe(1);
     const rows = medRows("Oxygen Saturation", "2026-03-10");
     expect(rows).toHaveLength(1);
@@ -300,9 +294,9 @@ describe("the temperature quick-log core (the notes-hack, retired)", () => {
   });
 
   it("an untimed reading stores NULL — absence, not a midnight anchor", () => {
-    expect(
-      logTemperatureCore(profileId, 98.9, "F", "2026-03-13").kind
-    ).toBe("logged");
+    expect(logTemperatureCore(profileId, 98.9, "F", "2026-03-13").kind).toBe(
+      "logged"
+    );
     expect(medRows("Body Temperature", "2026-03-13")[0].occurred_at).toBeNull();
   });
 });

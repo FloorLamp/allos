@@ -63,8 +63,7 @@ function timezoneFor(db: Database.Database, profileId: number): string {
   )?.value;
   const instance = (
     db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as
-      | { value?: string }
-      | undefined
+      { value?: string } | undefined
   )?.value;
   const chosen = prof ?? instance;
   return chosen && isValidTimezone(chosen) ? chosen : DEFAULT_TIMEZONE;
