@@ -43,6 +43,11 @@ export interface VitalReadingRow {
   value_num: number | null;
   notes?: string | null;
   external_id?: string | null;
+  // The stated event instant (migration 165, #2235): canonical UTC `Z` shape, or
+  // null/absent for a day-grain reading. Highest-precedence time source below —
+  // it is the column that MEANS "when this reading was taken", where the notes
+  // HH:MM (#800) and the external_id instant are conventions riding other fields.
+  occurred_at?: string | null;
 }
 
 // A wall-clock "HH:MM". Manual temperature readings store theirs in `notes` (the
@@ -67,6 +72,18 @@ export function vitalReadingTime(
   row: VitalReadingRow,
   tz: string
 ): string | null {
+  // The declared event column first (#2235): a stated `occurred_at` is the
+  // reading's own answer to "when", so the riding conventions below never
+  // override it. Same same-day gate as the ingest instant — a statement whose
+  // wall time no longer lands on the row's day (the profile's timezone changed
+  // since it was stated) shows no time rather than a wrong one.
+  if (row.occurred_at) {
+    const at = new Date(row.occurred_at);
+    if (!Number.isNaN(at.getTime())) {
+      const parts = zonedDateParts(tz, at);
+      if (parts.date === row.date) return parts.hhmm;
+    }
+  }
   const note = (row.notes ?? "").trim();
   if (HHMM.test(note)) return note;
   const match = TRAILING_INSTANT.exec(row.external_id ?? "");

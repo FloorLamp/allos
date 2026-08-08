@@ -31,6 +31,7 @@ import {
   getBiomarkerSeries,
   getBodyMetricDailySeries,
   getBodyMetricsWithSource,
+  getManualBodyMetricStatedAt,
   getDaylightOutdoorMinutesSeries,
   getMetricDailyTotals,
   getSleepDurationTrend,
@@ -159,8 +160,20 @@ function vitalPoints(rows: MedicalRecord[], decimals = 0): Point[] {
 // A daily aggregate ({date,value}) in the row shape the Today strip reads. These
 // series carry no clock time by construction (they ARE the day's number), which is
 // why they show a value without a time rather than being charted at 1D.
-function dailyRows(series: Point[]): VitalReadingRow[] {
-  return series.map((d) => ({ date: d.date, value_num: d.value }));
+//
+// EXCEPT today's, optionally (#2235): when the day's number is one physical row's
+// reading and that row states an `occurred_at`, the strip may honestly say "at
+// 07:12" — so the caller can attach that one stated instant to the matching entry.
+// It never invents one: a fold of several rows keeps rendering "today".
+function dailyRows(
+  series: Point[],
+  todayAt?: { date: string; occurredAt: string | null }
+): VitalReadingRow[] {
+  return series.map((d) =>
+    todayAt && d.date === todayAt.date && todayAt.occurredAt
+      ? { date: d.date, value_num: d.value, occurred_at: todayAt.occurredAt }
+      : { date: d.date, value_num: d.value }
+  );
 }
 
 // Fahrenheit fever threshold (100.4 °F / 38 °C) — the reference line on the acute
@@ -411,13 +424,32 @@ export default async function BodySection({
   // Oxygen saturation and respiratory rate stay in the Vitals charts/detail
   // surface, but are deliberately omitted here so this concise snapshot leads
   // with composition + core readings.
+  //
+  // The stated time for today's composition cells (#2235): honest ONLY when the
+  // day's number is one physical row's reading — then that row's `occurred_at` is
+  // the time the value was taken and the cell may say "at 07:12". When several
+  // rows fold into the number (two devices, or a legacy stacked manual day), no
+  // single instant describes it, so the cell keeps its day-grain "today" rather
+  // than borrowing one row's clock for a blended value. Display only — nothing
+  // ranks, filters, or schedules off this (constraint 2).
+  const soleTodayOccurredAt = (
+    col: "weight_kg" | "body_fat_pct" | "resting_hr"
+  ): { date: string; occurredAt: string | null } => {
+    const rows = bodyMetrics.filter(
+      (r) => r.date === todayStr && r[col] != null
+    );
+    return {
+      date: todayStr,
+      occurredAt: rows.length === 1 ? (rows[0].occurred_at ?? null) : null,
+    };
+  };
   const todayVitals = buildTodayVitalsStrip(
     [
       {
         key: "weight",
         label: BODY_METRIC_META.weight.title,
         unit: wu,
-        rows: dailyRows(weightAll),
+        rows: dailyRows(weightAll, soleTodayOccurredAt("weight_kg")),
         decimals: 1,
       },
       ...(bodyFatShown
@@ -426,7 +458,7 @@ export default async function BodySection({
               key: "body-fat",
               label: BODY_METRIC_META["body-fat"].title,
               unit: "%",
-              rows: dailyRows(bodyFatAll),
+              rows: dailyRows(bodyFatAll, soleTodayOccurredAt("body_fat_pct")),
               decimals: 1,
             },
           ]
@@ -451,7 +483,7 @@ export default async function BodySection({
         key: "resting-hr",
         label: BODY_METRIC_META["resting-hr"].title,
         unit: "bpm",
-        rows: dailyRows(restingHrAll),
+        rows: dailyRows(restingHrAll, soleTodayOccurredAt("resting_hr")),
       },
       {
         key: "temperature",
@@ -1557,6 +1589,7 @@ export default async function BodySection({
           entry is the logging path there. */}
       <LogMeasurementsPanel
         defaultDate={todayStr}
+        defaultStatedAt={getManualBodyMetricStatedAt(profile.id, todayStr)}
         weightUnit={wu}
         temperatureUnit={units.temperatureUnit}
         showBodyFat={bodyFatShown}

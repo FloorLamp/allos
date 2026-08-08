@@ -154,6 +154,11 @@ export interface BodyMetricPayload {
   bodyFatPct: string | null;
   restingHr: string | null;
   notes: string | null;
+  // The sitting's stated instant (#2235): ISO instant, or null for the form's
+  // explicitly-empty Time. Absent on intents queued before the field existed —
+  // replay then makes no statement about time at all. Validated server-side by
+  // the same acceptance gate the online path runs; never trusted.
+  occurredAt?: string | null;
 }
 
 // Vitals quick-add — the raw form fields; normalization/validation happen on the

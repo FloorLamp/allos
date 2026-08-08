@@ -85,6 +85,27 @@ export function getBodyMetrics(profileId: number, limit = 365): BodyMetric[] {
     .all(profileId, limit) as BodyMetric[];
 }
 
+// The stated instant of a day's MANUAL body-metrics row (source NULL — the
+// quick-add convention), or null when the day has none stated. Seeds the
+// measurements form's Time control (#2235 decision 5): re-opening the form for a
+// day whose sitting already stated a time shows that time back, so a resubmission
+// preserves it unless the user clears the field. The same `source IS NULL` +
+// lowest-id pick the manual find-then-write targets, so the seed and the write can
+// never disagree about which row "the day's manual reading" is.
+export function getManualBodyMetricStatedAt(
+  profileId: number,
+  date: string
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT occurred_at FROM body_metrics
+        WHERE profile_id = ? AND date = ? AND source IS NULL
+        ORDER BY id LIMIT 1`
+    )
+    .get(profileId, date) as { occurred_at: string | null } | undefined;
+  return row?.occurred_at ?? null;
+}
+
 // Weight series (rows that actually carry a weight), newest first. body_metrics
 // interleaves weightless HR/body-fat rows, so a weight consumer MUST filter
 // in SQL: a JS filter after a LIMIT would let a run of weightless days starve the

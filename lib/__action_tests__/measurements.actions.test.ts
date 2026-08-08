@@ -141,7 +141,13 @@ describe("addMeasurements — one form, three stores", () => {
     expect(medRows(profile.id, "Oxygen Saturation")).toHaveLength(0);
   });
 
-  it("writes body fat and resting HR independently from metric detail forms", async () => {
+  it("folds body fat and resting HR from metric detail forms onto ONE day row", async () => {
+    // EDITED DELIBERATELY by #2235 (decision 6): this used to pin two stacked
+    // manual rows, because the manual path was a plain INSERT the NULL-source
+    // unique index could never dedupe. The manual core is find-then-write now —
+    // the same shape, for the same reason, as lib/reading-writes.ts — so two
+    // measures entered against one day share the day's manual row, and neither
+    // blanks the other.
     const { profile } = seedActor();
     await addMeasurements(fd({ date: DATE, body_fat_pct: "18.5" }));
     await addMeasurements(fd({ date: DATE, resting_hr: "54" }));
@@ -151,17 +157,50 @@ describe("addMeasurements — one form, three stores", () => {
         date: DATE,
         weight_kg: null,
         body_fat_pct: 18.5,
-        resting_hr: null,
-        notes: null,
-      },
-      {
-        date: DATE,
-        weight_kg: null,
-        body_fat_pct: null,
         resting_hr: 54,
         notes: null,
       },
     ]);
+  });
+
+  it("carries the sitting's stated Time onto the day row — and clears it when emptied", async () => {
+    // The #2235 trichotomy over the real wire format: the form always posts
+    // `occurred_at`, so "" is the user's explicit no-time (clears), a value is a
+    // statement (normalized to the canonical shape), and a POST with no field at
+    // all — a stale pre-#2235 client — makes no statement.
+    const { profile } = seedActor();
+    const occurredAt = () =>
+      (
+        db
+          .prepare(
+            "SELECT occurred_at FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS NULL"
+          )
+          .get(profile.id, DATE) as { occurred_at: string | null }
+      ).occurred_at;
+
+    await addMeasurements(
+      fd({
+        date: DATE,
+        weight: "70",
+        weight_unit: "kg",
+        occurred_at: `${DATE}T07:12:00.000Z`,
+      })
+    );
+    expect(occurredAt()).toBe(`${DATE}T07:12:00Z`);
+
+    // A stale client posts no occurred_at field: the statement survives.
+    await addMeasurements(
+      fd({ date: DATE, weight: "70.2", weight_unit: "kg" })
+    );
+    expect(occurredAt()).toBe(`${DATE}T07:12:00Z`);
+
+    // The emptied Time on a submission that writes a value clears the column.
+    await addMeasurements(
+      fd({ date: DATE, weight: "70.4", weight_unit: "kg", occurred_at: "" })
+    );
+    expect(occurredAt()).toBeNull();
+    // One row per day throughout.
+    expect(bodyRows(profile.id)).toHaveLength(1);
   });
 
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {

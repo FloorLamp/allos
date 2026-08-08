@@ -8,7 +8,7 @@ consumer knew which one it was reading:
 
 | store             | shape                                              | what it carries                                                                              |
 | ----------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `body_metrics`    | WIDE — one row per day, up to three measures on it | value, day, `source`, the #133 edit lock, shared notes                                       |
+| `body_metrics`    | WIDE — one row per day, up to three measures on it | value, day, `source`, the #133 edit lock, shared notes, a stated `occurred_at` (#2235)       |
 | `metric_samples`  | TALL — `metric`/`value`, one row per sample        | value, day, an absolute start/end instant, `source`, the edit lock                           |
 | `medical_records` | OBSERVATIONS — one row per reported result         | value, day, canonical name, the lab's own range, flag, document / encounter / provider links |
 
@@ -32,7 +32,9 @@ interface Reading {
   value: number;
   unit: string;
   date: string; // profile-local day
-  measuredAt: string | null; // the instant, where the store records one
+  measuredAt: string | null; // the instant, where the row records one:
+  // metric_samples.start_time, or a stated body_metrics.occurred_at (#2235).
+  // medical_records still always answers null — #2154 is its filed half.
   source: "wearable" | "manual" | "import" | "lab";
   store: ReadingStore; // the physical row a surface can still reach
   rowId: number;
