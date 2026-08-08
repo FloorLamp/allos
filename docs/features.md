@@ -533,6 +533,15 @@ more" clicks. A **Source** filter sits alongside them, offering exactly the
 providers your own history contains (Manual, Strava, Google Health Connect,
 Document, …) labelled the same way the cards' provenance chips are.
 
+**When a tracker doesn't say what a session was.** Some providers record an hour
+of exercise and explicitly decline to categorize it — Health Connect's "a workout,
+unspecified" is the common one. Allos stores that as **Unspecified** rather than
+guessing a category on your behalf: it shows in the feed with a neutral glyph, has
+its own filter chip, counts as a workout, and is never counted toward a
+type-scoped weekly target (nobody said what it was). The post-workout message for
+that session asks — Strength, Cardio or Sport, one tap, asked once. Ignore it and
+the session simply stays Unspecified, editable whenever you like.
+
 **Weather-aware suggestions.** When the Weather & UV source is on, outdoor
 activities are quietly **parked** in conditions you don't train in — the ride
 drops out of today's suggestion, the message says why, and the indoor stand-in

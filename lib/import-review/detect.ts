@@ -340,9 +340,20 @@ function buildPair<T extends ActivityDupInput>(
 // Classify one CROSS-SOURCE pair, or null when they are NOT a likely duplicate:
 //   - both rows have clock windows → HIGH if they overlap;
 //   - both have windows that DON'T overlap → the wrong-offset clock rescue below
-//     (MEDIUM), else NOT a duplicate;
-//   - only one (or neither) has a window → duration/distance proximity → MEDIUM,
-//     else null.
+//     (MEDIUM, types must AGREE), else NOT a duplicate;
+//   - only one (or neither) has a window → duration/distance proximity → MEDIUM
+//     (types must AGREE), else null.
+//
+// WHERE THE TYPE GATE LIVES (#2271). It used to sit in the caller, so it blocked all
+// three branches at once. But the argument for it — "without a type check this would
+// start pairing a 30-minute run with a 30-minute swim" — is an argument about
+// PROXIMITY, and only about proximity. Overlapping clock windows are the strongest
+// evidence this module has: one person cannot hold two sessions at the same time, and
+// the SAME-SOURCE path already treats overlap alone as HIGH with no type check at all.
+// Requiring type agreement there meant two providers that did not disagree — one of
+// which had explicitly declined to classify — were rendered as a disagreement, and one
+// gym session became two activities and 120 minutes. So the gate moved DOWN, onto the
+// two branches that rest on proximity, and off the branch that rests on overlap.
 //
 // THE CLOCK RESCUE (issue #2011). Non-overlap used to be the end of the story here:
 // "two timed sessions at different times of day are genuinely distinct". That is
@@ -383,6 +394,10 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
   // adjacent-day pair says so instead, because the two copies really are filed on
   // different dates and the merge will move one of them.
   const span = a.date === b.date ? "Same day" : "Across midnight";
+  // The proximity branches below match on mere closeness of duration/distance, so
+  // they — and only they — still require the two rows to agree about what the
+  // session WAS. See the note above.
+  const sameType = a.type === b.type;
   if (wa && wb) {
     if (windowsOverlap(wa, wb))
       return buildPair(a, b, "high", "Overlapping start/end times");
@@ -392,7 +407,7 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
         (r): r is ClockReading => r != null
       ),
     });
-    if (verdict.kind === "skew" && proximityComparisons(a, b) === 2)
+    if (sameType && verdict.kind === "skew" && proximityComparisons(a, b) === 2)
       return buildPair(
         a,
         b,
@@ -401,7 +416,7 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
       );
     return null;
   }
-  if (proximityMatch(a, b))
+  if (sameType && proximityMatch(a, b))
     return buildPair(a, b, "medium", `${span}, similar duration/distance`);
   return null;
 }
@@ -433,23 +448,24 @@ function classifySameSourcePair<T extends ActivityDupInput>(
 // callers keep their display fields (title, …). Ordered deterministically: HIGH
 // confidence first, then by date desc, then signature.
 //
-// The bucket is date-only, and the ACTIVITY TYPE gate now applies to the
-// cross-source path ALONE. Grouping on (date, type) assumed the two records of one
-// session agree about what that session was — which is false exactly where the
-// same-source path is aimed. Health Connect can hold ONE bike ride twice, written by
-// the same app seconds apart, typed OTHER_WORKOUT on one record and BIKING on the
-// other; those classify to `sport` and `cardio`, land in different buckets, and are
-// never compared — so the ride double-counts in every distance rollup with nothing
-// surfaced in Review. (It was masked while the parser could not read numeric
-// AndroidX exercise types: both records fell through to `sport`, so they shared a
-// bucket by accident. Teaching the parser those constants made the pair honest and
-// this blind spot visible.)
+// The bucket is date-only, and NEITHER path is gated on the activity type here any
+// more. Grouping on (date, type) assumed the two records of one session agree about
+// what that session was — which is false exactly where the same-source path is aimed.
+// Health Connect can hold ONE bike ride twice, written by the same app seconds apart,
+// typed OTHER_WORKOUT on one record and BIKING on the other; those classify to
+// different types, land in different buckets, and are never compared — so the ride
+// double-counts in every distance rollup with nothing surfaced in Review. (It was
+// masked while the parser could not read numeric AndroidX exercise types: both records
+// fell through to the same value, so they shared a bucket by accident. Teaching the
+// parser those constants made the pair honest and this blind spot visible.)
 //
-// Dropping the gate here is safe because classifySameSourcePair requires OVERLAPPING
-// time windows — a run and a swim logged by one provider on one day don't overlap,
-// so a genuinely distinct session is still never paired. The cross-source path keeps
-// the type gate: it also matches on mere PROXIMITY (10% duration/distance), which
-// without a type check would start pairing a 30-minute run with a 30-minute swim.
+// Dropping the gate is safe on both paths because both rest on OVERLAPPING time
+// windows — a run and a swim logged on one day don't overlap, so a genuinely distinct
+// session is still never paired. The CROSS-SOURCE path keeps the type requirement,
+// but inside classifyCrossSourcePair and only on its two PROXIMITY branches, which is
+// where the run-vs-swim argument actually bites (#2271). Making it a candidacy gate
+// instead let an inferred `sport` — a value no provider claimed — block a pair whose
+// clocks overlapped almost exactly.
 export function findActivityDuplicates<T extends ActivityDupInput>(
   rows: T[]
 ): ActivityDupPair<T>[] {
@@ -466,9 +482,7 @@ export function findActivityDuplicates<T extends ActivityDupInput>(
         const a = group[i];
         const b = group[j];
         const pair = crossSource(a, b)
-          ? a.type === b.type
-            ? classifyCrossSourcePair(a, b)
-            : null
+          ? classifyCrossSourcePair(a, b)
           : sameSourceDuplicate(a, b)
             ? classifySameSourcePair(a, b)
             : null;
@@ -483,6 +497,14 @@ export function findActivityDuplicates<T extends ActivityDupInput>(
   // about the offset, one provider's clock cannot (see classifySameSourcePair), and
   // a session that starts at teatime was never pushed across anything. ISO dates
   // sort chronologically, so consecutive keys are the only pairs to consider.
+  //
+  // This path KEEPS the type gate (#2271) rather than delegating it downward. It is a
+  // MEDIUM wrong-offset detection resting on proximity agreement, not on overlap: two
+  // rows an offset apart never overlap, so the "overlapping clocks are one session"
+  // argument that freed the same-day path has nothing to say here. (Not redundant with
+  // the classifier's own proximity gates either — a late-evening row whose window wraps
+  // past midnight CAN overlap the next morning's row on the continuous clock, and that
+  // is exactly the near-midnight shape this loop feeds it.)
   const dates = [...groups.keys()].sort();
   for (let k = 1; k < dates.length; k++) {
     if (daysBetweenDateStr(dates[k - 1], dates[k]) !== 1) continue;

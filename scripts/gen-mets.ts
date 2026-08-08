@@ -37,9 +37,14 @@ const OUT = path.join(process.cwd(), "lib", "datasets", "data", "mets.json");
 // intensity is scored at the MODERATE tier (see lib/calorie-estimate.ts).
 export type MetTier = "easy" | "moderate" | "hard";
 export type MetTiers = Record<MetTier, number>;
-// Kept in sync with lib/types ActivityType (the generator is standalone by design and
-// does not import from lib/types); `recovery` is the mobility session type (issue #840).
-export type ActivityType = "strength" | "cardio" | "sport" | "recovery";
+// The activity types, imported TYPE-ONLY from the declared tuple (#2272). This was a
+// hand-maintained copy "kept in sync with lib/types" — and it silently wasn't, which
+// is the whole failure mode this issue is about: TYPE_DEFAULTS below is a
+// Record<ActivityType, …>, so a copy of the union makes the exhaustiveness check
+// exhaustive over the WRONG set. A type-only import is erased at compile and costs
+// the generator nothing (it already imports the activities catalog).
+import type { ActivityType } from "../lib/types/training";
+export type { ActivityType };
 
 // Per-activity MET values by intensity tier, keyed by the EXACT catalog display
 // name (lib/activities-catalog.ts). PUBLIC Compendium of Physical Activities values
@@ -144,6 +149,12 @@ const TYPE_DEFAULTS: Record<ActivityType, MetTiers> = {
   // design — a mobility session is light, and a coined recovery name with no per-name
   // entry falls back here rather than being over-counted as sport.
   recovery: { easy: 2.3, moderate: 2.8, hard: 3.5 },
+  // The source did not say (issue #2272). The compendium's "conditioning exercise,
+  // general" row is the honest answer to "a workout, unspecified": the same tiers as
+  // resistance training, which sit between mobility and sport. Deliberately NOT the
+  // sport tiers — the old else-branch that invented `sport` also inflated this
+  // estimate, and an unspecified session is more likely a gym hour than a match.
+  unclassified: { easy: 3.5, moderate: 5.0, hard: 6.0 },
 };
 
 // One framework entry: an activity display name (the identity key) plus its three

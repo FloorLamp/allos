@@ -6,14 +6,20 @@
 //
 // Composition rule:
 //   • recap line — gated by its own per-profile toggle (workout-recap kind, on by
-//     default) AND by there being real strength work to recap;
+//     default) AND by there being something to recap: real strength work
+//     (recapNudgeLine) or, for a SOURCED row with no sets, the facts the import
+//     itself carries (importedRecapLine, #2272);
 //   • supplement section — the existing dose reminder, gated by dueness;
-//   • either alone still sends; both absent ⇒ no send.
+//   • the #2272 type ask — a line and buttons APPENDED when the finishing row is
+//     `unclassified`, riding whatever is already going out and never sending alone;
+//   • either of the first two alone still sends; both absent ⇒ no send.
 
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import { joinBody } from "./rich-text";
 import { formatRecapLine, type Recap } from "../session-recap";
 import { frequencyScopeLabel } from "../goals";
+import { fmtDistance } from "../units";
+import { activityTypeAskCallback } from "./callback-data";
 
 // The workout-affectable frequency scopes (#1122): the target kinds a lifting/cardio
 // session can actually advance. `food_group` (a nutrition scope, #580) and
@@ -99,29 +105,134 @@ export function recapNudgeLine(
   return line || null;
 }
 
+// ---- The IMPORTED finish's own recap line (#2272) ----
+
+// The facts an IMPORTED session actually carries. No strength fields on purpose:
+// an imported row has no `exercise_sets`, so volume, PRs and target verdicts are
+// things the app does not know about it and must not imply.
+export interface ImportedSessionFacts {
+  title: string;
+  /** Active minutes (the pace/volume source), or the elapsed span when that is all there is. */
+  durationMin: number | null;
+  distanceKm: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  relativeEffort: number | null;
+}
+
+// The recap line for a session that was IMPORTED rather than logged in the app.
+//
+// `getSessionRecap` is honest about a sourced row — no sets means no volume and no
+// PRs — but `recapNudgeLine` then declines the whole line on `totalWorkingSets === 0`,
+// so an imported finish said NOTHING. Measured on a real profile: every post-workout
+// marker ever written belonged to a manual strength session with logged sets, and no
+// imported activity had ever produced a recap. Presence detection was never the
+// problem; the message simply had nothing to say. This gives it the facts the import
+// DID carry, in the same `A · B · C` shape as the strength line, with no volume, PR
+// or target language anywhere in it.
+//
+// Null when the import carries no fact beyond its own existence — "Workout done" on
+// its own is not worth a push.
+export function importedRecapLine(facts: ImportedSessionFacts): string | null {
+  const segs: string[] = [];
+  if (facts.durationMin != null && facts.durationMin > 0)
+    segs.push(`${facts.durationMin} min`);
+  if (facts.distanceKm != null && facts.distanceKm > 0)
+    // Canonical km, the notification unit policy (a chat has no login-unit context),
+    // through the shared formatter — the same call the digest's activity line makes.
+    segs.push(fmtDistance(facts.distanceKm, "km"));
+  if (facts.avgHr != null && facts.avgHr > 0) {
+    const max =
+      facts.maxHr != null && facts.maxHr > 0
+        ? ` (max ${Math.round(facts.maxHr)})`
+        : "";
+    segs.push(`avg HR ${Math.round(facts.avgHr)}${max}`);
+  } else if (facts.maxHr != null && facts.maxHr > 0) {
+    segs.push(`max HR ${Math.round(facts.maxHr)}`);
+  }
+  if (facts.relativeEffort != null && facts.relativeEffort > 0)
+    segs.push(`effort ${Math.round(facts.relativeEffort)}`);
+  if (segs.length === 0) return null;
+  const lead = facts.title.trim() || "Workout";
+  return [`${lead} done`, ...segs].join(" · ");
+}
+
+// ---- The type ask (#2272) ----
+
+// The three answers the ask offers. Deliberately NOT the full ActivityType set:
+// `recovery` has its own surface, and `unclassified` is the question, not an answer.
+export const ACTIVITY_TYPE_ASK_CHOICES = [
+  { type: "strength", label: "🏋️ Strength" },
+  { type: "cardio", label: "🏃 Cardio" },
+  { type: "sport", label: "⚽ Sport" },
+] as const;
+
+export type ActivityTypeAskChoice =
+  (typeof ACTIVITY_TYPE_ASK_CHOICES)[number]["type"];
+
+// The prompt sentence appended under the recap line when the finishing session is
+// `unclassified` — the source recorded a workout but never said what it was, and the
+// user is the only one who actually knows.
+export const ACTIVITY_TYPE_ASK_PROMPT =
+  "Your tracker didn't say what this was. What kind of session?";
+
+// The inline buttons for the ask. IDs ONLY in the token (profile + activity, the
+// profile as the resolve-against-chat cross-check, exactly like a dose tap), so the
+// handler re-verifies ownership on write and a stale keyboard cannot assert anything.
+export function activityTypeAskActions(
+  profileId: number,
+  activityId: number
+): NotificationAction[] {
+  return ACTIVITY_TYPE_ASK_CHOICES.map((c) => ({
+    label: c.label,
+    data: activityTypeAskCallback(profileId, activityId, c.type),
+    row: "actype",
+  }));
+}
+
+// The type ask's two halves, as the composition takes them: the prompt sentence that
+// follows the recap line, and the inline buttons that answer it.
+export interface FinishTypeAsk {
+  prompt: string;
+  actions: NotificationAction[];
+}
+
 // Compose the finish nudge: the recap line (when present) LEADS, then the due
 // post-workout supplement section (the existing dose message) follows. Returns
 // null when both are absent so the caller sends nothing (and doesn't burn the
 // one-shot). The combined message keeps the dose message's kind ("dose") so its
 // SAFETY-tier routing/actions are preserved; a recap-only message is classified
 // "workout-recap" for structured-channel routing.
+//
+// It also carries the type ask (#2272) when the finishing session is `unclassified`
+// — a LINE and BUTTONS on a message that was already going out, never a send of its
+// own. That is the whole contact-consent posture: the system may reduce contact
+// unilaterally, never increase it. With nothing to ride on there is no ask.
 export function composeFinishNudge(
   recapLine: string | null,
-  doseMessage: NotificationMessage | null
+  doseMessage: NotificationMessage | null,
+  ask: FinishTypeAsk | null = null
 ): NotificationMessage | null {
   if (!recapLine && !doseMessage) return null;
   if (doseMessage) {
-    if (!recapLine) return doseMessage;
     // joinBody keeps a plain body plain and preserves the dose message's declared
     // emphasis (#1720) when it has any — never stringifies runs into "[object Object]".
+    const merged =
+      recapLine || ask
+        ? joinBody([recapLine, doseMessage.body, ask?.prompt], "\n\n")
+        : doseMessage.body;
     return {
       ...doseMessage,
-      body: joinBody([recapLine, doseMessage.body], "\n\n"),
+      body: merged,
+      actions: ask
+        ? [...(doseMessage.actions ?? []), ...ask.actions]
+        : doseMessage.actions,
     };
   }
   return {
     title: "🏋️ Workout complete",
-    body: recapLine!,
+    body: ask ? joinBody([recapLine!, ask.prompt], "\n\n") : recapLine!,
+    ...(ask ? { actions: ask.actions } : {}),
     kind: "workout-recap",
   };
 }

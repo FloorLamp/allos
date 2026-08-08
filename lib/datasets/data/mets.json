@@ -37,6 +37,11 @@
         "easy": 2.3,
         "moderate": 2.8,
         "hard": 3.5
+      },
+      "unclassified": {
+        "easy": 3.5,
+        "moderate": 5,
+        "hard": 6
       }
     }
   },

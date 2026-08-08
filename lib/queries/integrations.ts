@@ -332,8 +332,8 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
   notes: string | null;
 }
 
-// The candidate set for activity dedup, PRE-FILTERED in SQL to only the
-// (date, type) buckets the pure detector could ever pair. This matters because the
+// The candidate set for activity dedup, PRE-FILTERED in SQL to only the DATE
+// buckets the pure detector could ever pair. This matters because the
 // profile-menu badge runs detection on every app-page render (getImportReviewCount
 // is threaded through the layout): without the pre-filter a years-deep Health
 // Connect history would be loaded and bucketed in JS on every navigation. Most days
@@ -358,6 +358,14 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
 // near-midnight window the rescue could forgive anyway
 // (ACTIVITY_MIDNIGHT_CANDIDATE_SQL); the detector's own narrowness still does the
 // filtering.
+//
+// The bucket key is the DATE ALONE since #2271. It was `(date, type)`, which made an
+// INFERRED classification a blocking key: Health Connect sent EXERCISE_TYPE_OTHER_
+// WORKOUT ("unspecified") for a gym session, the parser turned that into a positive
+// `sport`, Strava called the same session `strength`, and the two copies landed in
+// different buckets — so the pair was never loaded, never classified, and never
+// offered. A pre-filter may only ever be a SUPERSET of what the pure detector will
+// accept; type is the detector's question, on the branches where it still asks it.
 function loadActivityDupRows(profileId: number): ActivityDupRow[] {
   return db
     .prepare(
@@ -368,15 +376,15 @@ function loadActivityDupRows(profileId: number): ActivityDupRow[] {
               a.relative_effort, a.avg_power_w, a.max_power_w,
               a.weighted_avg_power_w, a.avg_cadence, a.kilojoules, a.avg_temp_c
          FROM activities a
-         JOIN (SELECT date, type FROM activities
+         JOIN (SELECT date FROM activities
                 WHERE profile_id = ?
-                GROUP BY date, type
+                GROUP BY date
                HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1
                    OR SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END)
                         > COUNT(DISTINCT source)
-               UNION SELECT evening_date, type FROM midnight
-               UNION SELECT morning_date, type FROM midnight) m
-           ON m.date = a.date AND m.type = a.type
+               UNION SELECT evening_date FROM midnight
+               UNION SELECT morning_date FROM midnight) m
+           ON m.date = a.date
         WHERE a.profile_id = ?`
     )
     .all(

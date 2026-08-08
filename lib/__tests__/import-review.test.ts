@@ -340,9 +340,62 @@ describe("findActivityDuplicates", () => {
     expect(findActivityDuplicates(rows)).toHaveLength(0);
   });
 
-  it("keeps the type gate on the CROSS-source path (proximity would over-pair)", () => {
-    // Cross-source also matches on mere proximity (10% duration/distance), so without
-    // a type check a 30-minute run would pair with a 30-minute swim.
+  it("keeps the type gate on the cross-source PROXIMITY tier (a run is not a swim)", () => {
+    // #2271 moved the type gate down onto the proximity branches. This is the case it
+    // exists for: no clock windows at all, so all the classifier has is a 30-minute
+    // 5 km cardio row and a 30-minute 5 km sport row — a run and a swim, not a pair.
+    const rows = [
+      act({
+        id: 1,
+        type: "cardio",
+        source: null,
+        duration_min: 30,
+        distance_km: 5,
+      }),
+      act({
+        id: 2,
+        type: "sport",
+        source: "strava",
+        external_id: "strava:1",
+        duration_min: 30,
+        distance_km: 5,
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("pairs a cross-source OVERLAP of differing types at high confidence (#2271)", () => {
+    // The reported defect: one gym session, recorded by two providers that did not
+    // actually disagree — Health Connect declined to classify it (EXERCISE_TYPE_OTHER_
+    // WORKOUT) and Strava called it `strength`. Overlapping clock windows mean one
+    // session whatever either of them called it, so the pair must reach the detector.
+    const rows = [
+      act({
+        id: 384,
+        type: "unclassified",
+        source: "health-connect",
+        external_id: "health-connect:2026-07-08T14:30:00Z",
+        start_time: "14:30",
+        end_time: "15:30",
+      }),
+      act({
+        id: 385,
+        type: "strength",
+        source: "strava",
+        external_id: "strava:9001",
+        start_time: "14:30",
+        end_time: "15:29",
+      }),
+    ];
+    const pairs = findActivityDuplicates(rows);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("high");
+    expect(pairs[0].reason).toMatch(/Overlapping start\/end/);
+  });
+
+  it("keeps the type gate on the cross-source CLOCK-SKEW tier", () => {
+    // The wrong-offset rescue (#2011) rests on proximity agreement, not on overlap —
+    // two rows an offset apart never overlap — so it keeps asking about type.
     const rows = [
       act({
         id: 1,
@@ -350,17 +403,24 @@ describe("findActivityDuplicates", () => {
         source: null,
         start_time: "08:00",
         end_time: "08:30",
+        duration_min: 30,
+        distance_km: 5,
       }),
       act({
         id: 2,
         type: "sport",
         source: "strava",
         external_id: "strava:1",
-        start_time: "08:05",
-        end_time: "08:35",
+        start_time: "09:00",
+        end_time: "09:30",
+        duration_min: 30,
+        distance_km: 5,
       }),
     ];
     expect(findActivityDuplicates(rows)).toHaveLength(0);
+    // …and the identically-shaped pair DOES surface once the types agree.
+    const agreed = rows.map((r) => ({ ...r, type: "cardio" }));
+    expect(findActivityDuplicates(agreed)).toHaveLength(1);
   });
 
   it("does NOT flag a same-source pair at disjoint times", () => {
@@ -503,7 +563,7 @@ describe("findActivityDuplicates", () => {
     expect(pairs[0].confidence).toBe("medium");
   });
 
-  it("ignores same-external_id re-syncs and same-day-different-type pairs", () => {
+  it("ignores same-external_id re-syncs", () => {
     const rows = [
       // Two strava rows sharing an external_id — a re-sync, already deduped by the
       // unique index; NOT a same-source duplicate (issue #64 needs distinct ids).
@@ -518,14 +578,6 @@ describe("findActivityDuplicates", () => {
         id: 2,
         source: "strava",
         external_id: "strava:1",
-        start_time: "08:00",
-        end_time: "08:30",
-      }),
-      // Cross-source but different type → different bucket.
-      act({
-        id: 3,
-        type: "strength",
-        source: null,
         start_time: "08:00",
         end_time: "08:30",
       }),

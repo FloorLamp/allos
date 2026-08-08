@@ -127,7 +127,7 @@ primitive's own window: consecutive dates, the earlier row at or after
 the candidate set can never reach further than the classifier would forgive.
 `activityWindowFrom` then measures both windows from one midnight, so a 23:30/00:30
 pair reads as the one-hour gap it is rather than a 23-hour one. Nothing else changes:
-cross-source only (one source is one clock), same type, the same offset SHAPE, the
+cross-source only (one source is one clock), the same offset SHAPE, the
 same both-measures proximity, and the same MEDIUM verdict — `autoMergeCluster`
 measures overlap on each row's own clock, which two rows an offset apart never have,
 so a cross-midnight cluster always waits for a person. The two loaders share the
@@ -135,6 +135,31 @@ widening rather than copying it (`lib/import-review/candidate-sql.ts`), because 
 pre-filter that drifted between Data → Review and the unattended auto-merge would let
 them see different worlds. A cross-midnight cluster is named by the day the session
 STARTED.
+
+**An INFERRED type is not a blocking key (#2271).** The candidate phase used to
+require the two rows to AGREE about what the session was — both loaders bucketed on
+`(date, type)`, the adjacent-day widening carried `AND l.type = e.type`, and
+`findActivityDuplicates` gated cross-source pairs on `a.type === b.type`. The value
+doing that blocking was frequently not a claim any provider made: Health Connect sends
+`EXERCISE_TYPE_OTHER_WORKOUT` ("a workout, unspecified") for a gym session and the
+parser answered that stated absence with `sport`, while Strava mapped the same word
+"workout" to `strength`. Two providers that did not disagree, rendered as a
+disagreement, blocking a pair whose clock windows overlapped almost exactly — one
+60-minute session read as two workouts and 120 minutes, with nothing in Review.
+
+So the type requirement moved out of CANDIDACY and into the PROXIMITY branches alone.
+Both loaders and the shared adjacent-day SQL now bucket on `date`; a pre-filter may
+only ever be a SUPERSET of what the pure classifier accepts. Inside
+`classifyCrossSourcePair`, the overlap branch asks nothing about type — overlapping
+clock windows already mean one session, which is why the SAME-source path has always
+treated overlap alone as HIGH with no type check, and why `autoMergeCluster` never
+looked at type at all — while the clock-skew and the duration/distance branches keep
+it, because that is where the gate's own argument lives ("without a type check this
+would start pairing a 30-minute run with a 30-minute swim"). The adjacent-day loop
+keeps its own gate for the same reason: two rows an offset apart never overlap, so it
+rests on proximity agreement and nothing else. No backfill was needed —
+`loadFullCandidateRows` selects by profile, not by recency, so the next sync's
+auto-merge pass re-evaluates the whole history.
 
 **Which clock survives the merge is the person's call, not a guess (#2011).** The
 fold rule already settles it mechanically: the keeper's own `start_time`/`end_time`

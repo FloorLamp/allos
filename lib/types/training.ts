@@ -11,7 +11,27 @@ import type { MuscleRegion } from "../lifts";
 // sets/weights. Distinct from the performance-tier strength/cardio/sport types: it
 // never carries volume/1RM semantics and mobility coverage is kept a separate view
 // from strength coverage (#482: trained ≠ mobilized).
-export type ActivityType = "strength" | "cardio" | "sport" | "recovery";
+//
+// `unclassified` (issue #2272) is THE SOURCE DID NOT SAY — a stated absence, not a
+// category. Health Connect's EXERCISE_TYPE_OTHER_WORKOUT means "a workout,
+// unspecified"; the parser used to answer that with `sport`, so the row asserted a
+// classification nobody made and nothing downstream could tell an asserted type from
+// a guessed one. It is reachable ONLY by import: a human at the activity form always
+// has an answer, so `activity-form-model` keeps its three-value input union.
+//
+// THE DECLARED TUPLE is the source of truth for both. Every per-type map is an
+// exhaustive `Record<ActivityType, …>` (or a `satisfies` over this tuple), so a sixth
+// value is a TYPE ERROR at each site until its author declares an answer — the
+// discipline RECAP_COMPARISON_KINDS models. Do not hand-list these literals again.
+export const ACTIVITY_TYPES = [
+  "strength",
+  "cardio",
+  "sport",
+  "recovery",
+  "unclassified",
+] as const;
+
+export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
 export interface Activity {
   id: number;

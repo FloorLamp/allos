@@ -12,6 +12,7 @@
 // journal.
 
 import { parseComponents } from "./types";
+import type { ActivityType } from "./types";
 
 export type ActivityIconKey =
   | "barbell"
@@ -44,13 +45,24 @@ export type ActivityIconKey =
   | "yoga"
   | "stretch";
 
-const TYPE_FALLBACK: Record<string, ActivityIconKey> = {
+// EXHAUSTIVE over the declared ActivityType tuple (#2272): this was
+// `Record<string, …>` with a `?? "activity"` at the call site, so a new activity type
+// quietly took the generic glyph instead of failing the build. Now every type must
+// declare its own answer. The `?? "activity"` survives for a genuinely UNKNOWN string
+// — the callers read `activities.type` straight off a row, which the compiler cannot
+// vouch for.
+const TYPE_FALLBACK: Record<ActivityType, ActivityIconKey> = {
   strength: "barbell",
   cardio: "run",
   sport: "medal",
   // Recovery/mobility sessions (issue #840) icon as the stretch glyph by default;
   // per-move component names still match the yoga/stretch keyword rules first.
   recovery: "stretch",
+  // The source did not say what this session was (#2272). The generic activity glyph
+  // is the honest picture — a barbell or a medal would re-assert the very claim the
+  // type exists to withhold. Keyword matching on the title still runs first, so an
+  // imported "Afternoon Ride" with no stated type still gets its bike.
+  unclassified: "activity",
 };
 
 // A keyword is a plain substring by default, or a RegExp when a word boundary
@@ -143,7 +155,7 @@ export function pickActivityIconKey(
       if (keys.some((k) => srcMatches(src, k))) return icon;
     }
   }
-  return TYPE_FALLBACK[type] ?? "activity";
+  return TYPE_FALLBACK[type as ActivityType] ?? "activity";
 }
 
 /**

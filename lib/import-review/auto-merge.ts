@@ -45,23 +45,28 @@ type FullActivityRow = ActivityDupInput &
 
 // Load the profile's duplicate-candidate activity rows in FULL (SELECT *) — the auto
 // decision needs `edited` + all fold fields, unlike the pruned display loader. Same
-// bucket pre-filter as loadActivityDupRows — the same `(date, type)` grouping and the
-// same #2056 adjacent-day widening, which is shared rather than copied so the
-// unattended path and Data → Review can't come to see different worlds. Profile-scoped.
+// bucket pre-filter as loadActivityDupRows — the same `date` grouping and the same
+// #2056 adjacent-day widening, which is shared rather than copied so the unattended
+// path and Data → Review can't come to see different worlds. Profile-scoped.
+//
+// The bucket is DATE only since #2271: grouping on (date, type) made an inferred
+// classification a blocking key, so the two copies of one gym session — one typed by
+// a provider that declined to classify, one typed `strength` — never landed in the
+// same bucket and were never compared. The pure detector still decides.
 function loadFullCandidateRows(profileId: number): FullActivityRow[] {
   return db
     .prepare(
       `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
        SELECT a.* FROM activities a
-         JOIN (SELECT date, type FROM activities
+         JOIN (SELECT date FROM activities
                 WHERE profile_id = ?
-                GROUP BY date, type
+                GROUP BY date
                HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1
                    OR SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END)
                         > COUNT(DISTINCT source)
-               UNION SELECT evening_date, type FROM midnight
-               UNION SELECT morning_date, type FROM midnight) m
-           ON m.date = a.date AND m.type = a.type
+               UNION SELECT evening_date FROM midnight
+               UNION SELECT morning_date FROM midnight) m
+           ON m.date = a.date
         WHERE a.profile_id = ?`
     )
     .all(

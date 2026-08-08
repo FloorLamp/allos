@@ -7,8 +7,13 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { fmtDistance } from "@/lib/units";
 import type { DistanceUnit } from "@/lib/settings";
-import type { Activity, ActivityType } from "@/lib/types";
+import type { Activity } from "@/lib/types";
 import { saveActivity, deleteActivity } from "./activity-actions";
+
+// The two types this restricted-profile quick log offers. Narrower than ActivityType
+// on purpose: `strength` is what the age gate withholds, and `unclassified` (#2272)
+// is import-only — a person filling in a form always has an answer.
+type RestrictedLogType = "sport" | "cardio";
 
 // The restricted-profile activity log (issue #489). A minor profile is blocked
 // from the adult fitness apparatus (strength e1RM/standards, fitness-age, coaching,
@@ -39,12 +44,12 @@ export default function ActivityLogPanel({
   const [error, setError] = useState<string | null>(null);
   // Controlled so the title picker can offer the suggestions for the type actually
   // selected — a cardio session and a sport session draw on different lists.
-  const [type, setType] = useState<ActivityType>("sport");
+  const [type, setType] = useState<RestrictedLogType>("sport");
   const [title, setTitle] = useState("");
 
   async function handle(formData: FormData) {
     setError(null);
-    const type = String(formData.get("type") ?? "") as ActivityType;
+    const type = String(formData.get("type") ?? "") as RestrictedLogType;
     const title = String(formData.get("title") ?? "").trim();
     const date = String(formData.get("date") ?? "").trim();
     const distance = String(formData.get("distance") ?? "").trim();
@@ -118,7 +123,7 @@ export default function ActivityLogPanel({
               id="a-type"
               name="type"
               value={type}
-              onChange={(e) => setType(e.target.value as ActivityType)}
+              onChange={(e) => setType(e.target.value as RestrictedLogType)}
               className="input"
             >
               <option value="sport">Sport / practice</option>
