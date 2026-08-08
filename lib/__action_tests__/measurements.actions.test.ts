@@ -43,10 +43,11 @@ function bodyRows(profileId: number) {
 function medRows(profileId: number, canonical: string) {
   return db
     .prepare(
-      "SELECT date, category, canonical_name, value_num, unit, source, notes FROM medical_records WHERE profile_id = ? AND canonical_name = ? ORDER BY id"
+      "SELECT date, occurred_at, category, canonical_name, value_num, unit, source, notes FROM medical_records WHERE profile_id = ? AND canonical_name = ? ORDER BY id"
     )
     .all(profileId, canonical) as {
     date: string;
+    occurred_at: string | null;
     category: string;
     canonical_name: string;
     value_num: number;
@@ -54,6 +55,14 @@ function medRows(profileId: number, canonical: string) {
     source: string;
     notes: string | null;
   }[];
+}
+
+// Deterministic acceptance-gate math whatever zone the host runs in: the stated
+// instants below are on their row's day in UTC.
+function pinUtc(profileId: number): void {
+  db.prepare(
+    "INSERT OR REPLACE INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')"
+  ).run(profileId);
 }
 function sampleValue(profileId: number, metric: string): number | undefined {
   return (
@@ -68,6 +77,7 @@ function sampleValue(profileId: number, metric: string): number | undefined {
 describe("addMeasurements — one form, three stores", () => {
   it("writes body composition, vitals and growth from a single submission", async () => {
     const { profile } = seedActor();
+    pinUtc(profile.id);
     await addMeasurements(
       fd({
         date: DATE,
@@ -113,12 +123,19 @@ describe("addMeasurements — one form, three stores", () => {
       76
     );
     expect(medRows(profile.id, "Oxygen Saturation")[0].value_num).toBe(97);
-    // The #800/#843 fever-curve time still rides the row's note.
+    // This submission is the STALE PRE-FOLD CLIENT's shape (`temp_time`, no
+    // occurred_at): its stated time lands on the row's own event column now
+    // (#2154 — the retired #800/#843 note is never written again), resolved on
+    // the profile's own wall clock.
     expect(medRows(profile.id, "Body Temperature")[0]).toMatchObject({
       value_num: 98.6,
       unit: "degF",
-      notes: "07:30",
+      occurred_at: `${DATE}T07:30:00Z`,
+      notes: null,
     });
+    // The legacy per-measure time reaches ONLY its own row.
+    expect(medRows(profile.id, "Blood Pressure Systolic")[0].occurred_at)
+      .toBeNull();
 
     // metric_samples — sleep (minutes) + HRV + the growth height.
     expect(sampleValue(profile.id, "sleep_min")).toBe(450);
@@ -201,6 +218,40 @@ describe("addMeasurements — one form, three stores", () => {
     expect(occurredAt()).toBeNull();
     // One row per day throughout.
     expect(bodyRows(profile.id)).toHaveLength(1);
+  });
+
+  it("carries the sitting's one Time onto every vitals observation (#2154)", async () => {
+    // The fold: no per-measure time fields exist any more — the ONE posted
+    // occurred_at is the whole sitting's statement, so a BP and a temperature
+    // entered together share it, normalized to the canonical shape.
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+    await addMeasurements(
+      fd({
+        date: DATE,
+        systolic: "122",
+        diastolic: "81",
+        temperature: "99.1",
+        temp_unit: "F",
+        occurred_at: `${DATE}T19:45:00.000Z`,
+      })
+    );
+    for (const canonical of [
+      "Blood Pressure Systolic",
+      "Blood Pressure Diastolic",
+      "Body Temperature",
+    ]) {
+      expect(medRows(profile.id, canonical)[0]).toMatchObject({
+        occurred_at: `${DATE}T19:45:00Z`,
+        notes: null,
+      });
+    }
+    // An untimed sitting stores honest NULL — never a midnight anchor.
+    await addMeasurements(
+      fd({ date: DATE, systolic: "118", diastolic: "76", occurred_at: "" })
+    );
+    expect(medRows(profile.id, "Blood Pressure Systolic")[1].occurred_at)
+      .toBeNull();
   });
 
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {
