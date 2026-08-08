@@ -11,6 +11,7 @@ import {
   type BodyMetricValues,
 } from "@/lib/body-metric-extract";
 import { collapseBodyMetricsByDate } from "./body-metric-collapse";
+import type { Kg, Km } from "@/lib/units";
 import {
   emptyCounts,
   rowsEqual,
@@ -32,9 +33,15 @@ import { streamKeysPlacedIn } from "@/lib/reading-placement";
 // reuses all of the DB mapping and idempotency logic.
 
 // Per-day body metrics. weight_kg may be undefined (e.g. a body-fat-only day).
+//
+// `weight_kg` is BRANDED (#2149): the column stores kilograms, so a parser must state
+// the unit its provider reported in by minting through `toKg` — `toKg(lbs, "lb")` for
+// a provider that reports pounds, `toKg(v, "kg")` for one that already reports the
+// canonical unit. A raw `number` no longer compiles here, which is what stops a
+// display-unit or wrong-unit payload from reaching `body_metrics.weight_kg`.
 export interface NormBodyMetric {
   date: string; // YYYY-MM-DD (local)
-  weight_kg?: number;
+  weight_kg?: Kg;
   body_fat_pct?: number;
   resting_hr?: number;
   // The absolute instant (ISO) this reading was taken. Only used to collapse multiple
@@ -82,7 +89,10 @@ export interface NormActivity {
   type: ActivityType;
   title: string;
   duration_min: number | null;
-  distance_km: number | null;
+  // BRANDED (#2149), for the same reason as NormBodyMetric.weight_kg: providers report
+  // distance in metres (Strava), miles, or kilometres, and `activities.distance_km`
+  // stores kilometres. A parser states which by minting through `toKm`.
+  distance_km: Km | null;
   start_time: string | null; // HH:MM
   end_time: string | null; // HH:MM
   // Richer per-activity metrics (Strava). All optional — a provider that omits a

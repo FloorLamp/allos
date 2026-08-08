@@ -7,6 +7,7 @@
 // a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import {
   getImportLog,
   getImportLogDocuments,
@@ -206,7 +207,12 @@ function makeInput(): PersistInput {
       },
     ],
     bodyMetrics: [
-      { date: DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
+      {
+        date: DATE,
+        weight_kg: toKg(82, "kg"),
+        body_fat_pct: null,
+        resting_hr: null,
+      },
     ],
     heights: [{ date: DATE, height_cm: 178 }],
     headCircs: [{ date: DATE, head_circumference_cm: 47 }],
@@ -612,7 +618,9 @@ describe("per-tab document listings", () => {
     });
 
     const body = getDocumentBodyRows(profileA, docA);
-    expect(body.bodyMetrics).toMatchObject([{ date: DATE, weight_kg: 82 }]);
+    expect(body.bodyMetrics).toMatchObject([
+      { date: DATE, weight_kg: toKg(82, "kg") },
+    ]);
     expect(body.heights).toMatchObject([{ date: DATE, value: 178 }]);
     expect(body.headCircs).toMatchObject([{ date: DATE, value: 47 }]);
   });

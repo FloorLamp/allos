@@ -9,6 +9,7 @@
 // Review even if the tombstone ever misses.
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { toKg, toKm } from "@/lib/units";
 import { db } from "@/lib/db";
 import {
   upsertActivities,
@@ -78,7 +79,7 @@ function stravaNorm(externalId = "strava:1"): NormActivity {
     type: "cardio",
     title: "Afternoon Run",
     duration_min: 31,
-    distance_km: 5.1,
+    distance_km: toKm(5.1, "km"),
     start_time: "07:05",
     end_time: "07:35",
   };
@@ -181,7 +182,7 @@ describe("delete → resync (no resurrection)", () => {
 
     const counts = upsertBodyMetrics(
       profileId,
-      [{ date: DATE, weight_kg: 80 }],
+      [{ date: DATE, weight_kg: toKg(80, "kg") }],
       "withings"
     );
     expect(counts.suppressed).toBe(1);

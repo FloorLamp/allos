@@ -11,6 +11,7 @@
 // Runs against the real schema via vitest.db.config.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
 import {
   upsertBodyMetrics,
@@ -46,12 +47,12 @@ describe("upsertBodyMetrics collapses same-day readings deterministically (#605)
   const early: NormBodyMetric = {
     date: "2024-07-01",
     measured_at: "2024-07-01T07:00:00Z",
-    weight_kg: 75.4,
+    weight_kg: toKg(75.4, "kg"),
   };
   const late: NormBodyMetric = {
     date: "2024-07-01",
     measured_at: "2024-07-01T22:00:00Z",
-    weight_kg: 76.1,
+    weight_kg: toKg(76.1, "kg"),
   };
 
   it("writes ONE row (latest reading wins) and re-running the batch is all-unchanged", () => {
@@ -154,8 +155,11 @@ describe("upsertBodyMetrics partial-window guard (#606)", () => {
 
   it("a partial day still FILLS a gap the stored row lacks", () => {
     expect(
-      upsertBodyMetrics(profileId, [{ date: "2024-07-12", weight_kg: 80 }], HC)
-        .inserted
+      upsertBodyMetrics(
+        profileId,
+        [{ date: "2024-07-12", weight_kg: toKg(80, "kg") }],
+        HC
+      ).inserted
     ).toBe(1);
     // Partial tail adds a resting HR the stored row didn't have → filled (not blocked).
     expect(
@@ -166,7 +170,7 @@ describe("upsertBodyMetrics partial-window guard (#606)", () => {
       ).updated
     ).toBe(1);
     expect(storedRow("2024-07-12", HC)).toMatchObject({
-      weight_kg: 80,
+      weight_kg: toKg(80, "kg"),
       resting_hr: 57,
     });
   });

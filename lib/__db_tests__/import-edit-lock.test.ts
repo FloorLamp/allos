@@ -21,6 +21,7 @@
 // the next sync.
 
 import { describe, it, expect } from "vitest";
+import { toKg, toKm } from "@/lib/units";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
@@ -85,13 +86,13 @@ const LOCKED: {
   {
     table: "body_metrics",
     run(p) {
-      upsertBodyMetrics(p, [{ date: DATE, weight_kg: 80 }], SOURCE);
+      upsertBodyMetrics(p, [{ date: DATE, weight_kg: toKg(80, "kg") }], SOURCE);
       db.prepare(
         "UPDATE body_metrics SET weight_kg = 79.5, edited = 1 WHERE profile_id = ? AND date = ? AND source = ?"
       ).run(p, DATE, SOURCE);
       const counts = upsertBodyMetrics(
         p,
-        [{ date: DATE, weight_kg: 81 }],
+        [{ date: DATE, weight_kg: toKg(81, "kg") }],
         SOURCE
       );
       const stored = db
@@ -163,7 +164,7 @@ const LOCKED: {
         type: "cardio" as const,
         title: "Evening run",
         duration_min: 30,
-        distance_km: 5,
+        distance_km: toKm(5, "km"),
         start_time: "18:00",
         end_time: "18:30",
       };
@@ -221,10 +222,10 @@ describe("every importer-written table honors the edit lock (#2091)", () => {
 
   it("an unedited row still updates normally (the lock is not a freeze)", () => {
     const p = newProfile("edit-lock control");
-    upsertBodyMetrics(p, [{ date: DATE, weight_kg: 80 }], SOURCE);
+    upsertBodyMetrics(p, [{ date: DATE, weight_kg: toKg(80, "kg") }], SOURCE);
     const counts = upsertBodyMetrics(
       p,
-      [{ date: DATE, weight_kg: 81 }],
+      [{ date: DATE, weight_kg: toKg(81, "kg") }],
       SOURCE
     );
     expect(counts.updated).toBe(1);

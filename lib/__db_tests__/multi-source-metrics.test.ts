@@ -14,6 +14,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import {
@@ -604,7 +605,7 @@ describe("getDashboardStats — Current weight honors the primary source (#302)"
   beforeAll(() => {
     upsertBodyMetrics(
       profileId,
-      [{ date: HC_DATE, weight_kg: 80 }],
+      [{ date: HC_DATE, weight_kg: toKg(80, "kg") }],
       "health-connect"
     );
     // Manual quick-add stores a NULL source (exempt from the unique key).

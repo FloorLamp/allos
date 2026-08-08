@@ -6,6 +6,7 @@
 // login can't reach the destination.
 
 import { describe, it, expect, vi } from "vitest";
+import { toKg } from "@/lib/units";
 import * as auth from "@/lib/auth";
 import fs from "node:fs";
 import path from "node:path";
@@ -171,7 +172,12 @@ function makeInput(): PersistInput {
     ],
     appointments: [],
     bodyMetrics: [
-      { date: DATE, weight_kg: 80, body_fat_pct: null, resting_hr: null },
+      {
+        date: DATE,
+        weight_kg: toKg(80, "kg"),
+        body_fat_pct: null,
+        resting_hr: null,
+      },
     ],
     heights: [{ date: DATE, height_cm: 175 }],
     headCircs: [],

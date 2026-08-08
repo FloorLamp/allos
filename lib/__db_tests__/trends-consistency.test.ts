@@ -15,6 +15,7 @@
 // at a throwaway per-file temp DB by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import { db, today } from "@/lib/db";
 import {
   upsertBodyMetrics,
@@ -72,7 +73,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     ).run(profileId, DAY2, 80);
     upsertBodyMetrics(
       profileId,
-      [{ date: DAY2, weight_kg: 80.6 }],
+      [{ date: DAY2, weight_kg: toKg(80.6, "kg") }],
       "health-connect"
     );
   });

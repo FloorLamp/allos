@@ -7,6 +7,7 @@
 // decision, tombstone, or edit lock. Every value below is a plainly fictional reading.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
 import { upsertBodyMetrics } from "@/lib/integrations/normalize";
 import { getBodyMetricConflicts, getReviewPairCount } from "@/lib/queries";
@@ -57,12 +58,12 @@ beforeAll(() => {
   // Mixed day: resting HR agrees, weight does not.
   upsertBodyMetrics(
     profileId,
-    [{ date: MIXED_DAY, resting_hr: 55, weight_kg: 70 }],
+    [{ date: MIXED_DAY, resting_hr: 55, weight_kg: toKg(70, "kg") }],
     "health-connect"
   );
   upsertBodyMetrics(
     profileId,
-    [{ date: MIXED_DAY, resting_hr: 55, weight_kg: 70.4 }],
+    [{ date: MIXED_DAY, resting_hr: 55, weight_kg: toKg(70.4, "kg") }],
     "withings"
   );
 });

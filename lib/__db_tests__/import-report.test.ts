@@ -9,6 +9,7 @@
 // redirected by lib/__db_tests__/setup.ts. All fixtures synthetic.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import {
   IMPORT_FOOTPRINT_TABLES,
   countImportedDocumentRows,
@@ -390,7 +391,12 @@ function everyDomainInput(): PersistInput {
       },
     ],
     bodyMetrics: [
-      { date: ALL_DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
+      {
+        date: ALL_DATE,
+        weight_kg: toKg(82, "kg"),
+        body_fat_pct: null,
+        resting_hr: null,
+      },
     ],
     heights: [{ date: ALL_DATE, height_cm: 178 }],
     headCircs: [{ date: ALL_DATE, head_circumference_cm: 47 }],

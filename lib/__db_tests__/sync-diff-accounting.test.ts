@@ -8,6 +8,7 @@
 // Runs against a real (in-memory / temp-file) schema via vitest.db.config.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg, toKm } from "@/lib/units";
 import { db } from "@/lib/db";
 import {
   upsertActivities,
@@ -42,7 +43,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
         type: "cardio" as const,
         title: "Morning run",
         duration_min: 30,
-        distance_km: 5,
+        distance_km: toKm(5, "km"),
         start_time: "07:00",
         end_time: "07:30",
         avg_hr: 140,
@@ -91,7 +92,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
         type: "cardio" as const,
         title: "Ride",
         duration_min: 60,
-        distance_km: 20,
+        distance_km: toKm(20, "km"),
         start_time: null,
         end_time: null,
       },
@@ -133,7 +134,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
         type: "cardio" as const,
         title: "Ride",
         duration_min: 40,
-        distance_km: 12,
+        distance_km: toKm(12, "km"),
         start_time: null,
         end_time: null,
       },
@@ -146,7 +147,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       "UPDATE activities SET equipment_id = ? WHERE profile_id = ? AND external_id = ?"
     ).run(bikeId, profileId, "hc:act:gear");
     // A genuine metric change forces the UPDATE branch; it must leave equipment_id.
-    const changed = [{ ...rows[0], distance_km: 13 }];
+    const changed = [{ ...rows[0], distance_km: toKm(13, "km") }];
     expect(upsertActivities(profileId, changed, SOURCE).updated).toBe(1);
     const stored = db
       .prepare(
@@ -162,7 +163,12 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
 
   it("upsertBodyMetrics", () => {
     const rows: NormBodyMetric[] = [
-      { date: "2024-05-03", weight_kg: 80, body_fat_pct: 18, resting_hr: 55 },
+      {
+        date: "2024-05-03",
+        weight_kg: toKg(80, "kg"),
+        body_fat_pct: 18,
+        resting_hr: 55,
+      },
     ];
     expect(upsertBodyMetrics(profileId, rows, SOURCE)).toEqual({
       inserted: 1,
@@ -178,7 +184,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       suppressed: 0,
       edited: 0,
     });
-    const changed = [{ ...rows[0], weight_kg: 79.5 }];
+    const changed = [{ ...rows[0], weight_kg: toKg(79.5, "kg") }];
     expect(upsertBodyMetrics(profileId, changed, SOURCE)).toEqual({
       inserted: 0,
       updated: 1,
@@ -200,7 +206,12 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
 
   it("upsertBodyMetrics counts a hand-edited row as edited (edit survives, #659)", () => {
     const rows: NormBodyMetric[] = [
-      { date: "2024-05-13", weight_kg: 82, body_fat_pct: 20, resting_hr: 60 },
+      {
+        date: "2024-05-13",
+        weight_kg: toKg(82, "kg"),
+        body_fat_pct: 20,
+        resting_hr: 60,
+      },
     ];
     expect(upsertBodyMetrics(profileId, rows, SOURCE).inserted).toBe(1);
     // Simulate the user hand-correcting the imported weight (Review resolver sets
@@ -385,7 +396,8 @@ describe("edit-locked skip is counted `edited`, not `unchanged` (#659)", () => {
     const src = "edit-lock-src";
     // Initial sync inserts the row.
     expect(
-      upsertBodyMetrics(profileId, [{ date, weight_kg: 80 }], src).inserted
+      upsertBodyMetrics(profileId, [{ date, weight_kg: toKg(80, "kg") }], src)
+        .inserted
     ).toBe(1);
     // The user hand-edits it → the row is edit-locked.
     db.prepare(
@@ -393,7 +405,11 @@ describe("edit-locked skip is counted `edited`, not `unchanged` (#659)", () => {
     ).run(profileId, date, src);
     // The next rolling-window push carries a DIFFERENT provider value: the lock keeps
     // the hand-fix, and the split reports it as `edited` (not `unchanged`/`updated`).
-    const counts = upsertBodyMetrics(profileId, [{ date, weight_kg: 80 }], src);
+    const counts = upsertBodyMetrics(
+      profileId,
+      [{ date, weight_kg: toKg(80, "kg") }],
+      src
+    );
     expect(counts).toMatchObject({
       inserted: 0,
       updated: 0,

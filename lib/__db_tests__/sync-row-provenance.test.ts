@@ -6,6 +6,7 @@
 // deep link. Retention is inherited: pruning the event cascades its rows away.
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { toKg, toKm } from "@/lib/units";
 import { utcInstant } from "@/lib/date";
 import { db, writeTx } from "@/lib/db";
 import {
@@ -34,7 +35,7 @@ function activity(extId: string, title: string): NormActivity {
     type: "cardio",
     title,
     duration_min: 30,
-    distance_km: 5,
+    distance_km: toKm(5, "km"),
     start_time: null,
     end_time: null,
   };
@@ -76,7 +77,7 @@ describe("integration_sync_rows provenance (#1333)", () => {
     writeTx(() =>
       upsertBodyMetrics(
         profileId,
-        [{ date: "2026-03-01", weight_kg: 80 } as NormBodyMetric],
+        [{ date: "2026-03-01", weight_kg: toKg(80, "kg") } as NormBodyMetric],
         "health-connect",
         sink
       )
@@ -115,7 +116,7 @@ describe("integration_sync_rows provenance (#1333)", () => {
     writeTx(() =>
       upsertBodyMetrics(
         profileId,
-        [{ date: "2026-03-01", weight_kg: 80 } as NormBodyMetric],
+        [{ date: "2026-03-01", weight_kg: toKg(80, "kg") } as NormBodyMetric],
         "health-connect",
         sink2
       )
@@ -153,7 +154,7 @@ describe("integration_sync_rows provenance (#1333)", () => {
     writeTx(() =>
       upsertBodyMetrics(
         profileId,
-        [{ date: "2026-03-02", weight_kg: 81 } as NormBodyMetric],
+        [{ date: "2026-03-02", weight_kg: toKg(81, "kg") } as NormBodyMetric],
         "health-connect",
         sink
       )

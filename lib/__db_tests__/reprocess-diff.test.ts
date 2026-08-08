@@ -8,6 +8,7 @@
 // confirm will produce.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { toKg } from "@/lib/units";
 import {
   getCanonicalVocabulary,
   getReprocessSnapshot,
@@ -127,7 +128,12 @@ function makeInput(over: Partial<PersistInput> = {}): PersistInput {
     careGoals: [],
     appointments: [],
     bodyMetrics: [
-      { date: DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
+      {
+        date: DATE,
+        weight_kg: toKg(82, "kg"),
+        body_fat_pct: null,
+        resting_hr: null,
+      },
     ],
     heights: [{ date: DATE, height_cm: 178 }],
     headCircs: [{ date: DATE, head_circumference_cm: 47 }],
@@ -742,7 +748,7 @@ describe("reprocess-diff — deferred body metrics don't phantom-add", () => {
     const doc = newDocument(pid, "partial.ccd");
     const bm = {
       date: DATE,
-      weight_kg: 82,
+      weight_kg: toKg(82, "kg"),
       body_fat_pct: null,
       resting_hr: 60,
     };
