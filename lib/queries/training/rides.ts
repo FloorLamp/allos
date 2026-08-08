@@ -53,6 +53,8 @@ import {
   scopeBucketsToWindows,
   zoneForBpm,
   zoneMinuteTotals,
+  zoneWindowSince,
+  ZONE_WINDOW_WEEKS,
   type ActivityWindow,
   type ZoneModel,
 } from "../../training-zones";
@@ -149,6 +151,15 @@ export interface CyclingOverviewPowerZoneTime {
   percent: number;
 }
 
+// The trailing window `zoneMinutes` covers. The overview's totals and records are
+// all-time; its heart-rate distribution deliberately is NOT, so the surface has to
+// be able to say which days it counted.
+export interface CyclingZoneWindow {
+  weeks: number;
+  since: string; // inclusive first day, YYYY-MM-DD
+  through: string; // inclusive last day (the activity's most recent ride)
+}
+
 export interface CyclingOverviewData {
   activityName: string;
   indoorOnly: boolean;
@@ -156,6 +167,7 @@ export interface CyclingOverviewData {
   distribution: CyclingDistribution;
   zoneModel: ZoneModel | null;
   zoneMinutes: number[] | null;
+  zoneWindow: CyclingZoneWindow | null;
   powerBests: CyclingOverviewPowerBest[];
   loadPoints: CyclingOverviewLoadPoint[];
   latestFtpW: number | null;
@@ -374,6 +386,29 @@ export function getRideDetailData(
   };
 }
 
+// Zone minutes for the overview's windowed distribution: per-minute HR bounded to
+// the window, then scoped to the activity's own ride clocks. `until` reaches the
+// day after the last ride so a session crossing midnight keeps its post-midnight
+// buckets, exactly as the ride detail read does.
+function cyclingZoneMinutes(
+  profileId: number,
+  window: CyclingZoneWindow,
+  windows: ActivityWindow[],
+  zoneModel: ZoneModel
+): number[] {
+  return zoneMinuteTotals(
+    scopeBucketsToWindows(
+      getHrMinutesInRange(
+        profileId,
+        window.since,
+        shiftDateStr(window.through, 1)
+      ),
+      windows
+    ),
+    zoneModel
+  );
+}
+
 // Profile-scoped all-ride read model for Training → Analyze → Cycling. The
 // generic cardio aggregator owns per-session chart rows; this model adds the
 // cycling-only context that exists below the activity row: rolling form,
@@ -507,22 +542,30 @@ export function getCyclingOverviewData(
 
     const zoneModel = getProfileZoneModel(profileId);
     const windows = activityWindows(rides);
-    const firstDate = rides[0]?.date;
-    const lastDate = rides.at(-1)?.date;
-    const zoneMinutes =
-      zoneModel && windows.length > 0 && firstDate && lastDate
-        ? zoneMinuteTotals(
-            scopeBucketsToWindows(
-              getHrMinutesInRange(
-                profileId,
-                firstDate,
-                shiftDateStr(lastDate, 1)
-              ),
-              windows
-            ),
-            zoneModel
-          )
+    const lastRideDate = rides.at(-1)?.date;
+    // The zone distribution is the one part of this otherwise all-time model that
+    // is WINDOWED (#2197). Reading per-minute HR from the first ride ever is an
+    // unbounded scan that grows with account age, on every load of this page. It
+    // takes the SAME declared block width as the Trends Fitness zone section
+    // (ZONE_WINDOW_WEEKS) — the question is the same one, only filtered to this
+    // bike — and differs solely in the anchor: the most recent ride rather than
+    // today, so an activity parked for a season still shows the shape of its last
+    // block instead of an empty card.
+    const zoned =
+      zoneModel && windows.length > 0 && lastRideDate
+        ? {
+            model: zoneModel,
+            window: {
+              weeks: ZONE_WINDOW_WEEKS,
+              since: zoneWindowSince(lastRideDate),
+              through: lastRideDate,
+            } satisfies CyclingZoneWindow,
+          }
         : null;
+    const zoneWindow = zoned?.window ?? null;
+    const zoneMinutes = zoned
+      ? cyclingZoneMinutes(profileId, zoned.window, windows, zoned.model)
+      : null;
 
     const routes = db
       .prepare(
@@ -559,6 +602,7 @@ export function getCyclingOverviewData(
       distribution,
       zoneModel,
       zoneMinutes,
+      zoneWindow,
       powerBests: [...powerBestBySeconds.values()].sort(
         (a, b) => a.seconds - b.seconds
       ),

@@ -3,7 +3,11 @@ import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import LineChartCard from "@/components/LineChartCard";
 import { StatBox } from "@/components/StatBox";
 import { chartSeries } from "@/lib/chart-colors";
-import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
+import {
+  formatLongDate,
+  formatMonthDay,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 import { cyclingRideHref, type CyclingLens } from "@/lib/hrefs";
 import type { CyclingOverviewData } from "@/lib/queries";
 import { rideZoneRows } from "@/lib/ride-detail";
@@ -443,10 +447,12 @@ export default function CyclingOverviewDetails({
         </CardGroup>
       ) : null}
 
-      {section === "heart-rate" && zoneTotal > 0 ? (
+      {section === "heart-rate" && data.zoneWindow && zoneTotal > 0 ? (
         <CardGroup
           title="Heart-rate distribution"
-          description={`${zoneTotal.toLocaleString("en-US")} recorded minutes inside ${noun} windows.`}
+          // This card is windowed where the totals above are all-time, so it names
+          // the days it counted rather than letting the section imply every ride.
+          description={`${zoneTotal.toLocaleString("en-US")} recorded minutes inside ${noun} windows, over the ${data.zoneWindow.weeks} weeks through ${formatMonthDay(data.zoneWindow.through, formatPrefs)}.`}
           className="lg:col-span-2"
           data-testid="cycling-heart-rate-zones"
         >
