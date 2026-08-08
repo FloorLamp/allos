@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the tick's two redundant heavy gathers, counted (#2118, #2111).
+// DB INTEGRATION TIER — the tick's redundant heavy gathers, counted (#2118, #2111, #2249).
 //
 // `lib/request-cache.ts` degrades React's `cache()` to identity outside a Next request,
 // so the hourly tick had no memoization anywhere and re-ran the same profile's heaviest
@@ -13,6 +13,12 @@
 // multi-call tick with and without a tick scope open. The pre-fix counts (5 and 3) are
 // asserted as a floor on the unscoped run, so the test fails if the redundancy is
 // reintroduced AND fails if the memo silently stops applying.
+//
+// #2249 adds the third: the Dynamic digest tick's 30-night sleep-ARRIVAL join, which
+// one tick ran TWICE for the same profile — once for the deadline, once for the
+// evidence line the decision writes — and which every pre-floor tick paid for before
+// `planDigestTick` could decline. Both halves are counted here: one gather on a
+// re-check tick, and ZERO on a tick that short-circuits before the floor.
 //
 // Behaviour preservation is asserted alongside every count: the scoped run's answers
 // must equal the unscoped run's, item for item. And because a memo over a SAFETY
@@ -37,12 +43,16 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 
 import { db, today } from "@/lib/db";
 import {
+  getNotifySchedule,
   setProfileHomeAssistant,
+  setProfileSetting,
   setTelegramBotConfig,
+  setTimezone,
   setUserBirthdate,
   setUserSex,
 } from "@/lib/settings";
-import { utcSqlString } from "@/lib/date";
+import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
+import { shiftDateStr, utcInstant, utcSqlString } from "@/lib/date";
 import {
   collectUpcoming,
   getMedicationFamilyStates,
@@ -50,6 +60,8 @@ import {
   getPrnOverMaxItems,
   recordPreventiveDone,
 } from "@/lib/queries";
+import { getSleepArrivals } from "@/lib/queries/metrics";
+import { planProfileDigestTick } from "@/lib/notifications/digest-data";
 import { assessProfilePreventive } from "@/lib/queries/upcoming/preventive";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runRedoseNotices } from "@/lib/notifications/redose";
@@ -84,6 +96,10 @@ function countPrepares(signature: RegExp): { calls: () => number } {
 const PREVENTIVE_SIGNATURE = /SELECT rule_key AS ruleKey, kind/;
 const FAMILY_SIGNATURE =
   /SELECT id, name, rxcui, rxcui_ingredients, max_daily_count/;
+//   • the arrival join — issued only by getSleepArrivals (#2249), whose callers in a
+//     tick are the Dynamic deadline and the decision's own evidence line.
+const ARRIVAL_SIGNATURE =
+  /SELECT ms\.end_time AS endTime, MIN\(r\.created_at\)/;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -351,6 +367,150 @@ describe("getMedicationFamilyStates is evaluated ONCE per profile per tick (#211
     // The family spans both ibuprofen items, so the count is 2 either way.
     expect(scopedOut.quickLogCount).toBe(bareOut.quickLogCount);
     expect(scopedOut.quickLogCount).toBe(2);
+  });
+});
+
+// ── the sleep-arrival fixture (#2249) ────────────────────────────────────────
+//
+// A Dynamic 07:00 digest whose profile is still sleep-tracking but has NOT yet
+// received last night: 13 measurable nights waking on each of the previous 13 days
+// and nothing waking today. That is exactly the state the re-check window exists for
+// — `digestSleepPendingTrace` answers `pending`, so the plan reaches the window, the
+// deadline decides how long it may stay there, and the decision writes its evidence
+// line. Two arrival reads, one tick, one profile.
+const ARRIVAL_TZ = "UTC";
+const ARRIVAL_PROVIDER = "health-connect";
+const ARRIVAL_FLOOR = 7 * 60;
+const ARRIVAL_NIGHTS = 13;
+
+function seedArrivalNight(
+  profileId: number,
+  wakeDay: string,
+  wakeMinute: number,
+  lagMin: number
+): void {
+  const end = new Date(
+    `${wakeDay}T${String(Math.floor(wakeMinute / 60)).padStart(2, "0")}:${String(
+      wakeMinute % 60
+    ).padStart(2, "0")}:00Z`
+  );
+  const start = new Date(end.getTime() - 420 * 60_000);
+  const arrived = new Date(end.getTime() + lagMin * 60_000);
+  const sampleId = Number(
+    db
+      .prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, origin, metric, date, start_time, end_time, value)
+         VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
+      )
+      .run(
+        profileId,
+        ARRIVAL_PROVIDER,
+        wakeDay,
+        utcInstant(start),
+        utcInstant(end)
+      ).lastInsertRowid
+  );
+  const eventId = Number(
+    db
+      .prepare(
+        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+         VALUES (?, ?, ?, 1, 1)`
+      )
+      .run(profileId, ARRIVAL_PROVIDER, utcInstant(arrived)).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO integration_sync_rows
+       (event_id, target_table, target_id, disposition, created_at)
+     VALUES (?, 'metric_samples', ?, 'inserted', ?)`
+  ).run(eventId, sampleId, utcInstant(arrived));
+}
+
+function seedArrivalProfile(name: string): number {
+  const p = newProfile(name);
+  setTimezone(p, ARRIVAL_TZ);
+  const td = today(p);
+  for (let back = 1; back <= ARRIVAL_NIGHTS; back++) {
+    // Wake times walk a few minutes so the sample is a distribution rather than a
+    // single repeated clock reading; the lag is what the statistic measures.
+    seedArrivalNight(
+      p,
+      shiftDateStr(td, -back),
+      6 * 60 + 30 + (back % 5) * 3,
+      30 + (back % 7) * 5
+    );
+  }
+  setProfileSetting(p, "notify_digest_hour", "07:00");
+  setProfileSetting(p, DIGEST_MODE_KEY, "dynamic");
+  return p;
+}
+
+/** One profile's digest decision for this tick, exactly as scripts/notify.ts asks it. */
+function digestTickAt(profileId: number, currentMinute: number) {
+  return planProfileDigestTick(
+    profileId,
+    getNotifySchedule(profileId),
+    currentMinute,
+    15,
+    today(profileId)
+  );
+}
+
+describe("the Dynamic digest tick gathers sleep arrivals ONCE, and not before the floor (#2249)", () => {
+  it("unscoped: a re-check tick pays for the deadline AND the evidence line", () => {
+    const p = seedArrivalProfile("TickArrivalBaseline");
+    const counter = countPrepares(ARRIVAL_SIGNATURE);
+    // 07:15 — at or past the floor, before the deadline, no failed attempt on record.
+    expect(digestTickAt(p, ARRIVAL_FLOOR + 15)).toBe("wait");
+    expect(counter.calls()).toBeGreaterThanOrEqual(2);
+  });
+
+  it("scoped: the same tick gathers exactly once", async () => {
+    const p = seedArrivalProfile("TickArrivalScoped");
+    const counter = countPrepares(ARRIVAL_SIGNATURE);
+    const action = await runInTickScope(async () =>
+      digestTickAt(p, ARRIVAL_FLOOR + 15)
+    );
+    // The DECISION is untouched — this issue changes only when and how often the
+    // inputs are computed.
+    expect(action).toBe("wait");
+    expect(counter.calls()).toBe(1);
+  });
+
+  it("a tick before the floor gathers NOTHING, scope or no scope", () => {
+    // The lazy half. At a 15-minute cadence and an 07:00 floor this is ~28 ticks a
+    // day that used to pay for a 30-night join to reach a decision that never
+    // consults it.
+    const p = seedArrivalProfile("TickArrivalPreFloor");
+    const counter = countPrepares(ARRIVAL_SIGNATURE);
+    for (let now = 0; now < ARRIVAL_FLOOR; now += 15)
+      expect(digestTickAt(p, now)).toBe("idle");
+    expect(counter.calls()).toBe(0);
+  });
+
+  it("a STATIC profile never gathers, at any minute of the day", () => {
+    const p = seedArrivalProfile("TickArrivalStatic");
+    setProfileSetting(p, DIGEST_MODE_KEY, "static");
+    const counter = countPrepares(ARRIVAL_SIGNATURE);
+    for (let now = 0; now < 1440; now += 15) digestTickAt(p, now);
+    expect(counter.calls()).toBe(0);
+  });
+
+  it("the memo is per (profile, night limit), and dies with the scope", async () => {
+    const a = seedArrivalProfile("TickArrivalKeyA");
+    const b = seedArrivalProfile("TickArrivalKeyB");
+    const counter = countPrepares(ARRIVAL_SIGNATURE);
+    await runInTickScope(async () => {
+      getSleepArrivals(a);
+      getSleepArrivals(a);
+      getSleepArrivals(b);
+      // A different window is a different question, memoized separately.
+      getSleepArrivals(a, 7);
+    });
+    expect(counter.calls()).toBe(3);
+    // The next scope re-reads: a memo whose lifetime is a scope cannot outlive it.
+    await runInTickScope(async () => getSleepArrivals(a));
+    expect(counter.calls()).toBe(4);
   });
 });
 

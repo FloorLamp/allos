@@ -755,8 +755,9 @@ export function digestDeadline(
 // The tick's whole digest decision (#2211), DB side. The decision itself is
 // `planDigestTick`; this resolves its three stored inputs — the mode and minute from
 // the schedule, the deadline from the arrival statistic, today's failed-attempt
-// record from `notify_digest_attempt` — and hands `digestSleepPending` over as the
-// thunk so the sleep read is paid for only on a Dynamic re-check tick.
+// record from `notify_digest_attempt` — and hands BOTH the deadline and
+// `digestSleepPending` over as thunks so each read is paid for only on the ticks
+// where its answer can matter.
 export function planProfileDigestTick(
   profileId: number,
   sched: Pick<NotifySchedule, "digestMinute" | "digestMode">,
@@ -765,11 +766,24 @@ export function planProfileDigestTick(
   date: string
 ): DigestTickAction {
   if (sched.digestMinute == null) return "idle";
-  // Static ignores the deadline, so the arrival read is never paid for by one.
-  const deadlineMinute =
-    sched.digestMode === "dynamic"
-      ? digestDeadline(profileId, sched.digestMinute, tickMinutes)
-      : sched.digestMinute;
+  // Narrowed once, into a local: `sched.digestMinute` is a property access, and its
+  // null-narrowing does not survive into the closures below.
+  const slotMinute = sched.digestMinute;
+  // LAZY, matching the sleep thunk beside it (#2249). Static ignores the deadline, so
+  // the arrival read is never paid for by one — and Dynamic no longer pays for it on
+  // every tick from local midnight to the floor either, which at a 15-minute cadence
+  // and an 07:00 floor was ~28 gathers a day of which all but the last few belonged
+  // to ticks `planDigestTick` declines before the deadline can matter.
+  //
+  // Memoized here as well as by `tickCached` on the gather, so the ONE resolution
+  // holds for the `logDigestTick` call below outside a tick scope too (a DB test, a
+  // `manual` send, the poll loop).
+  let resolvedDeadline: number | null = null;
+  const deadlineMinute = (): number =>
+    (resolvedDeadline ??=
+      sched.digestMode === "dynamic"
+        ? digestDeadline(profileId, slotMinute, tickMinutes)
+        : slotMinute);
   // Collected rather than assigned to a `let`: the thunk runs (or does not) inside
   // planDigestTick, and a captured assignment there narrows to `never` under
   // control-flow analysis, which would let a wrong argument through the typecheck.
@@ -777,7 +791,7 @@ export function planProfileDigestTick(
   const action = planDigestTick(
     {
       mode: sched.digestMode,
-      slotMinute: sched.digestMinute,
+      slotMinute,
       currentMinute,
       tickMinutes,
       deadlineMinute,
@@ -796,11 +810,14 @@ export function planProfileDigestTick(
   // tick, every tick before the floor, every tick under a failed-attempt record, and
   // the deadline itself. Those ticks stay silent, as they should.
   const trace = consulted[0];
+  // A consulted trace means the plan reached the re-check window, which is BELOW the
+  // deadline comparison — so the thunk has already resolved and this reads the memo
+  // rather than gathering again.
   if (trace)
     logDigestTick(
       profileId,
-      sched.digestMinute,
-      deadlineMinute,
+      slotMinute,
+      deadlineMinute(),
       currentMinute,
       trace,
       action === "wait"
