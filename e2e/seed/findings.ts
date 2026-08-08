@@ -7,7 +7,8 @@ import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
-import { frozenSyncInstant } from "../worker-env";
+import { now as clockNow } from "../../lib/clock";
+import { syncInstantBefore } from "../sync-instants";
 import { upsertConnection } from "../../lib/integrations/connections";
 import {
   E2E_LOGIN_WEATHER,
@@ -307,7 +308,11 @@ export function seedSuppressedCenter(): void {
     }).format(new Date());
     // The two seeded runs' instants, an hour and two hours before the frozen clock —
     // the SAME derivation weather-uv.spec.ts reads them back with.
-    const WX_SYNC_EVENTS = [frozenSyncInstant(2), frozenSyncInstant(1)];
+    const wxNow = clockNow();
+    const WX_SYNC_EVENTS = [
+      syncInstantBefore(wxNow, 2),
+      syncInstantBefore(wxNow, 1),
+    ];
     // Enable the keyless weather connection (the enable flag the tick + grid read).
     upsertConnection(wxId, "weather", { status: "connected", config: null });
     // An outdoor daytime walk today, well inside the daylight window.

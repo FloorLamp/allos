@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { syncInstantBefore } from "./sync-instants";
 
 // DB-per-worker addressing (issue #1538) — the ONE place that answers "which DB,
 // which port, which directory belongs to THIS Playwright worker".
@@ -88,19 +89,12 @@ export function frozenNow(): Date {
 }
 
 /**
- * A recorded sync-event instant `hoursAgo` hours before the frozen clock, in the
- * ledger's stored convention (`YYYY-MM-DDTHH:MM:SSZ`, #2205 / migration 163).
- *
- * ONE derivation, shared by the seed that WRITES these rows and the specs that read
- * them back, so the two can never drift apart on a string comparison. Sync freshness
- * is minute-grain silence since #2263 — a provider whose last success is more than its
- * tolerance old is `failing` — so a fixture stamped at a fixed time of day would be
- * healthy or broken depending on the hour CI happened to start.
+ * A recorded sync-event instant `hoursAgo` hours before the run's frozen clock — the
+ * spec-side half of the seed's own derivation (e2e/sync-instants.ts), so a spec and the
+ * fixture it reads back can never drift apart on a string comparison.
  */
 export function frozenSyncInstant(hoursAgo: number): string {
-  return `${new Date(frozenNow().getTime() - hoursAgo * 3600_000)
-    .toISOString()
-    .slice(0, 19)}Z`;
+  return syncInstantBefore(frozenNow(), hoursAgo);
 }
 
 /**
