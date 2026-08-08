@@ -460,6 +460,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     key: "notify_messages",
     what: "the live-message pointer TABLE (migration 135), enumerated in lib/owned-tables.ts",
   },
+  {
+    key: "notify_message_id",
+    what: "a COLUMN, not a key: the #2264 tap-provenance link on food_log_events and intake_item_logs (migration 170), referencing notify_messages(id) so a correction row renders only on the message that produced its burst",
+  },
   // Reconciliation bookkeeping (profile_settings), not a send marker: it gates a silent
   // EDIT, never a send, so it can never suppress an interruption.
   {

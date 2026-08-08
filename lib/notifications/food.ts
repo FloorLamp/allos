@@ -25,6 +25,10 @@ import {
   renderFoodNudge,
   type FoodNudgeWindow,
 } from "./food-format";
+import {
+  correctionMessageBinding,
+  type CorrectionMessageRef,
+} from "./message-pointers";
 import { telegramChannel } from "./telegram";
 import { prefixForProfile } from "./attribution";
 import {
@@ -49,11 +53,19 @@ export function buildFoodNudge(
   // and the tick-time reconcile (#1779/#1807) all pass the current visible count (read off the
   // live keyboard) so no rebuild silently resizes a keyboard the user sized.
   visibleCount?: number,
-  // The eating-time ride-along's two knobs (#2019). `now` is the instant tap freshness is
+  // The eating-time ride-along's knobs (#2019). `now` is the instant tap freshness is
   // judged against — injected rather than read from the clock here so the send, the
   // rebuild and the sweep can all be pinned to one time in a test. `picker` renders the
-  // open absolute-hour drill-down in place of the chip rows.
-  opts: { now?: Date; picker?: CorrectionBurst } = {}
+  // open absolute-hour drill-down in place of the chip rows. `ref` is the MESSAGE being
+  // rebuilt (#2264) — every rebuild site passes its own (chat, message), so the
+  // correction rows are bound to the message that produced their bursts; a fresh send
+  // omits it and carries only unattributed bursts, being about to be the newest live
+  // food message in every chat it lands in.
+  opts: {
+    now?: Date;
+    picker?: CorrectionBurst;
+    ref?: CorrectionMessageRef | null;
+  } = {}
 ): NotificationMessage | null {
   const now = opts.now ?? clockNow();
   if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
@@ -89,10 +101,16 @@ export function buildFoodNudge(
     if (grams > 0) proteinLine = `Protein ${grams} g today`;
   }
   const presetGrams = getProteinQuickAddPreset(profileId) ?? undefined;
-  // The eating-time correction ride-along (#2019), derived from ledger state — so it
-  // rides EVERY food keyboard the builder produces: the send, a tap rebuild, an
-  // expansion, and the hourly reconcile, with no send path of its own.
-  const corrections = getFoodCorrectionBursts(profileId, now);
+  // The eating-time correction ride-along (#2019), derived from ledger state and BOUND
+  // to the message being rendered (#2264): a burst renders only on the message whose
+  // tap produced it, and an unattributed burst (web, offline replay, pruned pointer)
+  // rides only the newest live food message in the chat — never an older one, whose
+  // subject it is not and whose chips would restamp servings it never mentioned.
+  const corrections = getFoodCorrectionBursts(
+    profileId,
+    now,
+    correctionMessageBinding(profileId, "food", opts.ref ?? null)
+  );
   return renderFoodNudge(profileId, window, date, rankedKeys, dayServings, {
     proteinLine,
     visibleCount,

@@ -263,7 +263,8 @@ export async function loadQuickEntry(
       eatingTimeOptions: eatingTimeOptions(
         clockNow(),
         getTimezone(profile.id),
-        date
+        date,
+        profileFoodSlotBoundaries(profile.id)
       ),
     };
   }

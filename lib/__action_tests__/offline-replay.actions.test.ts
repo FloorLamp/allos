@@ -824,6 +824,17 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
       { eaten_at: eatenAt, time_source: "stated" },
     ]);
+    // #2269: the stated time WON — the captured tab slot travels but is not stored,
+    // because the core is the one chokepoint and the replay inherits the same
+    // declaration-or-override rule as the web action. The meal derives from the
+    // instant, so a later correction moves it instead of fighting a frozen echo.
+    const [row] = db
+      .prepare(
+        `SELECT meal_slot FROM food_log_events
+          WHERE profile_id = ? AND date = ? AND group_key = 'leafy_greens'`
+      )
+      .all(profile.id, date) as { meal_slot: string | null }[];
+    expect(row.meal_slot).toBeNull();
   });
 
   it("an intent with no statement replays with no eating time, as before", async () => {

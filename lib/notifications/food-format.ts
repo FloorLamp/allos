@@ -18,6 +18,7 @@ import {
 import type { CorrectionBurst } from "../correction-time";
 import {
   correctionActions,
+  correctionBodyStatement,
   correctionPickerActions,
   correctionPickerTitle,
   FOOD_TIME_PREFIXES,
@@ -378,9 +379,8 @@ export function renderFoodNudge(
       tally ? null : "Tap what you've eaten to log a serving.",
       tally,
       proteinBody(opts.proteinLine),
-      // Stated once, above the rows, rather than repeated on every chip: the row already
-      // names WHAT it is about and WHEN it was tapped, so the sentence only has to say
-      // what the numbers do.
+      // Stated once, above the rows, rather than repeated on every chip: the row names
+      // WHAT it is about, and the sentence says what the numbers do.
       opts.picker && tz
         ? correctionPickerTitle("when did you eat", opts.picker.burst, tz)
         : corrections
@@ -388,6 +388,12 @@ export function renderFoodNudge(
             // so the sentence only has to explain that they can be pressed again.
             "🕐 Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time."
           : null,
+      // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
+      // the stored time — the row's label states it too, but Telegram truncates buttons
+      // and a clipped `(cor…` is not a statement. Uncorrected bursts add nothing.
+      corrections
+        ? correctionBodyStatement(corrections.bursts, corrections.tz)
+        : null,
     ],
     "\n"
   );

@@ -125,6 +125,28 @@ export function correctionPickerActions(
   return out;
 }
 
+// The BODY'S statement of record for a corrected burst (#2264 bug 1), for both domains.
+//
+// The row's label button carries the whole corrected value ("×4 12:42 (corrected)"),
+// and on a phone that button clips — `🕐 ×4 12:42 (cor…` — so after a correction the
+// message never states, anywhere readable, what time the ledger now holds. The body is
+// where a value is STATED (the row stays the control), so a corrected burst gets one
+// explicit sentence naming the resulting instant; an uncorrected burst adds nothing and
+// the message keeps today's copy.
+//
+// Built from the SAME `burstLabel` computation as the button — never a second phrasing —
+// and covering the multi-burst case (MAX_CORRECTION_ROWS = 2, joined on one line). The
+// "(corrected)" marker rides here by design: it belongs on the statement of a value, not
+// on a button (see burstSubject's note in lib/correction-time.ts).
+export function correctionBodyStatement(
+  bursts: readonly CorrectionBurst[],
+  tz: string
+): string | null {
+  const corrected = bursts.filter((b) => b.corrected);
+  if (corrected.length === 0) return null;
+  return `🕐 Recorded: ${corrected.map((b) => burstLabel(b, tz)).join(" · ")}`;
+}
+
 // The picker's question. The subject is the burst as the user knows it; the verb is the
 // domain's, because "when did you eat" and "when did you take these" are the two things
 // a chat can honestly ask about a ledger row whose instant is wrong.

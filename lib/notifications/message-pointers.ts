@@ -20,6 +20,10 @@
 import { db, writeTx } from "../db";
 import { sqlNow } from "../clock";
 import { createLogger } from "../log";
+import {
+  FRESH_SEND_BINDING,
+  type CorrectionMessageBinding,
+} from "../correction-time";
 import type { InlineKeyboard } from "./telegram-render";
 
 const log = createLogger("notify");
@@ -247,6 +251,73 @@ export function liveMessagePointersForKind(
     });
   }
   return out;
+}
+
+// ---- Correction-row message binding (issue #2264) ---------------------------
+//
+// The chat message a correction tap is arriving from, or one is being rebuilt for.
+// A fresh send has none — it is not in `notify_messages` yet — and passes null.
+export interface CorrectionMessageRef {
+  chatId: string | number;
+  messageId: number;
+}
+
+// The `notify_messages` row id for one delivered message, or null when no pointer was
+// recorded (a send whose best-effort bookkeeping failed) or it has since been pruned or
+// closed. Profile-scoped: in a shared chat the pointer's subject must be the acting
+// profile, so a tap on ANOTHER profile's message (a household round) resolves to null
+// and its ledger row stays honestly unattributed.
+export function messagePointerIdAt(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): number | null {
+  const row = db
+    .prepare(
+      `SELECT id FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+    )
+    .get(profileId, String(chatId), messageId) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
+// Resolve the #2264 binding for one rendering site: WHICH pointer row the message is
+// (its bursts render on it), and whether it is the NEWEST live message of `kind` in its
+// chat (the one place an unattributed burst may ride). A fresh send binds as
+// FRESH_SEND_BINDING — no pointer row yet, and about to be the newest in every chat it
+// lands in.
+//
+// The newest check is spelled the way the sub-rule is: "never an OLDER one". A message
+// loses the unattributed ride-along exactly when a NEWER live message of its domain
+// exists in its chat — the reported wrong-subject case. When the chat holds no live
+// pointer of the kind at all (best-effort pointer bookkeeping can fail), the rendering
+// message is vacuously newest: nothing is newer than it, and failing closed there would
+// strip a working affordance from the very message whose tap made the burst. Attributed
+// bursts are unaffected either way — they render only where their `messageRef` matches,
+// and a message with no pointer row matches none.
+export function correctionMessageBinding(
+  profileId: number,
+  kind: string,
+  ref: CorrectionMessageRef | null
+): CorrectionMessageBinding {
+  if (!ref) return FRESH_SEND_BINDING;
+  const messageRef = messagePointerIdAt(profileId, ref.chatId, ref.messageId);
+  // The newest live pointer of this domain's kind in this chat — the same
+  // (profile, chat, kind) axis the #1898 supersede rule works on, read through
+  // idx_notify_messages_profile_chat_kind.
+  const newest = db
+    .prepare(
+      `SELECT message_id FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND kind = ?
+        ORDER BY sent_at DESC, id DESC
+        LIMIT 1`
+    )
+    .get(profileId, String(ref.chatId), kind) as
+    { message_id: number } | undefined;
+  return {
+    messageRef,
+    isNewest: newest == null || newest.message_id === ref.messageId,
+  };
 }
 
 // ---- Claiming an edit (issue #1788) ---------------------------------------

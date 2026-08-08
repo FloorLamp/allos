@@ -46,6 +46,7 @@ import {
   correctionBursts,
   CORRECTION_FRESH_MIN,
   type CorrectionBurst,
+  type CorrectionMessageBinding,
 } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
@@ -490,16 +491,25 @@ function gatherFoodRankingSignals(
   // profile's timezone; the anchor is the profile's own configured slot hour. Nothing
   // here asks which BUCKET an event fell in, so the 14:59/15:01 cliff is gone and an
   // event that never claimed a meal still participates.
+  //
+  // `meal_slot` IS DELIBERATELY NOT READ — decided, not incidental (#2269 decision 2).
+  // Ranking learns WHEN THIS PERSON EATS, and the eating minute is honestly when even
+  // for a row carrying a deliberate Meal override: the 02:00 snack hand-filed under
+  // Evening was still eaten at 02:00, and letting the override contribute at its
+  // window's anchor would teach the nudge a time nobody ate at. Tallies and ranking
+  // answer DIFFERENT questions ("which section does this serving file under" vs "when
+  // does this person eat") and may legitimately disagree on an overridden row; #2269's
+  // log-path rule is what confines that disagreement to deliberate overrides.
   let slot: { name: string; date: string; weight?: number }[] = [];
   if (window) {
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+        `SELECT group_key AS name, date, logged_at, eaten_at
            FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
-      .all(profileId, since) as FoodLedgerEvent[];
+      .all(profileId, since) as Omit<FoodLedgerEvent, "meal_slot">[];
     slot = slotProximityOccurrences(
       events.map((e) => ({
         name: e.name,
@@ -620,7 +630,8 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, logged_at, eaten_at FROM food_log_events
+      `SELECT id, group_key, logged_at, eaten_at, notify_message_id
+         FROM food_log_events
         WHERE profile_id = ? AND logged_at >= ?
         ORDER BY logged_at, id
         LIMIT 100`
@@ -630,6 +641,7 @@ export function getRecentFoodTaps(
     group_key: string;
     logged_at: string;
     eaten_at: string | null;
+    notify_message_id: number | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
@@ -640,6 +652,9 @@ export function getRecentFoodTaps(
     // second chip tap composes onto the first. Read regardless of `time_source` — the
     // question is what the ledger holds, not who put it there.
     statedAt: r.eaten_at,
+    // Which message's tap wrote the row (#2264) — the burst's attribution, so a
+    // correction row renders only on the message that produced it.
+    messageRef: r.notify_message_id,
     // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
     // what it is rather than rendered as a mystery slug.
     label: isProteinNudgeKey(r.group_key)
@@ -649,14 +664,17 @@ export function getRecentFoodTaps(
 }
 
 // The correction rows one food keyboard should carry right now — the fresh taps,
-// collapsed into bursts, newest first, capped. One computation for the send, every
-// rebuild, and the hourly sweep (#221), so a chat can never show a chip the handler
-// would refuse.
+// collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
+// One computation for the send, every rebuild, and the hourly sweep (#221), so a chat
+// can never show a chip the handler would refuse. `binding` is the rendering message's
+// #2264 identity (correctionMessageBinding); omitting it returns the profile-wide set,
+// which only a caller that is not rendering a message may use.
 export function getFoodCorrectionBursts(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentFoodTaps(profileId, now), now);
+  return correctionBursts(getRecentFoodTaps(profileId, now), now, binding);
 }
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
