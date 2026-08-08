@@ -416,6 +416,11 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   await expect(page.getByTestId("cycling-heart-rate-zones")).toContainText(
     "Zone 2"
   );
+  // The distribution is windowed where the totals above are all-time (#2197), so
+  // the card has to say which weeks it counted.
+  await expect(page.getByTestId("cycling-heart-rate-zones")).toContainText(
+    "over the 12 weeks through"
+  );
   await expect(page.getByTestId("cycling-power-profile")).toContainText(
     "20 min best"
   );

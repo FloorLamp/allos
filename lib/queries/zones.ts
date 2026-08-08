@@ -25,7 +25,9 @@ import {
   weeklyZoneMinutes,
   zone2Adherence,
   zoneMinuteTotals,
+  zoneWindowSince,
   AEROBIC_THRESHOLD_ZONE,
+  ZONE_WINDOW_WEEKS,
   type ActivityWindowInput,
   type DayLoadInput,
   type HrBucket,
@@ -94,12 +96,12 @@ export interface TrainingZoneData {
 // hides it when the window doesn't reach today.
 export function getTrainingZoneData(
   profileId: number,
-  weeks = 12,
+  weeks = ZONE_WINDOW_WEEKS,
   endDate?: string
 ): TrainingZoneData {
   const td = today(profileId);
   const end = endDate ?? td;
-  const since = shiftDateStr(end, -(weeks * 7 - 1));
+  const since = zoneWindowSince(end, weeks);
   const zone2Target = getZone2WeeklyTargetMin(profileId);
   const model = getProfileZoneModel(profileId);
   const buckets = hrBuckets(profileId, since, end);

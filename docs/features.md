@@ -647,7 +647,13 @@ all-ride rollup also shows rolling 28-day form, personal records, ride-window HR
 distribution, power-curve bests, FTP-relative training load, aggregate power
 zones, mapped-route, telemetry, and segment-data coverage, segment PR records,
 and a linked ride
-history carrying the key sensor measurements. A seasonality panel keeps zero-ride
+history carrying the key sensor measurements. The HR distribution is the one
+windowed card in that rollup: it covers the same twelve-week training block the
+Trends Fitness zone section uses, anchored on the activity's most recent ride
+rather than on today, so an activity parked for a season still shows the shape of
+its last block. The card names those weeks and their end date instead of letting
+the surrounding all-time totals imply every ride ever.
+A seasonality panel keeps zero-ride
 months visible, normalizes month and season rates for the amount of calendar
 history actually observed, and names the longest completed-month quiet stretch.
 When daily weather exists for the profile's saved home area, it also compares
