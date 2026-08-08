@@ -186,9 +186,9 @@ describe("the offered `earlier…` hours (#2053)", () => {
     // The boundaries actually bit: 10:00 is Midday here (default calls it Morning),
     // and 17:00 — the newest offer — is already Evening.
     expect(options[0]).toMatchObject({ hhmm: "17:00", slot: "Evening" });
-    expect(
-      options.find((o) => o.hhmm === "10:00")
-    ).toMatchObject({ slot: "Midday" });
+    expect(options.find((o) => o.hhmm === "10:00")).toMatchObject({
+      slot: "Midday",
+    });
   });
 });
 

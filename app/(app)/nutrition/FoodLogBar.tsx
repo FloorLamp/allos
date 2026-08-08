@@ -687,8 +687,7 @@ export default function FoodLogBar({
     // stated time's derived window — the tab stays navigation, the chip stated the
     // consequence — so the optimistic bump moves THAT section's count, not the cell
     // being looked at. An undo (and an add with no statement) stays tab-scoped.
-    const filingSlot =
-      (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
+    const filingSlot = (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
     const before: ServingCounts = {
       day: counts[slug] ?? 0,
       meal: slotCountsByDate[activeDate]?.[filingSlot]?.[slug] ?? 0,

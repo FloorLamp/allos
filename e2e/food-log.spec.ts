@@ -672,7 +672,9 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   // The chip announces the FILING, not just the hour (#2269): `19:00 · Evening` —
   // the #2268 correction-sheet enrichment worn at log time.
   const chipText = (await newestHour.textContent())!.trim();
-  expect(chipText).toMatch(/^([01]\d|2[0-3]):[0-5]\d · (Morning|Midday|Evening)$/);
+  expect(chipText).toMatch(
+    /^([01]\d|2[0-3]):[0-5]\d · (Morning|Midday|Evening)$/
+  );
   const hhmm = chipText.split("·")[0].trim();
   await hydratedClick(page, newestHour);
   await expect(earlier).toHaveText(chipText);
@@ -712,9 +714,7 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
 
   // State the newest offered hour and read the filing its chip announces.
   await hydratedClick(page, page.getByTestId("food-eating-earlier"));
-  const newestHour = page
-    .locator('[data-testid^="food-eating-at-"]')
-    .first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
+  const newestHour = page.locator('[data-testid^="food-eating-at-"]').first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
   await expect(newestHour).toBeVisible();
   const filingSlot = (await newestHour.getAttribute("data-slot"))!;
   expect(["Morning", "Midday", "Evening"]).toContain(filingSlot);

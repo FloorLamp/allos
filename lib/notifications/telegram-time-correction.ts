@@ -341,9 +341,7 @@ async function rebuildDose(
   const statement = correctionBodyStatement(bursts, r.tz);
   await rebuildMessage(r.profileId, r.chatId, r.messageId, {
     ...rebuilt,
-    ...(statement
-      ? { body: `${plainBody(rebuilt.body)}\n${statement}` }
-      : {}),
+    ...(statement ? { body: `${plainBody(rebuilt.body)}\n${statement}` } : {}),
     actions: [...(rebuilt.actions ?? []), ...actions],
   });
 }

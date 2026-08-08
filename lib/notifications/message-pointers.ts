@@ -313,8 +313,7 @@ export function correctionMessageBinding(
         LIMIT 1`
     )
     .get(profileId, String(ref.chatId), kind) as
-    | { message_id: number }
-    | undefined;
+    { message_id: number } | undefined;
   return {
     messageRef,
     isNewest: newest == null || newest.message_id === ref.messageId,

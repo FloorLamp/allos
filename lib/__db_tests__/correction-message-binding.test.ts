@@ -409,7 +409,12 @@ describe("a dose correction row renders only on the message that produced it (#2
     stampTap(gammaLog.id, "2026-08-05 11:00:00");
 
     setNow("2026-08-05T11:05:00Z");
-    const base = { title: "💊 test", body: "b", actions: [], kind: "dose" as const };
+    const base = {
+      title: "💊 test",
+      body: "b",
+      actions: [],
+      kind: "dose" as const,
+    };
     // Message-blind, both fresh confirms form bursts — the set the defect used to
     // pour onto every live keyboard.
     expect(getDoseCorrectionBursts(pid, clockNow()).length).toBeGreaterThan(0);

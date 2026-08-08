@@ -32,10 +32,7 @@ import {
   DOSE_TIME_PREFIXES,
   openPickerAnchor,
 } from "@/lib/notifications/correction-rows";
-import {
-  burstsForMessage,
-  FRESH_SEND_BINDING,
-} from "@/lib/correction-time";
+import { burstsForMessage, FRESH_SEND_BINDING } from "@/lib/correction-time";
 import { zonedDateParts } from "@/lib/date";
 
 // The pure model behind #2019's eating-time chips and #2020's dose-time twin. No DB, no
