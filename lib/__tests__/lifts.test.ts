@@ -5,6 +5,7 @@ import {
   baseLiftName,
   composeVariant,
   defaultEquipment,
+  exerciseDisplayName,
   exerciseHistoryKey,
   isBarbellLift,
   isBodyweight,
@@ -165,6 +166,38 @@ describe("catalog exports", () => {
   it("ALL_LIFT_NAMES includes the composed variants", () => {
     expect(ALL_LIFT_NAMES).toContain("Dumbbell Curl");
     expect(ALL_LIFT_NAMES).toContain("Deadlift");
+  });
+});
+
+// #2199 — the surfaces that PERSIST an identity (the injury constraint's `exercises`)
+// hold a lowercased key, so rendering it needs the presentation inverse of
+// exerciseHistoryKey rather than the raw key.
+describe("exerciseDisplayName", () => {
+  it("renders a stored key in the catalog's own casing", () => {
+    expect(exerciseDisplayName(exerciseHistoryKey("Bench Press"))).toBe(
+      "Bench Press"
+    );
+    // Round-trips through the COLLAPSE too: a variant stores as its base and reads
+    // back as that base — the lift the constraint actually covers.
+    expect(exerciseDisplayName(exerciseHistoryKey("Dumbbell Curl"))).toBe(
+      "Curl"
+    );
+  });
+
+  it("capitalizes a custom lift's key, which has no canonical casing to recover", () => {
+    expect(exerciseDisplayName("sled push")).toBe("Sled Push");
+  });
+
+  it("never guesses a catalog lift from a shared word", () => {
+    // liftInfo's loose contains fallback would answer "Row" here; the display name
+    // must not rename someone's custom lift into a catalog one.
+    expect(exerciseDisplayName("garage rope row thing")).toBe(
+      "Garage Rope Row Thing"
+    );
+  });
+
+  it("is empty for an empty key", () => {
+    expect(exerciseDisplayName("  ")).toBe("");
   });
 });
 

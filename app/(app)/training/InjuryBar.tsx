@@ -5,7 +5,11 @@ import { IconPlus, IconX } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
+import Combobox from "@/components/Combobox";
 import {
+  baseLiftName,
+  exerciseDisplayName,
+  exerciseHistoryKey,
   REGION_SCOPES,
   type MovementPattern,
   type MuscleRegion,
@@ -65,7 +69,11 @@ function scopeSummary(inj: InjuryView): string {
     inj.laterality && inj.laterality !== "bilateral"
       ? `${inj.laterality} side · `
       : "";
-  if (inj.exercises.length > 0) return `${side}${inj.exercises.join(", ")}`;
+  // `exercises` are stored as canonical identities (exerciseHistoryKey), so they come
+  // back lowercased; render them in the catalog's own casing so the finest scope reads
+  // like its siblings ("Bench Press", not "bench press", beside "Chest" / "Pushing").
+  if (inj.exercises.length > 0)
+    return `${side}${inj.exercises.map(exerciseDisplayName).join(", ")}`;
   if (inj.movements.length > 0)
     return `${side}${inj.movements.map((m) => MOVEMENT_LABEL[m]).join(", ")}`;
   return `${side}${inj.regions.join(", ")}`;
@@ -87,9 +95,14 @@ const STATUS_LABEL: Record<InjuryStatus, string> = {
 
 export default function InjuryBar({
   injuries,
+  liftOptions,
   suggestActivateSituation,
 }: {
   injuries: InjuryView[];
+  // The frequency-ranked lift list the activity form, GoalForm and the routine builder
+  // already consume (#1676) — catalog base names plus the profile's own custom lifts,
+  // ordered by what this person actually trains.
+  liftOptions: string[];
   suggestActivateSituation: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -282,6 +295,7 @@ export default function InjuryBar({
               ))}
             </div>
           </fieldset>
+          <InjuryExercisePicker liftOptions={liftOptions} />
           <div>
             <label className="section-label" htmlFor="injury-laterality">
               Side (optional)
@@ -393,6 +407,113 @@ export default function InjuryBar({
         </form>
       )}
     </div>
+  );
+}
+
+// The FINEST level of the #2024 precedence — "these lifts", not "this pattern" or "this
+// region" (issue #2199). Its two siblings above are chip groups because their vocabularies
+// are 7 and 4 entries; the lift vocabulary is the whole catalog plus this profile's custom
+// lifts, so it is the SAME search-and-chip shape every other exercise picker in the app
+// uses: the shared Combobox over the frequency-ranked `liftOptions` (as in the routine
+// builder's slot candidates), picks accumulating as removable chips (as in the protocol
+// outcome picker), and one hidden `exercises` input per chip — the multi-valued field
+// `logInjury`/`updateInjury` already read.
+//
+// A pick is collapsed to its BASE name before it becomes a chip, because that is the
+// identity the constraint is stored and matched under: `exerciseHistoryKey` folds
+// "Dumbbell Curl" onto "curl", so a chip reading "Dumbbell Curl" would promise a precision
+// the engine cannot keep. The chip says "Curl" — the lift the constraint actually covers.
+function InjuryExercisePicker({ liftOptions }: { liftOptions: string[] }) {
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const pickedKeys = new Set(picked.map(exerciseHistoryKey));
+  const available = liftOptions.filter(
+    (name) => !pickedKeys.has(exerciseHistoryKey(name))
+  );
+  // The vocabulary this profile already has: the catalog plus their own logged customs.
+  // A typed name outside it is genuinely new, and the free-text row says so.
+  const knownKeys = new Set(liftOptions.map(exerciseHistoryKey));
+
+  function add(raw: string) {
+    const name = baseLiftName(raw.trim()).trim();
+    const key = exerciseHistoryKey(name);
+    setQuery("");
+    if (!key) return;
+    setPicked((xs) =>
+      xs.some((x) => exerciseHistoryKey(x) === key) ? xs : [...xs, name]
+    );
+  }
+
+  return (
+    <fieldset data-testid="injury-exercise-picker">
+      <legend className="section-label">
+        Narrow it further (optional) — specific lifts
+      </legend>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        Search the lifts you log. This is the most precise level: name a lift
+        and only that lift is affected — the rest of the movement, and the rest
+        of the region, stay in your suggestions.
+      </p>
+      {picked.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {picked.map((name) => (
+            <span
+              key={name}
+              data-testid="injury-exercise-chip"
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+            >
+              <span className="truncate">{name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${name}`}
+                title="Remove lift"
+                onClick={() => setPicked((xs) => xs.filter((x) => x !== name))}
+                className="text-brand-500 hover:text-rose-500"
+              >
+                <IconX className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* The submitted field. Names, not keys: the action canonicalizes through
+          exerciseHistoryKey at the request boundary, so the form never has to. */}
+      {picked.map((name) => (
+        <input key={name} type="hidden" name="exercises" value={name} />
+      ))}
+      <div className="mt-1.5">
+        <Combobox
+          value={query}
+          onChange={setQuery}
+          onPick={add}
+          options={available}
+          allowFreeText
+          ariaLabel="Add an affected lift"
+          placeholder="Search or type a lift…"
+          // The row shows the COLLAPSED name, so a typed "Dumbbell Curl" reads back as
+          // the "Curl" the constraint will actually be recorded against before the user
+          // commits to it — never a variant the identity can't keep apart.
+          freeTextLabel={(q) => {
+            const name = baseLiftName(q.trim()).trim();
+            return knownKeys.has(exerciseHistoryKey(name)) ? (
+              <>Use “{name}”</>
+            ) : (
+              <>Use “{name}” (custom lift)</>
+            );
+          }}
+        />
+      </div>
+      {picked.length > 0 && (
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="injury-exercise-precedence"
+        >
+          While specific lifts are named, they are what the constraint covers.
+          The regions and movements above still describe the injury; they
+          aren&apos;t applied on their own.
+        </p>
+      )}
+    </fieldset>
   );
 }
 
