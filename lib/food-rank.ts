@@ -61,6 +61,30 @@ export function blendFoodOrder(
 //
 // Do not re-add a capped demotion here. It shipped once (#1822 item 5, Telegram only),
 // diverged the two surfaces for two releases, and was reversed on purpose.
+//
+// ---- …and neither does SELECTION (owner ruling, #2225) ----
+//
+// The same line, one level up. The web bar used to compose its quick set from a tier
+// QUOTA (4 encourage / 1 neutral / 1 limit), which is the capped demotion expressed as
+// selection instead of weight: a group's tier moved it into or out of the fast path, so
+// a profile whose staples are all `encourage` saw a different six on the page than in
+// the chat. That quota is deleted. BOTH surfaces now take the head of this one ranking.
+// Tier may LABEL a group and SECTION the overflow; it may not decide which are fast.
+
+// How many of the ranked keys are the FAST path — the web log bar's quick rows and the
+// Telegram nudge's quick-log buttons, one number so the two agree BY CONSTRUCTION rather
+// than by coincidence (#2225). It also sets the nudge's progressive-expansion page size
+// in both directions (#1075/#1807), which is why an EVEN count matters there: the
+// keyboard lays two buttons per row. Kept small so the keyboard and the phone-width bar
+// stay scannable; the long tail is one disclosure ("More food groups" / "➕ Show more")
+// away on both surfaces, never unreachable (#559).
+//
+// The two surfaces still budget the slots in their own medium, and that asymmetry is
+// deliberate (#2225): the protein entry consumes one of the nudge's keyboard slots, while
+// the page strips it out of `groups` (getFoodBarOrder) and renders it as its own stepper
+// beside the six. Same count, same head of the same list, one control that is a button in
+// a chat and a stepper on a page.
+export const FOOD_QUICK_COUNT = 6;
 
 function decayWeights(
   occ: FoodOccurrence[],

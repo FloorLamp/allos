@@ -15,9 +15,9 @@ import {
   foodLessCallbackData,
   foodOptInCallbackData,
   countVisibleFoodButtons,
-  FOOD_NUDGE_BUTTON_COUNT,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
+import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 import { PROTEIN_NUDGE_EMOJI, PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   FOOD_GROUPS,
@@ -47,12 +47,12 @@ describe("renderFoodNudge", () => {
     const logButtons = (msg.actions ?? []).filter((a) =>
       a.data?.startsWith("food:")
     );
-    expect(logButtons).toHaveLength(FOOD_NUDGE_BUTTON_COUNT);
+    expect(logButtons).toHaveLength(FOOD_QUICK_COUNT);
     // Same groups, same order as the ranked input's head.
     // Each label leads with the group's catalog glyph (#1710) — the same vocabulary
     // the tally and the web food bar use.
     expect(logButtons.map((a) => a.label)).toEqual(
-      RANKED_GROUPS.slice(0, FOOD_NUDGE_BUTTON_COUNT).map(
+      RANKED_GROUPS.slice(0, FOOD_QUICK_COUNT).map(
         (g) => `${foodGroupEmoji(g.slug)} ${g.name}`
       )
     );
@@ -291,7 +291,7 @@ describe("renderFoodNudge 'Show less' (#1807)", () => {
 
   it("appears once expanded past the default, sharing the Show more row", () => {
     const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
-      visibleCount: FOOD_NUDGE_BUTTON_COUNT * 2,
+      visibleCount: FOOD_QUICK_COUNT * 2,
     });
     const controls = expandControls(msg);
     expect(controls.map((a) => a.label)).toEqual([

@@ -9,7 +9,7 @@ import {
   IconChevronDown,
 } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
-import { proteinSplitIndex } from "@/lib/food-rank";
+import { FOOD_QUICK_COUNT, proteinSplitIndex } from "@/lib/food-rank";
 import {
   FOOD_SLOTS,
   foodSlotForHhmm,
@@ -60,9 +60,11 @@ type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
-// undo = decrement. Groups are shown by tier (encourage → neutral → limit) so the foods
-// to eat more of lead; WITHIN each tier the server ranks the profile's staples first
-// (frequency + recency, issue #591) — the `groups` prop arrives pre-ordered.
+// undo = decrement. The `groups` prop arrives pre-ordered by ONE ranking — the profile's
+// staples first (frequency + recency + slot proximity, #591/#950/#2019) — and the quick
+// rows are simply its head (#2225). Tier (encourage → neutral → limit) labels each row
+// and sections the "More food groups" overflow; it never moves a group into or out of
+// the fast path.
 //
 // The row order is FROZEN for the life of this mount: the server re-ranks by
 // recency-decayed frequency on every read, so the server re-render each tap's action
@@ -92,18 +94,6 @@ function chipClass(pressed: boolean): string {
       : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
   }`;
 }
-
-const QUICK_GROUP_COUNT = 6;
-const QUICK_TIER_SEQUENCE: FoodGroupTier[] = [
-  "encourage",
-  "encourage",
-  "neutral",
-  "encourage",
-  "limit",
-  "encourage",
-  "neutral",
-  "limit",
-];
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
 // above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row
@@ -290,42 +280,33 @@ export default function FoodLogBar({
   );
   const orderedGroups = orderedGroupsBySlot[activeSlot];
 
-  // The quick set is frozen with the row order. Logged groups rank ahead of unlogged
-  // peers inside their tier, then eight slots are filled from a balanced encourage /
-  // neutral / limit sequence. The complete remainder is always one disclosure away.
+  // The quick set is the HEAD of the frozen row order — the first FOOD_QUICK_COUNT of
+  // this meal's ranked groups, exactly the slice the Telegram nudge takes off the same
+  // ranking (#2225). It is frozen with the order and for the same reason: the server
+  // re-ranks on every read, so a live re-rank would move rows out from under the finger
+  // that just tapped one.
+  //
+  // There used to be a tier QUOTA here (4 encourage / 1 neutral / 1 limit, each slot
+  // filled by the top-ranked unselected group of that tier). It was the capped demotion
+  // #1980 reversed, expressed as selection instead of weight, and it made the page and
+  // the chat show a different six for the same window. Tier still LABELS a row and
+  // SECTIONS the overflow below; it does not decide which are fast. The slot-`logged`
+  // pre-sort that fed the quota went with it — `rankFoodGroups` already carries a slot
+  // signal with #2019's proximity weighting, and the boost was a second, cruder
+  // derivation of that one question (#221).
+  //
+  // The complete remainder is always one disclosure away (#559).
   const quickSlugs = useRef<Record<FoodSlot, Set<string>> | null>(null);
   if (quickSlugs.current === null) {
     quickSlugs.current = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => {
-        const selected = new Set<string>();
-        const candidates = new Map(
-          TIER_ORDER.map((tier) => [
-            tier,
-            orderedGroupsBySlot[meal]
-              .filter((group) => group.tier === tier)
-              .map((group, order) => ({
-                group,
-                order,
-                logged: days.some(
-                  (day) => (day.slotCounts[meal][group.slug] ?? 0) > 0
-                ),
-              }))
-              .sort(
-                (a, b) =>
-                  Number(b.logged) - Number(a.logged) || a.order - b.order
-              )
-              .map(({ group }) => group),
-          ])
-        );
-        for (const tier of QUICK_TIER_SEQUENCE) {
-          const next = candidates
-            .get(tier)
-            ?.find((group) => !selected.has(group.slug));
-          if (next) selected.add(next.slug);
-          if (selected.size === QUICK_GROUP_COUNT) break;
-        }
-        return [meal, selected];
-      })
+      FOOD_SLOTS.map((meal) => [
+        meal,
+        new Set(
+          orderedGroupsBySlot[meal]
+            .slice(0, FOOD_QUICK_COUNT)
+            .map((group) => group.slug)
+        ),
+      ])
     ) as Record<FoodSlot, Set<string>>;
   }
   const initialGroup = initialFoodGroup
@@ -868,6 +849,13 @@ export default function FoodLogBar({
             key={g.slug}
             data-testid={`food-group-${g.slug}`}
             data-prefilled={g.slug === initialGroup?.slug ? "true" : undefined}
+            // The row's position in the frozen ranked order (#2225). Published so the
+            // invariant this surface now holds — the quick rows are the HEAD of the
+            // ranking, so nothing in the overflow outranks a quick row — is assertable
+            // from the rendered page, which the deleted tier quota would have failed.
+            // The overflow is grouped by tier, so rank is not recoverable from DOM order
+            // there.
+            data-rank={rankBySlug.get(g.slug)}
             className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
           >
             <FoodGroupIcon
