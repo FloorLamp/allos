@@ -44,9 +44,28 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
+// #2176 exempts a profile whose records-recency ask #1757 already owns — one with a
+// BOUND portal identity. Whether profile 1 has one depends on which neighbouring spec
+// ran before this file in this worker (the portal-setup spec binds identities through
+// the UI), so the precondition is MADE rather than assumed: any bound identity is
+// parked as `ignored` for the duration and restored afterwards, by id.
+let parkedIdentityIds: number[] = [];
+
 function seedFixture(): void {
   const frontier = dayBefore(ARCHIVE_DAYS_BEHIND);
   withDb((db) => {
+    parkedIdentityIds = (
+      db
+        .prepare(
+          "SELECT id FROM portal_identities WHERE profile_id = 1 AND ignored = 0"
+        )
+        .all() as { id: number }[]
+    ).map((r) => r.id);
+    for (const id of parkedIdentityIds) {
+      db.prepare("UPDATE portal_identities SET ignored = 1 WHERE id = ?").run(
+        id
+      );
+    }
     db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, source)
        VALUES (1, ?, 71.4, 19.2, 'fitbit-takeout')`
@@ -78,6 +97,12 @@ function clearFixture(): void {
     db.prepare(
       "DELETE FROM upcoming_dismissals WHERE profile_id = 1 AND signal_key LIKE 'records-recency:%'"
     ).run();
+    for (const id of parkedIdentityIds) {
+      db.prepare("UPDATE portal_identities SET ignored = 0 WHERE id = ?").run(
+        id
+      );
+    }
+    parkedIdentityIds = [];
   });
 }
 
