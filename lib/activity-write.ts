@@ -17,6 +17,7 @@
 // commits or rolls back atomically with its idempotency-key record.
 
 import { db, today, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
@@ -307,8 +308,13 @@ export function saveActivityCore(
              est_calories = CASE WHEN source IS NULL AND external_id IS NULL
                                  THEN ? ELSE est_calories END,
              -- Stamp last-edited (UTC, same form as created_at) so the Journal can
-             -- show "edited …" alongside "added …" (issue #11).
-             updated_at = datetime('now'),
+             -- show "edited …" alongside "added …" (issue #11). Bound from the
+             -- CLOCK SEAM (#2287), not SQL's own clock: this column is the LIVENESS
+             -- signal computeWorkoutPresence reads (lastTouchMs), and it subtracts it
+             -- from a seam-derived now. A row stamped by SQL's real clock and read
+             -- against a frozen now answers "quiet for 58 minutes" about a draft
+             -- saved seconds ago, which is the stale-dock defect #2287 reproduced.
+             updated_at = ?,
              -- Mark integration-owned rows as hand-edited so re-ingest won't
              -- clobber this edit (no-op for manual rows: source/external_id null).
              edited = CASE WHEN source IS NOT NULL OR external_id IS NOT NULL
@@ -328,6 +334,7 @@ export function saveActivityCore(
         componentsJson,
         equipmentId,
         estCalories,
+        sqlNow(),
         id,
         profile.id
       );
@@ -354,11 +361,17 @@ export function saveActivityCore(
       // Replace sets wholesale (parent ownership verified above).
       db.prepare("DELETE FROM exercise_sets WHERE activity_id = ?").run(id);
     } else {
+      // `created_at` is BOUND below, not left to the column's own SQL-clock DEFAULT
+      // (#2287). It is the first-seen instant computeWorkoutPresence falls back to
+      // while a freshly INSERTed draft has no `updated_at` yet, and it is subtracted
+      // from a seam-derived now — so the two have to come off the same clock.
+      // `sqlNow()` is byte-identical to what SQLite would have written in production;
+      // it only differs where the seam is frozen.
       const res = db
         .prepare(
           `INSERT INTO activities
-             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           date,
@@ -374,7 +387,8 @@ export function saveActivityCore(
           componentsJson,
           equipmentId,
           estCalories,
-          profile.id
+          profile.id,
+          sqlNow()
         );
       activityId = Number(res.lastInsertRowid);
     }

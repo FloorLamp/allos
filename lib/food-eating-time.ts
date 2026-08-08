@@ -179,8 +179,11 @@ export function eatingHoursOnDate(
 // lib/stated-time.ts (`acceptStatedAt`, #2236). The VALIDATE-NEVER-DROP posture of the
 // log path stays a fact about the CALLERS, not the rule: `null` costs the statement,
 // never the serving, while the correction path (#2227) treats the same `null` as a
-// refusal the user sees. `now` is injected and its clock is the CALLER'S choice,
-// deliberately: the online action resolves the choice against the app's own clock seam
-// and is comparing that seam with itself, while the offline replay is judging an instant
-// off an untrusted CLIENT wall clock and therefore compares against real time — the same
-// seam distinction `resolveQueuedTakenAt` documents at length.
+// refusal the user sees. `now` is injected because the rule is pure, NOT because the
+// clock is a per-caller taste: every caller — the online action, the correction path and
+// the offline replay — judges against the app's own clock seam (`clockNow()`). #2287
+// settled that: the replay used to pass a bare `new Date()`, on the reasoning that a
+// client instant is off an independent REAL clock, and the result was a statement
+// resolved against the seam being refused as "in the future" by a now that was not the
+// seam's. Validating an untrusted instant is still right; validating it against a
+// different clock than the one that produced it never was.

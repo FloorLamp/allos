@@ -15,6 +15,7 @@
 // authoritative value lives in the natural store; the snapshot never competes with it.
 
 import { db, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import {
   fitnessTest,
@@ -86,11 +87,14 @@ function ensureAssessmentActivity(
   currentActivityId: number | null
 ): number {
   if (currentActivityId != null) return currentActivityId;
+  // `created_at` is BOUND from the clock seam rather than left to the column's own
+  // SQL-clock DEFAULT (#2287): it is the first-seen instant workout presence falls
+  // back to, and presence subtracts it from a seam-derived now.
   const info = db
     .prepare(
-      "INSERT INTO activities (date, type, title, profile_id) VALUES (?, 'strength', 'Fitness check', ?)"
+      "INSERT INTO activities (date, type, title, profile_id, created_at) VALUES (?, 'strength', 'Fitness check', ?, ?)"
     )
-    .run(date, profileId);
+    .run(date, profileId, sqlNow());
   const activityId = Number(info.lastInsertRowid);
   db.prepare(
     "UPDATE fitness_assessments SET activity_id = ? WHERE id = ? AND profile_id = ?"

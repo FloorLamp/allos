@@ -3,6 +3,7 @@ import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
 import {
@@ -450,10 +451,13 @@ export async function commitWorkouts(
       e,
     ])
   );
+  // `created_at` is BOUND from the clock seam rather than left to the column's
+  // `datetime('now')` DEFAULT (#2287) — workout presence reads it as the row's
+  // first-seen instant and subtracts it from a seam-derived now.
   const insertActivity = db.prepare(
     `INSERT INTO activities
-       (date, type, title, notes, intensity, start_time, end_time, duration_min, profile_id)
-     VALUES (?, 'strength', ?, ?, ?, ?, ?, ?, ?)`
+       (date, type, title, notes, intensity, start_time, end_time, duration_min, profile_id, created_at)
+     VALUES (?, 'strength', ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertSet = db.prepare(
     `INSERT INTO exercise_sets
@@ -485,7 +489,8 @@ export async function commitWorkouts(
           activityClockHHMM(w.start_time),
           activityClockHHMM(w.end_time),
           w.duration_min ?? null,
-          profile.id
+          profile.id,
+          sqlNow()
         ).lastInsertRowid
       );
       const counters: Record<string, number> = {};

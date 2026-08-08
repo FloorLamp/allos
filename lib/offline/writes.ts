@@ -12,6 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
@@ -620,7 +621,12 @@ function applyFoodIntent(
   if (!payload || typeof payload !== "object" || !isRealIsoDate(date)) {
     return { status: "rejected" };
   }
-  const loggedAt = resolveCapturedInstant(capturedAt);
+  // The RECORD instant this replayed serving is filed at. Its ceiling is the app's
+  // own now (`clockNow()`, #2287), not a bare `new Date()`: the capture instant came
+  // off a browser that answers the SAME "now" the server does, so clamping it against
+  // a second, independent clock silently rewrites a seconds-old tap into a different
+  // instant. In production the seam IS real time, so this is inert.
+  const loggedAt = resolveCapturedInstant(capturedAt, clockNow());
   if (payload.entry === "serving") {
     const group = typeof payload.groupKey === "string" ? payload.groupKey : "";
     // A captured slot must still be a real slot; a garbage one rejects rather
@@ -630,17 +636,24 @@ function applyFoodIntent(
       if (!isFoodSlot(payload.mealSlot)) return { status: "rejected" };
       mealSlot = payload.mealSlot;
     }
-    // The stated eating time (#2053), validated rather than trusted. It came off the
-    // client's own wall clock, so — exactly like a queued dose's `clientTakenAt` — the
-    // comparison is between two independent REAL clocks and deliberately sits outside the
-    // app's test-clock seam (see resolveQueuedTakenAt's "real time on purpose" note). An
-    // instant that is in the future, or whose profile-local date isn't the day this
-    // serving is landing on, costs the STATEMENT and never the serving.
+    // The stated eating time (#2053), validated rather than trusted: an instant that
+    // is in the future, or whose profile-local date isn't the day this serving is
+    // landing on, costs the STATEMENT and never the serving.
+    //
+    // WHICH now it is judged against is the whole of #2287. It used to be a bare
+    // `new Date()` — deliberately outside the clock seam, on the reasoning that a
+    // client instant and the server's are two independent REAL clocks. They are not
+    // two clocks: both sides answer the app's own "now", and the seam is what makes
+    // that one answer. Reading the gate against real time while the statement was
+    // resolved against the seam is a comparison of a value with a DIFFERENT clock,
+    // and it refused a seconds-old statement as 58 minutes in the future — landing
+    // `time_source` NULL on a serving the user had explicitly timed. Inert in
+    // production, where the seam is the real clock.
     const stated = acceptEatenAt(
       typeof payload.eatenAt === "string" ? new Date(payload.eatenAt) : null,
       getTimezone(profileId),
       date,
-      new Date()
+      clockNow()
     );
     const outcome = logFoodServingCore(
       profileId,

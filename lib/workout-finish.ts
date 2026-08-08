@@ -15,7 +15,7 @@
 // outcome union — never an unconditional confirm.
 
 import { db, writeTx } from "./db";
-import { now as clockNow } from "./clock";
+import { now as clockNow, sqlNow } from "./clock";
 import { zonedDateParts } from "./date";
 import { minutesBetween } from "./activity-meta";
 import { getTimezone } from "./settings/display";
@@ -83,12 +83,16 @@ export function finishWorkoutSession(
   const duration =
     row.duration_min ??
     (row.start_time ? minutesBetween(row.start_time, hhmm) : null);
+  // `updated_at` binds the CLOCK SEAM (#2287), like `end_time` above: it is the
+  // liveness stamp computeWorkoutPresence subtracts from a seam-derived now
+  // (lastTouchMs), so writing it from SQL's own clock puts the two sides of that
+  // subtraction on different clocks. Inert in production, where the seam is real.
   writeTx(() => {
     db.prepare(
       `UPDATE activities
-         SET end_time = ?, duration_min = ?, updated_at = datetime('now')
+         SET end_time = ?, duration_min = ?, updated_at = ?
        WHERE id = ? AND profile_id = ?`
-    ).run(hhmm, duration, activityId, profileId);
+    ).run(hhmm, duration, sqlNow(), activityId, profileId);
   });
   return { kind: "finished", activityId };
 }
