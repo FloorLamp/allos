@@ -89,6 +89,7 @@ export const PANEL_IDS = [
   "prenatal-screening",
   "blood-type",
   "urinalysis",
+  "stool",
   "heavy-metals",
   "pfas",
   "vital-signs",
@@ -136,6 +137,7 @@ export const PANEL_LABELS: Record<PanelId, { label: string; order: number }> = {
   "prenatal-screening": { label: "Prenatal screening", order: 220 },
   "blood-type": { label: "Blood type", order: 230 },
   urinalysis: { label: "Urinalysis", order: 240 },
+  stool: { label: "Stool studies", order: 245 },
   "heavy-metals": { label: "Heavy metals", order: 250 },
   pfas: { label: "PFAS", order: 260 },
   "vital-signs": { label: "Vital signs", order: 270 },
@@ -209,6 +211,7 @@ export const BIOMARKER_PANELS: Record<
     "Cholesterol/HDL Ratio",
     "Triglyceride/HDL Ratio",
     "LDL/HDL Ratio",
+    "HDL as % of Cholesterol",
   ],
   "lipoprotein-particles": [
     "LDL Particle Number",
@@ -259,6 +262,7 @@ export const BIOMARKER_PANELS: Record<
     "Gamma-Glutamyl Transferase (GGT)",
     "Total Bilirubin",
     "Direct Bilirubin",
+    "Bilirubin, Indirect",
     "Albumin",
     "Globulin",
     "Total Protein",
@@ -297,6 +301,12 @@ export const BIOMARKER_PANELS: Record<
     "Nucleated Red Blood Cells, Absolute",
     "Reticulocytes",
     "Reticulocytes, Absolute",
+    // Reported ALONGSIDE their parent fraction, never instead of it (#2300) — an
+    // atypical-lymphocyte % and a band % are extra smear lines, so they are their own
+    // members here exactly as they are their own canonical entries.
+    "Atypical Lymphocytes",
+    "Band Neutrophils",
+    "Red Blood Cell Morphology",
   ],
   iron: [
     "Ferritin",
@@ -362,6 +372,7 @@ export const BIOMARKER_PANELS: Record<
     "Omega-3 DPA",
     "Omega-6 Arachidonic Acid",
     "Omega-6 Linoleic Acid",
+    "Omega-6 Total",
     "Omega-6/Omega-3 Ratio",
     "Arachidonic Acid/EPA Ratio",
   ],
@@ -374,6 +385,10 @@ export const BIOMARKER_PANELS: Record<
     "Immunoglobulin G Subclass 3",
     "Immunoglobulin G Subclass 4",
     "Rheumatoid Factor (RF)",
+    // The ANA screen joins the autoantibody half of this panel for the same reason RF
+    // does (#2300): it is an immunoglobulin assay, and a one-member `autoimmune` panel
+    // would be a thinner grouping than the one a report actually arrives on.
+    "ANA Screen, IFA",
   ],
   allergy: [
     "Immunoglobulin E (Total)",
@@ -461,6 +476,31 @@ export const BIOMARKER_PANELS: Record<
     "Red Blood Cells, Urine",
     "White Blood Cells, Urine",
     "Squamous Epithelial Cells, Urine",
+    "Bacteria, Urine",
+    "Casts, Hyaline, Urine",
+    "Casts, Granular, Urine",
+    "Casts, RBC, Urine",
+    "Crystals, Urine",
+    "Crystal Amount, Urine",
+    "Urine Color",
+    "Urine Appearance",
+    // The two urine RATIOS sit with the urine analytes they normalize (#2300), not
+    // with the serum `kidney` panel: both numerator and denominator are urinalysis
+    // members, so the biomarker page's "rest of this panel" offer shows a ratio next
+    // to the components it is computed from.
+    "Microalbumin/Creatinine Ratio, Urine",
+    "Protein/Creatinine Ratio, Urine",
+  ],
+  // Stool studies (#2300) — the dataset had zero fecal coverage before it. A separate
+  // panel rather than a corner of `urinalysis`: it is a different specimen, ordered
+  // and reported on its own report.
+  stool: [
+    "Fecal Occult Blood",
+    "Stool Color",
+    "Stool Consistency",
+    "Stool Ova and Parasites",
+    "Stool Red Blood Cells",
+    "Stool White Blood Cells",
   ],
   "heavy-metals": ["Lead", "Mercury", "Arsenic", "Aluminum"],
   pfas: [

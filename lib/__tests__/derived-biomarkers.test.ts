@@ -601,6 +601,228 @@ describe("computeDerivedReadings — pairing rules", () => {
   });
 });
 
+// ── The #2300 indices ────────────────────────────────────────────────────────
+// Every value below is an invented round number, not a reading from any corpus.
+
+describe("computeDerivedReadings — urine albumin/creatinine ratio (ACR)", () => {
+  const day = "2024-03-04";
+
+  it("computes albumin ÷ urine creatinine, scaled to mg/g", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Albumin, Urine": [{ date: day, value: 3, unit: "mg/dL" }],
+        "Creatinine, Urine": [{ date: day, value: 100, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    const acr = find(r, "Microalbumin/Creatinine Ratio, Urine", day);
+    expect(acr?.value).toBe(30);
+    expect(acr?.unit).toBe("mg/g");
+  });
+
+  it("gives the SAME answer from the mg/L albumin a lab usually prints", () => {
+    // 3 mg/dL == 30 mg/L. Dividing the mg/L value by a mg/dL creatinine without
+    // converting first would read 300 mg/g — moderately increased albuminuria — off a
+    // normal draw.
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Albumin, Urine": [{ date: day, value: 30, unit: "mg/L" }],
+        "Creatinine, Urine": [{ date: day, value: 100, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "Microalbumin/Creatinine Ratio, Urine", day)?.value).toBe(
+      30
+    );
+  });
+
+  // THE specimen guard. A panel commonly carries both creatinines, and in mg/dL they
+  // differ by ~100× — so picking the serum one turns a normal 30 mg/g into 3000 mg/g,
+  // landing a healthy result inside albuminuria staging.
+  it("refuses to compute from SERUM creatinine when no urine creatinine exists", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Albumin, Urine": [{ date: day, value: 3, unit: "mg/dL" }],
+        Creatinine: [{ date: day, value: 1, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(
+      find(r, "Microalbumin/Creatinine Ratio, Urine", day)
+    ).toBeUndefined();
+  });
+
+  it("takes the urine creatinine when BOTH specimens are on the draw", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Albumin, Urine": [{ date: day, value: 3, unit: "mg/dL" }],
+        "Creatinine, Urine": [{ date: day, value: 100, unit: "mg/dL" }],
+        Creatinine: [{ date: day, value: 1, unit: "mg/dL" }],
+      }),
+      demo("female", 40)
+    );
+    expect(find(r, "Microalbumin/Creatinine Ratio, Urine", day)?.value).toBe(
+      30
+    );
+  });
+
+  it("declines a non-positive urine creatinine (divide-by-zero guard)", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Albumin, Urine": [{ date: day, value: 3, unit: "mg/dL" }],
+        "Creatinine, Urine": [{ date: day, value: 0, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(
+      find(r, "Microalbumin/Creatinine Ratio, Urine", day)
+    ).toBeUndefined();
+  });
+});
+
+describe("computeDerivedReadings — urine protein/creatinine ratio", () => {
+  const day = "2024-03-04";
+
+  it("computes protein ÷ urine creatinine, scaled to mg/g", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Protein, Urine": [{ date: day, value: 15, unit: "mg/dL" }],
+        "Creatinine, Urine": [{ date: day, value: 100, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    const pcr = find(r, "Protein/Creatinine Ratio, Urine", day);
+    expect(pcr?.value).toBe(150);
+    expect(pcr?.unit).toBe("mg/g");
+  });
+
+  // The trap the declared input unit closes: `Protein, Urine` is curated UNITLESS (the
+  // dipstick pad), and convertToCanonical treats a null canonical unit as "already
+  // canonical" — so without a unit on the spec a mg/L row and a mg/dL row would both
+  // pass through and divide 10× apart.
+  it("converts a mg/L protein to mg/dL before dividing", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Protein, Urine": [{ date: day, value: 150, unit: "mg/L" }],
+        "Creatinine, Urine": [{ date: day, value: 100, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "Protein/Creatinine Ratio, Urine", day)?.value).toBe(150);
+  });
+
+  it("refuses SERUM creatinine here too", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Protein, Urine": [{ date: day, value: 15, unit: "mg/dL" }],
+        Creatinine: [{ date: day, value: 1, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "Protein/Creatinine Ratio, Urine", day)).toBeUndefined();
+  });
+});
+
+describe("computeDerivedReadings — HDL as % of Cholesterol", () => {
+  const day = "2024-03-04";
+
+  it("computes HDL ÷ total cholesterol × 100", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Total Cholesterol": [{ date: day, value: 200, unit: "mg/dL" }],
+        "HDL Cholesterol": [{ date: day, value: 50, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    const pct = find(r, "HDL as % of Cholesterol", day);
+    expect(pct?.value).toBe(25);
+    expect(pct?.unit).toBe("%");
+  });
+
+  it("gives the same percentage from mmol/L inputs (converted first)", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Total Cholesterol": [
+          { date: day, value: 200 / 38.67, unit: "mmol/L" },
+        ],
+        "HDL Cholesterol": [{ date: day, value: 50 / 38.67, unit: "mmol/L" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "HDL as % of Cholesterol", day)?.value).toBe(25);
+  });
+
+  it("declines a non-positive total cholesterol (divide-by-zero guard)", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Total Cholesterol": [{ date: day, value: 0, unit: "mg/dL" }],
+        "HDL Cholesterol": [{ date: day, value: 50, unit: "mg/dL" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "HDL as % of Cholesterol", day)).toBeUndefined();
+  });
+});
+
+describe("computeDerivedReadings — Omega-6 Total", () => {
+  const day = "2024-03-04";
+
+  it("computes the omega-6/omega-3 ratio × the omega-3 total", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Omega-6/Omega-3 Ratio": [{ date: day, value: 5, unit: "ratio" }],
+        "Omega-3 Total (OmegaCheck)": [
+          { date: day, value: 6, unit: "% by wt" },
+        ],
+      }),
+      noDemo
+    );
+    const total = find(r, "Omega-6 Total", day);
+    expect(total?.value).toBe(30);
+    expect(total?.unit).toBe("% by wt");
+  });
+
+  // THE derivation trap: arachidonic + linoleic is the obvious route and it
+  // understates the printed total by DGLA and the minor omega-6 species the panel
+  // never itemizes. Here the itemized lines sum to 29 while the true total is 30 —
+  // the index must ignore them entirely.
+  it("does NOT sum the itemized omega-6 components", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Omega-6/Omega-3 Ratio": [{ date: day, value: 5, unit: "ratio" }],
+        "Omega-3 Total (OmegaCheck)": [
+          { date: day, value: 6, unit: "% by wt" },
+        ],
+        "Omega-6 Arachidonic Acid": [{ date: day, value: 9, unit: "% by wt" }],
+        "Omega-6 Linoleic Acid": [{ date: day, value: 20, unit: "% by wt" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "Omega-6 Total", day)?.value).toBe(30);
+  });
+
+  it("emits nothing when only the itemized components are on the draw", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Omega-6 Arachidonic Acid": [{ date: day, value: 9, unit: "% by wt" }],
+        "Omega-6 Linoleic Acid": [{ date: day, value: 20, unit: "% by wt" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "Omega-6 Total", day)).toBeUndefined();
+  });
+});
+
+// Bilirubin, Indirect is a canonical entry WITHOUT a derived spec, on purpose: when
+// either component is reported below its detection limit the subtraction is undefined
+// and labs print "Can't Calc" rather than guess (#2300 §3).
+describe("Bilirubin, Indirect is curated but never computed", () => {
+  it("has a canonical entry and no derived spec", () => {
+    expect(canonicalBiomarkerForName("Bilirubin, Indirect")).toBeTruthy();
+    expect(DERIVED_NAMES).not.toContain("Bilirubin, Indirect");
+  });
+});
+
 describe("derivedInputCanonicalNames", () => {
   it("lists every distinct component analyte", () => {
     expect(new Set(derivedInputCanonicalNames())).toEqual(
@@ -619,8 +841,21 @@ describe("derivedInputCanonicalNames", () => {
         "Red Cell Distribution Width (RDW)",
         "Alkaline Phosphatase",
         "White Blood Cell Count",
+        "Albumin, Urine",
+        "Creatinine, Urine",
+        "Protein, Urine",
+        "Omega-6/Omega-3 Ratio",
+        "Omega-3 Total (OmegaCheck)",
       ])
     );
+  });
+
+  it("asks for the URINE creatinine as its own series, not the serum one (#2300)", () => {
+    // The two are separate keys in the series map the query layer fills, which is what
+    // makes the ACR/PCR specimen guard structural rather than a naming convention.
+    const names = derivedInputCanonicalNames();
+    expect(names).toContain("Creatinine, Urine");
+    expect(names).toContain("Creatinine");
   });
 });
 

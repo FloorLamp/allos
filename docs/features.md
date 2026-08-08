@@ -1730,12 +1730,19 @@ dates, or profile). A tracked gap that a later catalog update covers shows a
 ### Derived indices
 
 Standard derived indices (Non-HDL cholesterol, the cholesterol/HDL, LDL/HDL and
-triglyceride/HDL ratios, HOMA-IR,
-race-free CKD-EPI 2021 eGFR, and Levine **PhenoAge** — a biological-age estimate
+triglyceride/HDL ratios, HDL as a percentage of total cholesterol, HOMA-IR,
+race-free CKD-EPI 2021 eGFR, the urine albumin/creatinine and protein/creatinine
+ratios, total omega-6, and Levine **PhenoAge** — a biological-age estimate
 in years) are computed from your existing labs and shown alongside them, marked
 "derived" with their formula (eGFR/HOMA-IR/PhenoAge only appear when the needed
 labs and age/sex are on file; PhenoAge requires a full nine-analyte draw and an
-adult profile). PhenoAge is also surfaced as a **biological-age card** pinned
+adult profile). Each index is computed only from **measured** components on the
+same draw — never from another computed index — and a value your lab printed
+always wins over a computed one. Indirect bilirubin is recorded when a lab prints
+it but never computed: when either component is reported below the detection
+limit the subtraction is undefined, which is why labs print "Can't Calc".
+
+PhenoAge is also surfaced as a **biological-age card** pinned
 above the Biomarkers table: your estimated biological age, how it compares to
 your calendar age (younger is better), your pace of aging across draws, and the
 nine inputs it's built from (folded behind a toggle on a phone) — with a

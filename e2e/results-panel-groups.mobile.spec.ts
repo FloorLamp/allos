@@ -309,13 +309,14 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   await expect(page.getByRole("link", { name: "Next" })).toHaveCount(0);
 
   // A whole panel's count, not the sliver of it that fit on a page: five stored lipid
-  // analytes plus the four derived lipid indices (#1582 added the two cholesterol
-  // ratios beside Non-HDL and TG/HDL), and three of the nine currently out of range
-  // (total cholesterol, LDL, and the derived Non-HDL they imply — both ratios land
-  // inside their reference ceilings).
+  // analytes plus the five derived lipid indices (#1582 added the two cholesterol
+  // ratios beside Non-HDL and TG/HDL; #2300 added HDL as % of Cholesterol), and three
+  // of the ten currently out of range (total cholesterol, LDL, and the derived Non-HDL
+  // they imply — both ratios land inside their reference ceilings, and the HDL share
+  // carries no band at all, so neither can flag).
   await expect(
     group(page, "lipids").getByTestId("biomarker-panel-toggle")
-  ).toHaveAttribute("aria-label", "Lipids · 9 analytes · 3 flagged");
+  ).toHaveAttribute("aria-label", "Lipids · 10 analytes · 3 flagged");
   // Twenty-seven stored analytes across seven panels, three draws each — eighty-one
   // rows plus the derived indices, all of it shipped at once.
   await expect(
@@ -433,21 +434,22 @@ test("an open group over the cap says what it is holding back, and loads the res
   // A narrowing filter opens every group it matched, which is exactly where an
   // unbounded payload used to come back: "open" meant "ship all of it". A group that
   // arrives open now ships at most PANEL_ROW_LIMIT readings and says so. Lipids on
-  // this profile is five stored analytes over three draws plus four derived indices
-  // per draw — twenty-seven readings, past the cap.
+  // this profile is five stored analytes over three draws plus FIVE derived indices
+  // per draw (#2300 added HDL as % of Cholesterol to the four) — thirty readings, past
+  // the cap.
   const page = await openIndex(browser, `${BIOMARKERS}?panel=lipids`);
   const lipids = group(page, "lipids");
   await expect(lipids).toHaveAttribute("data-open", "true");
-  await expect(lipids).toHaveAttribute("data-total", "27");
+  await expect(lipids).toHaveAttribute("data-total", "30");
 
   const more = lipids.getByTestId("biomarker-panel-more");
-  await expect(more).toContainText(`Showing ${PANEL_ROW_LIMIT} of 27 readings`);
+  await expect(more).toContainText(`Showing ${PANEL_ROW_LIMIT} of 30 readings`);
   await expect(lipids.locator("tr")).toHaveCount(PANEL_ROW_LIMIT + 2); // header + rows + footer
 
   // Asking for the rest is one request for one panel, and the footer goes away
   // because there is nothing left to hold back.
   await hydratedClick(page, lipids.getByTestId("biomarker-panel-load-all"));
-  await expect(lipids.locator("tr")).toHaveCount(28); // header + 27 readings
+  await expect(lipids.locator("tr")).toHaveCount(31); // header + 30 readings
   await expect(more).toHaveCount(0);
 
   await page.context().close();
