@@ -551,9 +551,16 @@ See `docs/internals/e2e-hygiene.md`.
   Actions for a surface live under the route that renders them (or in
   `components/` when several surfaces share them) — never under the name of a
   route that no longer exists.
-- `revalidatePath` takes a plain string, so `typedRoutes` cannot check it. Every
-  target must be a real route; `lib/__tests__/nav-routes.test.ts` sweeps them,
-  including array fan-outs.
+- Cache revalidation goes through `revalidateRoute` (`lib/revalidate.ts`), never
+  Next's raw `revalidatePath`. The wrapper's parameter is Next's generated route
+  union, so every target — single, interpolated, or inside an array fan-out — is
+  compile-checked, and a dead one fails `npm run build` at the call site instead
+  of reaching production as a silent no-op refresh (#1636/#2149). A list declared
+  away from its call site is typed `readonly RevalidateTarget[]`; a dynamic
+  route's `[param]` literal is stored through `revalidateTarget`, the same
+  check-then-widen pattern `lib/hrefs.ts` uses for dynamic hrefs. The old text
+  sweep in `lib/__tests__/nav-routes.test.ts` is demoted to one assertion: nothing
+  outside the wrapper imports `revalidatePath`.
 - Removing or merging a route does not earn a compatibility redirect. The legacy
   redirect table was deleted in #1635 and `next.config.js` ships none; a retired
   URL 404s, and adding a redirect back is a per-case product decision, not the

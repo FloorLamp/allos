@@ -1,7 +1,7 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
@@ -221,7 +221,7 @@ export async function startImport(
     });
   });
 
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ok: true, jobId };
 }
 
@@ -260,7 +260,7 @@ async function runImportJob(
       profileId
     );
   }
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 interface ImportJobRow {
@@ -411,7 +411,7 @@ export async function commitImportJob(
     jobId,
     profile.id
   );
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ok: true, message };
 }
 
@@ -423,7 +423,7 @@ export async function discardImportJob(jobId: number): Promise<void> {
     jobId,
     profile.id
   );
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 // AI-supplied dates: require a real ISO calendar date (shape + validity) before
@@ -517,8 +517,8 @@ export async function commitWorkouts(
     }
   });
 
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return { ok: true, workouts: nWorkouts, sets: nSets };
 }
 
@@ -606,18 +606,18 @@ export async function commitBiomarkers(
     insertedRecordIds: outcome.insertedRecordIds,
   });
   const sampleCount = outcome.heightCount + outcome.headCircCount;
-  revalidatePath("/results");
-  revalidatePath("/data");
-  revalidatePath("/");
-  if (outcome.immCount) revalidatePath("/records");
+  revalidateRoute("/results");
+  revalidateRoute("/data");
+  revalidateRoute("/");
+  if (outcome.immCount) revalidateRoute("/records");
   if (outcome.bodyMetricCount || sampleCount) {
-    revalidatePath("/trends");
+    revalidateRoute("/trends");
     // Height / head-circumference samples land on the growth charts, which are a
     // route of their own (the old standalone /body page is long gone).
-    revalidatePath("/trends/growth");
+    revalidateRoute("/trends/growth");
   }
-  if (outcome.medCount) revalidatePath("/medications");
-  if (adopted.changed) revalidatePath("/settings");
+  if (outcome.medCount) revalidateRoute("/medications");
+  if (adopted.changed) revalidateRoute("/settings");
   return {
     ok: true,
     count: outcome.recCount,

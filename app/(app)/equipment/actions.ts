@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   createEquipment,
   updateEquipment,
@@ -34,10 +34,10 @@ function clean(input: EquipmentFormInput): EquipmentFormInput {
 function refresh() {
   // Equipment now lives at /equipment (index + detail); it still affects the
   // importer, the journal's per-set implement labels, and protocol gear refs.
-  revalidatePath("/equipment");
-  revalidatePath("/data");
-  revalidatePath("/training");
-  revalidatePath("/longevity");
+  revalidateRoute("/equipment");
+  revalidateRoute("/data");
+  revalidateRoute("/training");
+  revalidateRoute("/longevity");
 }
 
 export async function createEquipmentAction(

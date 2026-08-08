@@ -7,7 +7,7 @@
 // requireWriteAccess() (any login with write access to the active profile may edit),
 // so the auth tier is unchanged (#319).
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   setSmokingHistory,
   setRiskAttributes,
@@ -44,8 +44,8 @@ export async function saveSmokingHistory(formData: FormData) {
 
   setSmokingHistory(profile.id, { status, packYears, quitYear });
   // The record drives the preventive reminders (Upcoming) and the medical surface.
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
 }
 
 // ---- Health risk factors (profile scope, issue #517) ----
@@ -67,9 +67,9 @@ export async function saveRiskFactors(formData: FormData) {
   // data-quality "review risk factors" gap clears even when the user leaves the list
   // empty (absence-of-flags can't tell an intentional empty review from a fresh one).
   setRiskAttributesReviewed(profile.id, true);
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
+  revalidateRoute("/");
 }
 
 // ---- Emergency card (profile scope, issue #42) ----
@@ -89,9 +89,9 @@ export async function saveEmergencyCardSettings(formData: FormData) {
     phone: String(formData.get("emergency_contact_phone") ?? ""),
     relation: String(formData.get("emergency_contact_relation") ?? ""),
   });
-  revalidatePath("/records");
+  revalidateRoute("/records");
   // The card renders as the Passport page's #emergency section (#1042 phase 3).
-  revalidatePath("/profile");
+  revalidateRoute("/profile");
 }
 
 // ---- Advance directives (profile scope, issue #1848) ----
@@ -115,6 +115,6 @@ export async function saveAdvanceDirectives(formData: FormData) {
     organDonor: field("organ_donor"),
     documentsAt: field("directive_documents_at"),
   });
-  revalidatePath("/records");
-  revalidatePath("/profile");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
 }

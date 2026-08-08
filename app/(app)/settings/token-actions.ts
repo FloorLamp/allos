@@ -20,7 +20,7 @@
 // stored, no listing exposes secret material, and neither of these actions logs the
 // token. The audit rows carry the token ID and the login only.
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireLoginWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -78,7 +78,7 @@ export async function createApiTokenAction(
     // Identifiers only: which credential family, and its capability. Never the secret.
     detail: `api-token ${rawScope}`,
   });
-  revalidatePath("/settings/tokens");
+  revalidateRoute("/settings/tokens");
   return { ok: true, token: minted.token, name, scope: rawScope };
 }
 
@@ -107,6 +107,6 @@ export async function revokeApiTokenAction(
     target: String(id),
     detail: "api-token",
   });
-  revalidatePath("/settings/tokens");
+  revalidateRoute("/settings/tokens");
   return { ok: true };
 }

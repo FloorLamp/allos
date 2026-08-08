@@ -4,11 +4,11 @@
 // profile names, item names and finding text across every profile, so a member must
 // never reach it. Mirrors clearErrors() for the sibling errors.jsonl surface.
 import { requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { clearNotifyLog } from "@/lib/notify-log";
 
 export async function clearNotifyEvents(): Promise<void> {
   await requireAdmin();
   clearNotifyLog();
-  revalidatePath("/settings/notify-log");
+  revalidateRoute("/settings/notify-log");
 }

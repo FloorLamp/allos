@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
@@ -105,9 +105,9 @@ export async function logFoodServing(
     eatenAt ? { eatenAt: utcInstant(eatenAt), source: "stated" } : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
-  revalidatePath("/nutrition");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return {
     ok: true,
     servings: outcome.servings,
@@ -136,9 +136,9 @@ export async function undoFoodServing(
     fields.mealSlot
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
-  revalidatePath("/nutrition");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return {
     ok: true,
     servings: outcome.servings,
@@ -229,9 +229,9 @@ export async function updateFoodLogEvent(
     return formError("That time isn't on the selected day.");
   if (outcome.kind === "not-correctable")
     return formError("Protein logs are corrected from the protein total.");
-  revalidatePath("/nutrition");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return { ok: true, from: outcome.from, to: outcome.to };
 }
 
@@ -266,9 +266,9 @@ export async function deleteFoodLogEvent(
     return formError("That serving is no longer available.");
   if (outcome.kind === "not-deletable")
     return formError("Protein logs are removed from the protein total.");
-  revalidatePath("/nutrition");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return { ok: true, vacated: outcome.vacated, undoId: outcome.undoId };
 }
 
@@ -306,8 +306,8 @@ export async function addProteinGrams(
   const outcome = addProteinGramsCore(profile.id, fields.date, fields.grams);
   if (outcome.kind === "invalid")
     return formError("Enter a protein amount between 1 and 300 grams.");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return { ok: true, grams: outcome.grams };
 }
 
@@ -324,8 +324,8 @@ export async function undoProteinGrams(
   const outcome = undoProteinGramsCore(profile.id, fields.date, fields.grams);
   if (outcome.kind === "invalid")
     return formError("Enter a protein amount in grams.");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return { ok: true, grams: outcome.grams };
 }
 
@@ -362,8 +362,8 @@ export async function trackFoodHabit(formData: FormData): Promise<FormResult> {
        DO UPDATE SET per_week = excluded.per_week`
     ).run(slug, perWeek, profile.id);
   });
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -389,7 +389,7 @@ export async function untrackFoodHabit(
   // THEN removes the target, in one IMMEDIATE transaction (#468, #748 item 5) so the two
   // statements can't half-apply and strand a protocol pointing at a deleted target.
   deleteFrequencyTargetRow(profile.id, id);
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   return formOk();
 }

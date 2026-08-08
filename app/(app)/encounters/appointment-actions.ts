@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   completeAndLinkEncounterTx,
   setAppointmentStatus,
@@ -62,9 +62,9 @@ function scheduleOf(
 // changes, so keep their caches in lockstep. Appointments and encounters now share
 // the /encounters surface (issue #288), so that's the one page path to revalidate.
 function revalidate() {
-  revalidatePath("/records");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 export async function createAppointment(
@@ -251,7 +251,7 @@ export async function completeCarePlanItemFromAppointment(
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that care-plan item.");
   const outcome = markCarePlanItemDone(profile.id, id);
-  revalidatePath("/records");
+  revalidateRoute("/records");
   revalidate();
   return carePlanDoneResult(outcome);
 }
@@ -330,6 +330,6 @@ export async function logVisitFromAppointment(
     return formError("Couldn't find that appointment.");
   }
   revalidate();
-  revalidatePath("/profile");
+  revalidateRoute("/profile");
   return formOk();
 }

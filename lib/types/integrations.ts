@@ -4,7 +4,7 @@
 
 // TYPE-ONLY (erased at build): `lib/hrefs` imports IntegrationId back from here, so a
 // value import would be a real cycle. Route policy still lives there.
-import type { AppRoute } from "../hrefs";
+import type { RevalidateTarget } from "../revalidate";
 
 // ---- Integrations ----
 
@@ -94,10 +94,11 @@ export interface IntegrationPullFacet {
   // pullCadenceMinutes (lib/integrations/pull-cadence.ts) so the guard, any future
   // operator surface, and the docs share one derivation.
   cadenceMinutes?: number;
-  // The surfaces a completed run's data feeds. The one generic sync action
-  // revalidates exactly these; lib/__tests__/nav-routes.test.ts sweeps them, since
-  // `revalidatePath` takes a plain string that typedRoutes cannot check.
-  revalidates: readonly AppRoute[];
+  // The surfaces a completed run's data feeds. The one generic sync action fans
+  // `revalidateRoute` over exactly these, so each is checked against the real route
+  // tree by the compiler (#2149) — a retired surface can no longer go quietly
+  // un-revalidated on every manual sync.
+  revalidates: readonly RevalidateTarget[];
 }
 
 export interface IntegrationBackfillFacet {

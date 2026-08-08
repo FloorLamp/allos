@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
@@ -31,10 +31,10 @@ export type DeleteProtocolResult =
 function revalidateProtocols(id?: number) {
   // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
   // the per-protocol detail route below still lives under /protocols.
-  revalidatePath("/longevity");
-  if (id) revalidatePath(`/protocols/${id}`);
-  revalidatePath("/timeline");
-  revalidatePath("/");
+  revalidateRoute("/longevity");
+  if (id) revalidateRoute(`/protocols/${id}`);
+  revalidateRoute("/timeline");
+  revalidateRoute("/");
 }
 
 function str(formData: FormData, key: string): string | null {

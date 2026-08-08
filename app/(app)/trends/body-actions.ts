@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { getUnitPrefs } from "@/lib/settings";
 import { insertBodyMetric } from "@/lib/offline/writes";
@@ -33,8 +33,8 @@ export async function addBodyMetric(formData: FormData) {
   });
   // Only revalidate when a row actually landed — a rejected input is a no-op.
   if (!wrote) return;
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // Note: document-sourced rows (source 'document:<id>') are a projection of
@@ -49,7 +49,7 @@ export async function deleteBodyMetric(
   // Capture into the undo holding table and delete in one transaction (issue #30)
   // so the entry can be restored from the toast.
   const undoId = captureDelete("body-metric", profile.id, id);
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return { undoId };
 }

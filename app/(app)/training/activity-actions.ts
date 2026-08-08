@@ -2,7 +2,7 @@
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
 import { type JournalFeedPage } from "@/lib/journal-feed";
@@ -38,10 +38,10 @@ import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 // summary/comparison/history may have changed. Kept in one place so the next
 // activity-reading surface is added once, not in each mutation.
 function revalidateActivitySurfaces() {
-  revalidatePath("/training");
-  revalidatePath("/training/rides/[id]", "page");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // Create a new activity, or update an existing one when `id` is present. Returns

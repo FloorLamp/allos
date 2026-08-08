@@ -7,7 +7,7 @@
 // write core (lib/fitness-assessment) and revalidates /training. The core is profileId-
 // first and never imports lib/auth.
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -212,7 +212,7 @@ export async function saveFitnessTest(
       "Fitness check refreshed — retest clock restarts today.",
   });
 
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return { ok: true, outcome: testOutcome, finale, closureToast };
 }
 
@@ -242,6 +242,6 @@ export async function setFitnessCadence(fd: FormData): Promise<SaveResult> {
   if (days == null || days <= 0)
     return { ok: false, error: "enter a cadence in days" };
   setFitnessRetestCadenceDays(profile.id, days);
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return { ok: true };
 }

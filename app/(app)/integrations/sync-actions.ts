@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import type { IntegrationId } from "@/lib/types";
 import { getPullIntegration } from "@/lib/integrations/registry";
 import { getPullRunner } from "@/lib/integrations/pull-runners";
@@ -44,7 +44,7 @@ export async function syncNow(id: IntegrationId): Promise<SyncNowResult> {
       log.error("sync-now failed", { provider: id, error: res.error });
       return { status: "error", message };
     }
-    for (const p of def.pull.revalidates) revalidatePath(p);
+    revalidateRoute(def.pull.revalidates);
     return { status: "done", message: runner.describe(res) };
   } catch (err) {
     log.error("sync-now threw", { provider: id, err: String(err) });

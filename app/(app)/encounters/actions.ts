@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -20,9 +20,9 @@ import { nullEncounterLinks } from "@/lib/queries";
 // registry via create-on-type names, same as the appointments/medical forms.
 
 function revalidateEncounters() {
-  revalidatePath("/records");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>

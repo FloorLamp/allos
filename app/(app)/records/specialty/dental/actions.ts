@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -34,10 +34,10 @@ import {
 function revalidateDental() {
   // Dental folded into Health record (#1042 final tail): the surface is now
   // /records#dental.
-  revalidatePath("/records");
-  revalidatePath("/timeline");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/timeline");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>
@@ -167,7 +167,7 @@ export async function trackDentalFollowUp(
   );
   if (res.kind === "invalid") return formError("Couldn't find that record.");
   revalidateDental();
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
   return formOk();
 }

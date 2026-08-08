@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { casUpdate } from "@/lib/tx";
 import { sqlNow } from "@/lib/clock";
@@ -45,7 +45,7 @@ export async function dismissGoalPacing(
   if (!dedupeKey.startsWith(GOAL_PACE_PREFIX))
     return formError("Couldn't dismiss that goal-pacing item.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return formOk();
 }
 
@@ -323,8 +323,8 @@ export async function createGoal(formData: FormData): Promise<FormResult> {
     `INSERT INTO goals (${GOAL_COLS}, baseline_value, profile_id, status, created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
   ).run(...goalValues(c), baseline, profile.id, sqlNow());
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -365,8 +365,8 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
   ) {
     restoreFinding(profile.id, goalPaceSignalKey(id));
   }
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -383,8 +383,8 @@ export async function updateProgress(formData: FormData): Promise<FormResult> {
   db.prepare(
     "UPDATE goals SET current_value = ? WHERE id = ? AND profile_id = ?"
   ).run(value, id, profile.id);
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -409,8 +409,8 @@ export async function setStatus(formData: FormData): Promise<FormResult> {
     )
   );
   if (cas.kind === "stale") return formError("Couldn't find that goal.");
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -433,8 +433,8 @@ export async function setArchived(formData: FormData): Promise<FormResult> {
     )
   );
   if (cas.kind === "stale") return formError("Couldn't find that goal.");
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -454,7 +454,7 @@ export async function deleteGoal(formData: FormData): Promise<FormResult> {
   // the suppression row by key; profile-scoped.
   restoreFinding(profile.id, `goal:${id}`);
   restoreFinding(profile.id, goalPaceSignalKey(id));
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return formOk();
 }

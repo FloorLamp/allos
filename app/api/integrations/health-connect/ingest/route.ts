@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { getTimezone } from "@/lib/settings";
 import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
@@ -333,16 +333,14 @@ export async function POST(req: Request) {
   // Refresh the views the imported data feeds into. (`/medical` and `/import`
   // both folded into the `/data` hub — repointed here so the import view
   // revalidates.)
-  for (const p of [
+  revalidateRoute([
     "/",
     "/trends",
     "/training",
     "/results",
     "/data",
     "/integrations/health-connect",
-  ]) {
-    revalidatePath(p);
-  }
+  ]);
 
   return Response.json({ ok: true, counts: summary });
 }

@@ -4,7 +4,7 @@
 // (the account→tokens precedent), keeping the #319 rule intact: actions live with
 // the surface that posts them, and every action here gates on requireAdmin().
 import { requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { setAiPrefs } from "@/lib/settings";
 import { setTierConfig, clearTierApiKey } from "@/lib/settings/ai-tiers";
 import { parseApiShape, type TierName } from "@/lib/ai-tiers";
@@ -30,7 +30,7 @@ export async function saveAiTierConfig(formData: FormData) {
     apiKey,
   });
   if (formData.get("clear_api_key") === "1") clearTierApiKey(tier);
-  revalidatePath("/settings/ai");
+  revalidateRoute("/settings/ai");
 }
 
 // Test-connection affordance (the register-webhook precedent): ping the tier through
@@ -61,5 +61,5 @@ export async function saveAiSettings(formData: FormData) {
       formData.get("recommendation_max_runs_per_day")
     ),
   });
-  revalidatePath("/settings/ai");
+  revalidateRoute("/settings/ai");
 }

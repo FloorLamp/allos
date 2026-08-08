@@ -15,7 +15,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
@@ -384,7 +384,7 @@ export async function ingestMedicalUpload(
       `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`,
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(failedId, null);
   }
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -400,7 +400,7 @@ export async function ingestMedicalUpload(
       "Unsupported file type.",
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(failedId, null);
   }
   // Enforce the per-path size cap now that the byte length AND the kind are known:
@@ -417,7 +417,7 @@ export async function ingestMedicalUpload(
       `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`,
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(failedId, null);
   }
 
@@ -443,7 +443,7 @@ export async function ingestMedicalUpload(
       typed.reason,
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(failedId, null);
   }
   // The byte-derived MIME is what we persist and pass onward. CSV/plain text carry
@@ -579,7 +579,7 @@ export async function ingestMedicalUpload(
       clinicalDuplicateMessage(holder.filename),
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(duplicateId, contentHash, restored);
   }
   if ("existing" in reserved) {
@@ -616,7 +616,7 @@ export async function ingestMedicalUpload(
             storedMime,
             existing.filename
           );
-          revalidatePath("/data");
+          revalidateRoute("/data");
         }
         return landed(existing.id, contentHash, restored);
       }
@@ -647,7 +647,7 @@ export async function ingestMedicalUpload(
       existing.status,
       acquiredPortalId
     );
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(duplicateId, contentHash, restored);
   }
 
@@ -686,7 +686,7 @@ export async function ingestMedicalUpload(
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(`Could not save file: ${errMsg(err)}`, docId, profileId);
-    revalidatePath("/data");
+    revalidateRoute("/data");
     return landed(docId, contentHash, restored);
   }
 
@@ -710,7 +710,7 @@ export async function ingestMedicalUpload(
   );
 
   // The doc row (status 'processing') is now visible; the page polls from here.
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return landed(docId, contentHash, restored);
 }
 
@@ -753,18 +753,18 @@ function runHealthImport(
     }
   });
   // Show the 'processing' row immediately; the poller picks up the flip to 'done'.
-  revalidatePath("/data");
+  revalidateRoute("/data");
 }
 
 // Revalidate everything a deterministic health-record import can touch (records,
 // immunizations, titers, and — when demographics were adopted — settings).
 function revalidateAfterHealthImport() {
-  revalidatePath("/data");
-  revalidatePath("/records");
-  revalidatePath("/results");
-  revalidatePath("/settings");
-  revalidatePath("/settings/health");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/records");
+  revalidateRoute("/results");
+  revalidateRoute("/settings");
+  revalidateRoute("/settings/health");
+  revalidateRoute("/");
 }
 
 // Background extraction: call the AI, then import all results and finalize the
@@ -975,11 +975,11 @@ function commitPersistInput(
     if (adopted.fullName) {
       log.info("adopted user full name from document", { docId });
     }
-    if (adopted.changed) revalidatePath("/settings");
-    revalidatePath("/results");
+    if (adopted.changed) revalidateRoute("/settings");
+    revalidateRoute("/results");
     // Imported body metrics surface on Body Metrics and the dashboard.
-    revalidatePath("/trends");
-    revalidatePath("/");
+    revalidateRoute("/trends");
+    revalidateRoute("/");
     // Fire-and-forget AI recommendation run from the new/changed biomarkers
     // (issue #424 — the generalized auto-suggest hook), so extraction latency is
     // unchanged (the doc is already marked 'done'). Cadence-gated: no-ops when
@@ -994,8 +994,8 @@ function commitPersistInput(
       loginId,
     })
       .then(() => {
-        revalidatePath("/nutrition");
-        revalidatePath("/medications");
+        revalidateRoute("/nutrition");
+        revalidateRoute("/medications");
       })
       .catch((err) => log.error("recommendation run failed", { docId, err }));
   } catch (err) {
@@ -1120,12 +1120,12 @@ export async function reprocessOne(
 }
 
 function revalidateAfterReprocess() {
-  revalidatePath("/data");
-  revalidatePath("/import/[id]", "page");
-  revalidatePath("/results");
-  revalidatePath("/trends");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/data");
+  revalidateRoute("/import/[id]", "page");
+  revalidateRoute("/results");
+  revalidateRoute("/trends");
+  revalidateRoute("/records");
+  revalidateRoute("/");
 }
 
 // Preview the cost of "Re-extract all documents" BEFORE running it (issue #208):

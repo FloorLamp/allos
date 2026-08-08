@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
@@ -29,9 +29,9 @@ import {
 // so the per-document import delete-set never touches them.
 
 function revalidateAllergies() {
-  revalidatePath("/records");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 function statusOf(raw: unknown): AllergyStatus {

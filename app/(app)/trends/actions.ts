@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -34,8 +34,8 @@ export async function generateForDate(formData: FormData) {
     () => generateInsight(profile.id, date, login.id)
   );
   saveInsight(profile.id, date, result);
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // Generate (or regenerate) the AI weekly/monthly recap narrative and store it for
@@ -60,8 +60,8 @@ export async function generateRecap(formData: FormData) {
     summary: result.summary,
     model: result.model,
   });
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }
 
 // Dismiss a "What's trending" digest chip (findings bus, #39): hide it through the
@@ -75,7 +75,7 @@ export async function dismissDigest(formData: FormData): Promise<FormResult> {
   if (!dedupeKey.startsWith("digest:"))
     return formError("Couldn't dismiss that trend.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/trends");
+  revalidateRoute("/trends");
   return formOk();
 }
 
@@ -92,7 +92,7 @@ export async function dismissBodyHygiene(
   if (!dedupeKey.startsWith("body-hygiene:"))
     return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/trends");
+  revalidateRoute("/trends");
   return formOk();
 }
 

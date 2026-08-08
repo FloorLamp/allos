@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import type { FrequencyScopeKind } from "@/lib/types";
@@ -98,8 +98,8 @@ export async function createFrequencyTarget(formData: FormData) {
       ).run(kind, value, scopeIdentity, perWeek, perWeekMax, profile.id);
     }
   }
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
 }
 
 // Delete a training goal. Routed through the shared core (#1809) so a protocol that
@@ -110,6 +110,6 @@ export async function deleteFrequencyTarget(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!id) return;
   deleteFrequencyTargetRow(profile.id, id);
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
 }

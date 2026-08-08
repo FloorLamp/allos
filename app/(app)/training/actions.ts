@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { dismissFinding } from "@/lib/queries";
 import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
@@ -32,7 +32,7 @@ export async function dismissTrainingObservation(formData: FormData) {
   )
     return;
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/training");
+  revalidateRoute("/training");
 }
 
 // ── Routines (#738) ─────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export async function adoptRoutineTemplateAction(
   if (!templateId) return { ok: false, error: "missing template" };
   try {
     const routineId = adoptTemplate(profile.id, templateId);
-    revalidatePath("/training");
+    revalidateRoute("/training");
     return { ok: true, routineId };
   } catch {
     return { ok: false, error: "unknown template" };
@@ -79,7 +79,7 @@ export async function createRoutineAction(
   const input = parseRoutinePayload(formData);
   if (!input) return { ok: false, error: "invalid routine" };
   const routineId = createCustomRoutine(profile.id, input);
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return { ok: true, routineId };
 }
 
@@ -95,7 +95,7 @@ export async function updateRoutineAction(
   if (!input) return { ok: false, error: "invalid routine" };
   const ok = updateRoutine(profile.id, routineId, input);
   if (!ok) return { ok: false, error: "not found" };
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return { ok: true, routineId };
 }
 
@@ -109,8 +109,8 @@ export async function activateRoutineAction(
   if (routineId === null) return { ok: false, error: "missing routine" };
   const ok = activateRoutine(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return { ok: true, routineId };
 }
 
@@ -123,8 +123,8 @@ export async function deactivateRoutineAction(
   if (routineId === null) return { ok: false, error: "missing routine" };
   const ok = deactivateRoutine(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return { ok: true, routineId };
 }
 
@@ -138,8 +138,8 @@ export async function restartRoutineCycleAction(
   if (routineId === null) return { ok: false, error: "missing routine" };
   const ok = restartRoutineCycle(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
   return { ok: true, routineId };
 }
 
@@ -152,7 +152,7 @@ export async function deleteRoutineAction(
   if (routineId === null) return { ok: false, error: "missing routine" };
   const ok = deleteRoutine(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
-  revalidatePath("/training");
+  revalidateRoute("/training");
   return { ok: true, routineId };
 }
 

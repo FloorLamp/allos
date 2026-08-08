@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import { getHomeLocation } from "@/lib/settings";
 import {
@@ -27,14 +27,12 @@ export async function enableWeatherAction() {
     // A first-sync failure is non-fatal — the hourly tick retries; just log it.
     log.error("weather initial sync threw", { err: String(err) });
   }
-  for (const p of ["/", "/timeline", "/integrations/weather", "/data"]) {
-    revalidatePath(p);
-  }
+  revalidateRoute(["/", "/timeline", "/integrations/weather", "/data"]);
 }
 
 export async function disconnectWeatherAction() {
   const { profile } = await requireWriteAccess();
   disconnectWeather(profile.id);
-  revalidatePath("/integrations/weather");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/weather");
+  revalidateRoute("/data");
 }

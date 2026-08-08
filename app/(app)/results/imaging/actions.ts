@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
@@ -47,10 +47,10 @@ import {
 // LOOKING at comes from the action response either way — see
 // docs/internals/server-action-refresh.md.)
 function revalidateImaging() {
-  revalidatePath("/results/imaging");
-  revalidatePath("/timeline");
-  revalidatePath("/profile");
-  revalidatePath("/");
+  revalidateRoute("/results/imaging");
+  revalidateRoute("/timeline");
+  revalidateRoute("/profile");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>
@@ -193,7 +193,7 @@ export async function trackImagingFollowUp(
   );
   if (res.kind === "invalid") return formError("Couldn't find that study.");
   revalidateImaging();
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
   return formOk();
 }

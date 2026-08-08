@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { dismissFinding } from "@/lib/queries";
@@ -48,11 +48,11 @@ function liveCandidate(profileId: number, dedupeKey: string) {
 // that the dashboard, Upcoming, and the domain's own page all render, so all of them
 // are revalidated rather than the one page the tap happened on.
 function revalidateRightSizeSurfaces(): void {
-  revalidatePath("/wellness");
-  revalidatePath("/nutrition");
-  revalidatePath("/training");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/wellness");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/training");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // Accept "lower the weekly target": set the floor to the cadence the profile actually

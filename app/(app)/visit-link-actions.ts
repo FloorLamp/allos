@@ -1,6 +1,6 @@
 "use server";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   linkRecordToEncounter,
   declineRecordVisitLink,
@@ -66,15 +66,15 @@ function revalidateVisitLinks() {
   // The visits surface lives at /records/history/visits (#1079); only the per-visit
   // DETAIL page still sits under /encounters. Revalidating "/encounters" alone was a
   // no-op — that path serves nothing (#1636).
-  revalidatePath("/records/history/visits");
-  revalidatePath("/encounters/[id]", "page");
-  revalidatePath("/records");
+  revalidateRoute("/records/history/visits");
+  revalidateRoute("/encounters/[id]", "page");
+  revalidateRoute("/records");
   // #1526: the allergy attribution also prints on the emergency card / passport.
-  revalidatePath("/profile");
-  revalidatePath("/results");
-  revalidatePath("/medications", "layout");
-  revalidatePath("/medical/episodes", "layout");
-  revalidatePath("/");
+  revalidateRoute("/profile");
+  revalidateRoute("/results");
+  revalidateRoute("/medications", "layout");
+  revalidateRoute("/medical/episodes", "layout");
+  revalidateRoute("/");
 }
 
 // Accept one suggested (or manually picked) record ↔ visit link.

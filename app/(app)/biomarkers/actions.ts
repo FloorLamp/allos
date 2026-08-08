@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import {
   trackLabFollowUpCore,
@@ -32,11 +32,11 @@ export async function trackLabFollowUp(
     today(profile.id)
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/results");
+  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -63,10 +63,10 @@ export async function trackIopFollowUp(
     today(profile.id)
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/upcoming");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/results");
+  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return formOk();
 }

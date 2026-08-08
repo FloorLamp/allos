@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { upsertMoodLog } from "@/lib/offline/writes";
 import {
@@ -56,9 +56,9 @@ export async function logMood(formData: FormData): Promise<FormResult> {
   });
   if (!ok) return formError("Couldn't save that check-in — try again.");
 
-  revalidatePath("/");
-  revalidatePath("/trends");
-  revalidatePath("/sleep");
+  revalidateRoute("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/sleep");
   return formOk();
 }
 
@@ -83,7 +83,7 @@ export async function resumeMoodCheckins(): Promise<FormResult> {
     );
   }
   if (outcome === "kept") resetMoodCheckinIgnored(profile.id);
-  revalidatePath("/");
-  revalidatePath("/settings/notifications");
+  revalidateRoute("/");
+  revalidateRoute("/settings/notifications");
   return formOk();
 }

@@ -4,7 +4,7 @@
 // on requireAdmin(), so the auth boundary is visible in the file layout, not just
 // in each function body. Re-exported from ../actions for back-compat import paths.
 import { requireAdmin } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import {
   setPublicUrl,
   isValidTimezone,
@@ -56,8 +56,8 @@ export async function savePublicUrl(
   const res = normalizePublicUrl(String(formData.get("public_url") ?? ""));
   if (!res.ok) return res;
   setPublicUrl(res.url);
-  revalidatePath("/settings/server");
-  revalidatePath("/data", "layout");
+  revalidateRoute("/settings/server");
+  revalidateRoute("/data", "layout");
   return res;
 }
 
@@ -68,7 +68,7 @@ export async function saveInstanceTimezone(formData: FormData) {
   await requireAdmin();
   const tz = String(formData.get("timezone") ?? "").trim();
   if (tz && isValidTimezone(tz)) setInstanceTimezone(tz);
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
 }
 
 // ---- Automated backups (global, admin-only) ----
@@ -100,7 +100,7 @@ export async function saveBackupSettings(formData: FormData) {
       return h >= 1 && h <= 8760 ? h : prev.stalenessHours;
     })(),
   });
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
 }
 
 // On-demand snapshot. Surfaces the created file (name + size) or the failure —
@@ -112,7 +112,7 @@ export async function backupNow(): Promise<{
   await requireAdmin();
   try {
     const { name, size, verification } = performBackup();
-    revalidatePath("/settings/server");
+    revalidateRoute("/settings/server");
     if (verification.integrity !== "ok") {
       // The snapshot wrote but failed PRAGMA integrity_check — don't report it as
       // a clean backup (performBackup already recorded the error and kept older
@@ -143,7 +143,7 @@ export async function recheckLiveIntegrity(): Promise<{
 }> {
   await requireAdmin();
   const result = runLiveIntegrityCheck(new Date(), { force: true });
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
   if (result.ok) {
     return {
       ok: true,
@@ -166,7 +166,7 @@ export async function verifyOffsiteDestination(): Promise<{
 }> {
   await requireAdmin();
   const result = initOffsiteDestination();
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
   return result;
 }
 
@@ -180,8 +180,8 @@ export async function saveCrisisResources(formData: FormData) {
   setGlobalCrisisResources(
     parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
   );
-  revalidatePath("/settings/server");
-  revalidatePath("/crisis-resources");
+  revalidateRoute("/settings/server");
+  revalidateRoute("/crisis-resources");
 }
 
 // ---- Audit-log retention (global, admin-only) ----
@@ -192,7 +192,7 @@ export async function saveAuditRetention(formData: FormData) {
   await requireAdmin();
   const raw = String(formData.get("audit_retention_months") ?? "").trim();
   setAuditRetentionMonths(Number(raw));
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
 }
 
 // ---- Trash retention (global, admin-only) — issue #2013 ----
@@ -205,8 +205,8 @@ export async function saveTrashRetention(formData: FormData) {
   await requireAdmin();
   const raw = String(formData.get("trash_retention_days") ?? "").trim();
   setTrashRetentionDays(Number(raw));
-  revalidatePath("/settings/server");
-  revalidatePath("/data");
+  revalidateRoute("/settings/server");
+  revalidateRoute("/data");
 }
 
 // ---- Fitness age gate (global, admin-only) ----
@@ -221,8 +221,8 @@ export async function saveMinTrainingAge(formData: FormData) {
   await requireAdmin();
   const raw = String(formData.get("min_training_age") ?? "").trim();
   setMinTrainingAge(raw === "" ? null : Number(raw));
-  revalidatePath("/", "layout");
-  revalidatePath("/settings/server");
+  revalidateRoute("/", "layout");
+  revalidateRoute("/settings/server");
 }
 
 // ---- Outbound email / SMTP (global, admin-only) — issue #985 ----
@@ -240,7 +240,7 @@ export async function saveSmtpConfig(formData: FormData) {
     password: String(formData.get("smtp_password") ?? ""),
     clearPassword: formData.get("clear_smtp_password") === "1",
   });
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
 }
 
 // Send a test email to an address the admin supplies — the friendly config-test
@@ -317,7 +317,7 @@ export async function saveTelegramBotConfig(formData: FormData) {
       });
     }
   }
-  revalidatePath("/settings/server");
+  revalidateRoute("/settings/server");
 }
 
 export async function registerTelegramWebhook(): Promise<{

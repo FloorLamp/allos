@@ -1,7 +1,7 @@
 "use server";
 
 import { requireProfileWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { deletedRowProfile, restoreDeletedRow } from "@/lib/undo-delete-db";
 
 // Restore a previously-deleted row from its undo token (a deleted_rows id), issued
@@ -41,7 +41,7 @@ export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
   }
   // The restore re-inserts with NEW ids, so a broad layout revalidate refreshes
   // wherever the row now belongs.
-  if (ok) revalidatePath("/", "layout");
+  if (ok) revalidateRoute("/", "layout");
   return { ok };
 }
 
@@ -85,6 +85,6 @@ export async function undoDeletes(
       console.error(`undoDeletes: token ${id} failed to restore`, err);
     }
   }
-  if (restored > 0) revalidatePath("/", "layout");
+  if (restored > 0) revalidateRoute("/", "layout");
   return { restored };
 }

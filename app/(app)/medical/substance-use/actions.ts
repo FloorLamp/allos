@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -69,11 +69,11 @@ export type SubstanceHistoryDeleteResult =
   | { kind: "not-found"; undoId: null; error: string };
 
 function revalidateSubstanceUse() {
-  revalidatePath("/records/specialty/substance-use");
-  revalidatePath("/nutrition");
-  revalidatePath("/timeline");
-  revalidatePath("/upcoming");
-  revalidatePath("/");
+  revalidateRoute("/records/specialty/substance-use");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/timeline");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
 }
 
 // Record ONE substance-instrument score. Two shapes (the #716 action contract):

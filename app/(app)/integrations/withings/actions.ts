@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import crypto from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import {
   setWithingsCredentials,
@@ -30,7 +30,7 @@ export async function saveWithingsCredentials(formData: FormData) {
     clientSecretInput || getWithingsConfig(profile.id).clientSecret || "";
   if (clientId && clientSecret)
     setWithingsCredentials(profile.id, clientId, clientSecret);
-  revalidatePath("/integrations/withings");
+  revalidateRoute("/integrations/withings");
 }
 
 // Begin the OAuth flow: store a single-use CSRF state, then redirect to Withings'
@@ -62,6 +62,6 @@ export async function connectWithings() {
 export async function disconnectWithingsAction() {
   const { profile } = await requireWriteAccess();
   disconnectWithings(profile.id);
-  revalidatePath("/integrations/withings");
-  revalidatePath("/data");
+  revalidateRoute("/integrations/withings");
+  revalidateRoute("/data");
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import {
   logMobilityMoveCore,
@@ -26,8 +26,8 @@ function resolveDate(formData: FormData, profileId: number): string {
 }
 
 function revalidate(): void {
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateRoute("/training");
+  revalidateRoute("/");
 }
 
 // Add a move to the day's session (creating the row if absent). Idempotent.

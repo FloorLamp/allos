@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
 import { anxietyStoredValue } from "@/lib/mood";
@@ -115,7 +115,7 @@ export async function deleteMetricReading(
 // to redraw it — the pairing is the point (#1488). The hub and the dashboard read the
 // same series, so they refresh too.
 function revalidateReading(slug: BodyMetricSlug): void {
-  revalidatePath(`/trends/metric/${slug}`);
-  revalidatePath("/trends");
-  revalidatePath("/");
+  revalidateRoute(`/trends/metric/${slug}`);
+  revalidateRoute("/trends");
+  revalidateRoute("/");
 }

@@ -3,7 +3,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import {
   requireAdmin,
@@ -161,8 +161,8 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
     target: String(newId),
   });
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout"); // profile switcher lists the new profile
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout"); // profile switcher lists the new profile
   return { ok: true, message: `Added profile “${name}”.` };
 }
 
@@ -179,8 +179,8 @@ export async function renameProfile(formData: FormData): Promise<FamilyResult> {
     .run(name, id);
   if (res.changes === 0) return { ok: false, error: "Profile not found." };
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout");
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout");
   return { ok: true, message: "Renamed." };
 }
 
@@ -354,8 +354,8 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     log.warn("off-volume mirror sweep on profile delete failed", { err });
   }
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout"); // switcher drops the profile
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout"); // switcher drops the profile
   return {
     ok: true,
     message: `Deleted “${prof.name}” and all of their data.`,
@@ -520,8 +520,8 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     }
   }
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout"); // an initial grant changes the member's switcher
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout"); // an initial grant changes the member's switcher
   const base =
     role === "admin"
       ? `Created admin “${username}”.`
@@ -566,7 +566,7 @@ export async function setLoginEmail(formData: FormData): Promise<FamilyResult> {
     target: String(id),
   });
 
-  revalidatePath("/settings/family");
+  revalidateRoute("/settings/family");
   return { ok: true, message: email ? "Email updated." : "Email cleared." };
 }
 
@@ -639,7 +639,7 @@ export async function resetPassword(formData: FormData): Promise<FamilyResult> {
     target: String(id),
   });
 
-  revalidatePath("/settings/family");
+  revalidateRoute("/settings/family");
   return {
     ok: true,
     message: "Password reset — existing sessions signed out.",
@@ -699,8 +699,8 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     redirect("/login");
   }
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout");
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout");
   return { ok: true, message: `Deleted login “${acct.username}”.` };
 }
 
@@ -720,7 +720,7 @@ export async function revokeLoginSessions(
   if (!acct) return { ok: false, error: "Login not found." };
 
   destroyLoginSessions(id);
-  revalidatePath("/settings/family");
+  revalidateRoute("/settings/family");
   return { ok: true, message: "Signed out of all devices." };
 }
 
@@ -834,8 +834,8 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     detail: formatGrantDiff(outcome.diff),
   });
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout"); // the member's switcher reflects new access
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout"); // the member's switcher reflects new access
   return { ok: true, message: "Access updated." };
 }
 
@@ -879,7 +879,7 @@ export async function setLoginOwnProfile(
     detail: `own=${profileId ?? "none"}`,
   });
 
-  revalidatePath("/settings/family");
-  revalidatePath("/", "layout"); // the login's not-self labels reflect the change
+  revalidateRoute("/settings/family");
+  revalidateRoute("/", "layout"); // the login's not-self labels reflect the change
   return { ok: true, message: "Own profile updated." };
 }

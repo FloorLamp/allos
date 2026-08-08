@@ -15,7 +15,7 @@ import {
 
 import fs from "node:fs";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import {
   reconcileFlags,
@@ -117,7 +117,7 @@ export async function uploadMedicalDocument(
   }
   // ingestMedicalUpload already revalidates /data per file; one revalidate after the
   // whole batch keeps the Review feed fresh once everything has landed.
-  revalidatePath("/data");
+  revalidateRoute("/data");
   return { ingested: toIngest.length, overflow, restored };
 }
 
@@ -378,12 +378,12 @@ export async function reassignDocument(
     detail: `profile ${src} → ${dest}`,
   });
 
-  revalidatePath("/import/[id]", "page");
-  revalidatePath("/data");
-  revalidatePath("/results");
-  revalidatePath("/trends");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/import/[id]", "page");
+  revalidateRoute("/data");
+  revalidateRoute("/results");
+  revalidateRoute("/trends");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return {
     status: "done",
     message: "Document moved.",
@@ -484,11 +484,11 @@ export async function deleteMedicalDocument(formData: FormData) {
       // best-effort; row is already gone
     }
   }
-  revalidatePath("/data");
-  revalidatePath("/results");
-  revalidatePath("/trends");
+  revalidateRoute("/data");
+  revalidateRoute("/results");
+  revalidateRoute("/trends");
   // A deleted document can drop immunization rows — refresh the passport view too
   // (reassignDocument already does; this closes the gap #602 noted).
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/");
 }

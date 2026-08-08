@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -13,8 +13,8 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // the care_goals table is DISTINCT from the `goals` table (personal fitness goals).
 
 function revalidateCareGoals() {
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/records");
+  revalidateRoute("/");
 }
 
 const str = (formData: FormData, key: string): string | null =>

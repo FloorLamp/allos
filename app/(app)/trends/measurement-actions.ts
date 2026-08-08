@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { getUnitPrefs } from "@/lib/settings";
 import { submittedWeightUnit } from "@/lib/units";
 import {
@@ -143,8 +143,8 @@ export async function addMeasurements(formData: FormData) {
   }
 
   if (!wrote) return;
-  revalidatePath("/trends");
-  revalidatePath("/results");
-  revalidatePath("/sleep");
-  revalidatePath("/");
+  revalidateRoute("/trends");
+  revalidateRoute("/results");
+  revalidateRoute("/sleep");
+  revalidateRoute("/");
 }

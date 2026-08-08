@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
-import { revalidatePath } from "next/cache";
+import { revalidateRoute } from "@/lib/revalidate";
 import { db, today } from "@/lib/db";
 import { deleteProfileSetting } from "@/lib/settings";
 import {
@@ -89,8 +89,8 @@ export async function stopMedication(formData: FormData): Promise<FormResult> {
   ) {
     deleteProfileSetting(profile.id, refillMarkerKey(id));
   }
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -116,8 +116,8 @@ export async function restartMedication(
   // med that still sits under threshold re-fires a fresh nudge (a stale marker whose
   // item is a candidate again isn't reached by the tick's self-healing sweep — #325).
   deleteProfileSetting(profile.id, refillMarkerKey(id));
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -136,8 +136,8 @@ export async function addSideEffect(formData: FormData): Promise<FormResult> {
     notes: strOrNull(formData.get("notes")),
     courseId: courseRaw > 0 ? courseRaw : null,
   });
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -160,8 +160,8 @@ export async function updateSideEffect(
         ? 1
         : 0,
   });
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -190,8 +190,8 @@ export async function setSideEffectResolved(
     case "already-open":
       return formError("Already reopened — nothing changed.");
     default:
-      revalidatePath("/medications");
-      revalidatePath("/");
+      revalidateRoute("/medications");
+      revalidateRoute("/");
       return formOk();
   }
 }
@@ -203,8 +203,8 @@ export async function deleteSideEffect(
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that side effect.");
   deleteMedicationSideEffect(profile.id, id);
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -267,9 +267,9 @@ export async function logMedicationAdministration(
   );
   if (given === "invalid") return formError("Enter a valid time.");
   const outcome = logAdministration(profileId, id, given);
-  revalidatePath("/medications");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/");
   switch (outcome.kind) {
     case "logged":
     case "duplicate":
@@ -298,7 +298,7 @@ export async function dismissDormantPrn(
     return formError("Couldn't dismiss that suggestion.");
   }
   dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/medications");
+  revalidateRoute("/medications");
   return formOk();
 }
 
@@ -313,7 +313,7 @@ export async function restoreDormantPrn(
     return formError("Couldn't restore that suggestion.");
   }
   restoreFinding(profile.id, dedupeKey);
-  revalidatePath("/medications");
+  revalidateRoute("/medications");
   return formOk();
 }
 
@@ -342,7 +342,7 @@ export async function createMedicationShareLinkAction(
     action: AUDIT_ACTIONS.shareLinkCreate,
     target: String(linkId),
   });
-  revalidatePath("/medications");
+  revalidateRoute("/medications");
   return { ok: true, path: `/share/${token}` };
 }
 
@@ -378,9 +378,9 @@ export async function refillMedication(
   switch (outcome.kind) {
     case "refilled":
       deleteProfileSetting(profile.id, refillMarkerKey(id));
-      revalidatePath("/medications");
-      revalidatePath("/nutrition");
-      revalidatePath("/");
+      revalidateRoute("/medications");
+      revalidateRoute("/nutrition");
+      revalidateRoute("/");
       return {
         ok: true,
         fillSize: outcome.fillSize,
@@ -407,9 +407,9 @@ export async function promoteSideEffectToIntolerance(
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that side effect.");
   promoteMedicationSideEffect(profile.id, id, today(profile.id));
-  revalidatePath("/medications");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -430,8 +430,8 @@ export async function acceptPrescriberLink(
   if (!medId || !providerId) return formError("Couldn't read that suggestion.");
   const ok = linkMedPrescriber(profile.id, medId, providerId);
   if (!ok) return formError("Couldn't link that prescriber.");
-  revalidatePath("/medications");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -444,7 +444,7 @@ export async function declinePrescriberLink(
   const providerId = Number(formData.get("provider_id"));
   if (!medId || !providerId) return formError("Couldn't read that suggestion.");
   declineMedPrescriber(profile.id, medId, providerId);
-  revalidatePath("/medications");
+  revalidateRoute("/medications");
   return formOk();
 }
 
@@ -460,9 +460,9 @@ export async function acceptIndicationLink(
     return formError("Couldn't read that suggestion.");
   const ok = linkMedIndication(profile.id, medId, conditionId);
   if (!ok) return formError("Couldn't link that condition.");
-  revalidatePath("/medications");
-  revalidatePath("/records");
-  revalidatePath("/");
+  revalidateRoute("/medications");
+  revalidateRoute("/records");
+  revalidateRoute("/");
   return formOk();
 }
 
@@ -476,6 +476,6 @@ export async function declineIndicationLink(
   if (!medId || !conditionId)
     return formError("Couldn't read that suggestion.");
   declineMedIndication(profile.id, medId, conditionId);
-  revalidatePath("/medications");
+  revalidateRoute("/medications");
   return formOk();
 }
