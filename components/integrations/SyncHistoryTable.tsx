@@ -2,7 +2,7 @@ import { IconHistory } from "@tabler/icons-react";
 import type { IntegrationState } from "@/lib/queries/integrations";
 import type { IntegrationSyncEvent } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
-import { syncStalenessThreshold } from "@/lib/integrations/staleness";
+import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
 import {
   escalationPolicyLabel,
   eventVerdict,
@@ -63,7 +63,8 @@ export default function SyncHistoryTable({
   // The visible escalation policy (#1880 item 1): the page states the one shared
   // rule, so the amber/red the badge and digest will show is never a surprise.
   const policy = escalationPolicyLabel(
-    syncStalenessThreshold(getIntegration(state.id))
+    silenceToleranceMinutes(getIntegration(state.id)),
+    noun
   );
 
   const toRun = (ev: IntegrationSyncEvent): SyncRunView => {
@@ -153,12 +154,14 @@ export default function SyncHistoryTable({
         <SyncHistoryDays days={days} isAdmin={isAdmin} />
       )}
 
-      <p
-        className="mt-3 max-w-prose rounded-lg border border-dashed border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
-        data-testid="escalation-policy"
-      >
-        {policy}
-      </p>
+      {policy && (
+        <p
+          className="mt-3 max-w-prose rounded-lg border border-dashed border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+          data-testid="escalation-policy"
+        >
+          {policy}
+        </p>
+      )}
     </div>
   );
 }

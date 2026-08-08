@@ -17,7 +17,8 @@
 
 import { formatSplitLabel, formatWindow } from "./sync-log";
 import { isTruncatedSyncEvent } from "./sync-details";
-import { isSyncStale } from "./staleness";
+import { formatTolerance, isSyncStale } from "./staleness";
+import { parseSyncEventAt } from "./pull-cadence";
 
 // The event fields every state answer is derived from. Structurally typed rather than
 // importing the row type, so the pure tier never drags @/lib/db in behind it.
@@ -80,17 +81,21 @@ export type ProviderStanding =
   // Connected, most recent run succeeded but stopped early (#1614) — real data
   // landed, more is upstream.
   | "partial"
-  // Connected and FLAPPING (#1880): failures in the recent run window, but not
-  // enough consecutive ones to escalate and no staleness breach. Data is still
-  // flowing (or nothing has ever flowed, which the provider's own page already
+  // Connected and FLAPPING (#1880): failures in the recent run window, but a
+  // successful run landed inside the provider's silence tolerance. Data IS still
+  // arriving (or nothing has ever arrived, which the provider's own page already
   // shows), so this is a calm amber fact — it NEVER enters Needs attention, the
   // review badge, or the digest's 🔌 lines. Crying wolf hourly during upstream
   // instability trains the user to ignore the one surface that must be trusted.
+  //
+  // Since #2263 a provider that fails EVERY run stays here until its tolerance
+  // expires, rather than escalating after three. That is the point: it cannot be
+  // called broken while its data is still landing, and if the data genuinely stops,
+  // the tolerance is what catches it.
   | "intermittent"
-  // Connected and genuinely broken: FAILING_CONSECUTIVE_RUNS consecutive failures,
-  // or the #1685 staleness threshold breached (no successful run within the
-  // provider's registry threshold). The ONLY standing that escalates besides
-  // needs-reauth — a single failed run no longer does (#1880).
+  // Connected and genuinely broken: NO successful run inside the provider's silence
+  // tolerance (#2263) — however that silence was recorded. The ONLY standing that
+  // escalates besides needs-reauth.
   | "failing"
   // The credential died / was revoked (#326) — actionable, and distinct from the
   // benign never-configured case.
@@ -100,19 +105,17 @@ export type ProviderStanding =
   // Connected but nothing has run yet.
   | "never-synced";
 
-// How many CONSECUTIVE failures escalate a flapping provider to `failing` (#1880).
-// Below this, a failure with the idempotent full-window re-fetch behind it loses
-// nothing — the next good run catches up — so the standing stays `intermittent`.
-export const FAILING_CONSECUTIVE_RUNS = 3;
-
 // How many recent runs the standing derivation looks at. Deliberately the same
 // depth every surface resolves (getIntegrationState reads this window regardless
 // of how much display history the caller asked for), so the grid card, the source
 // page, and Review can never disagree about whether a provider is flapping.
 export const STANDING_RUN_WINDOW = 10;
 
-// Leading run of failures in a newest-first event list — the "N consecutive
-// failures" the escalation rule counts. A success at the head returns 0.
+// Leading run of failures in a newest-first event list. It no longer ESCALATES
+// anything (#2263 deleted the consecutive-run rule — a run count is not a measure of
+// whether data is arriving): it survives demoted to what it is actually good for,
+// which is choosing WHICH recorded error the copy names. A success at the head
+// returns 0.
 export function consecutiveLeadingFailures(
   eventsNewestFirst: readonly SyncEventFacts[]
 ): number {
@@ -124,51 +127,56 @@ export function consecutiveLeadingFailures(
   return n;
 }
 
-// The facts the standing is derived from. `recentRuns` is the newest-first
-// standing window (latest included); the three staleness fields compose the #1685
-// rule (isSyncStale — the same derivation the silent-stop signal uses, not a
-// duplicate of it).
+// The facts the standing is derived from. `recentRuns` is the newest-first standing
+// window (latest included), which decides only whether the provider is FLAPPING; the
+// three freshness fields compose the ONE escalation rule (isSyncStale — the same
+// derivation the silent-stop signal uses, not a duplicate of it).
 export interface ProviderStandingFacts {
   connected: boolean;
   needsReauth: boolean;
   latest: SyncEventFacts | null;
   recentRuns?: readonly SyncEventFacts[];
   lastSuccessAt?: string | null;
-  thresholdDays?: number | null;
-  today?: string | null;
+  toleranceMinutes?: number | null;
+  // NOW, as an instant — resolved by the caller through the lib/clock.ts seam
+  // (`instantNow`), never hand-built and never SQL's own datetime('now').
+  now?: string | null;
 }
 
-// THE standing derivation (#1772, flap-aware since #1880). One shared rule: the
-// Review badge, Needs attention, the grid card, the source page, and the digest
-// all read this — latest-event-wins is gone. Only `failing` and `needs-reauth`
-// escalate (standingEscalates); `intermittent` stays a calm rendered fact.
+// THE standing derivation (#1772, flap-aware since #1880, one silence rule since
+// #2263). One shared decision: the Review badge, Needs attention, the grid card, the
+// source page, and the digest all read this — latest-event-wins is gone. Only
+// `failing` and `needs-reauth` escalate (standingEscalates); `intermittent` stays a
+// calm rendered fact.
 export function providerStanding(s: ProviderStandingFacts): ProviderStanding {
   if (s.needsReauth) return "needs-reauth";
   if (!s.connected) return "not-connected";
   if (!s.latest) return "never-synced";
   const runs =
     s.recentRuns && s.recentRuns.length > 0 ? s.recentRuns : [s.latest];
-  // The #1685 staleness rule, COMPOSED: a connected provider with no successful
-  // run inside its registry threshold is broken however few failures it recorded.
-  // `alreadyFailing` is false on purpose — this IS the failing derivation, so
-  // there is no other signal to defer to here (getImportIssues still reports each
-  // provider once).
-  const stale =
+  // THE escalation rule, COMPOSED (not duplicated): a connected provider with no
+  // successful run inside its silence tolerance is broken, whether that silence was
+  // recorded as failures, recorded as nothing, or a mix. Nothing else escalates —
+  // counting consecutive failed RUNS measured the noise, not the signal, and for an
+  // hourly provider it sat below that provider's own operating variance.
+  //
+  // `alreadyFailing` is false on purpose — this IS the failing derivation, so there
+  // is no other signal to defer to here (getImportIssues still reports each provider
+  // once).
+  const silent =
     s.lastSuccessAt !== undefined &&
-    s.thresholdDays !== undefined &&
-    !!s.today &&
+    s.toleranceMinutes !== undefined &&
+    !!s.now &&
     isSyncStale(
       {
         provider: "",
         lastSuccessAt: s.lastSuccessAt ?? null,
-        thresholdDays: s.thresholdDays ?? null,
+        toleranceMinutes: s.toleranceMinutes ?? null,
         alreadyFailing: false,
       },
-      s.today
+      s.now
     );
-  if (stale || consecutiveLeadingFailures(runs) >= FAILING_CONSECUTIVE_RUNS) {
-    return "failing";
-  }
+  if (silent) return "failing";
   if (s.latest.ok && isTruncatedSyncEvent(s.latest)) return "partial";
   if (runs.some((ev) => !ev.ok)) return "intermittent";
   return "healthy";
@@ -230,6 +238,49 @@ export function needsAttention(standing: ProviderStanding): boolean {
 // header: "3 of the last 10 runs failed".
 export function intermittentRunsLabel(failed: number, total: number): string {
   return `${failed} of the last ${total} ${total === 1 ? "run" : "runs"} failed`;
+}
+
+// The OBSERVED success cadence over a newest-first run window: the MEDIAN gap, in
+// whole minutes, between consecutive successful runs. Null when fewer than two
+// successes carry a readable stamp — one success states no cadence.
+//
+// MEASURED FOR DISPLAY ONLY (#2263 decision 4). It never feeds the escalation
+// tolerance, which is declared in the registry: this is a statement about what has
+// been observed, not a fitted parameter. The intermittent surfaces state the failure
+// tally already — which is the noise — and this is the signal beside it.
+export function observedSuccessCadenceMinutes(
+  eventsNewestFirst: readonly SyncEventFacts[]
+): number | null {
+  const successes: number[] = [];
+  for (const ev of eventsNewestFirst) {
+    if (!ev.ok) continue;
+    const ms = parseSyncEventAt(ev.at);
+    if (ms != null) successes.push(ms);
+  }
+  if (successes.length < 2) return null;
+  successes.sort((a, b) => a - b);
+  const gaps: number[] = [];
+  for (let i = 1; i < successes.length; i++) {
+    gaps.push((successes[i] - successes[i - 1]) / 60_000);
+  }
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  const median =
+    gaps.length % 2 === 1 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+  return Math.max(1, Math.round(median));
+}
+
+// The observed cadence as the sentence the amber surfaces render — "succeeding about
+// every 2 hours". Deliberately hedged and coarse: it is an observation over ten runs,
+// not a promise, so it rounds to a unit a person can hold.
+export function successCadenceLabel(minutes: number | null): string | null {
+  if (minutes == null) return null;
+  if (minutes < 90) return `succeeding about every ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 36)
+    return `succeeding about every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = Math.max(1, Math.round(hours / 24));
+  return `succeeding about every ${days} ${days === 1 ? "day" : "days"}`;
 }
 
 // Why a flapping provider loses nothing, in the provider's own vocabulary — the
@@ -301,18 +352,19 @@ export function pluralRunNoun(noun: SyncRunNoun): string {
 }
 
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one
-// shared rule, so the page can promise what the badge and the digest will do.
-export function escalationPolicyLabel(thresholdDays: number | null): string {
-  const consecutive = `after ${FAILING_CONSECUTIVE_RUNS} consecutive failures`;
-  const staleness =
-    thresholdDays == null
-      ? ""
-      : `, or when no run has succeeded in ${thresholdDays} ${
-          thresholdDays === 1 ? "day" : "days"
-        }`;
+// shared rule, so the page can promise what the badge and the digest will do. Null
+// for an EXEMPT provider — it has no cadence to be late against, so there is no
+// policy to promise and an invented sentence would be worse than silence.
+export function escalationPolicyLabel(
+  toleranceMinutes: number | null,
+  noun: SyncRunNoun = "sync"
+): string | null {
+  if (toleranceMinutes == null) return null;
   return (
-    `This source escalates to “Sync failing” ${consecutive}${staleness} — ` +
-    "the same rule the Review badge and the morning digest use."
+    `This source escalates to “Sync failing” when no ${noun} has succeeded ` +
+    `in ${formatTolerance(toleranceMinutes)} — the same rule the Review badge and ` +
+    "the morning digest use. Individual failures with a recent success behind them " +
+    "do not: the next good run catches up."
   );
 }
 

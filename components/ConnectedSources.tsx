@@ -9,6 +9,7 @@ import {
   formatSyncOutcome,
   intermittentReassurance,
   intermittentRunsLabel,
+  successCadenceLabel,
   needsAttention,
   standingBadge,
   standingEscalates,
@@ -208,6 +209,11 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
                 · last success{" "}
                 <SyncTimestamp value={source.lastSuccessAt} relativeOnly />
               </>
+            )}
+            {/* The signal beside the noise (#2263 item 4): what the failure count
+                does not say is that this source keeps succeeding. */}
+            {successCadenceLabel(source.successCadenceMinutes) && (
+              <> · {successCadenceLabel(source.successCadenceMinutes)}</>
             )}{" "}
             · {intermittentReassurance(source.vocabulary)}
           </span>
