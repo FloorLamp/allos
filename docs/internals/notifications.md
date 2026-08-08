@@ -1214,7 +1214,7 @@ A safety kind may never be declared a member: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
 is the one policy that must not move.
 
-## The tick has a memo of its own (#2118, #2111)
+## The tick has a memo of its own (#2118, #2111, #2249)
 
 **A tick is not a request, so `cache()` does nothing in it.**
 `lib/request-cache.ts` degrades React's `cache()` to identity outside a Next
@@ -1228,15 +1228,23 @@ satisfactions, overrides, smoking history and the whole `getRiskFactors` gather
 — ran from the nudge planner, from the digest's `collectUpcoming`, and again
 inside the reconcile sweep **once per live preventive-carrying pointer**.
 `getMedicationFamilyStates` — the #1027 cross-item PRN safety state — ran from
-the redose notice, the digest's over-max finding and the quick-log gather.
+the redose notice, the digest's over-max finding and the quick-log gather. #2249
+adds a third: `getSleepArrivals`, the 30-night join over
+`metric_samples × integration_sync_rows` behind #2214's arrival statistic, which a
+DYNAMIC digest tick asked TWICE for the same profile — once through
+`digestDeadline` for the deadline, and again through `logDigestTick` for the
+evidence line the decision writes.
 
 **`lib/tick-cache.ts` supplies the missing lifetime.** `runInTickScope` opens a
 scope, `tickCached(name, keyOf, fn)` memoizes inside it, and outside a scope the
 wrapper is a plain passthrough — so a DB test, a `manual` send and the `poll`
 loop all compute every call, exactly as before. `scripts/notify.ts` opens one
-scope per profile, around `tickProfile`. Both gathers are wrapped in `cache()`
-**and** `tickCached`, so a render and a tick each get the memo whose lifetime it
-can justify.
+scope per profile, around `tickProfile`. All three gathers are wrapped in
+`cache()` **and** `tickCached`, so a render and a tick each get the memo whose
+lifetime it can justify. For `getSleepArrivals` the scope's safety argument is
+that `syncIntegrations` — the only tick step that writes `metric_samples` or
+`integration_sync_rows` — is the FIRST statement of `tickProfile`, so the pull
+pass has finished before anything in the scope reads what it wrote.
 
 **Why not a TTL memo**, the `tzMemo` / schedule-history (#2066) shape. That
 shape is right for a value whose miss "degrades to the documented fallback,
@@ -1249,10 +1257,24 @@ preventive satisfactions and overrides arrive through Server Actions and
 Telegram taps, i.e. the webhook route or the sidecar's separate `poll` mode.
 A scope closes with its profile, throw included, and the next one re-reads.
 
+**A memo is not the whole fix; laziness is the other half (#2249).**
+`planProfileDigestTick` used to compute the deadline EAGERLY, above every
+short-circuit `planDigestTick` would otherwise take, so a Dynamic profile paid for
+the arrival gather on every tick from local midnight until the digest sent — ~28
+reads a day at a 15-minute cadence and an 07:00 floor, of which all but the last
+few belonged to ticks the plan declines before the deadline can matter.
+`DigestTickInput.deadlineMinute` is now a **thunk**, exactly like the `sleepPending`
+predicate beside it, resolved at the one point the decision needs it (below the
+Static branch, the pre-floor branch and the failed-attempt branch) and memoized
+locally so the evidence line reads the same resolution. The decision is unchanged;
+only when and how often its inputs are computed moved.
+
 **The teeth** (`lib/__db_tests__/tick-scoped-gathers.test.ts`): a realistic
 profile tick is driven with the statement counts of each gather's own signature
-recorded — 5 preventive assessments and 3 family gathers unscoped, exactly 1
-each scoped, with the verdicts asserted equal either way. The lifetime is pinned
+recorded — 5 preventive assessments, 3 family gathers and 2 arrival joins
+unscoped, exactly 1 each scoped, with the verdicts asserted equal either way. The
+lazy half is counted in the same file: a pre-floor tick and a Static profile
+perform ZERO arrival joins at any minute of the day. The lifetime is pinned
 in the same file: a sibling scope re-reads, a throwing tick still closes its
 scope, and the within-scope snapshot is asserted outright, so a future tick step
 that DOES write one of these inputs fails there rather than silently reading its
@@ -1460,9 +1482,13 @@ spanning more than half the clock, which is what a shift worker's genuine rhythm
 looks like — does not resolve by waiting at all, so promising that person a sample
 that will one day qualify would be the editorialising #2214 constraint 4 forbids.
 Every branch states the fallback deadline in the same breath, because that is the
-consequence the user actually experiences.
+consequence the user actually experiences. With the **Sleep section off** each mode
+says so in its own words rather than repeating a clause that no longer applies:
+Dynamic collapses to "Sends at HH:MM. Last night's sleep summary is off, so there is
+nothing to wait for.", and Static (#2255) drops its "whether or not last night's
+sleep has arrived by then" tail to a plain "Sends at HH:MM every day."
 
-### The digest time suggestion (#2217)
+### The digest time suggestion (#2217, #2255)
 
 The other half of retiring `auto`. `auto`'s real job was _"the user cannot compute
 the right time themselves"_ — nobody knows their own p90 sync arrival — and this is
@@ -1477,10 +1503,29 @@ BOTH surfaces.
   point of moving is to stop losing, not to lose slightly less often). Both come
   from the same admitted sample in one `arrivalStatistics` pass, so the claim and
   the proposal can never describe two different distributions (#221).
-- **Silent in Dynamic**, when the digest is off, when the configured time already
-  clears the p90, and for every one of the four `ArrivalUnavailableReason` values —
-  a floor that "loses" is doing its job, and none of the four no-answer states can
-  carry a percentile.
+- **Silent in Dynamic**, when the digest is off, when the digest's **Sleep section
+  is off**, when the configured time already clears the p90, and for every one of the
+  four `ArrivalUnavailableReason` values — a floor that "loses" is doing its job, and
+  none of the four no-answer states can carry a percentile.
+- **The Sleep-section gate is TWO layers over ONE rule** (#2255). The rule is in the
+  pure decision (`DigestTimeSuggestionInput.sleepSectionEnabled`, mirroring how
+  `describeDigestSchedule` already takes it): a digest that carries no sleep has no
+  arrival for its send time to be early for, and offering the Dynamic exit there would
+  move the reader into a mode whose own caption immediately says "there is nothing to
+  wait for". `getDigestTimeSuggestion` short-circuits on it **before the arrival
+  read**, which silences both surfaces at once; the Settings card additionally
+  conditions on the LIVE checkbox value so it drops the instant the box is unticked,
+  and the next render agrees. Hiding it is **not** a dismissal and must never
+  synthesize one — turning the box back on with the same time and distribution may
+  re-offer.
+- **Dynamic is the PRIMARY exit** (#2255). Bumping the static time costs the full gap
+  every morning; "As soon as it's ready" keeps the current time as its floor, usually
+  sends earlier than the proposal, and is deadline-bounded. Static-later wins only on
+  predictability — so the card ARGUES the ranking in one tradeoff sentence quoting the
+  two times already on its buttons, rather than asserting it with button colour, and
+  the in-digest keyboard (`digestTimeActions`) carries the same order. Declining is
+  **"No thanks"**, not "Not now": the exit is an episode-scoped dismissal that survives
+  statistical jitter, and a snooze-shaped label under-promises it.
 - **The proposal is grid-snapped UP** onto the picker grid #2216 derives from the
   OBSERVED tick cadence (`tickGridMinutes`, `lib/notifications/schedule.ts` —
   divisors of 60 only, coarsening a non-divisor cadence; `snapProposalMinute` is
@@ -1513,6 +1558,15 @@ BOTH surfaces.
   week-old Telegram keyboard cannot write a time the detector no longer proposes.
   The Telegram twin (`handleDigestTimeTap`, tokens `dgtuse` / `dgtdyn` / `dgtno`)
   carries no minute for the same reason.
+- **Display clock vs stored value** (#2255 §4). `digestTimeSuggestionCopy` takes an
+  optional `timeFormat` and renders its two clock times through `formatClockMinutes`,
+  the #964/#1163 seam over the login-tier pref — as do `describeDigestSchedule`, the
+  Auto slot label, the quiet-hours options and the sub-hourly warning on Settings →
+  Notifications, which resolves `getDisplayFormatPrefs` once. Both default to 24h,
+  which is what the login-less consumers need (the in-digest line and the Telegram
+  keyboard have a profile but no login in context). `formatNotifyTime` remains the
+  canonical serializer for stored values, form field values and wire tokens; no
+  storage moved.
 
 **A decline is not a failure, and both leave a trace.** A decline writes no send
 state at all — `notify_last_digest`, `notify_digest_last_at`, the tail pointer and

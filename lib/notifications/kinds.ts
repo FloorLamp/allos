@@ -254,7 +254,11 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
         testId: "digest-sleep-enabled",
       },
     ],
-    more: "Sections with nothing to report are skipped. The Today list is the same one your Upcoming page shows, so a snooze or dismiss there quiets it here. “Same time every day” sends at the time you pick whether or not last night’s sleep has arrived; “As soon as it’s ready” waits for it, never sends before that time, and sends anyway at the latest time shown.",
+    // The closing clause used to point at "the latest time shown" — a deadline that is
+    // only rendered while Dynamic is SELECTED, so in static mode it named nothing on
+    // screen (#2255 §3). Self-contained now: it says what the deadline is rather than
+    // where to look for it.
+    more: "Sections with nothing to report are skipped. The Today list is the same one your Upcoming page shows, so a snooze or dismiss there quiets it here. “Same time every day” sends at the time you pick whether or not last night’s sleep has arrived; “As soon as it’s ready” waits for it, never sends before that time, and sends anyway by a deadline shortly after your sleep usually arrives.",
   },
   {
     kind: "weekly-recap",

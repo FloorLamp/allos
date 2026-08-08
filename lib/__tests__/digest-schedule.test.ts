@@ -369,7 +369,7 @@ describe("planDigestTick — Static is today's behavior, to the minute", () => {
     slotMinute: FLOOR,
     currentMinute,
     tickMinutes,
-    deadlineMinute: FLOOR,
+    deadlineMinute: () => FLOOR,
     attempt: null,
   });
 
@@ -407,6 +407,19 @@ describe("planDigestTick — Static is today's behavior, to the minute", () => {
       }
     }
   });
+
+  it("never resolves the deadline (#2249)", () => {
+    // The deadline's gather is a 30-night arrival join, and Static ignores the
+    // answer entirely — so the thunk going uncalled is what proves a Static profile
+    // pays nothing for it, the same argument the sleep thunk makes above.
+    const deadline = vi.fn(() => FLOOR);
+    for (let now = 0; now < 1440; now += 15)
+      planDigestTick(
+        { ...staticAt(now, 15), deadlineMinute: deadline },
+        () => true
+      );
+    expect(deadline).not.toHaveBeenCalled();
+  });
 });
 
 describe("planDigestTick — Dynamic re-checks, then sends at the deadline", () => {
@@ -419,7 +432,7 @@ describe("planDigestTick — Dynamic re-checks, then sends at the deadline", () 
     slotMinute: FLOOR,
     currentMinute,
     tickMinutes: 15,
-    deadlineMinute: deadline,
+    deadlineMinute: () => deadline,
     attempt: null,
     ...over,
   });
@@ -483,13 +496,44 @@ describe("planDigestTick — Dynamic re-checks, then sends at the deadline", () 
     const hourly = (now: number, stats: ArrivalStatistics) =>
       dyn(now, {
         tickMinutes: 60,
-        deadlineMinute: digestDeadlineMinute(FLOOR, stats, 60),
+        deadlineMinute: () => digestDeadlineMinute(FLOOR, stats, 60),
       });
     const noStats = unanswered("no-source");
     expect(planDigestTick(hourly(FLOOR, noStats), () => true)).toBe("wait");
     expect(planDigestTick(hourly(FLOOR + 60, noStats), () => true)).toBe(
       "send"
     );
+  });
+
+  it("resolves the deadline only once the tick reaches the floor (#2249)", () => {
+    // Dynamic pays for the arrival gather from local midnight until the digest
+    // sends — ~28 reads at a 15-minute cadence and an 07:00 floor — of which every
+    // one before the floor belongs to a tick that returns `idle` without consulting
+    // the deadline at all. Lazy, the pre-floor ticks cost nothing.
+    const before = vi.fn(() => deadline);
+    for (let now = 0; now < FLOOR; now += 15)
+      planDigestTick({ ...dyn(now), deadlineMinute: before }, () => true);
+    expect(before).not.toHaveBeenCalled();
+
+    // Nor under a failed-attempt record, which short-circuits everything below it.
+    const failed = vi.fn(() => deadline);
+    planDigestTick(
+      {
+        ...dyn(FLOOR + 15, {
+          attempt: { date: "2026-08-07", attempts: 1, minute: FLOOR },
+        }),
+        deadlineMinute: failed,
+      },
+      () => true
+    );
+    expect(failed).not.toHaveBeenCalled();
+
+    // And exactly once on a re-check tick, which needs it to decide the window.
+    const inWindow = vi.fn(() => deadline);
+    expect(
+      planDigestTick({ ...dyn(FLOOR), deadlineMinute: inWindow }, () => true)
+    ).toBe("wait");
+    expect(inWindow).toHaveBeenCalledTimes(1);
   });
 
   it("bounds the work after the deadline to the same two bands Static gets", () => {
@@ -513,7 +557,7 @@ describe("planDigestTick — a decline and a failed send are different things", 
     slotMinute: FLOOR,
     currentMinute,
     tickMinutes: 15,
-    deadlineMinute: deadline,
+    deadlineMinute: () => deadline,
     attempt,
   });
   const failedAt = (minute: number, attempts = 1) => ({
@@ -557,7 +601,7 @@ describe("planDigestTick — a decline and a failed send are different things", 
             slotMinute: FLOOR,
             currentMinute: now,
             tickMinutes: tick,
-            deadlineMinute: digestDeadlineMinute(FLOOR, answered(), tick),
+            deadlineMinute: () => digestDeadlineMinute(FLOOR, answered(), tick),
             attempt,
           },
           () => false
@@ -665,6 +709,43 @@ describe("describeDigestSchedule — the four no-answer reasons stay four things
     expect(s.headline).toContain("07:00");
     expect(s.headline).toContain("08:10");
     expect(s.detail).toContain("07:40"); // the measured p90 it derives from
+  });
+
+  it("drops the sleep clause from the Static headline when the section is off (#2255)", () => {
+    // "…whether or not last night's sleep has arrived by then" is noise for a digest
+    // that carries no sleep at all: there is no arrival for the send time to beat.
+    // Parallel to the Dynamic branch's own sleep-off variant below.
+    const s = describeDigestSchedule({
+      ...base,
+      mode: "static",
+      sleepSectionEnabled: false,
+      stats: answered(),
+    });
+    expect(s.headline).toBe("Sends at 07:00 every day.");
+    expect(s.detail).toBeNull();
+  });
+
+  it("renders its clock times through the login's format seam (#964/#1163)", () => {
+    const twelve = describeDigestSchedule({
+      ...base,
+      mode: "dynamic",
+      stats: answered(),
+      timeFormat: "12h",
+    });
+    expect(twelve.headline).toContain("7:00 AM");
+    expect(twelve.headline).toContain("8:10 AM");
+    expect(twelve.detail).toContain("7:40 AM");
+    // Absent, the fixed 24-h format a surface with no login in context documents.
+    expect(
+      describeDigestSchedule({ ...base, mode: "dynamic", stats: answered() })
+    ).toEqual(
+      describeDigestSchedule({
+        ...base,
+        mode: "dynamic",
+        stats: answered(),
+        timeFormat: "24h",
+      })
+    );
   });
 
   it("states the Sleep-section-off collapse rather than leaving it discovered", () => {

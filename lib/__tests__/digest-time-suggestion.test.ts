@@ -67,6 +67,7 @@ function input(
   return {
     mode: "static",
     configuredMinute: 7 * 60,
+    sleepSectionEnabled: true,
     stats: arrivalStatistics(nights(MEASURED)),
     // A 5-minute tick — #2216's new default, and the grid 07:40 already sits on.
     tickMinutes: 5,
@@ -109,6 +110,41 @@ describe("the measured case (#2217's opening fixture)", () => {
     // No "you", no streak, no adjective about the reader (#992/#716).
     expect(`${copy.headline} ${copy.detail}`).not.toMatch(
       /should|always|never miss|streak|better|worse/i
+    );
+  });
+
+  it("ARGUES the ranking in numbers, and names the decline honestly (#2255)", () => {
+    const copy = digestTimeSuggestionCopy(digestTimeSuggestion(input())!);
+    // The tradeoff sentence quotes only times already on the buttons beside it, and
+    // states what each exit costs — the ranking is no longer asserted by colour alone.
+    expect(copy.tradeoff).toBe(
+      "“As soon as it’s ready” usually sends earlier than 07:40; 07:40 keeps a fixed time."
+    );
+    expect(copy.tradeoff).not.toMatch(/better|best|smarter|recommend|should/i);
+    // "Not now" read as a snooze; the exit is an episode-scoped dismissal that
+    // survives statistical jitter, so it does not come back next week.
+    expect(copy.dismissLabel).toBe("No thanks");
+  });
+
+  it("renders both clock times through the login's clock seam (#964/#1163)", () => {
+    const s = digestTimeSuggestion(input())!;
+    const twelve = digestTimeSuggestionCopy(s, "12h");
+    expect(twelve.headline).toBe(
+      "Last night’s sleep usually lands by 7:40 AM."
+    );
+    expect(twelve.detail).toBe(
+      "Your digest sends at 7:00 AM, so it often goes out before the data arrives."
+    );
+    expect(twelve.useLabel).toBe("Use 7:40 AM");
+    expect(twelve.tradeoff).toContain("7:40 AM");
+    // The DEFAULT is the fixed 24-h format the login-less consumers document — the
+    // in-digest line and the Telegram keyboard have a profile but no login.
+    expect(digestTimeSuggestionCopy(s)).toEqual(
+      digestTimeSuggestionCopy(s, "24h")
+    );
+    expect(digestTimeSuggestionLine(s)).toContain("07:40");
+    expect(digestTimeActions(1, TODAY, s).map((a) => a.label)).toContain(
+      "🕘 Use 07:40"
     );
   });
 
@@ -180,6 +216,30 @@ describe("the four ways there is nothing to say", () => {
 
   it("is silent when the digest is off", () => {
     expect(digestTimeSuggestion(input({ configuredMinute: null }))).toBeNull();
+  });
+
+  it("is SILENT with the Sleep section off — nothing to miss (#2255)", () => {
+    // The same 13 nights that fire it for a sleep-carrying digest. With "Include last
+    // night's sleep summary" unticked the digest carries no sleep at all, so there is
+    // no arrival for the send time to be early for — and the card's Dynamic exit
+    // would have moved the reader into a mode whose own caption immediately says
+    // "there is nothing to wait for".
+    expect(
+      digestTimeSuggestion(input({ sleepSectionEnabled: false }))
+    ).toBeNull();
+    // It is its OWN reason, not a consequence of one of the others: mode, time and
+    // distribution are all in the firing state here.
+    expect(digestTimeSuggestion(input())).not.toBeNull();
+    // And the shared resolver goes quiet with it, dismissal or no dismissal — turning
+    // the box back on with the same time and distribution may re-offer, because
+    // nothing was suppressed.
+    expect(
+      activeDigestTimeSuggestion(
+        input({ sleepSectionEnabled: false }),
+        new Map(),
+        TODAY
+      )
+    ).toBeNull();
   });
 });
 
@@ -361,9 +421,10 @@ describe("the in-digest line rides a send — it never causes one", () => {
     expect(model.sections.length).toBeGreaterThan(1);
     // And its buttons come after everything else the message offers.
     expect(renderDigestMessage(model).actions?.map((a) => a.label)).toEqual([
-      "🕘 Use 07:40",
+      // Dynamic FIRST (#2255 §2) — the same ranking the Settings card argues.
       "⏳ As soon as it’s ready",
-      "🔕 Not now",
+      "🕘 Use 07:40",
+      "🔕 No thanks",
     ]);
   });
 
@@ -393,9 +454,10 @@ describe("reach (constraint 4)", () => {
     const s = digestTimeSuggestion(input())!;
     const actions = digestTimeActions(4, "2026-08-06", s);
     expect(actions.map((a) => a.label)).toEqual([
-      "🕘 Use 07:40",
+      // Dynamic FIRST (#2255 §2) — the same ranking the Settings card argues.
       "⏳ As soon as it’s ready",
-      "🔕 Not now",
+      "🕘 Use 07:40",
+      "🔕 No thanks",
     ]);
     // The proposed minute is deliberately absent from every token: the handler
     // re-resolves the live suggestion, so a button cannot write a stale time.

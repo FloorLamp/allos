@@ -18,12 +18,11 @@ import {
   isProfileMutedForLogin,
   getProfileHouseholdRound,
   getLoginDigestDemotions,
+  getDisplayFormatPrefs,
   getSetting,
 } from "@/lib/settings";
-import {
-  formatNotifyTime,
-  subHourlySlotsAtRisk,
-} from "@/lib/notifications/schedule";
+import { subHourlySlotsAtRisk } from "@/lib/notifications/schedule";
+import { formatClockMinutes } from "@/lib/format-date";
 import { arrivalStatistics } from "@/lib/notifications/digest-schedule";
 import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
 import { getSleepArrivals } from "@/lib/queries/metrics";
@@ -156,6 +155,12 @@ export default async function NotificationsSettingsPage() {
   // than delivering late silently. Absent (tick never ran) reads as hourly.
   const schedule = getNotifySchedule(profile.id);
   const observedTickMin = Number(getSetting("notify_tick_interval_min")) || 60;
+  // The reader's clock convention (#964/#1163), for DISPLAY copy on this page only —
+  // captions, the suggestion card, the Auto slot label, the quiet-hours options and
+  // the sub-hourly warning. Every stored value, form field value and wire token on
+  // this surface still serializes through `formatNotifyTime` ("HH:MM", 24-h): this
+  // splits display from storage and touches no storage. #2255 §4.
+  const { timeFormat } = getDisplayFormatPrefs(login.id);
   const atRiskMinutes = subHourlySlotsAtRisk(
     [
       ...Object.values(schedule.supplementMinutes),
@@ -169,7 +174,7 @@ export default async function NotificationsSettingsPage() {
       ? {
           times: [...new Set(atRiskMinutes)]
             .sort((a, b) => a - b)
-            .map(formatNotifyTime),
+            .map((m) => formatClockMinutes(timeFormat, m)),
           intervalMin: observedTickMin,
         }
       : null;
@@ -245,6 +250,7 @@ export default async function NotificationsSettingsPage() {
                 // dismisses both.
                 timeSuggestion={getDigestTimeSuggestion(profile.id)}
                 tickMinutes={observedTickMin}
+                timeFormat={timeFormat}
                 subHourlyAtRisk={subHourlyAtRisk}
                 telegramDisabled={getLoginTelegramDisabledKinds(login.id)}
                 pushDisabled={getLoginPushDisabledKinds(login.id)}
