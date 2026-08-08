@@ -462,3 +462,64 @@ describe("getCyclingOverviewData", () => {
     expect(mountainBiking.rollup.totals.rides).toBe(1);
   });
 });
+
+// Issue #2197: the overview's zone distribution used to read per-minute HR from the
+// profile's FIRST ride ever, so the scan grew with account age. It is now bounded to
+// one declared training block anchored on the most recent ride. This pins the BOUND:
+// a rider whose history exceeds the window keeps the older ride in the all-time
+// totals and out of the distribution.
+describe("getCyclingOverviewData heart-rate window", () => {
+  let riderId: number;
+  let oldRideId: number;
+
+  beforeAll(() => {
+    riderId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Long Time Rider')").run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'birthdate', '1985-06-01')`
+    ).run(riderId);
+    const components = JSON.stringify([
+      { name: "Cycling", type: "cardio", distance_km: 20, duration_min: 60 },
+    ]);
+    const insertRide = db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, distance_km,
+          start_time, end_time, components)
+       VALUES (?, ?, 'cardio', ?, 60, 20, '08:00', '09:00', ?)`
+    );
+    oldRideId = Number(
+      insertRide.run(riderId, "2026-01-05", "Synthetic winter ride", components)
+        .lastInsertRowid
+    );
+    insertRide.run(riderId, "2026-06-10", "Synthetic summer ride", components);
+    const insertHr = db.prepare(
+      `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
+       VALUES (?, ?, ?, 1, 'health-connect')`
+    );
+    insertHr.run(riderId, "2026-01-05T08:00", 150); // hard, five months back
+    insertHr.run(riderId, "2026-01-05T08:01", 150);
+    insertHr.run(riderId, "2026-06-10T08:00", 115); // inside the window
+    insertHr.run(riderId, "2026-06-10T08:02", 130);
+  });
+
+  it("counts only the block ending on the most recent ride", () => {
+    // The out-of-window minutes are readable — the ride detail still reports them.
+    // They are excluded by the window, not missing from the fixture.
+    expect(getRideDetailData(riderId, oldRideId)!.zoneMinutes).toEqual([
+      0, 0, 0, 2, 0,
+    ]);
+
+    const overview = getCyclingOverviewData(riderId);
+    expect(overview.zoneWindow).toEqual({
+      weeks: 12,
+      since: "2026-03-19",
+      through: "2026-06-10",
+    });
+    expect(overview.zoneMinutes).toEqual([0, 1, 1, 0, 0]);
+    // The all-time surfaces are untouched: both rides still count.
+    expect(overview.rollup.totals.rides).toBe(2);
+  });
+});

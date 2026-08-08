@@ -248,6 +248,28 @@ export function activityWindows(
   return out;
 }
 
+// ---- The distribution window ----
+
+// How far back a heart-rate ZONE DISTRIBUTION looks. Twelve weeks is a training
+// block: long enough that a polarization split or a Zone 2 total describes a
+// habit rather than one week's mood, short enough that it still describes CURRENT
+// training instead of averaging over years of it. It is also what keeps the read
+// FINITE — per-minute HR grows with account age, so a distribution taken from the
+// first ever session is an unbounded scan that gets slower every month (#2197).
+export const ZONE_WINDOW_WEEKS = 12;
+
+// The inclusive first day of a `weeks`-week window ending on (and including)
+// `end`. Every zone distribution asks the same question over the same block
+// width; callers differ only in the ANCHOR they hand it — the Trends Fitness
+// section anchors on the hub's range end (today by default), the cycling overview
+// anchors on the activity's most recent ride.
+export function zoneWindowSince(
+  end: string,
+  weeks: number = ZONE_WINDOW_WEEKS
+): string {
+  return shiftDateStr(end, -(weeks * 7 - 1));
+}
+
 export function inAnyWindow(ts: string, windows: ActivityWindow[]): boolean {
   return windows.some((w) => ts >= w.start && ts < w.end);
 }

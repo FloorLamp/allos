@@ -15,6 +15,8 @@ import {
   zoneForBpm,
   zonePresentation,
   zoneMinuteTotals,
+  zoneWindowSince,
+  ZONE_WINDOW_WEEKS,
   type HrBucket,
   type ZoneModel,
 } from "../training-zones";
@@ -182,6 +184,24 @@ describe("activityWindow", () => {
         duration_min: null,
       })
     ).toBeNull();
+  });
+});
+
+describe("zoneWindowSince (the shared distribution window)", () => {
+  it("is an inclusive block of `weeks` weeks ending on the anchor day", () => {
+    // 12 weeks = 84 days INCLUSIVE of the anchor, so the first day is 83 back.
+    expect(zoneWindowSince("2026-06-10", 12)).toBe("2026-03-19");
+    expect(zoneWindowSince("2026-06-10", 1)).toBe("2026-06-04");
+    expect(zoneWindowSince("2026-06-10", 2)).toBe("2026-05-28");
+  });
+
+  it("declares ONE block width, so no call site carries its own number", () => {
+    expect(ZONE_WINDOW_WEEKS).toBe(12);
+    expect(zoneWindowSince("2026-06-10")).toBe("2026-03-19");
+  });
+
+  it("takes its anchor from the caller, so a dormant history windows on its own end", () => {
+    expect(zoneWindowSince("2024-02-29")).toBe("2023-12-08"); // across a leap day
   });
 });
 
