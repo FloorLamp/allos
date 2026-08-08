@@ -77,6 +77,22 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # `npm run typecheck` is `next typegen && tsc --noEmit` (#2293), not bare
+      # `tsc`. Next's `Route<T>` — which `AppRoute` and `RevalidateTarget` are —
+      # only carries the real route union when `.next/types/routes.d.ts` exists;
+      # `/.next/` and `next-env.d.ts` are both gitignored, so on this fresh
+      # checkout a bare `tsc` saw `Route` fall back to `string & {}` and accepted
+      # every route literal, including ones naming pages that do not exist. The
+      # guarantee still landed — `next build` regenerates the types and does
+      # enforce the union — but minutes later, in the e2e jobs, reading as a build
+      # error rather than "this route does not exist".
+      #
+      # Typegen is in the npm script rather than a step here on purpose: a
+      # developer running `npm run typecheck` locally then gets the same answer CI
+      # gets, which is the half of #2293 a CI-only step would have left broken.
+      # Measured on the repo at the time: typegen itself ~1s, and the route types
+      # it materialises add ~30s to `tsc` (~70s → ~100s) because the union is now
+      # instantiated at every href position instead of collapsing to `string`.
       - name: Typecheck
         run: npm run typecheck
 

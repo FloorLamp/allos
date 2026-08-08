@@ -382,7 +382,9 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     spec's own rows.
 14. **`"/route" is not assignable to AppRoute` after merging main into a
     worktree.** Next's typedRoutes `.d.ts` under `.next/` is stale, not the code.
-    Run `npm run build` before believing it; never widen the type.
+    Re-run `npm run typecheck` before believing it — since #2293 that regenerates
+    the route types itself (`next typegen`, ~1s) rather than needing a full
+    `npm run build`. Never widen the type.
 15. **Where fixtures live (post-#1511).** Per-domain modules — `e2e/seed/<domain>.ts`
     - `e2e/logins/<domain>.ts` — composed by the thin entrypoints
       (`seed-events.ts` / `fixture-logins.ts`), whose CALL ORDER is
@@ -530,11 +532,13 @@ PRs, pointing at branches that did nothing wrong. One fact, three faces, one fix
   if a CODE merge landed in between, `update_pull_request_branch` and let CI
   re-run. A docs/JSON-only intervening merge doesn't require it.
 
-**Rebasing across a merged route restructure** hides two more (2026-07-22, #1079): a
-bare post-rebase `typecheck` LIES about new routes until `npm run build`
-regenerates `.next/types`, and a spec's `page.goto("/old#anchor")` strings are
-not typed, so the AppRoute sweep will not flag them — grep the rebased spec for
-stale route literals and re-run its e2e.
+**Rebasing across a merged route restructure** hides one more (2026-07-22, #1079):
+a spec's `page.goto("/old#anchor")` strings are not typed, so the AppRoute sweep
+will not flag them — grep the rebased spec for stale route literals and re-run its
+e2e. The other half of that hazard is FIXED: a bare post-rebase `typecheck` used to
+LIE about new routes until `npm run build` regenerated `.next/types`, but
+`npm run typecheck` runs `next typegen` first now (#2293), so it sees the current
+route tree.
 
 Standing consequences: every dispatch tells the agent to
 `git merge origin/main && npm run typecheck` immediately before opening its PR,
