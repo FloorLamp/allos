@@ -49,13 +49,23 @@ export const DERIVED_NAMES = [
 export type DerivedName = (typeof DERIVED_NAMES)[number];
 
 // A raw component reading as it comes off the stored series: a numeric value in
-// some (possibly missing) unit, on a date. `value` is the exact numeric reading
-// (medical_records.value_num) — bounded/qualitative readings are not usable inputs
-// to an arithmetic index, so callers pass only exact numbers.
+// some (possibly missing) unit, on a date. `value` is the number the reading
+// contributes — the exact medical_records.value_num, or, for a CENSORED reading
+// ("<0.2", ">10"), the detection limit it was substituted at, in which case `bound`
+// carries the censoring marker. The app's convention for a censored lab value is
+// "substitute the limit, keep the marker, show it" (lib/reference-range/parsing —
+// parseLooseValue / plottableReadingValue, which the charts already consume), and
+// this file follows it: the limit is what the arithmetic uses, and `bound` travels
+// through to the derived reading so a single computed number can never present a
+// censored input as an exact one. A purely qualitative reading has no number at all
+// and never reaches here.
 export interface ComponentReading {
   date: string; // YYYY-MM-DD
   value: number;
   unit: string | null;
+  // Set when `value` is a substituted detection limit: "<" = the true value is BELOW
+  // it (below-detection), ">" = ABOVE it.
+  bound?: "<" | ">";
 }
 
 // Demographics needed by demographic-dependent indices (eGFR). `ageOn` resolves
@@ -65,6 +75,21 @@ export interface ComponentReading {
 export interface DerivedDemographics {
   sex: Sex | null;
   ageOn: (date: string) => number | null;
+}
+
+// The direction of the error a CENSORED (substituted-at-the-limit) component puts
+// into a derived value: "over" = the computed result can only be too HIGH from that
+// term, "under" = too low. Null when the index has not declared how its inputs move
+// it, or when several censored inputs disagree — an unstated direction is honest,
+// an assumed one is not.
+export type CensoredBias = "over" | "under";
+
+// What a derived reading says about resting on censored components: which inputs were
+// substituted at a limit (and in which direction the limit was), plus the direction of
+// the error that puts into the result when the index has declared it.
+export interface CensoredSummary {
+  inputs: { name: string; label: string; bound: "<" | ">" }[];
+  bias: CensoredBias | null;
 }
 
 // One computed derived reading. `value` is already rounded to the index's display
@@ -82,18 +107,46 @@ export interface DerivedReading {
   // unit as "already canonical", so the flag still derives.
   unit: string | null;
   formula: string;
-  inputs: { name: string; value: number; unit: string }[];
+  // The component values used, in input order. `name` is the canonical name the value
+  // ACTUALLY came from (which sibling matched, for an input that accepts several), and
+  // `bound` is set when that component was censored and substituted at its limit.
+  inputs: { name: string; value: number; unit: string; bound?: "<" | ">" }[];
+  // Present only when ≥1 component was censored. A single number cannot show a "<"
+  // the way a chart dot can, so the censoring is carried on the reading itself and
+  // every surface that renders the number says which input it rests on.
+  censored?: CensoredSummary;
 }
 
 interface InputSpec {
-  // Canonical analyte name (must match a canonical_biomarkers row) — also the key
-  // the query layer reads a stored series for.
-  canonical: string;
+  // The canonical analyte name(s) this input accepts (each must match a
+  // canonical_biomarkers row) — also the keys the query layer reads stored series for.
+  //
+  // A LIST is an ordered PREFERENCE, first match on the draw wins, and it is a claim
+  // made by THIS formula about THIS input only (#2334): the curated dataset carries
+  // "Glucose", "Glucose, Fasting" and "Glucose, Gestational Screen (50 g)" as distinct
+  // entries because they are genuinely different measurements, so nothing here folds
+  // their identities — reference bands, flags, retest clocks and charts keep treating
+  // them as separate analytes. Keeping the acceptance list ON the input confines the
+  // interchangeability to the one index entitled to assert it.
+  //
+  // The FIRST name is also the input's key: the key `compute()` reads its value under,
+  // the name the completeness checklist asks for, and the label a formula string uses.
+  canonical: string | readonly string[];
   // The canonical unit the formula expects the value in; readings in other units
   // are converted to this via lib/unit-conversions before the formula runs.
   unit: string;
   // Short token used in the human formula string (e.g. "Total", "HDL").
   label: string;
+}
+
+// The canonical names an input accepts, in preference order.
+function inputAccepts(spec: InputSpec): readonly string[] {
+  return typeof spec.canonical === "string" ? [spec.canonical] : spec.canonical;
+}
+
+// An input's KEY: its preferred canonical name (see InputSpec.canonical).
+function inputKey(spec: InputSpec): string {
+  return inputAccepts(spec)[0];
 }
 
 interface DerivedDef {
@@ -105,6 +158,12 @@ interface DerivedDef {
   formulaLabel: string;
   needsSex?: boolean;
   needsAge?: boolean;
+  // Which way each input moves the result — "+" a higher component value raises the
+  // index, "-" lowers it — keyed by input key. STATED PER INDEX rather than assumed:
+  // it is only consulted to say which way a CENSORED component's substituted limit
+  // biases the number, and an index that has not declared it makes no directional
+  // claim at all (the reading still says it rests on a censored input).
+  inputDirection?: Record<string, "+" | "-">;
   // Compute the raw (unrounded) index from the canonical-unit component values
   // (keyed by canonical name) and demographics for the draw date. Return null when
   // the value is undefined/non-finite (e.g. divide-by-zero, missing demographics).
@@ -363,12 +422,37 @@ const DERIVED_DEFS: DerivedDef[] = [
     decimals: 1,
     formulaLabel: "Levine PhenoAge (2018): 9 analytes + age",
     needsAge: true,
+    // Every input's sign in the linear predictor below (PhenoAge is increasing in xb,
+    // so a term's coefficient sign IS the direction it moves the age). Read straight
+    // off the published coefficients; the only thing it is used for is naming the
+    // direction of a censored component's substitution bias.
+    inputDirection: {
+      Albumin: "-",
+      Creatinine: "+",
+      "Glucose, Fasting": "+",
+      "High-Sensitivity C-Reactive Protein (hs-CRP)": "+",
+      Lymphocytes: "-",
+      "Mean Corpuscular Volume (MCV)": "+",
+      "Red Cell Distribution Width (RDW)": "+",
+      "Alkaline Phosphatase": "+",
+      "White Blood Cell Count": "+",
+    },
     // All nine analytes required from ONE draw (no imputation). Units here are the
     // app's CANONICAL units; compute() converts each to the formula unit.
     inputs: [
       { canonical: "Albumin", unit: "g/dL", label: "Alb" },
       { canonical: "Creatinine", unit: "mg/dL", label: "Cr" },
-      { canonical: "Glucose", unit: "mg/dL", label: "Glu" },
+      // Levine's PhenoAge is defined on FASTING serum glucose, so the curated
+      // "Glucose, Fasting" entry — which is what a lab reporting a fasting panel
+      // imports under — is the PREFERRED input, not a fallback, and the order says so
+      // (#2334). A draw carrying only the unqualified "Glucose" still computes; a draw
+      // carrying both uses the fasting one. Both entries are curated in mg/dL with the
+      // same mmol/L factor, so the conversion is identical either way.
+      {
+        canonical: ["Glucose, Fasting", "Glucose"],
+        unit: "mg/dL",
+        label: "Glu",
+      },
       {
         canonical: "High-Sensitivity C-Reactive Protein (hs-CRP)",
         unit: "mg/L",
@@ -391,7 +475,9 @@ const DERIVED_DEFS: DerivedDef[] = [
       return phenoAge({
         albuminGL: v["Albumin"] * ALBUMIN_GDL_TO_GL,
         creatinineUmolL: v["Creatinine"] * CREATININE_MGDL_TO_UMOLL,
-        glucoseMmolL: v["Glucose"] * GLUCOSE_MGDL_TO_MMOLL,
+        // Keyed by the input's PREFERRED name (see InputSpec.canonical) — the value is
+        // whichever accepted glucose entry the draw actually carried.
+        glucoseMmolL: v["Glucose, Fasting"] * GLUCOSE_MGDL_TO_MMOLL,
         crpMgDl:
           v["High-Sensitivity C-Reactive Protein (hs-CRP)"] * CRP_MGL_TO_MGDL,
         lymphocytePct: v["Lymphocytes"],
@@ -434,7 +520,8 @@ const DERIVED_DEFS: DerivedDef[] = [
     // dropping a normal result deep inside albuminuria staging. The per-input
     // `canonical` declaration is the guard: it is an EXACT canonical-name lookup into
     // the caller's series map, so the serum entry is a different key and can never be
-    // substituted. It must never be relaxed into a stem or fuzzy match.
+    // substituted. It must never be relaxed into a stem or fuzzy match — an input that
+    // accepts a sibling (#2334) still ENUMERATES it by exact name, one input at a time.
     //
     // Urine albumin is declared in the CANONICAL dataset unit (mg/dL), not the mg/L a
     // lab usually prints. Both give the identical mg/g for any reading that carries a
@@ -535,11 +622,39 @@ export const DERIVED_DEFS_BY_NAME: Record<DerivedName, DerivedDef> =
   >;
 
 // The canonical input analytes any derived index depends on — the set of series
-// the query layer must load to compute all indices.
+// the query layer must load to compute all indices. Includes every ACCEPTED sibling
+// of every input, since any of them can be the value an index consumes.
 export function derivedInputCanonicalNames(): string[] {
   const s = new Set<string>();
-  for (const d of DERIVED_DEFS) for (const i of d.inputs) s.add(i.canonical);
+  for (const d of DERIVED_DEFS)
+    for (const i of d.inputs) for (const n of inputAccepts(i)) s.add(n);
   return [...s];
+}
+
+// The input SLOTS of every derived index: each slot's key (its preferred canonical
+// name) and the canonical names it accepts. The query layer uses this to decide
+// whether a profile HAS an input — a slot is present when any accepted name is —
+// without re-deriving the preference rule.
+export function derivedInputSlots(): {
+  key: string;
+  accepts: readonly string[];
+}[] {
+  const byKey = new Map<string, Set<string>>();
+  for (const d of DERIVED_DEFS)
+    for (const i of d.inputs) {
+      const set = byKey.get(inputKey(i)) ?? new Set<string>();
+      for (const n of inputAccepts(i)) set.add(n);
+      byKey.set(inputKey(i), set);
+    }
+  return [...byKey].map(([key, accepts]) => ({ key, accepts: [...accepts] }));
+}
+
+// The input KEYS of ONE derived index (preferred canonical name per input, in spec
+// order), or [] when `name` isn't a derived index. This is the index's checklist
+// vocabulary — one entry per input, never one per accepted spelling.
+export function derivedInputKeysFor(name: string): string[] {
+  const def = DERIVED_DEFS_BY_NAME[name as DerivedName];
+  return def ? def.inputs.map(inputKey) : [];
 }
 
 // The canonical input analytes ONE derived index depends on, or [] when `name`
@@ -547,27 +662,42 @@ export function derivedInputCanonicalNames(): string[] {
 // value's retest is satisfied when its INPUTS are fresh — a stored Non-HDL is not
 // "overdue" while a recent Total + HDL exist — because re-drawing the inputs
 // re-derives it. The input→derived relation is a family the clock honors.
+// Every accepted spelling is listed: a fresh "Glucose, Fasting" satisfies PhenoAge's
+// glucose input exactly as a fresh "Glucose" does, so the clock must see both.
 export function derivedInputCanonicalNamesFor(name: string): string[] {
   const def = DERIVED_DEFS_BY_NAME[name as DerivedName];
-  return def ? def.inputs.map((i) => i.canonical) : [];
+  return def ? def.inputs.flatMap((i) => [...inputAccepts(i)]) : [];
 }
 
-// Reduce a component series to date -> canonical value, converting each reading to
-// the input's canonical unit and dropping readings that can't be converted. When a
-// date has multiple readings (a genuine same-date conflict the read-layer keeps
-// distinct), the LAST one wins (series are oldest-first, id-ascending, so this is
-// the most recently stored) — a deterministic, documented tie-break.
+// One component value resolved for a draw: the canonical-unit number, the canonical
+// name it came from, and the censoring marker when it is a substituted limit.
+interface ResolvedComponent {
+  value: number;
+  name: string;
+  bound?: "<" | ">";
+}
+
+// Reduce ONE accepted canonical name's series to date -> resolved value, converting
+// each reading to the input's canonical unit and dropping readings that can't be
+// converted. The conversion is keyed by the reading's OWN canonical name, so a
+// sibling entry's curated factors (each glucose entry carries its own mmol/L factor)
+// are the ones applied. When a date has multiple readings (a genuine same-date
+// conflict the read-layer keeps distinct), the LAST one wins (series are oldest-first,
+// id-ascending, so this is the most recently stored) — a deterministic, documented
+// tie-break.
 function toCanonicalByDate(
   readings: ComponentReading[],
+  canonical: string,
   spec: InputSpec
-): Map<string, number> {
-  const byDate = new Map<string, number>();
+): Map<string, ResolvedComponent> {
+  const byDate = new Map<string, ResolvedComponent>();
   for (const r of readings) {
     const v = convertToCanonical(r.value, r.unit, {
-      name: spec.canonical,
+      name: canonical,
       unit: spec.unit,
     });
-    if (v != null) byDate.set(r.date, v);
+    if (v != null)
+      byDate.set(r.date, { value: v, name: canonical, bound: r.bound });
   }
   return byDate;
 }
@@ -584,34 +714,105 @@ function absDays(a: string, b: string): number {
 // date only). Prefers an exact same-date match, then the smallest day gap, then
 // the later date on ties — a stable, documented selection.
 function nearestWithin(
-  byDate: Map<string, number>,
+  byDate: Map<string, ResolvedComponent>,
   anchor: string,
   windowDays: number
-): number | null {
+): ResolvedComponent | null {
   if (byDate.has(anchor)) return byDate.get(anchor)!;
   if (windowDays <= 0) return null;
-  let best: { date: string; gap: number; value: number } | null = null;
-  for (const [date, value] of byDate) {
+  let best: { date: string; gap: number; hit: ResolvedComponent } | null = null;
+  for (const [date, hit] of byDate) {
     const gap = absDays(anchor, date);
     if (gap > windowDays) continue;
     if (!best || gap < best.gap || (gap === best.gap && date > best.date))
-      best = { date, gap, value };
+      best = { date, gap, hit };
   }
-  return best ? best.value : null;
+  return best ? best.hit : null;
+}
+
+// Resolve ONE input for a draw across the names it accepts. Same-draw pairing wins
+// first — every accepted name is tried on the anchor date before any of them is
+// allowed to reach into the window — and within each tier the input's own preference
+// order decides, so a preferred sibling never wins by being nearer in time than an
+// accepted one that is actually ON the draw.
+function resolveInput(
+  maps: Map<string, ResolvedComponent>[],
+  anchor: string,
+  windowDays: number
+): ResolvedComponent | null {
+  for (const m of maps) {
+    const exact = nearestWithin(m, anchor, 0);
+    if (exact) return exact;
+  }
+  if (windowDays <= 0) return null;
+  for (const m of maps) {
+    const near = nearestWithin(m, anchor, windowDays);
+    if (near) return near;
+  }
+  return null;
 }
 
 // Format the human formula with the actual component values substituted and the
-// result appended, for the "derived" subtitle/tooltip on the UI.
+// result appended, for the "derived" subtitle/tooltip on the UI. A censored component
+// keeps its marker here too ("CRP <0.2") — the substituted limit is never printed as
+// though it were an exact reading.
 function formatFormula(
   def: DerivedDef,
-  vals: Record<string, number>,
+  vals: Record<string, ResolvedComponent>,
   result: number
 ): string {
   const parts = def.inputs
-    .map((i) => `${i.label} ${roundTo(vals[i.canonical], 1)}`)
+    .map((i) => {
+      const hit = vals[inputKey(i)];
+      return `${i.label} ${hit.bound ?? ""}${roundTo(hit.value, 1)}`;
+    })
     .join(", ");
   const shown = roundTo(result, def.decimals);
   return `${def.formulaLabel} = ${shown} (${parts})`;
+}
+
+// Which way a censored component's substituted limit pushes the result, given how
+// that input moves the index: a "<" bound means the true value is BELOW the limit, so
+// on an input that RAISES the index the computed number can only be too high.
+function biasOf(direction: "+" | "-", bound: "<" | ">"): CensoredBias {
+  const raises = direction === "+";
+  return bound === "<"
+    ? raises
+      ? "over"
+      : "under"
+    : raises
+      ? "under"
+      : "over";
+}
+
+// The censoring summary for one computed reading, or undefined when every component
+// was exact. `bias` is stated only when the index declared its input directions AND
+// every censored input pushes the same way — mixed or undeclared stays null rather
+// than picking a direction the index hasn't earned.
+function censoringOf(
+  def: DerivedDef,
+  vals: Record<string, ResolvedComponent>
+): CensoredSummary | undefined {
+  const censored = def.inputs
+    .map((i) => ({ spec: i, hit: vals[inputKey(i)] }))
+    .filter((x) => x.hit.bound != null);
+  if (censored.length === 0) return undefined;
+  const biases = censored.map((x) => {
+    const dir = def.inputDirection?.[inputKey(x.spec)];
+    return dir ? biasOf(dir, x.hit.bound!) : null;
+  });
+  const bias =
+    biases[0] != null && biases.every((b) => b === biases[0])
+      ? biases[0]
+      : null;
+  return {
+    inputs: censored.map((x) => ({
+      name: x.hit.name,
+      label: x.spec.label,
+      bound: x.hit.bound!,
+    })),
+    bias,
+  };
 }
 
 export interface ComputeOptions {
@@ -637,26 +838,39 @@ export function computeDerivedReadings(
   const out: DerivedReading[] = [];
 
   for (const def of DERIVED_DEFS) {
-    // Convert each input series to date -> canonical value up front.
+    // Convert each input's accepted series to date -> canonical value up front, in
+    // the input's own preference order.
     const inputMaps = def.inputs.map((spec) =>
-      toCanonicalByDate(seriesByCanonical.get(spec.canonical) ?? [], spec)
+      inputAccepts(spec).map((canonical) =>
+        toCanonicalByDate(
+          seriesByCanonical.get(canonical) ?? [],
+          canonical,
+          spec
+        )
+      )
     );
     // Anchor on the first input's draw dates (all components share a draw date in
-    // the same-draw case). Sorted for deterministic output.
-    const anchorDates = [...inputMaps[0].keys()].sort();
+    // the same-draw case) — across every name that input accepts, so a draw is never
+    // missed for having recorded the analyte under the sibling spelling. Sorted for
+    // deterministic output.
+    const anchorDates = [
+      ...new Set(inputMaps[0].flatMap((m) => [...m.keys()])),
+    ].sort();
     const stored = opts.storedDatesByName?.[def.name];
 
     for (const date of anchorDates) {
       if (stored?.has(date)) continue; // a real stored reading wins this draw
+      const hits: Record<string, ResolvedComponent> = {};
       const vals: Record<string, number> = {};
       let complete = true;
       for (let i = 0; i < def.inputs.length; i++) {
-        const v = nearestWithin(inputMaps[i], date, windowDays);
-        if (v == null) {
+        const hit = resolveInput(inputMaps[i], date, windowDays);
+        if (hit == null) {
           complete = false;
           break;
         }
-        vals[def.inputs[i].canonical] = v;
+        hits[inputKey(def.inputs[i])] = hit;
+        vals[inputKey(def.inputs[i])] = hit.value;
       }
       if (!complete) continue;
 
@@ -664,17 +878,25 @@ export function computeDerivedReadings(
       if (raw == null || !Number.isFinite(raw)) continue;
 
       const value = roundTo(raw, def.decimals);
+      const censored = censoringOf(def, hits);
       out.push({
         name: def.name,
         date,
         value,
         unit: def.unit,
-        formula: formatFormula(def, vals, raw),
-        inputs: def.inputs.map((i) => ({
-          name: i.canonical,
-          value: roundTo(vals[i.canonical], 2),
-          unit: i.unit,
-        })),
+        formula: formatFormula(def, hits, raw),
+        inputs: def.inputs.map((i) => {
+          const hit = hits[inputKey(i)];
+          return {
+            // The name the value ACTUALLY came from, so a surface links to the series
+            // it was read out of rather than the input's preferred spelling.
+            name: hit.name,
+            value: roundTo(hit.value, 2),
+            unit: i.unit,
+            ...(hit.bound ? { bound: hit.bound } : {}),
+          };
+        }),
+        ...(censored ? { censored } : {}),
       });
     }
   }

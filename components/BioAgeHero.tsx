@@ -13,6 +13,7 @@ import {
   inputCompleteness,
   completenessChecklistMessage,
   isBioAgeHiddenForAge,
+  censoredInputNote,
   PHENOAGE_INPUT_NAMES,
   type BioAgeDirection,
 } from "@/lib/bio-age";
@@ -165,6 +166,7 @@ export default async function BioAgeHero() {
       }))
   );
   const paceText = paceOfAgingPhrase(pace);
+  const censoredNote = censoredInputNote(latest);
 
   return (
     <section
@@ -212,6 +214,20 @@ export default async function BioAgeHero() {
           "Based on one measurement — add another complete panel to track your pace of aging."}
       </p>
 
+      {/* Censored input (#2334). A component reported beyond its detection limit
+          ("<0.2") is substituted AT that limit — the app's convention everywhere — but
+          a chart can show that with a hollow dot and this headline number cannot, so
+          the caveat is said in words. Never folds: like the estimate note, it
+          qualifies the number itself. */}
+      {censoredNote && (
+        <p
+          className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="bio-age-censored"
+        >
+          {censoredNote}
+        </p>
+      )}
+
       {/* The nine inputs it was built from, each linking to its own series (the
           "why", and an honest-uncertainty affordance). One authored list, folded
           below `sm` (#1578) and inline from `sm` up. */}
@@ -236,6 +252,9 @@ export default async function BioAgeHero() {
                     {inp.name}
                   </Link>
                   <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                    {/* A censored component keeps its marker here too — the list
+                        shows what the lab reported, never a laundered exact value. */}
+                    {inp.bound ?? ""}
                     {inp.value}
                     {inp.unit ? ` ${inp.unit}` : ""}
                   </span>
