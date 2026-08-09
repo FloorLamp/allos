@@ -329,6 +329,37 @@ describe("what STAYS in the browser (#2365)", () => {
       expect(bodyMetricHomeFor(name)).toBeNull();
   });
 
+  it("the #2322 catalog slice lands on the STAYS side, as both issues intend", () => {
+    // Written down rather than rediscovered: the open #2322 curation
+    // (claude/2322-catalog-curation) adds these as curated `vitals` entries. None has a
+    // metric home, so every one stays browsable under this rule with no edit on either
+    // side — which is the outcome both issues want. Asserted HERE so that if a later
+    // change to the metric registry would start swallowing one of them, it fails in
+    // this PR's own suite instead of surfacing as a surprise in that one.
+    for (const name of [
+      "PR Interval",
+      "QRS Duration",
+      "QT Interval",
+      "QTc Interval",
+      "Ventricular Rate",
+      "Electrocardiogram (ECG) Interpretation",
+      "Ankle-Brachial Index (ABI), Left",
+      "Cardio-Ankle Vascular Index (CAVI), Right",
+      "Fat Mass Index",
+      "Lean Mass Index",
+      "Metabolic Equivalents (METs)",
+      "Exercise Stress Test Result",
+      "Color Vision",
+      "Audiologic Diagnosis",
+    ])
+      expect(bodyMetricHomeFor(name), name).toBeNull();
+    // "Lean Mass Index" is the one worth naming: `lean-mass` is titled "Lean Body Mass",
+    // a different token set — AND it is unreachable, so it claims no name at all. The
+    // near-miss has two independent reasons not to fire.
+    expect(BODY_METRIC_META["lean-mass"].title).toBe("Lean Body Mass");
+    expect(METRIC_DOCUMENT_REACH["lean-mass"].reaches).toBe(false);
+  });
+
   it("Waist Circumference — a body metric by ruling, not yet a slug (#2322)", () => {
     // The owner has ruled it belongs in BODY_METRIC_SLUGS. Until that slug lands it has
     // no home, so it stays browsable — and it leaves on its own the day #2322 adds it,
