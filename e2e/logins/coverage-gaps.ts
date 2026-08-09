@@ -52,3 +52,20 @@ export const SYNC_HISTORY_PROFILE = "Sync History (e2e)";
 // half of it. Read-only in its spec. Synthetic, no PHI.
 export const E2E_LOGIN_QUIET_STREAM = "e2e_quiet_stream";
 export const QUIET_STREAM_PROFILE = "Quiet Stream (e2e)";
+
+// #2162 — the stream lifecycle's ONBOARDING moment. A member with WRITE access on a
+// dedicated profile whose Health Connect heart-rate stream started delivering today
+// and never before, with the bedtime reminder still off. Two logins on two profiles
+// because the two specs answer the offer in opposite directions and each must own its
+// fixture: one taps "Yes, remind me" (asserting the setting is written) and one taps
+// "No thanks" (asserting nothing is enabled and the dismissal sticks).
+export const E2E_LOGIN_STREAM_ONBOARD = "e2e_stream_onboard";
+export const STREAM_ONBOARD_PROFILE = "Stream Onboard (e2e)";
+export const E2E_LOGIN_STREAM_DECLINE = "e2e_stream_decline";
+export const STREAM_DECLINE_PROFILE = "Stream Decline (e2e)";
+
+// #2162 — the OFFBOARDING moment. Two months of heart-rate history, then nothing for
+// a fortnight, with the bedtime reminder ON: the expected-active gate closed itself
+// days ago, so the reminders are already silent and the prompt merely explains that.
+export const E2E_LOGIN_STREAM_LAPSED = "e2e_stream_lapsed";
+export const STREAM_LAPSED_PROFILE = "Stream Lapsed (e2e)";

@@ -45,6 +45,12 @@ const ALLOWLIST = new Set<string>([
   // handle directly, so importing lib/db here would close the db → boot-tasks → db
   // import cycle (and the migration runs before that singleton exists at all).
   "lib/canonical-alias-merge-db.ts",
+  // The cycling stream-summary reconcile (#2292) is boot-path work under the SAME
+  // hardened contract: its one write transaction goes through runBootTx (BEGIN
+  // IMMEDIATE + bounded SQLITE_BUSY retry), and it is reached from bootTasks with
+  // the Database handle in hand, so importing lib/db here would close the
+  // db → boot-tasks → db import cycle.
+  "lib/cycling-stream-summary-db.ts",
   "lib/offline/queue-db.ts",
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
   // nothing to do with SQLite write locks (#1699).

@@ -210,6 +210,27 @@ later athlete-setting change cannot rewrite historical training load. Activity
 merges re-parent these children before deleting a duplicate, and undoable merges
 move them back with the restored activity.
 
+Each telemetry row also carries `stream_summary_json`, computed at ingest: the
+power-curve bests and the per-zone seconds, which are the only two things the
+cycling overview derives from a ride's streams. Before it existed, that page
+parsed every stream blob the profile owned on each load, so its cost grew with
+total ride history in bytes parsed rather than rows returned. Both values are pure
+functions of the telemetry row's own `streams_json` and `power_zones_json` and of
+nothing on the activity row — which is why one computation at ingest stays correct
+for the life of the row, and why re-parenting or restoring a row cannot invalidate
+it. A writer other than the Strava upsert must either write the summary through
+`summarizeCyclingStreams` or leave the column NULL. The summary is stamped with a
+signature naming the rule that produced it (the logic version plus the durations
+the curve was taken at), and the `reconcileCyclingStreamSummaries` boot task
+re-derives any row whose stamp does not match the current rule — the same
+"derived state can go stale without a schema change" reasoning the canonical-flag
+reconcile is a boot task for. That pass is also the backfill: migration 175 adds
+the column empty. A summary that is missing or stale is treated as absent, never
+as a reason to fall back to parsing the streams. The overview's power cards
+therefore stay ALL-TIME, unlike its heart-rate distribution, which is windowed —
+see `docs/features.md` and `lib/cycling-stream-summary.ts` for why those two reads
+on one page answer differently on purpose.
+
 The connected Strava page exposes **Backfill ride details** for cycling
 activities imported before telemetry existed (or whose prior stream request
 failed). This runs through the provider-neutral durable backfill substrate:
@@ -1172,3 +1193,66 @@ declaration (`reminder: "bedtime-wear"`) and reads the stream through the same
 did: the reminder still converted `hr_minutes.ts` with `zonedWallIsoToUtc` after
 migration 164, which refuses a stamp carrying `Z`, so it resolved null for every
 real row and could not fire at all.
+
+**…and the lifecycle around both of them: on/offboarding (#2162).** Detection
+(#2146), a consented send (#2161) and a multi-day tracking predicate (#2097)
+existed without anything joining them up: nothing INTRODUCED the reminder when a
+wearable started delivering, and nothing closed the loop when the user stopped
+wearing it. `lib/integrations/stream-lifecycle.ts` is that state machine, and it
+adds no vocabulary of its own:
+
+```
+absent ──▶ appeared ──▶ active ──▶ lapsed ──▶ (data returns ⇒ active) | ended
+```
+
+Every state is DERIVED at read time from three facts already stored — the
+profile-local day the stream first delivered, the day it last delivered, and the
+shared `isStreamActive` gate over the stream's own declared `expectedActive`
+window. The enumeration is `allContinuousStreams()`; a provider that declares no
+stream has no lifecycle, by construction. Nothing is written when a state
+changes, there is no episode table, and a backfill heals the answer retroactively
+because it moves those two days. `resumed` is deliberately not a member: a stream
+that delivers again IS active, so a resume needs no ceremony, no "welcome back"
+and no re-onboarding.
+
+Two guard-order details carry the correctness. `isStreamActive` never inspects
+today and needs `minDays` of history, so (a) a stream on its FIRST day is read as
+`appeared` rather than `lapsed` — the appeared check runs before the gate — and
+(b) a stream that delivered TODAY is active outright, which is the whole of
+"resume". Neither is a new number; both are the one day the shared predicate
+omits by design.
+
+**The offers, and why neither is a send.** `appeared` on a stream declaring a
+`reminder` adapter offers the #2161 bedtime reminder; `ended` (a lapse sustained
+past `STREAM_ENDED_AFTER_DAYS`, 14) explains that it paused itself. Both render
+on class-2 surfaces only — the integrations page under Data → Import (the
+post-connect moment) and a one-time dashboard card — through
+`getStreamLifecycleOffers`, which is deliberately its OWN entry point returning
+its OWN shape. Nothing it produces is an `AttentionIntegration`, so it cannot
+join `getIntegrationAttention`, which is what the morning digest builds a banded
+section from; that separation is the same one #2146 drew, for the same reason.
+
+**The consent shape is the load-bearing part.** The Yes tap is the ONLY thing
+that turns the setting on, and ignoring the offer enables nothing — a two-button
+prompt is fine, default-on is not (#2161 constraint 1), so "opt out" means
+"dismiss the offer", never "disable something already on". The offboarding half
+is the opposite direction and takes §7's confirm-to-KEEP shape: the reduction
+already happened, unilaterally and correctly, when the expected-active gate
+closed within days; the prompt announces it and offers **Keep**, which writes only
+a dismissal. `setProfileWearReminder` is reachable from exactly two Server Actions,
+both bound to a button.
+
+**One-shot semantics live in the KEYS**, on the Upcoming suppression bus (the
+dismissal `quietStreamDedupeKey` was reserving space for). `stream-onboard:<provider>:<stream>`
+is permanent and `catalog`-class — both tails are registry vocabulary, and a NEW
+provider or stream mints a different key, so a second wearable gets its own offer.
+`stream-offboard:<provider>:<stream>:<lastDeliveredDay>` is `anchored`-class on the
+lapse EPISODE: constant through one lapse, moved by a genuine resume, so a
+dismissed prompt never repeats inside its episode and a later lapse arrives
+un-silenced. There is no episode row and nothing to sweep.
+
+**Setting-page honesty.** While the gate is closed, Settings → Notifications shows
+the bedtime reminder's derived paused state (`wearReminderPausedNote`) beside the
+toggle rather than implying tonight's send. The toggle itself is untouched — the
+pause is presentation of derived state, never a stored flag, the shape #1668
+shipped for the mood check-in's auto-pause.

@@ -2,6 +2,10 @@ import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import {
+  serializeCyclingStreamSummary,
+  summarizeCyclingStreams,
+} from "@/lib/cycling-stream-summary";
 
 test("a Journal ride opens a read-first detail with the stored ride measurements", async ({
   page,
@@ -421,8 +425,20 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   await expect(page.getByTestId("cycling-heart-rate-zones")).toContainText(
     "over the 12 weeks through"
   );
+  // The power cards are the OTHER half of #2197's page: since #2292 they render
+  // from the per-ride summary precomputed at ingest rather than from a parse of
+  // every stored stream. They stay ALL-TIME where the distribution above is
+  // windowed, so this card carries no window sentence — and both a wattage and the
+  // zone breakdown have to survive the column change.
   await expect(page.getByTestId("cycling-power-profile")).toContainText(
     "20 min best"
+  );
+  await expect(page.getByTestId("cycling-power-profile")).toContainText(" W");
+  await expect(page.getByTestId("cycling-power-profile")).toContainText(
+    "Time in power zones"
+  );
+  await expect(page.getByTestId("cycling-power-profile")).not.toContainText(
+    "over the 12 weeks through"
   );
   await expect(page.getByTestId("cycling-data-coverage")).toContainText(
     "Mapped rides"
@@ -626,17 +642,22 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
     `INSERT INTO activity_routes (activity_id, polyline, source)
      VALUES (?, '_p~iF~ps|U_ulLnnqC_mqNvxq\`@', 'synthetic')`
   ).run(spinOne);
+  const spinStreams = JSON.stringify({
+    time: { data: [0, 5, 10, 15, 20] },
+    watts: { data: [150, 180, 210, 190, 170] },
+    cadence: { data: [80, 85, 90, 88, 84] },
+  });
   db.prepare(
     `INSERT INTO activity_telemetry
-       (profile_id, activity_id, source, streams_json, snapshot_at)
-     VALUES (1, ?, 'synthetic', ?, '2026-07-10T12:00:00Z')`
+       (profile_id, activity_id, source, streams_json, snapshot_at,
+        stream_summary_json)
+     VALUES (1, ?, 'synthetic', ?, '2026-07-10T12:00:00Z', ?)`
   ).run(
     spinOne,
-    JSON.stringify({
-      time: { data: [0, 5, 10, 15, 20] },
-      watts: { data: [150, 180, 210, 190, 170] },
-      cadence: { data: [80, 85, 90, 88, 84] },
-    })
+    spinStreams,
+    // Written here rather than left to a boot: the server is already running, so
+    // nothing would fill it before this spec asserts (#2292).
+    serializeCyclingStreamSummary(summarizeCyclingStreams(spinStreams, null))
   );
   db.close();
 

@@ -13,6 +13,7 @@ import NavTabs from "@/components/NavTabs";
 import UploadForm from "@/components/UploadForm";
 import ImportClient, { ImportJobList } from "@/components/ImportClient";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
+import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import CoverageSection from "@/app/(app)/data/CoverageSection";
@@ -63,7 +64,7 @@ export default async function DataPage(
   }
 ) {
   const searchParams = await props.searchParams;
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
   const units = getUnitPrefs(login.id);
   const section = parseSection(searchParams.section);
   // Demo mode (#181): disable the medical-upload input (a PHI-entry vector) with a
@@ -180,6 +181,17 @@ export default async function DataPage(
 
           <ImportJobList jobs={importJobs} unit={units.weightUnit} />
         </section>
+
+        {/* The continuous-stream on/offboarding offer (#2162), directly above the
+            integrations surface — the post-connect moment, since this is the page a
+            user is on when a newly connected wearable starts delivering. Class 2 and
+            one-shot: answered in a tap, then gone. Renders nothing when no offer is
+            live, which is almost always. */}
+        <StreamLifecycleOffers
+          profileId={profile.id}
+          canWrite={access === "write"}
+          className=""
+        />
 
         {/* Connect a device or service — the full integrations surface (the
             standalone /integrations page was folded in here; each card links to
