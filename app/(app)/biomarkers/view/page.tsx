@@ -46,6 +46,10 @@ import {
   bandNoteClause,
   biomarkerValueBasis,
 } from "@/lib/biomarker-value-basis";
+import {
+  careOfferBasis,
+  RECHECK_BASIS_HEADING,
+} from "@/lib/biomarker-care-basis";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
@@ -555,6 +559,20 @@ export default async function BiomarkerDetailPage(props: {
   const showFollowUpControl =
     openLabFollowUp != null || canTrackFollowUp || resolvedLabFollowUp != null;
 
+  // #2347 — both care offers on this page name their own basis. `canTrackFollowUp`
+  // above and `isBiomarkerStale` further up are UNCHANGED (no offer appears or
+  // disappears here); what changes is what each one says for itself once #2340 has
+  // decided the value renders without a judgment. See lib/biomarker-care-basis.ts for
+  // the ruling, the two copy rules, and why the retest half is a different sentence.
+  const recheckBasis = careOfferBasis("recheck", {
+    basis: latestBasis.kind,
+    flag: latest.flag,
+  });
+  const retestBasis = careOfferBasis("retest", {
+    basis: latestBasis.kind,
+    flag: latest.flag,
+  });
+
   return (
     <div>
       <Link
@@ -599,6 +617,19 @@ export default async function BiomarkerDetailPage(props: {
             upload your latest records
           </Link>{" "}
           or get new tests to keep this trend current.
+          {/* The notice names its own premise (#2347). It always printed the date and
+              the age it is reasoning from; what it needed is the one distinction #2340
+              made newly confusing — on a page that has deliberately declined to judge
+              the number, an amber banner beside it reads like a verdict on the value.
+              Rendered only where that is the case. */}
+          {retestBasis.note && (
+            <>
+              {" "}
+              <span data-testid="biomarker-retest-basis">
+                {retestBasis.note}
+              </span>
+            </>
+          )}
         </Notice>
       )}
 
@@ -736,6 +767,26 @@ export default async function BiomarkerDetailPage(props: {
             />
           </div>
         )}
+        {/* Why the offer above is there (#2347). Only when the page shows no judgment
+            of the value AND the control on screen is the OFFER — the two conditions
+            together are exactly "the track form is rendering", since an existing
+            follow-up stands on somebody having tracked one, which is its own premise
+            and needs no explaining, and `canTrackFollowUp` also refuses a derived or
+            unsaved reading. `basis-full` so it reads as prose under the value row,
+            like the band note below it. */}
+        {showFollowUpControl &&
+          existingFollowUp === undefined &&
+          recheckBasis.note && (
+            <p
+              data-testid="biomarker-recheck-basis"
+              className="basis-full text-sm leading-relaxed text-slate-600 dark:text-slate-300"
+            >
+              <span className="font-semibold text-slate-800 dark:text-slate-100">
+                {RECHECK_BASIS_HEADING}
+              </span>{" "}
+              {recheckBasis.note}
+            </p>
+          )}
         {/* Why this analyte has no band (#2340), from the curated note — the one
             clause the explainer card's description does not carry, rendered where the
             reader asks the question it answers rather than in a header subtitle.
