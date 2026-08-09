@@ -4,7 +4,8 @@
 // `getActivityDates` (which spans ALL activity kinds) — this is workout-specific
 // and carries per-day counts/minutes, not just a date set.
 import { db, today } from "../../db";
-import type { ActivityType } from "../../types";
+import { workoutActivityLabel } from "../../activity-meta";
+import { activityHistoryKey } from "../../activities-catalog";
 import {
   buildActiveDaysStrip,
   type ActiveDaysStrip,
@@ -32,36 +33,62 @@ export function getWorkoutDayDensity(
     .all(profileId, since) as WorkoutDayDensity[];
 }
 
-// Sessions + minutes per profile-local day AND activity type, in [since, until] —
-// the gather behind the Trends → Fitness sessions-by-type day history (the
-// group×day matrix twin of the density heatmap above). Same single grouped
-// pass, one extra GROUP BY column; `type` is the canonical clinical identity
-// for an activity row (the ACTIVITY_TYPES tuple), so the matrix keys on it
-// rather than re-deriving a family from free-text titles.
-export interface WorkoutTypeDay {
+// Sessions + minutes per profile-local day AND named activity, in
+// [since, until] — the gather behind the Trends → Fitness workout day-history
+// matrix ("top N activities", the owner's PPL-breakdown ask: rows like Push
+// Day / Pull Day / Ride, not the coarse strength/cardio buckets). Identity is
+// `activityHistoryKey(workoutActivityLabel(title))` — the #1931 canonical
+// activity key over the title normalized of its time-of-day/duration
+// decoration — so "Push day", "Afternoon Push Day" and "Morning Push Day
+// Session" land on ONE row. The label is the first-seen normalized form.
+export interface WorkoutActivityDay {
   date: string; // YYYY-MM-DD, profile-local
-  type: ActivityType;
-  count: number; // sessions of this type that day
+  key: string; // activityHistoryKey of the normalized title
+  label: string; // display name (first-seen normalized title)
+  count: number; // sessions of this activity that day
   minutes: number; // total minutes (0 when all durations null)
 }
 
-export function getWorkoutTypeDays(
+export function getWorkoutActivityDays(
   profileId: number,
   since: string,
   until: string
-): WorkoutTypeDay[] {
-  return db
+): WorkoutActivityDay[] {
+  const rows = db
     .prepare(
-      `SELECT date,
-              type,
-              COUNT(*) AS count,
-              CAST(COALESCE(SUM(duration_min), 0) AS INTEGER) AS minutes
+      `SELECT date, title, COALESCE(duration_min, 0) AS minutes
          FROM activities
         WHERE profile_id = ? AND date >= ? AND date <= ?
-        GROUP BY date, type
-        ORDER BY date ASC, type ASC`
+        ORDER BY date ASC, id ASC`
     )
-    .all(profileId, since, until) as WorkoutTypeDay[];
+    .all(profileId, since, until) as {
+    date: string;
+    title: string;
+    minutes: number;
+  }[];
+
+  const labelByKey = new Map<string, string>();
+  const byDayKey = new Map<string, WorkoutActivityDay>();
+  for (const r of rows) {
+    const label = workoutActivityLabel(r.title);
+    const key = activityHistoryKey(label);
+    if (!labelByKey.has(key)) labelByKey.set(key, label);
+    const mapKey = `${r.date}|${key}`;
+    const entry = byDayKey.get(mapKey);
+    if (entry) {
+      entry.count += 1;
+      entry.minutes += r.minutes;
+    } else {
+      byDayKey.set(mapKey, {
+        date: r.date,
+        key,
+        label: labelByKey.get(key)!,
+        count: 1,
+        minutes: r.minutes,
+      });
+    }
+  }
+  return [...byDayKey.values()];
 }
 
 export function getActiveDaysStrip(

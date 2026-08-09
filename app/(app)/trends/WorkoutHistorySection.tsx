@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getWorkoutTypeDays } from "@/lib/queries";
+import { getWorkoutActivityDays } from "@/lib/queries";
 import { getWeekStart } from "@/lib/settings";
-import { ACTIVITY_TYPE_LABELS } from "@/lib/activity-meta";
-import { ACTIVITY_TYPES } from "@/lib/types";
 import { dayHistoryStart } from "@/lib/day-history";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
@@ -12,8 +10,9 @@ import DayHistory from "@/components/DayHistory";
 // Trends → Fitness leads with the workout history: the generalized day-history
 // (lib/day-history.ts) over the window's sessions — a CALENDAR (how often, the
 // #186 density question, replacing the bespoke WorkoutHeatmap) and a MATRIX
-// (training WHAT — one row per activity type, the canonical ACTIVITY_TYPES
-// identity, never a re-derived family from free-text titles). Card-less, a
+// (training WHAT — one row per NAMED activity, keyed on the canonical
+// activityHistoryKey of the normalized title, so a PPL routine reads as its
+// own rows: Push Day / Pull Day / Legs, with the tail folded). Card-less, a
 // page-level section, so the grids run edge to edge on phones.
 export default async function WorkoutHistorySection({
   weeks,
@@ -25,19 +24,25 @@ export default async function WorkoutHistorySection({
   const { profile } = await requireSession();
   const weekStart = getWeekStart(profile.id);
   const since = dayHistoryStart(end, weeks, weekStart);
-  const typeDays = getWorkoutTypeDays(profile.id, since, end);
+  const activityDays = getWorkoutActivityDays(profile.id, since, end);
 
-  const values = typeDays.map((d) => ({
+  const values = activityDays.map((d) => ({
     date: d.date,
-    group: d.type,
+    group: d.key,
     value: d.count,
     detail: d.minutes,
   }));
-  const present = new Set(typeDays.map((d) => d.type));
-  const groups = ACTIVITY_TYPES.filter((t) => present.has(t)).map((t) => ({
-    key: t,
-    label: ACTIVITY_TYPE_LABELS[t],
-  }));
+  // Vocabulary ordered by window volume (sessions desc) — "top N activities";
+  // the matrix folds the tail and the chips read most-relevant first.
+  const totals = new Map<string, { label: string; total: number }>();
+  for (const d of activityDays) {
+    const t = totals.get(d.key) ?? { label: d.label, total: 0 };
+    t.total += d.count;
+    totals.set(d.key, t);
+  }
+  const groups = [...totals.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([key, v]) => ({ key, label: v.label }));
 
   return (
     <section data-testid="workout-history">
@@ -53,8 +58,8 @@ export default async function WorkoutHistorySection({
         </Link>
       </div>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Every workout day in this window, then the same days split by activity
-        type. Tap a day to open it on the Timeline.
+        Every workout day in this window, then the same days split by activity.
+        Tap a day to open it on the Timeline.
       </p>
       {values.length === 0 ? (
         <EmptyState

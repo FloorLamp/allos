@@ -20,7 +20,7 @@ import {
   getExerciseE1rmSeries,
   getSportByActivity,
   getVolumeByDate,
-  getWorkoutTypeDays,
+  getWorkoutActivityDays,
 } from "@/lib/queries";
 import type { ActivityComponent } from "@/lib/types";
 
@@ -281,9 +281,9 @@ describe("windowed sport (getSportByActivity)", () => {
   });
 });
 
-describe("windowed sessions-by-type days (getWorkoutTypeDays)", () => {
+describe("windowed workout-activity days (getWorkoutActivityDays)", () => {
   it("returns rows inside [since, until] and only those", () => {
-    const rows = getWorkoutTypeDays(profileId, FROM, TO);
+    const rows = getWorkoutActivityDays(profileId, FROM, TO);
     const dates = rows.map((r) => r.date);
     expect(dates).toContain(ON_OPEN);
     expect(dates).toContain(INSIDE);
@@ -294,26 +294,28 @@ describe("windowed sessions-by-type days (getWorkoutTypeDays)", () => {
   });
 
   it("a WIDER window over the same end reaches the deep-past rows", () => {
-    const dates = getWorkoutTypeDays(profileId, BEFORE_FAR, TO).map(
+    const dates = getWorkoutActivityDays(profileId, BEFORE_FAR, TO).map(
       (r) => r.date
     );
     expect(dates).toContain(BEFORE_FAR);
     expect(dates).toContain(BEFORE_EDGE);
   });
 
-  it("splits one day's mixed training by type", () => {
-    // The fixture logs multiple disciplines across the window; every returned
-    // row carries a type, and a (date, type) pair appears at most once.
-    const rows = getWorkoutTypeDays(profileId, FROM, TO);
+  it("splits the window's training by named activity", () => {
+    // The fixture logs multiple distinct sessions across the window; every
+    // returned row carries a normalized activity identity, and a (date, key)
+    // pair appears at most once.
+    const rows = getWorkoutActivityDays(profileId, FROM, TO);
     expect(rows.length).toBeGreaterThan(0);
     const seen = new Set<string>();
     for (const r of rows) {
       expect(r.count).toBeGreaterThan(0);
-      const key = `${r.date}|${r.type}`;
+      expect(r.label.length).toBeGreaterThan(0);
+      const key = `${r.date}|${r.key}`;
       expect(seen.has(key)).toBe(false);
       seen.add(key);
     }
-    expect(new Set(rows.map((r) => r.type)).size).toBeGreaterThan(1);
+    expect(new Set(rows.map((r) => r.key)).size).toBeGreaterThan(1);
   });
 });
 

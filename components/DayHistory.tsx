@@ -26,17 +26,20 @@ import FoodGroupIcon, {
 // Three-letter weekday labels indexed by 0=Sun … 6=Sat, overlaid on the grid.
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Calendar cell geometry, shared by the cells and the overlaid label offsets.
+// Cell geometry, shared by the cells and the overlaid label offsets.
 const CAL_CELL = 24;
 const CAL_GAP = 3;
 const CAL_STEP = CAL_CELL + CAL_GAP;
+const MTX_STEP = 18 + 2; // matrix cell width + gap
+const MTX_LABEL_W = 112; // the sticky row-label column (w-28)
 
-// The overlaid month/weekday labels: all-caps pills floating ON the grid (no
-// reserved gutter rows/columns — the cells get the full width), kept legible
-// over any ramp step by a translucent blurred backing, and click-through so
-// the cells beneath keep their hover and links.
+// The overlaid axis labels: all-caps pills floating ON the grid (no reserved
+// gutter rows/columns — the cells get the full width), kept legible over any
+// ramp step by a translucent blurred backing, and click-through so the cells
+// beneath keep their hover and links. z-index is per use: the matrix's day
+// numbers must slide UNDER its sticky row labels.
 const OVERLAY_LABEL =
-  "pointer-events-none absolute z-[2] rounded bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
+  "pointer-events-none absolute rounded bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
 
 // Color bucket per level, from the ONE blessed activity ramp (#1445).
 const LEVEL_CLASS = [
@@ -92,6 +95,7 @@ export default function DayHistory({
   const [detail, setDetail] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const matrixRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   const days = useMemo(
     () => historyDays(dayHistoryStart(end, weeks, weekStart), end),
@@ -127,11 +131,13 @@ export default function DayHistory({
     [showCalendar, values, selected, end, weeks, weekStart, spec, today]
   );
 
-  // The matrix opens at the RECENT edge — on a narrow screen the left of the
-  // window is old history, and landing there reads as "no data".
+  // Both halves open at the RECENT edge — on a narrow screen the left of the
+  // window is old history, and landing there reads as "no data". (The calendar
+  // only actually scrolls when the window outgrows the screen — All time.)
   useEffect(() => {
-    const el = matrixRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
+    for (const el of [matrixRef.current, calendarRef.current]) {
+      if (el) el.scrollLeft = el.scrollWidth;
+    }
   }, [rows.length, days.length]);
 
   const isOn = (key: string) => selected === null || selected.has(key);
@@ -146,6 +152,20 @@ export default function DayHistory({
 
   const labelFor = (key: string) =>
     groups.find((g) => g.key === key)?.label ?? key;
+
+  // Chips in RELEVANCY order — window total descending, ties keeping the
+  // caller's vocabulary order (the sort is stable) — so a 20-item dose list
+  // leads with what is actually taken, not the alphabet.
+  const chipGroups = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const v of values) {
+      if (v.value > 0)
+        totals.set(v.group, (totals.get(v.group) ?? 0) + v.value);
+    }
+    return [...groups].sort(
+      (a, b) => (totals.get(b.key) ?? 0) - (totals.get(a.key) ?? 0)
+    );
+  }, [groups, values]);
 
   const calendarCellSummary = (cell: DayHistoryCalendarCell): string => {
     const base =
@@ -197,7 +217,7 @@ export default function DayHistory({
           role="group"
           aria-label="Filter groups"
         >
-          {groups.map((g) => (
+          {chipGroups.map((g) => (
             <button
               key={g.key}
               type="button"
@@ -245,7 +265,11 @@ export default function DayHistory({
           rows/columns), so the cells themselves get the full width — on a
           phone the 13-week window fills the screen edge to edge. */}
       {calendar && (
-        <div className={SCROLLER} data-testid="day-history-calendar">
+        <div
+          ref={calendarRef}
+          className={SCROLLER}
+          data-testid="day-history-calendar"
+        >
           <div className="relative inline-block align-top">
             <div className="flex gap-[3px]">
               {calendar.columns.map((col, ci) => (
@@ -295,7 +319,7 @@ export default function DayHistory({
               <span
                 key={m.col}
                 aria-hidden="true"
-                className={`${OVERLAY_LABEL} -top-1.5`}
+                className={`${OVERLAY_LABEL} -top-1.5 z-[2]`}
                 style={{ left: m.col * CAL_STEP }}
               >
                 {m.label}
@@ -306,7 +330,7 @@ export default function DayHistory({
                 <span
                   key={row}
                   aria-hidden="true"
-                  className={`${OVERLAY_LABEL} -left-1`}
+                  className={`${OVERLAY_LABEL} -left-1 z-[2]`}
                   style={{ top: row * CAL_STEP + (CAL_CELL - 16) / 2 }}
                 >
                   {DOW[wd]}
@@ -324,7 +348,22 @@ export default function DayHistory({
           className={SCROLLER}
           data-testid="day-history-matrix"
         >
-          <div className="min-w-max space-y-[3px]">
+          <div className="relative flex min-w-max flex-col gap-[3px]">
+            {/* Day-of-month overlays at each week boundary (the day list is
+                week-aligned, so every 7th day is a week start). They scroll
+                with the cells and slide UNDER the sticky row labels. */}
+            {days.map((d, i) =>
+              i % 7 === 0 ? (
+                <span
+                  key={d}
+                  aria-hidden="true"
+                  className={`${OVERLAY_LABEL} -top-1.5 z-[1] tabular-nums`}
+                  style={{ left: MTX_LABEL_W + i * MTX_STEP }}
+                >
+                  {parseInt(d.slice(8), 10)}
+                </span>
+              ) : null
+            )}
             {rows.map((row) => {
               const isFold = row.key === FOLDED_ROW_KEY;
               const labelInner = (
@@ -360,13 +399,13 @@ export default function DayHistory({
                       data-testid="day-history-expand"
                       onClick={() => setExpanded(true)}
                       title={row.foldedKeys.map(labelFor).join(", ")}
-                      className="sticky left-0 z-[1] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs font-medium text-brand-700 backdrop-blur-sm hover:underline dark:bg-ink-950/70 dark:text-brand-400"
+                      className="sticky left-0 z-[2] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs font-medium text-brand-700 backdrop-blur-sm hover:underline dark:bg-ink-950/70 dark:text-brand-400"
                     >
                       {labelInner}
                     </button>
                   ) : (
                     <span
-                      className="sticky left-0 z-[1] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs text-slate-600 backdrop-blur-sm dark:bg-ink-950/70 dark:text-slate-300"
+                      className="sticky left-0 z-[2] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs text-slate-600 backdrop-blur-sm dark:bg-ink-950/70 dark:text-slate-300"
                       title={row.label}
                     >
                       {labelInner}

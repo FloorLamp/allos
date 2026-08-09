@@ -119,17 +119,6 @@ export function resolveActivityType(name: string): ActivityType | null {
   return null;
 }
 
-// The display name per activity type — exhaustive per the ACTIVITY_TYPES
-// discipline, so a sixth type is a compile error here until it gets a label.
-// `unclassified` reads as the stated absence it is (#2272), not a category.
-export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
-  strength: "Strength",
-  cardio: "Cardio",
-  sport: "Sport",
-  recovery: "Recovery",
-  unclassified: "Unclassified",
-};
-
 // Activities for which a distance makes sense.
 const DISTANCE_KEYWORDS = [
   "run",
@@ -185,6 +174,20 @@ export function activityFromTitle(title: string): string {
     .replace(/^(Morning|Afternoon|Evening|Night)\s+/i, "")
     .replace(/\s+Session$/i, "")
     .trim();
+}
+
+/** The day-history row NAME for a workout session: the stored title normalized
+ * to the activity/routine it names — time-of-day prefix and "Session" suffix
+ * via activityFromTitle, plus the Fitbit-style "59 Min " duration infix — so
+ * "Push day", "Afternoon Push Day" and "Morning Push Day Session" all land on
+ * one row (keyed through `activityHistoryKey` of this label, the #1931
+ * canonical activity identity). Falls back to the raw title rather than an
+ * empty label. */
+export function workoutActivityLabel(title: string): string {
+  const stripped = activityFromTitle(title)
+    .replace(/^\d+\s*Min\s+/i, "")
+    .trim();
+  return stripped || title.trim();
 }
 
 /** The single part name the editor derives from a legacy (component-less)
