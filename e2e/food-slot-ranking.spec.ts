@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { settledClick } from "./helpers";
 import {
   E2E_LOGIN_FOODSLOT,
   E2E_LOGIN_FOODUSUAL,
@@ -140,7 +141,7 @@ test("a regular window offers its usual set in one tap, and stops offering it on
     // One tap logs both. The counts beside the rows are the evidence.
     await expect(page.getByTestId("count-berries")).toHaveText("0");
     await expect(page.getByTestId("count-fermented")).toHaveText("0");
-    await offer.click();
+    await settledClick(page, offer);
     await expect(page.getByTestId("count-berries")).toHaveText("1");
     await expect(page.getByTestId("count-fermented")).toHaveText("1");
 
@@ -158,9 +159,9 @@ test("a regular window offers its usual set in one tap, and stops offering it on
     // offer renders from state in BOTH directions: undo what made it disappear and it
     // comes back, with no dismissal bookkeeping anywhere. Leaves the fixture exactly as
     // it was found, so the spec is repeat-safe.
-    await page.getByTestId("undo-berries").click();
+    await settledClick(page, page.getByTestId("undo-berries"));
     await expect(page.getByTestId("count-berries")).toHaveText("0");
-    await page.getByTestId("undo-fermented").click();
+    await settledClick(page, page.getByTestId("undo-fermented"));
     await expect(page.getByTestId("count-fermented")).toHaveText("0");
     await expect(page.getByTestId("food-usual-offer")).toBeVisible();
   } finally {
