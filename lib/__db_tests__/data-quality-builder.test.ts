@@ -185,6 +185,36 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
     );
   });
 
+  // The distinction #1045 introduced the marker FOR (#2299): an intentionally-empty
+  // review must read differently from a fresh profile. Both have zero risk_* flags,
+  // so only the marker separates them — and nothing asserted that until now, which
+  // is part of why the form could go a year with no control that writes it.
+  it("an EMPTY-but-reviewed adult clears the risk gap; the same profile unreviewed does not", () => {
+    const { profileId } = makeProfile("dq-empty-review");
+    setUserSex(profileId, "male");
+    setUserBirthdate(profileId, "1985-01-01"); // adult → the risk gap is eligible
+
+    // Fresh: no flags, no marker → the gap fires.
+    expect(new Set(keysOf(profileId))).toContain(
+      dataQualityDedupeKey("risk-attributes")
+    );
+
+    // Reviewed, still no flags — the ONLY change is the marker.
+    setRiskAttributesReviewed(profileId, true);
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM profile_settings
+            WHERE profile_id = ? AND key LIKE 'risk\\_%' ESCAPE '\\'
+              AND key <> 'risk_attributes_reviewed'`
+        )
+        .get(profileId)
+    ).toEqual({ n: 0 });
+    expect(new Set(keysOf(profileId))).not.toContain(
+      dataQualityDedupeKey("risk-attributes")
+    );
+  });
+
   it("BOUNDARY: a structurally-complete adult profile emits nothing", () => {
     const { profileId } = makeProfile("dq-complete");
     setUserSex(profileId, "male");

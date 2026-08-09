@@ -21,6 +21,17 @@
 // seam (lib/rule-findings buildDataQualityFindings) gathers the inputs and maps the
 // gaps into the shared Finding envelope, and every surface (dashboard widget, coaching
 // findings, household rollup) is a thin formatter over these results.
+//
+// A gap that clears on a REVIEW MARKER rather than on a stored value owes its CTA
+// surface an explicit control that writes the marker with no change to the data.
+// Otherwise the gap is unclearable for exactly the people it applies to least — and
+// the "Fix it" CTA lands on a form with no fix. (#2299: `risk-attributes` is the one
+// marker-cleared detector here — the other nine clear on a value existing — and its
+// form went a year with no affordance but a checkbox onChange, so a profile with no
+// risk factors could only clear the card by toggling a box on and off again. No type
+// and no source scan enforce this: the thing to guarantee is that a FORM has an
+// affordance, which neither can see. The guard is the behavior test — the gap must
+// clear from the form with zero factors toggled.)
 
 import {
   biomarkerAddHref,
