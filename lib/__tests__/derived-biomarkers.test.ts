@@ -24,8 +24,7 @@ import canonicalSeed from "../canonical-biomarkers.json";
 
 // The two derived indices whose canonical names are long "Full Name (ABBR)" forms
 // since #2335 — aliased here so the assertions below stay readable.
-const HOMA_IR =
-  "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)";
+const HOMA_IR = "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)";
 const EGFR = "Estimated Glomerular Filtration Rate (eGFR)";
 
 // A demographics resolver with a fixed age + sex (eGFR needs both).

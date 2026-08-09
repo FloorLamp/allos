@@ -359,9 +359,9 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
     expect(
       snapCanonicalName("Nucleated Red Blood Cells, Absolute", index)
     ).toBe("Nucleated Red Blood Cells, Absolute");
-    expect(snapCanonicalName("Nucleated Red Blood Cells, Relative", index)).toBe(
-      "Nucleated Red Blood Cells, Relative"
-    );
+    expect(
+      snapCanonicalName("Nucleated Red Blood Cells, Relative", index)
+    ).toBe("Nucleated Red Blood Cells, Relative");
     // The retired bare spelling routes onto it (#2335).
     expect(snapCanonicalName("Nucleated Red Blood Cells", index)).toBe(
       "Nucleated Red Blood Cells, Relative"

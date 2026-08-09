@@ -44,10 +44,7 @@ const RENAMES: [string, string][] = [
   ["FVC", "Forced Vital Capacity (FVC)"],
   ["eGFR", "Estimated Glomerular Filtration Rate (eGFR)"],
   ["RPR", "Rapid Plasma Reagin (RPR)"],
-  [
-    "HOMA-IR",
-    "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
-  ],
+  ["HOMA-IR", "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)"],
   [
     "ANA Screen, IFA",
     "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
@@ -309,17 +306,17 @@ describe("migration 178 — canonical names that state what they measure", () =>
       if (typeof value === "string" && retired.has(value.toLowerCase()))
         stillNamed.push(`${where}: ${value}`);
     };
-    for (const r of mem
-      .prepare("SELECT key FROM saved_items")
-      .all() as { key: string }[])
+    for (const r of mem.prepare("SELECT key FROM saved_items").all() as {
+      key: string;
+    }[])
       check("saved_items", r.key);
     for (const r of mem
       .prepare("SELECT biomarker_name AS n FROM goals")
       .all() as { n: string }[])
       check("goals", r.n);
-    for (const r of mem
-      .prepare("SELECT label FROM coverage_gaps")
-      .all() as { label: string }[])
+    for (const r of mem.prepare("SELECT label FROM coverage_gaps").all() as {
+      label: string;
+    }[])
       check("coverage_gaps", r.label);
     for (const r of mem
       .prepare("SELECT canonical_name AS n FROM medical_records")

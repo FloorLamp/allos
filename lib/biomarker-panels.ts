@@ -567,7 +567,12 @@ export const BIOMARKER_PANELS: Record<
   // they ARE one order — a pulmonology report prints all four together — so they are
   // one panel, which is what makes the cross-reference chip on a peak-flow reading
   // point at the spirometry it was taken alongside.
-  respiratory: ["Peak Expiratory Flow", "Forced Expiratory Volume in 1 Second (FEV1)", "Forced Vital Capacity (FVC)", "FEV1/FVC Ratio"],
+  respiratory: [
+    "Peak Expiratory Flow",
+    "Forced Expiratory Volume in 1 Second (FEV1)",
+    "Forced Vital Capacity (FVC)",
+    "FEV1/FVC Ratio",
+  ],
   "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };

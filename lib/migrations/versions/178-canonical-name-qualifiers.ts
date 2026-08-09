@@ -96,8 +96,9 @@ export function up(db: Database.Database): void {
     // leaving it would keep a name the catalog no longer publishes — and block the
     // alias route that now points at its replacement. seedCanonicalBiomarkers inserts
     // the surviving name from the JSON in the boot that follows.
-    db.prepare("DELETE FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE")
-      .run(rename.from);
+    db.prepare(
+      "DELETE FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE"
+    ).run(rename.from);
   }
 }
 
