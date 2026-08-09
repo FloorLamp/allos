@@ -75,9 +75,7 @@ describe("logUsualFood", () => {
         { groupKey: "fermented", servings: 1, mealServings: 1 },
       ],
     });
-    expect(
-      servings(profile.id).filter((r) => r.date === anchor)
-    ).toEqual([
+    expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([
       { date: anchor, group_key: "berries", servings: 1 },
       { date: anchor, group_key: "fermented", servings: 1 },
     ]);
@@ -99,7 +97,9 @@ describe("logUsualFood", () => {
 
   it("refuses a second tap rather than logging a second breakfast", async () => {
     const { profile, anchor } = seedUsualMorning("usual-repeat");
-    await logUsualFood(fd({ meal_slot: "Morning", groups: "berries,fermented" }));
+    await logUsualFood(
+      fd({ meal_slot: "Morning", groups: "berries,fermented" })
+    );
     const again = await logUsualFood(
       fd({ meal_slot: "Morning", groups: "berries,fermented" })
     );
@@ -177,7 +177,9 @@ describe("logUsualFood", () => {
     const { profile } = seedUsualMorning("usual-scope-a");
     const otherLogin = createLogin();
     const other = createProfile("usual-scope-b", otherLogin.id);
-    await logUsualFood(fd({ meal_slot: "Morning", groups: "berries,fermented" }));
+    await logUsualFood(
+      fd({ meal_slot: "Morning", groups: "berries,fermented" })
+    );
     expect(servings(other.id)).toEqual([]);
     expect(servings(profile.id).length).toBeGreaterThan(0);
   });

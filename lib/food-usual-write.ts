@@ -53,7 +53,12 @@ export interface UsualFoodLogged {
 // already logged in that window today, or none of them is habitual any more. Nothing
 // was written and the surface must say so rather than confirm.
 export type UsualFoodOutcome =
-  | { kind: "logged"; date: string; window: FoodSlot; groups: UsualFoodLogged[] }
+  | {
+      kind: "logged";
+      date: string;
+      window: FoodSlot;
+      groups: UsualFoodLogged[];
+    }
   | { kind: "nothing-to-log" };
 
 // Log one serving of each still-offered usual group into `window` on the profile's

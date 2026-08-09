@@ -141,7 +141,9 @@ export function foodRegularity(
       }))
       .sort(
         (a, b) =>
-          b.share - a.share || b.days - a.days || a.groupKey.localeCompare(b.groupKey)
+          b.share - a.share ||
+          b.days - a.days ||
+          a.groupKey.localeCompare(b.groupKey)
       );
     out[window] = { window, observedDays, groups };
   }

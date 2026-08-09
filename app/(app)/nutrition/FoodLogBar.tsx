@@ -318,9 +318,8 @@ export default function FoodLogBar({
   // still has nothing logged for, so a second tap has nothing to offer) and answered
   // from its typed outcome, because a stale offer must refuse rather than confirm.
   // A separate ledger so its cooldown never absorbs a real "+" beside it.
-  const usualLedger = useOptimisticLedger<Record<string, ServingCounts>>(
-    "food-usual"
-  );
+  const usualLedger =
+    useOptimisticLedger<Record<string, ServingCounts>>("food-usual");
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const nutrientSummary = nutrientSummaryByDate.find(

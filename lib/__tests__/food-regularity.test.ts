@@ -74,7 +74,11 @@ describe("foodRegularity", () => {
         ...events("Evening", "berries", inside),
         // One day older than the span, and one in the future — neither is evidence.
         ...events("Evening", "berries", [FOOD_REGULARITY_SPAN_DAYS]),
-        { groupKey: "berries", date: shiftDateStr(TODAY, 1), window: "Evening" },
+        {
+          groupKey: "berries",
+          date: shiftDateStr(TODAY, 1),
+          window: "Evening",
+        },
       ],
       { today: TODAY }
     );
@@ -149,9 +153,10 @@ describe("habitualFoodGroups", () => {
 
   it("keeps a group at the share threshold and drops the one below it", () => {
     expect(FOOD_REGULARITY_HABITUAL_SHARE).toBe(0.6);
-    expect(
-      habitualFoodGroups(measure.Morning).map((g) => g.groupKey)
-    ).toEqual(["fermented", "berries"]);
+    expect(habitualFoodGroups(measure.Morning).map((g) => g.groupKey)).toEqual([
+      "fermented",
+      "berries",
+    ]);
   });
 
   it("drops an excluded (cap-direction) group without disturbing the rest", () => {

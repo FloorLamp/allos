@@ -624,7 +624,10 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
       ),
     });
   }
-  return foodRegularity(events, { today: t, spanDays: FOOD_REGULARITY_SPAN_DAYS });
+  return foodRegularity(events, {
+    today: t,
+    spanDays: FOOD_REGULARITY_SPAN_DAYS,
+  });
 }
 
 // The food groups whose regularity may be MEASURED but never presented back as an
@@ -656,7 +659,8 @@ export function getCapDirectionFoodGroups(profileId: number): Set<string> {
     // inverted food scope) or a substance whose ledger is a food group. Anything else
     // (nicotine, cannabis — their own table) has no food group to exclude.
     if (foodGroupBySlug(row.scope_value)) excluded.add(row.scope_value);
-    if (row.scope_value === ALCOHOL_FOOD_GROUP) excluded.add(ALCOHOL_FOOD_GROUP);
+    if (row.scope_value === ALCOHOL_FOOD_GROUP)
+      excluded.add(ALCOHOL_FOOD_GROUP);
   }
   return excluded;
 }
@@ -691,7 +695,8 @@ export function getUsualFoodOffer(
   const habitual = habitualFoodGroups(getFoodRegularity(profileId)[window], {
     excluded: getCapDirectionFoodGroups(profileId),
   }).map((g) => g.groupKey);
-  const logged = getFoodMealDays(profileId, [date])[0]?.slotCounts[window] ?? {};
+  const logged =
+    getFoodMealDays(profileId, [date])[0]?.slotCounts[window] ?? {};
   return usualFoodOffer(
     habitual,
     new Set(Object.keys(logged).filter((slug) => (logged[slug] ?? 0) > 0))
