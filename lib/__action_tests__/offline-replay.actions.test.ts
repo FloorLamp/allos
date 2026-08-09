@@ -940,6 +940,97 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     }
   });
 
+  // #2311 — the SAME channel, for the surface #2296 did not reach. A queued weigh-in
+  // carries a resolved instant (there was no server to ask while offline), so this is
+  // where a fast device clock actually costs a body reading its "when" — and where
+  // the reconnect confirmation now says so.
+  it("a queued weigh-in keeps its reading and reports the refused time (#2311)", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`BodyTime ${uniqueKey()}`);
+    actAs(admin, profile);
+    const anchor = today(profile.id);
+    const tz = getTimezone(profile.id);
+
+    // One DAY per case: the manual body row is one-per-day by design (#2235
+    // decision 6), so two weigh-ins on one date would correct each other rather
+    // than answer independently.
+    const weighIn = (
+      date: string,
+      notes: string,
+      occurredAt?: string
+    ): QueuedIntent => ({
+      key: uniqueKey(),
+      flow: "body-metric",
+      date,
+      capturedAt: `${date}T09:00:00.000Z`,
+      payload: {
+        weight: "82",
+        weightUnit: "kg",
+        bodyFatPct: null,
+        restingHr: null,
+        notes,
+        ...(occurredAt === undefined ? {} : { occurredAt }),
+      },
+      attempts: 0,
+    });
+    const statedAt = (date: string): string | null =>
+      (
+        db
+          .prepare(
+            "SELECT occurred_at FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS NULL"
+          )
+          .get(profile.id, date) as { occurred_at: string | null }
+      ).occurred_at;
+
+    const cases = [
+      {
+        day: shiftDateStr(anchor, -1),
+        bad: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
+        reason: "future",
+      },
+      {
+        day: shiftDateStr(anchor, -2),
+        bad: zonedWallTimeToUtc(
+          tz,
+          shiftDateStr(anchor, -3),
+          "12:00"
+        )!.toISOString(),
+        reason: "other-day",
+      },
+      {
+        day: shiftDateStr(anchor, -4),
+        bad: "not-an-instant",
+        reason: "malformed",
+      },
+    ] as const;
+    for (const { day, bad, reason } of cases) {
+      const notes = uniqueKey();
+      const res = await replay([weighIn(day, notes, bad)]);
+      // The reading LANDED — a refusal is a notice, never a rejection. It is
+      // deliberately not in the dead-letter panel: nothing here needs re-entering.
+      expect(res.body.results?.[0].status).toBe("done");
+      expect(res.body.results?.[0].timeNotice).toBe(reason);
+      expect(res.body.results?.[0].reason).toBeUndefined();
+      expect(bodyMetricsFor(profile.id, notes)).toBe(1);
+      expect(statedAt(day)).toBeNull();
+    }
+
+    // And nothing to say when there is nothing to say: an accepted statement is
+    // kept and reported silently, an absent one is simply absent.
+    const keptDay = shiftDateStr(anchor, -5);
+    const keptAt = utcInstant(zonedWallTimeToUtc(tz, keptDay, "07:15")!);
+    const withTime = await replay([weighIn(keptDay, uniqueKey(), keptAt)]);
+    expect(withTime.body.results?.[0].status).toBe("done");
+    expect(withTime.body.results?.[0].timeNotice).toBeUndefined();
+    expect(statedAt(keptDay)).toBe(keptAt);
+
+    const silentDay = shiftDateStr(anchor, -6);
+    const noTime = await replay([weighIn(silentDay, uniqueKey())]);
+    expect(noTime.body.results?.[0].status).toBe("done");
+    expect(noTime.body.results?.[0].timeNotice).toBeUndefined();
+    expect(statedAt(silentDay)).toBeNull();
+  });
+
   it("dead-letters an unknown food group with a reason, writing nothing", async () => {
     const admin = createLogin();
     const profile = createProfile(`FoodUnknown ${uniqueKey()}`);

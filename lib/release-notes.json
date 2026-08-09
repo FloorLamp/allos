@@ -1,8 +1,256 @@
 {
   "days": [
     {
+      "date": "2026-08-09",
+      "entries": [
+        {
+          "pr": 2325,
+          "title": "A source allos does not drive is never called “Connected”",
+          "body": "A Takeout archive, patient portals and the calendar feed now use words that fit how their data arrives — “Last import”, “Feed enabled” — rather than a green health badge, and none of them can escalate to a failure nudge.",
+          "kind": "fix",
+          "issues": [2301]
+        },
+        {
+          "pr": 2331,
+          "title": "Latest vitals stops presenting an old reading as current",
+          "body": "Each row ages against its own floor — resting heart rate two weeks, blood pressure six months. Past it the value stays but the card says how old it is. A trend arrow is no longer drawn between two readings from the same day.",
+          "kind": "fix",
+          "issues": [2303]
+        },
+        {
+          "pr": 2333,
+          "title": "“Review risk factors” can be answered by people it does not apply to",
+          "body": "The form gained a “None of these apply” button, and says so once answered. Previously the card's “Fix it” link landed on a form with nothing to press unless one of the five factors was actually yours.",
+          "kind": "fix",
+          "issues": [2299]
+        },
+        {
+          "pr": 2336,
+          "title": "Food rows render from one component at every screen size",
+          "body": "The name and tier badge were written twice, and the two copies had quietly diverged. A long group name now clips consistently instead of wrapping and knocking the serving controls out of alignment.",
+          "kind": "fix",
+          "issues": [2305]
+        },
+        {
+          "pr": 2343,
+          "title": "A biomarker row shows the ranges its flag came from",
+          "body": "A value could be marked red “High” beside a printed range it sat comfortably inside — about one reading in ten contradicted its own row. The row now states the bands that judged it, names the age band when one applied, and spells the severity out.",
+          "kind": "fix",
+          "issues": [2315]
+        },
+        {
+          "pr": 2346,
+          "title": "A value is coloured only when the page can show what judged it",
+          "body": "For analytes allos publishes no range for, the detail page showed an alarming value with no range beside it. It now shows the range your lab printed, attributed, or leaves the value uncoloured when there is nothing to show.",
+          "kind": "fix",
+          "issues": [2340]
+        },
+        {
+          "pr": 2348,
+          "title": "PhenoAge computes on draws that report fasting glucose",
+          "body": "It only recognised the unqualified “Glucose” entry, so a fasting panel silently produced no biological age at all. Inputs reported below a lab's detection limit are now named, with the direction of the bias.",
+          "kind": "fix",
+          "issues": [2334]
+        },
+        {
+          "pr": 2349,
+          "title": "“Check these first” links to the rows it names",
+          "body": "Each flagged reading jumps to its row in the records table, switching tabs and highlighting it. Where a name matches several rows the table filters rather than guessing one; where it matches none, it says so.",
+          "kind": "feature",
+          "issues": [2339]
+        },
+        {
+          "pr": 2350,
+          "title": "Choose which profiles' reminders reach your phone",
+          "body": "Admins are left out of notifications by default, and the way back in — granting yourself the profiles you want — was refused for admins, so there was none. It is now a plain per-profile checklist. Nothing is opted in for you.",
+          "kind": "fix",
+          "issues": [2345]
+        },
+        {
+          "pr": 2354,
+          "title": "Results are not labelled “fasting” when the report never said so",
+          "body": "The extractor added that qualifier from context. It changes which reference range a value is judged against, and split one person's glucose history across two names. Qualifiers the layout genuinely carries are unaffected.",
+          "kind": "fix",
+          "issues": [2338]
+        },
+        {
+          "pr": 2356,
+          "title": "An unqualified glucose is no longer judged as fasting",
+          "body": "Both glucose entries carried a fasting range, so a normal post-meal 120 could be marked high. A result that does not record whether you fasted now shows its value with no flag and says why. Fasting results are unaffected.",
+          "kind": "fix",
+          "issues": [2337]
+        },
+        {
+          "pr": 2358,
+          "title": "An injury's scope can be corrected after it is logged",
+          "body": "Log it broadly on day one, then narrow it once you understand it — without deleting and re-logging, which lost the start date. Narrowing names the lifts it puts back in your suggestions.",
+          "kind": "feature",
+          "issues": [2297]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-08",
+      "entries": [
+        {
+          "pr": 2273,
+          "title": "A correction belongs to the message that produced it",
+          "body": "Time-correction chips used to ride every live chat message, so a morning food log could restamp an afternoon breakfast. Each correction is now bound to its own message, and a stated eating time decides the meal.",
+          "kind": "fix",
+          "issues": [2264, 2269]
+        },
+        {
+          "pr": 2276,
+          "title": "A sync reads as failing only when data has actually stopped",
+          "body": "Provider status now asks whether a successful sync landed inside that provider's tolerance, instead of counting failed attempts. Weather no longer reads “failing” during ordinary flakiness; a genuinely stopped feed still is.",
+          "kind": "fix",
+          "issues": [2263]
+        },
+        {
+          "pr": 2277,
+          "title": "One time for a whole vitals sitting",
+          "body": "The separate temperature and peak-flow time boxes fold into the one optional time beside the date, and it reaches every measure the submission writes. Temperature times that rode inside a note became real recorded times.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2278,
+          "title": "A resolved reminder says what happened",
+          "body": "When a chat reminder's buttons are gone because everything is handled, it now names the outcome — which supplements were taken or skipped, the mood recorded, whether a session finished — instead of “handled in the app”.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2279,
+          "title": "One workout recorded by two apps is one workout again",
+          "body": "When two sources describe the same session but label it differently, the overlap is matched and offered for merge instead of double-counting your day. An import stating no activity type is recorded as unspecified.",
+          "kind": "fix",
+          "issues": [2271, 2272]
+        },
+        {
+          "pr": 2282,
+          "title": "The digest suggestion knows when there is nothing to wait for",
+          "body": "It no longer appears when your digest carries no sleep summary. When it does appear it states the tradeoff in plain numbers, and declining says “No thanks” because it is a real dismissal rather than a snooze.",
+          "kind": "fix",
+          "issues": [2249, 2255]
+        },
+        {
+          "pr": 2288,
+          "title": "No form guide for a lift you already know",
+          "body": "The “How to” link on a workout nudge now appears only for a lift you have not done recently, and only when that lift actually has a guide — so a custom exercise no longer offers a button leading nowhere.",
+          "kind": "fix",
+          "issues": [2223]
+        },
+        {
+          "pr": 2289,
+          "title": "A gap in your data now looks like a gap",
+          "body": "Day-by-day charts used to squeeze missing days out of existence, so four failed sync nights rendered as four adjacent points. Every day now holds its own place on the axis, and a genuine zero still reads as zero.",
+          "kind": "fix",
+          "issues": [2258]
+        },
+        {
+          "pr": 2290,
+          "title": "The cycling heart-rate card loads faster and states its window",
+          "body": "It used to read every minute of cycling heart-rate data you had ever recorded. It now covers a 12-week block ending at your most recent ride and says so. Totals, records and power bests are unchanged and still all-time.",
+          "kind": "perf",
+          "issues": [2197]
+        },
+        {
+          "pr": 2294,
+          "title": "Name the exact lifts an injury rules out",
+          "body": "The injury form now lets you pick specific exercises, drawn from the lifts you actually train plus your own. “Left shoulder is bad on overhead press” no longer has to be recorded as all pushing or all shoulders.",
+          "kind": "feature",
+          "issues": [2199]
+        },
+        {
+          "pr": 2302,
+          "title": "Twenty-five more lab analytes are recognised",
+          "body": "Urinalysis microscopy, a first stool panel, atypical lymphocytes and band neutrophils, indirect bilirubin, urine ratios and an ANA screen now resolve to known biomarkers. Four are computed when their components share a draw.",
+          "kind": "feature",
+          "issues": [2300]
+        },
+        {
+          "pr": 2304,
+          "title": "The food bar's quick buttons match the ones the reminder sends",
+          "body": "The page used to fill its six quick slots by category quota, so the buttons on screen could differ from those in your nudge. Both now show the six you log most, in the same order.",
+          "kind": "fix",
+          "issues": [2225]
+        },
+        {
+          "pr": 2307,
+          "title": "Results filed under a lab's own spelling join the right series",
+          "body": "A lab's own spelling of an analyte could stick permanently, leaving readings for one test in two places and missing from trends. Those spellings are now retired automatically, on existing data as well as new imports.",
+          "kind": "fix",
+          "issues": [2306]
+        },
+        {
+          "pr": 2308,
+          "title": "A refused eating time is no longer dropped in silence",
+          "body": "When a device's clock runs fast, a stated time could be discarded while the serving saved, with nothing on screen. The serving still saves, you get a plain note that it went in without its time, and the time is one tap away.",
+          "kind": "fix",
+          "issues": [2296]
+        },
+        {
+          "pr": 2309,
+          "title": "Allos notices when a device stops sending, and the bedtime reminder works again",
+          "body": "If your watch comes off while the phone keeps syncing, Review now names the stream that went quiet and when it last arrived. It clears itself when data backfills and never becomes a notification.",
+          "kind": "feature",
+          "issues": [2146]
+        },
+        {
+          "pr": 2310,
+          "title": "A just-started workout no longer reads as abandoned",
+          "body": "Two records were stamped by the database's clock while the app judged them by its own, so a session begun seconds earlier could show the “Still working out?” prompt and an offline serving could have its time refused.",
+          "kind": "fix",
+          "issues": [2287]
+        },
+        {
+          "pr": 2314,
+          "title": "Allos says when your records are going stale, however they arrive",
+          "body": "Connected portals already prompted for a refresh; Takeout exports and hand-uploaded PDFs got nothing. Both now get the same calm Upcoming item, naming the date your newest data actually covers.",
+          "kind": "feature",
+          "issues": [2164, 2176]
+        },
+        {
+          "pr": 2317,
+          "title": "The bedtime reminder is offered when a wearable starts sending",
+          "body": "Begin tracking heart rate and you are asked once whether you want the “still on the charger?” reminder. Ignoring it turns nothing on. If you later stop wearing the device you are told plainly rather than left wondering.",
+          "kind": "feature",
+          "issues": [2162]
+        }
+      ]
+    },
+    {
       "date": "2026-08-07",
       "entries": [
+        {
+          "pr": 2265,
+          "title": "An illness episode ends on the last day you were sick",
+          "body": "The stored end used to be the first day you were well again, so some day counts ran one long. The editor now asks for the last day sick and every surface counts inclusively. Existing episodes were converted.",
+          "kind": "fix",
+          "issues": [2232]
+        },
+        {
+          "pr": 2266,
+          "title": "Editing a dose no longer invents an intake time",
+          "body": "Amending a dose's amount leaves its time exactly as it was, including “never stated”. The illness timeline's dose edit now obeys the same course-window and duplicate guards as the medication card.",
+          "kind": "fix",
+          "issues": [2230]
+        },
+        {
+          "pr": 2268,
+          "title": "Correct a serving's eating time on the web",
+          "body": "The food log's correction sheet gains a time field beside Group, Day and Meal. The meal follows the hour you pick until you set it yourself, and ranking and nudge timing follow the corrected time.",
+          "kind": "feature",
+          "issues": [2227]
+        },
+        {
+          "pr": 2270,
+          "title": "Say when a body reading was taken",
+          "body": "The measurements form gains one optional time for the sitting — never pre-filled, one tap for now. A same-day resubmission now corrects that day's row instead of quietly creating a duplicate.",
+          "kind": "feature",
+          "issues": [2228]
+        },
         {
           "pr": 2248,
           "title": "Your morning digest can wait for last night's sleep",

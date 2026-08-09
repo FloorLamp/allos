@@ -785,7 +785,9 @@ export async function handleWeightReply(
     return true;
   }
 
-  const wrote = insertBodyMetric(markedProfile, {
+  // Time-blind: a `/weight` reply states a number and nothing about when, so the
+  // core's stated-time verdict is always "unstated" on this path (#2311).
+  const { wrote } = insertBodyMetric(markedProfile, {
     date: today(markedProfile),
     weight: String(parsed.value),
     weightUnit: parsed.unit,

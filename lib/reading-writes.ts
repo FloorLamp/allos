@@ -35,7 +35,7 @@ import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { placeReading, type ReadingTarget } from "./reading-placement";
 import { readingSourceFor, type ReadingProvenance } from "./reading-model";
-import { judgeStatedAt } from "./stated-time";
+import { judgeStatedAt, type StatedTimeRefusal } from "./stated-time";
 import { utcInstant } from "./date";
 import { now } from "./clock";
 import { getTimezone } from "./settings";
@@ -138,31 +138,52 @@ function bodyMetricInsert(column: BodyMetricColumn) {
 //     The WhenControl pair rule makes the UI unable to produce a mismatch; this
 //     enforces it anyway at the auth-blind boundary (constraint 3).
 //
-// KNOWN GAP, deliberately left (#2296): this is the one surviving path that drops a
-// refused statement without saying so. The gate now answers a verdict, so the reason
-// is available right here — but the four body-metric writers above it
-// (`insertBodyMetric`, the palette, the Telegram quick-log, the offline replay) all
-// answer `boolean`, so surfacing it is a widening of five call sites and their UIs,
-// not a line. The owner's #2296 ruling covers the food paths it was reproduced on;
-// this one is called out rather than quietly widened. Do NOT collapse the verdict
-// back to a nullable Date here — the distinction is what a follow-up needs.
+// AND THE ANSWER CARRIES THE REFUSAL (#2311, completing #2296's ruling). This used to
+// return `string | null | undefined`, which is the SAME collapse the gate itself was
+// fixed for one level up: `undefined` meant both "the caller said nothing about time"
+// and "the caller stated one and we threw it away", so a phone whose clock ran six
+// minutes fast kept its weigh-in and silently lost the "when" — arguably worse than for
+// food, because a body reading is often logged precisely BECAUSE when it was taken
+// matters (before breakfast, after a run). The tolerance is unchanged at five minutes;
+// what changed is that the answer can no longer hide the refusal from its caller.
+//
+// `value` is the three-way binding above, unchanged. `refused` is set ONLY when a
+// statement existed and the gate discarded it — never on an absence, never on an
+// explicit clear. A caller that ignores it is choosing silence EXPLICITLY, which is
+// exactly the property the old shape denied everyone.
 //
 // The accepted instant is re-serialized through `utcInstant`, so the stored shape
 // is the canonical `YYYY-MM-DDTHH:MM:SSZ` whatever the caller's ISO carried
 // (constraint 4; the instant-writer scan holds the SQL side of the same rule).
+export interface StatedOccurredAt {
+  /**
+   * What to bind: `undefined` = no statement (leave a stored one alone; NULL on a
+   * fresh row), `null` = explicit clear, a string = the canonical stated instant.
+   */
+  value: string | null | undefined;
+  /**
+   * Why a statement that WAS made is not in `value`. Present only alongside
+   * `value: undefined`, and only when the caller actually stated something.
+   */
+  refused?: StatedTimeRefusal;
+}
+
 export function resolveStatedOccurredAt(
   profileId: number,
   date: string,
   occurredAt: string | null | undefined
-): string | null | undefined {
-  if (occurredAt === undefined || occurredAt === null) return occurredAt;
+): StatedOccurredAt {
+  if (occurredAt === undefined || occurredAt === null)
+    return { value: occurredAt };
   const verdict = judgeStatedAt(
     new Date(occurredAt),
     getTimezone(profileId),
     date,
     now()
   );
-  return verdict.kind === "accepted" ? utcInstant(verdict.at) : undefined;
+  return verdict.kind === "accepted"
+    ? { value: utcInstant(verdict.at) }
+    : { value: undefined, refused: verdict.reason };
 }
 
 // Write the day row's stated instant. NO `edited` change here on purpose: in the
@@ -351,11 +372,18 @@ export function recordReading<U extends string>(
         // BEFORE the find so a refused statement costs the statement, never the
         // reading — and the find-then-write itself is untouched: occurred_at is
         // descriptive, so it plays no part in which row a write lands on.
+        //
+        // KNOWN GAP, stated rather than implied (#2311's audit). This core still
+        // COLLAPSES `.refused` — `ReadingRecordOutcome` has nowhere to carry it, and
+        // widening it reaches every reading writer (imports, the fitness battery, the
+        // vitals sitting) rather than the manual body-metrics submission #2311 was
+        // reproduced on. The refusal is now visible right here rather than erased by
+        // the resolver's shape, which is what makes the follow-up a small change.
         const stated = resolveStatedOccurredAt(
           profileId,
           input.date,
           input.occurredAt
-        );
+        ).value;
         const found = bodyMetricFind(placement.column).get(
           profileId,
           input.date,
@@ -481,11 +509,13 @@ export function recordReading<U extends string>(
         // body_metrics branch runs: a refused statement costs the statement,
         // never the reading. An observation is always a fresh INSERT, so
         // "no statement" and "explicit clear" both land as honest NULL.
+        // `.refused` is collapsed here for the same reason as the body_metrics
+        // branch above — see that comment; it is #2311's named audit survivor.
         const stated = resolveStatedOccurredAt(
           profileId,
           input.date,
           input.occurredAt
-        );
+        ).value;
         const info = db
           .prepare(
             `INSERT INTO medical_records

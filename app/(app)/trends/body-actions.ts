@@ -20,7 +20,9 @@ function strOrNull(raw: FormDataEntryValue | null): string | null {
 export async function addBodyMetric(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
   const prefs = getUnitPrefs(login.id);
-  const wrote = insertBodyMetric(profile.id, {
+  // No `occurredAt`: this path states no time at all, so the core's acceptance
+  // gate has nothing to judge and its outcome can never carry a refusal (#2311).
+  const { wrote } = insertBodyMetric(profile.id, {
     date: String(formData.get("date") ?? "").trim(),
     weight: String(formData.get("weight") ?? ""), // in the login's weight unit
     weightUnit: submittedWeightUnit(
