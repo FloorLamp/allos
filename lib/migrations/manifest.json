@@ -172,5 +172,6 @@
   "171-temperature-note-times.ts": "2df52bd51d8bc7caf7f0d9c456da3d37d3d1f336703d002b915561e17d473b33",
   "172-unclassified-activity-type.ts": "ab3c308befeb867fe242fe9a2b6947056ca02d2cd0ad020d0a3224efa4715215",
   "173-intake-log-recorded-at.ts": "f4b66995188b596d046f383201b04198e6fa72a340edcc8a3ae50ad13417db11",
-  "174-canonical-alias-merge.ts": "c78978f90a38f3430a3b3ed660dee97602c6d26aa62e6cf99667e97308abdc8b"
+  "174-canonical-alias-merge.ts": "c78978f90a38f3430a3b3ed660dee97602c6d26aa62e6cf99667e97308abdc8b",
+  "175-telemetry-stream-summary.ts": "5e6f857e6fcc0c57e5eeb255753762b29c6f192f510fac582e6670d39c993c8d"
 }

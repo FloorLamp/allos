@@ -41,6 +41,17 @@ function seedTrackedProtein(profileId: number, date: string, grams: number) {
      VALUES (?, 'health_connect', 'protein_g', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T08:00:00Z`, `${date}T08:00:00Z`, grams);
 }
+// Quick-add grams, ASSERTING the write actually landed (#2327). addProteinGramsCore
+// is a typed-outcome core: an amount over its per-add cap (MAX_GRAMS_PER_ADD) is
+// REFUSED and returns { kind: "invalid" } having written nothing. A fixture that
+// drops that outcome seeds a day it believes has protein and the reader honestly
+// reports none — which is exactly how an over-cap 500 g here became a null gauge,
+// and only on the profile's week-start day, where no week-to-date average was left
+// to mask it. Every seeded add in this file goes through here, so a refused write
+// fails loudly at the fixture instead of days later at an unrelated assertion.
+function addProtein(profileId: number, date: string, grams: number) {
+  expect(addProteinGramsCore(profileId, date, grams).kind).toBe("logged");
+}
 
 describe("getProteinToday (#974)", () => {
   it("reads a selected historical day's protein without leaking today's intake", () => {
@@ -49,7 +60,7 @@ describe("getProteinToday (#974)", () => {
     const yesterday = shiftDateStr(anchor, -1);
     seedWeight(p, yesterday, 80);
     logFood(p, yesterday, "poultry", 1); // 35 estimated
-    addProteinGramsCore(p, yesterday, 15); // +15 logged
+    addProtein(p, yesterday, 15); // +15 logged
     logFood(p, anchor, "eggs", 3); // must not enter yesterday
 
     const day = getProteinOnDate(p, yesterday);
@@ -63,7 +74,7 @@ describe("getProteinToday (#974)", () => {
     const anchor = today(p);
     seedWeight(p, anchor, 80); // active target ~95–130 g
     logFood(p, anchor, "poultry", 1); // 35 estimated
-    addProteinGramsCore(p, anchor, 30); // quick-add 30
+    addProtein(p, anchor, 30); // quick-add 30
 
     const t = getProteinToday(p);
     expect(t).not.toBeNull();
@@ -93,7 +104,7 @@ describe("getProteinToday (#974)", () => {
     const p = newProfile("today-pin-logged");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
-    addProteinGramsCore(p, anchor, 42);
+    addProtein(p, anchor, 42);
 
     const gauge = getProteinToday(p);
     // The quick-add card renders getProteinLoggedGrams(today); the gauge's logged
@@ -131,11 +142,11 @@ describe("getProteinToday (#974)", () => {
     // Every complete day in the window carries the same 100 g, so the trailing
     // figure is 100 wherever the profile's week boundary happens to fall…
     for (let ago = 1; ago <= 7; ago++) {
-      addProteinGramsCore(p, shiftDateStr(anchor, -ago), 100);
+      addProtein(p, shiftDateStr(anchor, -ago), 100);
     }
     // …while today is deliberately far off, which is what the old week-to-date
     // number carried into a line labelled "7-day average".
-    addProteinGramsCore(p, anchor, 300);
+    addProtein(p, anchor, 300);
 
     const t = getProteinToday(p);
     expect(t!.trailing.grams).toBe(100);
@@ -155,10 +166,21 @@ describe("getProteinToday (#974)", () => {
     const d3 = shiftDateStr(anchor, -3);
     seedTrackedProtein(p, d1, 120); // a measured total — overrides
     logFood(p, d1, "poultry", 1); // …so this 35 g estimate does not count
-    addProteinGramsCore(p, d2, 60);
+    addProtein(p, d2, 60);
     logFood(p, d2, "poultry", 1); // 35 estimated + 60 logged = 95
     logFood(p, d3, "eggs", 1); // estimated only
-    addProteinGramsCore(p, anchor, 500); // today: never in the window
+    // Today, deliberately far off the ~76 g the window should report, so a leak
+    // would be unmissable. Under the per-add cap — an over-cap amount is refused,
+    // not clamped, and would seed nothing at all.
+    //
+    // It also has to LAND for this assertion to be reached on every weekday. With
+    // today's protein present, getProteinToday composes through getProteinOnDate
+    // and never consults the week-to-date window; with it missing, the gather falls
+    // back to that window, and on the profile's week-start day (Sunday by default)
+    // the window is today alone, so the gauge is null and `t!` throws — which is the
+    // #2327 CI break. The window here is TRAILING and day-of-week independent by
+    // construction: do not "fix" a failure in this file by pinning a clock.
+    addProtein(p, anchor, 250);
 
     const eggs = 12; // one serving of eggs, per the food-group catalog
     const t = getProteinToday(p);
@@ -169,7 +191,7 @@ describe("getProteinToday (#974)", () => {
     const p = newProfile("trailing-day-one");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
-    addProteinGramsCore(p, anchor, 84); // the first protein ever logged
+    addProtein(p, anchor, 84); // the first protein ever logged
 
     const t = getProteinToday(p);
     expect(t!.trailing).toEqual({ grams: 84, dayOne: true });
@@ -179,8 +201,8 @@ describe("getProteinToday (#974)", () => {
     const p = newProfile("trailing-stale");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
-    addProteinGramsCore(p, shiftDateStr(anchor, -20), 130);
-    addProteinGramsCore(p, anchor, 84);
+    addProtein(p, shiftDateStr(anchor, -20), 130);
+    addProtein(p, anchor, 84);
 
     const t = getProteinToday(p);
     expect(t!.trailing).toEqual({ grams: null, dayOne: false });

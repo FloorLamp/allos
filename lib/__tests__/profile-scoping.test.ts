@@ -222,6 +222,24 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "boot-time qualitative flag reconcile (#549): a GLOBAL maintenance re-derivation run once per canonical-flags-signature change — a qualitative value classifies the same for every profile (blood type / immunity titer), so it is intentionally profile-agnostic; it only rewrites the row's own flag, never reads across profiles",
   },
   {
+    file: "lib/cycling-stream-summary-db.ts",
+    includes:
+      "SELECT id FROM activity_telemetry WHERE json_extract(stream_summary_json, '$.sig') IS NOT ?",
+    why: "reconcileCyclingStreamSummaries (#2292): a GLOBAL maintenance re-derivation in the shape of the boot flag reconcile — a ride's precomputed stream summary is a pure function of that row's OWN streams_json/power_zones_json, so it is the same value whoever owns the ride. Selects ids only, and never reads one profile's data on behalf of another; the two statements it drives are id-scoped (below).",
+  },
+  {
+    file: "lib/cycling-stream-summary-db.ts",
+    includes:
+      "SELECT streams_json, power_zones_json FROM activity_telemetry WHERE id = ?",
+    why: "reconcileCyclingStreamSummaries: the ids come from the global stale-summary SELECT in the same module, and the row is read only to re-derive its own summary",
+  },
+  {
+    file: "lib/cycling-stream-summary-db.ts",
+    includes:
+      "UPDATE activity_telemetry SET stream_summary_json = ? WHERE id = ?",
+    why: "reconcileCyclingStreamSummaries: rewrites only the row's own derived column, keyed by an id from the stale-summary SELECT above",
+  },
+  {
     file: "lib/migrations/boot-tasks.ts",
     includes: "PRAGMA table_info(medical_records)",
     why: "schema introspection (#684): checks whether the migration-034 loinc column exists so the version-agnostic boot reconcile can run against an earlier schema — not a data query, reads no rows",

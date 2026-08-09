@@ -21,6 +21,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
+  serializeCyclingStreamSummary,
+  summarizeCyclingStreams,
+} from "@/lib/cycling-stream-summary";
+import {
   getConnection,
   setWithingsCredentials,
   setWithingsTokens,
@@ -530,16 +534,34 @@ describe("runStravaSync orchestrator", () => {
     expect(samples.n).toBe(2);
     const telemetry = db
       .prepare(
-        `SELECT t.ftp_w, t.streams_json
+        `SELECT t.ftp_w, t.streams_json, t.power_zones_json,
+                t.stream_summary_json
            FROM activity_telemetry t
            JOIN activities a ON a.id = t.activity_id
           WHERE t.profile_id = ? AND a.external_id = 'strava:111'`
       )
-      .get(p) as { ftp_w: number; streams_json: string };
+      .get(p) as {
+      ftp_w: number;
+      streams_json: string;
+      power_zones_json: string | null;
+      stream_summary_json: string;
+    };
     expect(telemetry.ftp_w).toBe(250);
     expect(JSON.parse(telemetry.streams_json).watts.data).toEqual([
       180, 200, 220,
     ]);
+    // #2292: ingest is where the cycling overview's two stream-derived values are
+    // computed, so the overview never parses these bytes again. It is derived from
+    // what was actually STORED, so a partial pull that kept the prior streams
+    // cannot leave a summary describing bytes that were never written.
+    expect(telemetry.stream_summary_json).toBe(
+      serializeCyclingStreamSummary(
+        summarizeCyclingStreams(
+          telemetry.streams_json,
+          telemetry.power_zones_json
+        )
+      )
+    );
     const artifactIds = {
       lap: (
         db
