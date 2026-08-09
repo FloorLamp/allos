@@ -23,7 +23,6 @@ import {
   unroutable,
   type HouseholdSetupFacts,
   type HouseholdSetupRow,
-  type RoutingFacts,
   type SendSourceFacts,
   type SetupIntakeItem,
   type SetupPreventiveItem,
@@ -115,7 +114,16 @@ function gatherPreventiveUnactioned(
 
 // ── The gather ────────────────────────────────────────────────────────────────
 
-export function gatherHouseholdSetupFacts(
+// REQUEST-MEMOIZED on (profileId, today). Two surfaces ask overlapping questions of the
+// same snapshot — the household card wants the whole row, Settings → Notifications wants
+// only the routing verdict — and the answer changes only at the profile-local date
+// rollover, which `today` already names. Nothing in a request writes a dose, an
+// onboarding row or a grant between the two reads.
+export const gatherHouseholdSetupFacts = cache(
+  gatherHouseholdSetupFactsUncached
+);
+
+function gatherHouseholdSetupFactsUncached(
   profileId: number,
   today: string
 ): HouseholdSetupFacts {
@@ -157,15 +165,14 @@ export function gatherHouseholdSetupFacts(
 
 // Whether THIS profile's messages would reach nobody, and why — the narrow question
 // Settings → Notifications asks so the state is visible at the exact place someone would
-// configure it. Request-memoized because the household page and the settings page both
-// resolve it through the full row below.
-export const profileUnroutableReason = cache(
-  (profileId: number, today: string): UnroutableReason | null =>
-    unroutable({
-      sendSources: gatherHouseholdSetupFacts(profileId, today).sendSources,
-      routing: profileRoutingFacts(profileId),
-    })
-);
+// configure it. It is the SAME predicate over the SAME gathered snapshot the household
+// row is built from, so the two surfaces can never disagree about one profile.
+export function profileUnroutableReason(
+  profileId: number,
+  today: string
+): UnroutableReason | null {
+  return unroutable(gatherHouseholdSetupFacts(profileId, today));
+}
 
 // The member's setup row, suppression-filtered, or null when their setup is healthy (or
 // the row's current EPISODE has been dismissed).
@@ -184,5 +191,3 @@ export function householdSetupForProfile(
   const rec = getFindingSuppressions(profileId).get(row.dedupeKey);
   return rec != null && isSuppressed(rec, today) ? null : row;
 }
-
-export type { RoutingFacts };
