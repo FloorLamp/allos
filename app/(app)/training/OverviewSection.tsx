@@ -214,6 +214,9 @@ export default async function OverviewSection() {
     id: i.id,
     label: i.label,
     regions: i.regions,
+    // Carried so an in-place scope correction (#2297) round-trips the finer muscle list
+    // the form has no control for, instead of clearing it.
+    muscles: i.muscles,
     status: i.status,
     since: i.since,
     notes: i.notes,

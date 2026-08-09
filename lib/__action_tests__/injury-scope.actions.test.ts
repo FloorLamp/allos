@@ -24,13 +24,19 @@ const revalidate = vi.mocked(revalidatePath);
 
 function injuryForm(
   fields: Record<string, string>,
-  lists: { regions?: string[]; movements?: string[]; exercises?: string[] } = {}
+  lists: {
+    regions?: string[];
+    movements?: string[];
+    exercises?: string[];
+    muscles?: string[];
+  } = {}
 ): FormData {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.set(k, v);
   for (const r of lists.regions ?? []) form.append("regions", r);
   for (const m of lists.movements ?? []) form.append("movements", m);
   for (const e of lists.exercises ?? []) form.append("exercises", e);
+  for (const m of lists.muscles ?? []) form.append("muscles", m);
   return form;
 }
 
@@ -207,6 +213,132 @@ describe("status changes never rewrite what the user declared", () => {
       )
     );
     expect(getInjuryConstraints(profile.id)[0].scope).toBe("region");
+  });
+});
+
+// #2297 — the edit form's half of the round trip. `updateInjury` writes the WHOLE row, so
+// these pin both directions: a narrowing correction reaches the engine, and the lifecycle
+// the form deliberately doesn't edit (status, start date) survives it because the form
+// submits it back verbatim.
+describe("correcting a constraint after it is understood (#2297)", () => {
+  // The realistic sequence from the issue: logged broadly on day one, narrowed a week
+  // later to the movement that is actually affected.
+  async function logBroadShoulder(): Promise<{
+    profileId: number;
+    id: number;
+  }> {
+    const { profile } = seedActor();
+    await logInjury(
+      injuryForm(
+        { label: "shoulder", status: "active", since: "2026-07-01" },
+        { regions: ["Chest", "Shoulders"] }
+      )
+    );
+    return { profileId: profile.id, id: getInjuries(profile.id)[0].id };
+  }
+
+  it("narrowing to the lifts that hurt puts the rest of the region back in play", async () => {
+    const { profileId, id } = await logBroadShoulder();
+    // Day one: the whole region is off the table, Cable Fly included.
+    expect(
+      exerciseInjuryVerdict(getInjuryConstraints(profileId), "Cable Fly").kind
+    ).toBe("excluded");
+
+    const res = await updateInjury(
+      injuryForm(
+        {
+          id: String(id),
+          label: "shoulder",
+          status: "active",
+          since: "2026-07-01",
+        },
+        { regions: ["Chest", "Shoulders"], exercises: ["Overhead Press"] }
+      )
+    );
+    expect(res.ok).toBe(true);
+
+    const constraints = getInjuryConstraints(profileId);
+    expect(constraints[0].scope).toBe("exercise");
+    // The named lift is still excluded; the lift that was only ever collateral is clear.
+    expect(exerciseInjuryVerdict(constraints, "Overhead Press").kind).toBe(
+      "excluded"
+    );
+    expect(exerciseInjuryVerdict(constraints, "Cable Fly").kind).toBe("clear");
+  });
+
+  it("keeps the start date, the status and the fine muscles the form carries back", async () => {
+    const { profile } = seedActor();
+    await logInjury(
+      injuryForm(
+        {
+          label: "left knee",
+          status: "recovering",
+          since: "2026-06-15",
+          loadFactor: "0.5",
+        },
+        { regions: ["Legs"], muscles: ["quads"] }
+      )
+    );
+    const before = getInjuries(profile.id)[0];
+
+    await updateInjury(
+      injuryForm(
+        {
+          id: String(before.id),
+          label: "left knee",
+          // The lifecycle the edit form does not offer, submitted back verbatim.
+          status: before.status,
+          since: before.since!,
+          loadFactor: "0.5",
+        },
+        { regions: ["Legs"], muscles: ["quads"], movements: ["legs"] }
+      )
+    );
+
+    const after = getInjuries(profile.id)[0];
+    expect(after.since).toBe("2026-06-15"); // history, not a correction
+    expect(after.status).toBe("recovering"); // the chip's buttons own this
+    expect(after.muscles).toEqual(["quads"]); // no control for it, so not dropped
+    expect(after.loadFactor).toBe(0.5);
+    expect(after.movements).toEqual(["legs"]); // …and the correction landed
+  });
+
+  it("refuses an edit that leaves no affected region, without damaging the row", async () => {
+    const { profileId, id } = await logBroadShoulder();
+    const res = await updateInjury(
+      injuryForm({ id: String(id), label: "shoulder", status: "active" })
+    );
+    expect(res.ok).toBe(false);
+    const [row] = getInjuries(profileId);
+    expect(row.regions).toEqual(["Chest", "Shoulders"]);
+  });
+
+  it("cannot correct another profile's constraint", async () => {
+    const { profile } = seedActor();
+    const otherId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Someone Else")
+        .lastInsertRowid
+    );
+    const theirs = Number(
+      db
+        .prepare(
+          `INSERT INTO injuries (profile_id, label, regions, status)
+           VALUES (?, 'their shoulder', '["Chest"]', 'active')`
+        )
+        .run(otherId).lastInsertRowid
+    );
+    const res = await updateInjury(
+      injuryForm(
+        { id: String(theirs), label: "mine now", status: "active" },
+        { regions: ["Legs"] }
+      )
+    );
+    expect(res.ok).toBe(false);
+    const row = db
+      .prepare("SELECT label, regions FROM injuries WHERE id = ?")
+      .get(theirs) as { label: string; regions: string };
+    expect(row).toEqual({ label: "their shoulder", regions: '["Chest"]' });
+    expect(getInjuries(profile.id)).toHaveLength(0);
   });
 });
 

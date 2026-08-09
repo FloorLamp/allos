@@ -746,10 +746,15 @@ region in your suggestions — marking one sore press no longer costs you every
 chest recommendation. Lifts are named through the same search-and-pick control
 the activity logger uses, over the lifts you actually train plus your own custom
 ones, and a variant is recorded as the lift it belongs to: choosing "Dumbbell
-Curl" constrains curls, and the form says so before you save. An **active**
-constraint takes the affected work off the card; a **recovering** one eases it
-back, and you can say how much: the app's
-**60% is a default it names as a default**, and your own setting always wins.
+Curl" constrains curls, and the form says so before you save. A constraint is
+also **correctable in place**: an injury is understood gradually, so the same
+controls that logged it reopen on what you declared, and narrowing one tells you
+which lifts come back into your suggestions before you save. Correcting the
+scope never touches the record's lifecycle — the start date stays where it is,
+and moving between active, recovering and resolved stays the chip's own buttons.
+An **active** constraint takes the affected work off the card; a **recovering**
+one eases it back, and you can say how much: the app's **60% is a default it
+names as a default**, and your own setting always wins.
 Every exclusion and every eased target is disclosed on the recommendation, at the
 level you declared it. Where the app can't honor what you said — the suggestion
 picks exercises, not sides, so a one-sided constraint on a two-sided lift applies
