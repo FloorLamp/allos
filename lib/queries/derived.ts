@@ -29,12 +29,16 @@ import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
   derivedInputSlots,
+  derivedInputUnitsFor,
   DERIVED_NAMES,
   type ComponentReading,
   type DerivedName,
   type DerivedReading,
+  type PhenoAgeInputEffect,
+  type PhenoAgeReferenceResolver,
 } from "../derived-biomarkers";
-import { PHENOAGE_INPUT_NAMES } from "../bio-age";
+import { convertToCanonical } from "../unit-conversions";
+import { PHENOAGE_INPUT_NAMES, phenoAgeReferenceValue } from "../bio-age";
 import type { MedicalRecord } from "../types";
 
 // The numeric an arithmetic index can consume from a stored reading, WITH its
@@ -57,6 +61,39 @@ function componentNumeric(r: {
 }): { value: number; bound?: "<" | ">" } | null {
   const p = plottableReadingValue(r.value_num, r.value);
   return p ? { value: p.value, bound: p.bound } : null;
+}
+
+// The DB seam over the pure reference-value rule (#2366): which value each PhenoAge
+// input's leave-one-out counterfactual moves that input TO. The curated canonical
+// entry is looked up under the name the draw's value ACTUALLY came from — so a draw
+// carrying the band-less unqualified "Glucose" (#2337) reports no comparison instead
+// of borrowing the fasting entry's band — and the band, which the dataset states in
+// the ENTRY's own unit, is converted into the unit the formula consumes through the
+// same converter the component readings went through. A band that cannot be expressed
+// in the formula's unit yields no reference rather than a number in the wrong scale.
+function phenoAgeReferenceResolver(
+  profileId: number,
+  sex: ReturnType<typeof getUserSex>,
+  status: ReturnType<typeof getUserReproductiveStatus>
+): PhenoAgeReferenceResolver {
+  const units = derivedInputUnitsFor("PhenoAge");
+  const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
+  return ({ key, name, date }) => {
+    if (!cbCache.has(name)) cbCache.set(name, getCanonicalBiomarker(name));
+    const cb = cbCache.get(name);
+    const ref = phenoAgeReferenceValue(
+      cb,
+      sex,
+      getUserAgeOn(profileId, date),
+      status
+    );
+    if (!ref) return null;
+    const value = convertToCanonical(ref.value, cb?.unit ?? null, {
+      name,
+      unit: units[key],
+    });
+    return value == null ? null : { ...ref, value };
+  };
 }
 
 // A virtual (unstored) record synthesized from a computed derived reading. Same
@@ -173,7 +210,10 @@ const getDerivedComputation = cache(function getDerivedComputation(
   const readings = computeDerivedReadings(
     seriesByCanonical,
     { sex, ageOn: (date) => getUserAgeOn(profileId, date) },
-    { storedDatesByName }
+    {
+      storedDatesByName,
+      phenoAgeReference: phenoAgeReferenceResolver(profileId, sex, status),
+    }
   );
   return { readings, presentInputs, sex, status };
 });
@@ -308,6 +348,11 @@ export interface BioAgeDraw {
   // Set when the draw rests on ≥1 censored input — the hero says so and names it,
   // because the headline number itself cannot show a "<".
   censored?: DerivedReading["censored"];
+  // Each input ranked by the years it moves this draw (#2366) — the leave-one-out
+  // decomposition, computed by the SAME pass that produced `bioAge`. Always populated
+  // here: a PhenoAge reading exists only when the draw resolved a chronological age,
+  // which is the one condition the decomposition additionally needs.
+  effects: PhenoAgeInputEffect[];
 }
 
 // The biological-age (PhenoAge) reading data for a profile: every complete draw
@@ -332,6 +377,7 @@ export function getBioAgeReadings(profileId: number): {
       chronoAge: getUserAgeOn(profileId, r.date),
       inputs: r.inputs,
       ...(r.censored ? { censored: r.censored } : {}),
+      effects: r.effects ?? [],
     }));
   // The nine PhenoAge inputs the profile has any usable reading of (drives the
   // partial-panel checklist CTA) — filtered from the shared present-input set.

@@ -144,3 +144,78 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
     expect(draws).toHaveLength(0);
   });
 });
+
+// The leave-one-out decomposition (#2366) end to end: the reference values come from
+// the REAL curated dataset here, not a stub, so this is where the rule meets the
+// bands actually shipped — including the one input that has none.
+describe("bio-age: what moves the number, against the curated bands", () => {
+  let profileId: number;
+
+  beforeEach(() => {
+    profileId = newProfile("Effects Test");
+    setUserBirthdate(profileId, "1980-01-01");
+    seedEightInputs(profileId);
+    insertLab(
+      profileId,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "<0.2",
+      null
+    );
+  });
+
+  it("ranks the nine analytes plus chronological age by years, largest first", () => {
+    const { effects } = getBioAgeReadings(profileId).draws[0];
+    expect(effects).toHaveLength(10);
+    const rated = effects.filter((e) => e.effectYears != null);
+    const magnitudes = rated.map((e) => Math.abs(e.effectYears!));
+    expect([...magnitudes].sort((a, b) => b - a)).toEqual(magnitudes);
+    // A 44-year-old's age term dominates: it is shown, not hidden, precisely so the
+    // lab terms are not read as the whole story.
+    expect(effects[0].key).toBe("Chronological age");
+  });
+
+  it("compares each analyte against its own curated target", () => {
+    const { effects } = getBioAgeReadings(profileId).draws[0];
+    const byKey = new Map(effects.map((e) => [e.key, e]));
+    // hs-CRP is curated one-sided ("optimal ≤1 mg/L"), so the stated bound IS the
+    // target — there is no midpoint of a half-open band.
+    expect(
+      byKey.get("High-Sensitivity C-Reactive Protein (hs-CRP)")?.reference
+    ).toEqual({ value: 1, basis: "optimal" });
+    // RDW's optimal ceiling closed with the reference floor: 11.5–13 → 12.25.
+    expect(byKey.get("Red Cell Distribution Width (RDW)")?.reference).toEqual({
+      value: 12.25,
+      basis: "optimal",
+    });
+    // Creatinine curates no optimal band, so the reference band's midpoint stands in.
+    expect(byKey.get("Creatinine")?.reference).toEqual({
+      value: 0.95,
+      basis: "reference",
+    });
+  });
+
+  it("reports the band-less unqualified glucose as having NO comparison", () => {
+    // This fixture's glucose is the unqualified entry, which is deliberately
+    // band-less (#2337) — no fasting state was stated, so nothing can be judged. The
+    // input still fed the number; it just has no target to be moved to, and that must
+    // read as "no comparison", never as "moves it by zero".
+    const { effects } = getBioAgeReadings(profileId).draws[0];
+    const glucose = effects.find((e) => e.name === "Glucose");
+    expect(glucose?.reference).toBeNull();
+    expect(glucose?.effectYears).toBeNull();
+    expect(effects[effects.length - 1].name).toBe("Glucose");
+  });
+
+  it("carries the censored marker onto the row whose comparison rests on the limit", () => {
+    const { effects } = getBioAgeReadings(profileId).draws[0];
+    const crp = effects.find(
+      (e) => e.name === "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
+    expect(crp?.bound).toBe("<");
+    expect(crp?.value).toBe(0.2);
+    // Below the optimal ceiling it is compared against, so the model reads LOWER than
+    // it would at that target — a negative effect, not a missing one.
+    expect(crp?.effectYears).toBeLessThan(0);
+  });
+});

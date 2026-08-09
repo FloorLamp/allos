@@ -318,7 +318,8 @@ to improve.
 Route: `/longevity`.
 
 The healthspan pillars expand into one page of anchored sections: **biological
-age** (the PhenoAge hero with pace-of-aging and a missing-inputs checklist),
+age** (the PhenoAge hero, its pace-of-aging, and the per-input breakdown below —
+the one page the hero renders on),
 **fitness-check percentiles** (a read view over your guided fitness checks, “Run
 a fitness check” deep-links into Training), **sleep regularity** (SRI, timing
 spread, trend), and the per-marker breakdown behind **“N of M biomarkers
@@ -1802,12 +1803,35 @@ which way the substitution can bias the number (a below-limit hs-CRP can only
 make PhenoAge read too high). A censored input is never silently rounded into an
 apparently exact result.
 
-PhenoAge is also surfaced as a **biological-age card** pinned
-above the Biomarkers table: your estimated biological age, how it compares to
-your calendar age (younger is better), your pace of aging across draws, and the
-nine inputs it's built from (folded behind a toggle on a phone) — with a
-checklist prompt when the panel is incomplete. It's framed as a population-level estimate (Levine 2018,
-NHANES-validated adults ~20–84) and is hidden for child profiles.
+PhenoAge is also surfaced as a **biological-age hero**, on the Longevity page and
+nowhere else: your estimated biological age, how it compares to your calendar age
+(younger is better), your pace of aging across draws, and — ranked by how much
+each one moves the result — the inputs behind it. Results › Biomarkers keeps the
+half of that block which is about the analyte catalog: which of the nine inputs
+you have, which you still need, and a link to the hero. That is the page where
+the missing analytes get added, so the prompt to complete the panel lives there
+while the number lives with the other longevity pillars. Both are framed as a
+population-level estimate (Levine 2018, NHANES-validated adults ~20–84) and are
+hidden for child profiles.
+
+**What moves the number.** The hero lists every input with its value and its
+effect **in years**: the model is re-run with that one input moved to a reference
+value and nothing else changed, and the difference is what the row reports. It is
+a counterfactual, not a share of the formula's linear predictor — that would be
+wrong in a way that looks plausible, because the predictor reaches years through
+a non-linear mortality transform and hs-CRP enters logarithmically. The reference
+is the analyte's curated optimal band midpoint where there is one, otherwise its
+reference band midpoint (a one-sided band, like hs-CRP's "optimal ≤1 mg/L", uses
+the stated bound itself), and the row names which. **Chronological age is in the
+list**, compared against the youngest age the model is applied at, because it is
+usually the largest term and hiding it would make every lab term look far more
+influential than it is. An input the curated dataset gives no target for — the
+unqualified `Glucose`, which is deliberately band-less — says it has **no
+comparison** rather than reading as a zero effect, and a row resting on a
+censored value says the comparison rests on the substituted limit. These are
+properties of the model, not predictions about you: PhenoAge is a population
+mortality regression with several years of error, which is why the estimate
+caveat sits under the list rather than beside a single number.
 
 ## Allergies
 

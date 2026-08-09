@@ -11,7 +11,9 @@ import { frozenNow, workerDbPath } from "./worker-env";
 // What the hero must now show: the number, the fasting entry as the glucose input it
 // was built from, the reported "<0.2" beside the value it stood in for, and — because
 // a single number has no hollow dot to draw — the censoring said in words, naming the
-// input and the direction of the bias the substitution introduces.
+// input and the direction of the bias the substitution introduces. Since #2367 the
+// hero renders on /longevity; the Biomarkers page keeps the input panel, which this
+// file also covers because it owns the draw that makes both states meaningful.
 //
 // Fixture ownership (#868): the spec plants ONE draw on a date no seeded reading
 // occupies (the newest seeded lab draw is 30 days back), so it owns the hero's latest
@@ -76,11 +78,12 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   page,
 }) => {
   test.slow();
-  await page.goto("/results");
+  // The hero renders on Longevity and nowhere else since #2367.
+  await page.goto("/longevity");
 
   const hero = page.getByRole("main").getByTestId("bio-age-hero");
   await expect(hero).toBeVisible();
-  // A number, not a missing-inputs checklist: the draw is complete.
+  // A number, not a missing-inputs panel: the draw is complete.
   await expect(hero.getByTestId("bio-age-value")).toBeVisible();
 
   // The censoring, in words — which input, at what limit, and which way it biases.
@@ -90,9 +93,42 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   await expect(censored).toContainText("below its detection limit");
   await expect(censored).toContainText("can only be too high");
 
-  // The "Built from" list names the entry the glucose value actually came from…
+  // The per-input list names the entry the glucose value actually came from…
   const inputs = hero.getByTestId("bio-age-input");
   await expect(inputs.filter({ hasText: "Glucose, Fasting" })).toHaveCount(1);
   // …and keeps the lab's "<" beside the substituted limit, never a laundered 0.2.
-  await expect(inputs.filter({ hasText: CRP })).toContainText("<0.2 mg/L");
+  const crpRow = inputs.filter({ hasText: CRP });
+  await expect(crpRow).toContainText("<0.2 mg/L");
+  // The censored input's leave-one-out effect (#2366) is still stated — it is a real
+  // comparison, just one resting on the substituted limit, which the row's own
+  // tooltip says. Never a blank, and never a silent zero.
+  await expect(crpRow.getByTestId("bio-age-effect")).toContainText(
+    /[+−±]\d+\.\d yr/
+  );
+  await expect(crpRow.getByTestId("bio-age-effect")).toHaveAttribute(
+    "title",
+    /substituted limit/
+  );
+  // The glucose row DOES have a curated target here (the fasting entry carries a
+  // band; the unqualified one deliberately does not), so it states one.
+  await expect(inputs.filter({ hasText: "Glucose, Fasting" })).toContainText(
+    "(optimal)"
+  );
+});
+
+// The results page's half of the split (#2367): a complete panel, so nothing is
+// missing — but the input panel still renders, says so, and points at the hero.
+test("the biomarkers page keeps the inputs and links to the hero", async ({
+  page,
+}) => {
+  await page.goto("/results");
+  const main = page.getByRole("main");
+  await expect(main.getByTestId("bio-age-hero")).toHaveCount(0);
+  const card = main.getByTestId("bio-age-inputs-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("bio-age-input")).toHaveCount(9);
+  await expect(card.getByTestId("bio-age-hero-link")).toHaveAttribute(
+    "href",
+    "/longevity#bio-age"
+  );
 });
