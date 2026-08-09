@@ -6,7 +6,13 @@
 // bearing: a depression score can never reach the general health hero/digest.
 // All fixture values are synthetic (obviously-fictional profile, plain names).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// The #2365 gather test reads through the browser's own index module under a
+// hand-built ProfileScope; it is about the row set, not about auth, so restore the
+// real auth module the shared action setup mocks.
+vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
+
 import { db, today } from "@/lib/db";
 import { getCurrentFlaggedBiomarkers, getMedicalRecords } from "@/lib/queries";
 import {
@@ -17,12 +23,40 @@ import { collectUpcoming } from "@/lib/queries/upcoming";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import type { ProfileScope } from "@/lib/scope";
+import {
+  biomarkerIndexRows,
+  parseBiomarkerFilters,
+} from "@/app/(app)/results/biomarker-index";
 
 function createProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+}
+
+// A single-profile scope, hand-built: biomarkerIndexRows takes an ALREADY-resolved
+// scope and reads only the acting profile + the view set, so no login/grant fixture
+// is needed to exercise the gather.
+function singleScope(profileId: number): ProfileScope {
+  return {
+    loginId: 0,
+    role: "admin",
+    actingProfileId: profileId,
+    ownProfileId: profileId,
+    profiles: [
+      {
+        id: profileId,
+        name: `p_${profileId}`,
+        photo_path: null,
+        photo_version: 0,
+      },
+    ],
+    ids: [profileId],
+    viewIds: [profileId],
+    access: new Map([[profileId, "write" as const]]),
+  };
 }
 
 function insert(
@@ -95,6 +129,45 @@ function seedMixedProfile(): number {
   });
   // A blood type — reference (immutable).
   insert(pid, "reference", "Blood Type", { value: "O Positive" });
+  // #2365's two vitals populations, side by side in one category.
+  //
+  // A misplaced BMI (#2318), spelled the way a real document import produced it: the
+  // quantity has a `/trends/metric/bmi` home, so it is not a catalog analyte.
+  insert(pid, "vitals", "Body Mass Index (BMI)", {
+    value: "23.4",
+    valueNum: 23.4,
+  });
+  // And the domain vitals with NO chart anywhere — the rows #1076's rule protects.
+  insert(pid, "vitals", "Hearing Threshold, Right Ear 4 kHz", {
+    value: "40",
+    valueNum: 40,
+    unit: "dB HL",
+    flag: "abnormal",
+  });
+  insert(pid, "vitals", "Intraocular Pressure, Left Eye", {
+    value: "16",
+    valueNum: 16,
+    unit: "mmHg",
+  });
+  insert(pid, "vitals", "Periodontal Probing Depth", {
+    value: "3",
+    valueNum: 3,
+    unit: "mm",
+  });
+  // Ruled a body metric on #2322 but not yet a slug, so it is still browsable — and
+  // leaves on its own the day the slug lands.
+  insert(pid, "vitals", "Waist Circumference", {
+    value: "84",
+    valueNum: 84,
+    unit: "cm",
+  });
+  // A QUALIFIED quantity: a peak-exercise systolic is not resting blood pressure, so
+  // the word parenthetical must never be stripped down onto the `systolic` metric.
+  insert(pid, "vitals", "Blood Pressure Systolic (Peak Exercise)", {
+    value: "180",
+    valueNum: 180,
+    unit: "mmHg",
+  });
   return pid;
 }
 
@@ -141,11 +214,42 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     for (const leaked of ["PHQ-9", "Biological Age", "Blood Type"]) {
       expect(rows).not.toContain(leaked);
     }
-    // Vitals STAY catalogued on the flat browser (domain vitals — audiogram/IOP —
-    // have no other home; removing them would strand them). The trajectory tab and
-    // the flagged hero/digest/retest still exclude them (pinned above/below).
+    // `vitals` is still a browsable CATEGORY — the category exclusion does not decide
+    // it. Which vitals ANALYTES the browser lists is #2365's per-analyte rule, applied
+    // by the gather and pinned in the next test.
     expect(rows).toContain("Body Temperature");
     expect(rows).toContain("Blood Pressure Systolic");
+  });
+
+  it("the browser gather drops a vitals analyte with a metric home and keeps one without (#2365)", () => {
+    // The end-to-end shape of the rule against a real schema: the same profile, the
+    // same URL, through the module BOTH browser callers gather with. #1076's
+    // "nothing stranded" rule is kept and applied per analyte — the flat catalog stops
+    // duplicating what /trends/metric/<slug> already charts, and stays the home of the
+    // domain vitals that have no chart at all.
+    const pid = seedMixedProfile();
+    const names = biomarkerIndexRows(singleScope(pid), parseBiomarkerFilters({}))
+      .map((r) => r.canonical_name ?? r.name)
+      .filter((n): n is string => n !== null);
+    // Gone: each is a BodyMetricSlug quantity with its own chart.
+    for (const homed of [
+      "Blood Pressure Systolic",
+      "Body Temperature",
+      "Body Mass Index (BMI)",
+    ]) {
+      expect(names).not.toContain(homed);
+    }
+    // Still here: the domain vitals #1076 was protecting, and the lab control.
+    for (const stranded of [
+      "Hearing Threshold, Right Ear 4 kHz",
+      "Intraocular Pressure, Left Eye",
+      "Periodontal Probing Depth",
+      "Waist Circumference",
+      "Blood Pressure Systolic (Peak Exercise)",
+      "LDL Cholesterol",
+    ]) {
+      expect(names).toContain(stranded);
+    }
   });
 
   it("the lab-only TRAJECTORY exclusion (Trends → Biomarkers) drops vitals too", () => {
