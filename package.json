@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint app components lib e2e scripts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:db:coverage": "vitest run --config vitest.db.config.ts --coverage",
