@@ -1,18 +1,14 @@
-// Workout-density heatmap — DB read layer (issue #186). One profile-scoped grouped
-// pass over `activities` (sessions + total minutes per day), assembled into the
-// trailing-12-month grid by the pure builder in lib/workout-heatmap. Distinct from
-// the sidebar calendar's `getActivityDates` (which spans ALL activity kinds) — this
-// is workout-specific and carries per-day counts/minutes, not just a date set.
+// Workout day-density — DB read layer (issue #186). Profile-scoped grouped passes
+// over `activities` (sessions + total minutes per day, and per day AND type for
+// the Trends day-history). Distinct from the sidebar calendar's
+// `getActivityDates` (which spans ALL activity kinds) — this is workout-specific
+// and carries per-day counts/minutes, not just a date set.
 import { db, today } from "../../db";
-import { getWeekStart } from "../../settings";
 import type { ActivityType } from "../../types";
 import {
-  buildWorkoutHeatmap,
   buildActiveDaysStrip,
-  heatmapStart,
   type ActiveDaysStrip,
   type WorkoutDayDensity,
-  type WorkoutHeatmap,
 } from "../../workout-heatmap";
 import { shiftDateStr } from "../../date";
 
@@ -66,27 +62,6 @@ export function getWorkoutTypeDays(
         ORDER BY date ASC, type ASC`
     )
     .all(profileId, since, until) as WorkoutTypeDay[];
-}
-
-// The trailing workout heatmap for the profile: `weeks` week-columns ending on the
-// week of `end` (default "today" in the profile timezone), aligned to the profile's
-// first weekday. The query window is derived from the same alignment so no data
-// outside the grid is fetched.
-//
-// `weeks`/`end` are what let the grid honor the Trends hub's shared range (#1492):
-// a 90D window draws ~13 columns ending on the window's last day, all time keeps
-// the trailing-12-month cap. Callers resolve the column count through
-// `fitnessWindowWeeks` (lib/trends-fitness.ts).
-export function getWorkoutHeatmap(
-  profileId: number,
-  weeks = 53,
-  endDate?: string
-): WorkoutHeatmap {
-  const end = endDate ?? today(profileId);
-  const weekStart = getWeekStart(profileId);
-  const since = heatmapStart(end, weeks, weekStart);
-  const density = getWorkoutDayDensity(profileId, since);
-  return buildWorkoutHeatmap(density, end, weeks, weekStart);
 }
 
 export function getActiveDaysStrip(

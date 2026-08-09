@@ -23,8 +23,20 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 
-// Single-letter weekday labels indexed by 0=Sun … 6=Sat.
-const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+// Three-letter weekday labels indexed by 0=Sun … 6=Sat, overlaid on the grid.
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Calendar cell geometry, shared by the cells and the overlaid label offsets.
+const CAL_CELL = 24;
+const CAL_GAP = 3;
+const CAL_STEP = CAL_CELL + CAL_GAP;
+
+// The overlaid month/weekday labels: all-caps pills floating ON the grid (no
+// reserved gutter rows/columns — the cells get the full width), kept legible
+// over any ramp step by a translucent blurred backing, and click-through so
+// the cells beneath keep their hover and links.
+const OVERLAY_LABEL =
+  "pointer-events-none absolute z-[2] rounded bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
 
 // Color bucket per level, from the ONE blessed activity ramp (#1445).
 const LEVEL_CLASS = [
@@ -36,15 +48,21 @@ const LEVEL_CLASS = [
 // hover/focus ring, and echoed in the legend so it is never color-alone.
 const TODAY_RING = "ring-2 ring-sky-500 dark:ring-sky-400";
 
+// The horizontal scroll wrapper both halves share. The rendered surface bleeds
+// EDGE TO EDGE on phones (the shell pads 1rem, matched here by the negative
+// margin) and keeps a few px of padding at every size so the today ring — a
+// box-shadow, clipped by overflow otherwise — has room at the container edges.
+const SCROLLER = "overflow-x-auto pb-1 pt-2 -mx-4 px-4 sm:-mx-1 sm:px-1";
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
 // The generalized group×day history (calendar + matrix) — the client half of
-// lib/day-history.ts. One component, two domains (food, workout); the domain
-// key selects the DECLARED level/wording policy client-side, because the group
-// filter chips re-run the pure builders on every toggle and a function can
-// never cross the server→client prop boundary.
+// lib/day-history.ts. One component, three domains (food, workout, dose); the
+// domain key selects the DECLARED level/wording policy client-side, because
+// the group filter chips re-run the pure builders on every toggle and a
+// function can never cross the server→client prop boundary.
 export default function DayHistory({
   domain,
   values,
@@ -54,7 +72,6 @@ export default function DayHistory({
   weekStart,
   today,
   showCalendar = true,
-  extraDates,
   maxRows = 8,
   testId = "day-history",
 }: {
@@ -67,25 +84,19 @@ export default function DayHistory({
   weekStart: number;
   today: string;
   showCalendar?: boolean;
-  extraDates?: string[]; // overlay dates (confirmed doses)
   maxRows?: number;
   testId?: string;
 }) {
   const spec = DAY_HISTORY_DOMAINS[domain];
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const matrixRef = useRef<HTMLDivElement>(null);
 
   const days = useMemo(
     () => historyDays(dayHistoryStart(end, weeks, weekStart), end),
     [end, weeks, weekStart]
   );
-
-  const extraByDate = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const d of extraDates ?? []) m.set(d, (m.get(d) ?? 0) + 1);
-    return m;
-  }, [extraDates]);
 
   const rows = useMemo(
     () =>
@@ -94,11 +105,11 @@ export default function DayHistory({
         values,
         groups,
         selected,
-        maxRows,
+        maxRows: expanded ? Number.MAX_SAFE_INTEGER : maxRows,
         cellLevel: spec.cellLevel,
         today,
       }),
-    [days, values, groups, selected, maxRows, spec, today]
+    [days, values, groups, selected, maxRows, expanded, spec, today]
   );
 
   const calendar = useMemo(
@@ -106,7 +117,6 @@ export default function DayHistory({
       showCalendar
         ? buildDayHistoryCalendar({
             totals: dayTotals(values, selected),
-            extraByDate,
             end,
             weeks,
             weekStart,
@@ -114,17 +124,7 @@ export default function DayHistory({
             today,
           })
         : null,
-    [
-      showCalendar,
-      values,
-      selected,
-      extraByDate,
-      end,
-      weeks,
-      weekStart,
-      spec,
-      today,
-    ]
+    [showCalendar, values, selected, end, weeks, weekStart, spec, today]
   );
 
   // The matrix opens at the RECENT edge — on a narrow screen the left of the
@@ -152,11 +152,7 @@ export default function DayHistory({
       cell.value === 0
         ? `${cell.date} — no ${spec.unitMany}`
         : `${cell.date} — ${plural(cell.value, spec.unitOne, spec.unitMany)}`;
-    const extra =
-      cell.extra > 0 && spec.extraOne && spec.extraMany
-        ? ` · ${plural(cell.extra, spec.extraOne, spec.extraMany)}`
-        : "";
-    return `${base}${extra}${cell.today ? " · today" : ""}`;
+    return `${base}${cell.today ? " · today" : ""}`;
   };
 
   const matrixCellSummary = (row: DayHistoryRow, ci: number): string => {
@@ -177,11 +173,7 @@ export default function DayHistory({
         calendar.activeDays,
         "day",
         "days"
-      )}${
-        calendar.totalExtra > 0 && spec.extraMany
-          ? ` · ${plural(calendar.totalExtra, spec.extraOne!, spec.extraMany)}`
-          : ""
-      }`
+      )}`
     : `${plural(
         rows.reduce((s, r) => s + r.total, 0),
         spec.unitOne,
@@ -249,88 +241,78 @@ export default function DayHistory({
         </div>
       )}
 
-      {/* Calendar half: coverage. */}
+      {/* Calendar half: coverage. Labels are OVERLAID on the grid (no gutter
+          rows/columns), so the cells themselves get the full width — on a
+          phone the 13-week window fills the screen edge to edge. */}
       {calendar && (
-        <div className="overflow-x-auto" data-testid="day-history-calendar">
-          <div className="inline-block min-w-full">
-            <div className="flex pl-6 text-[10px] text-slate-500 dark:text-slate-400">
-              <div className="flex gap-[3px]">
-                {calendar.columns.map((_, col) => {
-                  const label = calendar.monthLabels.find((m) => m.col === col);
-                  return (
-                    <div key={col} className="w-[14px] shrink-0">
-                      {label ? label.label : ""}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex">
-              <div className="mr-1 flex flex-col gap-[3px] pt-[1px] text-[10px] text-slate-500 dark:text-slate-400">
-                {calendar.weekdayOrder.map((wd, row) => (
-                  <div
-                    key={row}
-                    className="flex h-[14px] w-4 items-center justify-end"
-                  >
-                    {row % 2 === 1 ? DOW[wd] : ""}
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-[3px]">
-                {calendar.columns.map((col, ci) => (
-                  <div key={ci} className="flex flex-col gap-[3px]">
-                    {col.map((cell) => {
-                      if (cell.future) {
-                        return (
-                          <div
-                            key={cell.date}
-                            className="h-[14px] w-[14px]"
-                            aria-hidden="true"
-                          />
-                        );
-                      }
-                      const cls = `relative h-[14px] w-[14px] rounded-[3px] ${
-                        LEVEL_CLASS[cell.level]
-                      }${cell.today ? ` ${TODAY_RING}` : ""}`;
-                      const dot = cell.extra > 0 && (
-                        <span
-                          className="absolute bottom-[2px] left-1/2 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-sky-600 dark:bg-sky-300"
-                          aria-hidden="true"
-                        />
-                      );
-                      const common = hoverProps(calendarCellSummary(cell));
-                      if (cell.value > 0 || cell.extra > 0) {
-                        return (
-                          <Link
-                            key={cell.date}
-                            href={timelineDayHref(cell.date)}
-                            data-testid="day-history-day"
-                            data-date={cell.date}
-                            data-level={cell.level}
-                            aria-label={calendarCellSummary(cell)}
-                            className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
-                            {...common}
-                          >
-                            {dot}
-                          </Link>
-                        );
-                      }
+        <div className={SCROLLER} data-testid="day-history-calendar">
+          <div className="relative inline-block align-top">
+            <div className="flex gap-[3px]">
+              {calendar.columns.map((col, ci) => (
+                <div key={ci} className="flex flex-col gap-[3px]">
+                  {col.map((cell) => {
+                    if (cell.future) {
                       return (
                         <div
                           key={cell.date}
-                          data-date={cell.date}
-                          aria-label={calendarCellSummary(cell)}
-                          className={cls}
-                          {...common}
-                        >
-                          {dot}
-                        </div>
+                          className="h-6 w-6"
+                          aria-hidden="true"
+                        />
                       );
-                    })}
-                  </div>
-                ))}
-              </div>
+                    }
+                    const cls = `h-6 w-6 rounded-[5px] ${
+                      LEVEL_CLASS[cell.level]
+                    }${cell.today ? ` ${TODAY_RING}` : ""}`;
+                    const common = hoverProps(calendarCellSummary(cell));
+                    if (cell.value > 0) {
+                      return (
+                        <Link
+                          key={cell.date}
+                          href={timelineDayHref(cell.date)}
+                          data-testid="day-history-day"
+                          data-date={cell.date}
+                          data-level={cell.level}
+                          aria-label={calendarCellSummary(cell)}
+                          className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
+                          {...common}
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={cell.date}
+                        data-date={cell.date}
+                        aria-label={calendarCellSummary(cell)}
+                        className={cls}
+                        {...common}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
             </div>
+            {calendar.monthLabels.map((m) => (
+              <span
+                key={m.col}
+                aria-hidden="true"
+                className={`${OVERLAY_LABEL} -top-1.5`}
+                style={{ left: m.col * CAL_STEP }}
+              >
+                {m.label}
+              </span>
+            ))}
+            {calendar.weekdayOrder.map((wd, row) =>
+              row % 2 === 1 ? (
+                <span
+                  key={row}
+                  aria-hidden="true"
+                  className={`${OVERLAY_LABEL} -left-1`}
+                  style={{ top: row * CAL_STEP + (CAL_CELL - 16) / 2 }}
+                >
+                  {DOW[wd]}
+                </span>
+              ) : null
+            )}
           </div>
         </div>
       )}
@@ -339,30 +321,14 @@ export default function DayHistory({
       {rows.length > 0 && (
         <div
           ref={matrixRef}
-          className="overflow-x-auto"
+          className={SCROLLER}
           data-testid="day-history-matrix"
         >
           <div className="min-w-max space-y-[3px]">
-            {rows.map((row) => (
-              <div
-                key={row.key}
-                data-testid="day-history-row"
-                data-group={row.key}
-                className="flex min-w-full items-center"
-                aria-label={`${row.label}: ${plural(
-                  row.total,
-                  spec.unitOne,
-                  spec.unitMany
-                )} across ${plural(row.activeDays, "day", "days")}`}
-              >
-                <span
-                  className="sticky left-0 z-[1] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/90 pr-2 text-xs text-slate-600 backdrop-blur-sm dark:bg-ink-800/90 dark:text-slate-300"
-                  title={
-                    row.key === FOLDED_ROW_KEY
-                      ? row.foldedKeys.map(labelFor).join(", ")
-                      : row.label
-                  }
-                >
+            {rows.map((row) => {
+              const isFold = row.key === FOLDED_ROW_KEY;
+              const labelInner = (
+                <>
                   {row.foodSlug && (
                     <FoodGroupIcon
                       slug={row.foodSlug}
@@ -372,23 +338,67 @@ export default function DayHistory({
                     />
                   )}
                   <span className="truncate">{row.label}</span>
-                </span>
-                <span className="flex gap-[2px] pr-1" aria-hidden="true">
-                  {row.cells.map((cell, ci) => (
+                </>
+              );
+              return (
+                <div
+                  key={row.key}
+                  data-testid="day-history-row"
+                  data-group={row.key}
+                  className="flex min-w-full items-center"
+                  aria-label={`${row.label}: ${plural(
+                    row.total,
+                    spec.unitOne,
+                    spec.unitMany
+                  )} across ${plural(row.activeDays, "day", "days")}`}
+                >
+                  {isFold ? (
+                    // The fold row is an AFFORDANCE: tapping it expands the
+                    // matrix to every group.
+                    <button
+                      type="button"
+                      data-testid="day-history-expand"
+                      onClick={() => setExpanded(true)}
+                      title={row.foldedKeys.map(labelFor).join(", ")}
+                      className="sticky left-0 z-[1] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs font-medium text-brand-700 backdrop-blur-sm hover:underline dark:bg-ink-950/70 dark:text-brand-400"
+                    >
+                      {labelInner}
+                    </button>
+                  ) : (
                     <span
-                      key={cell.date}
-                      data-date={cell.date}
-                      className={`h-[22px] w-[13px] rounded-[3px] ${
-                        LEVEL_CLASS[cell.level]
-                      }${cell.today ? ` ${TODAY_RING}` : ""}`}
-                      {...hoverProps(matrixCellSummary(row, ci))}
-                    />
-                  ))}
-                </span>
-              </div>
-            ))}
+                      className="sticky left-0 z-[1] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs text-slate-600 backdrop-blur-sm dark:bg-ink-950/70 dark:text-slate-300"
+                      title={row.label}
+                    >
+                      {labelInner}
+                    </span>
+                  )}
+                  <span className="flex gap-[2px] pr-1" aria-hidden="true">
+                    {row.cells.map((cell, ci) => (
+                      <span
+                        key={cell.date}
+                        data-date={cell.date}
+                        className={`h-[26px] w-[18px] rounded-[4px] ${
+                          LEVEL_CLASS[cell.level]
+                        }${cell.today ? ` ${TODAY_RING}` : ""}`}
+                        {...hoverProps(matrixCellSummary(row, ci))}
+                      />
+                    ))}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
+      )}
+      {expanded && (
+        <button
+          type="button"
+          data-testid="day-history-collapse"
+          onClick={() => setExpanded(false)}
+          className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+        >
+          Show fewer
+        </button>
       )}
 
       {/* Detail caption + legend. */}
@@ -410,12 +420,6 @@ export default function DayHistory({
             ))}
             <span>More</span>
           </span>
-          {showCalendar && spec.extraMany && (
-            <span className="flex items-center gap-1">
-              <span className="h-[5px] w-[5px] rounded-full bg-sky-600 dark:bg-sky-300" />
-              {spec.extraMany}
-            </span>
-          )}
           <span className="flex items-center gap-1">
             <span
               className={`h-[9px] w-[9px] rounded-[2px] ${chartActivityRamp.emptyClass} ${TODAY_RING}`}

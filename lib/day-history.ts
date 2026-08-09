@@ -27,14 +27,11 @@ import { intensityLevel } from "./workout-heatmap";
 
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 
-export type DayHistoryDomainKey = "food" | "workout";
+export type DayHistoryDomainKey = "food" | "workout" | "dose";
 
 export interface DayHistoryDomainSpec {
   unitOne: string;
   unitMany: string;
-  // Overlay wording, when the domain carries one (food's confirmed doses).
-  extraOne?: string;
-  extraMany?: string;
   // Suffix for the per-cell `detail` quantity in hover copy (workout minutes).
   detailSuffix?: string;
   // Day-TOTAL → calendar color bucket.
@@ -43,11 +40,12 @@ export interface DayHistoryDomainSpec {
   cellLevel(value: number): DayHistoryLevel;
 }
 
-// The declared per-domain policies. Both matrix ladders are the shared
-// 1/2/3/4+ `intensityLevel` — a single group rarely exceeds a handful per day.
-// The calendars differ: a workout day holds 1–2 sessions so the same ladder
-// reads fine, but an active food logger's DAY total runs 3–10 servings and
-// would saturate at level 4 — so food's calendar ladder is deliberately wider.
+// The declared per-domain policies. Every matrix ladder is the shared 1/2/3/4+
+// `intensityLevel` — a single group/item rarely exceeds a handful per day. The
+// calendars differ per domain because DAY totals live on different scales: a
+// workout day holds 1–2 sessions so the session ladder reads fine, an active
+// food logger's day runs 3–10 servings, and a stacked supplement/med routine
+// confirms 5–15 doses — the wider ladders keep those from saturating at 4.
 export const DAY_HISTORY_DOMAINS: Record<
   DayHistoryDomainKey,
   DayHistoryDomainSpec
@@ -55,8 +53,6 @@ export const DAY_HISTORY_DOMAINS: Record<
   food: {
     unitOne: "serving",
     unitMany: "servings",
-    extraOne: "dose",
-    extraMany: "doses",
     calendarLevel: (total) =>
       total <= 0 ? 0 : total <= 2 ? 1 : total <= 4 ? 2 : total <= 7 ? 3 : 4,
     cellLevel: intensityLevel,
@@ -66,6 +62,13 @@ export const DAY_HISTORY_DOMAINS: Record<
     unitMany: "sessions",
     detailSuffix: "min",
     calendarLevel: intensityLevel,
+    cellLevel: intensityLevel,
+  },
+  dose: {
+    unitOne: "dose",
+    unitMany: "doses",
+    calendarLevel: (total) =>
+      total <= 0 ? 0 : total <= 3 ? 1 : total <= 6 ? 2 : total <= 10 ? 3 : 4,
     cellLevel: intensityLevel,
   },
 };
@@ -245,7 +248,6 @@ export interface DayHistoryCalendarCell {
   date: string;
   value: number;
   level: DayHistoryLevel;
-  extra: number; // the overlay count (confirmed doses); 0 when the domain has none
   future: boolean; // trailing padding after `end` — renders blank
   today: boolean;
 }
@@ -258,7 +260,6 @@ export interface DayHistoryCalendar {
   end: string;
   activeDays: number;
   totalValue: number;
-  totalExtra: number;
 }
 
 // The grid's first day for a `weeks`-column history ending on the week of
@@ -274,40 +275,35 @@ export function dayHistoryStart(
 // Assemble the calendar from per-day totals (from `dayTotals`, so it honors
 // the same group filter as the matrix). An ADAPTER over the shared `dayGrid`
 // (#2042): the grid decides which day sits in which cell, this decides what a
-// day means (total, level, dose overlay, today).
+// day means (total, level, today).
 export function buildDayHistoryCalendar(opts: {
   totals: ReadonlyMap<string, number>;
-  extraByDate?: ReadonlyMap<string, number>;
   end: string;
   weeks: number;
   weekStart?: number;
   calendarLevel: (total: number) => DayHistoryLevel;
   today: string;
 }): DayHistoryCalendar {
-  const { totals, extraByDate, end, weeks, calendarLevel, today } = opts;
+  const { totals, end, weeks, calendarLevel, today } = opts;
   const weekStart = opts.weekStart ?? 0;
   const start = dayHistoryStart(end, weeks, weekStart);
   const grid = dayGrid({ start, end, weekStart, orientation: "week-columns" });
 
   let activeDays = 0;
   let totalValue = 0;
-  let totalExtra = 0;
 
   const columns = grid.weeks.map((cells) =>
     cells.map((cell) => {
       const future = cell.position === "after";
       const value = future ? 0 : (totals.get(cell.date) ?? 0);
-      const extra = future ? 0 : (extraByDate?.get(cell.date) ?? 0);
       if (value > 0) {
         activeDays += 1;
         totalValue += value;
       }
-      totalExtra += extra;
       return {
         date: cell.date,
         value,
         level: calendarLevel(value),
-        extra,
         future,
         today: !future && cell.date === today,
       } satisfies DayHistoryCalendarCell;
@@ -322,6 +318,5 @@ export function buildDayHistoryCalendar(opts: {
     end,
     activeDays,
     totalValue,
-    totalExtra,
   };
 }

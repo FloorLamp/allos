@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutTypeDays } from "@/lib/queries";
@@ -8,14 +9,13 @@ import { dayHistoryStart } from "@/lib/day-history";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 
-// Trends → Fitness → sessions-by-type matrix: the COMPOSITION twin of the
-// density heatmap above it. The heatmap answers "how often did I train"; this
-// answers "training WHAT" — one row per activity type (the canonical
-// ACTIVITY_TYPES identity, never a re-derived family from free-text titles),
-// one cell per day, over the same shared window. No calendar half here: the
-// workout-density heatmap one card up IS this domain's calendar, and a second
-// one would be a literal duplicate.
-export default async function WorkoutTypeMatrixSection({
+// Trends → Fitness leads with the workout history: the generalized day-history
+// (lib/day-history.ts) over the window's sessions — a CALENDAR (how often, the
+// #186 density question, replacing the bespoke WorkoutHeatmap) and a MATRIX
+// (training WHAT — one row per activity type, the canonical ACTIVITY_TYPES
+// identity, never a re-derived family from free-text titles). Card-less, a
+// page-level section, so the grids run edge to edge on phones.
+export default async function WorkoutHistorySection({
   weeks,
   end,
 }: {
@@ -40,17 +40,25 @@ export default async function WorkoutTypeMatrixSection({
   }));
 
   return (
-    <div className="card" data-testid="workout-type-matrix">
-      <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-        Sessions by type
-      </h2>
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-        The density calendar above, split by what the session was — one row per
-        activity type, one cell per day.
+    <section data-testid="workout-history">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+          Workout history
+        </h2>
+        <Link
+          href="/training"
+          className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+        >
+          Training →
+        </Link>
+      </div>
+      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+        Every workout day in this window, then the same days split by activity
+        type. Tap a day to open it on the Timeline.
       </p>
       {values.length === 0 ? (
         <EmptyState
-          message="No workouts logged in this window yet."
+          message="No workouts logged in this window yet. Log a session to start filling in your calendar."
           action={{ href: "/training?tab=log", label: "Go to Log" }}
         />
       ) : (
@@ -62,10 +70,9 @@ export default async function WorkoutTypeMatrixSection({
           weeks={weeks}
           weekStart={weekStart}
           today={today(profile.id)}
-          showCalendar={false}
-          testId="workout-type-history"
+          testId="workout-day-history"
         />
       )}
-    </div>
+    </section>
   );
 }

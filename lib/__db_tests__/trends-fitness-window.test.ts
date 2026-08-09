@@ -20,7 +20,7 @@ import {
   getExerciseE1rmSeries,
   getSportByActivity,
   getVolumeByDate,
-  getWorkoutHeatmap,
+  getWorkoutTypeDays,
 } from "@/lib/queries";
 import type { ActivityComponent } from "@/lib/types";
 
@@ -281,57 +281,39 @@ describe("windowed sport (getSportByActivity)", () => {
   });
 });
 
-describe("windowed workout heatmap (getWorkoutHeatmap)", () => {
-  it("draws the requested number of week columns ending on the window's last day", () => {
-    const grid = getWorkoutHeatmap(profileId, 13, TO);
-    expect(grid.columns).toHaveLength(13);
-    expect(grid.end).toBe(TO);
-    // 13 columns back from the week of TO reaches the window's opening week.
-    expect(grid.start <= FROM).toBe(true);
-  });
-
-  it("counts only the days its own grid covers", () => {
-    const grid = getWorkoutHeatmap(profileId, 13, TO);
-    const dates = grid.columns
-      .flat()
-      .filter((c) => c.count > 0)
-      .map((c) => c.date);
+describe("windowed sessions-by-type days (getWorkoutTypeDays)", () => {
+  it("returns rows inside [since, until] and only those", () => {
+    const rows = getWorkoutTypeDays(profileId, FROM, TO);
+    const dates = rows.map((r) => r.date);
     expect(dates).toContain(ON_OPEN);
     expect(dates).toContain(INSIDE);
     expect(dates).toContain(ON_CLOSE);
-    // The deep past is well outside a 13-column grid.
     expect(dates).not.toContain(BEFORE_FAR);
-    // The grid is WEEK-COLUMN aligned, so its first column starts on the profile's
-    // first weekday and can precede the window's `from` by up to six days — the
-    // partial leading week is drawn whole rather than clipped mid-column. That is
-    // the ONLY way a pre-window day appears, and it is a rendering alignment, not a
-    // data leak: the window's own builders (volume/e1RM/cardio/sport, above) stay
-    // strictly inside [from, to].
-    expect(grid.start <= FROM).toBe(true);
-    expect(dates.filter((d) => d < grid.start)).toEqual([]);
+    expect(dates).not.toContain(BEFORE_EDGE);
+    expect(dates).not.toContain(AFTER_EDGE);
   });
 
-  it("never counts a day past the grid's end", () => {
-    const grid = getWorkoutHeatmap(profileId, 13, TO);
-    const cells = grid.columns.flat();
-    // The day after a Saturday `end` starts the next week column, which the grid
-    // doesn't draw at all; when an end mid-week leaves trailing cells they are
-    // marked `future`. Either way it is never a counted day.
-    const after = cells.find((c) => c.date === AFTER_EDGE);
-    expect(after === undefined || after.future).toBe(true);
-    expect(cells.filter((c) => c.count > 0 && c.date > TO)).toEqual([]);
-  });
-
-  it("a WIDER grid over the same end reaches the deep-past rows", () => {
-    const wide = getWorkoutHeatmap(profileId, 53, TO);
-    const dates = wide.columns
-      .flat()
-      .filter((c) => c.count > 0)
-      .map((c) => c.date);
+  it("a WIDER window over the same end reaches the deep-past rows", () => {
+    const dates = getWorkoutTypeDays(profileId, BEFORE_FAR, TO).map(
+      (r) => r.date
+    );
     expect(dates).toContain(BEFORE_FAR);
     expect(dates).toContain(BEFORE_EDGE);
-    // …which is exactly the all-time behavior the 12-month cap preserves.
-    expect(wide.columns).toHaveLength(53);
+  });
+
+  it("splits one day's mixed training by type", () => {
+    // The fixture logs multiple disciplines across the window; every returned
+    // row carries a type, and a (date, type) pair appears at most once.
+    const rows = getWorkoutTypeDays(profileId, FROM, TO);
+    expect(rows.length).toBeGreaterThan(0);
+    const seen = new Set<string>();
+    for (const r of rows) {
+      expect(r.count).toBeGreaterThan(0);
+      const key = `${r.date}|${r.type}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+    expect(new Set(rows.map((r) => r.type)).size).toBeGreaterThan(1);
   });
 });
 

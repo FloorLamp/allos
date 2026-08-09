@@ -227,7 +227,6 @@ describe("buildDayHistoryCalendar", () => {
         ["2026-07-06", 3],
         ["2026-07-08", 9],
       ]),
-      extraByDate: new Map([["2026-07-07", 2]]),
       end: "2026-07-08",
       weeks: 2,
       calendarLevel,
@@ -248,11 +247,8 @@ describe("buildDayHistoryCalendar", () => {
     expect(wed.today).toBe(true);
     const mon = last.find((c) => c.date === "2026-07-06")!;
     expect(mon.level).toBe(calendarLevel(3));
-    const tue = last.find((c) => c.date === "2026-07-07")!;
-    expect(tue.extra).toBe(2);
     expect(cal.activeDays).toBe(2);
     expect(cal.totalValue).toBe(12);
-    expect(cal.totalExtra).toBe(2);
   });
 
   it("honors a non-Sunday week start", () => {

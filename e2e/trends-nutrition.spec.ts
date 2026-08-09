@@ -32,13 +32,19 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
   await expect(adherence.getByTestId("adherence-week").first()).toBeVisible(); // first-ok: read-only presence on a spec-scoped card
   await expect(adherence.getByTestId("adherence-week")).not.toHaveCount(0);
 
-  // Part 3 — intake history: the day-history calendar (coverage) and the
-  // group×day matrix (composition), with populated day cells and group rows.
+  // The intake history LEADS the tab: the day-history calendar (coverage) and
+  // the group×day matrix (composition), with populated day cells and group rows.
   const history = page.getByTestId("intake-history");
   await expect(history).toBeVisible();
   await expect(history.getByTestId("day-history-calendar")).toBeVisible();
   await expect(history.getByTestId("day-history-day")).not.toHaveCount(0);
   await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
+
+  // Confirmed doses are their OWN history section (never a dot overlay on the
+  // food calendar); the seeded confirmed doses give it rows.
+  const doses = page.getByTestId("dose-history");
+  await expect(doses).toBeVisible();
+  await expect(doses.getByTestId("day-history-row")).not.toHaveCount(0);
 
   // The duplicate servings rollup is gone from the Trends tab (it lives on /nutrition).
   await expect(page.getByTestId("food-weekly-rollup")).toHaveCount(0);

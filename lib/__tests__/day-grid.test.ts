@@ -5,7 +5,8 @@ import {
   gridStartFor,
   weekSpan,
 } from "../day-grid";
-import { buildWorkoutHeatmap, heatmapStart } from "../workout-heatmap";
+import { buildDayHistoryCalendar, dayHistoryStart } from "../day-history";
+import { intensityLevel } from "../workout-heatmap";
 import { buildProtocolHeatmap } from "../protocol-heatmap";
 import { buildAdherenceCalendar } from "../adherence-calendar";
 
@@ -110,26 +111,27 @@ describe("dayGrid", () => {
 // ---------------------------------------------------------------------------
 
 describe("the builders over the shared grid", () => {
-  it("workout heatmap: `future` is the grid's trailing padding, and nothing else", () => {
+  it("day-history calendar: `future` is the grid's trailing padding, and nothing else", () => {
     // 2026-03-11 is a Wednesday, so the last column runs three days past it.
-    const hm = buildWorkoutHeatmap(
-      [{ date: "2026-03-10", count: 2, minutes: 60 }],
-      "2026-03-11",
-      4
-    );
-    expect(hm.columns).toHaveLength(4);
-    expect(hm.start).toBe(heatmapStart("2026-03-11", 4));
-    const future = hm.columns.flat().filter((c) => c.future);
+    const cal = buildDayHistoryCalendar({
+      totals: new Map([["2026-03-10", 2]]),
+      end: "2026-03-11",
+      weeks: 4,
+      calendarLevel: intensityLevel,
+      today: "2026-03-11",
+    });
+    expect(cal.columns).toHaveLength(4);
+    expect(cal.start).toBe(dayHistoryStart("2026-03-11", 4));
+    const future = cal.columns.flat().filter((c) => c.future);
     expect(future.map((c) => c.date)).toEqual([
       "2026-03-12",
       "2026-03-13",
       "2026-03-14",
     ]);
-    // A workout grid opens exactly on a week boundary, so it has no LEADING pad.
-    expect(hm.columns[0][0].date).toBe(hm.start);
-    expect(hm.totalSessions).toBe(2);
-    expect(hm.activeDays).toBe(1);
-    expect(hm.totalMinutes).toBe(60);
+    // A day-history grid opens exactly on a week boundary, so it has no LEADING pad.
+    expect(cal.columns[0][0].date).toBe(cal.start);
+    expect(cal.totalValue).toBe(2);
+    expect(cal.activeDays).toBe(1);
   });
 
   it("protocol heatmap: `outside` covers padding before the start AND after the end", () => {

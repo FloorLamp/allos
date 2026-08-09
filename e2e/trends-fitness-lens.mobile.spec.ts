@@ -69,12 +69,13 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(page.getByTestId("fitness-strength")).toBeVisible();
     await expect(page.getByTestId("fitness-sport")).toBeVisible();
 
-    // Inside Volume & cadence: the sessions-by-type matrix (the day-history
-    // composition twin of the density heatmap) renders a row per activity type
-    // the fixture trained in the window.
-    const typeMatrix = page.getByTestId("workout-type-matrix");
-    await expect(typeMatrix).toBeVisible();
-    await expect(typeMatrix.getByTestId("day-history-row")).not.toHaveCount(0);
+    // The tab LEADS with the workout history: the day-history calendar
+    // (coverage) plus a matrix row per activity type the fixture trained in
+    // the window (composition).
+    const history = page.getByTestId("workout-history");
+    await expect(history).toBeVisible();
+    await expect(history.getByTestId("day-history-calendar")).toBeVisible();
+    await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
 
     // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
     // plain in-page anchors, never a third tab level — so no tab by those names
@@ -105,12 +106,9 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await openFitness(page);
 
     // No ?from/?to → the hub's 90D default (#1485 G), which is the state the audit
-    // measured. The first chart is the volume section's, and it must be reachable
-    // without scrolling past a pre-chart wall.
-    const firstChart = page
-      .getByTestId("fitness-volume")
-      .locator(".card")
-      .first(); // first-ok: the volume card IS the section's first card — the measurement's subject
+    // measured. The first chart is now the workout-history calendar the tab leads
+    // with, and it must be reachable without scrolling past a pre-chart wall.
+    const firstChart = page.getByTestId("workout-day-history");
     const box = await firstChart.boundingBox();
     expect(box).not.toBeNull();
     const viewport = page.viewportSize();
@@ -159,11 +157,12 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     // tab names it — not the est-1RM lead, not the movers list.
     await expect(strength).not.toContainText(TRENDS_FITNESS_OLD_LIFT);
 
-    // The heatmap is scoped to the window too: ~13 week columns, not 12 months.
-    // Its earliest drawn cell can precede the window by up to a week (the grid is
-    // week-column aligned), never by months.
+    // The workout-history calendar is scoped to the window too: ~13 week
+    // columns, not 12 months. Its earliest drawn cell can precede the window by
+    // up to a week (the grid is week-column aligned), never by months.
     const ninetyDayFirstCell = await page
-      .getByTestId("workout-heatmap-section")
+      .getByTestId("workout-history")
+      .getByTestId("day-history-calendar")
       .locator("[data-date]")
       .first() // first-ok: the grid's oldest cell — the measurement's subject, order is the grid's own
       .getAttribute("data-date");
@@ -184,10 +183,11 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     );
     // Sport: the deep-past match joins the count.
     await expect(page.getByTestId("fitness-sport")).toContainText("3 sessions");
-    // Cadence: the heatmap widened back to its 12-month cap, so its oldest cell is
-    // strictly older than the 90-day grid's.
+    // Cadence: the workout-history calendar widened back to its 12-month cap,
+    // so its oldest cell is strictly older than the 90-day grid's.
     const allTimeFirstCell = await page
-      .getByTestId("workout-heatmap-section")
+      .getByTestId("workout-history")
+      .getByTestId("day-history-calendar")
       .locator("[data-date]")
       .first() // first-ok: same subject as above — the grid's oldest cell
       .getAttribute("data-date");

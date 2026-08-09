@@ -30,12 +30,8 @@ const SCAN_DIRS = ["app", "components"];
 // Deliberate survivors — arbitrary micro sizes kept on purpose.
 const ALLOWLIST = new Map<string, string>([
   [
-    "components/WorkoutHeatmap.tsx",
-    "heatmap month/weekday/legend tick labels — deliberate 10px density aligned to the 3px-gap cell grid",
-  ],
-  [
     "components/DayHistory.tsx",
-    "day-history calendar month/weekday/legend tick labels — the WorkoutHeatmap density decision on the same cell grid",
+    "day-history calendar month/weekday/legend tick labels — deliberate 10px density aligned to the 3px-gap cell grid",
   ],
   [
     "components/BiomarkerScale.tsx",

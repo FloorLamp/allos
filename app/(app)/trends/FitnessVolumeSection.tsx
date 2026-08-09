@@ -7,8 +7,6 @@ import type { FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
-import WorkoutHeatmapSection from "./WorkoutHeatmapSection";
-import WorkoutTypeMatrixSection from "./WorkoutTypeMatrixSection";
 
 // Trends → Fitness → **Volume & cadence** (#1492), the tab's first section and
 // therefore its first chart: how much work the window held, and how it was spread
@@ -21,10 +19,8 @@ import WorkoutTypeMatrixSection from "./WorkoutTypeMatrixSection";
 // rather than the tab growing a second volume engine (#221).
 export default async function FitnessVolumeSection({
   window,
-  weeks,
 }: {
   window: FitnessWindow;
-  weeks: number;
 }) {
   const { login, profile } = await requireSession();
   const wu = getUnitPrefs(login.id).weightUnit;
@@ -70,14 +66,9 @@ export default async function FitnessVolumeSection({
         )}
       </ChartCard>
 
-      {/* Cadence: the workout-density calendar (#186), re-scoped to the same
-          window and compacted — a 90D window is ~13 columns, not the old
-          unconditional 12-month wall above every nested tab. */}
-      <WorkoutHeatmapSection weeks={weeks} end={window.to} />
-
-      {/* Composition: the same window split by activity type (the day-history
-          matrix). The heatmap answers "how often"; this answers "what". */}
-      <WorkoutTypeMatrixSection weeks={weeks} end={window.to} />
+      {/* Cadence itself — the workout calendar + by-type matrix — leads the
+          whole tab as the Workout history section (WorkoutHistorySection),
+          which replaced the bespoke #186 heatmap that used to sit here. */}
     </section>
   );
 }
