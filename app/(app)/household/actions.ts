@@ -5,10 +5,16 @@ import { revalidateRoute } from "@/lib/revalidate";
 import {
   requireSession,
   requireProfileWriteAccess,
+  getAccessibleProfiles,
   setActiveProfile,
 } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { markDoseTaken } from "@/lib/queries";
+import { markDoseTaken, dismissFinding } from "@/lib/queries";
+import { householdSetupForProfile } from "@/lib/queries/household-setup";
+import {
+  HOUSEHOLD_SETUP_CHECK_IDS,
+  type HouseholdSetupCheckId,
+} from "@/lib/household-setup";
 import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 
 // Switch the current session's active profile to the clicked household card and
@@ -53,4 +59,61 @@ export async function confirmDoseAction(
   revalidateRoute("/medications");
   revalidateRoute("/");
   return { ok: true, outcome };
+}
+
+// ── Member setup health (issue #2173) ─────────────────────────────────────────
+
+// Follow a setup check's MEMBER-scoped CTA: switch the session's active profile to the
+// card's member, then land on that check's own fix surface (their onboarding, their dose
+// editor, their Upcoming). The household card links nothing cross-profile directly —
+// #879: a cross-profile deep link lands on a dead anchor — so the switch has to happen
+// first, exactly as tapping the card header does.
+//
+// THE DESTINATION IS NEVER POSTED. The form carries the member's profile id and the
+// check ID (validated against the closed union), and the route is RE-DERIVED server-side
+// from the member's current facts. So there is no client-supplied redirect target, and a
+// card left open while the underlying check was already fixed lands on the app root
+// rather than on a stale deep link.
+export async function openMemberSetupAction(formData: FormData) {
+  await requireSession();
+  const profileId = Number(formData.get("profileId"));
+  const raw = String(formData.get("check") ?? "");
+  const checkId = HOUSEHOLD_SETUP_CHECK_IDS.find(
+    (id): id is HouseholdSetupCheckId => id === raw
+  );
+  if (!profileId || !checkId) redirect("/household");
+  // READ-level gate, asserted BEFORE the member's facts are read: this is a navigation,
+  // not a write, so a read-only caregiver may follow it — but a login that cannot reach
+  // the profile must never derive anything from it. (`setActiveProfile` re-checks the
+  // same thing independently for the switch itself.)
+  const accessible = await getAccessibleProfiles();
+  if (!accessible.some((p) => p.id === profileId)) redirect("/household");
+  await setActiveProfile(profileId);
+  const row = householdSetupForProfile(profileId, today(profileId));
+  const cta = row?.checks.find((c) => c.id === checkId)?.cta ?? null;
+  redirect(cta && cta.scope === "member" ? cta.href : "/");
+}
+
+// Dismiss a member's setup row for its CURRENT EPISODE — the failing-check SET, which is
+// what the row's dedupeKey encodes. A newly failing check type changes the key and the
+// row is offered again; the same set re-arising after a real fix is the documented
+// data-quality-shaped behaviour of a type-keyed dismissal.
+//
+// The row is NEVER dismissible while the UNROUTABLE check is in the set (constraint 3:
+// a standing "this profile is unroutable" dismissal must not exist). That is enforced
+// HERE and not only in the renderer: the action re-derives the row and refuses to write
+// a suppression for a non-dismissible one, so a hand-posted form cannot silence it
+// either. `householdSetupForProfile` is the same reader the card rendered from, so the
+// key can never be one the user was not actually offered.
+export async function dismissMemberSetupAction(formData: FormData) {
+  const profileId = Number(formData.get("profileId"));
+  if (!profileId) return;
+  // Silencing a finding about someone is a WRITE against their profile, so it takes
+  // write access to THAT profile, not to the active one.
+  await requireProfileWriteAccess(profileId);
+  const row = householdSetupForProfile(profileId, today(profileId));
+  if (!row || !row.dismissible) return;
+  if (row.dedupeKey !== String(formData.get("dedupe_key") ?? "")) return;
+  dismissFinding(profileId, row.dedupeKey);
+  revalidateRoute("/household");
 }

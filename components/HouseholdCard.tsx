@@ -10,14 +10,23 @@ import {
   IconVirus,
   IconBarbell,
   IconChecklist,
+  IconX,
 } from "@tabler/icons-react";
+import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import type { AvatarProfile } from "@/components/Avatar";
 import DoseConfirmButton from "@/components/DoseConfirmButton";
 import {
   openProfileAction,
   confirmDoseAction,
+  openMemberSetupAction,
+  dismissMemberSetupAction,
 } from "@/app/(app)/household/actions";
+import type {
+  HouseholdSetupCheck,
+  HouseholdSetupRow,
+} from "@/lib/household-setup";
+import type { FindingTone } from "@/lib/findings";
 import { fmtWeight } from "@/lib/units";
 import { subjectActionLabel } from "@/lib/own-profile";
 import { upcomingDueText } from "@/lib/upcoming";
@@ -78,6 +87,12 @@ export interface HouseholdCardData {
   // profile deep link lands on a dead anchor, #879); tapping the card switches to
   // this profile where each gap's own CTA is reachable.
   dataQuality: string | null;
+  // The member's SETUP-HEALTH row (issue #2173) — unroutable reminders, never-started
+  // onboarding, undosed active items, unactioned preventive nudges, the SUGGEST-only
+  // roster question — or null when their setup is healthy (or the current episode was
+  // dismissed). Derived at read time by householdSetupForProfile; this card only
+  // renders it.
+  setup: HouseholdSetupRow | null;
 }
 
 function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
@@ -228,6 +243,117 @@ function Attention({ data }: { data: HouseholdCardData }) {
   );
 }
 
+// Tone → the check row's text colour. The BANDING vocabulary is the attention model's
+// existing `FindingTone` (#2173 constraint 2 — content may raise a row, but no new
+// severity words); this map is presentation only. Deliberately NOT a bordered tinted
+// block: the setup row is a calm configuration note on a glance card, not an alert.
+const SETUP_TONE_TEXT: Record<FindingTone, string> = {
+  caution: "text-amber-700 dark:text-amber-300",
+  action: "text-sky-700 dark:text-sky-300",
+  info: "text-slate-600 dark:text-slate-300",
+  neutral: "text-slate-600 dark:text-slate-300",
+  positive: "text-emerald-700 dark:text-emerald-300",
+};
+
+function SetupCheckRow({
+  check,
+  profileId,
+}: {
+  check: HouseholdSetupCheck;
+  profileId: number;
+}) {
+  return (
+    <div data-testid="household-setup-check" data-check={check.id}>
+      <div
+        className={`text-sm font-medium ${SETUP_TONE_TEXT[check.tone]}`}
+        data-testid="household-setup-title"
+      >
+        {check.title}
+      </div>
+      <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        {check.detail}
+      </div>
+      {check.cta &&
+        (check.cta.scope === "login" ? (
+          // A route about the VIEWER's own login/instance configuration — Settings →
+          // People & access (the grant UI `setGrants` can finally act on since #2345) or
+          // Settings → Notifications. No profile switch is involved, so it is an
+          // ordinary link.
+          <Link
+            href={check.cta.href}
+            data-testid="household-setup-cta"
+            className="mt-1 inline-block text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+          >
+            {check.cta.label} →
+          </Link>
+        ) : (
+          // A route about THIS MEMBER's own data. It needs the profile switch first
+          // (#879), and the destination is re-derived server-side from the check id —
+          // never posted.
+          <form action={openMemberSetupAction} className="mt-1">
+            <input type="hidden" name="profileId" value={profileId} />
+            <input type="hidden" name="check" value={check.id} />
+            <button
+              type="submit"
+              data-testid="household-setup-cta"
+              className="text-xs font-medium text-sky-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-sky-300"
+            >
+              {check.cta.label} →
+            </button>
+          </form>
+        ))}
+    </div>
+  );
+}
+
+// The member's setup-health block. Rendered-aggregate only: it never sends, and it never
+// enters the digest (#2173 constraint 6).
+function Setup({
+  setup,
+  profile,
+  canWrite,
+}: {
+  setup: HouseholdSetupRow;
+  profile: AvatarProfile;
+  canWrite: boolean;
+}) {
+  return (
+    <div
+      className="mt-4 space-y-2 border-t border-black/5 pt-3 dark:border-white/5"
+      data-testid="household-setup"
+      data-tone={setup.tone}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="section-label">Setup</div>
+        {/* Dismiss is EPISODE-scoped (the failing-check set is the key) and is not
+        offered at all while the profile is unroutable — a standing "this profile is
+        unroutable" dismissal would recreate the silence this exists to remove. The
+        action re-checks both, so the absence of the button is UX, not the guarantee. */}
+        {canWrite && setup.dismissible && (
+          <form action={dismissMemberSetupAction}>
+            <input type="hidden" name="profileId" value={profile.id} />
+            <input type="hidden" name="dedupe_key" value={setup.dedupeKey} />
+            <button
+              type="submit"
+              data-testid="household-setup-dismiss"
+              aria-label={`Dismiss setup notes for ${profile.name}`}
+              title="Dismiss"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+            >
+              <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
+            </button>
+          </form>
+        )}
+      </div>
+      <div className="space-y-2.5">
+        {setup.checks.map((check) => (
+          <SetupCheckRow key={check.id} check={check} profileId={profile.id} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
   const {
     profile,
@@ -244,6 +370,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
     sick,
     presence,
     dataQuality,
+    setup,
   } = data;
 
   return (
@@ -412,6 +539,13 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
       )}
 
       <Attention data={data} />
+
+      {/* Setup health sits BELOW today's attention on purpose: "what needs doing today"
+      leads, and "why this member may never be told" is the standing structural note
+      under it. */}
+      {setup && (
+        <Setup setup={setup} profile={profile} canWrite={data.canWrite} />
+      )}
     </div>
   );
 }

@@ -26,6 +26,7 @@ import {
   getFindingSuppressions,
   countVisiblePools,
 } from "@/lib/queries";
+import { householdSetupForProfile } from "@/lib/queries/household-setup";
 import { collectDataQualityGaps } from "@/lib/rule-findings";
 import {
   householdDataQualityLine,
@@ -203,6 +204,14 @@ export default async function HouseholdPage() {
       // #879) — a plain chip, not a button.
       presence: householdPresenceChip(getWorkoutPresence(pid)),
       dataQuality,
+      // Per-member SETUP HEALTH (#2173). Five checks derived at read time from facts
+      // that already exist — the send-source scan × the notification edge set × per-login
+      // channel presence, onboarding state, the dose roster, and the preventive planner's
+      // own outstanding set. Composed HERE, inside the loop over the profiles the auth
+      // boundary already resolved, so nothing evaluates a member this login cannot reach.
+      // Bounded like the rest of the card: a handful of cheap, profile-scoped reads, all
+      // of them ones some other surface already performs.
+      setup: householdSetupForProfile(pid, day),
     };
   });
 

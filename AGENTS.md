@@ -404,6 +404,20 @@ the only module allowed to import the raw Telegram API primitives.
 Inline notification actions carry IDs only and return typed outcomes. Never
 confirm success unconditionally when the underlying write can refuse or no-op.
 
+A profile whose messages reach NOBODY says so. The fan-out's admin exclusion is
+correct and untouched, but its consequence used to be invisible — "no channel" is a
+non-error to the tick, so nothing anywhere reported it. `unroutable()`
+(`lib/household-setup.ts`) is the ONE predicate: the send-source scan × the edge set
+× per-login channel presence (`profileRoutingFacts`), timezone-free, and disjoint by
+construction from the `notify_lifecycle` failing-channel case (that one needs a
+channel to have been attempted). It is a RENDERED AGGREGATE only — Settings →
+Notifications and the `/household` setup row — never a send and never the digest.
+`/household` owns per-member setup health more broadly: five derived checks
+(unroutable, never-onboarded, undosed active items, unactioned preventive nudges, a
+SUGGEST-only roster question), banded in the EXISTING `FindingTone` vocabulary, with
+an episode-scoped dismissal keyed on the failing-check set that the unroutable check
+is exempt from entirely. See `docs/internals/findings.md`.
+
 A tick is not a request, so `cache()` (`lib/request-cache.ts`) is identity in it.
 Per-tick memoization goes through `lib/tick-cache.ts`: `scripts/notify.ts` opens
 one scope per profile, and a repeated heavy gather declares `tickCached` beside

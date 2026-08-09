@@ -47,7 +47,10 @@ import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { notifyScopeForLogin } from "@/lib/notify-scope-db";
 import { notifyScopeCaption } from "@/lib/notify-scope";
+import { profileUnroutableReason } from "@/lib/queries/household-setup";
+import { today } from "@/lib/db";
 import NotifyScopeEditor from "@/components/NotifyScopeEditor";
+import { Notice } from "@/components/Notice";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import PushNotificationSettings from "./PushNotificationSettings";
@@ -169,6 +172,20 @@ export default async function NotificationsSettingsPage() {
     smtpConfigured && resolveEmailRecipients(profile.id).length > 0;
   const householdRound = getProfileHouseholdRound(profile.id);
 
+  // UNROUTABLE (#2173) — said at the exact place someone would fix it. This profile
+  // would send something and NOTHING would carry it: either no login receives it at all
+  // (the notification edge set is empty — grants UNION own-profile, and the admin ROLE
+  // deliberately is not a source) or every login that does has no channel configured.
+  // The tick treats that as a non-error, so without this line the state is invisible.
+  //
+  // It is a RENDERED note, never a send, and it cannot double-fire with the
+  // delivery-status error the channel cards already show: that marker records a channel
+  // that was ATTEMPTED and FAILED, and this fires only when there is nothing to attempt.
+  const unroutableReason = profileUnroutableReason(
+    profile.id,
+    today(profile.id)
+  );
+
   // Sub-hourly honesty check (#2121 constraint 4): the scheduler records its
   // OBSERVED cadence each tick (`notify_tick_interval_min`); when a configured
   // slot time is sub-hourly and that cadence can't land on it, say so here rather
@@ -207,6 +224,18 @@ export default async function NotificationsSettingsPage() {
         scope={`Telegram, Web Push, and Email follow your login (${login.username}) across every profile; the Home Assistant webhook follows ${profile.name}.`}
       >
         <PageContainer width="form" className="space-y-6">
+          {unroutableReason && (
+            <Notice
+              tone="amber"
+              icon
+              testid="notify-unroutable"
+              title="Nothing receives this profile's notifications"
+            >
+              {unroutableReason === "no-managing-login"
+                ? `${profile.name}'s reminders are built and delivered to no one — no login receives them. An admin can add one in People & access.`
+                : `${profile.name}'s reminders are built and delivered to no one — every login that receives them has no channel configured.`}
+            </Notice>
+          )}
           <LoginTelegramSettings
             telegram={telegram}
             botConfigured={botConfigured}

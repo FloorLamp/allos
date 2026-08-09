@@ -351,6 +351,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "confirmDoseAction",
     why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
   },
+  {
+    file: "app/(app)/household/actions.ts",
+    fn: "openMemberSetupAction",
+    why: "navigation only (#2173): moves the session's active-profile pointer to the card's member and redirects to a route RE-DERIVED server-side from the check id, never posted; gated read-level on getAccessibleProfiles() before any of that member's facts are read, because a read-only caregiver must still be able to follow a setup CTA",
+  },
+  {
+    file: "app/(app)/household/actions.ts",
+    fn: "dismissMemberSetupAction",
+    why: "silences a finding about a NON-active target profile (#2173); gates via requireProfileWriteAccess(targetId) — the active-profile requireWriteAccess() would authorize the wrong profile — and additionally refuses any row the pure model marks non-dismissible, so an unroutable member can never be silenced",
+  },
   // --- Shared supply pools (issue #1374) — a `shared_supplies` row is household-
   // shared and has NO owning profile, so the active-profile requireWriteAccess()
   // would authorize the wrong subject. Pool EDITS gate on the pool's MEMBERSHIP

@@ -219,6 +219,73 @@ must survive that. See `docs/internals/notifications.md` for the mechanism.
 
 ---
 
+## Member setup health on /household (coaching tier, #2173)
+
+Status: **shipped**
+
+A profile could build reminders every day and deliver them to **nobody**, silently,
+forever. The notification edge set (`managingLoginIdsForProfile`) is grants UNION the
+login's own profile, and the admin ROLE is deliberately not a source — that exclusion
+is CORRECT and unchanged. What was missing is that the resulting state was invisible:
+the tick treats "no channel" as a non-error, so there was no log line, no health
+signal and no UI note anywhere. It took a human asking "why doesn't she get
+notifications?" plus a DB dive to find.
+
+Auditing a real four-profile household turned that into one instance of a broader
+blind spot — **cross-profile setup neglect had no surface at all**. Never-STARTED
+onboarding renders identically to complete (`onboardingNeedsSetup(null)` is false);
+widget empty-state CTAs render only for the ACTIVE profile's own dashboard; and the
+household strip filters to members with non-zero ATTENTION counts, which none of it
+produces. So `/household` — already the family status board, already resolving the
+accessible set once, already a class-2 rendered aggregate — owns it.
+
+**Five checks, all derived at read time**, no stored state, no new engine, no new
+table. Each is an existing query asked per member (`lib/queries/household-setup.ts`
+composes them; `lib/household-setup.ts` decides and phrases):
+
+| Check                   | Fires when                                                                                                   | CTA                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `unroutable`            | the profile WOULD send something AND either the edge set is empty or no login in it has a configured channel | the grant UI (`/settings/family`) or the channel form (`/settings/notifications`) |
+| `never-onboarded`       | no `onboarding_state` row AND **thin presence** (not one onboarding data domain has a first value)           | that member's `/onboarding`                                                       |
+| `undosed-items`         | active, non-`may` items with zero un-retired dose rows — scheduled-shaped and never due                      | one item → its own edit form; several → the kind's surface                        |
+| `preventive-unactioned` | the preventive planner's own outstanding set: **overdue**, unbooked, unsuppressed                            | that member's `/upcoming`                                                         |
+| `roster-inactive`       | the whole roster is inactive and some of it is `must`/`should`                                               | **none** — SUGGEST-only                                                           |
+
+Six properties are load-bearing:
+
+- **Rendered aggregate, full stop.** It never sends and it never enters the digest —
+  the digest is about the profile's HEALTH, not the household's CONFIGURATION. That is
+  also why there is deliberately **no Upcoming item**: an Upcoming row IS a digest line
+  (`collectUpcoming` feeds `buildDigest`), so adding one would be exactly the increase
+  in contact §2 forbids.
+- **Severity reuses the existing banding.** Content may raise a row — an undeliverable
+  `must` MEDICATION is `caution` where a `should` supplement is `action` — but the
+  vocabulary is `FindingTone`, and both render. No new severity words.
+- **`unroutable` cannot double-fire with `notify_lifecycle`.** That marker records a
+  channel that was ATTEMPTED and FAILED; the predicate returns null the moment ANY
+  channel is configured. Disjoint by construction, pinned as an invariant test rather
+  than trusted as prose. One row, whichever applies.
+- **Dismissal is episode-scoped, and `unroutable` is exempt from it entirely.** The key
+  is the FAILING CHECK SET (`household-setup:<id>+<id>…`), so a dismissal means "not
+  this set of problems" and a newly failing check type re-offers the row. A row
+  carrying `unroutable` is marked **non-dismissible** — no control is rendered AND the
+  action refuses to write one — because a standing "this profile is unroutable"
+  dismissal would recreate the silence this removes.
+- **The roster question is SUGGEST-only** (#1505/#1668). Obligation and activity are
+  user-written, always; the app asks and offers no write.
+- **Scope is the page's own.** The checks are per-member reads composed inside the loop
+  over the profiles the auth boundary already resolved. Member-scoped CTAs go through
+  the card's switch-then-navigate action, whose destination is **re-derived
+  server-side** from the check id and never posted.
+
+The prefix is registered `coaching` in `RULE_FINDING_REGISTRY` as a suppression-only
+namespace (the poor-sleep-override / portal-sync-ask precedent: no builder emits it,
+so the reflection guards over builder OUTPUT never see it, but the key must be
+guardable and its tier declared) and classified `anchored` in
+`DISMISSAL_KEY_REGISTRY`.
+
+---
+
 ## Illness-care findings (care tier, #805)
 
 The illness-care engine (`lib/illness-care.ts`, builder

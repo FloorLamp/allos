@@ -65,8 +65,18 @@ import {
   GRANT_EDIT_PROFILE,
   DUP_ACCESS_PROFILE,
   INVITE_TARGET_PROFILE,
+  E2E_LOGIN_SETUP_HEALTH,
+  SETUP_HEALTH_OK_PROFILE,
+  SETUP_HEALTH_GAP_PROFILE,
+  SETUP_HEALTH_QUIET_PROFILE,
+  SETUP_HEALTH_GAP_MED,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
+import {
+  completeOnboardingState,
+  initialOnboardingState,
+} from "../../lib/onboarding";
+import { setOnboardingState } from "../../lib/settings";
 
 // ── Household rollup, profile-switch toaster, family calendar ──
 export function seedHouseholdRollup(): void {
@@ -700,4 +710,86 @@ export function seedTelegramDoseRound(): void {
       `e2e: seeded household-round fixture — ${E2E_LOGIN_HH_ROUND} own=${HH_ROUND_CAREGIVER_PROFILE} (${hhCaregiverId}), write=${HH_ROUND_WARD_PROFILE} (${hhWardId}), read=${HH_ROUND_SHADOW_PROFILE} (${hhShadowId}) (#1459)`
     );
   }
+}
+
+// ── Member setup health on the Household board (issue #2173) ──
+export function seedHouseholdSetup(): void {
+  // Three SPEC-OWNED profiles plus their own caregiver login. The setup row is a
+  // derived verdict over a whole profile's configuration, so it owns its data outright
+  // (#2353): nothing else in the suite writes these profiles, so no neighbour's dose,
+  // onboarding row or channel can flip a card. Synthetic only; idempotent for a reused
+  // dev server.
+  const okId = fixtureProfileId(SETUP_HEALTH_OK_PROFILE);
+  const gapId = fixtureProfileId(SETUP_HEALTH_GAP_PROFILE);
+  const quietId = fixtureProfileId(SETUP_HEALTH_QUIET_PROFILE);
+
+  // OK + GAP have been through onboarding; QUIET deliberately has NO onboarding_state
+  // row, which is the state that has always rendered identically to "complete".
+  for (const id of [okId, gapId]) {
+    setOnboardingState(id, {
+      ...completeOnboardingState(initialOnboardingState(), "2026-01-01"),
+      // Dismissed so the fixture's dashboards stay quiet — this spec is about the
+      // household board, not the post-onboarding checklist.
+      checklistDismissed: true,
+    });
+  }
+
+  // The one channel that routes with NO managing login: a profile-scoped Home Assistant
+  // webhook. It is what makes OK healthy while GAP (same dosed item, no channel) is not.
+  for (const [key, value] of [
+    ["ha_notify_enabled", "1"],
+    ["ha_notify_webhook_url", "https://ha.invalid/api/webhook/e2e-setup-ok"],
+  ] as const) {
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(okId, key, value);
+  }
+
+  const addItem = (
+    profileId: number,
+    name: string,
+    kind: "supplement" | "medication",
+    active: 0 | 1,
+    dosed: boolean
+  ): void => {
+    if (
+      db
+        .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+        .get(profileId, name)
+    )
+      return;
+    const item = db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, ?, ?, 'daily', 'should')`
+      )
+      .run(profileId, name, active, kind);
+    if (dosed) {
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1 cap', '08:00', 'any', 0)`
+      ).run(Number(item.lastInsertRowid));
+    }
+  };
+
+  // A dosed, active, non-`may` item on both OK and GAP: the send source that makes
+  // "would this profile send something?" true at all.
+  addItem(okId, "Setup OK Vitamin D (e2e)", "supplement", 1, true);
+  addItem(gapId, "Setup Gap Vitamin D (e2e)", "supplement", 1, true);
+  // GAP's second line: active, scheduled-shaped, and with no dose row, so it can never
+  // be due. A medication, so its CTA deep-links the item's own edit form.
+  addItem(gapId, SETUP_HEALTH_GAP_MED, "medication", 1, false);
+  // QUIET's whole roster is inactive. Supplements only: the shared onboarding presence
+  // reader counts ANY medication row as a first value, which would take this profile out
+  // of the never-onboarded check's "thin presence" gate.
+  addItem(quietId, "Setup Quiet Multivitamin (e2e)", "supplement", 0, false);
+  addItem(quietId, "Setup Quiet Fluoride (e2e)", "supplement", 0, false);
+
+  const loginId = seedMemberLogin(E2E_LOGIN_SETUP_HEALTH, okId, "write");
+  grantProfile(loginId, gapId, "write");
+  grantProfile(loginId, quietId, "write");
+  console.log(
+    `e2e: seeded member setup-health fixture — ${E2E_LOGIN_SETUP_HEALTH} ok=${okId}, gap=${gapId}, quiet=${quietId} (#2173)`
+  );
 }

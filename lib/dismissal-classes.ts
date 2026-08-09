@@ -473,6 +473,19 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // moves the key moves with it, which is the mechanism, not a leak. No sweep needed.
   },
   {
+    prefix: "household-setup:",
+    keyClass: "anchored",
+    shape:
+      "`<checkId>+<checkId>…` (the failing setup checks, declaration order)",
+    // Anchored on the FAILING CHECK SET (#2173), which is the episode: the moment a new
+    // check type fails the key changes and the row is offered again. Nothing in the tail
+    // is a user string — the ids are a closed union (HOUSEHOLD_SETUP_CHECK_IDS) — so a
+    // stale row can only ever re-silence the identical set of problems on the identical
+    // profile, and no sweep is needed. The one set that must never be silenceable is
+    // handled at a different layer: a row carrying `unroutable` is marked
+    // non-dismissible, so no key containing it is ever written OR read.
+  },
+  {
     prefix: "digest-time:",
     keyClass: "anchored",
     shape: "`<configuredMinute>:<proposedMinute>` (minutes of day)",

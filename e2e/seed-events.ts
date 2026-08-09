@@ -45,6 +45,7 @@ import {
   seedMultiProfile,
   seedGrantMatrix,
   seedTelegramDoseRound,
+  seedHouseholdSetup,
 } from "./seed/household";
 import {
   seedWeeklyRecap,
@@ -142,6 +143,7 @@ seedSyncHistoryDay();
 seedMergeFixtures();
 seedImportFeed();
 seedHouseholdRollup();
+seedHouseholdSetup();
 seedWeeklyRecap();
 seedRestEpisode();
 seedSleep();
