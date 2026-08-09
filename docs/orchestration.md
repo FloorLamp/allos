@@ -50,7 +50,7 @@ What that means in practice:
 | Node             | Node 24 required. It lives under `/opt/nvm/versions/node/`. DISCOVER the version, never paste one from here — `ls /opt/nvm/versions/node/`, then `export PATH=/opt/nvm/versions/node/<version>/bin:$PATH`. A pinned patch version in this table went stale within days and every copy-paste of it pointed at a directory that did not exist. Some images ship no node 24 at all — install it: `export NVM_DIR=/opt/nvm && . /opt/nvm/nvm.sh && nvm install 24` (~30s, survives for the session). The bare `node` on PATH may be v22 — wrong ABI for prebuilt better-sqlite3. Verify with `node -e "require('better-sqlite3')"` before dispatching; `npm rebuild better-sqlite3` fixes a wrong-ABI worktree.                                                                                                                                                                                                                       |
 | node_modules     | Keep ONE canonical tree with installed deps. The main checkout (`/home/user/allos/node_modules`, after a fresh `npm ci`) is the durable choice — a worktree is not, because it is removed at merge and takes the canonical tree with it. Every new worktree: `cp -al <canonical>/node_modules <wt>/node_modules` (hardlinks, ~instant). Name the ACTUAL canonical path in each dispatch; a worktree name written down here outlives the worktree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Worktrees        | All agent work in `git worktree add $SCRATCH/wt-<name> -b <branch> origin/main`. Never let an agent touch the main checkout. Remove worktrees + delete local branches after merge; disk is a fixed allowance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| GitHub REST      | `TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"` + curl for EVERYTHING except merge. Issue read: `GET /repos/OWNER/REPO/issues/N` (+ `/comments`). Open PR: `POST /repos/OWNER/REPO/pulls` (`{title,head,base,body}`). Reviews: `POST /pulls/N/reviews` with `event=COMMENT`. Check-runs/status: `GET /commits/SHA/check-runs`. Do NOT reach for `mcp__github__create_pull_request`/`issue_read`/`list_issues` — MCP is merge-only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| GitHub REST      | `TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"` + curl for EVERYTHING except merge. Issue read: `GET /repos/OWNER/REPO/issues/N` (+ `/comments`). Open PR: `POST /repos/OWNER/REPO/pulls` (`{title,head,base,body}`). Reviews: `POST /pulls/N/reviews` with `event=COMMENT`. Check-runs/status: `GET /commits/SHA/check-runs`. Do NOT reach for `mcp__github__create_pull_request`/`issue_read`/`list_issues` — MCP is merge-only WHILE THE TOKEN EXISTS. If a restart wipes it, curl 401s and MCP becomes the only working path (see "Credential loss after a restart"); the fix is `add_repo` with `access: "push"`, after which curl is preferred again.                                                                                                                                                                                                                                                                                  |
 | Actions rerun    | The rerun API 403s for this token, and so does `workflow_dispatch` — a session cannot dispatch `e2e-full.yml`, and does not need to: the PR's own sharded matrix already runs the whole suite at retries=0 on fresh runners. Retrigger CI with an empty commit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Local e2e        | Each Playwright WORKER boots its own server on `E2E_PORT + <worker index>`, so assign each WORKTREE a port RANGE at dispatch (base + at least the worker count: 5400–5410, 5600–5610, …). AVOID 6000–6099: Next.js refuses X11-reserved ports (an agent lost a round discovering port 6000 won't boot). DB/uploads/log isolation is handled by the harness (`e2e/worker-env.ts`). The per-worker servers are `next start`, so build once — `npm run build` — then `ANTHROPIC_API_KEY= E2E_PORT=<base> npx playwright test <specs> --workers=<N> --repeat-each=3 --retries=0 --reporter=list` (global-setup rebuilds by itself when a build input is newer; `E2E_SKIP_BUILD=1` to forbid it). `--workers>1` is honest (no shared DB) and is the point of the range; leave `CI=1` off unless you want CI's one-worker shape. A leftover server from a `kill -9`'d run is swept by global-setup via `e2e/.data/worker-*/server.pid`. |
 | Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -99,6 +99,61 @@ and in-flight agent call. Everything here was learned by losing work to it.
   whose death fires the harness notification, plus a **boot-id stamp**
   (`/proc/sys/kernel/random/boot_id` → `$SCRATCH/.boot_id`) compared at EVERY
   check-in. On mismatch: restamp, restart the canary, run the resume drill.
+
+### Credential loss after a restart — and the one-call fix
+
+A restart can wipe `$GH_TOKEN`/`$GITHUB_TOKEN` **and** the git proxy's push
+credentials while leaving everything else working. This cost most of a session
+before the fix was found, entirely because of how well it hides.
+
+**The fix, first, because it is one call:** `add_repo` for the repo with
+`access: "push"` (the claude-code-remote MCP tool). It re-mints push credentials
+even when it answers `already_present` — the answer is not "nothing happened".
+Then push normally; no re-clone, no new session, no bundle. Verify with
+`git push --dry-run origin <branch>` before concluding anything.
+
+**How it hides — three traps, all of which fooled me:**
+
+- **`git fetch` and `git ls-remote` still succeed anonymously** on a public repo.
+  Reads working is NOT evidence writes work. I reported "git still works, agents
+  can still push" in a check-in on exactly this evidence, and it was wrong.
+- **A bash CI poll silently reports `(none)`** for open PRs, because the curl
+  401s and the JSON parse yields nothing. That reads as "no PRs open" — a lie in
+  the reassuring direction. **Never run a bash CI poll without asserting the
+  token is present**; prefer `mcp__github__pull_request_read` / `list_pull_requests`.
+- **MCP GitHub tools keep their own auth** and go on working. So issue comments,
+  filing and merging all succeed while `curl` 401s, which makes the failure look
+  narrower than it is.
+
+**Symptom → meaning:**
+
+| Symptom                                                   | Meaning                                         |
+| --------------------------------------------------------- | ----------------------------------------------- |
+| `curl` → 401 `Bad credentials`; unauthenticated → 403     | Both token vars are unset                       |
+| `fatal: could not read Username for 'https://github.com'` | Push credentials gone; reads still fine         |
+| CI poll prints `(none)` while a PR is demonstrably open   | The poll is unauthenticated, not the repo empty |
+
+**Do NOT hunt for credentials** — not in the environment, the filesystem,
+`~/.git-credentials`, or `~/.config/gh`. There is nothing to find, and looking
+trips security monitoring even when the usage is sanctioned. One
+`git config --get-regexp` to check for a proxy rewrite is the limit; an agent hit
+the permission classifier doing exactly that and correctly stopped.
+
+**Before reaching for a workaround, check what you actually still have.** Agents
+that commit after every step leave clean worktrees, so the recovery order is:
+(1) confirm everything is committed — it usually already is, which means nothing
+depends on a working tree surviving; (2) `add_repo` with `access: "push"`;
+(3) only then consider `push_files` / `create_or_update_file`, or
+`git bundle create` + `SendUserFile`. Pushing branch CONTENTS through MCP is a
+poor last resort: one 407KB amendment is ~115k tokens, so it does not scale past
+a branch or two.
+
+**While it is broken, keep working.** Agents can still do everything except push:
+inline the full spec in the brief (they cannot read issues), drop every `curl`
+step, and end with _"commit properly, do not push, do not open a PR, report the
+full PR body back."_ Then write each finished agent's reasoning into a GitHub
+comment via MCP — if the container dies, the work is reconstructible from those
+comments plus the branches instead of only from the orchestrator's context.
 
 ## The pipeline (per unit of work)
 
