@@ -37,9 +37,11 @@ export type RevalidateScope = "layout" | "page";
  *    `<Link>` needs them — a bare `?query`/`#hash` (relative to the CURRENT page,
  *    meaningless to `revalidatePath`) and `${string}:${string}` external URLs. A
  *    revalidation target is always a rooted path. This tooth holds even when the
- *    generated route types are absent (`npm run typecheck` runs on a tree with no
- *    `.next/types`, where Next's fallback `Route` is `string & {}`), which is what
- *    lib/__tests__/revalidate-route.test.ts's `@ts-expect-error` cases pin.
+ *    generated route types are absent, i.e. when Next's fallback `Route` is
+ *    `string & {}` — the state `npm run typecheck` used to run in before #2293 made
+ *    it `next typegen && tsc --noEmit`. Both teeth are pinned by
+ *    lib/__tests__/revalidate-route.test.ts's `@ts-expect-error` cases now; the
+ *    route-union half is only assertable because the types are generated first.
  *  - `T` is inferred PER CALL, which is what admits a dynamic route in its literal
  *    `[param]` form (`"/import/[id]"` matches Next's `` `/import/${SafeSlug<T>}` ``)
  *    and an interpolated one (`` `/medications/${id}` ``). `Route<string>` — the

@@ -12,15 +12,19 @@
 //     lib/__tests__/reconcile-close-contract.test.ts (#2275) — if the parameter ever
 //     stops refusing these, the directive goes unused and `tsc --noEmit` fails.
 //
-//     WHICH refusals are pinned here is deliberate. `npm run typecheck` runs against
-//     a tree with NO `.next/types`, where Next's fallback `Route` is `string & {}` —
-//     so "/no-such-page" is only refused under `npm run build`, and pinning THAT
-//     would make the directive unused in the typecheck job. What holds in both is
-//     the shape half of `RevalidateTarget`: a target is a ROOTED PATH, never a bare
-//     `?query`/`#hash` (Next's `Route` admits those for `<Link>`, where they are
-//     relative to the current page and meaningless to `revalidatePath`), never a
-//     relative string, and never a widened `string`. The route-union half is live
-//     wherever the route types exist, which is every `next build`.
+//     BOTH halves of the narrowing are pinned, which they could not be before #2293.
+//     The SHAPE half: a target is a ROOTED PATH, never a bare `?query`/`#hash`
+//     (Next's `Route` admits those for `<Link>`, where they are relative to the
+//     current page and meaningless to `revalidatePath`), never a relative string, and
+//     never a widened `string`. The ROUTE-UNION half: a rooted path that names no
+//     page — the #1636 dead-target class — is refused too.
+//
+//     The route-union pin is the one that used to be unwritable. `npm run typecheck`
+//     was a bare `tsc --noEmit` over a tree with no `.next/types`, where Next's
+//     fallback `Route` is `string & {}`, so "/no-such-page" type-checked fine and a
+//     directive pinning its refusal went UNUSED — itself an error. #2293 made the
+//     script `next typegen && tsc --noEmit`, so the generated union is present
+//     wherever this file is checked and the interesting refusal can be asserted.
 //
 //  2. The fan-out, as behavior: the array form must call through once per element,
 //     with the scope carried to each. `next/cache` is mocked because a pure test has
@@ -92,6 +96,21 @@ revalidateRoute(computed);
 // The array form narrows per element, not just at the array.
 // @ts-expect-error every element of a fan-out is a rooted path
 revalidateRoute(["/data", "nutrition"]);
+
+// A rooted path that names NO PAGE — the #1636 class this wrapper exists for, and
+// (per the header) the refusal that only became assertable once `npm run typecheck`
+// generated the route types. If `.next/types/routes.d.ts` ever goes missing again,
+// `Route` collapses to `string & {}`, this directive goes unused, and `tsc --noEmit`
+// fails HERE rather than silently accepting dead targets everywhere.
+// @ts-expect-error a revalidation target names a route that exists
+revalidateRoute("/no-such-page");
+
+// …including inside a fan-out, and behind the storage widener — `revalidateTarget`
+// checks before it widens, so it is not an escape hatch from the union.
+// @ts-expect-error every element of a fan-out names a route that exists
+revalidateRoute(["/data", "/goals"]);
+// @ts-expect-error widening for storage still checks the route first
+revalidateTarget("/medical");
 
 // ---- What it DOES ---------------------------------------------------------------
 
