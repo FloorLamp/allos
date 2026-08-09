@@ -25,6 +25,7 @@ export * from "./queries/symptoms";
 export * from "./queries/mood";
 export * from "./queries/mood-anxiety";
 export * from "./queries/medical";
+export * from "./queries/vitals-latest";
 export * from "./queries/biomarker-options";
 export * from "./queries/saved";
 export * from "./queries/visit-links";

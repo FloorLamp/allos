@@ -13,7 +13,8 @@ export interface LatestTrend {
   // The reading immediately before the latest one, or null when the series has a
   // single reading.
   previousValue: number | null;
-  // Direction of the latest reading versus the previous one; null with a single reading.
+  // Direction of the latest reading versus the previous one; null with a single reading,
+  // and null when the two readings share a DATE (#2303 — see below).
   direction: TrendDirection | null;
 }
 
@@ -26,8 +27,20 @@ export function latestTrend(
   if (points.length === 0) return null;
   const latest = points[points.length - 1];
   const prev = points.length >= 2 ? points[points.length - 2] : null;
+  // A SAME-DAY pair is not a direction (#2303). Three sequential cuff readings from one
+  // clinic visit share a date — ordinary clinical practice — and the two-point tail then
+  // takes two of them, so the arrow claimed "up versus previous blood pressure" between
+  // reading #3 and reading #2 of a single measurement. What is withdrawn is the
+  // DIRECTION only: `previousValue` still reports the other reading, because the data is
+  // real; the unsupported claim is that anything moved between them.
+  //
+  // The rule lives here, in the shared helper, rather than in the BP branch — it is
+  // marker-agnostic like the rest of this module, and it fixes FRESH data too (three cuff
+  // readings taken this morning produced the same fake arrow). Only the biomarker path can
+  // reach it today: getLatestBodyMetricDailyPoints already folds to one point per date.
+  const sameDay = prev != null && prev.date === latest.date;
   const direction: TrendDirection | null =
-    prev == null
+    prev == null || sameDay
       ? null
       : latest.value > prev.value
         ? "up"

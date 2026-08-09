@@ -97,6 +97,9 @@ function replay(
     window.reverse(); // newest-first, the shape the derivation is fed
     const lastSuccess = history.slice(0, i + 1).findLast((e) => e.ok);
     const standing = providerStanding({
+      // Every provider replayed here is SCHEDULED (#2301) — a real hourly poll's
+      // recorded history is exactly what the silence rule was written for.
+      delivery: "scheduled",
       connected: true,
       needsReauth: false,
       latest: window[0],
@@ -229,6 +232,7 @@ describe("the tolerance still catches a provider that genuinely stops", () => {
     };
     const standingAt = (hours: number) =>
       providerStanding({
+        delivery: "scheduled",
         connected: true,
         needsReauth: false,
         latest: lastPush,

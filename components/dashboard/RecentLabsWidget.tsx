@@ -29,6 +29,9 @@ export default function RecentLabsWidget({
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
+            // Only `due` earns the amber age label. `not-applicable` — an undatable
+            // reading — states its date plainly and claims nothing (#2303).
+            const stale = r.freshness === "due";
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -54,14 +57,14 @@ export default function RecentLabsWidget({
                 </span>
                 <span
                   data-testid="recent-lab-date"
-                  data-stale={r.stale ? "true" : undefined}
+                  data-stale={stale ? "true" : undefined}
                   title={
-                    r.stale
+                    stale
                       ? "Older than a year — not a recent result"
                       : undefined
                   }
                   className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${
-                    r.stale
+                    stale
                       ? "font-medium text-amber-600 dark:text-amber-400"
                       : "text-slate-500 dark:text-slate-400"
                   }`}

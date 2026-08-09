@@ -42,12 +42,31 @@ want a re-check" are the same arithmetic.
 | Biomarkers — `biomarkerRetestStatus` (`lib/reference-range/qualitative.ts`) | the analyte's curated `retest_days`, else the flat default                          | genomics, non-lab categories, durable immune positives (#516), immutable attributes (#548), QC metrics (#687) |
 | Fitness check — `lib/fitness-freshness.ts` via `buildFitnessCheckModel`     | the test's DECLARED policy: the profile's retest cadence, or a per-test fixed clock | an unmeasured test (no reading to date)                                                                       |
 | Longevity's optimal-biomarker pillar                                        | —                                                                                   | consumes the biomarker adapter above; mints nothing                                                           |
+| Recent labs (`lib/recent-labs.ts`)                                          | the flat `RECENT_LAB_STALE_DAYS` presentation floor (#1216)                         | none — an undatable reading is `not-applicable`, never fresh                                                  |
+| Latest vitals (`lib/vitals-latest.ts`)                                      | the per-quantity presentation floor: resting HR 14 days, blood pressure 180 (#2303) | none — an undatable reading is `not-applicable`, never due                                                    |
 
 A tenant **adapts** onto the shared decision. It does not fork it, and it does
 not re-derive "is this stale" in a component.
 
 `BiomarkerRetestStatus` is an alias of `FreshnessState`, so biomarker readings
 and fitness tests can be tallied with the same counter.
+
+## Retest clocks and presentation floors are different questions
+
+The last two tenants ask something the first three do not. "Should this be
+re-tested?" and "may this surface present this reading as your CURRENT value?"
+are separate questions over the same substrate, and for a vital they resolve
+differently: `biomarkerRetestStatus` returns `not-applicable` for
+`category === "vitals"` on stated grounds — physiologic vitals are monitored, not
+redrawn on a yearly cadence, and nobody schedules a temperature retest — and that
+is right. A glance dashboard still may not render a four-year-old blood pressure
+as a headline number with a trend arrow.
+
+So a **presentation floor** is glance-framing policy for one surface. It decides
+FRAMING, never visibility; it never creates a nudge, an Upcoming row, or a
+notification; and it is not per-profile or configurable, exactly as #1216's round
+365 is not. It resolves through `freshnessState` like every other tenant, so the
+repo holds one staleness decision rather than one per card.
 
 ## What is deliberately NOT here
 
@@ -66,6 +85,9 @@ presented as current.
   instead of a green share (`lib/longevity-pillars.ts`, `optimalTone`).
 - The Fitness check's completion copy counts `coverage.fresh`, not
   `coverage.measured`, and names the stale remainder separately.
+- The two glance cards keep the reading at full prominence and change what the
+  line under it says: an amber age statement plus a `title` explaining the tint,
+  and — on Latest vitals — no trend arrow, since an arrow is a claim about now.
 
 Both keep the underlying values visible with their provenance. The fix is what
 the aggregate CLAIMS, never what it hides.
