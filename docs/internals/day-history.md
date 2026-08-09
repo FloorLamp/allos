@@ -82,7 +82,9 @@ a quiet recent stretch is the live signal.
   calendar cells grow from 24px toward 34px when the window is short.
 - Hover, focus, and TAP all push a cell summary into the shared caption —
   `title` never fires on touch. Populated calendar days deep-link into the
-  Timeline (`timelineDayHref`).
+  Timeline (`timelineDayHref`). Hovering a MATRIX cell draws a crosshair: the
+  cell rings, its row (tinted, label included) and its column stay full, and
+  every other cell dims.
 - Matrix cells are `aria-hidden` behind a per-row composed `aria-label` (the
   `PracticeHeatmap` precedent); per-cell keyboard navigation is a decided
   non-goal for now.

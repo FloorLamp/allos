@@ -109,6 +109,12 @@ export default function DayHistory({
   const [detail, setDetail] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [calCell, setCalCell] = useState(CAL_CELL);
+  // The matrix crosshair: the hovered cell's position. Its row and column stay
+  // at full strength while every other cell dims, so a hover reads as "this
+  // group, this day" without tracing gridlines that aren't there.
+  const [hoverPos, setHoverPos] = useState<{ row: string; ci: number } | null>(
+    null
+  );
   const matrixRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
 
@@ -283,6 +289,23 @@ export default function DayHistory({
     onClick: () => setDetail(text),
   });
 
+  // Matrix cells additionally drive the crosshair.
+  const matrixCellProps = (text: string, rowKey: string, ci: number) => ({
+    title: text,
+    onMouseEnter: () => {
+      setDetail(text);
+      setHoverPos({ row: rowKey, ci });
+    },
+    onMouseLeave: () => {
+      setDetail(null);
+      setHoverPos(null);
+    },
+    onClick: () => {
+      setDetail(text);
+      setHoverPos({ row: rowKey, ci });
+    },
+  });
+
   return (
     <div data-testid={testId} className="space-y-4">
       {/* Group filter chips — client state; every builder above re-runs on toggle. */}
@@ -428,6 +451,7 @@ export default function DayHistory({
           ref={matrixRef}
           className={SCROLLER}
           data-testid="day-history-matrix"
+          onMouseLeave={() => setHoverPos(null)}
         >
           <div className="relative flex min-w-max flex-col gap-[3px]">
             {/* Day-of-month overlays at each week boundary (the day list is
@@ -467,7 +491,11 @@ export default function DayHistory({
                   key={row.key}
                   data-testid="day-history-row"
                   data-group={row.key}
-                  className="flex min-w-full items-center"
+                  className={`flex min-w-full items-center rounded-[4px]${
+                    hoverPos?.row === row.key
+                      ? " bg-slate-500/10 dark:bg-white/10"
+                      : ""
+                  }`}
                   aria-label={`${row.label}: ${plural(
                     row.total,
                     spec.unitOne,
@@ -495,26 +523,42 @@ export default function DayHistory({
                     </span>
                   )}
                   <span className="flex pr-1" aria-hidden="true">
-                    {row.cells.map((cell, ci) => (
-                      <span
-                        key={cell.date}
-                        data-date={cell.date}
-                        style={{
-                          width: MTX_CELL_W,
-                          height: MTX_CELL_H,
-                          marginLeft:
-                            ci === 0
-                              ? 0
-                              : ci % 7 === 0
-                                ? MTX_GAP + MTX_WEEK_GAP
-                                : MTX_GAP,
-                        }}
-                        className={`rounded-[4px] ${LEVEL_CLASS[cell.level]}${
-                          cell.today ? ` ${TODAY_RING}` : ""
-                        }`}
-                        {...hoverProps(matrixCellSummary(row, ci))}
-                      />
-                    ))}
+                    {row.cells.map((cell, ci) => {
+                      const isHovered =
+                        hoverPos?.row === row.key && hoverPos.ci === ci;
+                      const inCross =
+                        hoverPos !== null &&
+                        (hoverPos.row === row.key || hoverPos.ci === ci);
+                      const ring = isHovered
+                        ? " ring-2 ring-slate-600 dark:ring-slate-200"
+                        : cell.today
+                          ? ` ${TODAY_RING}`
+                          : "";
+                      const dim =
+                        hoverPos !== null && !inCross ? " opacity-40" : "";
+                      return (
+                        <span
+                          key={cell.date}
+                          data-date={cell.date}
+                          style={{
+                            width: MTX_CELL_W,
+                            height: MTX_CELL_H,
+                            marginLeft:
+                              ci === 0
+                                ? 0
+                                : ci % 7 === 0
+                                  ? MTX_GAP + MTX_WEEK_GAP
+                                  : MTX_GAP,
+                          }}
+                          className={`rounded-[4px] ${LEVEL_CLASS[cell.level]}${ring}${dim}`}
+                          {...matrixCellProps(
+                            matrixCellSummary(row, ci),
+                            row.key,
+                            ci
+                          )}
+                        />
+                      );
+                    })}
                   </span>
                 </div>
               );
