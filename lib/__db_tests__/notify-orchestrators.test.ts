@@ -831,7 +831,8 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // completed week demoted to the comparison slot; now the comparison is the
     // week BEFORE the completed one (empty).
     expect(text).toContain(recapRangeLabel(w.prevStart, w.prevEnd));
-    expect(text).toContain("Workouts: 1 (strength 1) (0 last week)");
+    // The documented grammar, not a second parenthetical (#2391/#2389 item 2).
+    expect(text).toContain("Workouts: 1 (strength 1) — 0 last week");
   });
 });
 
