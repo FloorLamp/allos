@@ -328,6 +328,70 @@ one, deliberately not a bare `/band/`: "Immature (band) neutrophils" is a cell t
 and matching it would re-import the description the change exists to stop
 duplicating.
 
+### A care offer on a basis-less reading names its own basis (#2347)
+
+#2340 stopped the page CLAIMING a severity it cannot show. It left two controls on
+that page still reading the stored flag: `canTrackFollowUp` (`isOutOfRange(latest.flag)`)
+offers a **Recheck** whose whole premise is that the reading is out of range, and the
+staleness notice sits beside it. So the same reading rendered neutral _and_ carried an
+affordance that exists only because something called it abnormal.
+
+**The owner ruled: keep the control, name its basis** — not gate it on the basis, and
+not leave it untouched. The stored flag is real. With no curated band `reconciledFlag`
+returns `undefined` (at `valueNum == null || !cb`, and again on a `ref === "unknown"`
+range), so it never overwrote what the import stored: the flag on a basis-less reading
+is the **source record's own**. The app being unable to _display_ a basis is not the
+same as there being none, and gating would make a reading the lab itself flagged
+un-recheckable on the strength of a display rule. The contradiction is resolved by
+making the control honest — the same direction #2340 took.
+
+`careOfferBasis()` (`lib/biomarker-care-basis.ts`) is that decision, pure, for both
+controls at once. It answers where an offer's premise comes from — `displayed`,
+`source-flag`, `unflagged`, `reading-age` — and returns the sentence the surface must
+render, so no surface composes its own.
+
+- **Recheck.** On a `none` basis with an out-of-range flag, under the heading _"Why a
+  recheck is offered."_: _"The record this reading came from flagged it. No range on
+  this page judged the value, so it renders neutral — this offer follows the record's
+  flag, not a judgment of ours."_ It
+  attributes the flag rather than re-speaking it, names no direction, and describes an
+  ordinary state rather than a fault. On every other basis the judgment is already on
+  screen and the note is silent. It renders only for the OFFER: an existing follow-up
+  stands on somebody having tracked one, which is its own premise.
+- **Staleness — the same discipline, a different sentence.** `isBiomarkerStale` never
+  DERIVES staleness from the flag. The flag reaches it only through `ImmunityResult`,
+  where every use is an **exemption** (durable-immunity positive, immutable attribute,
+  QC metric) — it can only make a reading _less_ stale. Suppressing it there would
+  remove an exemption and nudge someone the app had decided to leave alone, which is
+  the contact INCREASE `docs/internals/findings.md`'s contact-consent rule forbids.
+  Those exempting signals are unreachable from a basis-less reading anyway: `immune`
+  is neutral-toned, so #2340's suppression (colouring flags only) never touches it,
+  and an immutable/QC verdict comes from `classifyQualitativeResult`, which _is_ the
+  `qualitative` basis. So the notice keeps its claim — it always printed its own
+  premise inline (the date, the age, the yearly cadence) — and gains the one thing
+  #2340 made newly confusing: on a page that deliberately declines to judge the
+  number, an amber banner beside it reads like a verdict on the VALUE. Hence _"This
+  notice is about the reading's age — it is not a judgment of the value above."_,
+  rendered only where that is the case.
+
+**No reach changed.** Both gates decide exactly what they decided before; nothing here
+is read by a notification, a finding builder or an Upcoming generator. Annotating an
+offer that already renders is the attention doctrine's "enrich what it was already
+saying" case, and a note that appears only where the page has already declined to
+judge cannot widen anything.
+
+The **list** surfaces (`BiomarkersTable`, `StarredBiomarkers`) have no counterpart to
+this, for a reason worth writing down rather than re-deriving: `TrackLabFollowUpControl`
+renders on the detail page ONLY, so no list row carries a recheck offer, and their
+`isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no
+immunity context at all; the starred tile passes one, whose flag can only ever exempt).
+More to the point, those surfaces do not apply `biomarkerValueBasis` — they still colour
+from the stored flag, which is #2340's deliberately detail-page-only scope. There is no
+contradiction to annotate there because there is no silence to inherit: a list row that
+colours a value and a control premised on that colour agree. If #2340's rule is ever
+extended to the list surfaces, this note becomes due at the same time — but widening it
+now would annotate a page that is not yet neutral.
+
 ### An unqualified glucose has no band to be judged against (#2337)
 
 Both curated glucose entries used to hold a **fasting** band: `Glucose, Fasting` at

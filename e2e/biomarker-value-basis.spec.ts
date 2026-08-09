@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // A COLOURED BIOMARKER VALUE CAN POINT AT ITS BASIS (#2340).
 //
@@ -32,6 +32,18 @@ const BARE = "Creatinine, Urine";
 // its fasting sibling kept 70–99. The same surface, one analyte apart.
 const UNQUALIFIED_GLUCOSE = "Glucose";
 const FASTING_GLUCOSE = "Glucose, Fasting";
+
+// #2347: the band-less reading is dated off the RUN'S FROZEN CLOCK, far enough back
+// that the yearly retest clock has run out, so ONE reading carries all three halves of
+// the contradiction this spec now covers — a neutral value, a "Recheck" offer, and a
+// staleness notice. Never wall time (the suite freezes its instant), and never a
+// literal date, which would silently stop being stale as the calendar moves.
+function daysAgo(n: number): string {
+  const d = frozenNow();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+const BARE_DATE = daysAgo(500);
 
 function withDb<T>(fn: (handle: Database.Database, pid: number) => T): T {
   const handle = new Database(DB_PATH);
@@ -94,7 +106,7 @@ test.beforeEach(() => {
     // the page can say what it is low against.
     insert.run(
       pid,
-      "2026-02-17",
+      BARE_DATE,
       BARE,
       BARE,
       "42",
@@ -190,6 +202,49 @@ test("a reading with no band and no printed range is not coloured, and claims no
   await expect(row).toBeVisible();
   await expect(row.getByTestId("medical-flag-text")).toHaveCount(0);
   await expect(row.locator('[data-basis="none"]')).toBeVisible();
+
+  // …AND the care offers on the same reading stay, each naming its own basis (#2347).
+  // The ruling was to keep the control and make it honest, not to gate it on the
+  // display rule: the stored flag is the source record's own and a reading the lab
+  // itself flagged must not become un-recheckable. So the "Recheck" offer is still
+  // here, and it now says where its premise came from instead of inheriting the
+  // page's silence.
+  const followUp = page.getByTestId("lab-followup");
+  await expect(followUp).toContainText("Recheck");
+  await expect(followUp.getByTestId("track-lab-followup")).toBeVisible();
+
+  const recheckBasis = page.getByTestId("biomarker-recheck-basis");
+  await expect(recheckBasis).toBeVisible();
+  await expect(recheckBasis).toContainText("Why a recheck is offered.");
+  await expect(recheckBasis).toContainText(
+    "The record this reading came from flagged it"
+  );
+  await expect(recheckBasis).toContainText("not a judgment of ours");
+  // It attributes the flag; it does not re-speak the severity the value above just
+  // declined to claim.
+  await expect(recheckBasis).not.toContainText(/\bLow\b/);
+
+  // The staleness notice beside it is the same discipline, different sentence: its
+  // premise was always the reading's AGE (its flag reads can only ever EXEMPT), so it
+  // keeps its claim and says which of the two things on screen it is about.
+  const retestBasis = page.getByTestId("biomarker-retest-basis");
+  await expect(retestBasis).toBeVisible();
+  await expect(retestBasis).toContainText(
+    "This notice is about the reading's age"
+  );
+});
+
+test("a reading the page CAN judge keeps its recheck offer with no note, because its basis is already on screen (#2347)", async ({
+  page,
+}) => {
+  await page.goto(`/biomarkers/view?name=${encodeURIComponent(REPORTED)}`);
+
+  // Same flag, same offer — but the range that produced it is rendered right beside
+  // the value, so there is nothing left for a note to add.
+  await expect(page.getByTestId("biomarker-reported-range")).toBeVisible();
+  await expect(page.getByTestId("track-lab-followup")).toBeVisible();
+  await expect(page.getByTestId("biomarker-recheck-basis")).toHaveCount(0);
+  await expect(page.getByTestId("biomarker-retest-basis")).toHaveCount(0);
 });
 
 test("the page explains the analyte once, and says why it has no band beside the missing band", async ({
