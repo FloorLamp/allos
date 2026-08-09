@@ -545,4 +545,23 @@ describe("message-line scan: the declared scope composes through the formatter",
     ].join("\n");
     expect(scanModule("lib/notifications/digest.ts", clean)).toEqual([]);
   });
+
+  // COMPOSITION VERSUS PROSE is the distinction the scan has to make, and getting it
+  // wrong in this direction is what fills a report with noise nobody reads. A quoted
+  // sentence is content; a TEMPLATE chunk is composition until a reviewer says otherwise,
+  // which is why the recap's headline clause carries an allowlist entry rather than
+  // slipping through a heuristic.
+  it("does not flag a quoted prose sentence, and does flag a prose template chunk", () => {
+    const quoted = [
+      'export const TAIL = "Handled in the app — nothing left here.";',
+      'export const WHY = { why: "It expires — that is the only deadline it has." };',
+    ].join("\n");
+    expect(scanModule("lib/notifications/digest.ts", quoted)).toEqual([]);
+
+    const interpolated =
+      "export const lead = `recovering — sick ${n} day${n === 1 ? '' : 's'}`;";
+    expect(scanModule("lib/notifications/digest.ts", interpolated)).toHaveLength(
+      1
+    );
+  });
 });
