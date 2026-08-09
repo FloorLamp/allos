@@ -32,6 +32,11 @@ import { tablePanelId } from "@/lib/derived-table";
 import type { SortDirection } from "@/lib/queries/medical";
 import type { MedicalRecord } from "@/lib/types";
 import type { SubjectInfo } from "@/lib/scope";
+import { judgeRecords } from "@/lib/queries/metric-judgment";
+import {
+  referenceCell,
+  type ReferenceCell,
+} from "@/lib/reading-reference-cell";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -69,6 +74,13 @@ export interface BiomarkerFilters {
 export type BiomarkerTableRecord = MedicalRecord & {
   profileId?: number;
   subject?: SubjectInfo;
+  // What the row's Reference cell says (#2315): the band(s) its FLAG came from,
+  // resolved server-side through the one judgement lookup, or the lab's printed
+  // string relabelled when nothing canonical covers the analyte. Resolved here so
+  // the page render and the expand-a-panel action can never state different bands
+  // for the same reading. Absent on a derived index (its Reference cell is
+  // structurally absent — see the table).
+  referenceCell?: ReferenceCell;
 };
 
 // Parse the shared browser filters/sort off the searchParams once — identical for
@@ -159,13 +171,16 @@ export function biomarkerIndexRows(
 
   if (!isMultiView(scope)) {
     const profileId = scope.actingProfileId;
-    return prepareTableRecords(
-      getMedicalRecords(profileId, storedFilters),
-      filterDerivedForTable(
-        getDerivedBiomarkerReadings(profileId),
-        derivedFilters
-      ),
-      { sort, dir, current }
+    return withReferenceCells(
+      scope,
+      prepareTableRecords(
+        getMedicalRecords(profileId, storedFilters),
+        filterDerivedForTable(
+          getDerivedBiomarkerReadings(profileId),
+          derivedFilters
+        ),
+        { sort, dir, current }
+      )
     );
   }
 
@@ -181,7 +196,49 @@ export function biomarkerIndexRows(
     dir,
     current,
   });
-  return stampSubjects(scope, merged);
+  return withReferenceCells(scope, stampSubjects(scope, merged));
+}
+
+// Resolve every stored row's Reference cell (#2315) — the bands the row's own flag
+// was derived from, or the lab's printed string relabelled when nothing canonical
+// covers the analyte.
+//
+// Rows are partitioned by OWNING profile before they are judged: an age band, a
+// reproductive status and a cycle log all belong to one data subject, so a
+// multi-view page must never judge one member's reading against another's context.
+// A DERIVED index is skipped — its Reference cell is structurally absent (it is
+// computed, not measured, and the table renders that column as a placeholder).
+function withReferenceCells(
+  scope: ProfileScope,
+  rows: BiomarkerTableRecord[]
+): BiomarkerTableRecord[] {
+  const byProfile = new Map<number, number[]>();
+  rows.forEach((r, i) => {
+    if (r.derived) return;
+    const pid = r.profileId ?? scope.actingProfileId;
+    const bucket = byProfile.get(pid);
+    if (bucket) bucket.push(i);
+    else byProfile.set(pid, [i]);
+  });
+  const out = rows.slice();
+  for (const [pid, indexes] of byProfile) {
+    const judgments = judgeRecords(
+      pid,
+      indexes.map((i) => rows[i])
+    );
+    indexes.forEach((rowIndex, k) => {
+      const r = rows[rowIndex];
+      out[rowIndex] = {
+        ...r,
+        referenceCell: referenceCell({
+          judgment: judgments[k],
+          printed: r.reference_range,
+          unit: r.unit,
+        }),
+      };
+    });
+  }
+  return out;
 }
 
 // Partition those rows into panel groups. The analyte identity is the table's OWN

@@ -15,6 +15,9 @@
 // Auth-blind and profile-scoped: `profileId` first, no `lib/auth` import.
 
 import { getCanonicalBiomarker } from "./medical/canonical";
+import { flagReconcileProfileContext } from "./medical/flags";
+import { cyclePhaseOnDate } from "../cycle";
+import { ageForRecord } from "../flag-reconcile";
 import {
   METRIC_KNOWLEDGE,
   metricJudgment,
@@ -63,4 +66,76 @@ export function getMetricJudgment(
     },
     [entry]
   );
+}
+
+/**
+ * A stored reading, as the judgement lookup reads it. Deliberately the SAME three
+ * fields the flag reconcile keys on — the resolved name, the collection date — so
+ * a row cannot be judged here against context the flag was not judged against.
+ */
+export interface JudgedRecord {
+  canonical_name?: string | null;
+  name: string;
+  date?: string | null;
+}
+
+/**
+ * The judgement for each of a profile's stored readings, positionally (#2315).
+ *
+ * This is the READ half of "the row states the band its flag came from". It goes
+ * through `flagReconcileProfileContext` — the same canonical map, the same
+ * alias-aware name resolver, and the same subject context (sex, birthdate/stored
+ * age, reproductive status, cycle log) that `reconcileFlags` derived the stored
+ * flag with — so the bands a row prints are, by construction, the bands that
+ * judged it. Per row it then applies the two axes that are PER-RECORD rather than
+ * per-profile: the subject's age ON the collection date (#150) and their cycle
+ * phase on that date (#718).
+ *
+ * Returns `null` in a slot when no canonical entry covers the analyte, or when the
+ * entry states no numeric band — the caller renders the lab's printed string for
+ * those, which is genuinely the deciding range there.
+ *
+ * No `value` is supplied: the row already carries its stored flag, and the surface
+ * renders THAT (via `flagLabel`) rather than a second verdict computed here. The
+ * returned `badge` is therefore "unknown" by design.
+ *
+ * Auth-blind and profile-scoped: `profileId` first, no `lib/auth` import. A
+ * multi-profile caller partitions its rows by owning profile and calls once per
+ * profile — per-profile context is never shared across subjects.
+ */
+export function judgeRecords<T extends JudgedRecord>(
+  profileId: number,
+  rows: readonly T[]
+): (MetricJudgment | null)[] {
+  if (rows.length === 0) return [];
+  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
+  const periods = ctx.periods ?? [];
+  // One judgement per (analyte, age, phase) — a table lists many readings of one
+  // analyte, and re-resolving identical bands per row is pure waste.
+  const cache = new Map<string, MetricJudgment | null>();
+  return rows.map((r) => {
+    const raw = r.canonical_name?.trim() || r.name?.trim();
+    if (!raw) return null;
+    const name = resolve(raw);
+    const entry = cbByName.get(name.toLowerCase());
+    if (!entry) return null;
+    const age = ageForRecord(ctx, r.date);
+    const cyclePhase =
+      periods.length > 0 && r.date ? cyclePhaseOnDate(periods, r.date) : null;
+    const key = `${name.toLowerCase()}|${age ?? ""}|${cyclePhase ?? ""}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit;
+    const judgment = metricJudgment(
+      readingIdentity(entry.name),
+      {
+        sex: ctx.sex,
+        age,
+        status: ctx.reproductiveStatus,
+        cyclePhase,
+      },
+      [entry as JudgmentEntry]
+    );
+    cache.set(key, judgment);
+    return judgment;
+  });
 }

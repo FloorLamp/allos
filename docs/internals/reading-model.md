@@ -222,6 +222,60 @@ apart. The coverage test is deliberately source-BLIND, and that is the one place
 `dedupeReadings`' key cannot be applied verbatim — a stream series point is a daily
 fold of that day's rows, so it has no single provenance to compare.
 
+### The results ROW asks it too (#2315)
+
+The lookup shipped, the metric card rendered it, the biomarker chart drew it — and
+the primary results list, the surface most readings are actually read on, never
+asked. Its "Reference" cell printed `medical_records.reference_range`, the free-text
+string the lab document stated, beside a flag `reconciledFlag` derived from the
+**canonical** reference range and then the **canonical** optimal band. The printed
+string reaches that function exactly once, as an input to the #761 unit-mislabel
+detector: it is provenance, not a threshold. So the row showed the one range that
+never judges it and hid both that do — measured at 35 of 333 readings (10.5%) on a
+real profile visibly contradicting their own row, including a red "High" on a value
+sitting comfortably inside the printed range. The `non-optimal` class contradicts by
+construction, since it exists precisely to mark a value inside the reference and
+outside the optimal band.
+
+The cell is now a **judgment cell**, and nothing about it is a second derivation:
+
+- `judgeRecords(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
+  `MetricJudgment` per row through `flagReconcileProfileContext` — the same
+  canonical map, the same alias-aware name resolver and the same subject context
+  (sex, birthdate/stored age, reproductive status, cycle log) `reconcileFlags`
+  derived the stored flag with. Age is taken **on the collection date** (#150) and
+  cycle phase on that date (#718), both per row.
+- `referenceCell()` (`lib/reading-reference-cell.ts`) is the pure spelling:
+  `ref ≤ 90 · optimal ≤ 60`, both bands when both exist because which one you
+  crossed is exactly what the amber/red split means, with the **age band named**
+  when one applied (`ref 140–420 · age 1–10`) — the #150 safety half, and the
+  reason the cell cannot be a bare number pair.
+- No canonical entry → the printed string genuinely IS the deciding range, so it
+  shows as before, relabelled **Lab reference**. Either way the lab's own string
+  survives: as the cell's hover title, and in full on the reading detail page under
+  its own "Lab reference" column.
+- `formatBand()` (`lib/band-format.ts`) is the one band formatter, promoted out of
+  `MetricJudgmentCard` (#221). It rounds to four decimals rather than two — Urine
+  Specific Gravity is curated 1.001–1.035, and two places print "1–1.04".
+
+The stored `flag` column is **unchanged** and no reprocess is triggered: every flag
+was already correct. The printed range is **not** reconciled against the canonical
+one either — #761's unit-mislabel detector stays the only place the two are
+compared, for the one case where the comparison means something.
+
+The severity **word** ships with it, because each half is insufficient alone: a band
+with no word leaves the reader inferring which band the amber refers to, and a word
+with no band is a judgment with no visible basis. `MedicalValue` gains
+`showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
+(never both — the severity is announced once), decided by
+`medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
+table and `/biomarkers/view`'s readings table adopt it, and `RecentLabsWidget`
+migrates onto it and drops the parallel label #1220 built beside the component. The
+other `MedicalValue` call sites — Timeline, Passport, ExtractedRecords,
+BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label
+until each is considered against its own density; without the prop the behavior is
+byte-identical.
+
 ## Phase 2 (shipped): one write core, one editability contract
 
 `lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes

@@ -17,6 +17,7 @@ import { useUndoableDelete } from "./useUndoableDelete";
 import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 import { loadBiomarkerPanelRows } from "@/app/(app)/results/actions";
 import type { BiomarkersSearchParams } from "@/app/(app)/results/biomarker-index";
+import type { ReferenceCell } from "@/lib/reading-reference-cell";
 import { groupContiguous } from "@/lib/table-sort";
 import {
   isBiomarkerStale,
@@ -48,6 +49,10 @@ import type { SubjectInfo } from "@/lib/scope";
 type TableRecord = MedicalRecord & {
   profileId?: number;
   subject?: SubjectInfo;
+  // What the Reference cell says (#2315), resolved server-side by the gather —
+  // the bands the row's flag came from, not the string the lab printed. Absent on
+  // a derived index, whose Reference cell is structurally absent.
+  referenceCell?: ReferenceCell;
 };
 
 // Present ONLY when more than one profile is in view (#1331): the acting profile
@@ -255,6 +260,56 @@ function PanelCell({
   );
 }
 
+// The Reference cell (#2315) — a JUDGMENT cell, not a transcription.
+//
+// It used to print `reference_range`, the free-text string the lab document stated,
+// beside a flag that was never derived from it: `reconciledFlag` judges against the
+// CANONICAL reference range and then the CANONICAL optimal band, and the printed
+// string reaches it only as an input to the #761 unit-mislabel detector. The row
+// showed the one range that never judges it and hid both that do — 10.5% of a real
+// profile's readings visibly contradicting their own row, including a red "High" on
+// a value sitting comfortably inside the printed range.
+//
+// The cell content is decided server-side (lib/reading-reference-cell over
+// lib/queries/metric-judgment) and arrives on the row, so nothing is derived here —
+// this renders the answer, names it, and keeps the lab's own string as the hover
+// provenance it always was. The full string stays on the reading detail page under
+// its own "Lab reference" column.
+//
+// `cell` is absent only on a derived index, which never reaches this component.
+function ReferenceCellTd({
+  cell,
+  printed,
+}: {
+  cell?: ReferenceCell;
+  printed: string | null;
+}) {
+  // The pre-#2315 shape is the fallback for a row that somehow arrives unjudged:
+  // the lab's string, labelled as the lab's.
+  const resolved: ReferenceCell = cell ?? {
+    label: "Lab reference",
+    text: printed?.trim() || null,
+    title: null,
+    judged: false,
+  };
+  return (
+    <Td
+      slot="meta"
+      label={resolved.label}
+      empty={!resolved.text}
+      className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
+    >
+      <span
+        data-testid="biomarker-reference"
+        data-judged={resolved.judged ? "true" : "false"}
+        title={resolved.title ?? undefined}
+      >
+        {resolved.text ?? "—"}
+      </span>
+    </Td>
+  );
+}
+
 // The class that tightens a reading row NESTED INSIDE an open panel group (#1581
 // section C). In card mode the group already provides the container, so the reading
 // under it does not also need the full row padding — that is the #1539 double-frame
@@ -366,7 +421,12 @@ function BiomarkerRow({
           <span className="text-slate-300 dark:text-slate-600">—</span>
         </Td>
         <Td slot="value">
-          <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+          <MedicalValue
+            value={r.value}
+            unit={r.unit}
+            flag={r.flag}
+            showFlagLabel
+          />
         </Td>
         <Td
           empty
@@ -422,16 +482,17 @@ function BiomarkerRow({
         }
       />
       <Td slot="value">
-        <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+        {/* The severity WORD, visibly (#1220/#2315). This list intermixes
+            out-of-range and above-optimal readings, so red-vs-amber alone was the
+            only channel telling a sighted reader which one a row is. */}
+        <MedicalValue
+          value={r.value}
+          unit={r.unit}
+          flag={r.flag}
+          showFlagLabel
+        />
       </Td>
-      <Td
-        slot="meta"
-        label="Reference"
-        empty={!r.reference_range}
-        className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
-      >
-        {r.reference_range ?? "—"}
-      </Td>
+      <ReferenceCellTd cell={r.referenceCell} printed={r.reference_range} />
       <Td
         slot="meta"
         label="Notes"

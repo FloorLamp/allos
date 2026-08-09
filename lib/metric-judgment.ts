@@ -49,6 +49,7 @@ import {
   type RangeBadge,
 } from "./reference-range";
 import type { CanonicalRanges } from "./reference-range/parsing";
+import type { CyclePhase } from "./cycle";
 import { BODY_METRIC_SLUGS, type BodyMetricSlug } from "./trends-body-metrics";
 import type { BiomarkerDirection, ReproductiveStatus, Sex } from "./types";
 
@@ -428,6 +429,17 @@ export interface JudgmentSubject {
   age?: number | null;
   sex?: Sex | null;
   status?: ReproductiveStatus | null;
+  /**
+   * The subject's menstrual-cycle phase ON the reading's date (#718), when the
+   * cycle log covers it. It is the HIGHEST-precedence axis in `referenceRange` —
+   * above the coarse reproductive-status proxy and above the age band — so a
+   * mid-luteal progesterone is read against its luteal range. Threading it here is
+   * what lets a row STATE the band its stored flag came from: `reconciledFlag`
+   * already takes the phase, so a judgement that could not would answer the same
+   * reading with a different band, which is precisely the #2315 defect one level
+   * down. Absent/null → unchanged behavior for every caller that has no cycle log.
+   */
+  cyclePhase?: CyclePhase | null;
   /** A reading to judge, in the CANONICAL unit for the identity. */
   value?: number | null;
 }
@@ -530,7 +542,13 @@ export function metricJudgment(
 ): MetricJudgment | null {
   const entry = entryForIdentity(identity, entries);
   if (!entry) return null;
-  const ref = referenceRange(entry, subject.sex, subject.age, subject.status);
+  const ref = referenceRange(
+    entry,
+    subject.sex,
+    subject.age,
+    subject.status,
+    subject.cyclePhase
+  );
   const opt = optimalBand(entry, subject.sex, subject.age);
   if (
     ref.low == null &&
@@ -558,7 +576,8 @@ export function metricJudgment(
       entry,
       subject.sex,
       subject.age,
-      subject.status
+      subject.status,
+      subject.cyclePhase
     ),
     knowledge: "canonical",
   };

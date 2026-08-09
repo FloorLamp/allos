@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
-import { flagLabel, flagTone } from "@/lib/reference-range";
+import { flagTone } from "@/lib/reference-range";
+import { medicalValueCaret, medicalValueFlagText } from "@/lib/medical-value";
 import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
@@ -192,40 +193,60 @@ export function MedicalValue({
   value,
   unit,
   flag,
+  showFlagLabel = false,
 }: {
   value: string | null;
   unit: string | null;
   flag: string | null;
+  /**
+   * Render the severity word as TEXT instead of in an `sr-only` span (#2315).
+   *
+   * The caret's direction is a shape, so it survives color blindness; the
+   * red-vs-amber severity — "High" versus "Above optimal" — did not (#1220).
+   * Surfaces that list out-of-range and above-optimal readings intermixed opt in;
+   * the visible label replaces the sr-only one rather than joining it, so the
+   * severity is announced ONCE. Off by default: every call site keeps exactly
+   * what it had until it is considered against its own density.
+   */
+  showFlagLabel?: boolean;
 }) {
-  // Arrow direction: clinical high / above-optimal point up; low / below-optimal
-  // point down. Legacy directionless "non-optimal" gets no arrow (re-derives to a
-  // directional flag on the next reconcile). The caret is decorative (aria-hidden):
-  // the sr-only flagLabel beside it is the text equivalent (WCAG 1.4.1, issue
-  // #1220) — the caret's direction is a shape, but the red-vs-amber SEVERITY
-  // (High vs Above optimal) was color-only, and the old icon-level aria-label
-  // ("above target") flattened both to one phrase.
-  const up = flag === "high" || flag === "non-optimal-high";
-  const down = flag === "low" || flag === "non-optimal-low";
+  // Both the caret and the text are lib/medical-value's decision, so the two can
+  // never disagree about which flags carry a direction and which carry a word.
+  const caret = medicalValueCaret(flag);
+  const text = medicalValueFlagText(flag, showFlagLabel);
   return (
     <span className={medicalValueClass(flag)}>
       {value ?? "—"} {unit ?? ""}
-      {up || down ? (
+      {/* The caret is decorative (aria-hidden) — `text` below is its equivalent. */}
+      {caret === "up" ? (
+        <IconCaretUpFilled
+          aria-hidden
+          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+        />
+      ) : caret === "down" ? (
+        <IconCaretDownFilled
+          aria-hidden
+          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+        />
+      ) : null}
+      {text?.visible ? (
         <>
-          {up ? (
-            <IconCaretUpFilled
-              aria-hidden
-              className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
-            />
-          ) : (
-            <IconCaretDownFilled
-              aria-hidden
-              className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
-            />
-          )}
-          <span className="sr-only" data-testid="medical-flag-text">
-            {flagLabel(flag)}
+          {/* Decorative separator only — it must not reach the announced name. */}
+          <span aria-hidden className="mx-1 text-xs">
+            ·
+          </span>
+          <span
+            className="text-xs font-medium"
+            data-testid="medical-flag-text"
+            data-visible="true"
+          >
+            {text.label}
           </span>
         </>
+      ) : text ? (
+        <span className="sr-only" data-testid="medical-flag-text">
+          {text.label}
+        </span>
       ) : null}
     </span>
   );

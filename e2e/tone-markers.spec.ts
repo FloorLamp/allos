@@ -3,8 +3,9 @@ import { test, expect } from "./fixtures";
 // never convey their good/warn/bad judgment by COLOR ALONE. Every judging pillar
 // tone pairs its value color with a text badge (PILLAR_TONE_LABEL — one mapping
 // shared by the dashboard widget and the Longevity page), and every directional
-// lab-flag caret carries a text equivalent (sr-only flagLabel) plus a visible
-// status label on the Recent labs widget.
+// lab-flag caret carries the severity WORD as visible text on the Recent labs
+// widget (#2315 made that one label the component's own, replacing the sr-only
+// span rather than joining it).
 //
 // Read-only over the seeded pages (suite hygiene #868): seed profile 1 owns
 // judged labs with directional flags, so the optimal-biomarkers pillar and
@@ -20,6 +21,15 @@ const TONE_BADGE: Record<string, string> = {
 };
 
 const DIRECTIONAL_LABELS = ["High", "Low", "Above optimal", "Below optimal"];
+
+// Every word the widget can draw: the directional ones plus the directionless
+// statuses that never had a caret to hang an sr-only label on.
+const STATUS_LABELS = [
+  ...DIRECTIONAL_LABELS,
+  "Abnormal",
+  "Immune",
+  "Non-optimal",
+];
 
 // Assert every pillar card in `cards` pairs its tone with the badge text (or, for
 // neutral, deliberately carries none). The cards are server-rendered, so once the
@@ -82,7 +92,7 @@ test("the Longevity page's pillar stats carry the same tone badges (#1220)", asy
   );
 });
 
-test("recent-lab carets carry a text equivalent and a visible severity label (#1220)", async ({
+test("recent-lab carets carry a visible severity label, announced once (#1220/#2315)", async ({
   page,
 }) => {
   await page.goto("/");
@@ -92,22 +102,25 @@ test("recent-lab carets carry a text equivalent and a visible severity label (#1
   await expect(recentLabs).toBeVisible();
 
   // The seeded profile has directional (high/low) flags among its recent labs.
-  // Each caret is decorative (aria-hidden) and pairs with an sr-only flagLabel —
-  // the severity ("High" vs "Above optimal") is text, not just red-vs-amber.
-  const srText = recentLabs.getByTestId("medical-flag-text");
-  await expect(srText).not.toHaveCount(0);
-  for (const t of await srText.allTextContents()) {
-    expect(DIRECTIONAL_LABELS).toContain(t.trim());
+  // Each caret is decorative (aria-hidden) and pairs with the severity WORD —
+  // "High" vs "Above optimal" is text, not just red-vs-amber.
+  //
+  // #2315 folded the widget's own parallel label into MedicalValue, so the word is
+  // rendered ONCE (visibly) instead of twice (visible + an sr-only twin): the
+  // labels below are the whole set this widget draws, and every one of them is a
+  // VISIBLE one.
+  const labels = recentLabs.getByTestId("medical-flag-text");
+  await expect(labels).not.toHaveCount(0);
+  for (const t of await labels.allTextContents()) {
+    expect(STATUS_LABELS).toContain(t.trim());
   }
-
-  // And the widget row shows a VISIBLE status label for directional flags too
-  // (the color-blind-visible channel; directionless statuses already had one).
-  const statuses = await recentLabs
-    .getByTestId("recent-lab-status")
-    .allTextContents();
+  const visible = recentLabs.locator(
+    '[data-testid="medical-flag-text"][data-visible="true"]'
+  );
+  expect(await visible.count()).toBe(await labels.count());
   expect(
-    statuses.filter((s) =>
-      DIRECTIONAL_LABELS.some((label) => s.includes(label))
+    (await visible.allTextContents()).filter((s) =>
+      DIRECTIONAL_LABELS.includes(s.trim())
     ).length
   ).toBeGreaterThan(0);
 });
