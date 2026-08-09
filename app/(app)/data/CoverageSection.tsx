@@ -1,5 +1,5 @@
 import { EmptyState } from "@/components/ui";
-import { getCoverageGaps, getCoverageGapCandidates } from "@/lib/queries";
+import { getCoverageGaps, getCoverageCandidacy } from "@/lib/queries";
 import { taskEndpointInfo } from "@/lib/ai-resolve";
 import { buildCatalogRequest } from "@/lib/coverage-gaps";
 import CoverageGaps from "@/components/CoverageGaps";
@@ -15,7 +15,11 @@ import CoverageGaps from "@/components/CoverageGaps";
 // against the current catalogs).
 export default function CoverageSection({ profileId }: { profileId: number }) {
   const tracked = getCoverageGaps(profileId);
-  const candidates = getCoverageGapCandidates(profileId);
+  // Candidacy and the declared-uncurated half come out of ONE read (#2319): the
+  // analytes this repo has decided never to catalogue are not gaps, so they are
+  // never offered — but they are still stated, with the reason, rather than
+  // silently dropped.
+  const { candidates, declined } = getCoverageCandidacy(profileId);
   // The coverage blurb runs on the Light tier (falling back to Heavy) — show the
   // backend that would actually serve it.
   const ai = taskEndpointInfo("coverage");
@@ -28,12 +32,13 @@ export default function CoverageSection({ profileId }: { profileId: number }) {
 
   return (
     <div data-testid="data-coverage">
-      {tracked.length === 0 && candidates.length === 0 ? (
+      {tracked.length === 0 && candidates.length === 0 && declined.length === 0 ? (
         <EmptyState message="No coverage gaps — everything you've logged is covered by the curated catalogs." />
       ) : (
         <CoverageGaps
           tracked={tracked}
           candidates={candidates}
+          declined={declined}
           requests={requests}
           aiConfigured={ai.configured}
           aiLabel={ai.label}

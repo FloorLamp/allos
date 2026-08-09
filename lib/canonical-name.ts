@@ -293,6 +293,20 @@ const CANONICAL_ALIASES: [string, string][] = [
   // reports call "Appearance".
   ["Epithelial Cells, Urine", "Squamous Epithelial Cells, Urine"],
   ["Urine Clarity", "Urine Appearance"],
+  // Urine-sediment CASTS (#2319). #2300 curated the three in the PLURAL,
+  // comma-inverted form ("Casts, Hyaline, Urine"); plenty of reports print the same
+  // microscopy line SINGULAR ("Hyaline Cast, Urine"). normalizeCanonicalKey folds
+  // case, punctuation and word order but NOT inflection, so {cast, hyaline, urine}
+  // and {casts, hyaline, urine} are different keys and the singular spelling orphans
+  // into its own band-less series right beside its own curated entry.
+  //
+  // Three explicit routes, deliberately NOT a trailing-`s` rule in the normalizer:
+  // inflection folding is exactly the kind of rule that eventually merges two
+  // genuinely distinct analytes, and it would fire on every name in the vocabulary
+  // to fix three. Do not widen this — a fourth cast type gets a fourth row.
+  ["Hyaline Cast, Urine", "Casts, Hyaline, Urine"],
+  ["Granular Cast, Urine", "Casts, Granular, Urine"],
+  ["RBC Cast, Urine", "Casts, RBC, Urine"],
   // Drift a FRESH re-extraction surfaced (#918): the model, given the same
   // vocabulary, still coined off-list names. The CBC counts often print as bare
   // abbreviations; specific gravity is always a urine test. (The two neutrophil
@@ -577,12 +591,129 @@ const TOXICOLOGY_SCREEN: UncuratedAnalyte = {
     "Toxicology screens aren't biomarkers with reference bands. The result is imported and visible on the document, but it isn't curated as a trendable analyte.",
 };
 
+// A DEXA scan's own decomposition (#2319) — the largest single family of
+// uncatalogued items in a real profile, on the order of fifty distinct labels from
+// one machine. One scan prints a fat percentage, a bone mineral density and a
+// compartment mass for every region it segments the body into; those rows are the
+// SCAN's output, not fifty analytes anybody draws independently. There is no
+// population reference band for left-arm fat percentage and there never will be, so
+// "curating" them would mean inventing ranges — and until this declaration existed,
+// every one of them was presented as something the user might track or ask to have
+// catalogued, which is a standing invitation to request work that must never happen.
+//
+// `out-of-scope`, not `covered-elsewhere`: the whole-body totals ARE curated
+// ("Body Fat Percentage", "Bone Mineral Density T-Score"), but a region is not its
+// total, so pointing a reader at the total would claim their left arm is tracked
+// when it isn't. Nothing here is a to-do; the rows are imported and stay visible on
+// the scan's own document.
+const DEXA_DECOMPOSITION: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "A DEXA scan's per-region decomposition. These are outputs of one scan rather than independent analytes, and no population reference range exists for them.",
+};
+
+// The regions a DEXA report segments for FAT distribution. Android/Gynoid are the
+// abdominal and hip depots; Subtotal is whole-body-minus-head. "Total" is absent on
+// purpose — the whole-body number IS the curated "Body Fat Percentage".
+const DEXA_FAT_REGIONS = [
+  "Left Arm",
+  "Right Arm",
+  "Arms",
+  "Left Leg",
+  "Right Leg",
+  "Legs",
+  "Trunk",
+  "Head",
+  "Android",
+  "Gynoid",
+  "Subtotal",
+];
+
+// The skeletal sites a DEXA report prints a density and a mineral content for.
+// "Total" is absent for the same reason as above: whole-body bone density is what
+// the curated T-score expresses, and a site is not the skeleton.
+const DEXA_BONE_REGIONS = [
+  "Left Arm",
+  "Right Arm",
+  "Arms",
+  "Left Ribs",
+  "Right Ribs",
+  "Ribs",
+  "Thoracic Spine",
+  "Lumbar Spine",
+  "Spine",
+  "Left Pelvis",
+  "Right Pelvis",
+  "Pelvis",
+  "Left Leg",
+  "Right Leg",
+  "Legs",
+  "Trunk",
+  "Head",
+  "Subtotal",
+];
+
+// The compartment-mass grid: a region × a tissue compartment, in grams. Reports
+// print the unit inside the name as often as not, and normalizeCanonicalKey keeps
+// "(g)" as a token, so both spellings are declared rather than guessed at.
+const DEXA_MASS_REGIONS = ["Trunk", "Head", "Android", "Gynoid", "Subtotal"];
+const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
+
+// The scan-level rows that aren't per-region: whole-scan mass compartments, the
+// derived depot ratios, and the two mass indices. Same decision, same reason — each
+// is arithmetic over one scan's segments, and none has a population band of its own.
+const DEXA_SCAN_LEVEL = [
+  "Total Mass",
+  "Total Fat Mass",
+  "Total Lean Mass",
+  "Bone Mineral Content, Total",
+  "Bone Mineral Density Z-Score",
+  "Android/Gynoid Ratio",
+  "Trunk to Legs Fat Ratio",
+  "Fat Mass Index",
+  "Lean Mass Index",
+];
+
+// Expanded rather than hand-listed: the family is a cross product, and writing ~80
+// literal rows is how one region quietly goes missing. The expansion is still just
+// `[name, declaration]` pairs in UNCURATED_ANALYTES, so the completeness guard walks
+// every generated name exactly as it walks a hand-written one.
+function dexaDecompositionNames(): string[] {
+  const names: string[] = [];
+  for (const region of DEXA_FAT_REGIONS)
+    names.push(`Body Fat Percentage, ${region}`);
+  for (const region of DEXA_BONE_REGIONS) {
+    names.push(`Bone Mineral Density, ${region}`);
+    names.push(`Bone Mineral Content, ${region}`);
+  }
+  for (const region of DEXA_MASS_REGIONS)
+    for (const compartment of DEXA_MASS_COMPARTMENTS)
+      names.push(`${region} ${compartment} Mass`);
+  names.push(...DEXA_SCAN_LEVEL);
+  // The gram-suffixed print form of every mass row. A ratio, an index and a
+  // percentage are not masses, so they get no "(g)" twin.
+  const withUnits = [
+    ...names,
+    ...names.filter((n) => n.endsWith(" Mass")).map((n) => `${n} (g)`),
+  ];
+  // De-duped by the key the registry is keyed on, so an overlap between the cross
+  // product and the scan-level list can never mint two rows for one decision.
+  const byKey = new Map(
+    withUnits.map((n) => [normalizeCanonicalKey(n), n] as const)
+  );
+  return [...byKey.values()];
+}
+
 const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["eGFR, African American", EGFR_RACE_BRANCHED],
   ["eGFR, Non-African-American", EGFR_RACE_BRANCHED],
   ["eGFR, Thai", EGFR_RACE_BRANCHED],
   ["Beta Adrenergic Blocker Screen", TOXICOLOGY_SCREEN],
   ["Diuretic Screen, Urine", TOXICOLOGY_SCREEN],
+  ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
+    name,
+    DEXA_DECOMPOSITION,
+  ]),
 ];
 
 const UNCURATED_BY_KEY = new Map<string, UncuratedAnalyte>(

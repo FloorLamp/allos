@@ -68,15 +68,77 @@ describe("coverage-gaps — detection", () => {
   const curated = curatedBiomarkerFamilyKeys(["Hemoglobin A1c"]);
 
   it("returns only uncovered names, one candidate per family", () => {
-    const gaps = detectBiomarkerGaps(
+    const { candidates, declined } = detectBiomarkerGaps(
       ["HbA1c", "Hemoglobin A1c", "Obscure One", "obscure one", "Another Gap"],
       curated
     );
-    const labels = gaps.map((g) => g.label);
+    const labels = candidates.map((g) => g.label);
     // A1c is covered (both spellings dropped); the two "Obscure One" spellings
     // fold to one candidate; "Another Gap" is its own.
     expect(labels).toEqual(["Obscure One", "Another Gap"]);
-    expect(gaps.every((g) => g.kind === "biomarker")).toBe(true);
+    expect(candidates.every((g) => g.kind === "biomarker")).toBe(true);
+    // Nothing here is declared, so the other half of the split is empty.
+    expect(declined).toEqual([]);
+  });
+
+  // #2319 — Coverage candidacy is the SECOND consumer of #2313's registry. The
+  // registry is imported unchanged: `uncuratedAnalyte` answers a question about the
+  // analyte, so this surface (family keys over source='seed' names) and the import
+  // debugger (isSeededCanonical on the exact name) reach the same declaration
+  // without either owning a list.
+  it("splits a DECLARED analyte out of candidacy while a genuine gap stays offered", () => {
+    const { candidates, declined } = detectBiomarkerGaps(
+      [
+        "Body Fat Percentage, Left Arm", // declared: DEXA regional decomposition
+        "Trunk Lean Mass (g)", // declared: the same family, gram-suffixed
+        "eGFR, African American", // declared: covered-elsewhere
+        "Waist Circumference", // a GENUINE curation candidate (#2322)
+      ],
+      curated
+    );
+    expect(candidates.map((c) => c.label)).toEqual(["Waist Circumference"]);
+    expect(declined.map((d) => d.label)).toEqual([
+      "Body Fat Percentage, Left Arm",
+      "Trunk Lean Mass (g)",
+      "eGFR, African American",
+    ]);
+    // Each declined row carries the reason — the whole point of declaring rather
+    // than quietly dropping the name.
+    for (const d of declined) {
+      expect(d.kind).toBe("biomarker");
+      expect(d.declaration.reason.trim().length).toBeGreaterThan(0);
+    }
+    expect(declined[0].declaration.kind).toBe("out-of-scope");
+    expect(declined[2].declaration.kind).toBe("covered-elsewhere");
+    // A declined item still keeps the family identity key a candidate would carry,
+    // so the two lists remain a partition of one set.
+    expect(declined[0].itemKey).toBe(
+      biomarkerCoverageKey("Body Fat Percentage, Left Arm")
+    );
+  });
+
+  it("a declaration is keyed by normalized name, not by spelling", () => {
+    const { candidates, declined } = detectBiomarkerGaps(
+      ["Left Arm Body Fat Percentage", "LUMBAR SPINE BONE MINERAL DENSITY"],
+      curated
+    );
+    expect(candidates).toEqual([]);
+    expect(declined).toHaveLength(2);
+  });
+
+  it("does NOT decline the curated whole-body totals a DEXA scan also prints", () => {
+    // The regions are declared; the totals they decompose are real curated
+    // analytes, and folding them in would be the mistake this family invites.
+    const totals = curatedBiomarkerFamilyKeys([
+      "Body Fat Percentage",
+      "Bone Mineral Density T-Score",
+    ]);
+    const { candidates, declined } = detectBiomarkerGaps(
+      ["Body Fat Percentage", "Bone Mineral Density T-Score"],
+      totals
+    );
+    expect(candidates).toEqual([]);
+    expect(declined).toEqual([]);
   });
 
   it("KINDS constant lists all three kinds", () => {

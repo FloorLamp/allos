@@ -644,6 +644,43 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Urine Color", index)).toBe("Urine Color");
   });
 
+  // #2319 — the SINGULAR cast spellings. #2300 curated the three casts plural and
+  // comma-inverted; normalizeCanonicalKey folds case, punctuation and word order but
+  // NOT inflection, so the singular form a real report prints was a different key and
+  // orphaned into its own band-less series beside its own curated entry.
+  it("routes the singular urine-cast spellings onto their curated plural entries (#2319)", () => {
+    for (const [singular, curated] of [
+      ["Hyaline Cast, Urine", "Casts, Hyaline, Urine"],
+      ["Granular Cast, Urine", "Casts, Granular, Urine"],
+      ["RBC Cast, Urine", "Casts, RBC, Urine"],
+    ] as const) {
+      expect(snapCanonicalName(singular, index)).toBe(curated);
+      // Word order folds on top of the route, as it does for every alias.
+      expect(snapCanonicalName(`Urine ${singular.split(",")[0]}`, index)).toBe(
+        curated
+      );
+      // The plural entry still resolves to itself — the route ADDS a spelling.
+      expect(snapCanonicalName(curated, index)).toBe(curated);
+    }
+  });
+
+  it("does NOT fold a trailing s globally to reach the casts (#2319)", () => {
+    // Three explicit routes, deliberately not an inflection rule in the normalizer:
+    // folding `s` everywhere is how two genuinely distinct analytes eventually merge.
+    // The keys stay distinct; only the curated route bridges them.
+    expect(normalizeCanonicalKey("Hyaline Cast, Urine")).not.toBe(
+      normalizeCanonicalKey("Casts, Hyaline, Urine")
+    );
+    // A pair the normalizer must keep apart, proving no global rule slipped in.
+    expect(normalizeCanonicalKey("Ketone")).not.toBe(
+      normalizeCanonicalKey("Ketones")
+    );
+    // And an undeclared cast type coins its own name rather than riding a rule.
+    expect(snapCanonicalName("Waxy Cast, Urine", index)).toBe(
+      "Waxy Cast, Urine"
+    );
+  });
+
   it("keeps the differential's extra lines OFF their parent fraction (#2300)", () => {
     // A CBC prints these ALONGSIDE the parent %, so an alias would put two distinct
     // same-date values on one series and lose one of them.
@@ -950,5 +987,56 @@ describe("deliberately uncurated analytes (#2313)", () => {
       expect(uncuratedAnalyte(undeclared)).toBeNull();
     expect(uncuratedAnalyte(null)).toBeNull();
     expect(uncuratedAnalyte(undefined)).toBeNull();
+  });
+
+  // #2319 — the DEXA regional decomposition, the family that carries the volume.
+  it("declares the DEXA regional decomposition out of scope (#2319)", () => {
+    const declared = [
+      // Per-region fat, in the comma-inverted form and the word order a report uses.
+      "Body Fat Percentage, Left Arm",
+      "Body Fat Percentage, Android",
+      "Right Leg Body Fat Percentage",
+      // Per-site bone density and mineral content.
+      "Bone Mineral Density, Lumbar Spine",
+      "Bone Mineral Content, Pelvis",
+      "Bone Mineral Density Z-Score",
+      // The compartment-mass grid, with and without the gram suffix a report prints
+      // inside the name (normalizeCanonicalKey keeps "(g)" as a token, so the two
+      // spellings are different keys and both are declared).
+      "Trunk Fat Mass",
+      "Trunk Fat Mass (g)",
+      "Subtotal Lean Mass (g)",
+      "Total Mass (g)",
+      // The derived depot ratios and mass indices.
+      "Android/Gynoid Ratio",
+      "Trunk to Legs Fat Ratio",
+      "Fat Mass Index",
+      "Lean Mass Index",
+    ];
+    for (const name of declared) {
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).toContain("per-region decomposition");
+    }
+    // ONE decision, shared by the whole family — not fifty separate opinions.
+    expect(new Set(declared.map((n) => uncuratedAnalyte(n))).size).toBe(1);
+  });
+
+  it("leaves the whole-body totals a DEXA also prints CURATED (#2319)", () => {
+    // The regions are declared; the totals they decompose are real curated analytes,
+    // and the completeness guard above would fail if this line ever blurred. Stated
+    // separately because "declare the DEXA family" is exactly the instruction someone
+    // would over-apply.
+    for (const total of ["Body Fat Percentage", "Bone Mineral Density T-Score"]) {
+      expect(uncuratedAnalyte(total), total).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(total)), total).toBe(true);
+    }
+    // And the genuine curation candidates #2322 owns stay actionable.
+    for (const candidate of [
+      "Waist Circumference",
+      "QTc Interval",
+      "Ankle-Brachial Index (ABI)",
+    ])
+      expect(uncuratedAnalyte(candidate), candidate).toBeNull();
   });
 });
