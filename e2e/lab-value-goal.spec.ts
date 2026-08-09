@@ -147,9 +147,20 @@ test.describe("goals can target a lab value (#1853)", () => {
         ALL_GROUP,
       ]);
 
-      // Typing is the app-wide fuzzy search, flat — a header over one match is noise.
+      // Typing is the app-wide fuzzy search, FLAT — no group headers, and the best
+      // match leads. That is this assertion's whole point.
+      //
+      // It deliberately does NOT pin the full result set. The matcher is a
+      // SUBSEQUENCE search over the curated catalog, so what else "a1c" matches is a
+      // property of the DATASET, not of this picker: #2335's long names gave it more
+      // letters to walk, and "Forced Expiratory Volume in 1 Second (FEV1)" now
+      // matches on a…1…c where the old bare "FEV1" had neither an `a` nor a `c`.
+      // Pinning the exact array is the #2353 shape — a derived verdict over a shared
+      // seed, which is an exact-count assertion in disguise — and pinning it with the
+      // extra row in it would encode that noise as a REQUIREMENT. The search-quality
+      // question the collision raises is filed separately; it is not this spec's.
       await settledFill(page, field, "a1c");
-      await expect(options(listbox)).toHaveText([LAB_GOAL_OVERDUE]);
+      await expect(options(listbox).nth(0)).toHaveText(LAB_GOAL_OVERDUE);
       await expect(groups(listbox)).toHaveCount(0);
 
       await listbox
