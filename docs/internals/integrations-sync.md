@@ -358,7 +358,17 @@ import read `intermittent`.
 - **`escalationPolicyLabel` gained the attended inverse.** It returned `null` for an
   exempt provider (honest silence); an attended page now states the positive instead —
   _"This source is only ever as fresh as your last import — allos never marks it late,
-  because only you can start it."_ Outbound stays silent.
+  because only you can start it."_ Outbound stays silent. Two callers render it:
+  `SyncHistoryTable`, above the history on every scheduled provider page, and the
+  **Fitbit Takeout** Status card, which has no history table and so had no surface for
+  the one thing an attended source's owner needs to know. Both source it the same way
+  — tolerance, run noun, and delivery all DERIVED FROM THE KIND, never asserted at the
+  call site.
+- **A card's body copy speaks its badge's dialect.** `StatusFact`'s `attempt-failed`
+  fallback is `standingHeadline(standing, syncRunNounForKind(kind))` — the function
+  that already writes that sentence in either dialect. It used to be the hardcoded
+  literal "The last import failed", so a patient-portals run that failed carrying no
+  error string read _import_ directly under a badge reading _Last upload failed_.
 - **`standingUnconfigured`** answers "was this ever set up at all" across all three
   families (`not-connected` / `not-set-up` / `feed-off`), so the Import grid's
   status-card-vs-pitch-card decision is one rule rather than a member list.

@@ -9,6 +9,7 @@ import {
   formatSyncOutcome,
   standingBadge,
   standingEscalates,
+  standingHeadline,
   standingUnconfigured,
   syncRunNounForKind,
 } from "@/lib/integrations/provider-state";
@@ -51,9 +52,16 @@ function StatusFact({ state }: { state: IntegrationState }) {
   if (standing === "attempt-failed") {
     // Caution, not alarm: the run that failed is the one the person started, and
     // whether there is another is theirs to decide.
+    //
+    // The fallback comes from `standingHeadline`, which already writes this exact
+    // sentence in the noun's own dialect (#2301 review). It used to be the hardcoded
+    // literal "The last import failed" — the ARCHIVE dialect — so a patient-portals
+    // run that failed carrying no error string read "import" directly under a badge
+    // reading "Last upload failed": two dialects in one card about one event.
     return (
       <p className="mt-2 break-words text-sm text-amber-700 dark:text-amber-300">
-        {latest?.error ?? "The last import failed"}
+        {latest?.error ??
+          standingHeadline(standing, syncRunNounForKind(state.kind))}
       </p>
     );
   }
