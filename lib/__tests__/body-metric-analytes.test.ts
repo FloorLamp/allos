@@ -1,12 +1,21 @@
 import { describe, it, expect } from "vitest";
 import {
+  METRIC_DOCUMENT_REACH,
   bodyMetricHomeFor,
   hasBodyMetricHome,
   listedInBiomarkerBrowser,
 } from "../body-metric-analytes";
 import { acronymNameForms } from "../canonical-name";
+import { readingDetailHref } from "../hrefs";
 import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
-import { METRIC_KNOWLEDGE } from "../metric-judgment";
+import {
+  METRIC_KNOWLEDGE,
+  metricIdentity,
+  metricObservationFoldIdentity,
+} from "../metric-judgment";
+import { bodyMetricKind } from "../body-metric-extract";
+import { isHeightReading } from "../height-extract";
+import { isHeadCircReading } from "../head-circ-extract";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
@@ -22,13 +31,168 @@ import {
 // PHI: every name here is a controlled-vocabulary analyte name or an invented spelling;
 // no values, no subjects.
 
+// The projector each `import-projection` slug names, bound to the recognizer that
+// actually decides at ingest. Kept HERE rather than in the module so the declaration
+// stays pure — and so the check is real code, not a string compared to a string.
+// The slugs entitled to claim an analyte name: those a document-imported reading can
+// actually reach. DERIVED from the declaration, never listed.
+const REACHABLE_SLUGS = BODY_METRIC_SLUGS.filter(
+  (slug) => METRIC_DOCUMENT_REACH[slug].reaches !== false
+);
+
+const PROJECTION_RECOGNIZERS: Partial<
+  Record<BodyMetricSlug, (name: string) => boolean>
+> = {
+  weight: (name) => bodyMetricKind(name, null) === "weight",
+  height: (name) => isHeightReading(name, null),
+  "head-circ": (name) => isHeadCircReading(name, null),
+};
+
+describe("document reachability is DECLARED and CHECKED (#2365)", () => {
+  // The hole this registry closes: `hrv` and `bmr` have a slug, a tile and a detail
+  // page, and both charts are fed exclusively by integration streams — so dropping
+  // their analytes on the strength of "a chart exists" would land a cardiology HRV or
+  // a calorimetry BMR on NO surface. Reachability is a different question from chart
+  // existence, and this suite is what keeps the two from being confused again.
+
+  it("every slug declares, and every refusal states a reason", () => {
+    for (const slug of BODY_METRIC_SLUGS) {
+      const reach = METRIC_DOCUMENT_REACH[slug];
+      expect(reach, `${slug} must declare document reachability`).toBeDefined();
+      if (reach.reaches === false)
+        expect(reach.reason.length, `${slug} must say WHY not`).toBeGreaterThan(
+          30
+        );
+    }
+  });
+
+  it("`observations` matches the reading model — a canonical identity with no stream", () => {
+    // A metric whose identity has NO stream source charts its `medical_records` rows
+    // directly (that is exactly why metricObservationFoldIdentity returns null for it —
+    // folding would list every reading twice). Asked of the pure reading model rather
+    // than METRIC_READING_STORE, which lives in a module that opens the database; the
+    // DB tier cross-checks the two agree.
+    for (const slug of BODY_METRIC_SLUGS) {
+      const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observations";
+      const chartsObservations =
+        metricIdentity(slug) !== null &&
+        metricObservationFoldIdentity(slug) === null;
+      expect(chartsObservations, slug).toBe(claimed);
+    }
+  });
+
+  it("`observation-fold` matches metricObservationFoldIdentity", () => {
+    for (const slug of BODY_METRIC_SLUGS) {
+      const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observation-fold";
+      expect(metricObservationFoldIdentity(slug) !== null, slug).toBe(claimed);
+    }
+  });
+
+  it("`import-projection` is confirmed by the projector's own recognizer", () => {
+    // The strong form: the projector must accept every NAME the slug claims, asked the
+    // way ingest asks it. If a recognizer's vocabulary ever narrows, the analyte stops
+    // being safely removable and this fails.
+    for (const slug of BODY_METRIC_SLUGS) {
+      const reach = METRIC_DOCUMENT_REACH[slug];
+      if (reach.reaches !== "import-projection") continue;
+      const recognizer = PROJECTION_RECOGNIZERS[slug];
+      expect(recognizer, `${slug} names a projector but binds no recognizer`)
+        .toBeDefined();
+      for (const name of [
+        BODY_METRIC_META[slug].title,
+        ...(bodyMetricHomeFor(BODY_METRIC_META[slug].label) === slug
+          ? [BODY_METRIC_META[slug].label]
+          : []),
+      ])
+        expect(recognizer?.(name), `${slug} projector must accept "${name}"`).toBe(
+          true
+        );
+    }
+  });
+
+  it("an unreachable metric claims NO analyte name — the stranding guard", () => {
+    // The whole point, stated as an assertion: a quantity whose imported reading has
+    // nowhere to land keeps the flat catalog as its home.
+    for (const slug of BODY_METRIC_SLUGS) {
+      if (METRIC_DOCUMENT_REACH[slug].reaches !== false) continue;
+      const meta = BODY_METRIC_META[slug];
+      expect(bodyMetricHomeFor(meta.title), `${slug} title`).not.toBe(slug);
+      expect(bodyMetricHomeFor(meta.label), `${slug} label`).not.toBe(slug);
+    }
+  });
+
+  it("HRV and BMR stay browsable, by name and through the row predicate", () => {
+    // Named explicitly because these two are the regression: both are quantities a real
+    // clinical document prints, and neither chart can receive the reading.
+    expect(METRIC_DOCUMENT_REACH.hrv.reaches).toBe(false);
+    expect(METRIC_DOCUMENT_REACH.bmr.reaches).toBe(false);
+    for (const name of [
+      "Heart Rate Variability",
+      "HRV",
+      "Basal Metabolic Rate",
+      "BMR",
+      "Resting Metabolic Rate",
+    ])
+      expect(bodyMetricHomeFor(name), name).toBeNull();
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "Heart Rate Variability",
+        canonical_name: "Heart Rate Variability",
+      })
+    ).toBe(true);
+  });
+
+  it("a DEPARTING analyte keeps a detail page — so a star stays un-starrable", () => {
+    // `StarredBiomarkers` reads `getSavedBiomarkers` straight from `saved_items`,
+    // independently of the browser gather, so a starred analyte still renders its tile
+    // after leaving the catalog — and the tile links through `readingDetailHref`. Both
+    // branches of that helper land on a page that carries a StarButton (the metric
+    // detail page for a continuous vital, `/biomarkers/view` otherwise), so the un-star
+    // path can never be orphaned by this change. Pinned because the failure mode would
+    // be a tile you cannot remove.
+    for (const name of [
+      "Blood Pressure Systolic",
+      "Oxygen Saturation",
+      "Body Temperature",
+      "Resting Heart Rate",
+      "Peak Expiratory Flow",
+      "Body Mass Index (BMI)",
+    ]) {
+      expect(hasBodyMetricHome(name), name).toBe(true);
+      const href = readingDetailHref(name);
+      expect(
+        href.startsWith("/trends/metric/") || href.startsWith("/biomarkers/view"),
+        `${name} → ${href}`
+      ).toBe(true);
+    }
+  });
+
+  it("the bare single-word check-in and count titles claim nothing", () => {
+    // Mood / Energy / Calm / Hydration / Steps and friends have bare titles that would
+    // otherwise match an unrelated imported analyte outright. Unreachable, so they
+    // claim nothing at all — the loose-match surface is gone rather than argued about.
+    for (const name of [
+      "Mood",
+      "Energy",
+      "Calm",
+      "Hydration",
+      "Daily Steps",
+      "Lean Body Mass",
+      "Bone Mass",
+      "Skin Temperature Variation",
+    ])
+      expect(bodyMetricHomeFor(name), name).toBeNull();
+  });
+});
+
 describe("the derivation is the registries, not a list (#2365)", () => {
   it("every canonical name METRIC_KNOWLEDGE declares resolves to its own slug", () => {
     // The curated half: a slug whose knowledge names a canonical entry must claim that
     // exact name. This is what makes the mapping fall out of the registry instead of
     // being restated — and what breaks if METRIC_KNOWLEDGE is re-pointed.
     const declared: [BodyMetricSlug, string][] = [];
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of REACHABLE_SLUGS) {
       const k = METRIC_KNOWLEDGE[slug];
       if ("canonical" in k) declared.push([slug, k.canonical]);
     }
@@ -38,11 +202,14 @@ describe("the derivation is the registries, not a list (#2365)", () => {
       expect(bodyMetricHomeFor(canonical)).toBe(slug);
   });
 
-  it("every registered metric's own title resolves to it", () => {
-    // The other half: a metric can have a home and no curated band (bmi's knowledge is
-    // honestly `none`), so the registry title has to carry the name. Total over the
-    // slug enum, so a metric added tomorrow is covered without a second edit.
-    for (const slug of BODY_METRIC_SLUGS)
+  it("every REACHABLE metric's own title resolves to it", () => {
+    // The other half: a metric can be reachable and have no curated band (bmi's
+    // knowledge is honestly `none`), so the registry title has to carry the name.
+    // Derived from the slug enum minus the reachability declaration, so a metric added
+    // tomorrow is covered without a second edit — and an unreachable one is covered by
+    // the stranding guard above instead.
+    expect(REACHABLE_SLUGS.length).toBeGreaterThan(4);
+    for (const slug of REACHABLE_SLUGS)
       expect(bodyMetricHomeFor(BODY_METRIC_META[slug].title)).toBe(slug);
   });
 
@@ -50,7 +217,7 @@ describe("the derivation is the registries, not a list (#2365)", () => {
     // The map takes first-registration-wins; this is what keeps that from being a
     // silent tie-break when a future metric's title collides with another's.
     const owners = new Map<string, BodyMetricSlug>();
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of REACHABLE_SLUGS) {
       const meta = BODY_METRIC_META[slug];
       const k = METRIC_KNOWLEDGE[slug];
       const names = [meta.title, ...("canonical" in k ? [k.canonical] : [])];
@@ -196,10 +363,12 @@ describe("what STAYS in the browser (#2365)", () => {
   it("a clinic pulse is not the daily-average heart-rate metric", () => {
     // `hr` is an aggregate over hr_minutes — a different quantity from a single
     // measured pulse, and METRIC_KNOWLEDGE says so. Matching them would strand the
-    // measured one.
+    // measured one. It is doubly safe now: `hr` is also unreachable (it has no reading
+    // rows at all), so it claims no name to be matched against.
     expect(bodyMetricHomeFor("Heart Rate")).toBeNull();
     expect(bodyMetricHomeFor("Pulse")).toBeNull();
-    expect(bodyMetricHomeFor("Heart Rate (Daily Avg)")).toBe("hr");
+    expect(bodyMetricHomeFor("Heart Rate (Daily Avg)")).toBeNull();
+    expect(METRIC_DOCUMENT_REACH.hr.reaches).toBe(false);
   });
 });
 

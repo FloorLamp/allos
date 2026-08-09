@@ -1382,18 +1382,30 @@ genomics and imaging-derived measurements are listed whole; the classes with a
 dedicated home (medications, screening scores, bio-age composites, immutable
 passport facts, narrative report bodies, non-measurement assessments) are
 excluded whole. `vitals` is the one category that holds both populations, so the
-question is asked of the ANALYTE: a vital whose quantity already owns a
-`/trends/metric/<slug>` chart — blood pressure, SpO2, respiratory rate, body
-temperature, resting heart rate, peak expiratory flow, BMI — is not catalogued
-here, and the **domain vitals with no chart anywhere** — audiogram thresholds,
-intraocular pressure, visual acuity, periodontal measures, spirometry volumes,
-the functional-fitness markers, waist circumference, ankle-brachial index, the
-stress-test vitals — still are. This is #1076's "nothing stranded" rule at a
-finer grain: membership follows whether a home EXISTS, so the catalog stopped
-listing ten measurements that already had one for every one it rescued (measured
-on a real profile: 131 of 145 `vitals` rows). It is **derived** from the metric
-registries (`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`), never hand-listed, so an
-analyte that gains a dedicated surface leaves the browser with no second edit.
+question is asked of the ANALYTE — and the question is not "does a chart exist"
+but **"can a document-imported reading of this quantity reach that chart?"**
+
+A vital that answers yes is not catalogued here: blood pressure, SpO2,
+respiratory rate and body temperature (the chart plots those very rows), resting
+heart rate, body fat and peak expiratory flow (the chart folds the clinical
+reading in beside the device ones), weight, height and head circumference (the
+import writes the charted row itself), and BMI (computed from the weight and
+height that arrive with it). Everything else stays, including the **domain
+vitals with no chart anywhere** — audiogram thresholds, intraocular pressure,
+visual acuity, periodontal measures, spirometry volumes, the functional-fitness
+markers, waist circumference, ankle-brachial index, the stress-test vitals — and
+also **HRV and BMR**, which _have_ charts fed exclusively by integration streams:
+a cardiology report's HRV or a calorimetry BMR can reach neither, so the catalog
+remains their home.
+
+This is #1076's "nothing stranded" rule at a finer grain — membership follows
+whether the reading is answered elsewhere — and it stopped the catalog listing
+ten measurements that already were for every one it rescued (measured on a real
+profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
+(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+declaration, never hand-listed, so an analyte that gains a dedicated surface
+leaves the browser with no second edit and a newly registered metric must state
+whether an imported reading can reach it before it can remove anything.
 
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,

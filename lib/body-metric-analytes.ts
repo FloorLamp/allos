@@ -65,20 +65,45 @@
 // directions over the real registries — the slugged analytes leave AND every listed
 // domain vital stays.
 //
-// A MISPLACED ROW IS A PLACEMENT BUG, NOT A CATALOG PROBLEM. Most of what leaves has a
-// twin on the very chart that answers for it: the import path already projects a
-// document's weight / body fat / resting HR into `body_metrics` and its height / head
-// circumference into `metric_samples`, and the five vitals that store as observations
-// are charted from `medical_records` directly. "Body Mass Index (BMI)" arriving as a
-// `medical_records` row is #2318's misplacement — under this rule it stops being
-// browsable for the RIGHT reason (the quantity has a home), independent of whether that
-// placement is fixed; `/trends/metric/bmi` computes the same quantity from the weight
-// and height that came in beside it. `Waist Circumference` is a body metric by the
-// owner's ruling on #2322 but is NOT yet a slug, so it stays browsable today and leaves
-// on its own the moment that slug lands. This module answers only "does the QUANTITY
-// have a home"; which store a given row went to is `placeReading()`'s question.
+// "A CHART EXISTS" IS NOT THE QUESTION. The question is whether a DOCUMENT-IMPORTED
+// reading of this quantity can REACH that chart, and those are different — which is
+// the hole this module shipped with. `hrv` and `bmr` both have a registered slug, a
+// tile and a detail page, and both charts are fed EXCLUSIVELY by integration streams:
+// neither quantity has a canonical entry (so no identity exists to fold an observation
+// through) and no import projection writes one. A cardiology report's HRV and an
+// indirect-calorimetry report's BMR are real clinical readings a real document prints,
+// and dropping them from the catalog on the strength of "there is a chart" would land
+// them on NO surface at all. That is exactly the stranding #1076 exists to prevent,
+// arriving through a different door and SILENTLY — the expensive direction this module
+// names above.
 //
-// PURE: registries and string keys, no DB, no React.
+// So reachability is DECLARED per slug, in `METRIC_DOCUMENT_REACH` below, and a slug
+// that does not answer it does not compile (the registry is total over
+// `BodyMetricSlug`, the `lib/fitness-freshness.ts` precedent). A slug added later has
+// to answer the question rather than silently start swallowing document rows — which
+// is the same drift-proofing property the name derivation itself is built on.
+//
+// AND THE DECLARATION IS CHECKED, not trusted. Three of its four "reaches" mechanisms
+// are verifiable against the code that implements them, and the completeness test in
+// lib/__tests__/body-metric-analytes.test.ts verifies each one rather than reading the
+// prose beside it: `observations` against `METRIC_READING_STORE`, `observation-fold`
+// against `metricObservationFoldIdentity`, `import-projection` against the projector's
+// OWN recognizer (`bodyMetricKind` / `isHeightReading` / `isHeadCircReading`), asked
+// with the very names the slug claims. A declaration that stops being true fails CI.
+//
+// A MISPLACED ROW IS THEN A PLACEMENT BUG, NOT A CATALOG PROBLEM. "Body Mass Index
+// (BMI)" arriving as a `medical_records` row is #2318's misplacement — under this rule
+// it stops being browsable for the RIGHT reason (the quantity is answered), independent
+// of whether that placement is fixed; `/trends/metric/bmi` computes it from the weight
+// and height that came in beside it, and both of those are themselves projected onto
+// their own charts. `Waist Circumference` is a body metric by the owner's ruling on
+// #2322 but is NOT yet a slug, so it stays browsable today and leaves on its own the
+// moment that slug lands. This module answers only "is this quantity answered
+// elsewhere"; which store a given row went to is `placeReading()`'s question.
+//
+// PURE: registries and string keys, no DB, no React. The projectors are deliberately
+// NOT imported here — they pull the extraction types in behind them, and the check
+// belongs to the test rather than to the request path.
 
 import {
   acronymNameForms,
@@ -97,8 +122,176 @@ import {
 // listed whole; `vitals` is the one category that holds both populations.
 export const HOMED_ANALYTE_CATEGORY = "vitals";
 
-/** Every name the metric registry knows a quantity by — the three sources above. */
+/**
+ * How a DOCUMENT-IMPORTED reading of a metric's quantity reaches that metric's chart —
+ * or the stated reason it cannot.
+ *
+ * Only a metric that answers `reaches` may claim its analyte names, so only such a
+ * metric can remove an analyte from the catalog.
+ */
+export type DocumentReadingReach =
+  /**
+   * The chart IS the observation store: the imported `medical_records` row is itself a
+   * point on it. Verifiable — `METRIC_READING_STORE[slug].table === "medical_records"`.
+   */
+  | { reaches: "observations" }
+  /**
+   * The chart plots a STREAM and folds same-identity observations into it (#1996), so
+   * a clinic-measured reading appears beside the wearable ones. Verifiable —
+   * `metricObservationFoldIdentity(slug) !== null`.
+   */
+  | { reaches: "observation-fold" }
+  /**
+   * Document import PROJECTS the reading into the metric's stream store, so the same
+   * measurement is on the chart under its stream key. Verifiable — the named
+   * projector's own recognizer accepts every name this slug claims.
+   */
+  | { reaches: "import-projection"; projectedBy: string }
+  /**
+   * A DERIVED series with no row of its own, whose INPUTS arrive in the same document
+   * and are themselves projected — so the quantity is charted even though the imported
+   * row is not a point. The one judgement call here, and it is the issue's own ruling.
+   */
+  | { reaches: "derived-inputs"; from: string }
+  /** Nothing carries an imported reading of this quantity onto the chart. */
+  | { reaches: false; reason: string };
+
+/**
+ * Per-slug reachability. TOTAL over `BodyMetricSlug` — a new metric must answer.
+ *
+ * `reaches: false` is not a defect and needs no fixing: it means the flat catalog is
+ * still the right home for that quantity's imported readings, exactly as #1076 left it.
+ */
+export const METRIC_DOCUMENT_REACH: Record<
+  BodyMetricSlug,
+  DocumentReadingReach
+> = {
+  // ── The vitals that STORE as observations: the row is the chart point ──────────
+  systolic: { reaches: "observations" },
+  diastolic: { reaches: "observations" },
+  spo2: { reaches: "observations" },
+  "respiratory-rate": { reaches: "observations" },
+  temperature: { reaches: "observations" },
+
+  // ── Streams that fold their clinical twin in (#1996) ──────────────────────────
+  // Each names a canonical entry AND registers a stream, which is precisely the pair
+  // `metricObservationFoldIdentity` requires: a clinic resting HR, a DEXA body fat and
+  // a pulmonology report's peak flow all land on the same chart as the device rows.
+  "resting-hr": { reaches: "observation-fold" },
+  "body-fat": { reaches: "observation-fold" },
+  "peak-flow": { reaches: "observation-fold" },
+
+  // ── Projected at ingest: the import writes the stream row itself ──────────────
+  // No canonical entry, so nothing folds — but the document path recognizes these by
+  // name and writes a second, charted row, which is why removing the catalog copy
+  // hides nothing.
+  weight: {
+    reaches: "import-projection",
+    projectedBy: "bodyMetricKind → body_metrics.weight_kg (lib/body-metric-extract.ts)",
+  },
+  height: {
+    reaches: "import-projection",
+    projectedBy:
+      "isHeightReading → metric_samples 'height_cm' (lib/height-extract.ts)",
+  },
+  "head-circ": {
+    reaches: "import-projection",
+    projectedBy:
+      "isHeadCircReading → metric_samples 'head_circumference_cm' (lib/head-circ-extract.ts)",
+  },
+
+  // ── Derived from inputs that arrive with it ───────────────────────────────────
+  // BMI has no row of its own; the chart is a date-paired computation over weight and
+  // height. A document that prints a BMI printed the weight and height it came from,
+  // and both of those ARE projected — so the quantity is charted from the same import.
+  // This is #2318's misplaced row, and the reason it stops being browsable is that the
+  // question "what is this person's BMI" is answered, not that the row was tidied away.
+  bmi: {
+    reaches: "derived-inputs",
+    from: "weight × height (bmiSeriesDatePaired), both import-projected",
+  },
+
+  // ── NOT REACHED: the catalog stays their home ─────────────────────────────────
+  // Each reason is specific. A generic "no" is what would let the next one through.
+  hrv: {
+    reaches: false,
+    reason:
+      "Charted from `metric_samples` HRV samples ONLY. HRV has no canonical entry, so there is no identity to fold an observation through, and no import projection writes one — a cardiology report's HRV would reach no surface at all.",
+  },
+  bmr: {
+    reaches: false,
+    reason:
+      "Charted from `metric_samples` tracker estimates ONLY. An indirect-calorimetry report's measured BMR is a genuinely clinical reading with no canonical entry, no fold and no projection.",
+  },
+  "skin-temp": {
+    reaches: false,
+    reason:
+      "An import-only tracker baseline DEVIATION with no canonical entry — nothing folds and nothing projects, so an imported row would be lost.",
+  },
+  "lean-mass": {
+    reaches: false,
+    reason:
+      "Charted from `metric_samples` scale estimates. The curated body-composition entry is the Appendicular Lean Mass INDEX, a different quantity, so there is no identity to fold through.",
+  },
+  "bone-mass": {
+    reaches: false,
+    reason:
+      "Charted from `metric_samples` scale estimates, with no canonical entry to fold a DXA-reported value through.",
+  },
+  hr: {
+    reaches: false,
+    reason:
+      "A DAILY AVERAGE derived from `hr_minutes` — it has no reading rows at all, and a measured heart rate is a different quantity (the #482 exclusion METRIC_KNOWLEDGE.hr already states).",
+  },
+  sun: {
+    reaches: false,
+    reason:
+      "Derived from activities against the solar day; there is no reading of it to import and nothing an imported row could join.",
+  },
+  steps: {
+    reaches: false,
+    reason:
+      "An activity COUNT charted from `metric_samples`, with no canonical entry and no projection.",
+  },
+  "active-calories": {
+    reaches: false,
+    reason:
+      "An activity COUNT charted from `metric_samples`, with no canonical entry and no projection.",
+  },
+  calories: {
+    reaches: false,
+    reason:
+      "An intake TOTAL charted from `metric_samples`, with no canonical entry and no projection.",
+  },
+  hydration: {
+    reaches: false,
+    reason:
+      "An intake TOTAL charted from `metric_samples`, with no canonical entry and no projection.",
+  },
+  mood: {
+    reaches: false,
+    reason:
+      "The daily check-in's own store, which only the check-in writes — an imported row could never join it.",
+  },
+  energy: {
+    reaches: false,
+    reason:
+      "The daily check-in's own store, which only the check-in writes — an imported row could never join it.",
+  },
+  calm: {
+    reaches: false,
+    reason:
+      "The daily check-in's own store, which only the check-in writes — an imported row could never join it.",
+  },
+};
+
+/**
+ * Every name the metric registry knows a quantity by — the three sources above — or
+ * NOTHING when an imported reading of it cannot reach its chart, because a slug that
+ * cannot receive the reading has not earned the right to remove it from the catalog.
+ */
 function registryNamesFor(slug: BodyMetricSlug): string[] {
+  if (METRIC_DOCUMENT_REACH[slug].reaches === false) return [];
   const meta = BODY_METRIC_META[slug];
   const knowledge = METRIC_KNOWLEDGE[slug];
   const names = [meta.title];

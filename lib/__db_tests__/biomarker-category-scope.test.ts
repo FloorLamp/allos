@@ -29,6 +29,9 @@ import { recentLabHighlights } from "@/lib/recent-labs";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import type { ProfileScope } from "@/lib/scope";
+import { METRIC_DOCUMENT_REACH } from "@/lib/body-metric-analytes";
+import { METRIC_READING_STORE } from "@/lib/metric-readings";
+import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
 import {
   biomarkerIndexRows,
   parseBiomarkerFilters,
@@ -149,6 +152,22 @@ function seedMixedProfile(): number {
     unit: "dB HL",
     flag: "abnormal",
   });
+  // HRV — the case that makes "a chart exists" the WRONG test. `hrv` is a registered
+  // slug with a tile and a detail page, and that chart is fed exclusively by
+  // `metric_samples`: no canonical entry, so nothing folds, and no import projection
+  // writes one. A cardiology report's HRV would reach no surface at all if the catalog
+  // dropped it, so it must stay — asserted, not inferred.
+  insert(pid, "vitals", "Heart Rate Variability", {
+    value: "42",
+    valueNum: 42,
+    unit: "ms",
+  });
+  // Its sibling shape, from an indirect-calorimetry report.
+  insert(pid, "vitals", "Basal Metabolic Rate", {
+    value: "1520",
+    valueNum: 1520,
+    unit: "kcal/day",
+  });
   insert(pid, "vitals", "Intraocular Pressure, Left Eye", {
     value: "16",
     valueNum: 16,
@@ -247,6 +266,12 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     ]) {
       expect(names).not.toContain(homed);
     }
+    // Still here: an imported reading of these reaches NO chart, so the catalog is
+    // still their home — a chart existing is not the same question as the reading
+    // being able to get to it.
+    for (const unreachable of ["Heart Rate Variability", "Basal Metabolic Rate"]) {
+      expect(names).toContain(unreachable);
+    }
     // Still here: the domain vitals #1076 was protecting, and the lab control.
     for (const stranded of [
       "Hearing Threshold, Right Ear 4 kHz",
@@ -257,6 +282,20 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
       "LDL Cholesterol",
     ]) {
       expect(names).toContain(stranded);
+    }
+  });
+
+  it("the `observations` reachability claim agrees with METRIC_READING_STORE (#2365)", () => {
+    // The pure tier checks that claim against the reading model (a canonical identity
+    // with no stream), because `lib/metric-readings` opens the database and a pure test
+    // may not. This is the other end of the same equality, asked of the hand-written
+    // store registry itself — so a metric whose store is edited to or from
+    // `medical_records` without revisiting its reachability fails here.
+    for (const slug of BODY_METRIC_SLUGS) {
+      const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observations";
+      expect(METRIC_READING_STORE[slug]?.table === "medical_records", slug).toBe(
+        claimed
+      );
     }
   });
 
