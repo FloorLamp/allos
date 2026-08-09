@@ -18,7 +18,11 @@
 // precise verdict. The card carries that caveat; these helpers stay numeric.
 
 import { theilSenSlopePerDay, type DatedPoint } from "./robust-stats";
-import { DERIVED_DEFS_BY_NAME } from "./derived-biomarkers";
+import {
+  derivedInputCanonicalNamesFor,
+  derivedInputKeysFor,
+  type CensoredSummary,
+} from "./derived-biomarkers";
 import { isAdultForClinical } from "./life-stage";
 
 // Julian year — matches the day→year conversion in lib/biomarker-trajectory.
@@ -26,10 +30,16 @@ const DAYS_PER_YEAR = 365.25;
 
 // The nine PhenoAge input analytes, by canonical name, sourced from the single
 // derived-biomarker definition so this list can never drift from what the formula
-// actually consumes. Order follows the definition (stable for the checklist).
-export const PHENOAGE_INPUT_NAMES: string[] = DERIVED_DEFS_BY_NAME[
-  "PhenoAge"
-].inputs.map((i) => i.canonical);
+// actually consumes. Order follows the definition (stable for the checklist). One
+// entry per INPUT — an input that accepts sibling spellings (glucose, #2334) is one
+// checklist line under its preferred name, not two things to go and get.
+export const PHENOAGE_INPUT_NAMES: string[] = derivedInputKeysFor("PhenoAge");
+
+// Every canonical spelling any PhenoAge input accepts — the checklist names plus the
+// siblings a slot will take. For surfaces asking "is this stored analyte a PhenoAge
+// input?" of an arbitrary name, where the answer must be yes for either spelling.
+export const PHENOAGE_INPUT_ACCEPTED_NAMES: string[] =
+  derivedInputCanonicalNamesFor("PhenoAge");
 
 // Nine — the count of analytes a complete PhenoAge draw needs.
 export const PHENOAGE_INPUT_COUNT = PHENOAGE_INPUT_NAMES.length;
@@ -205,6 +215,52 @@ export function completenessChecklistMessage(c: InputCompleteness): string {
   return `${c.presentCount} of ${c.totalCount} inputs present; add ${humanizeList(
     c.missing
   )} to compute your biological age.`;
+}
+
+// ── Censored inputs (#2334) ───────────────────────────────────────────────────
+//
+// A lab reports an undetectable analyte as "<0.2", not as a number. The app's
+// convention for such a value is substitute the limit, KEEP the marker, show it — a
+// chart can say it with a hollow dot and a "<" in the tooltip. A single "biological
+// age" number has no such channel, so the marker has to be said in words, or the
+// estimate presents as exact when one of its nine inputs was not measured exactly.
+
+// The parts of a complete draw this note reads.
+export interface BioAgeDrawInputs {
+  inputs: { name: string; value: number; unit: string; bound?: "<" | ">" }[];
+  censored?: CensoredSummary;
+}
+
+// The sentence a bio-age surface shows when its number rests on a component that was
+// reported beyond a detection limit: WHICH input, at WHAT limit, and — only when the
+// index has declared how that input moves it — which way the substitution biases the
+// result. Null when every component was an exact number.
+export function censoredInputNote(draw: BioAgeDrawInputs): string | null {
+  const censored = draw.censored;
+  if (!censored || censored.inputs.length === 0) return null;
+  const named = censored.inputs.map((c) => {
+    const input = draw.inputs.find((i) => i.name === c.name);
+    const at =
+      input == null
+        ? ""
+        : ` at ${input.value}${input.unit ? ` ${input.unit}` : ""}`;
+    const side = c.bound === "<" ? "below" : "above";
+    return `${c.name} was reported ${side} its detection limit and substituted${at}`;
+  });
+  const lead = `Rests on ${
+    named.length > 1 ? "censored inputs" : "a censored input"
+  }: ${humanizeList(named)}.`;
+  // The bias is worth stating BECAUSE it is knowable: substituting the limit of a
+  // below-detection hs-CRP assumes the worst case for a term that raises the age, so
+  // the estimate can only be too high from it. An index that hasn't declared its
+  // input directions says nothing here rather than implying the error is symmetric.
+  const bias =
+    censored.bias === "over"
+      ? " The estimate can only be too high from that substitution."
+      : censored.bias === "under"
+        ? " The estimate can only be too low from that substitution."
+        : "";
+  return `${lead}${bias}`;
 }
 
 // ── Adult gate ────────────────────────────────────────────────────────────────

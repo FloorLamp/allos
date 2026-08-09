@@ -7,7 +7,7 @@ import {
   biomarkerRetestIdentity,
   normalizeCanonicalKey,
 } from "../canonical-name";
-import { PHENOAGE_INPUT_NAMES } from "../bio-age";
+import { PHENOAGE_INPUT_ACCEPTED_NAMES } from "../bio-age";
 import {
   biomarkerRankKey,
   emptyBiomarkerRankFacts,
@@ -43,7 +43,12 @@ export function getRankedBiomarkerOptions(
   const measured = new Set(emptyFacts.measured);
   const starred = new Set(emptyFacts.starred);
   const pillar = new Set(emptyFacts.pillar);
-  const pillarKeys = new Set(PHENOAGE_INPUT_NAMES.map(biomarkerRankKey));
+  // Every spelling a PhenoAge input accepts, not just the preferred one: the
+  // question here is "is this candidate analyte a bio-age pillar input?", and a
+  // stored "Glucose" is one even though the input prefers "Glucose, Fasting" (#2334).
+  const pillarKeys = new Set(
+    PHENOAGE_INPUT_ACCEPTED_NAMES.map(biomarkerRankKey)
+  );
 
   const latest = getMedicalRecords(profileId, { current: true });
   const measuredFamilies = new Set(
