@@ -81,10 +81,16 @@ a quiet recent stretch is the live signal.
 - Both scrollers bleed edge-to-edge on phones and open at the RECENT edge;
   calendar cells grow from 24px toward 34px when the window is short.
 - Hover, focus, and TAP all push a cell summary into the shared caption —
-  `title` never fires on touch. Populated calendar days deep-link into the
-  Timeline (`timelineDayHref`). Hovering a MATRIX cell draws a crosshair: the
-  cell rings, its row (tinted, label included) and its column stay full, and
-  every other cell dims.
+  `title` never fires on touch. Hover state is SHARED across the two charts,
+  keyed on the day: hovering a matrix cell draws a crosshair (cell ringed, row
+  tinted, column full, everything else dimmed — suppressed at one row, where
+  the row IS the matrix) and echoes onto its calendar day; hovering a calendar
+  day highlights that column in the matrix.
+- Tapping a populated calendar day SELECTS it (toggling) and opens the day
+  panel — what that day held under the current filter — with the Timeline one
+  link away inside the panel (`timelineDayHref`). Never a navigation.
+- All/None render as dashed action chips after a divider, each disabled when
+  it would be a no-op.
 - Matrix cells are `aria-hidden` behind a per-row composed `aria-label` (the
   `PracticeHeatmap` precedent); per-cell keyboard navigation is a decided
   non-goal for now.

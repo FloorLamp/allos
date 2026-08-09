@@ -51,20 +51,29 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
   await expect(page.getByTestId("nutrition-trends-rollup")).toHaveCount(0);
 });
 
-test("an intake-history day links into the Timeline's day view (#1166)", async ({
+test("a day tap opens the day panel; the Timeline stays one link away (#1166)", async ({
   page,
 }) => {
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");
   await expect(history).toBeVisible();
 
-  // Each populated calendar day is a link to the Timeline filtered to that day.
-  const day = history.getByTestId("day-history-day").first(); // first-ok: read-only, any populated day proves the link shape
-  await expect(day).toHaveAttribute(
+  // Tapping a populated day SELECTS it — no navigation — and the panel lists
+  // what that day held.
+  const day = history.getByTestId("day-history-day").first(); // first-ok: read-only, any populated day proves the interaction
+  await day.click();
+  await expect(page).toHaveURL(/\/trends\?tab=nutrition/);
+  const panel = history.getByTestId("day-history-daypanel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId("day-history-day-item")).not.toHaveCount(0);
+
+  // The Timeline link inside the panel carries the single-day shape.
+  const link = panel.getByRole("link", { name: /Timeline/ });
+  await expect(link).toHaveAttribute(
     "href",
     /\/timeline\?from=.*&to=.*#timeline-day-/
   );
-  await followLink(page, day, /\/timeline\?from=/);
+  await followLink(page, link, /\/timeline\?from=/);
   await expect(page).toHaveURL(/\/timeline\?from=/);
 });
 

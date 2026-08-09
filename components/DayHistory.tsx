@@ -109,12 +109,15 @@ export default function DayHistory({
   const [detail, setDetail] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [calCell, setCalCell] = useState(CAL_CELL);
-  // The matrix crosshair: the hovered cell's position. Its row and column stay
-  // at full strength while every other cell dims, so a hover reads as "this
-  // group, this day" without tracing gridlines that aren't there.
-  const [hoverPos, setHoverPos] = useState<{ row: string; ci: number } | null>(
-    null
-  );
+  // Hover state is SHARED by both charts, keyed on the day: hovering a
+  // calendar day highlights that column in the matrix, hovering a matrix cell
+  // echoes onto its calendar day. `hoverRow` is the matrix-only half of the
+  // crosshair.
+  const [hoverDay, setHoverDay] = useState<string | null>(null);
+  const [hoverRow, setHoverRow] = useState<string | null>(null);
+  // A tapped calendar day opens the day panel (selection, not navigation —
+  // the Timeline stays one link away inside the panel).
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const matrixRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
 
@@ -289,20 +292,72 @@ export default function DayHistory({
     onClick: () => setDetail(text),
   });
 
-  // Matrix cells additionally drive the crosshair.
-  const matrixCellProps = (text: string, rowKey: string, ci: number) => ({
+  // Calendar cells drive the shared hover day; a click SELECTS (toggling),
+  // never navigates.
+  const calendarCellProps = (
+    text: string,
+    date: string,
+    clickable: boolean
+  ) => ({
     title: text,
     onMouseEnter: () => {
       setDetail(text);
-      setHoverPos({ row: rowKey, ci });
+      setHoverDay(date);
     },
     onMouseLeave: () => {
       setDetail(null);
-      setHoverPos(null);
+      setHoverDay(null);
+    },
+    onFocus: () => setDetail(text),
+    onBlur: () => setDetail(null),
+    onClick: () => {
+      setDetail(text);
+      if (clickable) setSelectedDay((prev) => (prev === date ? null : date));
+    },
+  });
+
+  // The selected day's items under the CURRENT filter, largest first.
+  const dayItems = useMemo(() => {
+    if (!selectedDay) return null;
+    const agg = new Map<
+      string,
+      { value: number; detail: number; notes: string[] }
+    >();
+    for (const v of values) {
+      if (v.date !== selectedDay || !(v.value > 0)) continue;
+      if (selected && !selected.has(v.group)) continue;
+      const e = agg.get(v.group) ?? { value: 0, detail: 0, notes: [] };
+      e.value += v.value;
+      e.detail += v.detail ?? 0;
+      if (v.note && !e.notes.includes(v.note)) e.notes.push(v.note);
+      agg.set(v.group, e);
+    }
+    return [...agg.entries()]
+      .map(([key, e]) => ({
+        key,
+        meta: groups.find((g) => g.key === key),
+        ...e,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [selectedDay, values, selected, groups]);
+
+  // Matrix cells drive both halves of the shared hover state.
+  const matrixCellProps = (text: string, rowKey: string, date: string) => ({
+    title: text,
+    onMouseEnter: () => {
+      setDetail(text);
+      setHoverDay(date);
+      setHoverRow(rowKey);
+    },
+    onMouseLeave: () => {
+      setDetail(null);
+      setHoverDay(null);
+      setHoverRow(null);
     },
     onClick: () => {
       setDetail(text);
-      setHoverPos({ row: rowKey, ci });
+      setHoverDay(date);
+      setHoverRow(rowKey);
     },
   });
 
@@ -344,19 +399,28 @@ export default function DayHistory({
               <span className="max-w-28 truncate">{g.short ?? g.label}</span>
             </button>
           ))}
+          {/* All/None are proper chips — dashed borders mark them as ACTIONS
+              over the selection, not groups; each disables when it would be a
+              no-op. */}
+          <span
+            className="mx-0.5 h-4 w-px bg-black/10 dark:bg-white/15"
+            aria-hidden="true"
+          />
           <button
             type="button"
-            className="px-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            disabled={selected === null}
             onClick={() => setSelected(null)}
+            className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
           >
-            all
+            All
           </button>
           <button
             type="button"
-            className="px-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            disabled={selected !== null && selected.size === 0}
             onClick={() => setSelected(new Set())}
+            className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
           >
-            none
+            None
           </button>
         </div>
       )}
@@ -385,22 +449,35 @@ export default function DayHistory({
                         <div key={cell.date} style={size} aria-hidden="true" />
                       );
                     }
+                    const isSelected = selectedDay === cell.date;
+                    // A matrix hover echoes onto its calendar day.
+                    const echo = hoverRow !== null && hoverDay === cell.date;
                     const cls = `rounded-[5px] ${LEVEL_CLASS[cell.level]}${
-                      cell.today ? ` ${TODAY_RING}` : ""
+                      isSelected
+                        ? " ring-2 ring-slate-600 dark:ring-slate-200"
+                        : echo
+                          ? " ring-2 ring-slate-400 dark:ring-slate-400"
+                          : cell.today
+                            ? ` ${TODAY_RING}`
+                            : ""
                     }`;
-                    const common = hoverProps(calendarCellSummary(cell));
                     if (cell.value > 0) {
                       return (
-                        <Link
+                        <button
                           key={cell.date}
-                          href={timelineDayHref(cell.date)}
+                          type="button"
                           data-testid="day-history-day"
                           data-date={cell.date}
                           data-level={cell.level}
                           aria-label={calendarCellSummary(cell)}
+                          aria-pressed={isSelected}
                           style={size}
                           className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
-                          {...common}
+                          {...calendarCellProps(
+                            calendarCellSummary(cell),
+                            cell.date,
+                            true
+                          )}
                         />
                       );
                     }
@@ -411,7 +488,11 @@ export default function DayHistory({
                         aria-label={calendarCellSummary(cell)}
                         style={size}
                         className={cls}
-                        {...common}
+                        {...calendarCellProps(
+                          calendarCellSummary(cell),
+                          cell.date,
+                          false
+                        )}
                       />
                     );
                   })}
@@ -444,6 +525,72 @@ export default function DayHistory({
         </div>
       )}
 
+      {/* Day panel: what the SELECTED day held, under the current filter —
+          selection, not navigation; the Timeline stays one link away. */}
+      {selectedDay && dayItems && (
+        <div
+          data-testid="day-history-daypanel"
+          className="rounded-lg border border-black/10 p-3 text-sm dark:border-white/10"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-800 dark:text-slate-100">
+              {selectedDay}
+              {selectedDay === today ? " · today" : ""}
+            </span>
+            <span className="flex items-center gap-3">
+              <Link
+                href={timelineDayHref(selectedDay)}
+                className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+              >
+                Timeline →
+              </Link>
+              <button
+                type="button"
+                aria-label="Close day details"
+                title="Close"
+                onClick={() => setSelectedDay(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                ×
+              </button>
+            </span>
+          </div>
+          {dayItems.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Nothing logged this day under the current filters.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {dayItems.map((item) => (
+                <li
+                  key={item.key}
+                  data-testid="day-history-day-item"
+                  className="flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                >
+                  {item.meta?.foodSlug && (
+                    <FoodGroupIcon
+                      slug={item.meta.foodSlug}
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        FOOD_GROUP_TIER_TINT[item.meta.tier as FoodGroupTier] ??
+                        ""
+                      }`}
+                    />
+                  )}
+                  <span>{item.meta?.label ?? item.key}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {plural(item.value, spec.unitOne, spec.unitMany)}
+                    {item.detail > 0 && spec.detailSuffix
+                      ? ` · ${item.detail} ${spec.detailSuffix}`
+                      : ""}
+                    {item.notes.length > 0 ? ` · ${item.notes.join(", ")}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Matrix half: composition — one row per group, one cell per day, an
           extra gap at each week boundary so the weekly rhythm reads. */}
       {rows.length > 0 && (
@@ -451,7 +598,10 @@ export default function DayHistory({
           ref={matrixRef}
           className={SCROLLER}
           data-testid="day-history-matrix"
-          onMouseLeave={() => setHoverPos(null)}
+          onMouseLeave={() => {
+            setHoverDay(null);
+            setHoverRow(null);
+          }}
         >
           <div className="relative flex min-w-max flex-col gap-[3px]">
             {/* Day-of-month overlays at each week boundary (the day list is
@@ -473,6 +623,9 @@ export default function DayHistory({
             )}
             {rows.map((row) => {
               const isFold = row.key === FOLDED_ROW_KEY;
+              // With a single row the crosshair says nothing — the row IS the
+              // matrix — so only the hovered-cell ring survives.
+              const crosshair = rows.length > 1;
               const labelInner = (
                 <>
                   {row.foodSlug && (
@@ -492,7 +645,7 @@ export default function DayHistory({
                   data-testid="day-history-row"
                   data-group={row.key}
                   className={`flex min-w-full items-center rounded-[4px]${
-                    hoverPos?.row === row.key
+                    crosshair && hoverRow === row.key
                       ? " bg-slate-500/10 dark:bg-white/10"
                       : ""
                   }`}
@@ -525,17 +678,25 @@ export default function DayHistory({
                   <span className="flex pr-1" aria-hidden="true">
                     {row.cells.map((cell, ci) => {
                       const isHovered =
-                        hoverPos?.row === row.key && hoverPos.ci === ci;
+                        hoverRow === row.key && hoverDay === cell.date;
+                      // The cross spans the hovered matrix row AND the hovered
+                      // day — whichever chart the day hover came from.
                       const inCross =
-                        hoverPos !== null &&
-                        (hoverPos.row === row.key || hoverPos.ci === ci);
+                        (hoverRow !== null && hoverRow === row.key) ||
+                        (hoverDay !== null && hoverDay === cell.date);
                       const ring = isHovered
                         ? " ring-2 ring-slate-600 dark:ring-slate-200"
-                        : cell.today
-                          ? ` ${TODAY_RING}`
-                          : "";
+                        : !crosshair && hoverDay === cell.date
+                          ? " ring-2 ring-slate-400 dark:ring-slate-400"
+                          : cell.today
+                            ? ` ${TODAY_RING}`
+                            : "";
                       const dim =
-                        hoverPos !== null && !inCross ? " opacity-40" : "";
+                        crosshair &&
+                        (hoverDay !== null || hoverRow !== null) &&
+                        !inCross
+                          ? " opacity-40"
+                          : "";
                       return (
                         <span
                           key={cell.date}
@@ -554,7 +715,7 @@ export default function DayHistory({
                           {...matrixCellProps(
                             matrixCellSummary(row, ci),
                             row.key,
-                            ci
+                            cell.date
                           )}
                         />
                       );
