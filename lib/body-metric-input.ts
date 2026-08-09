@@ -4,6 +4,13 @@
 // a false "saved" confirmation. This mirrors those bounds up front so the form
 // can surface an inline error instead. Kept DB-free and pure so it's unit-tested
 // in lib/__tests__.
+//
+// It also owns the form's SAVE CONFIRMATION when the sitting's stated time did not
+// survive the acceptance gate (#2311) — same reason, same tier: what the user is
+// told about a write is a decision, and a decision belongs somewhere it can be
+// tested rather than inside a JSX handler.
+
+import type { StatedTimeRefusal } from "./stated-time";
 
 export interface BodyMetricRawInput {
   weight: string | null;
@@ -59,4 +66,37 @@ export function validateBodyMetricInput(
   }
 
   return null;
+}
+
+// THIS SURFACE'S WORDS for a refused stated time (#2311, #2296's ruling applied to
+// body metrics). One clause per rule, because the three are different things to
+// hear — and deliberately NOT `STATED_TIME_REFUSAL_NOTE`, which says "your device's
+// clock is ahead". That clause belongs to a surface that timestamped the statement
+// ITSELF; here the time is a field the user can see, typed or filled by the
+// control's one-tap "Now", so diagnosing their clock would be diagnosing the wrong
+// machine. What is shared is the REASON CODE, which is the whole point of the
+// verdict.
+const MEASUREMENT_TIME_NOTE: Record<StatedTimeRefusal, string> = {
+  future: "that time hasn't happened yet",
+  "other-day": "it isn't on that day",
+  malformed: "it couldn't be read",
+};
+
+// The confirmation the measurements form raises after a successful save.
+//
+// A refusal is a NOTICE, not a failure: the reading LANDED, so this stays the
+// ordinary success toast and only amends the sentence it was already going to say.
+// `saved` is the surface's own subject ("Measurements saved", "Weight saved") —
+// what was kept belongs to the surface, the reason belongs to the gate.
+//
+// Nothing is persisted to chase the user afterwards, deliberately (#2296's ruling,
+// re-affirmed by #2311): `occurred_at` is descriptive, the row is on the right day,
+// and its Time is one tap away in the same form.
+export function measurementsSavedText(
+  saved: string,
+  statedTimeRefused?: StatedTimeRefusal
+): string {
+  return statedTimeRefused
+    ? `${saved} without the time — ${MEASUREMENT_TIME_NOTE[statedTimeRefused]}.`
+    : saved;
 }

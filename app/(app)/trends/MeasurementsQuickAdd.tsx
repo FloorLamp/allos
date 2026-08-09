@@ -8,7 +8,10 @@ import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
-import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import {
+  measurementsSavedText,
+  validateBodyMetricInput,
+} from "@/lib/body-metric-input";
 import { validateVitalsInput } from "@/lib/vitals-input";
 import { validateGrowthInput } from "@/lib/growth-input";
 import {
@@ -27,7 +30,10 @@ import {
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
-import { addMeasurements } from "./measurement-actions";
+import {
+  addMeasurements,
+  type MeasurementsSaveResult,
+} from "./measurement-actions";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -429,8 +435,9 @@ export default function MeasurementsQuickAdd({
       setError("You're offline — reconnect to save these measurements.");
       return;
     }
+    let saved: MeasurementsSaveResult;
     try {
-      await addMeasurements(formData);
+      saved = await addMeasurements(formData);
     } catch (err) {
       if (shouldQueueOffline(navigator.onLine !== false, err)) {
         if (await queueOffline()) return;
@@ -439,7 +446,16 @@ export default function MeasurementsQuickAdd({
       return;
     }
     rememberWritten();
-    toast(metric ? `${metric.label} saved` : "Measurements saved");
+    // The measurements landed; the sitting's stated time may not have (#2311). That
+    // is a NOTICE on the ordinary success toast — never `setError`, which would read
+    // as "your entry failed" for a reading that is sitting right there — and never a
+    // durable marker to chase the user with later.
+    toast(
+      measurementsSavedText(
+        metric ? `${metric.label} saved` : "Measurements saved",
+        saved.statedTimeRefused
+      )
+    );
     formRef.current?.reset();
     tempUnitDetection.reset();
     refreshSummaries();

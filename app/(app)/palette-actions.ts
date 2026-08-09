@@ -48,7 +48,9 @@ export async function paletteQuickLog(
     };
   }
 
-  const wrote = insertBodyMetric(profile.id, {
+  // Time-blind, like every quick-log door: the palette states a WEIGHT, never a
+  // "when", so the core's outcome has no refusal to carry here (#2311).
+  const { wrote } = insertBodyMetric(profile.id, {
     date: today(profile.id),
     weight: String(parsed.value),
     weightUnit: parsed.unit,

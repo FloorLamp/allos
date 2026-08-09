@@ -8,7 +8,7 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
-import { frozenNow, workerDbPath } from "./worker-env";
+import { frozenLocalHHMM, frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -368,6 +368,96 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
     await expect(
       page.getByTestId("measurements-quick-add").getByTestId("m-time")
     ).toHaveValue(statedHhmm);
+  } finally {
+    clearTodayManualBodyRow();
+  }
+});
+
+// #2311 — a refused stated time must not cost the reading, and must not be silent.
+//
+// The measurements form posts a RESOLVED INSTANT for the sitting (the WhenControl
+// pair, anchored client-side on the row's own day), so unlike the food bar it is
+// online-reachable: any wall time later than the server's own now — a device clock
+// running fast, or a hand-typed hour — is past the five-minute skew window the
+// acceptance gate tolerates. Until this shipped the weigh-in landed and the "when"
+// vanished with nothing on screen saying so.
+//
+// DETERMINISTIC BY CONSTRUCTION, not by luck: the pinned e2e timezone puts the
+// frozen clock at 13:mm LOCAL on every run (e2e/pinned-timezone.ts), so a
+// late-evening wall time on today is always hours ahead and never crosses local
+// midnight into the `other-day` rule. The guard below states that dependency out
+// loud rather than letting a change to the pinning turn this red at 3am.
+const REFUSED_HHMM = "21:45";
+const REFUSED_WEIGHT = "73.6";
+
+test("a stated time the gate refuses costs the time, not the reading — and SAYS so (#2311)", async ({
+  page,
+}) => {
+  test.slow();
+  clearTodayManualBodyRow();
+  try {
+    const { zone } = pinnedTimezone(frozenNow().toISOString());
+    expect(frozenLocalHHMM(zone).slice(0, 2)).toBe("13");
+
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+
+    await settledFill(page, form.getByTestId("m-time"), REFUSED_HHMM);
+    await settledFill(page, form.locator("#m-weight"), REFUSED_WEIGHT);
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Save measurements" })
+    );
+
+    // THE FIX: the confirmation the user was already going to read admits what it
+    // could not keep — same toast, same success tone, no second surface and no
+    // inline error (the weight is sitting right there). And it names the rule that
+    // fired rather than diagnosing a device whose clock the user can see.
+    await expect(
+      page.getByText(
+        "Measurements saved without the time — that time hasn't happened yet."
+      )
+    ).toBeVisible();
+
+    // The ruling's other half: the READING landed. Only the minute is gone, and the
+    // row is on its own day rather than re-dated onto the refused instant's.
+    const handle = new Database(DB_PATH);
+    try {
+      const rows = handle
+        .prepare(
+          `SELECT date, weight_kg, occurred_at, edited FROM body_metrics
+            WHERE profile_id = 1 AND date = ? AND source IS NULL`
+        )
+        .all(TODAY) as {
+        date: string;
+        weight_kg: number | null;
+        occurred_at: string | null;
+        edited: number | null;
+      }[];
+      expect(rows).toHaveLength(1);
+      // The reading is there (its canonical kg depends on the login's unit pref,
+      // which this spec does not own — that it LANDED is the claim).
+      expect(rows[0].weight_kg).not.toBeNull();
+      expect(rows[0]).toMatchObject({
+        date: TODAY,
+        // Honest absence — and NOTHING persisted to chase the user later: no
+        // marker, no review row, no edit flag. The Time is one tap away in the
+        // same form, which is the whole reason a durable nag would be the same
+        // misjudgement as the silence, pointed the other way.
+        occurred_at: null,
+        edited: 0,
+      });
+    } finally {
+      handle.close();
+    }
+
+    // And the census renders it as an untimed weigh-in rather than claiming a time.
+    await page.reload();
+    const cell = page.getByTestId("vitals-today-weight");
+    await expect(cell).toBeVisible();
+    await expect(cell).not.toContainText(`at ${REFUSED_HHMM}`);
   } finally {
     clearTodayManualBodyRow();
   }
