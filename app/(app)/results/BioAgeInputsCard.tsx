@@ -114,7 +114,7 @@ export default async function BioAgeInputsCard() {
           See biological age
         </Link>
         {!completeness.complete && (
-          <Link href="/data" className="btn btn-sm btn-ghost">
+          <Link href="/data" className="btn-ghost btn-sm">
             Import labs
           </Link>
         )}
