@@ -2619,6 +2619,18 @@ name fits nothing — the row was renamed or deleted since the import — the ca
 says **"no longer in this import"** rather than offering a link that goes
 nowhere.
 
+**A value has to be a number to be a reading (#2322).** A stress test reports
+`Exercise Duration` with the unit `min:sec` and a colon-formatted value
+("10:30"). That is a string, and a string filed as a reading can never plot,
+flag or trend — it just sits in the analyte's series looking like data. Every
+ingest door (CCD, FHIR, and the AI extractor) now normalises a colon-formatted
+duration to **whole seconds** at the door, storing `630` in `s`: seconds is the
+finest grain the source states and keeps its digits exact, where minutes would
+turn 10:20 into a repeating 10.3333…. When the parse cannot produce a number the
+observation is **dropped with a reason** rather than stored — it appears in the
+document's Dropped list under **"Unparsable value"**, so a refusal is visible
+instead of silent.
+
 ### Failures and duplicates
 
 Spanning both sections at the top are any integration that's **currently

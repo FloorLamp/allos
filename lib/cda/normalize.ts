@@ -536,6 +536,24 @@ function normalizeValueText(raw: unknown): string | null {
   return VALUE_PLACEHOLDERS.has(s.toLowerCase()) ? null : s;
 }
 
+// The RAW quantity attributes off a CDA <value> — the printed digits and the unit
+// exactly as shipped, with NO numeric parse. readValue deliberately discards both when
+// the digits aren't a number, and the duration door (#2322) needs them precisely in
+// that case: `<value xsi:type="PQ" value="10:30" unit="min:sec"/>` is the shape it
+// exists to recognise, and by the time readValue is done it looks like an empty value.
+export function rawQuantity(value: any): {
+  text: string | null;
+  unit: string | null;
+} {
+  const v = Array.isArray(value) ? value[0] : value;
+  if (v == null || v["@_nullFlavor"] != null) return { text: null, unit: null };
+  const raw = v["@_value"];
+  return {
+    text: raw == null || raw === "" ? null : String(raw),
+    unit: v["@_unit"] ?? null,
+  };
+}
+
 export function readValue(value: any): {
   value: string | null;
   value_num: number | null;

@@ -31,6 +31,7 @@ import {
   buildResolver,
   conceptName,
   fhirTime,
+  hasUnparsableDurationValue,
   loincFromFhirCode,
   pickCoding,
 } from "./common";
@@ -299,6 +300,11 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
     const disposition = classifyLoinc(loincFromFhirCode(r?.code)).disposition;
     if (disposition === "non-analyte") return "non_analyte";
     if (disposition === "percentile") return "derived_percentile";
+    // The duration door refused the only value the resource carried (#2322): the
+    // source declared a colon-formatted duration unit and its value wasn't one, so
+    // it was dropped rather than stored as a string. Reported as such — "no value"
+    // would say the opposite of what happened.
+    if (hasUnparsableDurationValue(r)) return "unparsable_value";
     return "no_value";
   }
   if (resourceType === "AllergyIntolerance") {
