@@ -32,6 +32,7 @@ import {
   type ConfidenceItem,
   type ConfidenceKind,
 } from "./extraction-confidence";
+import { recordConfidenceKind } from "./confidence-triage";
 import canonicalSeed from "./canonical-biomarkers.json";
 import {
   toConditionLaterality,
@@ -582,16 +583,11 @@ export function extractionConfidenceItems(
     reason: row.confidence_reason ?? null,
   });
   return [
+    // Which kind a records row is flagged under is the SAME question the triage
+    // links ask of a persisted row, so both read one answer (#2339) — otherwise a
+    // flag and the row it names could disagree about their own domain.
     ...result.results.map((r) =>
-      item(
-        r.category === "prescription"
-          ? "medication"
-          : r.category === "vitals"
-            ? "vitals"
-            : "lab",
-        r.name,
-        r
-      )
+      item(recordConfidenceKind(r.category), r.name, r)
     ),
     ...result.immunizations.map((i) => item("immunization", i.vaccine, i)),
     ...result.conditions.map((c) => item("condition", c.name, c)),

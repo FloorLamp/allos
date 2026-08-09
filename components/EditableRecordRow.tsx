@@ -4,7 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
 import { recordNameLink } from "@/lib/import-browser";
+import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { Tag, MedicalValue } from "./ui";
+import { ConfidenceRowNote } from "./ConfidenceBadge";
+import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
@@ -15,6 +18,9 @@ import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 export default function EditableRecordRow({
   record,
   grouped,
+  rowId,
+  focused = false,
+  flag,
 }: {
   record: MedicalRecord;
   // When the table is name-sorted it groups contiguous same-name rows (like the
@@ -22,6 +28,13 @@ export default function EditableRecordRow({
   // group-closing border falls only on its end row. Omit for ungrouped tables,
   // where every row shows its name and draws a border.
   grouped?: { isGroupStart: boolean; isGroupEnd: boolean };
+  // The row's anchor id on its tab, so a "Check these first" link can land on it
+  // (#2339). Present on the import-detail browser; omitted elsewhere.
+  rowId?: string;
+  // This row is the one a `?focus=` label resolved to — tint it.
+  focused?: boolean;
+  // What the extractor hedged about THIS row, when a flag resolved to it alone.
+  flag?: ConfidenceFlag;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -41,7 +54,11 @@ export default function EditableRecordRow({
         ? "border-b border-black/5 dark:border-white/10"
         : "";
     return (
-      <tr className={rowBorder}>
+      <tr
+        id={rowId}
+        data-focused={focused ? "true" : undefined}
+        className={`${rowBorder} ${focused ? TRIAGE_FOCUS_ROW : ""}`}
+      >
         <td className="td font-medium">
           {!showName ? null : nameLink ? (
             <Link
@@ -54,6 +71,9 @@ export default function EditableRecordRow({
           ) : (
             r.name
           )}
+          {/* What the extractor hedged about this row, and why (#2339) — the
+              reason used to live only in the import page's triage card. */}
+          {flag && <ConfidenceRowNote flag={flag} />}
           {/* Performing provider, as a muted sub-line (links to the registry). */}
           {r.provider_name ? (
             <div className="text-xs font-normal text-slate-500 dark:text-slate-400">
@@ -143,7 +163,10 @@ export default function EditableRecordRow({
   // Edit mode: the shared RecordForm (same fields + write path the add slot uses)
   // swaps in place of the row; updateRecord is profile-scoped and reconciles flags.
   return (
-    <tr className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60">
+    <tr
+      id={rowId}
+      className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60"
+    >
       <td colSpan={8} className="td py-3">
         <RecordForm
           mode="edit"

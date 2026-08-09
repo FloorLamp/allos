@@ -576,3 +576,98 @@ export function seedRecordsBrowser(): void {
     `e2e: seeded morning + bedtime due doses on profile ${PROFILE_ID} for the dose-order spec (#297)`
   );
 }
+
+// ── Import-detail triage-link fixture ──
+export function seedTriageLinks(): void {
+  // ── "Check these first" → the row it names (issue #2339) ──────────────────────
+  // The confidence card names rows that are already rendered below it, so each
+  // flagged row is a LINK. This fixture plants one document (id 910) carrying all
+  // three resolutions at once, because the two unhappy ones are the contract:
+  //
+  //   • a label naming exactly ONE row      → links at that row, on its own tab
+  //   • a label naming SEVERAL rows         → filters the tab, selects none
+  //   • a label naming NO row (since edited
+  //     or deleted)                         → says so, and is not a link at all
+  //
+  // It also spans two tabs (a lab and a condition), so the "switch to the owning
+  // tab" half is exercised rather than assumed. The report describes 6 extracted
+  // rows; 5 remain, because the vanished one is exactly the row a reviewer deleted
+  // after extraction. All content synthetic — fictional analyte/condition names.
+  const TRIAGE_DOC_ID = 910;
+  db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+    TRIAGE_DOC_ID
+  );
+  db.prepare(`DELETE FROM conditions WHERE document_id = ?`).run(TRIAGE_DOC_ID);
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(TRIAGE_DOC_ID);
+  const triageReport = {
+    drops: [],
+    coverage: [],
+    imported: 6,
+    considered: 6,
+    confidence: {
+      counts: { high: 2, medium: 2, low: 2, unknown: 0 },
+      scrutiny: 4,
+      // Stored lowest-first, as the writer ranked it.
+      flags: [
+        {
+          kind: "lab",
+          label: "E2E Faded Marker",
+          confidence: "low",
+          reason: "printed figure partly illegible",
+        },
+        {
+          // Nothing carries this name any more — the row was deleted after import.
+          kind: "lab",
+          label: "E2E Vanished Marker",
+          confidence: "low",
+          reason: "value read from a torn corner",
+        },
+        {
+          // TWO rows carry this name: the link must filter, never pick one.
+          kind: "lab",
+          label: "E2E Twin Marker",
+          confidence: "medium",
+          reason: "two panels report this name",
+        },
+        {
+          // A different tab entirely — the link has to switch to it.
+          kind: "condition",
+          label: "E2E Uncertain Condition",
+          confidence: "medium",
+          reason: "diagnosis hedged in the note",
+        },
+      ],
+    },
+  };
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-triage-labs.pdf', '', 'application/pdf', 3072,
+           'Lab report', 'upload', 'done', 6, ?, '2026-07-08 09:35:00')`
+  ).run(TRIAGE_DOC_ID, PROFILE_ID, JSON.stringify(triageReport));
+  const insTriageRecord = db.prepare(
+    `INSERT INTO medical_records
+     (profile_id, date, category, name, canonical_name, value, unit,
+      document_id, source)
+   VALUES (?, '2026-07-02', 'lab', ?, ?, ?, 'mg/dL', ?, 'upload')`
+  );
+  for (const [name, value] of [
+    ["E2E Faded Marker", "12"],
+    // The twins: same name, different values — the ambiguity a reviewer must not
+    // be sent to one half of.
+    ["E2E Twin Marker", "31"],
+    ["E2E Twin Marker", "33"],
+    ["E2E Settled Marker", "70"],
+  ]) {
+    insTriageRecord.run(PROFILE_ID, name, name, value, TRIAGE_DOC_ID);
+  }
+  db.prepare(
+    `INSERT INTO conditions (profile_id, name, status, document_id, source)
+   VALUES (?, 'E2E Uncertain Condition', 'active', ?, 'upload')`
+  ).run(PROFILE_ID, TRIAGE_DOC_ID);
+
+  console.log(
+    `e2e: seeded import document ${TRIAGE_DOC_ID} with resolvable / ambiguous / vanished confidence labels (#2339)`
+  );
+}

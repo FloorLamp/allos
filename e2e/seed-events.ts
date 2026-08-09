@@ -36,6 +36,7 @@ import {
   seedImportFeed,
   seedDropReport,
   seedExtractionConfidence,
+  seedTriageLinks,
   seedRecordsBrowser,
 } from "./seed/imports";
 import {
@@ -150,6 +151,7 @@ seedRuleDomains();
 seedGoalPacing();
 seedDropReport();
 seedExtractionConfidence();
+seedTriageLinks();
 seedMedicationCards();
 seedPrnLedger();
 seedRecordsBrowser();
