@@ -221,6 +221,32 @@ calendar, with the payload and level function supplied by the caller; `lensWindo
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
 only the per-lens week caps supplied.
 
+### Food regularity
+
+"How often does this group actually show up in this meal window?" is an
+OBSERVATION and never a target — `frequency_targets` and the cadence ledger own
+"how often should it". `lib/food-regularity.ts` owns the measure: a group's share
+of the days that WINDOW was logged at all (not of every day — a day with no
+morning log is evidence about logging, not about breakfast), over
+`FOOD_REGULARITY_SPAN_DAYS` (21, three whole weeks, strictly inside the ranking's
+365-day frecency window). Under `FOOD_REGULARITY_MIN_WINDOW_DAYS` (7) a window
+answers `null`, and null means SILENCE — read it as no expectation, never as a
+habit broken.
+
+Its one consumer is speed, not insight: the Food tab's "Your usual `<window>`"
+button logs the habitual groups that window still has nothing logged for, in one
+tap instead of two. It is an OFFER — the user's tap is the write, the app never
+logs food on anyone's behalf, and there is no send, no finding and no target
+anywhere in it. The label names every group it will write and
+`logUsualFoodCore` re-derives the same offer from fresh state and writes only the
+intersection, so a stale tap refuses instead of logging a second breakfast.
+
+A group whose counter IS a substance ledger, or which carries an active
+cap-direction target, is measured but never presented back as an expectation
+(#998's language: reflecting it normalises it). The catalog's `limit` tier is NOT
+an exclusion — #1980 ruled tier never moves a group into or out of a fast path.
+See `docs/internals/food-regularity.md`.
+
 ### Instants and days
 
 "When did this happen?" (an INSTANT) and "which day does it count for?" (a
@@ -410,6 +436,21 @@ freeze / self-healing-sweep decision is `planNudgeCadence`
 (`lib/nudge-cadence.ts`) — the refill, preventive, illness-care and follow-up
 planners are adapters over it, not four copies.
 
+A message BODY is composed, never assembled. `lib/notifications/rich-text.ts` owns
+emphasis (a builder declares runs and never writes markup; `plainBody()` gives every
+other channel the same words), `lib/notifications/message-line.ts` owns the line
+grammar as a type with declared parts, and `lib/notifications/glyphs.ts` owns the
+glyph vocabulary: every glyph registered once with its meaning, its role (who acts /
+what this needs / what it is about / where it stands / what a control does) and ONE
+canonical encoding including its variation selector. One concept gets one glyph —
+adding a synonym means retiring the incumbent into `RETIRED_GLYPHS`, not sitting
+beside it — and a presentation-ambiguous codepoint must declare U+FE0F or U+FE0E, so
+the same symbol can never render two ways again. The digest and the weekly recap emit
+`RichText` through `formatEmphasizedLine`, which bolds a head only when the line has
+qualifiers to be distinguished from. Scope is declared: `MESSAGE_LINE_MODULES` and
+`GLYPH_MODULES` register the message builders, and their scans fail a hand-assembled
+separator or an emoji literal with a written reason per allowlisted survivor.
+
 Delivery health is stored in `notify_lifecycle` and follows the shared
 set/clear/freeze decision in `lib/notifications/delivery-status.ts`. Clear an
 error only after a healthy dispatch actually attempted the affected channel.
@@ -478,6 +519,19 @@ Important invariants:
   engine detects and SUGGESTS; the user's tap is the write.
 - A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
   make an accepted demotion indistinguishable from a deletion.
+
+Biomarker → supplement is **curated first, AI second** (#2378), exactly as
+biomarker → food has been since #577. `lib/supplement-suggest-curated.ts` is a pure
+engine over a committed, human-reviewable map
+(`scripts/gen-biomarker-supplement-map.ts`), gathered by
+`getCuratedSupplementSuggestions` and rendered by one component. It reuses the
+EXISTING screens — `screenSuggestionSafety`, `conditionOrSituationMatches`,
+`stackFoodDrugHits` — and never declares a second copy of one. The map is
+deliberately small, states NO dose, and every entry carries a checkable evidence
+line plus a public source; an uncovered family falls through to the AI route
+(`lib/supplement-suggest.ts`, now the FALLBACK) and loses nothing, so coverage is
+measurable rather than a gate. The two must stay **visibly distinguishable** where
+they render — a curated recommendation and a generated one are different claims.
 
 See `docs/internals/supplements.md`.
 

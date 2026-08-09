@@ -60,6 +60,7 @@ import { prefixMessage } from "./types";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -119,7 +120,10 @@ export function renderPostWorkoutFinishMessage(
           ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
           : e.dose.amount;
       const amt = dose ? ` — ${dose}` : "";
-      const mark = e.supp.obligation === "must" ? "🔴 " : "• ";
+      const mark =
+        e.supp.obligation === "must"
+          ? `${GLYPH.required} `
+          : `${GLYPH.bullet} `;
       return `${mark}${e.supp.name}${amt}`;
     })
     .join("\n");
@@ -128,19 +132,19 @@ export function renderPostWorkoutFinishMessage(
   for (const { dose, supp } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `✅ ${supp.name}`,
+      label: `${GLYPH.done} ${supp.name}`,
       data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
     actions.push({
-      label: "⏭ Skip",
+      label: `${GLYPH.skipped} Skip`,
       data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
   }
   const noun = pending.length === 1 ? "dose" : "doses";
   return {
-    title: `🏋️ Post-workout — ${pending.length} ${noun}`,
+    title: `${GLYPH.training} Post-workout — ${pending.length} ${noun}`,
     body,
     actions,
     kind: "dose",
@@ -345,7 +349,7 @@ export function staleWorkoutMarkerKey(activityId: number): string {
 }
 
 // The stale-session nudge (#560), now ACTIONABLE (#1205): a "🏁 Finish workout" and
-// "🗑 Discard" inline button that resolve the stale draft in place (the two-way
+// "🗑️ Discard" inline button that resolve the stale draft in place (the two-way
 // principle — one idempotent, low-risk state change through the shared
 // finishWorkoutSession/discardWorkoutSession cores; the tokens carry ids only), plus
 // the "Open workout" deep-link that non-Telegram channels (Web Push / Home Assistant,
@@ -361,19 +365,19 @@ export function renderStaleWorkoutMessage(
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = [
     {
-      label: "🏁 Finish workout",
+      label: `${GLYPH.finish} Finish workout`,
       data: workoutFinishCallback(profileId, activityId, "finish"),
       row: "finish",
     },
     {
-      label: "🗑 Discard",
+      label: `${GLYPH.discarded} Discard`,
       data: workoutFinishCallback(profileId, activityId, "discard"),
       row: "finish",
     },
   ];
   if (base) actions.push({ label: "Open workout", url: `${base}/training` });
   return {
-    title: `⏱️ Still working out?${who}`,
+    title: `${GLYPH.inProgress} Still working out?${who}`,
     body: "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
     actions,
     kind: "other",

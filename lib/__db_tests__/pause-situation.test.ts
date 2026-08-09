@@ -21,6 +21,7 @@ import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { heldItemsBy } from "@/lib/supplement-schedule";
 import { shiftDateStr } from "@/lib/date";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 function newProfile(name: string): number {
   return Number(
@@ -83,7 +84,7 @@ describe("pause-during-situation dueness (#1296)", () => {
     expect(inputHeld.heldSituation).toBe("Pre-surgery");
     const model = buildDigest(inputHeld);
     expect(model).not.toBeNull();
-    expect(renderDigestMessage(model!).body).toContain(
+    expect(plainBody(renderDigestMessage(model!).body)).toContain(
       "1 item held by Pre-surgery"
     );
 

@@ -147,7 +147,7 @@ describe("protein '+Xg' tap (#1073)", () => {
     // proves the emphasis is real markup around ESCAPED text, not a raw tag from a
     // builder.
     expect(lastRebuiltText()).toMatch(
-      /Protein: <b>30 g\+<\/b> so far · goal \d+–\d+ g/
+      /Protein: <b>30 g\+<\/b> so far — goal \d+–\d+ g/
     );
   });
 

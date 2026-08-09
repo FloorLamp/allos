@@ -11,6 +11,7 @@ import type {
   RedoseStatus,
 } from "./prn-redose";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
+import { GLYPH } from "./notifications/glyphs";
 
 // A short "6h" / "6.5h" for an elapsed/remaining hour count, one decimal place at
 // most (whole hours drop the decimal naturally). Pure.
@@ -91,7 +92,7 @@ export function redoseNoticeMessage(input: {
     since === input.name && dose ? `${since} · ${dose}` : since;
   const who = input.profileName?.trim() ? `${input.profileName.trim()} — ` : "";
   return {
-    title: `💊 Redose window open: ${who}${input.name}`,
+    title: `${GLYPH.dose} Redose window open: ${who}${input.name}`,
     body:
       `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
       `interval has passed · ${exposureFragment(

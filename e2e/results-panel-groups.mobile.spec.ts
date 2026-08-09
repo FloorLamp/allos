@@ -459,12 +459,22 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   //   Blood type → `reference`, which lives in the passport.
   expect(labels).not.toContain("Mental health screens");
   expect(labels).not.toContain("Blood type");
+  //   Vital signs → emptied ANALYTE by analyte (#2365): all six of its members
+  //   (blood pressure ×2, oxygen saturation, respiratory rate, resting heart rate,
+  //   body temperature) are body metrics with a /trends/metric/<slug> chart, so the
+  //   browser lists none of them and the option could only say "No records match".
+  expect(labels).not.toContain("Vital signs");
 
   // Kept: PhenoAge still renders here as a derived row, so the panel is reachable.
   expect(labels).toContain("Biological age");
-  // Kept: #1076 left these browsable on purpose — they have no other home.
-  for (const label of ["Vital signs", "Vision", "Hearing", "Dental", "Other"])
+  // Kept: #1076 left these browsable on purpose — they have no other home, and
+  // #2365's rule removes an analyte only when a home EXISTS.
+  for (const label of ["Vision", "Hearing", "Dental", "Other"])
     expect(labels).toContain(label);
+  // Kept, and the sharpest case: Respiratory function is MIXED — peak flow left for
+  // its metric page, the three spirometry analytes stayed — so the panel survives.
+  // The rule is per analyte, never per panel.
+  expect(labels).toContain("Respiratory function");
 
   // And the kept one actually returns its row.
   await page.goto(`${BIOMARKERS}?panel=biological-age`);

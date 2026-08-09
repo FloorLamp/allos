@@ -14,6 +14,7 @@ import {
 import type { OrderedBehindTarget } from "../workout-recommendation";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
+import { GLYPH } from "./glyphs";
 
 export interface WorkoutRecommendation {
   focus: MuscleRegion[];
@@ -133,7 +134,7 @@ export function formatWorkoutReminder(
     hasExerciseGuide(primary)
       ? [
           {
-            label: `📖 How to: ${primary}`,
+            label: `${GLYPH.guide} How to: ${primary}`,
             url: `${base}/training?tab=analyze&kind=strength&exercise=${encodeURIComponent(
               primary
             )}`,
@@ -164,7 +165,7 @@ export function formatWorkoutReminder(
     else if (rec.focus.length)
       lines.push(`When you're ready: ${rec.focus.join(", ")}`);
     return {
-      title: `🛌 ${rec.rest.title}`,
+      title: `${GLYPH.rest} ${rec.rest.title}`,
       body: lines.join("\n"),
       kind: "workout",
       ...(guideActions.length ? { actions: guideActions } : {}),
@@ -204,10 +205,10 @@ export function formatWorkoutReminder(
 
   return {
     title: rec.onTrack
-      ? `✅ ${rec.onTrack.title}`
+      ? `${GLYPH.done} ${rec.onTrack.title}`
       : focusLabel
-        ? `🏋️ Today's workout — ${focusLabel}`
-        : "🏋️ Today's workout",
+        ? `${GLYPH.training} Today's workout — ${focusLabel}`
+        : `${GLYPH.training} Today's workout`,
     body: joinBody([lines.join("\n"), behindLine], "\n"),
     kind: "workout",
     ...(guideActions.length ? { actions: guideActions } : {}),
@@ -297,8 +298,8 @@ export function digestWorkoutLine(
 ): string | null {
   if (!rec) return null;
   const lead = opts.standalone === false ? "" : "Today: ";
-  if (rec.rest) return `🛌 ${lead}${rec.rest.title}`;
-  if (rec.onTrack) return `✅ ${lead}${rec.onTrack.title}`;
+  if (rec.rest) return `${GLYPH.rest} ${lead}${rec.rest.title}`;
+  if (rec.onTrack) return `${GLYPH.done} ${lead}${rec.onTrack.title}`;
   // THE HEAD IS NAMED FROM THE EXERCISES, exactly as the nudge names it 190 lines up
   // (#2012). It used to pass `rec.focus` — a `MuscleRegion[]`, not exercise names —
   // into `suggestTitle`, which resolves each string through `liftInfo` and ends in a
@@ -327,9 +328,9 @@ export function digestWorkoutLine(
   // named — never as decoration.
   const plusCardio = rec.cardio ? " + cardio" : "";
   if (!head && !exercises)
-    return rec.cardio ? `🏋️ ${lead}Cardio session` : null;
+    return rec.cardio ? `${GLYPH.training} ${lead}Cardio session` : null;
   const deload = rec.deloadWeek ? " (deload week)" : "";
   return exercises
-    ? `🏋️ ${lead}${head ? `${head} — ` : ""}${exercises}${plusCardio}${deload}`
-    : `🏋️ ${lead}${head}${plusCardio}${deload}`;
+    ? `${GLYPH.training} ${lead}${head ? `${head} — ` : ""}${exercises}${plusCardio}${deload}`
+    : `${GLYPH.training} ${lead}${head}${plusCardio}${deload}`;
 }

@@ -16,13 +16,19 @@ import {
   hearingBaselineFromReadings,
   hearingBaselineSentence,
   hearingGrade,
+  parsePtaAnalyte,
   parseAudiogramAnalyte,
+  ptaAnalyteName,
+  PTA_CANONICAL_NAMES,
   pureToneAverage,
+  resolvePureToneAverages,
   thresholdShiftLabel,
   type AudiogramEar,
   type AudiogramFrequencyHz,
   type AudiogramPoint,
+  type AudiogramConduction,
   type AudiogramReading,
+  type ReportedPta,
 } from "@/lib/audiogram";
 import canonical from "@/lib/canonical-biomarkers.json";
 
@@ -168,6 +174,141 @@ describe("pure-tone average and grade", () => {
     expect(hearingGrade(26)).toBe("mild");
     expect(hearingGrade(41)).toBe("moderate");
     expect(hearingGrade(95)).toBe("profound");
+  });
+});
+
+describe("reported pure-tone averages (#2322)", () => {
+  function pta(
+    date: string,
+    ear: AudiogramEar,
+    conduction: AudiogramConduction,
+    dbHl: number
+  ): ReportedPta {
+    return {
+      id: nextId++,
+      date,
+      ear,
+      conduction,
+      dbHl,
+      notes: null,
+      flag: null,
+    };
+  }
+
+  it("names all four ear × conduction analytes, and reads each name back", () => {
+    expect(PTA_CANONICAL_NAMES).toHaveLength(4);
+    expect(ptaAnalyteName("right", "air")).toBe(
+      "Pure Tone Average, Right Ear (Air Conduction)"
+    );
+    for (const name of PTA_CANONICAL_NAMES) {
+      expect(parsePtaAnalyte(name), name).not.toBeNull();
+    }
+    expect(
+      parsePtaAnalyte("Pure Tone Average, Left Ear (Bone Conduction)")
+    ).toEqual({ ear: "left", conduction: "bone" });
+    // An unqualified average is air conduction, by audiometric convention; a
+    // nameless one states no ear and is refused rather than defaulted.
+    expect(parsePtaAnalyte("pure-tone average, right ear")).toEqual({
+      ear: "right",
+      conduction: "air",
+    });
+    expect(parsePtaAnalyte("Pure Tone Average")).toBeNull();
+    expect(parsePtaAnalyte("Hearing Threshold, Right Ear 4 kHz")).toBeNull();
+  });
+
+  it("derives an air-conduction average from thresholds when nothing was reported", () => {
+    const resolved = resolvePureToneAverages([
+      point("right", 500, 10),
+      point("right", 1000, 10),
+      point("right", 2000, 10),
+      point("right", 4000, 10),
+    ]);
+    expect(resolved).toEqual([
+      {
+        ear: "right",
+        conduction: "air",
+        dbHl: 10,
+        source: "derived",
+        usedHz: [500, 1000, 2000, 4000],
+      },
+    ]);
+  });
+
+  it("lets a REPORTED average win over the derived one, per (ear, conduction)", () => {
+    const points = [
+      point("right", 500, 10),
+      point("right", 1000, 10),
+      point("right", 2000, 10),
+      point("right", 4000, 10),
+      point("left", 500, 20),
+      point("left", 1000, 20),
+      point("left", 2000, 20),
+      point("left", 4000, 20),
+    ];
+    const resolved = resolvePureToneAverages(points, [
+      pta("2026-03-01", "right", "air", 18),
+      pta("2026-03-01", "right", "bone", 12),
+    ]);
+    // Right air: the reported value replaces the 10 dB HL the thresholds imply.
+    expect(resolved).toContainEqual({
+      ear: "right",
+      conduction: "air",
+      dbHl: 18,
+      source: "reported",
+      usedHz: [],
+    });
+    // Right bone: reported only — no derived counterpart can exist.
+    expect(resolved).toContainEqual({
+      ear: "right",
+      conduction: "bone",
+      dbHl: 12,
+      source: "reported",
+      usedHz: [],
+    });
+    // The OTHER ear is untouched: precedence is per series, never per document.
+    expect(resolved).toContainEqual({
+      ear: "left",
+      conduction: "air",
+      dbHl: 20,
+      source: "derived",
+      usedHz: [500, 1000, 2000, 4000],
+    });
+    expect(resolved.map((r) => `${r.ear}:${r.conduction}`)).toEqual([
+      "right:air",
+      "right:bone",
+      "left:air",
+    ]);
+  });
+
+  it("resolves a same-series duplicate through the shared latest rule", () => {
+    const older = pta("2026-03-01", "left", "air", 30);
+    const newer = pta("2026-03-01", "left", "air", 25); // higher id wins the tie
+    expect(resolvePureToneAverages([], [older, newer])).toEqual([
+      {
+        ear: "left",
+        conduction: "air",
+        dbHl: 25,
+        source: "reported",
+        usedHz: [],
+      },
+    ]);
+  });
+
+  it("groups a report that carried ONLY averages as a dated hearing test", () => {
+    const grouped = groupAudiogramReadings(
+      [reading("2026-01-05", "right", 4000, 30)],
+      [pta("2026-06-01", "right", "air", 22)]
+    );
+    expect(grouped.map((a) => a.date)).toEqual(["2026-06-01", "2026-01-05"]);
+    expect(grouped[0].readings).toHaveLength(0);
+    expect(grouped[0].reportedPtas).toHaveLength(1);
+    expect(grouped[1].reportedPtas).toHaveLength(0);
+  });
+
+  it("keeps reported averages OUT of the ototoxic baseline, which is per-frequency", () => {
+    // Only reported averages on file: no comparable baseline exists, and none is
+    // invented from an average that states no frequencies.
+    expect(hearingBaselineFromReadings([])).toBeNull();
   });
 });
 

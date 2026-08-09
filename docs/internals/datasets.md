@@ -1,9 +1,9 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **21 datasets
+Status: **partial** · framework + harness + linter shipped; **22 datasets
 migrated** onto the framework (#860 Track B, waves 1–3 + the deferred
 canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`,
-`bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
+`biomarker-supplement-map`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
 `drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`,
 `growth-charts`, `icd10-common`, `illness-thresholds`,
 `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`,
@@ -308,15 +308,48 @@ The family that carries the volume is a **DEXA scan's regional decomposition**:
 per-region fat percentage, per-site bone mineral density and content, the
 compartment-mass grid (with and without the `(g)` a report prints inside the
 name — `normalizeCanonicalKey` keeps it as a token, so the two spellings are two
-keys), and the derived depot ratios and mass indices. Around ninety declared
-names, expanded from a cross product rather than hand-listed, all sharing **one**
-`out-of-scope` declaration: they are the outputs of a single scan rather than
-independent analytes, and no population reference band exists for left-arm fat
-percentage. `out-of-scope` and not `covered-elsewhere` — the whole-body totals
+keys), and the derived depot ratios. Around ninety declared names, expanded from
+a cross product rather than hand-listed, all sharing **one** `out-of-scope`
+declaration: they are the outputs of a single scan rather than independent
+analytes, and no population reference band exists for left-arm fat percentage.
+`out-of-scope` and not `covered-elsewhere` — the whole-body totals
 (`Body Fat Percentage`, `Bone Mineral Density T-Score`) _are_ curated, but a
 region is not its total, and pointing a reader at the total would claim their
 left arm is tracked when it isn't. Those totals stay curated; the completeness
 guard fails the day a declaration blurs that line.
+
+`Fat Mass Index` and `Lean Mass Index` were in that expansion and left it in
+**#2322**. They failed the declaration's own test: they divide by the subject's
+**height**, not by a scan segment, which is what makes them comparable between
+people, and both have published population references (Schutz 2002 / NHANES DXA,
+Kelly 2009) — so "no population reference range exists for them" was simply
+false about those two. The dataset was already carrying the counter-example:
+`Appendicular Lean Mass Index` had been a curated `kg/m2` entry the whole time.
+Both are curated entries now, and the completeness guard would fail if either
+name were left declared as well.
+
+#### The stress test's two halves (#2322)
+
+The five `Stress Test …` vitals are the registry's clearest illustration that a
+family is not automatically one decision. A treadmill report prints a blood
+pressure and a heart rate **twice** — at rest before the test and at peak effort
+— in exactly the units the curated vitals already use. Curating either half
+would fork the blood-pressure and heart-rate series, so neither is curated. But
+they are declined for **opposite** reasons:
+
+- **Resting** (`Stress Test Resting Blood Pressure Systolic` / `Diastolic`) is
+  `covered-elsewhere`. The prefix names the appointment, not a different
+  measurement, so each side points `instead` at the entry that genuinely carries
+  it (`Blood Pressure Systolic` / `Blood Pressure Diastolic`) — one target per
+  side, because a shared declaration would have sent a diastolic reading to the
+  systolic entry.
+- **Peak** (`… Maximum Blood Pressure Systolic` / `Diastolic`,
+  `Stress Test Maximum Heart Rate`) is `out-of-scope`, one declaration for all
+  three. A peak-exercise value is not the resting series, and pointing it at
+  `Resting Heart Rate` would be exactly the dangling-promise failure `instead` is
+  guarded against. Whether peak-exercise vitals deserve a series of their own is
+  a design question about what the app models, not something a catalog addition
+  can settle.
 
 ### What a canonical name must carry (#2335)
 

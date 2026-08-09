@@ -26,6 +26,7 @@ import {
   isAcceptableWebhookStatus,
   HA_SECRET_HEADER,
 } from "./home-assistant-core";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("home-assistant");
 
@@ -121,7 +122,7 @@ export async function sendHomeAssistantTest(
   if (!homeAssistantChannel.isConfigured(profileId)) return "not-configured";
   await deliver(profileId, {
     title: "Test notification",
-    body: "Home Assistant webhook is working ✅",
+    body: `Home Assistant webhook is working ${GLYPH.done}`,
     kind: "test",
   });
   return "sent";

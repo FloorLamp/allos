@@ -255,7 +255,7 @@ export type DoseStatus = "taken" | "skipped";
 // claiming "Logged" for a tap on a button whose dose has since been
 // deleted/retired or whose item was paused. An already-resolved dose carries
 // the prior log's ACTUAL status (issue #280) — never a flat "already logged":
-// a stale ⏭ tap on a taken dose (or ✅ on a skipped one) writes nothing, so
+// a stale ⏭️ tap on a taken dose (or ✅ on a skipped one) writes nothing, so
 // the answer must state what is really persisted instead of letting each
 // button type confirm its own action against the other's log.
 export type DoseTakenOutcome =

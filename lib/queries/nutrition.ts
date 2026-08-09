@@ -8,7 +8,15 @@ import { utcInstant } from "../date";
 import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
-import { getIntakeSafetyContext } from "./intake";
+import {
+  getIntakeSafetyContext,
+  getIngestibleSafetyContext,
+  getSupplements,
+} from "./intake";
+import {
+  suggestCuratedSupplements,
+  type CuratedSupplementSuggestion,
+} from "../supplement-suggest-curated";
 import { weekWindowStart } from "./profile-week";
 import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
@@ -31,7 +39,18 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { foodSlotAnchors, type FoodSlot } from "../food-slot";
+import { foodSlotAnchors, FOOD_SLOTS, type FoodSlot } from "../food-slot";
+import {
+  FOOD_REGULARITY_SPAN_DAYS,
+  foodRegularity,
+  foodRegularityWindowStart,
+  habitualFoodGroups,
+  usualFoodOffer,
+  type FoodRegularity,
+  type FoodRegularityEvent,
+} from "../food-regularity";
+import { cadenceDirection } from "../cadence";
+import { ALCOHOL_FOOD_GROUP } from "../substance-use";
 import { FOOD_CHECK_LOOKBACK_MIN } from "../food-timing-check";
 import {
   foodSlotForProfileInstant,
@@ -72,6 +91,10 @@ import {
   fiberDoseGrams,
   type FiberAdequacy,
 } from "../fiber";
+import {
+  nutritionDayPosition,
+  type NutritionDayPosition,
+} from "../nutrition-day";
 import {
   getUserSex,
   getUserAge,
@@ -117,6 +140,42 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
     // Dietary preferences (#975): the engine filters/substitutes excluded groups. A
     // preference, never a safety gate — a shortfall never disappears, logging never blocks.
     excludedGroups: getExcludedFoodGroups(profileId),
+  });
+}
+
+// Safety-screened CURATED supplement suggestions for the profile's currently-flagged
+// biomarker families (issue #2378) — the twin of getFoodSuggestions above, and the ONE
+// computation every surface that renders a curated supplement claim formats. No model
+// call, so the same profile state yields the same suggestions on every run; a family the
+// map doesn't cover simply isn't here and falls through to the AI route
+// (lib/supplement-suggest.ts). Empty when nothing covered is flagged low.
+export function getCuratedSupplementSuggestions(
+  profileId: number
+): CuratedSupplementSuggestion[] {
+  const flagged = getCurrentFlaggedBiomarkers(profileId).map((r) => ({
+    name: r.name,
+    flag: r.flag,
+  }));
+  if (flagged.length === 0) return [];
+
+  // The INGESTIBLE-conservative safety gather (#691/#2378): the same facts the AI
+  // route's deterministic belt screens against, resolved allergies included — a
+  // recommendation to swallow something is screened the same way whichever engine
+  // produced it.
+  const { allergens, medications, conditions, situations } =
+    getIngestibleSafetyContext(profileId);
+
+  return suggestCuratedSupplements({
+    flagged,
+    allergens,
+    medications,
+    conditions,
+    situations,
+    // Supplements and medications share intake_items, and either can already supply the
+    // substance — so the "already taking it" screen reads the whole active stack.
+    alreadyTaking: getSupplements(profileId)
+      .filter((s) => s.active)
+      .map((s) => s.name),
   });
 }
 
@@ -569,6 +628,179 @@ export function getProteinTapsOnDate(profileId: number, date: string): number {
     )
     .get(profileId, date, PROTEIN_NUDGE_KEY) as { n: number };
   return row.n;
+}
+
+// ---- Food regularity: what this profile logs in a window nearly every time (#2380) ----
+
+// The profile's food-group regularity, per meal window, over the bounded recent span.
+// A SECOND read of the ledger the ranking already reads (#2380): same events, same
+// `foodEventWindow` derivation, different question — the ranking asks which group leads
+// an order, this asks which groups show up nearly every time a window is logged at all.
+//
+// Windows come from the SAME precedence the tallies and the ranking use, so a habit is a
+// habit however its window was established (declared on the backfill tab, captured as an
+// eating time, or derived from the tap). The reserved `__protein__` key and any retired
+// slug are dropped: a habit has to be a catalog group, because everything downstream
+// names one to the user.
+//
+// Reads a bounded ~3 weeks of one profile's events. Profile-scoped via the
+// food_log_events filter.
+export function getFoodRegularity(profileId: number): FoodRegularity {
+  const t = today(profileId);
+  const from = foodRegularityWindowStart(t);
+  const rows = db
+    .prepare(
+      `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
+        WHERE profile_id = ? AND date >= ? AND date <= ?`
+    )
+    .all(profileId, from, t) as FoodLedgerEvent[];
+  const tz = getTimezone(profileId);
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const events: FoodRegularityEvent[] = [];
+  for (const row of rows) {
+    if (!foodGroupBySlug(row.name)) continue;
+    events.push({
+      groupKey: row.name,
+      date: row.date,
+      window: foodEventWindow(
+        row.logged_at,
+        tz,
+        boundaries,
+        row.meal_slot,
+        row.eaten_at
+      ),
+    });
+  }
+  return foodRegularity(events, {
+    today: t,
+    spanDays: FOOD_REGULARITY_SPAN_DAYS,
+  });
+}
+
+// The food groups whose regularity may be MEASURED but never presented back as an
+// expectation (#2380, applying #998's language). Two memberships, both declared:
+//
+//   • a group whose food_log counter IS a substance ledger — alcohol, whose taps are
+//     the substance scope's own rows (lib/substance-history-write.ts). Excluded
+//     unconditionally, target or no target: "you usually have alcohol in the evening"
+//     is a sentence this app does not say, and whether the user has declared a weekly
+//     cap does not change what saying it would do.
+//   • a group carrying an active CAP-DIRECTION frequency target, selected by
+//     `cadenceDirection` rather than by subtracting a scope kind — so a future inverted
+//     scope joins this exclusion by declaring its direction instead of by being
+//     remembered (lib/cadence.ts).
+//
+// NOT excluded: the catalog's `limit` tier. #1980 ruled that tier never moves a group
+// into or out of a fast path — a group you log often is a group you need to log fast.
+// Profile-scoped via the frequency_targets filter.
+export function getCapDirectionFoodGroups(profileId: number): Set<string> {
+  const excluded = new Set<string>([ALCOHOL_FOOD_GROUP]);
+  const rows = db
+    .prepare(
+      `SELECT scope_kind, scope_value FROM frequency_targets WHERE profile_id = ?`
+    )
+    .all(profileId) as { scope_kind: string; scope_value: string }[];
+  for (const row of rows) {
+    if (cadenceDirection(row.scope_kind) !== "cap") continue;
+    // A cap-direction target's scope_value names either a food group directly (a future
+    // inverted food scope) or a substance whose ledger is a food group. Anything else
+    // (nicotine, cannabis — their own table) has no food group to exclude.
+    if (foodGroupBySlug(row.scope_value)) excluded.add(row.scope_value);
+    if (row.scope_value === ALCOHOL_FOOD_GROUP)
+      excluded.add(ALCOHOL_FOOD_GROUP);
+  }
+  return excluded;
+}
+
+// The habitual groups per window — the presentable half of the measure, cap-direction
+// groups removed. `[]` for a window under the declared gate: no expectation, which a
+// consumer must never render as a habit broken.
+export function getHabitualFoodGroups(
+  profileId: number
+): Record<FoodSlot, string[]> {
+  const measure = getFoodRegularity(profileId);
+  const excluded = getCapDirectionFoodGroups(profileId);
+  return Object.fromEntries(
+    FOOD_SLOTS.map((window) => [
+      window,
+      habitualFoodGroups(measure[window], { excluded }).map((g) => g.groupKey),
+    ])
+  ) as Record<FoodSlot, string[]>;
+}
+
+// WHAT A "log my usual" TAP WOULD WRITE right now, for one window on the profile's
+// today: the habitual groups that window still has nothing logged for. Empty means no
+// offer — either no habit, or enough of it already logged that the ranked bar is again
+// the faster path. The pure rule is `usualFoodOffer`; this only assembles its two
+// inputs from the profile's own state, which is what lets the write core re-derive the
+// SAME list against fresh state rather than trusting a submitted one.
+export function getUsualFoodOffer(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): string[] {
+  const habitual = habitualFoodGroups(getFoodRegularity(profileId)[window], {
+    excluded: getCapDirectionFoodGroups(profileId),
+  }).map((g) => g.groupKey);
+  const logged =
+    getFoodMealDays(profileId, [date])[0]?.slotCounts[window] ?? {};
+  return usualFoodOffer(
+    habitual,
+    new Set(Object.keys(logged).filter((slug) => (logged[slug] ?? 0) > 0))
+  );
+}
+
+// ---- Which windows a day's ledger actually derived (issue #2376) ----
+
+// For each calendar date in [from, to], the set of food windows that derived AT LEAST
+// ONE event, through the ONE existing precedence (`foodEventWindow`: explicit slot →
+// eaten_at → tap instant). The empty-window notice reads this both for the day it is
+// asking about and for the trailing days its habit gate is measured over, so the two
+// halves can never be derived through different boundaries.
+//
+// EVERY event counts, including the reserved `__protein__` key — unlike the meal
+// grouping above, which drops it because a shake is not a food-group serving and must
+// not render as a mystery meal chip. Here the question is whether the ledger holds
+// anything for the window, and `getMinutesSinceLastFoodLog`'s reasoning applies
+// verbatim: a protein shake is eating, and a check that excluded it would be wrong in
+// the one direction that matters — claiming nothing is logged when something is.
+//
+// A date with no events is simply ABSENT from the map. That is the shape the decision
+// wants: a day nobody logged and a day from before the events ledger existed are
+// indistinguishable, and neither is evidence of anything. Profile-scoped via the
+// food_log_events filter.
+export function getLoggedFoodWindows(
+  profileId: number,
+  from: string,
+  to: string
+): Map<string, Set<FoodSlot>> {
+  const rows = db
+    .prepare(
+      `SELECT date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
+        WHERE profile_id = ? AND date >= ? AND date <= ?`
+    )
+    .all(profileId, from, to) as Pick<
+    FoodLedgerEvent,
+    "date" | "logged_at" | "meal_slot" | "eaten_at"
+  >[];
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  const byDate = new Map<string, Set<FoodSlot>>();
+  for (const row of rows) {
+    const slot = foodEventWindow(
+      row.logged_at,
+      tz,
+      boundaries,
+      row.meal_slot,
+      row.eaten_at
+    );
+    let set = byDate.get(row.date);
+    if (!set) byDate.set(row.date, (set = new Set()));
+    set.add(slot);
+  }
+  return byDate;
 }
 
 // ---- The live food-ledger check behind a dose's declared timing (issue #2022) ----
@@ -1145,4 +1377,36 @@ export function getFiberOnDate(
     sex: getUserSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
+}
+
+// ---- One day, both nutrients (issue #2379) ----
+
+// "Where did ONE day's eating land against its protein and fibre targets?" — the single
+// gather behind the morning digest's nutrition line and, by #2383, the curated-food
+// follow-up sized from the same shortfall.
+//
+// IT ASSEMBLES, IT DOES NOT DECIDE. Both verdicts come from the per-day gathers the
+// /nutrition day picker already reads (`getProteinOnDate` + `assessProteinAdequacy`,
+// `getFiberOnDate`), so the digest and the page state one day's position from one
+// computation (#221). The composition, the gap and the copy are pure in
+// `lib/nutrition-day.ts`. No new SQL, no new threshold, no second adequacy rule.
+//
+// PROTEIN'S TARGET IS RESOLVED AS OF THAT DAY (`getProteinOnDate` → `proteinTargetOnDate`),
+// so a weigh-in recorded since cannot leak backward into a claim about a past day.
+//
+// Returns null when NEITHER nutrient can be positioned: a day with no food logged, or a
+// profile with no bodyweight to scale a protein band by and no quantified fibre. Absence
+// of logging is not evidence of low intake, so it produces silence rather than a zero.
+export function getNutritionDay(
+  profileId: number,
+  date: string
+): NutritionDayPosition | null {
+  const proteinDay = getProteinOnDate(profileId, date);
+  return nutritionDayPosition({
+    date,
+    protein: proteinDay?.todayIntake
+      ? assessProteinAdequacy(proteinDay.todayIntake, proteinDay.target)
+      : null,
+    fiber: getFiberOnDate(profileId, date),
+  });
 }

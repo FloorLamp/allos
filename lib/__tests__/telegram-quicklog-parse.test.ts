@@ -102,7 +102,7 @@ describe("household round staleness (#1719)", () => {
       title: "💊 Household doses",
       body: "x",
       kind: "dose" as const,
-      actions: [{ label: "✓ Ada · D3", data: "hh:1:7:100:50:2026-07-28" }],
+      actions: [{ label: "✅ Ada · D3", data: "hh:1:7:100:50:2026-07-28" }],
     };
     const plainDose = {
       title: "💊 Morning",

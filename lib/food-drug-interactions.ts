@@ -130,6 +130,36 @@ export function matchFoodInteractions(
   );
 }
 
+// ---- The stack's INVERSE index (issues #577 / #2378) ----
+
+// The set of food–drug interaction entry keys the active stack participates in, mapped
+// to the strongest hit (for its advice copy). This is the INVERSE of the per-item
+// screen: not "what does this medication interact with", but "before recommending
+// substance Y, what does the stack already say about it". Both curated suggestion
+// engines — biomarker→food (lib/food-suggest) and biomarker→supplement
+// (lib/supplement-suggest-curated) — read this ONE index, so a leafy-greens note and a
+// magnesium note can't disagree about the same warfarin. Pure; computed once per call.
+export function stackFoodDrugHits(
+  medications: readonly {
+    name: string;
+    rxcui: string | null;
+    rxcuiIngredients?: string[] | null;
+  }[]
+): Map<string, { advice: string; food: string }> {
+  const byKey = new Map<string, { advice: string; food: string }>();
+  for (const med of medications) {
+    for (const hit of matchFoodInteractions({
+      name: med.name,
+      rxcui: med.rxcui,
+      rxcuiIngredients: med.rxcuiIngredients,
+    })) {
+      if (!byKey.has(hit.key))
+        byKey.set(hit.key, { advice: hit.advice, food: hit.food });
+    }
+  }
+  return byKey;
+}
+
 // ---- Suppression key (issue #435) ----
 
 // The findings-bus namespace for the per-item food–drug guidance lines. The

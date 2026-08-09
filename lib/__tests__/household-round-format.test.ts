@@ -134,7 +134,7 @@ describe("renderHouseholdRoundMessage", () => {
     // Three confirm buttons plus the ride-along deep link (#1718).
     const actions = msg.actions!.filter((a) => !a.url);
     expect(actions).toHaveLength(3);
-    expect(actions[0].label).toBe("✓ Ada · Vitamin D3 · 2000 IU");
+    expect(actions[0].label).toBe("✅ Ada · Vitamin D3 · 2000 IU");
     // Rows group by member, so a member's doses share a row and two members never do.
     expect(actions[0].row).toBe(actions[1].row);
     expect(actions[0].row).not.toBe(actions[2].row);

@@ -11,6 +11,7 @@ import {
   getIopFollowUps,
   getMedicalDocumentsByIds,
   getFoodSuggestions,
+  getCuratedSupplementSuggestions,
   getRevisionsByRecord,
   isBiomarkerSaved,
 } from "@/lib/queries";
@@ -25,6 +26,7 @@ import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
+import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
 import type { CanonicalBiomarker, MedicalRecord } from "@/lib/types";
 import {
   rangeBadge,
@@ -163,6 +165,15 @@ export default async function BiomarkerDetailPage(props: {
   // informational. Shown only when this reading is currently flagged low.
   const canonicalLower = canonical.toLowerCase();
   const foodSuggestions = getFoodSuggestions(profile.id).filter((s) =>
+    s.triggeredBy.some((n) => n.toLowerCase() === canonicalLower)
+  );
+  // The supplement twin (issue #2378), same discipline: the SAME
+  // getCuratedSupplementSuggestions computation the supplements tab reads, filtered to
+  // what THIS flagged biomarker triggered. Curated, safety-screened, dose-free — and
+  // badged as curated so it can never be mistaken for the AI route's output.
+  const curatedSupplementSuggestions = getCuratedSupplementSuggestions(
+    profile.id
+  ).filter((s) =>
     s.triggeredBy.some((n) => n.toLowerCase() === canonicalLower)
   );
   // A read-time DERIVED index (issue #40): its readings are computed from other
@@ -862,6 +873,23 @@ export default async function BiomarkerDetailPage(props: {
             </div>
           );
         })()}
+
+      {/* Curated supplement options for this flagged biomarker (#2378). A separate card
+          from the food one: eating a food and swallowing a capsule are different acts,
+          and the card says which claim this is. */}
+      {curatedSupplementSuggestions.length > 0 && (
+        <div
+          data-testid="biomarker-supplement-suggestions"
+          className="card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
+        >
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Supplement options
+          </h2>
+          <CuratedSupplementSuggestions
+            suggestions={curatedSupplementSuggestions}
+          />
+        </div>
+      )}
 
       {/* Age/sex percentile + fitness age (#158) — fitness markers only, hidden
           when sex/age unset. */}

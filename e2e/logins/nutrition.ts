@@ -81,6 +81,18 @@ export const MOBILITY_PROFILE = "Mobility (e2e)";
 export const E2E_LOGIN_FOODSLOT = "e2e_foodslot";
 export const FOOD_SLOT_PROFILE = "Food Slot (e2e)";
 
+// A dedicated ADULT profile for the food-regularity shortcut (#2380). Its last three
+// weeks of mornings each hold the SAME TWO groups (fermented + berries) and nothing
+// else, so the Morning window clears the declared gate with two habitual groups — the
+// #2380 ledger shape. TODAY is deliberately empty, so the offer stands when the spec
+// opens the page whatever hour the run's frozen clock lands on. It also carries a
+// three-week EVENING alcohol habit, which must never be offered back: the cap-direction
+// exclusion is the half of this feature a passing test has to prove, not just describe.
+// Dedicated + spec-owned: the spec TAPS the offer (writing today's servings), which on a
+// shared profile would change its rollup and race neighbours.
+export const E2E_LOGIN_FOODUSUAL = "e2e_foodusual";
+export const FOOD_USUAL_PROFILE = "Food Usual (e2e)";
+
 // A dedicated ADULT profile for the nutrition trio (#974/#975/#976). Carries a recent
 // weigh-in (a protein/fiber target to scale), this-week food-group servings across both
 // protein- and fiber-bearing groups (so the protein gauge's weekly marker + the fiber

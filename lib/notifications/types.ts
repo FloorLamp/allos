@@ -59,7 +59,7 @@ export interface NotificationAction {
   // deep-link button carries no callback token, so it's never consumed on tap.
   url?: string;
   // Optional keyboard-row grouping key (#232). Consecutive actions sharing a
-  // `row` render side by side on ONE button row (e.g. a dose's ✅ take + ⏭ skip);
+  // `row` render side by side on ONE button row (e.g. a dose's ✅ take + ⏭️ skip);
   // an action with no `row` gets its own row. Channels without buttons ignore it.
   row?: string;
 }

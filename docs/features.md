@@ -1377,6 +1377,36 @@ scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
 panel whose current readings include an out-of-range one says so on its header,
 so a flagged group self-identifies while collapsed.
 
+**What it lists is decided per analyte, not per category (#2365).** Labs,
+genomics and imaging-derived measurements are listed whole; the classes with a
+dedicated home (medications, screening scores, bio-age composites, immutable
+passport facts, narrative report bodies, non-measurement assessments) are
+excluded whole. `vitals` is the one category that holds both populations, so the
+question is asked of the ANALYTE — and the question is not "does a chart exist"
+but **"can a document-imported reading of this quantity reach that chart?"**
+
+A vital that answers yes is not catalogued here: blood pressure, SpO2,
+respiratory rate and body temperature (the chart plots those very rows), resting
+heart rate, body fat and peak expiratory flow (the chart folds the clinical
+reading in beside the device ones), weight, height and head circumference (the
+import writes the charted row itself), and BMI (computed from the weight and
+height that arrive with it). Everything else stays, including the **domain
+vitals with no chart anywhere** — audiogram thresholds, intraocular pressure,
+visual acuity, periodontal measures, spirometry volumes, the functional-fitness
+markers, waist circumference, ankle-brachial index, the stress-test vitals — and
+also **HRV and BMR**, which _have_ charts fed exclusively by integration streams:
+a cardiology report's HRV or a calorimetry BMR can reach neither, so the catalog
+remains their home.
+
+This is #1076's "nothing stranded" rule at a finer grain — membership follows
+whether the reading is answered elsewhere — and it stopped the catalog listing
+ten measurements that already were for every one it rescued (measured on a real
+profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
+(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+declaration, never hand-listed, so an analyte that gains a dedicated surface
+leaves the browser with no second edit and a newly registered metric must state
+whether an imported reading can reach it before it can remove anything.
+
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,
 so a page could split a panel and print partial counts on each half); the panel
@@ -1397,11 +1427,13 @@ Readings sort by **name** (A–Z, newest reading first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
 order. Filters are free-text search, category, clinical **panel**, an
 all/non-optimal/out-of-range lens, and "current values only". The panel facet
-offers a stable list — the taxonomy minus the panels whose analytes live in
-categories this browser deliberately doesn't list (mental-health screening
-scores, which are re-homed to Medical → Health record → Specialty, and blood
-type, which lives in the passport), so it never offers a filter that returns
-nothing for anyone.
+offers a stable list — the taxonomy minus the panels whose analytes this browser
+doesn't list (mental-health screening scores, which are re-homed to Medical →
+Health record → Specialty; blood type, which lives in the passport; and, since
+#2365, **vital signs**, whose six members are all body metrics with charts of
+their own), so it never offers a filter that returns nothing for anyone.
+Respiratory function is the mixed case and stays offered: peak flow leaves for
+its metric page while the spirometry volumes remain.
 
 **On a phone the index leads.** The trajectory-watch card keeps its place above
 it — a warning has to find you rather than be looked up — showing its headline
@@ -1534,6 +1566,27 @@ same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
 on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
 series (deliberately never collapsed into one "hearing" family, so a normal
 frequency can't hide a flagged one). This change added **no migration**.
+
+**A reported average (#2322).** Clinical documents often carry
+`Pure Tone Average, {Left,Right} Ear ({Air,Bone} Conduction)` in dB HL and no
+per-frequency thresholds at all — the average is stated, and no audiogram can be
+reconstructed from it. Those readings are **not curated as biomarkers** (that
+would fork the hearing series this domain already owns); the substrate accepts
+them instead. They land in the same `medical_records` store under their own
+canonical name (**no migration**), and the Hearing tab lists an averages-only
+report as a dated hearing test with an explicit "this report gave the average
+only" note where the frequency grid would be.
+
+Where a reported and a derived average both exist, the **reported one wins** —
+the same precedence the derived-index table applies when a lab reports an index
+directly. The precedence is per **(ear, conduction) per date**, never per
+document: a reported right-ear air average suppresses only the right ear's
+derived air average, and the left ear (and the same ear's bone conduction) are
+untouched. Every average on the card **names its provenance** — "as reported
+(air conduction)" or "averaged from 4 recorded frequencies" — because the two
+are different claims. A reported average is deliberately **not** an input to the
+ototoxic crosscheck's baseline or to the ASHA threshold-shift criteria: both are
+stated per frequency, and an average states none.
 
 Around the record: a new age-related **hearing screening** preventive rule (a
 `hearing` audiology appointment/audiogram satisfies it) that recorded **noise
@@ -2251,7 +2304,7 @@ tri-state — a deliberate skip is a decision, not a missed dose), with adherenc
 and refill tracking. Skips are excluded from the adherence percentage and shown
 as their own count, never decrement your on-hand supply, and never trigger a
 missed-dose escalation; each reminder (web and Telegram) offers a **✅ take**
-and a **⏭ skip** beside each dose.
+and a **⏭️ skip** beside each dose.
 
 ### Nutrient reference values
 
@@ -2597,6 +2650,18 @@ the wrong row is worse than a short list, because you might edit it), and where 
 name fits nothing — the row was renamed or deleted since the import — the card
 says **"no longer in this import"** rather than offering a link that goes
 nowhere.
+
+**A value has to be a number to be a reading (#2322).** A stress test reports
+`Exercise Duration` with the unit `min:sec` and a colon-formatted value
+("10:30"). That is a string, and a string filed as a reading can never plot,
+flag or trend — it just sits in the analyte's series looking like data. Every
+ingest door (CCD, FHIR, and the AI extractor) now normalises a colon-formatted
+duration to **whole seconds** at the door, storing `630` in `s`: seconds is the
+finest grain the source states and keeps its digits exact, where minutes would
+turn 10:20 into a repeating 10.3333…. When the parse cannot produce a number the
+observation is **dropped with a reason** rather than stored — it appears in the
+document's Dropped list under **"Unparsable value"**, so a refusal is visible
+instead of silent.
 
 ### Failures and duplicates
 

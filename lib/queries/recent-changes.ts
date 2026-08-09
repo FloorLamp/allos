@@ -48,6 +48,7 @@ import { sharedSurfaceDetail } from "../appointment-sensitivity";
 import { biomarkerFamily } from "../canonical-name";
 import type { AppRoute } from "../hrefs";
 import { getIntakeDeltas } from "../intake-history";
+import { GLYPH } from "../notifications/glyphs";
 
 export interface RecentChangesOptions {
   // The window length in days, ending at (and including) `today`.
@@ -232,8 +233,8 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
       // Dateless: arrival is about NOW, not about a logged day.
       date: null,
       text: firstSync
-        ? `📥 First data from ${name}: ${phrase}`
-        : `📥 New from ${name}: ${phrase}`,
+        ? `${GLYPH.arrival} First data from ${name}: ${phrase}`
+        : `${GLYPH.arrival} New from ${name}: ${phrase}`,
     });
   }
   return out;
@@ -275,7 +276,7 @@ function moodChanges(
       id: `mood:${latest.date}`,
       category: "mood",
       date: latest.date,
-      text: `🙂 Check-in: mood ${latest.valence}/5${energy}${shift}`,
+      text: `${GLYPH.mood} Check-in: mood ${latest.valence}/5${energy}${shift}`,
       // A notable SHIFT survives per-category demotion; a routine check-in does not.
       notable: shift !== "",
     },
@@ -320,7 +321,7 @@ export function collectRecentChanges(
         id,
         category: "labs",
         date: r.date,
-        text: `🚩 ${r.name}${r.value ? ` ${r.value}` : ""} (${r.flag})`,
+        text: `${GLYPH.flagged} ${r.name}${r.value ? ` ${r.value}` : ""} (${r.flag})`,
         flagged: true,
       });
     }
@@ -348,7 +349,7 @@ export function collectRecentChanges(
         id: `visits:${e.id}`,
         category: "visits",
         date: e.date,
-        text: `🏥 ${label} · ${weekdayLabel(e.date)}`,
+        text: `${GLYPH.encounter} ${label} · ${weekdayLabel(e.date)}`,
       });
     }
   }
@@ -376,7 +377,7 @@ export function collectRecentChanges(
         id: `growth:${r.date}`,
         category: "growth",
         date: r.date,
-        text: `📏 Height ${Math.round(r.value * 10) / 10} cm · ${weekdayLabel(r.date)}`,
+        text: `${GLYPH.measurement} Height ${Math.round(r.value * 10) / 10} cm · ${weekdayLabel(r.date)}`,
       });
     }
   }
@@ -406,7 +407,7 @@ export function collectRecentChanges(
         id: `intake:${it.id}`,
         category: "intake",
         date: it.started,
-        text: `🔁 Started ${it.name}`,
+        text: `${GLYPH.changed} Started ${it.name}`,
       });
     }
   }
@@ -428,7 +429,7 @@ export function collectRecentChanges(
         id: `vitals:${r.canonicalName ?? r.name}:${r.date}`,
         category: "vitals",
         date: r.date,
-        text: `🩺 ${r.name}${r.value ? ` ${r.value}` : ""} (${r.flag}) · ${weekdayLabel(r.date)}`,
+        text: `${GLYPH.flagged} ${r.name}${r.value ? ` ${r.value}` : ""} (${r.flag}) · ${weekdayLabel(r.date)}`,
         flagged: true,
       });
     }
@@ -454,7 +455,7 @@ export function collectRecentChanges(
         id: `symptoms:${day.date}`,
         category: "symptoms",
         date: day.date,
-        text: `🤕 ${names} · ${weekdayLabel(day.date)}`,
+        text: `${GLYPH.injury} ${names} · ${weekdayLabel(day.date)}`,
         // A severe symptom-day survives per-category demotion.
         notable: day.maxSeverity >= 4,
       });

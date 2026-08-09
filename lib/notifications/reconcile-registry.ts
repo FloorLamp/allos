@@ -149,7 +149,7 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   {
     prefix: "plog",
     inert:
-      "the on-demand `/practice` list's ✓ button (#1895) — the `prn` shape one domain over: logging a session is additive and valid at any time, the token carries no date, and the list claims nothing about dueness (that is the `pdone` nudge's job, which keeps its own family)",
+      "the on-demand `/practice` list's ✅ button (#1895) — the `prn` shape one domain over: logging a session is additive and valid at any time, the token carries no date, and the list claims nothing about dueness (that is the `pdone` nudge's job, which keeps its own family)",
   },
   {
     prefix: "prn",

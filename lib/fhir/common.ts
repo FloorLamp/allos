@@ -4,6 +4,7 @@ import { nuccLabel } from "../nucc-taxonomy";
 import type { ImportedProvider, ImportedRecord } from "../health-import";
 import { fhirSourceTime, sourceDay, type SourceTime } from "../source-time";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
+import { isColonDurationUnit, normalizeDurationValue } from "../duration-value";
 
 export class FhirError extends Error {}
 
@@ -385,12 +386,31 @@ interface FhirObsValue {
 }
 
 export function readFhirObservationValue(node: any): FhirObsValue | null {
-  if (node?.valueQuantity && typeof node.valueQuantity.value === "number") {
-    const value_num = node.valueQuantity.value;
+  // ── The DURATION door (#2322) ──────────────────────────────────────────────
+  // A quantity whose UNIT declares a colon-formatted duration ("min:sec") is read
+  // through the shared normalizer and stored as seconds — including the case FHIR
+  // has no legal shape for and bundles ship anyway, a `valueQuantity.value` that is
+  // the string "10:30". A value the declared unit cannot explain yields null, i.e.
+  // the reading is DROPPED; fhirDropReason reports it as `unparsable_value`. Never
+  // stored as a string that looks like a reading — see lib/duration-value.ts.
+  const q = node?.valueQuantity;
+  const qUnit = q ? (q.unit ?? q.code ?? null) : null;
+  if (q && isColonDurationUnit(qUnit)) {
+    const d = normalizeDurationValue(
+      typeof q.value === "string" ? q.value : null,
+      typeof q.value === "number" ? q.value : null,
+      qUnit
+    );
+    return d.kind === "normalized"
+      ? { value: d.value, value_num: d.value_num, unit: d.unit }
+      : null;
+  }
+  if (q && typeof q.value === "number") {
+    const value_num = q.value;
     return {
       value: String(value_num),
       value_num,
-      unit: node.valueQuantity.unit ?? node.valueQuantity.code ?? null,
+      unit: qUnit,
     };
   }
   if (typeof node?.valueString === "string") {
@@ -404,6 +424,31 @@ export function readFhirObservationValue(node: any): FhirObsValue | null {
     if (value != null) return { value, value_num: null, unit: null };
   }
   return null;
+}
+
+// Did this Observation carry a value the duration door REFUSED (#2322)? Asked only by
+// the drop classifier, on a resource that yielded no reading at all, so the report can
+// say "the source declared a duration and its value wasn't one" instead of the flatly
+// wrong "no value". Looks at the scalar value and at every component, since either can
+// be the resource's only one.
+export function hasUnparsableDurationValue(node: any): boolean {
+  const nodes = [
+    node,
+    ...(Array.isArray(node?.component) ? node.component : []),
+  ];
+  return nodes.some((n) => {
+    const q = n?.valueQuantity;
+    if (!q) return false;
+    const unit = q.unit ?? q.code ?? null;
+    if (!isColonDurationUnit(unit)) return false;
+    return (
+      normalizeDurationValue(
+        typeof q.value === "string" ? q.value : null,
+        typeof q.value === "number" ? q.value : null,
+        unit
+      ).kind === "unparsable"
+    );
+  });
 }
 
 // The LOINC code carried on a FHIR CodeableConcept (the coding whose system is

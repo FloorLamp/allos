@@ -71,6 +71,41 @@ retained newest-N per provider, and gitignored (part of `/data`). They're
 Review** to fetch one through an admin-gated route — members never see the
 affordance or the data.
 
+## Supplement suggestions — the AI route is the FALLBACK (#2378)
+
+Biomarker → supplement has **two** routes, and they are different claims:
+
+1. **Curated (deterministic, no model).** A committed, human-reviewable map
+   (`lib/datasets/data/biomarker-supplement-map.json`, regenerate with
+   `npm run gen:biomarker-supplement-map`) links a biomarker family reading LOW
+   to the supplement that repletes it. The pure engine
+   (`lib/supplement-suggest-curated.ts`) screens every suggestion against the
+   profile's allergies, medications and conditions through the **same**
+   deterministic belt the AI route's output goes through
+   (`screenSuggestionSafety`), and the DB gather
+   (`getCuratedSupplementSuggestions`) is the ONE computation every surface
+   formats. **No model call, no network, no clock** — the same flagged labs
+   yield the same suggestions on every run. It is the supplement twin of the
+   biomarker→food engine (#577) and is held to the same standard, because the
+   half of the question that recommends a substance a user swallows should not
+   be the less deterministic half. The map is **deliberately small**; the
+   curation standard, and the pairs deliberately left out, are documented at the
+   top of `scripts/gen-biomarker-supplement-map.ts`. **No entry states a dose.**
+2. **Generated (AI).** `lib/supplement-suggest.ts` answers everything the map
+   does **not** cover — free-text feedback, the long tail of flagged labs, the
+   goal/training context a curated table can't hold. Its prompt is told which
+   families already have a curated answer so it doesn't restate them, and its
+   drafts land in `intake_item_suggestions` for review.
+
+The two are **visibly distinguished** wherever they render: curated cards carry
+a **Curated** badge with their evidence line and public source; generated cards
+carry a **Generated** badge with the model's rationale. That distinction is also
+what makes the map's coverage measurable over time.
+
+With no AI tier configured, the curated half still works exactly as before (it
+never calls a model) and an uncovered family is simply **silent** rather than
+broken.
+
 ## AI Insights
 
 Insight generation works out of the box with a built-in offline summary. Set

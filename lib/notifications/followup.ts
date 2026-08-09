@@ -53,6 +53,7 @@ import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { UpcomingItem } from "../upcoming";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -81,7 +82,7 @@ export function renderFollowUpNudgeMessage(
     ? [{ label: "Open Upcoming", url: `${base}/upcoming` }]
     : [];
   return {
-    title: `🩺 Overdue follow-up: ${who}${item.title}`,
+    title: `${GLYPH.clinical} Overdue follow-up: ${who}${item.title}`,
     body: lines.join("\n"),
     actions,
     kind: "followup",

@@ -1678,6 +1678,113 @@
       "abbreviation": "ANA",
       "full_name": "Antinuclear Antibody Screen by Indirect Immunofluorescence",
       "description": "A screening test for antibodies against the body's own cell nuclei, read by immunofluorescence on cultured cells. It is the usual first step when an autoimmune connective-tissue disease such as lupus is suspected. A positive result is normally followed by a titer and pattern, and low-level positives are common in healthy people, so it is never a diagnosis on its own."
+    },
+    {
+      "name": "PR Interval",
+      "abbreviation": "PR",
+      "full_name": "PR Interval",
+      "description": "How long the electrical signal on an ECG takes to travel from the atria to the ventricles, measured in milliseconds. A normal adult value is 120–200 ms. A longer interval means the signal is being delayed at the AV node, and a shorter one can mean it is taking an accessory shortcut."
+    },
+    {
+      "name": "QRS Duration",
+      "abbreviation": "QRS",
+      "full_name": "QRS Complex Duration",
+      "description": "How many milliseconds the ventricles take to depolarize on an ECG, seen as the width of the QRS complex. Normal is roughly 70–100 ms, with 110 ms the usual upper limit. A wide QRS suggests the signal is spreading through the ventricles slowly, as in a bundle-branch block."
+    },
+    {
+      "name": "QT Interval",
+      "abbreviation": "QT",
+      "full_name": "QT Interval",
+      "description": "The time on an ECG from the start of ventricular contraction to the end of ventricular recovery, in milliseconds. It naturally gets shorter as the heart beats faster, so the raw number is not read against a fixed cutoff. The rate-corrected version, QTc, is the one clinicians interpret."
+    },
+    {
+      "name": "QTc Interval",
+      "abbreviation": "QTc",
+      "full_name": "Rate-Corrected QT Interval",
+      "description": "The QT interval adjusted for heart rate, which makes it comparable between recordings. A prolonged QTc — about 450 ms or more in men, 460 ms or more in women — means the heart's electrical recovery is slow, which raises the risk of a dangerous rhythm called torsades de pointes. Many medications are monitored with it, so it is the ECG number most likely to change a decision."
+    },
+    {
+      "name": "P Axis",
+      "full_name": "P Wave Axis",
+      "description": "The overall direction the atrial electrical impulse travels, in degrees, seen from the front of the body. A normal adult range is about 0° to +75°. It is an orientation rather than a quantity, and a value outside the usual arc mainly suggests the beat did not start in the normal place, or that the ECG leads were misplaced."
+    },
+    {
+      "name": "QRS Axis",
+      "full_name": "QRS Complex Axis",
+      "description": "The overall direction the ventricular electrical impulse travels, in degrees, seen from the front of the body. A normal adult range is about −30° to +90°. Shifts to the left or right are called axis deviation and are interpreted together with the rest of the tracing rather than on their own."
+    },
+    {
+      "name": "T Axis",
+      "full_name": "T Wave Axis",
+      "description": "The overall direction of ventricular electrical recovery, in degrees, seen from the front of the body. It is not read against a fixed arc; what matters is how far it sits from the QRS axis, since a wide angle between the two can point to a strain or ischemic pattern."
+    },
+    {
+      "name": "Ventricular Rate",
+      "full_name": "Ventricular Rate",
+      "description": "How many times the ventricles contracted per minute during an ECG recording, normally 60–100. It is reported separately from pulse or resting heart rate because in rhythms such as atrial fibrillation the atria fire far faster than the ventricles respond, so the two rates genuinely differ."
+    },
+    {
+      "name": "Electrocardiogram (ECG) Interpretation",
+      "abbreviation": "ECG",
+      "full_name": "Electrocardiogram Interpretation",
+      "description": "The reading clinician's summary of an ECG in words, such as \"normal sinus rhythm\" or \"sinus bradycardia\". It is a judgement about the whole tracing rather than a measured number, so it has no reference range and is kept as a dated record beside the intervals the same ECG measured."
+    },
+    {
+      "name": "Ankle-Brachial Index (ABI), Left",
+      "abbreviation": "ABI",
+      "full_name": "Ankle-Brachial Index, Left",
+      "description": "Blood pressure at the left ankle divided by blood pressure at the arm, used to check whether the leg arteries are narrowed. A ratio of 1.00–1.40 is normal and 0.90 or below indicates peripheral artery disease. A value above 1.40 usually means the arteries are too stiff to squeeze shut, which is its own finding rather than a good result."
+    },
+    {
+      "name": "Ankle-Brachial Index (ABI), Right",
+      "abbreviation": "ABI",
+      "full_name": "Ankle-Brachial Index, Right",
+      "description": "Blood pressure at the right ankle divided by blood pressure at the arm, used to check whether the leg arteries are narrowed. A ratio of 1.00–1.40 is normal and 0.90 or below indicates peripheral artery disease. A value above 1.40 usually means the arteries are too stiff to squeeze shut, which is its own finding rather than a good result."
+    },
+    {
+      "name": "Cardio-Ankle Vascular Index (CAVI), Left",
+      "abbreviation": "CAVI",
+      "full_name": "Cardio-Ankle Vascular Index, Left",
+      "description": "A measure of how stiff the arteries are between the heart and the left ankle, reported as a plain number. It is designed not to be affected by the blood pressure at the time of the test. Under 8.0 is considered normal, 8.0–9.0 borderline, and 9.0 or above suggests arterial stiffening; it rises gradually with age."
+    },
+    {
+      "name": "Cardio-Ankle Vascular Index (CAVI), Right",
+      "abbreviation": "CAVI",
+      "full_name": "Cardio-Ankle Vascular Index, Right",
+      "description": "A measure of how stiff the arteries are between the heart and the right ankle, reported as a plain number. It is designed not to be affected by the blood pressure at the time of the test. Under 8.0 is considered normal, 8.0–9.0 borderline, and 9.0 or above suggests arterial stiffening; it rises gradually with age."
+    },
+    {
+      "name": "Fat Mass Index",
+      "abbreviation": "FMI",
+      "full_name": "Fat Mass Index",
+      "description": "Total body fat in kilograms divided by height in metres squared — body fat expressed the way BMI is, so it can be compared between people of different heights. Roughly 3–6 kg/m² is the normal-fat range for men and 5–9 kg/m² for women. Unlike BMI it counts only fat, so it does not confuse muscle for excess weight."
+    },
+    {
+      "name": "Lean Mass Index",
+      "abbreviation": "LMI",
+      "full_name": "Lean Mass Index",
+      "description": "Total lean, fat-free mass in kilograms divided by height in metres squared, covering the whole body including the trunk. It is not the same as the appendicular lean mass index, which counts only the arms and legs and is the one sarcopenia cutoffs are written for. There is no single normal value, so it is read as a percentile for your age and sex."
+    },
+    {
+      "name": "Metabolic Equivalents (METs)",
+      "abbreviation": "METs",
+      "full_name": "Metabolic Equivalents of Task",
+      "description": "How hard you were able to work at peak effort on an exercise test, counted in multiples of the energy your body uses at rest. One MET is about the oxygen use of sitting quietly. Broadly, under 5 METs is poor exercise capacity and 10 or more is excellent — a strong predictor of long-term health that depends heavily on age and sex."
+    },
+    {
+      "name": "Exercise Stress Test Result",
+      "full_name": "Exercise Stress Test Result",
+      "description": "The clinician's overall conclusion from a treadmill or bike stress test, such as \"negative for ischemia\" or \"non-diagnostic\". It is a judgement about the whole test rather than a measured number, so it has no reference range and is kept as a dated record beside the exercise capacity the same test measured."
+    },
+    {
+      "name": "Color Vision",
+      "full_name": "Color Vision Screening Result",
+      "description": "The result of a colour-vision screen such as the Ishihara plates, recorded in words — for example \"normal\" or \"red-green deficiency\". It is a judgement rather than a measurement, so it has no numeric range. Most colour-vision deficiency is inherited and does not change over life."
+    },
+    {
+      "name": "Audiologic Diagnosis",
+      "full_name": "Audiologic Diagnosis",
+      "description": "The audiologist's conclusion from a hearing evaluation, written out — for example \"normal hearing bilaterally\" or \"mild high-frequency sensorineural hearing loss on the left\". It summarises the test rather than measuring anything, so it has no reference range; the per-ear, per-frequency thresholds behind it are tracked separately."
     }
   ]
 }

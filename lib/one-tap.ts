@@ -89,6 +89,12 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "optimistic-count",
     why: "DO UPDATE SET servings = servings + 1 — the (n) counts exist to celebrate repeat taps (#1016).",
   },
+  "food-usual": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "ONE offer rendered from server state (#2380): its contents ARE the habitual groups this window still has nothing logged for, so a second tap has nothing left to offer and the write core re-derives the same set with a typed `nothing-to-log` refusal — a stale tap lands on an honest answer, never a second breakfast.",
+  },
   "protein-grams": {
     repeat: "additive",
     expectedInterval: "none",

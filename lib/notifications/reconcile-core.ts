@@ -60,6 +60,7 @@ import { createHash } from "node:crypto";
 import type { InlineKeyboard } from "./telegram-render";
 import { plainBody } from "./rich-text";
 import type { NotificationMessage } from "./types";
+import { formatMessageLine } from "./message-line";
 
 // The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
 //
@@ -430,7 +431,10 @@ export function reconcileClosingText(
   // No app pointer (#2274): the buttons are gone because everything is resolved, and
   // naming what happened already tells the reader it is recorded. "In the app." was a
   // sentence fragment doing two jobs and reading like a truncated string.
-  return outcome
-    ? `${subject} — ${outcome}.`
-    : `${subject} — ${RECONCILE_CLOSING_TAIL[reason]}`;
+  // The subject is the head; what happened to it is the note. The sentence-final period
+  // belongs to the outcome clause, so it rides the note rather than the composition.
+  return formatMessageLine({
+    head: subject,
+    notes: [outcome ? `${outcome}.` : RECONCILE_CLOSING_TAIL[reason]],
+  });
 }

@@ -329,7 +329,7 @@ describe("keyboardDoseFootprint", () => {
       ],
       [
         { text: "✅ Vitamin D", callback_data: "take:7:11:1:2026-07-20" },
-        { text: "⏭ Skip", callback_data: "skip:7:11:1:2026-07-20" },
+        { text: "⏭️ Skip", callback_data: "skip:7:11:1:2026-07-20" },
       ],
       [{ text: "✅ Creatine", callback_data: "take:7:13:3:2026-07-20" }],
       [{ text: "Open", url: "https://example.com" }],

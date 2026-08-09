@@ -24,6 +24,7 @@
 
 import { TIME_BUCKET_LABELS, currentTimeBucket } from "../supplement-schedule";
 import type { NotificationAction } from "./types";
+import { GLYPH } from "./glyphs";
 
 // One may item as the tail renders it: enough to label a button and log a dose.
 export interface OfferedItem {
@@ -66,7 +67,7 @@ export function collapsedOfferAction(
 ): NotificationAction {
   const slot = TIME_BUCKET_LABELS[currentTimeBucket(nowHhmm)].toLowerCase();
   return {
-    label: `➕ Log other (${count > 0 ? `${count} for ${slot}` : slot})`,
+    label: `${GLYPH.more} Log other (${count > 0 ? `${count} for ${slot}` : slot})`,
     data: offerExpandToken(profileId, date),
     row: "offer-tail",
   };
@@ -86,7 +87,7 @@ export function expandedOfferActions(
 ): NotificationAction[] {
   const actions: NotificationAction[] = items.map((it) => ({
     label:
-      `💊 ${it.name}` +
+      `${GLYPH.dose} ${it.name}` +
       (it.detail ? ` · ${it.detail}` : "") +
       (it.countToday > 0 ? ` (${it.countToday} today)` : ""),
     data: `prn:${profileId}:${it.itemId}:${token()}`,

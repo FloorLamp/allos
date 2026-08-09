@@ -704,7 +704,7 @@ describe("runEscalations orchestrator", () => {
     configureTelegram(p);
     stubFetch();
 
-    // The escalation's ⏭ Skip performs markDoseSkipped — the SAME write the dose
+    // The escalation's ⏭️ Skip performs markDoseSkipped — the SAME write the dose
     // reminder's own skip performs, so the ledger cannot tell the two apart.
     const outcome = markDoseSkipped(p, doseId, null, date);
     expect(outcome).toBe("skipped");
@@ -831,7 +831,10 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // completed week demoted to the comparison slot; now the comparison is the
     // week BEFORE the completed one (empty).
     expect(text).toContain(recapRangeLabel(w.prevStart, w.prevEnd));
-    expect(text).toContain("Workouts: 1 (strength 1) (0 last week)");
+    // The documented grammar, not a second parenthetical (#2391/#2389 item 2).
+    // The recap emphasizes a head that carries qualifiers (#2392); pin that rather
+    // than loosen the assertion, so the whole line is still checked.
+    expect(text).toContain("<b>Workouts: 1 (strength 1)</b> — 0 last week");
   });
 });
 

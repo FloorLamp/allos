@@ -27,6 +27,7 @@ import {
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -61,7 +62,7 @@ export function renderEaseBackMessage(
     ? [{ label: rec.actionLabel ?? "Open training", url: `${base}/training` }]
     : undefined;
   return {
-    title: `🌤️ Ease back in${who}`,
+    title: `${GLYPH.easingBack} Ease back in${who}`,
     body: `${back}${rec.detail}`,
     actions,
     kind: "ease-back",
