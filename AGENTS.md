@@ -520,6 +520,19 @@ Important invariants:
 - A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
   make an accepted demotion indistinguishable from a deletion.
 
+Biomarker → supplement is **curated first, AI second** (#2378), exactly as
+biomarker → food has been since #577. `lib/supplement-suggest-curated.ts` is a pure
+engine over a committed, human-reviewable map
+(`scripts/gen-biomarker-supplement-map.ts`), gathered by
+`getCuratedSupplementSuggestions` and rendered by one component. It reuses the
+EXISTING screens — `screenSuggestionSafety`, `conditionOrSituationMatches`,
+`stackFoodDrugHits` — and never declares a second copy of one. The map is
+deliberately small, states NO dose, and every entry carries a checkable evidence
+line plus a public source; an uncovered family falls through to the AI route
+(`lib/supplement-suggest.ts`, now the FALLBACK) and loses nothing, so coverage is
+measurable rather than a gate. The two must stay **visibly distinguishable** where
+they render — a curated recommendation and a generated one are different claims.
+
 See `docs/internals/supplements.md`.
 
 ### Health endpoint

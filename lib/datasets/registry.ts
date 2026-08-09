@@ -16,6 +16,10 @@ import {
   allergenFamilyStrategy,
 } from "./allergen-cross-reactivity";
 import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
+import {
+  biomarkerSupplementMapDataset,
+  supplementMapKeyStrategy,
+} from "./biomarker-supplement-map";
 import { canonicalBiomarkersDataset } from "./canonical-biomarkers";
 import {
   bpPercentilesDataset,
@@ -250,6 +254,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nutrientKeyStrategy,
+  },
+  {
+    dataset: biomarkerSupplementMapDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: supplementMapKeyStrategy,
   },
   {
     dataset: ototoxicDataset as unknown as LoadedDataset<

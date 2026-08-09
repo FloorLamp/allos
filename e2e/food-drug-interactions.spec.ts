@@ -39,7 +39,8 @@ test("shows the seeded Warfarin vitamin-K food-drug guidance on the detail page"
 }) => {
   const detail = await openMedDetail(page, "Warfarin");
 
-  // Warfarin (active in the seed) carries two food notes — vitamin K and alcohol.
+  // Warfarin (active in the seed) carries three food notes — vitamin K, alcohol, and
+  // (since #2378) supplemental omega-3 — so this selects the vitamin-K one by text.
   const guidance = foodGuidance(detail, "vitamin K");
   await expect(guidance).toBeVisible();
   await expect(guidance).toContainText("warfarin works");

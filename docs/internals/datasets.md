@@ -1,9 +1,9 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **21 datasets
+Status: **partial** · framework + harness + linter shipped; **22 datasets
 migrated** onto the framework (#860 Track B, waves 1–3 + the deferred
 canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`,
-`bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
+`biomarker-supplement-map`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
 `drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`,
 `growth-charts`, `icd10-common`, `illness-thresholds`,
 `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`,

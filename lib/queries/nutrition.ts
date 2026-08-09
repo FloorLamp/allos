@@ -8,7 +8,15 @@ import { utcInstant } from "../date";
 import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
-import { getIntakeSafetyContext } from "./intake";
+import {
+  getIntakeSafetyContext,
+  getIngestibleSafetyContext,
+  getSupplements,
+} from "./intake";
+import {
+  suggestCuratedSupplements,
+  type CuratedSupplementSuggestion,
+} from "../supplement-suggest-curated";
 import { weekWindowStart } from "./profile-week";
 import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
@@ -132,6 +140,42 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
     // Dietary preferences (#975): the engine filters/substitutes excluded groups. A
     // preference, never a safety gate — a shortfall never disappears, logging never blocks.
     excludedGroups: getExcludedFoodGroups(profileId),
+  });
+}
+
+// Safety-screened CURATED supplement suggestions for the profile's currently-flagged
+// biomarker families (issue #2378) — the twin of getFoodSuggestions above, and the ONE
+// computation every surface that renders a curated supplement claim formats. No model
+// call, so the same profile state yields the same suggestions on every run; a family the
+// map doesn't cover simply isn't here and falls through to the AI route
+// (lib/supplement-suggest.ts). Empty when nothing covered is flagged low.
+export function getCuratedSupplementSuggestions(
+  profileId: number
+): CuratedSupplementSuggestion[] {
+  const flagged = getCurrentFlaggedBiomarkers(profileId).map((r) => ({
+    name: r.name,
+    flag: r.flag,
+  }));
+  if (flagged.length === 0) return [];
+
+  // The INGESTIBLE-conservative safety gather (#691/#2378): the same facts the AI
+  // route's deterministic belt screens against, resolved allergies included — a
+  // recommendation to swallow something is screened the same way whichever engine
+  // produced it.
+  const { allergens, medications, conditions, situations } =
+    getIngestibleSafetyContext(profileId);
+
+  return suggestCuratedSupplements({
+    flagged,
+    allergens,
+    medications,
+    conditions,
+    situations,
+    // Supplements and medications share intake_items, and either can already supply the
+    // substance — so the "already taking it" screen reads the whole active stack.
+    alreadyTaking: getSupplements(profileId)
+      .filter((s) => s.active)
+      .map((s) => s.name),
   });
 }
 
