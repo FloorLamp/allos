@@ -18,6 +18,7 @@ import {
   proteinNudgeButtonLabel,
 } from "../protein-nudge";
 import type { CorrectionBurst } from "../correction-time";
+import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
   correctionBodyStatement,
@@ -186,6 +187,48 @@ function proteinBody(
   });
 }
 
+// The empty-window notice (#2376): one line stating what the LEDGER does and does not
+// contain for the window that just closed.
+//
+// The copy is load-bearing, so it is written here once and nowhere else. The app cannot
+// tell a forgotten log from a skipped meal — the evidence says forgotten is the common
+// case, but that is a fact about a population and never about THIS window — so the
+// sentence has no agent and makes no claim about the person: nothing was LOGGED, which
+// is a statement about the ledger the message is already about. It deliberately does not
+// borrow adherence language ("missed", "overdue", "you didn't"), because food logging
+// carries no dueness — a window is not a dose, and there is nothing here to have been
+// obliged to do (docs/internals/findings.md §3).
+//
+// It also stops there rather than telling anyone how to fill the gap. A quick-log tap on
+// this keyboard is stamped NOW and lands in the CURRENT window, so "tap to fill it" would
+// be false, and the 🕐 eating-time rows that could move it are a ride-along that is often
+// not on the keyboard at all — naming an affordance the message may not be carrying is
+// exactly what §6 forbids.
+//
+// COMPOSED THROUGH THE ONE FORMATTER (#2391), as the HEAD-ONLY case. Every qualifier
+// role is absent, and each absence is a decision this notice already made above: there is
+// no `because`, because stating a cause is precisely the accusation ("nothing logged for
+// Midday — you were out" is a claim about the person, and the app has no such evidence);
+// no `deadline`, because a food window carries no dueness to be late against; no
+// `comparison`, because "fewer windows than last week" would be an adherence score; and
+// no `notes`, because the only fact worth adding would be the how-to-fix pointer the
+// paragraph above rules out. So the formatter renders the sentence and NOTHING else — no
+// dash, no dot, no invented words — which is the guarantee that makes composing through
+// it free here rather than a copy hazard. The head stays one opaque clause the producer
+// writes: `MessageLineParts` deliberately models no structure inside it, so the
+// emphasized window name and the relative day remain part of the sentence rather than
+// slots a template decided.
+export function foodWindowGapLine(gap: FoodWindowGap): MessageBody {
+  return formatRichMessageLine({
+    glyph: "📋",
+    head: [
+      "Nothing logged for ",
+      bold(gap.window),
+      gap.sameDay ? " today." : " yesterday.",
+    ],
+  });
+}
+
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.
 function rowFor(index: number): string {
   return `food${Math.floor(index / 2)}`;
@@ -261,6 +304,12 @@ export interface FoodNudgeRenderOpts {
   // Keeping them also means the `food:` tokens survive, so `↩︎ Back` can rebuild the exact
   // nudge from the live keyboard rather than guessing at a window.
   picker?: { burst: CorrectionBurst; now: Date };
+  // The window that closed empty (#2376), already decided by the pure engine
+  // (lib/food-window-gap.ts) from the profile's ledger. Null/omitted is the common case
+  // and the only case for a profile that does not habitually log that window — the
+  // renderer adds no gate of its own, because "is this worth saying" is the decision the
+  // engine exists to make.
+  gap?: FoodWindowGap | null;
 }
 
 // Build the food-log nudge for a window from the profile's RANKED keys (all of them,
@@ -403,6 +452,10 @@ export function renderFoodNudge(
     [
       tally ? null : "Tap what you've eaten to log a serving.",
       tally,
+      // Beside the tally, because the two are the same kind of statement — what the
+      // day's ledger holds — and above the protein line, which is about a goal rather
+      // than about the log's coverage.
+      opts.gap ? foodWindowGapLine(opts.gap) : null,
       proteinBody(opts.proteinLine),
       // Stated once, above the rows, rather than repeated on every chip: the row names
       // WHAT it is about, and the sentence says what the numbers do.

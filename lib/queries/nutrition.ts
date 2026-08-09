@@ -703,6 +703,58 @@ export function getUsualFoodOffer(
   );
 }
 
+// ---- Which windows a day's ledger actually derived (issue #2376) ----
+
+// For each calendar date in [from, to], the set of food windows that derived AT LEAST
+// ONE event, through the ONE existing precedence (`foodEventWindow`: explicit slot →
+// eaten_at → tap instant). The empty-window notice reads this both for the day it is
+// asking about and for the trailing days its habit gate is measured over, so the two
+// halves can never be derived through different boundaries.
+//
+// EVERY event counts, including the reserved `__protein__` key — unlike the meal
+// grouping above, which drops it because a shake is not a food-group serving and must
+// not render as a mystery meal chip. Here the question is whether the ledger holds
+// anything for the window, and `getMinutesSinceLastFoodLog`'s reasoning applies
+// verbatim: a protein shake is eating, and a check that excluded it would be wrong in
+// the one direction that matters — claiming nothing is logged when something is.
+//
+// A date with no events is simply ABSENT from the map. That is the shape the decision
+// wants: a day nobody logged and a day from before the events ledger existed are
+// indistinguishable, and neither is evidence of anything. Profile-scoped via the
+// food_log_events filter.
+export function getLoggedFoodWindows(
+  profileId: number,
+  from: string,
+  to: string
+): Map<string, Set<FoodSlot>> {
+  const rows = db
+    .prepare(
+      `SELECT date, logged_at, meal_slot, eaten_at
+         FROM food_log_events
+        WHERE profile_id = ? AND date >= ? AND date <= ?`
+    )
+    .all(profileId, from, to) as Pick<
+    FoodLedgerEvent,
+    "date" | "logged_at" | "meal_slot" | "eaten_at"
+  >[];
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  const byDate = new Map<string, Set<FoodSlot>>();
+  for (const row of rows) {
+    const slot = foodEventWindow(
+      row.logged_at,
+      tz,
+      boundaries,
+      row.meal_slot,
+      row.eaten_at
+    );
+    let set = byDate.get(row.date);
+    if (!set) byDate.set(row.date, (set = new Set()));
+    set.add(slot);
+  }
+  return byDate;
+}
+
 // ---- The live food-ledger check behind a dose's declared timing (issue #2022) ----
 
 // Minutes since the profile's most recent logged serving, or null when the ledger holds

@@ -557,6 +557,67 @@ come from the `food_log` day counter — the reserved key never lands there — 
 counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
 which keeps ONE suffix rule for every button on the keyboard.
 
+### A window that closed empty is noticed on the next nudge (#2376)
+
+Every food window missing from the ledger that motivated this was a **forgotten
+log**, not a skipped meal, and nothing in the app noticed. The obvious fix — a
+"you missed lunch" message — is the one §2 of the attention doctrine forbids, so
+the notice is a **clause on a send that was already going to fire**: the food
+nudge for the window that FOLLOWS the empty one.
+
+The reporting slot is **cyclic**, so every window has exactly one and no window
+needs a fourth send invented for it:
+
+| the nudge firing for | carries the gap for |
+| -------------------- | ------------------- |
+| Morning              | YESTERDAY's Evening |
+| Midday               | today's Morning     |
+| Evening              | today's Midday      |
+
+`lib/food-window-gap.ts` is the whole decision, and it is pure: a trailing slice
+of the ledger in, a `FoodWindowGap` or `null` out. There is **no state** — no
+`notify_*` marker (`SEND_MARKER_REGISTRY` is untouched; this rides the food
+nudge's existing `notify_last_food_<Window>` key), no dedupe key, nothing on the
+suppression bus. Log something in the window and the clause disappears on its
+own. `null` — say nothing — is the answer for every case that is not an
+established window observably closing empty: the predecessor has not closed yet
+on the profile's own boundaries; it derived at least one event (a protein tap
+included — a shake is eating); or the profile does not habitually log that
+window. The **habit gate** is a strict majority of the profile's recent logging
+days over `FOOD_WINDOW_HABIT_DAYS` (14), needing at least
+`FOOD_WINDOW_HABIT_MIN_DAYS` (5) logging days before "a majority" means
+anything — which is also how a profile that has never logged food, and one whose
+history predates the events ledger, stay silent. Fourteen days nests strictly
+inside both other engines over this ledger — `RIGHTSIZE_WINDOW_DAYS` (28) and
+`FOOD_REGULARITY_SPAN_DAYS` (21) — per the window-coherence convention in
+`docs/internals/findings.md` §4, asserted in the pure tier.
+
+**It is not #2380's measure, and must not be folded into it.** Food regularity
+(`lib/food-regularity.ts`) reads the same events and asks which GROUPS recur
+inside a window; its denominator is deliberately the days that window was logged
+_at all_, precisely so a day with no morning log stays evidence about **logging**
+rather than about eating. This gate asks that other question — is the window
+logged — so the two are separate computations by that module's own ruling, not a
+duplication to collapse. What they owe each other is the nesting above.
+
+**What the clause may claim.** The app cannot tell a forgotten log from a skipped
+meal and never will, so the sentence has no agent and is about the LEDGER: `📋
+Nothing logged for **Midday** today.` It deliberately borrows no adherence
+language — a window is not a dose and carries no dueness — and it stops there
+rather than saying how to fill the gap: a quick-log tap on that keyboard is
+stamped NOW and lands in the CURRENT window, so "tap to fill it" would be false,
+and the 🕐 eating-time rows that could move it are a ride-along that is often not
+on the keyboard at all (§6). `lib/__tests__/food-window-gap.test.ts` pins the
+absence of agency and dueness words across all six window×day combinations.
+
+`foodWindowGapLine` (`lib/notifications/food-format.ts`) is the copy, composed
+through the message-line grammar below as the **head-only case**: the whole
+sentence is the head, every qualifier role is absent, and the formatter therefore
+adds nothing — no dash, no dot, no words. Each absence is a decision, not an
+omission: a `because` would state a cause the app has no evidence for (which is
+the accusation), a `deadline` would invent a dueness the domain does not have,
+and a `comparison` would be an adherence score.
+
 ### The declared food timing becomes a live check (#2022)
 
 Every dose declares a `food_timing`, and the reminder used to render it as a STATIC
