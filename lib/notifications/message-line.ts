@@ -213,7 +213,7 @@ export function formatRichMessageLine(line: RichMessageLine): MessageBody {
 // there is transport, tokens and registries.
 //
 // So scope is DECLARED: a module in this list composes the body lines of a
-// system-initiated message, and lib/__tests__/message-line-scan.test.ts fails it for
+// system-initiated message, and lib/__tests__/message-line.test.ts fails it for
 // hand-assembling `—`/`·` into a line instead of going through the formatter. The
 // allowlist there carries a written reason per survivor, in the shape the repo's other
 // chokepoint scans use (STATEFUL_WRITE_TABLES, CROSS_PROFILE_SQL_MODULES, the
