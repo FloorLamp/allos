@@ -68,6 +68,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "loadJournalPage",
     why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
   },
+  {
+    file: "app/(app)/integrations/sync-actions.ts",
+    fn: "loadSyncHistoryPage",
+    why: "read-only: fetches an older page of the active profile's provider-scoped sync ledger; the cursor selects a profile-local day and the action writes nothing, so requireSession() is the right gate",
+  },
+  {
+    file: "app/(app)/integrations/sync-actions.ts",
+    fn: "loadSyncHistoryRuns",
+    why: "read-only: resolves bounded event ids from the active profile's provider-scoped sync ledger for an expanded range and writes nothing, so requireSession() is the right gate",
+  },
   // --- Login-scoped actions (operate on the LOGIN, not profile-owned data) ---
   {
     file: "app/(app)/settings/actions.ts",

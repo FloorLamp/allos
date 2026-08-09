@@ -95,7 +95,7 @@ function RunLine({
               {run.change}
             </span>
           ) : (
-            <span className="text-slate-400 dark:text-slate-500">—</span>
+            <span className="text-slate-500 dark:text-slate-400">—</span>
           )}
           {run.skipped > 0 && (
             <span
@@ -371,7 +371,7 @@ export default function SyncHistoryDays({
                 data-testid="sync-day-summary"
               >
                 <IconChevronRight
-                  className="mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-90 dark:text-slate-500"
+                  className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90 dark:text-slate-400"
                   stroke={2}
                 />
                 <div className="min-w-0">
@@ -393,7 +393,7 @@ export default function SyncHistoryDays({
               <ul className="mb-3 ml-6 border-t border-black/5 divide-y divide-black/5 dark:border-white/10 dark:divide-white/5">
                 <li
                   aria-hidden="true"
-                  className={`${LEDGER_GRID} hidden px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 sm:grid`}
+                  className={`${LEDGER_GRID} hidden px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:grid`}
                 >
                   <span>Time</span>
                   <span>Result</span>
