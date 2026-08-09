@@ -307,9 +307,12 @@ describe("reprocess preview phantoms", () => {
       makeInput({
         records: [
           {
+            // The FASTING glucose entry (#2337): the unqualified "Glucose" entry is
+            // band-less by decision, so it derives no flag and could not prove the
+            // preview mirrors the commit-side numeric reconcile.
             category: "lab",
-            name: "Glucose",
-            canonical: "Glucose",
+            name: "Glucose, Fasting",
+            canonical: "Glucose, Fasting",
             value: "200",
             value_num: 200,
             unit: "mg/dL",
@@ -366,7 +369,7 @@ describe("reprocess preview phantoms", () => {
       )
       .all(pid) as { name: string; flag: string | null }[];
     expect(storedFlags).toEqual([
-      { name: "Glucose", flag: "high" },
+      { name: "Glucose, Fasting", flag: "high" },
       { name: "Rubella Antibody IgG", flag: "immune" },
     ]);
 

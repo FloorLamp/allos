@@ -28,6 +28,10 @@ const SOURCE = "e2e-basis-2340";
 // range, one whose document printed nothing.
 const REPORTED = "Leptin";
 const BARE = "Creatinine, Urine";
+// #2337: the unqualified glucose entry gave up its band (it was a FASTING one), and
+// its fasting sibling kept 70–99. The same surface, one analyte apart.
+const UNQUALIFIED_GLUCOSE = "Glucose";
+const FASTING_GLUCOSE = "Glucose, Fasting";
 
 function withDb<T>(fn: (handle: Database.Database, pid: number) => T): T {
   const handle = new Database(DB_PATH);
@@ -98,6 +102,33 @@ test.beforeEach(() => {
       "mg/dL",
       null,
       "low",
+      SOURCE
+    );
+    // #2337: one glucose draw the document never qualified, and the same number under
+    // the entry whose name states the patient fasted. 130 mg/dL is prediabetic
+    // fasting and unremarkable an hour after lunch — which is the whole argument.
+    insert.run(
+      pid,
+      "2026-02-17",
+      "GLUCOSE",
+      UNQUALIFIED_GLUCOSE,
+      "130",
+      130,
+      "mg/dL",
+      null,
+      null,
+      SOURCE
+    );
+    insert.run(
+      pid,
+      "2026-02-17",
+      "GLUCOSE, FASTING",
+      FASTING_GLUCOSE,
+      "130",
+      130,
+      "mg/dL",
+      null,
+      "high",
       SOURCE
     );
   });
@@ -183,4 +214,43 @@ test("the page explains the analyte once, and says why it has no band beside the
   await expect(bandNote).toBeVisible();
   await expect(bandNote).toContainText("No reference band.");
   await expect(bandNote).toContainText("no single reference band applies");
+});
+
+test("an unqualified glucose shows its value unflagged and says why, while the fasting entry still judges the same number (#2337)", async ({
+  page,
+}) => {
+  await page.goto(
+    `/biomarkers/view?name=${encodeURIComponent(UNQUALIFIED_GLUCOSE)}`
+  );
+
+  // The value is shown. Nothing judges it: the catalog publishes no band for a draw
+  // whose fasting state was never recorded, and the document printed no range either.
+  const value = page.getByTestId("biomarker-latest-value");
+  await expect(value).toContainText("130");
+  await expect(value).toHaveAttribute("data-basis", "none");
+  await expect(value.getByTestId("medical-flag-text")).toHaveCount(0);
+  await expect(page.getByTestId("biomarker-reported-range")).toHaveCount(0);
+
+  // And the page can say WHY it is unflagged — the reason is curated, not inferred.
+  const bandNote = page.getByTestId("biomarker-band-note");
+  await expect(bandNote).toBeVisible();
+  await expect(bandNote).toContainText("No reference band.");
+  await expect(bandNote).toContainText(
+    "Whether this draw was fasting is not recorded"
+  );
+  await expect(bandNote).toContainText("either band would be a guess");
+
+  // The same number under the entry that DOES state a fasting draw: judged against
+  // 70–99, coloured, and the band it was judged by is on screen. Asserted on THIS
+  // spec's own row rather than the header, because the shared seed owns fasting
+  // glucose draws of its own on this profile.
+  await page.goto(
+    `/biomarkers/view?name=${encodeURIComponent(FASTING_GLUCOSE)}`
+  );
+  await expect(page.getByText("70–99 mg/dL")).toBeVisible();
+  await expect(page.getByTestId("biomarker-band-note")).toHaveCount(0);
+  const row = page.getByRole("row").filter({ hasText: "130 mg/dL" });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('[data-basis="curated"]')).toBeVisible();
+  await expect(row.getByTestId("medical-flag-text")).toHaveText("High");
 });

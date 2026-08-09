@@ -138,12 +138,12 @@
       "name": "Glucose",
       "category": "lab",
       "unit": "mg/dL",
-      "ref_low": 65,
-      "ref_high": 99,
-      "optimal_low": 70,
-      "optimal_high": 85,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
       "direction": "in_range",
-      "note": "Fasting",
+      "note": "Serum or plasma glucose drawn without a stated fasting state. Whether this draw was fasting is not recorded, and the fasting and non-fasting bands differ by roughly 40 mg/dL at the top of normal. The value is shown but not flagged, because either band would be a guess. A draw the document states as fasting belongs under Glucose, Fasting, which carries the 70–99 mg/dL band.",
       "conversions": {
         "mmol/L": 18.02
       },
@@ -3168,7 +3168,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
+      "note": "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95, and the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
       "ranges_by_status": {
         "premenopausal": {
           "ref_low": 1,
