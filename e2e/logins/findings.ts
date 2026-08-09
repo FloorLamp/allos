@@ -41,3 +41,15 @@ export const VIDEO_PROFILE = "Video Capture (e2e)";
 // which on profile 1 would race the review-inbox/integration specs.
 export const E2E_LOGIN_WEATHER = "e2e_weather";
 export const WEATHER_PROFILE = "Weather (e2e)";
+
+// #2353 — goal pacing (#45 domain 6). A dedicated adult profile carrying its OWN
+// weight series and its OWN off-pace weight goal, so the goal-pacing finding is
+// asserted against data no other spec can reach. It used to be asserted on profile
+// 1 against the base seed's "Reach 74 kg" / "Cut to 78 kg" goals, and profile 1's
+// weight series is shared: any earlier test in the same worker that logs a weight
+// (palette-actions' "Log weight" saves 72.5 kg) re-fits the projection, both goals
+// then read as reaching early, and the card stops rendering. That made the failure
+// depend on the SHARD ORDER — adding any spec file anywhere moved a weight-logging
+// test ahead of it and reddened an innocent PR. A test owns its fixture data.
+export const E2E_LOGIN_GOAL_PACE = "e2e_goal_pace";
+export const GOAL_PACE_PROFILE = "Goal Pacing (e2e)";
