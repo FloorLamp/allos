@@ -1377,6 +1377,36 @@ scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
 panel whose current readings include an out-of-range one says so on its header,
 so a flagged group self-identifies while collapsed.
 
+**What it lists is decided per analyte, not per category (#2365).** Labs,
+genomics and imaging-derived measurements are listed whole; the classes with a
+dedicated home (medications, screening scores, bio-age composites, immutable
+passport facts, narrative report bodies, non-measurement assessments) are
+excluded whole. `vitals` is the one category that holds both populations, so the
+question is asked of the ANALYTE — and the question is not "does a chart exist"
+but **"can a document-imported reading of this quantity reach that chart?"**
+
+A vital that answers yes is not catalogued here: blood pressure, SpO2,
+respiratory rate and body temperature (the chart plots those very rows), resting
+heart rate, body fat and peak expiratory flow (the chart folds the clinical
+reading in beside the device ones), weight, height and head circumference (the
+import writes the charted row itself), and BMI (computed from the weight and
+height that arrive with it). Everything else stays, including the **domain
+vitals with no chart anywhere** — audiogram thresholds, intraocular pressure,
+visual acuity, periodontal measures, spirometry volumes, the functional-fitness
+markers, waist circumference, ankle-brachial index, the stress-test vitals — and
+also **HRV and BMR**, which _have_ charts fed exclusively by integration streams:
+a cardiology report's HRV or a calorimetry BMR can reach neither, so the catalog
+remains their home.
+
+This is #1076's "nothing stranded" rule at a finer grain — membership follows
+whether the reading is answered elsewhere — and it stopped the catalog listing
+ten measurements that already were for every one it rescued (measured on a real
+profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
+(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+declaration, never hand-listed, so an analyte that gains a dedicated surface
+leaves the browser with no second edit and a newly registered metric must state
+whether an imported reading can reach it before it can remove anything.
+
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,
 so a page could split a panel and print partial counts on each half); the panel
@@ -1397,11 +1427,13 @@ Readings sort by **name** (A–Z, newest reading first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
 order. Filters are free-text search, category, clinical **panel**, an
 all/non-optimal/out-of-range lens, and "current values only". The panel facet
-offers a stable list — the taxonomy minus the panels whose analytes live in
-categories this browser deliberately doesn't list (mental-health screening
-scores, which are re-homed to Medical → Health record → Specialty, and blood
-type, which lives in the passport), so it never offers a filter that returns
-nothing for anyone.
+offers a stable list — the taxonomy minus the panels whose analytes this browser
+doesn't list (mental-health screening scores, which are re-homed to Medical →
+Health record → Specialty; blood type, which lives in the passport; and, since
+#2365, **vital signs**, whose six members are all body metrics with charts of
+their own), so it never offers a filter that returns nothing for anyone.
+Respiratory function is the mixed case and stays offered: peak flow leaves for
+its metric page while the spirometry volumes remain.
 
 **On a phone the index leads.** The trajectory-watch card keeps its place above
 it — a warning has to find you rather than be looked up — showing its headline

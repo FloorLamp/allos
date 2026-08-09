@@ -14,6 +14,7 @@ import {
 import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
 import { DERIVED_NAMES } from "../derived-biomarkers";
 import { BIOMARKER_CATEGORIES } from "../medical-categories";
+import { hasBodyMetricHome } from "../body-metric-analytes";
 
 // #1581 section D — the panel facet must not offer an option that can never return a
 // row. The derivation is over the controlled vocabulary, so these assertions are
@@ -40,7 +41,17 @@ describe("reachablePanelIds (#1581 section D)", () => {
     //                    is the SENSITIVITY fix: the browser refuses to show these,
     //                    so offering the facet advertised data it will not render.
     //   blood-type     → category `reference` (the passport's immutable facts).
-    expect(unreachablePanelIds()).toEqual(["blood-type", "mental-health"]);
+    // And since #2365, one panel emptied ANALYTE by analyte rather than by class:
+    //   vital-signs    → all six members (blood pressure ×2, oxygen saturation,
+    //                    respiratory rate, resting heart rate, body temperature) are
+    //                    body metrics with a `/trends/metric/<slug>` chart, so the
+    //                    browser lists none of them and the facet option can only
+    //                    return "No records match these filters".
+    expect(unreachablePanelIds()).toEqual([
+      "blood-type",
+      "vital-signs",
+      "mental-health",
+    ]);
   });
 
   it("keeps biological-age, because PhenoAge still renders here as a derived row", () => {
@@ -53,9 +64,10 @@ describe("reachablePanelIds (#1581 section D)", () => {
 
   it("keeps the non-lab panels #1076 deliberately left browsable", () => {
     // vitals: audiogram thresholds (#713), IOP / visual acuity (#697), periodontal
-    // depth (#705) — none has another chart surface. scan: numeric DEXA.
+    // depth (#705) — none has another chart surface. scan: numeric DEXA. #2365 does
+    // not touch these: its rule removes an analyte only when a home EXISTS, and none
+    // of these analytes has one.
     for (const id of [
-      "vital-signs",
       "vision",
       "hearing",
       "dental",
@@ -63,6 +75,10 @@ describe("reachablePanelIds (#1581 section D)", () => {
       "body-composition",
     ] as PanelId[])
       expect(isPanelReachableInBrowser(id)).toBe(true);
+    // Respiratory function is the mixed panel and the sharpest case: peak expiratory
+    // flow leaves (it has a metric page), the three spirometry analytes stay, so the
+    // panel is still reachable — the rule is per analyte, never per panel.
+    expect(isPanelReachableInBrowser("respiratory")).toBe(true);
   });
 
   it("keeps the reserved Other bucket, whose rows are un-canonicalized", () => {
@@ -74,11 +90,15 @@ describe("reachablePanelIds (#1581 section D)", () => {
 
   it("agrees with a from-scratch walk of the vocabulary", () => {
     // The independent oracle: a panel is reachable iff some canonical entry in it
-    // carries a listed category, or a derived index resolves to it, or it is `other`.
+    // carries a listed category AND is not an analyte the browser drops for having a
+    // body-metric home (#2365), or a derived index resolves to it, or it is `other`.
     const listed = new Set<string>(BIOMARKER_CATEGORIES as readonly string[]);
     const expected = new Set<PanelId>([OTHER_PANEL]);
-    for (const e of CANONICAL_BIOMARKERS)
-      if (listed.has(e.category)) expected.add(panelForCanonicalName(e.name));
+    for (const e of CANONICAL_BIOMARKERS) {
+      if (!listed.has(e.category)) continue;
+      if (e.category === "vitals" && hasBodyMetricHome(e.name)) continue;
+      expected.add(panelForCanonicalName(e.name));
+    }
     for (const n of DERIVED_NAMES) expected.add(panelForCanonicalName(n));
     expect(reachablePanelIds().sort()).toEqual([...expected].sort());
   });
