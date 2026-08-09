@@ -15,6 +15,8 @@ import {
   biomarkerFamilyAnchor,
   biomarkerRetestIdentity,
   canonicalAliases,
+  uncuratedAnalyte,
+  uncuratedAnalytes,
   isGarbageCanonical,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-biomarkers.json";
@@ -765,5 +767,79 @@ describe("snapCanonicalNameIntoBatch / claimCanonicalKey (intra-batch collapse)"
     expect(
       snapCanonicalName("zeta antibody igg", buildCanonicalIndex(["Glucose"]))
     ).toBe("zeta antibody igg");
+  });
+});
+
+// #2313 — the deliberately-uncurated declarations. This is the COMPLETENESS GUARD
+// the registry exists to have: a declaration is a promise made to a reader ("we
+// decided this, here is why, here is where the quantity actually lives"), and each
+// of the three assertions below pins one way that promise can quietly become false.
+describe("deliberately uncurated analytes (#2313)", () => {
+  // The real production vocabulary, as the dataset ships it — the same set a
+  // curated entry is judged against everywhere else in this file.
+  const vocabulary = (
+    canonicalSeed as { biomarkers: { name: string }[] }
+  ).biomarkers.map((b) => b.name);
+  const curatedKeys = new Set(vocabulary.map((n) => normalizeCanonicalKey(n)));
+
+  it("declares a non-empty reason for every entry", () => {
+    // The MetricKnowledge `{ source: "none"; reason }` rule: the reason is what a
+    // user reads instead of "unresolved", so a blank one is a silent regression to
+    // the state this registry replaced.
+    for (const [name, declaration] of uncuratedAnalytes()) {
+      expect(declaration.reason.trim().length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it("points every covered-elsewhere entry at a REAL curated entry", () => {
+    // A dangling `instead` promises a series that doesn't exist — the UI links to
+    // it, so the reader lands on nothing.
+    for (const [name, declaration] of uncuratedAnalytes()) {
+      if (declaration.kind !== "covered-elsewhere") continue;
+      expect(
+        curatedKeys.has(normalizeCanonicalKey(declaration.instead)),
+        name
+      ).toBe(true);
+    }
+  });
+
+  it("declares no name that is also curated or aliased", () => {
+    // Declaring AND curating the same analyte is a contradiction that would
+    // otherwise resolve by whichever path ran last: the vocabulary would snap the
+    // name onto a real series while this registry insisted it has none.
+    const aliasKeys = new Set(
+      canonicalAliases().map(([alias]) => normalizeCanonicalKey(alias))
+    );
+    for (const [name] of uncuratedAnalytes()) {
+      const key = normalizeCanonicalKey(name);
+      expect(curatedKeys.has(key), name).toBe(false);
+      expect(aliasKeys.has(key), name).toBe(false);
+    }
+  });
+
+  it("looks a declaration up by normalized key, so spelling variants collapse", () => {
+    const egfr = uncuratedAnalyte("eGFR, African American");
+    expect(egfr?.kind).toBe("covered-elsewhere");
+    expect(egfr && egfr.kind === "covered-elsewhere" && egfr.instead).toBe(
+      "eGFR"
+    );
+    // Casing, punctuation and word order all fold — the alias table's key rule.
+    expect(uncuratedAnalyte("african american egfr")).toBe(egfr);
+    expect(uncuratedAnalyte("eGFR (African American)")).toBe(egfr);
+    // The three race-branched equations are ONE decision.
+    expect(uncuratedAnalyte("eGFR, Thai")).toBe(egfr);
+    expect(uncuratedAnalyte("eGFR, Non-African-American")).toBe(egfr);
+    // The tox screens are the other shape: nothing to point at.
+    expect(uncuratedAnalyte("Diuretic Screen, Urine")?.kind).toBe(
+      "out-of-scope"
+    );
+  });
+
+  it("declares nothing about a name it has no opinion on", () => {
+    // The null answer is load-bearing: it is what keeps a genuine gap actionable.
+    for (const undeclared of ["eGFR", "Glucose", "E2E Novel Marker", "", "   "])
+      expect(uncuratedAnalyte(undeclared)).toBeNull();
+    expect(uncuratedAnalyte(null)).toBeNull();
+    expect(uncuratedAnalyte(undefined)).toBeNull();
   });
 });

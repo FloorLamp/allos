@@ -19,6 +19,7 @@ import {
   tallyUnresolvedNames,
   unmappedCodeIssueUrl,
   unresolvedNameIssueUrl,
+  splitDeclaredNames,
   type ImportDrop,
   type CoverageEntry,
   type ImportReport,
@@ -462,6 +463,9 @@ describe("serialize / parseImportReport", () => {
       considered: 2,
       unmappedLoincs: [{ loinc: "12345-6", name: "Some Assay", count: 2 }],
       unresolvedNames: [{ name: "Urobilinogen", count: 1, unit: "mg/dL" }],
+      // Nothing here is a declared name (#2313), so the read-time split leaves the
+      // declined half empty — parse always answers with both halves.
+      declinedNames: [],
       reconciliation: {
         confirmed: 4,
         total: 5,
@@ -501,6 +505,7 @@ describe("serialize / parseImportReport", () => {
       considered: 0,
       unmappedLoincs: [],
       unresolvedNames: [],
+      declinedNames: [],
       reconciliation: null,
       // A report with no confidence key degrades to "no signal", not zeros (#1601).
       confidence: null,
@@ -974,5 +979,117 @@ describe("mergeImportResults (XDM) → the merge path counts like the single-doc
     ]).report!;
     expect(both.imported).toBe(labOnly + imagingOnly);
     expect(both.considered).toBe(both.imported + rowDropCount(both));
+  });
+});
+
+// #2313 — the deliberately-uncurated split. The debugger's "Unresolved analytes"
+// number is a claim about OUTSTANDING WORK, and a name this repo already decided
+// not to curate is not outstanding work. It is FreshnessState's `not-applicable`,
+// which must never fold into `due`.
+describe("declared-vs-unresolved split (#2313)", () => {
+  it("splits a tally by the registry, keeping the declaration on the declined half", () => {
+    const { unresolvedNames, declinedNames } = splitDeclaredNames([
+      { name: "E2E Novel Marker", count: 2, unit: "ng/mL" },
+      { name: "eGFR, African American", count: 1, unit: "mL/min/1.73" },
+      { name: "Diuretic Screen, Urine", count: 1, unit: null },
+    ]);
+    expect(unresolvedNames).toEqual([
+      { name: "E2E Novel Marker", count: 2, unit: "ng/mL" },
+    ]);
+    expect(declinedNames.map((d) => d.name)).toEqual([
+      "eGFR, African American",
+      "Diuretic Screen, Urine",
+    ]);
+    // The declaration rides along so a surface renders the reason (and, for a
+    // covered-elsewhere entry, the series that actually carries the quantity)
+    // without going back to the registry itself.
+    const egfr = declinedNames[0].declaration;
+    expect(egfr.kind).toBe("covered-elsewhere");
+    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe("eGFR");
+    expect(declinedNames[1].declaration.kind).toBe("out-of-scope");
+    // Counts and units survive the move — the declined half is the same row.
+    expect(declinedNames[0].count).toBe(1);
+    expect(declinedNames[0].unit).toBe("mL/min/1.73");
+  });
+
+  it("splits a report stored BEFORE the registry existed, with no rewrite", () => {
+    // THE claim of doing this at read time: a blob written when all five names were
+    // simply "unresolved" splits correctly the moment the declaration ships.
+    const legacy = JSON.stringify({
+      drops: [],
+      coverage: [],
+      imported: 3,
+      considered: 3,
+      unresolvedNames: [
+        { name: "eGFR, Non-African-American", count: 2, unit: "mL/min/1.73" },
+        { name: "Beta Adrenergic Blocker Screen", count: 1, unit: null },
+        { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+      ],
+    });
+    const parsed = parseImportReport(legacy)!;
+    expect(parsed.unresolvedNames).toEqual([
+      { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+    ]);
+    expect(parsed.declinedNames?.map((d) => d.name)).toEqual([
+      "eGFR, Non-African-American",
+      "Beta Adrenergic Blocker Screen",
+    ]);
+  });
+
+  it("folds the declined half back into storage, so a re-persist can't freeze it", () => {
+    // Serialization is the inverse: what goes back to the column is the whole
+    // unresolved set, exactly as it was stored. Otherwise reconcileStoredReportCounts
+    // (parse → re-serialize) would bake TODAY's registry into the blob and a later
+    // declaration would stop being retroactive.
+    const parsed = parseImportReport(
+      JSON.stringify({
+        drops: [],
+        coverage: [],
+        imported: 1,
+        considered: 1,
+        unresolvedNames: [
+          { name: "eGFR, Thai", count: 1, unit: null },
+          { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+        ],
+      })
+    )!;
+    const stored = JSON.parse(serializeImportReport(parsed)!);
+    expect(stored.declinedNames).toBeUndefined();
+    // Both names are back in the one stored list (re-tallied, so the fold is
+    // idempotent rather than appending a second copy).
+    expect(stored.unresolvedNames).toEqual([
+      { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+      { name: "eGFR, Thai", count: 1, unit: null },
+    ]);
+    // And the round trip is stable — re-parsing re-splits to the same two halves.
+    expect(parseImportReport(serializeImportReport(parsed))).toEqual(parsed);
+  });
+
+  it("merges an XDM package's documents into one pool, then splits it", () => {
+    const a: ImportReport = {
+      ...emptyReport(),
+      unresolvedNames: [{ name: "eGFR, Thai", count: 2, unit: null }],
+    };
+    const b: ImportReport = {
+      ...emptyReport(),
+      unresolvedNames: [
+        { name: "eGFR, Thai", count: 1, unit: "mL/min/1.73" },
+        { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+      ],
+    };
+    const merged = mergeReports([a, b]);
+    expect(merged.unresolvedNames).toEqual([
+      { name: "E2E Novel Marker", count: 1, unit: "ng/mL" },
+    ]);
+    // The declared name still tallies across documents — it is collapsed, never
+    // dropped: the count is what a maintainer reads to see how often it recurs.
+    expect(merged.declinedNames).toEqual([
+      {
+        name: "eGFR, Thai",
+        count: 3,
+        unit: "mL/min/1.73",
+        declaration: merged.declinedNames![0].declaration,
+      },
+    ]);
   });
 });

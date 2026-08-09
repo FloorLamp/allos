@@ -224,6 +224,54 @@ carry a band. `FLAG_LOGIC_VERSION` is deliberately **not** bumped for this: no
 range and no derivation logic changed, and a bump would force a full re-scan on
 every database that has no drift to repair.
 
+### Deliberately uncurated analytes (#2313)
+
+`CANONICAL_ALIASES` declares the spellings we DO route. `UNCURATED_ANALYTES`
+(same module, keyed the same way by `normalizeCanonicalKey`) declares the other
+half: the analytes this repo has decided **not** to curate, and why. That
+decision already existed as a source comment, which meant every surface meeting
+one of these names had to guess — and the import debugger guessed that a settled
+question was outstanding work, counting it toward "Unresolved analytes (N)" and
+offering a link that files a public duplicate of a decision already made.
+
+Two shapes, mirroring `MetricKnowledge`'s union, because they say materially
+different things to a reader:
+
+- `{ kind: "covered-elsewhere"; instead; reason }` — the quantity IS tracked,
+  under a different identity, and `instead` names the curated entry that carries
+  it so a surface can link to the real series. The race/ethnicity-branched eGFR
+  equations are the motivating case: they return different values for the same
+  draw and cannot share one series, and Allos derives the race-free CKD-EPI 2021
+  value from creatinine instead.
+- `{ kind: "out-of-scope"; reason }` — not a thing this app models as a
+  biomarker at all (a toxicology screen has no reference band to curate).
+
+Like `MetricKnowledge`'s `{ source: "none"; reason }`, the **reason is
+mandatory**: it is what a user reads instead of "unresolved", and a declaration
+without one silently regresses to the state the registry replaced. A
+deliberately-uncurated analyte is `FreshnessState`'s `not-applicable`, and
+folding it into `due` is the same error one surface over.
+
+`uncuratedAnalyte(name)` is the lookup, and it answers a question about the
+ANALYTE rather than about any one surface: anything that would otherwise present
+one of these names as an open gap reads it, with no per-surface copy of the list
+and no per-surface opinion about what the decision means. Its completeness guard
+(`lib/__tests__/canonical-name.test.ts`) pins three rules: every entry has a
+non-empty reason; every `covered-elsewhere` target resolves to a real curated
+entry (a dangling `instead` promises a series that doesn't exist); and no
+declared name is also a curated entry or a `CANONICAL_ALIASES` source, since
+declaring and curating the same analyte would otherwise resolve by whichever
+path ran last.
+
+The import debugger applies it in `parseImportReport`, on **read** — never in
+`lib/import-shape.ts` at write time. That is what makes it cheap: every
+already-stored `import_report` splits into `unresolvedNames` / `declinedNames`
+correctly the moment a declaration ships, with no migration and nothing to
+reprocess, and a future declaration takes effect everywhere at once.
+`serializeImportReport` folds the declined half back into the stored unresolved
+list so a re-persist cannot freeze today's registry into the blob and cost that
+retroactivity.
+
 ## Migrating the next dataset (a thin PR)
 
 1. Reshape its `scripts/gen-*.ts` (or hand-authored JSON) to emit a framework

@@ -125,3 +125,56 @@ test.describe("Import detail: dropped grouping + unmapped-code report", () => {
     expect(body).not.toMatch(/patient|provider|\b20\d\d-\d\d-\d\d\b/i);
   });
 });
+
+// #2313 — "unresolved" and "we decided not to curate this" are different answers,
+// and only one of them is work. Document 907 carries one genuine gap plus two
+// declared names; document 911 carries declared names ONLY.
+test.describe("Import detail: deliberately uncurated analytes", () => {
+  test("counts only the genuine gap, and offers no report link for a declared name", async ({
+    page,
+  }) => {
+    await page.goto("/import/907");
+
+    // The header counts 1, not 3: the two declared names are not-applicable, not due.
+    const card = page.getByTestId("unresolved-names-card");
+    await expect(card.getByText("Unresolved analytes (1)")).toBeVisible();
+    await expect(card.getByText("E2E Unknown Analyte")).toBeVisible();
+    await expect(card.getByText("eGFR, African American")).toHaveCount(0);
+    // Exactly one report link — the one that points at a real gap.
+    await expect(card.getByTestId("report-unresolved-name")).toHaveCount(1);
+
+    // The declared names render apart, each with the reason a user needs, and with
+    // NO report link anywhere in the block (the defect this issue is about).
+    const declined = page.getByTestId("declined-names-card");
+    await expect(
+      declined.getByText("Not curated, on purpose (2)")
+    ).toBeVisible();
+    await expect(declined.getByTestId("report-unresolved-name")).toHaveCount(0);
+    await expect(declined.getByText("CKD-EPI 2021")).toBeVisible();
+    await expect(
+      declined.getByText("aren't biomarkers with reference bands")
+    ).toBeVisible();
+
+    // "Where is my eGFR then?" is one click: the covered-elsewhere entry links to
+    // the series that actually carries the quantity.
+    const instead = declined.getByTestId("declined-name-instead");
+    await expect(instead).toHaveCount(1);
+    await expect(instead).toHaveAttribute("href", "/biomarkers/view?name=eGFR");
+  });
+
+  test("drops the Unresolved analytes card entirely when everything left is declared", async ({
+    page,
+  }) => {
+    await page.goto("/import/911");
+
+    // Nothing outstanding ⇒ no card. The declared block still explains all three.
+    await expect(page.getByTestId("unresolved-names-card")).toHaveCount(0);
+    const declined = page.getByTestId("declined-names-card");
+    await expect(
+      declined.getByText("Not curated, on purpose (3)")
+    ).toBeVisible();
+    await expect(declined.getByTestId("declined-name-row")).toHaveCount(3);
+    // Both eGFR branches point at the same real series; the tox screen has none.
+    await expect(declined.getByTestId("declined-name-instead")).toHaveCount(2);
+  });
+});
