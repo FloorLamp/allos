@@ -625,10 +625,15 @@ const PANELS: Panel[] = [
   // Metabolic — improving insulin sensitivity.
   {
     category: "lab",
+    // The printed name states the draw was fasting, so it routes to the FASTING
+    // entry and its 70–99 band (#2337). The unqualified `Glucose` entry is
+    // deliberately band-less — a draw that never said whether the patient fasted
+    // has not given us enough to flag against — so seeding a fasting panel onto it
+    // would demo the very mis-framing that issue removed.
     name: "Glucose, Fasting",
-    canonical: "Glucose",
+    canonical: "Glucose, Fasting",
     unit: "mg/dL",
-    ref: "65-99",
+    ref: "70-99",
     values: [96, 93, 90, 87, 84, 82],
   },
   {

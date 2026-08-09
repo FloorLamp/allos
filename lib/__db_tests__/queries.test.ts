@@ -136,16 +136,31 @@ describe("medical / biomarker reads", () => {
     ).toContain("Glucose");
   });
 
-  it("reconcileFlags round-trips: NULL flag → 'high' for an out-of-range value", () => {
-    // Seeded with no flag; the derivation should flag Glucose 130 (> ref_high 99).
+  it("reconcileFlags round-trips: NULL flag → 'high' against a fasting band, and NOTHING for an unqualified glucose", () => {
+    // #2337. The fixture's glucose is UNQUALIFIED — the document never said whether
+    // the patient fasted — and the catalog deliberately publishes no band for that,
+    // because the fasting and non-fasting frames differ by ~40 mg/dL at the top of
+    // normal. So 130 mg/dL derives no flag here. The same 130 under `Glucose,
+    // Fasting` is a real out-of-range reading against 70–99 and must still flag,
+    // which is the half of the decision that stays: both directions in one pass.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, value_num)
+       VALUES (?, '2026-01-15', 'lab', 'Glucose, Fasting', '130', 'mg/dL', 'Glucose, Fasting', 130)`
+    ).run(fx.profileId);
     expect(
       getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
     ).toBeNull();
+
     const changed = reconcileFlags(fx.profileId);
     expect(changed).toBeGreaterThanOrEqual(1);
+
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag
+      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose, Fasting")?.flag
     ).toBe("high");
+    expect(
+      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
+    ).toBeNull();
   });
 });
 

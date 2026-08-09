@@ -894,7 +894,7 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_low: null,
     optimal_high: null,
     direction: "in_range",
-    note: "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
+    note: "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95, and the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
     // Reproductive-status override (female physiology only). Mayo/endocrine
     // adult intervals: premenopausal spans the luteal low → ovulatory surge (~1–100);
     // postmenopausal up to ~58.5. The reproductive envelope already covers the

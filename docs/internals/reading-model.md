@@ -328,6 +328,45 @@ one, deliberately not a bare `/band/`: "Immature (band) neutrophils" is a cell t
 and matching it would re-import the description the change exists to stop
 duplicating.
 
+### An unqualified glucose has no band to be judged against (#2337)
+
+Both curated glucose entries used to hold a **fasting** band: `Glucose, Fasting` at
+70–99 (correct — the ADA normal fasting range, with 100–125 prediabetes and ≥126
+diabetes on repeat), and unqualified `Glucose` at 65–99, which is _also_ a fasting
+interval — the familiar lab-printed CMP one, and CMP glucose is reported in a
+fasting frame. So the catalog had **no band for a glucose whose fasting state is
+unknown**, which is exactly what an unqualified reading is, and it judged one anyway.
+
+Re-banding it fails in both directions. Kept fasting, a post-meal 120 is entirely
+normal and reads high on a healthy person. Re-banded random (`< 140`), a genuine
+fasting 130 is prediabetic and reads normal — the missed finding, which is the worse
+error. There is no interval to copy even if we picked: for random glucose the ADA
+publishes diagnostic **thresholds** (≥200 with classic symptoms), not a reference
+interval, and the widely-quoted 80–140 is a rule of thumb. So the unqualified entry
+is **band-less**, with the reason stated in its curated `note` — the second consumer
+of the clause `bandNoteClause()` extracts, and written to be read by a person:
+
+> Whether this draw was fasting is not recorded, and the fasting and non-fasting
+> bands differ by roughly 40 mg/dL at the top of normal. The value is shown but not
+> flagged, because either band would be a guess.
+
+`Glucose, Fasting` keeps 70–99, and 70 — the clinical hypoglycemia threshold, not the
+65 lab-interval artifact — is now the only fasting floor the dataset carries.
+
+Two consequences, both deliberate. A reading under `Glucose` **loses its flag**: that
+flag asserted a fasting frame the document never claimed. And because
+`reconciledFlag` will not clear a stored high/low for an analyte with no reference
+bounds — right for the ~90 analytes the catalog has always declined to band, where
+such a flag came from the document — migration 176 clears the ones already on disk,
+scoped to numeric `Glucose` rows and to the flags `reconcileFlags` itself writes. The
+row keeps its value and the source's own printed `reference_range`, which the detail
+page still renders **attributed**; what goes is only allos's claim about it.
+
+This is a dataset change, so no `FLAG_LOGIC_VERSION` bump: `canonicalFlagsSignature`
+hashes `ref_*`/`optimal_*`, so the boot reconcile re-derives every record on its own
+(the version constant exists for a change to the derivation LOGIC while the dataset
+holds still).
+
 ## Phase 2 (shipped): one write core, one editability contract
 
 `lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes

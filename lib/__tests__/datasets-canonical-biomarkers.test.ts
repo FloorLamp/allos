@@ -97,9 +97,19 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // screen reaches its flag instead of staying an unbanded orphan. FLAG_LOGIC_VERSION is
 // deliberately NOT bumped: the derivation LOGIC is unchanged, and the dataset half of
 // the signature already forces the re-reconcile on its own.
+// Updated for #2337: the unqualified `Glucose` entry gives up its bands (ref 65–99 and
+// optimal 70–85 → null). Both were FASTING intervals — 65–99 is the lab-printed CMP one,
+// and CMP glucose is reported in a fasting frame — so the app had no band for a glucose
+// whose fasting state is unknown, which is exactly what an unqualified reading is. Four
+// flag-relevant fields go null, so the signature legitimately changes and the boot
+// reconcile runs once. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation
+// LOGIC is unchanged, and the dataset half of the signature already forces the
+// re-reconcile on its own (same reasoning as #2300). `Glucose, Fasting` keeps 70–99 —
+// it is correct, and 70 (the clinical hypoglycemia threshold, not the 65 lab artifact)
+// is now the only fasting floor left in the dataset.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "f19a6cb97b28d4b96bee95b6bb94549a75050f130b601dbd4968e477f82ff1e5"; // phi-scan-ok
+  "32020fb3ad69324b77300c4c45c86e741869875154352015ece277c15ef3ab4b"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

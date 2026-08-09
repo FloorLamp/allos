@@ -1765,7 +1765,13 @@ order — PhenoAge's glucose input takes `Glucose, Fasting` first (Levine's mode
 is defined on fasting serum glucose) and the unqualified `Glucose` otherwise, so
 a fasting panel and an older draw both compute. The acceptance lives on that one
 input: the curated glucose entries stay separate analytes everywhere else, with
-their own reference bands, flags, charts and retest clocks.
+their own flags, charts and retest clocks. Only `Glucose, Fasting` carries a
+reference band (70–99 mg/dL). The unqualified entry deliberately carries none — a
+draw that never said whether the patient fasted has not given us enough to flag
+against, and the fasting and non-fasting frames differ by roughly 40 mg/dL at the
+top of normal — so an unqualified reading shows its value, no flag, and the reason
+it has none. PhenoAge is unaffected either way: it consumes the glucose _value_, not
+its band.
 
 A component your lab reported **beyond a detection limit** ("<0.2") is used at
 that limit — the same substitution the charts plot — and the derived value says

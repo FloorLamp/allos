@@ -55,20 +55,24 @@ beforeEach(() => revalidate.mockClear());
 describe("addRecord", () => {
   it("inserts a record and flags an out-of-range value in one transaction", async () => {
     const { profile } = seedActor();
+    // The analyte is the FASTING glucose entry on purpose (#2337): unqualified
+    // "Glucose" is deliberately band-less — a reading that does not say whether the
+    // patient fasted has not given us enough to flag against — so it can no longer
+    // stand in for "an out-of-range value" here.
     await addRecord(
       fd({
         date: "2026-01-15",
         category: "lab",
-        name: "Glucose",
+        name: "Glucose, Fasting",
         value: "130",
         unit: "mg/dL",
-        canonical_name: "Glucose",
+        canonical_name: "Glucose, Fasting",
       })
     );
 
     const rows = recordRows(profile.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Glucose");
+    expect(rows[0].name).toBe("Glucose, Fasting");
     // value_num derived from the numeric value → chartable.
     expect(rows[0].value_num).toBe(130);
     // reconcileFlags ran inside the write transaction: 130 > ref_high 99 → 'high'.

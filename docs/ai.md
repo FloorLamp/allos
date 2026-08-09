@@ -133,7 +133,10 @@ those describe how the patient was _prepared_, and a report either states one or
 it does not. The qualifier selects the reference band (normal glucose tops out at
 99 fasting and around 140 otherwise), so an inferred one decides whether a
 reading is flagged, and it forks the analyte's series across two canonical names
-by document. The rule is in the system prompt and the `canonical_name` schema
+by document. Dropping back is safe as well as honest: since #2337 the unqualified
+`Glucose` entry carries **no** band at all, so a row whose fasting state the
+document never printed is shown and not judged, rather than judged against the
+fasting frame it never claimed. The rule is in the system prompt and the `canonical_name` schema
 field, and enforced in code by `stateAwareCanonical`
 (`lib/patient-state-qualifiers.ts`), which `normalizeResults` applies after the
 unit arbitration: a state qualifier the row's printed name and panel heading do
