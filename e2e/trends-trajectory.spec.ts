@@ -58,8 +58,18 @@ test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decl
   await expect(rollup).toBeVisible();
 
   // Expanding it reveals the rule's own observation, unchanged.
+  //
+  // The sentence opens with the CANONICAL NAME, so #2335's rename moved it: it now
+  // reads "Estimated Glomerular Filtration Rate (eGFR) is falling faster …" and the
+  // old `eGFR is falling` no longer matches, because the parenthesis sits between
+  // them. Asserting the full name is deliberate — it proves the rename reaches
+  // user-facing finding copy, which is the half a name-agnostic `/falling faster/i`
+  // (as the pure test uses) cannot see. A future rename of this analyte SHOULD fail
+  // here.
   await hydratedClick(page, rollup.getByTestId("trajectory-rollup-toggle"));
-  await expect(rollup).toContainText(/eGFR is falling faster than usual/i);
+  await expect(rollup).toContainText(
+    /Estimated Glomerular Filtration Rate \(eGFR\) is falling faster than usual/i
+  );
   await expect(rollup).toContainText(/clinician/i);
 });
 
@@ -79,9 +89,11 @@ test("dismissing a trajectory finding silences the analyte's trajectory watch (#
     .getByTestId("trajectory-rollup")
     .filter({ hasText: "eGFR" });
   await hydratedClick(page, rollup.getByTestId("trajectory-rollup-toggle"));
-  const finding = rollup
-    .getByTestId("trajectory-finding")
-    .filter({ hasText: "eGFR is falling faster than usual" });
+  const finding = rollup.getByTestId("trajectory-finding").filter({
+    // Full canonical name since #2335 — see the note on the velocity assertion above.
+    hasText:
+      "Estimated Glomerular Filtration Rate (eGFR) is falling faster than usual",
+  });
   await expect(finding).toBeVisible();
 
   await settledClick(page, finding.getByTestId("trajectory-dismiss"));
