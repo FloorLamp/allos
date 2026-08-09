@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recentLabHighlights, recentLabStatus } from "@/lib/recent-labs";
-import { flagLabel, flagTone } from "@/lib/reference-range";
+import { recentLabHighlights } from "@/lib/recent-labs";
 import type { MedicalRecord } from "@/lib/types";
 
 // The dashboard's recent-labs highlight selection (issue #313): of the current
@@ -131,58 +130,5 @@ describe("recentLabHighlights", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].stale).toBe(true);
-  });
-});
-
-describe("recentLabStatus (the non-color channel, #1220)", () => {
-  it("labels the directionless/qualitative statuses", () => {
-    expect(recentLabStatus("abnormal")).toEqual({
-      label: "Abnormal",
-      tone: "bad",
-    });
-    expect(recentLabStatus("non-optimal")).toEqual({
-      label: "Non-optimal",
-      tone: "warn",
-    });
-    expect(recentLabStatus("immune")).toEqual({
-      label: "Immune",
-      tone: "default",
-    });
-  });
-
-  it("labels directional flags too — the caret's severity must not be color-only", () => {
-    expect(recentLabStatus("high")).toEqual({ label: "High", tone: "bad" });
-    expect(recentLabStatus("low")).toEqual({ label: "Low", tone: "bad" });
-    expect(recentLabStatus("non-optimal-high")).toEqual({
-      label: "Above optimal",
-      tone: "warn",
-    });
-    expect(recentLabStatus("non-optimal-low")).toEqual({
-      label: "Below optimal",
-      tone: "warn",
-    });
-  });
-
-  it("agrees with the #306 flagLabel/flagTone chokepoint for every non-normal flag", () => {
-    const flags = [
-      "high",
-      "low",
-      "abnormal",
-      "non-optimal",
-      "non-optimal-high",
-      "non-optimal-low",
-      "immune",
-    ] as const;
-    for (const f of flags) {
-      expect(recentLabStatus(f)).toEqual({
-        label: flagLabel(f),
-        tone: flagTone(f),
-      });
-    }
-  });
-
-  it("leaves normal/unflagged rows unlabeled (no judgment to announce)", () => {
-    expect(recentLabStatus("normal")).toBeNull();
-    expect(recentLabStatus(null)).toBeNull();
   });
 });

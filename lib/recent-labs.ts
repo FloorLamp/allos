@@ -1,11 +1,4 @@
-import {
-  flagLabel,
-  flagTone,
-  isNonOptimal,
-  isNormalFlag,
-  isOutOfRange,
-  type FlagTone,
-} from "./reference-range";
+import { isNonOptimal, isOutOfRange } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 import { readingDetailHref, type AppRoute } from "./hrefs";
 import { daysBetweenDateStr } from "./date";
@@ -38,19 +31,14 @@ export interface RecentLabRow {
   stale: boolean;
 }
 
-// The visible text label a compact lab row pairs with its flag color — the
-// non-color channel (WCAG 1.4.1, issue #1220). EVERY non-normal flag gets one,
-// directional flags included: MedicalValue's caret encodes direction as a shape,
-// but the red-vs-amber severity split (High vs Above optimal) traveled by color
-// alone. Normal/null stays unlabeled (no judgment to announce). One mapping —
-// flagLabel/flagTone (the #306 chokepoint) — so a new flag can't ship color-only.
-export function recentLabStatus(
-  flag: MedicalFlag | null
-): { label: string; tone: FlagTone } | null {
-  return isNormalFlag(flag)
-    ? null
-    : { label: flagLabel(flag), tone: flagTone(flag) };
-}
+// The visible severity label a compact lab row pairs with its flag color — the
+// non-color channel (WCAG 1.4.1, issue #1220) — used to live here as
+// `recentLabStatus`, rendered as a SECOND label beside `MedicalValue`. #2315 folded
+// it into `MedicalValue` itself (`showFlagLabel`, decided by
+// lib/medical-value.medicalValueFlagText), so one component owns "value + flag +
+// severity word" for every surface that wants it and the word is announced once.
+// The policy it carried is unchanged: every non-normal flag gets a word, normal/null
+// gets none, through the one flagLabel/flagTone chokepoint (#306).
 
 // The subset of a medical record the highlight selection reads. `getMedicalRecords`
 // rows satisfy it; tests can build the minimal shape.

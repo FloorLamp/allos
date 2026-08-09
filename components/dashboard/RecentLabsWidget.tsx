@@ -1,22 +1,8 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { MedicalValue } from "@/components/ui";
-import { recentLabStatus, type RecentLabRow } from "@/lib/recent-labs";
+import { type RecentLabRow } from "@/lib/recent-labs";
 import { formatCompactAge } from "@/lib/format-date";
-import type { FlagTone } from "@/lib/reference-range";
-
-// Tone → text color for the status label (the visible non-color channel each
-// flagged row carries next to its colored value — WCAG 1.4.1, issue #1220).
-function statusClass(tone: FlagTone): string {
-  switch (tone) {
-    case "bad":
-      return "text-rose-600 dark:text-rose-400";
-    case "warn":
-      return "text-amber-600 dark:text-amber-400";
-    default:
-      return "text-slate-500 dark:text-slate-400";
-  }
-}
 
 // One latest lab/biomarker reading, flattened for display by the page. The shape
 // and its selection policy live in lib/recent-labs (issue #313); re-exported here
@@ -43,7 +29,6 @@ export default function RecentLabsWidget({
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
-            const status = recentLabStatus(r.flag);
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -53,15 +38,19 @@ export default function RecentLabsWidget({
                   {r.name}
                 </Link>
                 <span className="shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
-                  <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
-                  {status && (
-                    <span
-                      data-testid="recent-lab-status"
-                      className={`ml-1 text-xs font-medium ${statusClass(status.tone)}`}
-                    >
-                      · {status.label}
-                    </span>
-                  )}
+                  {/* #1220 fixed the color-only severity here, with a SECOND
+                      visible label built beside the component. #2315 folds that
+                      into MedicalValue itself, so one component owns "value +
+                      flag + severity word" for every surface that wants it — and
+                      the word is announced once rather than twice. The tone color
+                      comes from MedicalValue's own flag class, the same tiers the
+                      widget's local map restated. */}
+                  <MedicalValue
+                    value={r.value}
+                    unit={r.unit}
+                    flag={r.flag}
+                    showFlagLabel
+                  />
                 </span>
                 <span
                   data-testid="recent-lab-date"

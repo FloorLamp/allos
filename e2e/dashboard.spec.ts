@@ -126,11 +126,14 @@ test("recent labs keeps dates intact and makes every result direction explicit",
     .getByTestId("dashboard-widget-recent-labs");
 
   await expect(recentLabs).toHaveClass(/lg:col-span-3/);
-  // Each directional caret carries a text equivalent (sr-only flagLabel) rather
-  // than an icon-level aria-label — the #1220 non-color channel.
+  // Each flagged row carries the severity WORD as visible text rather than an
+  // icon-level aria-label — the #1220 non-color channel, owned by MedicalValue
+  // itself since #2315 (one label, not a visible one plus an sr-only twin).
   await expect(recentLabs.getByTestId("medical-flag-text")).not.toHaveCount(0);
   await expect(
-    recentLabs.getByTestId("recent-lab-status").filter({ hasText: "Abnormal" })
+    recentLabs
+      .locator('[data-testid="medical-flag-text"][data-visible="true"]')
+      .filter({ hasText: "Abnormal" })
   ).toHaveCount(1);
   const firstDate = recentLabs.getByTestId("recent-lab-date").first(); // first-ok: the most-recent lab date (list is newest-first) — asserts format, order-agnostic
   await expect(firstDate).toBeVisible();

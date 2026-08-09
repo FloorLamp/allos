@@ -830,7 +830,18 @@ export default async function BiomarkerDetailPage(props: {
                 >
                   <td className="td whitespace-nowrap">{r.date}</td>
                   <td className="td">
-                    <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+                    {/* The severity word visibly, not only in the accessibility
+                        tree (#1220/#2315): this list intermixes out-of-range and
+                        above-optimal readings of the same analyte, so red-vs-amber
+                        alone was the only channel separating them for a sighted
+                        reader. The bands themselves are the cards above — this
+                        column is the LAB's stated range, provenance for each row. */}
+                    <MedicalValue
+                      value={r.value}
+                      unit={r.unit}
+                      flag={r.flag}
+                      showFlagLabel
+                    />
                     {/* How this result was collected and where it sits in the lab
                         lifecycle (#1404) — shown only when the source said. */}
                     {readingAttributes(r).length > 0 && (

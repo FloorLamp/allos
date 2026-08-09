@@ -1,4 +1,5 @@
 import { RANGE_BADGE_META } from "@/lib/reference-range";
+import { formatBand } from "@/lib/band-format";
 import type { MetricJudgment } from "@/lib/metric-judgment";
 
 // The clinical band a streamed reading is read against (#1996).
@@ -24,17 +25,10 @@ export function MetricJudgmentCard({
 }) {
   if (!judgment) return null;
   const badge = RANGE_BADGE_META[judgment.badge];
-  const fmt = (n: number) => String(Math.round(n * 100) / 100);
-  const band = (low: number | null, high: number | null) =>
-    low != null && high != null
-      ? `${fmt(low)}–${fmt(high)}${unit}`
-      : low != null
-        ? `≥ ${fmt(low)}${unit}`
-        : high != null
-          ? `≤ ${fmt(high)}${unit}`
-          : null;
-  const reference = band(judgment.low, judgment.high);
-  const optimal = band(judgment.optimalLow, judgment.optimalHigh);
+  // The band SPELLING is lib/band-format (#221/#2315) — the same one the biomarker
+  // row's judgment cell writes, so a band cannot read two ways on two surfaces.
+  const reference = formatBand(judgment.low, judgment.high, unit);
+  const optimal = formatBand(judgment.optimalLow, judgment.optimalHigh, unit);
 
   return (
     <div

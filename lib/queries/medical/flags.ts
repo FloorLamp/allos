@@ -9,7 +9,11 @@
 // stored age (age-banded ranges), reproductive status and the cycle log (#718),
 // and the canonical table preloaded as a NOCASE map. Shared by reconcileFlags and
 // its preview twin below so the two can never read different context.
-function flagReconcileProfileContext(profileId: number) {
+//
+// Exported since #2315: a row that STATES the bands its flag came from has to
+// resolve them from the identical context, or the statement is the very
+// disagreement the issue is about. lib/queries/metric-judgment.ts reads it.
+export function flagReconcileProfileContext(profileId: number) {
   const cbRows = db
     .prepare("SELECT * FROM canonical_biomarkers")
     .all() as CanonicalBiomarker[];
