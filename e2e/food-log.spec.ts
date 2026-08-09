@@ -83,28 +83,57 @@ test("compact food rows identify eat-more and eat-less guidance", async ({
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
+  // This project's viewport is 1280×900, so the badge on screen is the one the shared
+  // FoodRowLabel renders into the `md:block` mount (#2305). Before that component existed
+  // the testid lived only on the `md:hidden` phone copy, and `toHaveText` — which does not
+  // require visibility — passed against a hidden element while the rendered badge was
+  // covered by nothing. `toBeVisible()` is the half that would have caught it, so it comes
+  // first and stays.
   await revealFoodGroup(page, "cruciferous");
-  await expect(page.getByTestId("food-tier-cruciferous")).toHaveText(
-    "Eat more"
-  );
+  const eatMore = page.getByTestId("food-tier-cruciferous");
+  await expect(eatMore).toBeVisible();
+  await expect(eatMore).toHaveText("Eat more");
   await expect(
     page.getByTestId("food-group-cruciferous").getByTestId("food-group-icon")
   ).toHaveClass(/text-emerald-500/);
 
   // A `limit` group is no longer guaranteed a quick slot (#2225 deleted the tier quota),
-  // so this may now reach `processed_meat` through the overflow disclosure. The badge is
-  // rendered by the SAME row component either way; asserting the ROW is on screen is what
-  // keeps this a badge test rather than one that passes on a row nobody can reach. (The
-  // badge span itself carries the testid on the mobile name block, which is `md:hidden`
-  // at this viewport — its DESKTOP twin renders the same TIER_LABEL text.)
+  // so this may reach `processed_meat` through the overflow disclosure. Either way the
+  // badge is rendered by the same row component, and asserting it directly — visible, with
+  // its text — is now a claim about what a person sees rather than about the DOM.
   await revealFoodGroup(page, "processed_meat");
-  await expect(page.getByTestId("food-group-processed_meat")).toBeVisible();
-  await expect(page.getByTestId("food-tier-processed_meat")).toHaveText(
-    "Eat less"
-  );
+  const eatLess = page.getByTestId("food-tier-processed_meat");
+  await expect(eatLess).toBeVisible();
+  await expect(eatLess).toHaveText("Eat less");
   await expect(
     page.getByTestId("food-group-processed_meat").getByTestId("food-group-icon")
   ).toHaveClass(/text-amber-500/);
+});
+
+test("the visible food row names its group and tier at BOTH viewports (#2305)", async ({
+  page,
+}) => {
+  // The badge and name are one component with two breakpoint mounts, so the pair a person
+  // can see must be the pair carrying the unsuffixed / `-mobile` testids at each width —
+  // and exactly one of the two mounts is ever on screen.
+  const slug = "cruciferous";
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  await revealFoodGroup(page, slug);
+
+  await expect(page.getByTestId(`food-name-${slug}`)).toBeVisible();
+  await expect(page.getByTestId(`food-tier-${slug}`)).toBeVisible();
+  await expect(page.getByTestId(`food-name-${slug}-mobile`)).toBeHidden();
+  await expect(page.getByTestId(`food-tier-${slug}-mobile`)).toBeHidden();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileName = page.getByTestId(`food-name-${slug}-mobile`);
+  const mobileTier = page.getByTestId(`food-tier-${slug}-mobile`);
+  await expect(mobileName).toBeVisible();
+  await expect(mobileName).toHaveText("Cruciferous vegetables");
+  await expect(mobileTier).toBeVisible();
+  await expect(mobileTier).toHaveText("Eat more");
+  await expect(page.getByTestId(`food-tier-${slug}`)).toBeHidden();
 });
 
 test("the quick rows are the head of the ranking — nothing in the overflow outranks them (#2225)", async ({
@@ -386,7 +415,8 @@ test.describe("tapping a category expands its serving detail on mobile", () => {
     const collapsedH = (await desc.boundingBox())!.height;
     const row = page.getByTestId("food-group-leafy_greens");
     const icon = row.getByTestId("food-group-icon");
-    const name = row.getByTestId("food-name-leafy_greens");
+    // The phone mount of the shared label (#2305) — the one on screen at this viewport.
+    const name = row.getByTestId("food-name-leafy_greens-mobile");
     const collapsedRowBox = (await row.boundingBox())!;
     const collapsedIconBox = (await icon.boundingBox())!;
     const collapsedNameBox = (await name.boundingBox())!;
