@@ -1225,6 +1225,21 @@ non-members rather than gaps:
   Settings → Nutrition declaration. Right-sizing a food habit stops the weekly
   ask and leaves the group loggable, which is the domain's actual
   no-expectation state.
+- **The empty food window notice is not a member either (#2376).** It shares two
+  of the four properties and neither of the other two, which is exactly why it is
+  worth naming here rather than leaving to be re-derived. It HAS
+  revealed-preference detection (a trailing slice of the food ledger, never a
+  self-report) and it self-clears on recovery (a pure function of that slice, no
+  dismissal bookkeeping) — but it SUGGESTS NOTHING and has no accept, so
+  properties 2 and 4 have nothing to apply to. There is no commitment to shrink:
+  food logging declares no floor, so "downward only" has no direction to point
+  and "suggest, never write" has no field to leave unwritten. It is an
+  OBSERVATION riding a send — one agentless clause about the ledger on a nudge
+  the profile already receives — and the family's shape would actively mislead it:
+  offering to "log this window less" would manufacture the very obligation the
+  domain does not have. Its window still nests inside `RIGHTSIZE_WINDOW_DAYS`
+  under the convention above, because the coherence rule is about two engines
+  reading one ledger and is not a membership test.
 
 **The three #1670 domains share ONE detector, not three.** All of them declare
 their floor as a `frequency_targets` row, so `lib/target-rightsize.ts` is one

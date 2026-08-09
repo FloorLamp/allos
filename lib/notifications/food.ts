@@ -13,10 +13,14 @@ import {
   getProteinTapsOnDate,
   getProteinQuickAddPreset,
   getProteinToday,
+  getLoggedFoodWindows,
 } from "../queries";
 import { getTimezone, getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
+import { dateStrInTz, minuteOfDayInTz } from "../date";
+import { profileFoodSlotBoundaries } from "../profile-food-slot";
+import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
 import type { CorrectionBurst } from "../correction-time";
 import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
@@ -111,12 +115,33 @@ export function buildFoodNudge(
     now,
     correctionMessageBinding(profileId, "food", opts.ref ?? null)
   );
+  const tz = getTimezone(profileId);
+  // The empty-window notice (#2376). A RIDE-ALONG, exactly like the correction rows
+  // above: no nudge is ever sent because a window closed empty — this clause only ever
+  // appears on the message the next window was already going to send, which is what
+  // keeps it inside the contact-consent rule (docs/internals/findings.md §2). The whole
+  // decision, including the habit gate that keeps a window nobody logs silent, is
+  // lib/food-window-gap.ts; the gather's only job is to hand it the ledger slice IT says
+  // it needs, so the query window and the decision can never drift apart.
+  //
+  // Recomputed on every rebuild rather than snapshotted at send: a serving logged into
+  // the window in the meantime makes the line disappear, which is the "recovery clears
+  // it" property the notice has instead of any stored state.
+  const gapDates = foodWindowGapDates(window, date);
+  const gap = foodWindowGap({
+    window,
+    date,
+    now: { date: dateStrInTz(tz, now), minuteOfDay: minuteOfDayInTz(tz, now) },
+    boundaries: profileFoodSlotBoundaries(profileId),
+    logged: getLoggedFoodWindows(profileId, gapDates.from, gapDates.to),
+  });
   return renderFoodNudge(profileId, window, date, rankedKeys, dayServings, {
     proteinLine,
     visibleCount,
     proteinPresetGrams: presetGrams,
     corrections: { bursts: corrections, now },
-    tz: getTimezone(profileId),
+    gap,
+    tz,
     ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
   });
 }
