@@ -69,6 +69,16 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(card.getByTestId("vitals-latest-resting-hr")).toContainText(
       /bpm resting/
     );
+    // Both readings are recent, so both provenance lines state a plain date with no
+    // staleness tint — the #2303 floor frames only what it must (the age-labeled side is
+    // pinned by e2e/dashboard-vitals-recency.spec.ts).
+    await expect(card.getByTestId("vitals-latest-bp-age")).not.toHaveAttribute(
+      "data-stale",
+      "true"
+    );
+    await expect(
+      card.getByTestId("vitals-latest-resting-hr-age")
+    ).not.toHaveAttribute("data-stale", "true");
     // #1892: the log affordance is present WITH data, not only without it. It used to
     // live in the empty state alone, so the person who logs BP weekly — the one who
     // actually opens this card — had none. It opens the same shared measurements

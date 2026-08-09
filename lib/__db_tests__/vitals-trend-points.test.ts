@@ -5,7 +5,11 @@
 // getLatestBodyMetricDailyPoints bound the query to the two most recent points, and
 // this pins that they return EXACTLY the tail of the full series (same points, same
 // order, same daily-rollup + value_num filtering) — a query-bound fix with no display
-// change. All fixtures SYNTHETIC.
+// change.
+//
+// Since #2303 it also pins the CARD'S WHOLE MODEL (getVitalsLatestModel) over the
+// reported shape: one visit's three same-day cuff readings, years old, beside a resting
+// HR from yesterday. All fixtures SYNTHETIC.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
@@ -15,20 +19,29 @@ import {
   getLatestBiomarkerTrendPoints,
   getBodyMetricDailySeries,
   getLatestBodyMetricDailyPoints,
+  getVitalsLatestModel,
 } from "@/lib/queries";
 import { ALL_ROWS } from "@/lib/trends";
 import { latestTrend } from "@/lib/latest-trend";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
+// A second profile carrying the #2303 shape: one clinic visit's three sequential cuff
+// readings, years old, beside a resting HR from yesterday.
+let stale: SeededProfile;
 
-function addBp(canonical: string, date: string, value: number | null) {
+function addBpFor(
+  profileId: number,
+  canonical: string,
+  date: string,
+  value: number | null
+) {
   db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, canonical_name, value_num)
      VALUES (?, ?, 'vitals', ?, ?, 'mmHg', ?, ?)`
   ).run(
-    p.profileId,
+    profileId,
     date,
     canonical,
     value == null ? null : String(value),
@@ -37,7 +50,12 @@ function addBp(canonical: string, date: string, value: number | null) {
   );
 }
 
-function addRestingHr(
+function addBp(canonical: string, date: string, value: number | null) {
+  addBpFor(p.profileId, canonical, date, value);
+}
+
+function addRestingHrFor(
+  profileId: number,
   date: string,
   value: number,
   source: string | null = null
@@ -45,7 +63,15 @@ function addRestingHr(
   db.prepare(
     `INSERT INTO body_metrics (profile_id, date, resting_hr, source)
      VALUES (?, ?, ?, ?)`
-  ).run(p.profileId, date, value, source);
+  ).run(profileId, date, value, source);
+}
+
+function addRestingHr(
+  date: string,
+  value: number,
+  source: string | null = null
+) {
+  addRestingHrFor(p.profileId, date, value, source);
 }
 
 beforeAll(() => {
@@ -60,6 +86,10 @@ beforeAll(() => {
   addBp("Blood Pressure Systolic", d(-10), 128);
   addBp("Blood Pressure Systolic", d(-2), 124);
   addBp("Blood Pressure Systolic", d(-1), null); // newest, but non-numeric → dropped
+  // The diastolic half, on the same two newest dates — the card needs both to render a
+  // BP row at all.
+  addBp("Blood Pressure Diastolic", d(-10), 82);
+  addBp("Blood Pressure Diastolic", d(-2), 78);
 
   // Resting HR: several dates, with TWO same-day rows on the most recent date from
   // one source (they must average to one daily point, not read as two trend points).
@@ -68,6 +98,23 @@ beforeAll(() => {
   addRestingHr(d(-5), 62);
   addRestingHr(d(-1), 54);
   addRestingHr(d(-1), 56); // same day, same (NULL) source → averages with the 54 → 55
+
+  // ── The #2303 regression profile ────────────────────────────────────────────────
+  // One clinic visit, THREE sequential cuff readings on the same day (ordinary
+  // practice), 1600 days back — plus a resting HR from yesterday, so the two rows age
+  // independently. All values SYNTHETIC.
+  stale = seedProfile("VITALS-STALE");
+  const sd = (n: number) => shiftDateStr(stale.todayStr, n);
+  for (const [sys, dia] of [
+    [126, 82],
+    [124, 80],
+    [128, 84],
+  ] as const) {
+    addBpFor(stale.profileId, "Blood Pressure Systolic", sd(-1600), sys);
+    addBpFor(stale.profileId, "Blood Pressure Diastolic", sd(-1600), dia);
+  }
+  addRestingHrFor(stale.profileId, sd(-4), 59);
+  addRestingHrFor(stale.profileId, sd(-1), 61);
 });
 
 describe("vitals trend-tail readers (#1367)", () => {
@@ -102,5 +149,44 @@ describe("vitals trend-tail readers (#1367)", () => {
     ]);
     expect(latestTrend(tail)).toEqual(latestTrend(full));
     expect(latestTrend(tail)?.direction).toBe("down"); // 62 → 55
+  });
+});
+
+// The whole-card regression for #2303: a years-old blood pressure was rendering as a
+// headline number with a trend arrow between two readings from a single visit, beside a
+// resting HR from yesterday, in identical typography.
+describe("getVitalsLatestModel — the card's presentation floor (#2303)", () => {
+  it("keeps the stale BP value but withdraws both currency claims", () => {
+    const model = getVitalsLatestModel(stale.profileId, stale.todayStr)!;
+    expect(model.bp).not.toBeNull();
+    // The VALUE survives at full prominence — the newest same-day reading.
+    expect(model.bp).toMatchObject({
+      systolic: 128,
+      diastolic: 84,
+      date: shiftDateStr(stale.todayStr, -1600),
+    });
+    // ...but the card no longer presents it as current, and the arrow that compared
+    // cuff reading #3 to cuff reading #2 of one measurement is gone.
+    expect(model.bp?.freshness).toBe("due");
+    expect(model.bp?.direction).toBeNull();
+  });
+
+  it("leaves the fresh resting-HR row alone — the rows age independently", () => {
+    const model = getVitalsLatestModel(stale.profileId, stale.todayStr)!;
+    expect(model.restingHr).toMatchObject({
+      value: 61,
+      date: shiftDateStr(stale.todayStr, -1),
+      freshness: "current",
+      direction: "up", // 59 → 61, two different days
+    });
+  });
+
+  it("presents a recent BP normally", () => {
+    // The other profile's readings are days old and on distinct dates: value, arrow,
+    // and a `current` verdict, exactly as before.
+    const model = getVitalsLatestModel(p.profileId, p.todayStr)!;
+    expect(model.bp?.freshness).toBe("current");
+    expect(model.bp?.direction).toBe("down"); // 128 → 124
+    expect(model.restingHr?.freshness).toBe("current");
   });
 });

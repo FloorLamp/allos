@@ -7,23 +7,19 @@ import {
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import type { TrendDirection } from "@/lib/latest-trend";
+import {
+  VITAL_PRESENTATION_FLOORS,
+  type VitalQuantity,
+  type VitalsLatestModel,
+} from "@/lib/vitals-latest";
+import type { FreshnessState } from "@/lib/freshness";
+import { formatRelativeDate } from "@/lib/format-date";
 
 // The prepared model the page builds from the SAME series queries behind Trends →
-// Vitals (getBiomarkerSeries for BP, getBodyMetricDailySeries for resting HR), each
-// reduced to its latest reading + a direction via the shared latestTrend helper (#221).
-export interface VitalsLatestModel {
-  bp: {
-    systolic: number;
-    diastolic: number;
-    date: string;
-    direction: TrendDirection | null;
-  } | null;
-  restingHr: {
-    value: number;
-    date: string;
-    direction: TrendDirection | null;
-  } | null;
-}
+// Vitals (getBiomarkerSeries for BP, getBodyMetricDailySeries for resting HR), reduced
+// through the shared latestTrend helper and the per-quantity presentation floor
+// (lib/vitals-latest, #221). Re-exported here so existing import sites are unchanged.
+export type { VitalsLatestModel };
 
 function DirArrow({
   direction,
@@ -49,10 +45,59 @@ function DirArrow({
   );
 }
 
+// The row's provenance line. A `due` reading keeps its value at full prominence above
+// and states its AGE here instead of a raw ISO date — "2022-03-08" does not read as
+// "four years ago" at a glance, which is how half this card came to look like a
+// snapshot of "my vitals now" (#2303). Amber plus an explaining `title`, the same
+// treatment #1216 established on Recent labs, so the two glance cards speak one visual
+// language for one meaning. `not-applicable` (no knowable age) states the date plainly
+// and claims nothing either way.
+function ProvenanceLine({
+  label,
+  quantity,
+  date,
+  freshness,
+  today,
+  testId,
+}: {
+  label: string;
+  quantity: VitalQuantity;
+  date: string;
+  freshness: FreshnessState;
+  today: string;
+  testId: string;
+}) {
+  const stale = freshness === "due";
+  return (
+    <div className="text-xs text-slate-500 dark:text-slate-400">
+      {label} ·{" "}
+      <span
+        data-testid={testId}
+        data-stale={stale ? "true" : undefined}
+        title={
+          stale
+            ? `Older than ${VITAL_PRESENTATION_FLOORS[quantity].label} — still your latest reading, but not a current one`
+            : undefined
+        }
+        className={
+          stale ? "font-medium text-amber-600 dark:text-amber-400" : undefined
+        }
+      >
+        {stale ? formatRelativeDate(date, today) : date}
+      </span>
+    </div>
+  );
+}
+
 // Dashboard "Latest vitals" tile (issue #1221): the most recent blood pressure and
 // resting heart rate, each with a trend arrow vs the prior reading — a thin FORMATTER
 // over the prepared model above. Informational glance; the full trend lives on Trends
 // → Vitals.
+//
+// The header stays "Latest vitals" whatever the rows' ages, and no row is ever hidden:
+// *latest* is a fact about the data, *current* is the claim #2303 removed. A card whose
+// rows are all stale still renders — with the "Log reading" action now pointing at the
+// obvious next move.
 //
 // The "Log reading" action (#1892) is in the NON-EMPTY state on purpose. The card used
 // to offer logging only while the domain was empty, which inverted who got the
@@ -61,8 +106,12 @@ function DirArrow({
 // measurements quick-entry the empty CTA opens; no second form, no second write path.
 export default function VitalsLatestWidget({
   model,
+  today,
 }: {
   model: VitalsLatestModel;
+  // The PROFILE-local day the ages are measured against — required, so the server's
+  // local day can never age a profile's reading (#1186, as RecentLabsWidget takes it).
+  today: string;
 }) {
   const { bp, restingHr } = model;
   return (
@@ -90,9 +139,14 @@ export default function VitalsLatestWidget({
                 </span>
                 <DirArrow direction={bp.direction} label="blood pressure" />
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Blood pressure · {bp.date}
-              </div>
+              <ProvenanceLine
+                label="Blood pressure"
+                quantity="blood-pressure"
+                date={bp.date}
+                freshness={bp.freshness}
+                today={today}
+                testId="vitals-latest-bp-age"
+              />
             </div>
           )}
           {restingHr && (
@@ -109,9 +163,14 @@ export default function VitalsLatestWidget({
                   label="resting heart rate"
                 />
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Resting heart rate · {restingHr.date}
-              </div>
+              <ProvenanceLine
+                label="Resting heart rate"
+                quantity="resting-hr"
+                date={restingHr.date}
+                freshness={restingHr.freshness}
+                today={today}
+                testId="vitals-latest-resting-hr-age"
+              />
             </div>
           )}
         </div>
