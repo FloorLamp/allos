@@ -307,22 +307,40 @@ surfaces:
 - **Correction sheet** — unchanged posture (the statement is the submission, so it
   errors) with the reason now naming the rule that fired, instead of blaming the day
   for a time the user deliberately put in the future.
+- **Measurements form** (`app/(app)/trends/measurement-actions.ts` →
+  `MeasurementsQuickAdd`, #2311) — the body-metrics half of the same ruling.
+  `resolveStatedOccurredAt` answers `{ value, refused }` instead of collapsing a
+  refusal into an absence, `insertBodyMetric` answers `BodyMetricWriteOutcome`
+  instead of `boolean`, and the action returns `statedTimeRefused`. The form amends
+  its own success toast (`measurementsSavedText`, `lib/body-metric-input.ts`):
+  _"Measurements saved without the time — that time hasn't happened yet."_ Unlike
+  food, this one is reachable ONLINE, because the form posts a resolved instant
+  rather than a choice the server resolves. The offline body-metric intent joins the
+  food flow's existing `timeNotice` channel unchanged.
 
 Phrasing is per surface; the REASON CODE is shared. `STATED_TIME_REFUSAL_NOTE` is the
 clause for a surface that timestamped the statement ITSELF ("your device's clock is
 ahead"); a surface where the user TYPED the time owns its own words, because there a
-future instant is not a diagnosis of the device.
+future instant is not a diagnosis of the device. The measurements form is the second
+kind: its Time is a field the user can see, so it says "that time hasn't happened
+yet" and never diagnoses their clock.
 
-**Known gap, stated rather than implied.** `resolveStatedOccurredAt`
-(`lib/reading-writes.ts`) still drops a refused body-metrics statement without saying
-so. The verdict is available there; surfacing it means widening `insertBodyMetric` and
-its four callers from `boolean` to a typed outcome, which #2296 did not cover.
+**Known gap, stated rather than implied.** The VITALS half of the same sitting is
+still silent: `insertVitals` and `recordReading` (`lib/reading-writes.ts`) both take
+`resolveStatedOccurredAt(...).value` and discard `.refused`, so a submission carrying
+only a blood pressure loses a refused statement without saying so. The refusal is
+visible at both call sites rather than erased by the resolver's shape; surfacing it
+means widening `ReadingRecordOutcome` and `insertVitals`, which reaches every reading
+writer (imports, the fitness battery) rather than the manual submission #2311 was
+reproduced on.
 
 ## Related
 
 - #2205 — the umbrella issue, its phasing, and its constraints.
 - #2296 — the acceptance gate's verdict, and the ruling that a refused statement is
   never silent.
+- #2311 — the same ruling carried to body metrics: the resolver and the write core
+  stop collapsing the verdict, and the measurements form says what it could not keep.
 - #94 — the day-attribution decision this deliberately does not revisit.
 - #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
   `SourceTime`, and the narrowing ledger.

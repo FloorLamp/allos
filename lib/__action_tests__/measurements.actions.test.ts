@@ -256,6 +256,75 @@ describe("addMeasurements — one form, three stores", () => {
     ).toBeNull();
   });
 
+  // #2311 — the online half of #2296's ruling, on the surface it had not reached.
+  // The action ANSWERS the refusal so the form can say it; the measurements land
+  // either way, because a refusal is a notice and not a validation failure.
+  it("answers a refused stated time while the reading lands (#2311)", async () => {
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+
+    // Off the row's own day — the rule the WhenControl pair makes unreachable from
+    // a live form, and that a stale tab across local midnight still produces.
+    expect(
+      await addMeasurements(
+        fd({
+          date: DATE,
+          weight: "72",
+          weight_unit: "kg",
+          occurred_at: `2026-05-05T07:00:00.000Z`,
+        })
+      )
+    ).toEqual({ statedTimeRefused: "other-day" });
+    expect(bodyRows(profile.id)).toEqual([
+      {
+        date: DATE,
+        weight_kg: 72,
+        body_fat_pct: null,
+        resting_hr: null,
+        notes: null,
+      },
+    ]);
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT occurred_at FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS NULL"
+          )
+          .get(profile.id, DATE) as { occurred_at: string | null }
+      ).occurred_at
+    ).toBeNull();
+
+    // A device clock past the five-minute tolerance — the reproduction the issue
+    // names. The tolerance does not move; the silence does.
+    const ahead = "2099-06-01";
+    expect(
+      await addMeasurements(
+        fd({
+          date: ahead,
+          weight: "72.5",
+          weight_unit: "kg",
+          occurred_at: `${ahead}T12:00:00.000Z`,
+        })
+      )
+    ).toEqual({ statedTimeRefused: "future" });
+
+    // An ACCEPTED statement reports nothing at all — `unstated` and `accepted` are
+    // both silence, and only a refusal is something to hear.
+    expect(
+      await addMeasurements(
+        fd({
+          date: DATE,
+          weight: "72.8",
+          weight_unit: "kg",
+          occurred_at: `${DATE}T07:30:00.000Z`,
+        })
+      )
+    ).toEqual({});
+    expect(await addMeasurements(fd({ date: DATE, resting_hr: "51" }))).toEqual(
+      {}
+    );
+  });
+
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {
     const { profile } = seedActor();
     await addMeasurements(fd({ date: DATE }));

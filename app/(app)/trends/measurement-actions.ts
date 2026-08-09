@@ -9,6 +9,7 @@ import {
   insertGrowth,
   insertVitals,
 } from "@/lib/offline/writes";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 
 // The combined "Log measurements" write path (issue #1486).
 //
@@ -31,7 +32,23 @@ import {
 // row and "log only a weight" writes no vitals rows. Each core independently
 // rejects an invalid/empty payload (returning false), and the action revalidates
 // only when at least one of them actually persisted something.
-export async function addMeasurements(formData: FormData) {
+
+// What the submission did with the sitting's stated time (#2311). The measurements
+// ALWAYS land — that posture is #2296's, unchanged — so this is a NOTICE the form
+// says out loud, never an error and never a reason to fail the write. Absent
+// whenever nobody stated a time, which is the common case and nothing to report.
+//
+// Reported off the BODY half only, honestly and on purpose: `insertVitals` still
+// answers `boolean`, so a vitals-only submission whose statement was refused stays
+// silent. That is #2311's named audit survivor (see `resolveStatedOccurredAt`), not
+// a claim this action makes about the whole sitting.
+export interface MeasurementsSaveResult {
+  statedTimeRefused?: StatedTimeRefusal;
+}
+
+export async function addMeasurements(
+  formData: FormData
+): Promise<MeasurementsSaveResult> {
   const { login, profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   const prefs = getUnitPrefs(login.id);
@@ -46,6 +63,7 @@ export async function addMeasurements(formData: FormData) {
   };
 
   let wrote = false;
+  let statedTimeRefused: StatedTimeRefusal | undefined;
 
   // 1. Body composition (body_metrics). Each nullable measurement can be recorded
   //    independently; this matters on a metric detail page whose form contains
@@ -57,22 +75,25 @@ export async function addMeasurements(formData: FormData) {
     // client — makes no statement and leaves any stored time alone. The core runs
     // the acceptance gate; nothing is trusted here.
     const occurredAtRaw = formData.get("occurred_at");
-    wrote =
-      insertBodyMetric(profile.id, {
-        date,
-        weight: String(formData.get("weight") ?? ""),
-        weightUnit: submittedWeightUnit(
-          formData.get("weight_unit"),
-          prefs.weightUnit
-        ),
-        bodyFatPct: str("body_fat_pct"),
-        restingHr: str("resting_hr"),
-        notes: str("notes"),
-        occurredAt:
-          occurredAtRaw === null
-            ? undefined
-            : String(occurredAtRaw).trim() || null,
-      }) || wrote;
+    const body = insertBodyMetric(profile.id, {
+      date,
+      weight: String(formData.get("weight") ?? ""),
+      weightUnit: submittedWeightUnit(
+        formData.get("weight_unit"),
+        prefs.weightUnit
+      ),
+      bodyFatPct: str("body_fat_pct"),
+      restingHr: str("resting_hr"),
+      notes: str("notes"),
+      occurredAt:
+        occurredAtRaw === null
+          ? undefined
+          : String(occurredAtRaw).trim() || null,
+    });
+    wrote = body.wrote || wrote;
+    // The gate's verdict, threaded out rather than re-derived (#2311): the core
+    // already asked, against the server's clock and the profile's zone.
+    if (body.wrote) statedTimeRefused = body.statedTimeRefused;
   }
 
   // 2. Vitals (medical_records + the sleep/HRV metric samples).
@@ -142,9 +163,10 @@ export async function addMeasurements(formData: FormData) {
       }) || wrote;
   }
 
-  if (!wrote) return;
+  if (!wrote) return {};
   revalidateRoute("/trends");
   revalidateRoute("/results");
   revalidateRoute("/sleep");
   revalidateRoute("/");
+  return statedTimeRefused ? { statedTimeRefused } : {};
 }

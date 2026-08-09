@@ -27,8 +27,15 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { insertBodyMetric } from "@/lib/offline/writes";
+import {
+  insertBodyMetric,
+  type BodyMetricWriteOutcome,
+} from "@/lib/offline/writes";
 import { recordReading } from "@/lib/reading-writes";
+import {
+  logFoodServingCore,
+  updateFoodLogEventCore,
+} from "@/lib/food-log-write";
 import { getReadingSeries } from "@/lib/queries/readings";
 import { getManualBodyMetricStatedAt } from "@/lib/queries";
 
@@ -64,10 +71,20 @@ function manualRows(date: string) {
   }[];
 }
 
+// Every body_metrics row this profile owns — the cheap "nothing else was written"
+// check behind #2311's no-chase-me assertion.
+function manualRowCount(): number {
+  return (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
+      .get(profileId) as { n: number }
+  ).n;
+}
+
 function submit(
   date: string,
   over: Partial<Parameters<typeof insertBodyMetric>[1]> = {}
-): boolean {
+): BodyMetricWriteOutcome {
   return insertBodyMetric(profileId, {
     date,
     weight: null,
@@ -91,7 +108,9 @@ describe("the manual submission core (insertBodyMetric)", () => {
         // Millisecond ISO in — the shape a client's toISOString() posts.
         occurredAt: "2026-04-01T07:12:00.000Z",
       })
-    ).toBe(true);
+      // An ACCEPTED statement reports nothing: `statedTimeRefused` is absent, not
+      // merely falsy (#2311 — the outcome must not invent a notice out of silence).
+    ).toEqual({ wrote: true });
     const rows = manualRows("2026-04-01");
     expect(rows).toHaveLength(1);
     // Normalized to lib/date.ts's utcInstant shape (second resolution, `Z`),
@@ -105,7 +124,9 @@ describe("the manual submission core (insertBodyMetric)", () => {
   });
 
   it("stores NULL for an untimed submission, which reads back day-grain", () => {
-    expect(submit("2026-04-02", { restingHr: "55" })).toBe(true);
+    // Nobody stated a time, so there is nothing to report either (`unstated` is
+    // NOT `refused` — the distinction #2296 introduced and #2311 carries here).
+    expect(submit("2026-04-02", { restingHr: "55" })).toEqual({ wrote: true });
     const rows = manualRows("2026-04-02");
     expect(rows).toHaveLength(1);
     // Honest absence — never a `${date}T00:00:00` anchor (decision 2; the
@@ -163,12 +184,49 @@ describe("the manual submission core (insertBodyMetric)", () => {
     expect(rows[0].weight_kg).toBeCloseTo(80, 6);
   });
 
-  it("REFUSES a stated time off the row's own date — the reading still lands", () => {
-    // Fresh insert: statement dropped, row stays honestly untimed, never re-dated.
-    submit("2026-04-06", {
-      weight: "79.5",
-      occurredAt: "2026-04-07T01:00:00Z",
+  // #2311 — the refusal must be SAYABLE, not merely survivable. The gate has answered
+  // a verdict since #2296; this core used to answer `boolean`, which could report that
+  // the reading landed and nothing else, so a phone whose clock ran past the
+  // five-minute tolerance kept its weigh-in and quietly lost the "when".
+  it("REPORTS a refused statement while keeping the reading (#2311)", () => {
+    const before = manualRowCount();
+    const outcome = submit("2099-06-01", {
+      weight: "77.5",
+      // Beyond STATED_FUTURE_SKEW_MS by decades — the `future` rule, which the gate
+      // checks first, so the reason is deterministic against the db tier's real clock.
+      occurredAt: "2099-06-01T12:00:00Z",
     });
+    // A NOTICE, not a validation failure: the write succeeded AND says what it lost.
+    expect(outcome).toEqual({ wrote: true, statedTimeRefused: "future" });
+
+    const rows = manualRows("2099-06-01");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].weight_kg).toBeCloseTo(77.5, 6);
+    // Honest absence, never a partially-kept instant and never a re-dated row.
+    expect(rows[0].occurred_at).toBeNull();
+
+    // And NOTHING is persisted to chase the user later (#2296's ruling, re-affirmed):
+    // no second row, no edit flag, no marker — just the reading, on its own day.
+    expect(manualRowCount()).toBe(before + 1);
+    const stored = db
+      .prepare(
+        `SELECT source, edited FROM body_metrics
+          WHERE profile_id = ? AND date = '2099-06-01'`
+      )
+      .all(profileId) as { source: string | null; edited: number | null }[];
+    expect(stored).toEqual([{ source: null, edited: 0 }]);
+  });
+
+  it("REFUSES a stated time off the row's own date — the reading still lands", () => {
+    // Fresh insert: statement dropped, row stays honestly untimed, never re-dated —
+    // and the outcome names the rule that fired (#2311), which is the day rule here
+    // and not the clock, so the surface never blames the wrong machine.
+    expect(
+      submit("2026-04-06", {
+        weight: "79.5",
+        occurredAt: "2026-04-07T01:00:00Z",
+      })
+    ).toEqual({ wrote: true, statedTimeRefused: "other-day" });
     const fresh = manualRows("2026-04-06");
     expect(fresh).toHaveLength(1);
     expect(fresh[0].occurred_at).toBeNull();
@@ -389,5 +447,61 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
       occurred_at: "2026-04-15T06:45:00Z",
       edited: 0,
     });
+  });
+});
+
+// #2311 / #2296 — ONE gate, TWO postures, and the difference is the CALLER's.
+//
+// This is the property both issues turn on, so it is asserted as one thing rather
+// than inferred from two files: the identical refusal costs only the STATEMENT on a
+// log path (the reading is the point; the minute is descriptive) and costs the WHOLE
+// WRITE on a correction path (the statement IS the submission — a silent clear there
+// would be the surface answering a question the user did not ask).
+describe("what a refusal COSTS stays the caller's", () => {
+  it("keeps the body-metric reading, refuses the food correction", () => {
+    const day = "2026-05-10";
+    const offDay = "2026-05-11";
+
+    // LOG PATH: the reading lands, and the refusal comes back as something to say.
+    expect(
+      submit(day, { weight: "78.2", occurredAt: `${offDay}T08:00:00Z` })
+    ).toEqual({ wrote: true, statedTimeRefused: "other-day" });
+    const logged = manualRows(day);
+    expect(logged).toHaveLength(1);
+    expect(logged[0].weight_kg).toBeCloseTo(78.2, 6);
+    expect(logged[0].occurred_at).toBeNull();
+
+    // CORRECTION PATH: the same class of refusal, and nothing is written at all.
+    logFoodServingCore(
+      profileId,
+      "berries",
+      day,
+      `${day}T09:00:00Z`,
+      "Morning"
+    );
+    const eventId = (
+      db
+        .prepare(
+          `SELECT id FROM food_log_events WHERE profile_id = ? AND date = ?
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId, day) as { id: number }
+    ).id;
+    expect(
+      updateFoodLogEventCore(profileId, eventId, {
+        eatenAt: new Date(`${offDay}T19:00:00Z`),
+      })
+    ).toEqual({ kind: "invalid-eaten-at", reason: "other-day" });
+    const event = db
+      .prepare(
+        `SELECT eaten_at, time_source FROM food_log_events
+          WHERE id = ? AND profile_id = ?`
+      )
+      .get(eventId, profileId) as {
+      eaten_at: string | null;
+      time_source: string | null;
+    };
+    // Never a silent clear: the row is exactly as the tap left it.
+    expect(event).toEqual({ eaten_at: null, time_source: null });
   });
 });

@@ -119,9 +119,25 @@ export interface BodyMetricWrite {
   // `undefined` for a time-blind caller (Telegram, the palette, an old queued
   // intent — leaves any stored statement alone). Accepted / normalized by
   // `resolveStatedOccurredAt`; a mismatched or future statement costs the
-  // statement, never the reading.
+  // statement, never the reading — and since #2311 never in silence either: the
+  // refusal rides back out on the outcome below.
   occurredAt?: string | null;
 }
+
+// What one manual body-metrics submission did (#2311). It used to be a bare
+// `boolean`, which could say "the reading landed" and nothing else — so a phone
+// whose clock ran past the five-minute tolerance kept its weigh-in and quietly
+// lost the "when", with no caller able to say otherwise because no caller could
+// see it. Same defect, same shape, same fix as #2296's for food.
+//
+// `statedTimeRefused` is a NOTICE, not a failure: `wrote` is still true, the row
+// is still on its own day, and nothing is persisted to chase the user later. It is
+// absent whenever nobody stated a time — the common case, and nothing to report.
+// What a refusal COSTS stays the CALLER's (a log path keeps the reading; a
+// correction path, where the statement is the whole submission, refuses) — every
+// caller of this core is a log path.
+export type BodyMetricWriteOutcome =
+  { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal };
 
 function numOrNull(v: string | null): number | null {
   if (v === null || String(v).trim() === "") return null;
@@ -153,17 +169,24 @@ function numOrNull(v: string | null): number | null {
 export function insertBodyMetric(
   profileId: number,
   w: BodyMetricWrite
-): boolean {
-  if (!isRealIsoDate(w.date)) return false;
+): BodyMetricWriteOutcome {
+  // A REJECTED submission never reaches the acceptance gate below, so it has no
+  // refusal to report: nothing was written and nothing was judged.
+  if (!isRealIsoDate(w.date)) return { wrote: false };
   const weightRaw = String(w.weight ?? "").trim();
   const weight = weightRaw === "" ? null : Number(weightRaw);
-  if (weight != null && !Number.isFinite(weight)) return false;
+  if (weight != null && !Number.isFinite(weight)) return { wrote: false };
   const bodyFat = numOrNull(w.bodyFatPct);
   const restingHr = numOrNull(w.restingHr);
-  if (weight == null && bodyFat == null && restingHr == null) return false;
+  if (weight == null && bodyFat == null && restingHr == null)
+    return { wrote: false };
   const weightKg = weight == null ? null : toKg(weight, w.weightUnit);
   const notes = w.notes && w.notes.trim() ? w.notes.trim() : null;
-  const stated = resolveStatedOccurredAt(profileId, w.date, w.occurredAt);
+  const { value: stated, refused } = resolveStatedOccurredAt(
+    profileId,
+    w.date,
+    w.occurredAt
+  );
   writeTx(() => {
     const found = db
       .prepare(
@@ -218,7 +241,9 @@ export function insertBodyMetric(
       ).run(stated, found.id, profileId);
     }
   });
-  return true;
+  // The reading landed. If a statement was made and thrown away, the caller now
+  // holds the reason — and every one of them renders it rather than dropping it.
+  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
 
 // ── vitals quick-add ────────────────────────────────────────────────────────────
@@ -300,7 +325,13 @@ export function insertVitals(
   const tz = getTimezone(profileId);
   // The sitting statement, resolved ONCE through the shared boundary so the
   // peak-flow derivation below can only ever use an instant the gate accepted.
-  const stated = resolveStatedOccurredAt(profileId, date, occurredAt);
+  //
+  // `.refused` is COLLAPSED here, and that is #2311's named audit survivor rather
+  // than an oversight: this core answers `boolean`, and the observations it writes
+  // go through `recordReading`, whose outcome has nowhere to carry a refusal either.
+  // #2311 was scoped to the body-metrics half it was reproduced on; widening the
+  // vitals half is a separate change over a different set of callers.
+  const stated = resolveStatedOccurredAt(profileId, date, occurredAt).value;
   // A pre-fold temperature "HH:MM" (a queued intent, or a stale pre-fold tab whose
   // sitting Time was left empty), as an instant on the row's own day — only
   // consulted when the submission carries no sitting INSTANT, because in the
@@ -809,7 +840,7 @@ export function applyIntent(
       ok = true;
     } else if (intent.flow === "body-metric") {
       const p = intent.payload as BodyMetricPayload;
-      ok = insertBodyMetric(profileId, {
+      const applied = insertBodyMetric(profileId, {
         date: intent.date,
         weight: p.weight,
         weightUnit: p.weightUnit,
@@ -821,6 +852,13 @@ export function applyIntent(
         // has `undefined` here — no statement, never a clear.
         occurredAt: p.occurredAt,
       });
+      ok = applied.wrote;
+      // The queued capture is where a fast device clock actually bites a weigh-in
+      // (#2311): the intent carries a resolved INSTANT, because there was no server
+      // to ask while offline, and the replay judges it against real time. The
+      // reading still lands — and the reconnect confirmation now says the minute
+      // did not, on the SAME `timeNotice` channel the food flow opened in #2296.
+      if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "mood") {
       const p = intent.payload as MoodPayload;
       ok = upsertMoodLog(profileId, intent.date, {
