@@ -449,7 +449,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const situationLine = situationActivationLine(
     input.situationalActiveCount ?? 0
   );
-  if (situationLine) todayLines.push(`🧭 ${situationLine}`);
+  if (situationLine)
+    todayLines.push(formatMessageLine({ glyph: "🧭", head: situationLine }));
   // Held-items mention (#1296): the visible held state in the morning message, via the
   // one shared heldSummaryLine formatter — so a pause situation silencing reminders is
   // never a silent blackout.
@@ -457,12 +458,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.heldSituation && (input.heldCount ?? 0) > 0
       ? heldSummaryLine(input.heldCount ?? 0, input.heldSituation)
       : null;
-  if (heldLine) todayLines.push(`⏸️ ${heldLine}`);
+  if (heldLine)
+    todayLines.push(formatMessageLine({ glyph: "⏸️", head: heldLine }));
   // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
   // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
   // "Period logged — N items active"), so the extra due items are never a surprise.
   for (const line of input.derivedSituationLines ?? []) {
-    todayLines.push(`🌙 ${line}`);
+    todayLines.push(formatMessageLine({ glyph: "🌙", head: line }));
   }
   // Today's recommended workout (#1712 §2) — a heads-up at 7am, formatted from the
   // SAME recommendation the dedicated nudge builds later (no second engine, no second
@@ -478,7 +480,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // workoutPreview above) so the per-category demotion control, when it lands, has one
   // category to switch off without touching the rest of the section.
   for (const line of input.weatherPlanLines ?? []) {
-    todayLines.push(`\u{1F6B4} ${line}`);
+    todayLines.push(formatMessageLine({ glyph: "\u{1F6B4}", head: line }));
   }
 
   // The weather-aware light window (#1723 part 1). Present only on a day whose
@@ -486,10 +488,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // lives in the pure predicate, so by the time the line exists there is nothing left
   // to decide here. It states a WINDOW, never an instruction with a deadline.
   if (input.lightExposureLine) {
-    todayLines.push(`☀️ ${input.lightExposureLine}`);
+    todayLines.push(
+      formatMessageLine({ glyph: "☀️", head: input.lightExposureLine })
+    );
   }
   // The daily step target (#1723 part 2), stated only when it is genuinely informative.
-  if (input.stepsTodayLine) todayLines.push(`🚶 ${input.stepsTodayLine}`);
+  if (input.stepsTodayLine)
+    todayLines.push(
+      formatMessageLine({ glyph: "🚶", head: input.stepsTodayLine })
+    );
 
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
@@ -516,7 +523,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (due) {
     // One bullet grammar for the section (#1819 item 5): the band summaries were the
     // only lines in the whole message with no emoji.
-    for (const line of due.lines) todayLines.push(`🗓️ ${line}`);
+    for (const line of due.lines)
+      todayLines.push(formatMessageLine({ glyph: "🗓️", head: line }));
     for (const h of due.highlights) {
       // The item's TOP reason (#656) is a cause fragment about the title — the
       // `because` role, declared rather than positional.
@@ -585,14 +593,19 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       ? intakeGapExplainedBy(deltas, intended - adherence.taken)
       : null;
   if (deltaLine && !mergedClause) {
-    yLines.push(`🔁 ${deltaLine}`);
+    yLines.push(formatMessageLine({ glyph: "🔁", head: deltaLine }));
   }
   if (adherence) {
     const { taken, skipped } = adherence;
     if (intended <= 0) {
       // Everything due was deliberately skipped — a "0/0 taken" line reads as a
       // bug (#380 nit); state the skips plainly instead.
-      yLines.push(`💊 ${cap(noun)}: ${skipped} skipped`);
+      yLines.push(
+        formatMessageLine({
+          glyph: "💊",
+          head: `${cap(noun)}: ${skipped} skipped`,
+        })
+      );
     } else {
       yLines.push(
         formatMessageLine({
@@ -608,10 +621,16 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   if (input.weightKg != null) {
     // Rounded, kg per the notification unit policy documented on weightKg above.
-    yLines.push(`⚖️ Weight: ${fmtWeight(input.weightKg, "kg")}`);
+    yLines.push(
+      formatMessageLine({
+        glyph: "⚖️",
+        head: `Weight: ${fmtWeight(input.weightKg, "kg")}`,
+      })
+    );
   }
   // Steps vs the declared target (#1723 part 2) — a verdict, not a raw number (#1712).
-  if (input.stepsLine) yLines.push(`🚶 ${input.stepsLine}`);
+  if (input.stepsLine)
+    yLines.push(formatMessageLine({ glyph: "🚶", head: input.stepsLine }));
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
@@ -649,7 +668,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     );
     // A same-day nap on its own line — kept apart from the overnight total.
     if (s.napMin != null && s.napMin > 0) {
-      sleepLines.push(`💤 + ${fmtSleepDuration(s.napMin)} nap`);
+      sleepLines.push(
+        formatMessageLine({
+          glyph: "💤",
+          head: `+ ${fmtSleepDuration(s.napMin)} nap`,
+        })
+      );
     }
     if (s.sri != null) {
       // "Sleep regularity 94 — very consistent" (#1819 item 7). The old line paired an
@@ -673,7 +697,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const newLines: string[] = [];
   for (const b of input.newFlaggedBiomarkers) {
     const val = b.value ? ` ${b.value}` : "";
-    newLines.push(`🚩 ${b.name}${val} (${b.flag})`);
+    newLines.push(
+      formatMessageLine({ glyph: "🚩", head: `${b.name}${val} (${b.flag})` })
+    );
   }
   // New documents, one line each (#1913 item 3). "1 new document: ccda" answered neither
   // "which?" nor "what was produced?" — it printed the raw doc_type. A multi-document
@@ -685,7 +711,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   const moreDocs = input.newDocuments.length - namedDocs.length;
   if (moreDocs > 0) {
-    newLines.push(`📄 +${moreDocs} more document${moreDocs === 1 ? "" : "s"}`);
+    newLines.push(
+      formatMessageLine({
+        glyph: "📄",
+        head: `+${moreDocs} more document${moreDocs === 1 ? "" : "s"}`,
+      })
+    );
   }
   // The recent-changes lines (#1713) join the SAME section, below the flagged results
   // and new documents the digest's own send-cursor window already reported. That order

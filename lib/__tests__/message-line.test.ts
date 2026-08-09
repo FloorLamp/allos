@@ -156,6 +156,37 @@ describe("a head-only line adds nothing to what the producer wrote", () => {
     }
   }
 
+  // A HOMOGENEOUS TAIL — N facts of the same kind about one head, which is #2379's
+  // nutrition line. `notes` is already the repeating group, so there is no second shape:
+  // the `·` between two nutrients is the same job as the `·` between a cause and a
+  // deadline, and a per-item hedge ("+") stays inside its own note, which is the only
+  // place it can be right when the items disagree about it.
+  it("renders a homogeneous list of facts as repeated notes", () => {
+    expect(
+      formatMessageLine({
+        glyph: "🍽️",
+        head: "Nutrition",
+        notes: ["protein 84 g+ of 95 g", "fiber 18 g of 38 g"],
+      })
+    ).toBe("🍽️ Nutrition — protein 84 g+ of 95 g · fiber 18 g of 38 g");
+    // One nutrient short is one note, and the line still punctuates correctly.
+    expect(
+      formatMessageLine({
+        glyph: "🍽️",
+        head: "Nutrition",
+        notes: ["protein 84 g+ of 95 g", null],
+      })
+    ).toBe("🍽️ Nutrition — protein 84 g+ of 95 g");
+  });
+
+  // The glyph is a VALUE, so a declared vocabulary (#2392) is a swap at the call site.
+  it("takes its glyph from a constant exactly as from a literal", () => {
+    const GLYPH = { sleep: "😴" } as const;
+    expect(formatMessageLine({ glyph: GLYPH.sleep, head: "Last night: 8h" })).toBe(
+      formatMessageLine({ glyph: "😴", head: "Last night: 8h" })
+    );
+  });
+
   it("adds only separators and single spaces — never a word of its own", () => {
     const parts = ["GLYPH", "HEAD", "BECAUSE", "NOTE", "COMPARISON", "DEADLINE"];
     const out = formatMessageLine({
@@ -192,9 +223,6 @@ describe("a head-only line adds nothing to what the producer wrote", () => {
 // constant in an unregistered module and imported, is invisible to it. It also says
 // nothing about whether a producer put a fact in the RIGHT role — that is what the
 // field contracts on MessageLineParts are for, and what review reads.
-
-const LEAD = "—"; // em dash
-const SEP = "·"; // middle dot
 
 interface Literal {
   text: string;

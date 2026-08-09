@@ -543,14 +543,8 @@ export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
   };
 }
 
-// The Telegram food-nudge protein status line (issue #974) as PLAIN text — the same
-// parts, joined. Rendered from the SAME ProteinToday the gauge uses (a third
-// formatter, never a second engine, #221). Before #1710 it read "at least 107 g of
-// ~80–105 g" with NO status: 107 g is above the band — the goal is reached — but the
-// phrasing read like a shortfall, hiding its own conclusion. #1822 item 4 then
-// unstacked the remaining hedges: "🍗 Protein: 36 g+ so far · goal 80–105 g".
-export function proteinTodayNudgeLine(t: ProteinToday): string {
-  const p = proteinTodayNudgeParts(t);
-  const tail = p.statusWords ? ` — ${p.statusWords}` : "";
-  return `${p.emoji} Protein: ${p.amount} so far · goal ${p.band}${tail}`;
-}
+// The RENDERING of these parts — plain and emphasized — lives in
+// lib/notifications/food-format.ts (proteinNudgeLine / proteinBody), the module that
+// serves the surface. This module owns the CONCLUSION and the words; that one owns how
+// a message line is punctuated (#2391), so the two renderings cannot drift apart from
+// each other or from the digest's grammar.

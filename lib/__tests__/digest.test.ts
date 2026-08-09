@@ -259,7 +259,10 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
       })
     ).toEqual([
       "🔁 Missed: Glycine (test) (1 day)",
-      "💊 Supplements: 8/8 taken · 1 skipped",
+      // The em dash introduces the FIRST qualifier a line actually has (#2391): with
+      // no merged clause to explain the gap, the skip count leads the tail instead of
+      // arriving after a `·` with nothing in front of it.
+      "💊 Supplements: 8/8 taken — 1 skipped",
     ]);
   });
 

@@ -51,6 +51,17 @@ export interface MessageLineParts<T> {
   // A leading marker rendered before the head, space-separated. In the digest it says
   // WHO ACTS (🔌 allos will retry versus 🙋 a person has to go do this, #1913 item 8);
   // elsewhere it is the section bullet. Absent ⇒ the line starts at the head.
+  //
+  // A VALUE, never a literal this type cares about. It is the seam a declared glyph
+  // vocabulary lands on (#2392): swapping `glyph: "😴"` for `glyph: GLYPH.sleep` is a
+  // value change at the call site with no signature change here, and every producer
+  // migrated in #2391 already passes it as this field rather than concatenating it onto
+  // a line — which is why that swap does not have to re-migrate any of them.
+  //
+  // And the line does not have to OWN it. A producer that returns parts while its
+  // caller decides the marker leaves this absent and the call site spreads its own in
+  // (`formatMessageLine({ glyph: "•", ...recapMessageLine(l) })`), so a section that
+  // stamps one glyph across many producers still has exactly one place holding it.
   glyph?: T | null;
   // The subject: what the line is ABOUT. Required, always rendered, never punctuated by
   // the formatter. A row label belongs here folded into the head ("Workouts: 7"), which
@@ -83,6 +94,15 @@ export interface MessageLineParts<T> {
   // dose amount behind a reminder, the sleep stages behind a duration, the lifts behind a
   // PR count. Repeatable, rendered in the order given, `·`-separated. Fragments, same as
   // `because` — a note never restates the head either.
+  //
+  // THIS IS THE REPEATING GROUP, and nothing requires its entries to be heterogeneous.
+  // A line whose tail is N facts of the SAME kind — "protein 84 g+ of 95 g · fiber 18 g+
+  // of 38 g" — is N notes, not a second shape. The `·` between `because` and `deadline`
+  // and the `·` between two nutrients are the same job: joining peer qualifiers of one
+  // head. The named roles exist to pin CONTRACT and ORDER for the qualifiers that have
+  // one; `notes` is the ordered slot for the qualifiers that are simply facts. A
+  // per-item hedge ("+" for a floor figure) therefore stays inside its own note, which
+  // is the only place it can be right when items disagree.
   //
   // Nullish entries are dropped, so a producer may pass conditionals positionally and
   // still get correct punctuation.
