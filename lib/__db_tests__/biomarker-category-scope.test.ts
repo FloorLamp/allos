@@ -233,7 +233,10 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     // duplicating what /trends/metric/<slug> already charts, and stays the home of the
     // domain vitals that have no chart at all.
     const pid = seedMixedProfile();
-    const names = biomarkerIndexRows(singleScope(pid), parseBiomarkerFilters({}))
+    const names = biomarkerIndexRows(
+      singleScope(pid),
+      parseBiomarkerFilters({})
+    )
       .map((r) => r.canonical_name ?? r.name)
       .filter((n): n is string => n !== null);
     // Gone: each is a BodyMetricSlug quantity with its own chart.

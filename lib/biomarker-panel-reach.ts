@@ -72,7 +72,9 @@ const REACHABLE: ReadonlySet<PanelId> = (() => {
     if (!LISTED.has(entry.category as MedicalCategory)) continue;
     // The SAME predicate the row gather applies (#2365), so the facet can never offer
     // a panel whose every member the gather drops.
-    if (!listedInBiomarkerBrowser({ category: entry.category, name: entry.name }))
+    if (
+      !listedInBiomarkerBrowser({ category: entry.category, name: entry.name })
+    )
       continue;
     reachable.add(panelForCanonicalName(entry.name));
   }
