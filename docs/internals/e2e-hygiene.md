@@ -307,6 +307,45 @@ assertions still shipped a defect because the OUTPUT shape was pinned as a
 constant. Same remedy in both: test the seam against a realistic fixture, and
 choose the assertion that changes when the answer changes.
 
+### (3) The hidden twin: it asserts the copy nobody sees (#2305)
+
+A third way the truth value comes loose, and the only one that needs no bad
+assertion to appear in the spec at all. `toHaveText`, `toHaveClass`,
+`toHaveAttribute` and `toHaveCount` do NOT require visibility — they read the
+DOM. So when a surface keeps two breakpoint copies of the same content and only
+one carries the testid, an assertion written against that testid measures
+whichever copy has it, which may be the one CSS is hiding at the project's
+viewport.
+
+`/nutrition`'s food rows shipped exactly that: the group name and tier badge
+were written twice, once inside the phone disclosure button (`md:hidden`) and
+once in its `md:block` static twin, and only the phone copy had
+`food-name-<slug>` / `food-tier-<slug>`. At 1280×900 —
+every project's viewport but `mobile` — `expect(getByTestId("food-tier-…"))
+.toHaveText("Eat less")` had been passing against a hidden element for as long
+as it existed, while the badge a person actually sees was covered by nothing and
+could have rendered the wrong tier, the wrong class, or nothing at all. The two
+copies had in fact already drifted (the visible one had lost the name's
+`truncate`), which is what a second untested copy is FOR.
+
+The remedy is structural, not an assertion tweak:
+
+- **One content component, rendered by both breakpoint wrappers**, so the testid
+  is declared once and cannot be attached to only half the surface. Only what
+  genuinely differs — an interactive wrapper versus static text — stays per
+  breakpoint.
+- **Both mounts are in the DOM at every width**, so a shared testid on both
+  would be ambiguous under strict mode. Suffix the phone mount `-mobile` (the
+  `ProfileIdentityBar` convention) and give the UNSUFFIXED id to the mount that
+  is visible at desktop widths, where the default project runs.
+- **Pair the content assertion with `toBeVisible()`.** It is the half that goes
+  red when the id moves to a hidden copy, and the only half that claims anything
+  about what a person can see.
+
+Applies to any dual-mount surface, not just breakpoints: a collapsed accordion,
+a closed drawer and a `hidden` print variant all hold real DOM that a
+content-only matcher will happily read.
+
 ## Streamed sections: the harness settles the reveal (#1644)
 
 The Trends Overview surface streams its body census below a fast head (digest +
