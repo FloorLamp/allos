@@ -72,6 +72,42 @@ describe("getWorkoutActivityDays", () => {
     ]);
   });
 
+  it("a cardio/sport row's sole component IS the activity — freeform titles don't fragment", () => {
+    const profileId = newProfile("Activity Days Components");
+    const ride = (date: string, title: string, minutes: number) =>
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
+           VALUES (?, ?, 'cardio', ?, ?, ?)`
+        )
+        .run(
+          profileId,
+          date,
+          title,
+          minutes,
+          JSON.stringify([
+            { name: "Cycling", type: "cardio", duration_min: minutes },
+          ])
+        );
+    ride("2026-06-01", "Pizza Hut", 53);
+    ride("2026-06-02", "Governator", 31);
+    // A STRENGTH row's sole component is an exercise, never the activity —
+    // it keeps its title identity.
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
+       VALUES (?, '2026-06-03', 'strength', 'Push day', 40, ?)`
+    ).run(profileId, JSON.stringify([{ name: "Bench Press" }]));
+
+    const rows = getWorkoutActivityDays(profileId, "2026-06-01", "2026-06-30");
+    expect(rows.filter((r) => r.key === "cycling")).toHaveLength(2);
+    expect(rows.find((r) => r.key === "cycling")?.label).toBe("Cycling");
+    expect(rows.find((r) => r.key === "push day")).toMatchObject({
+      date: "2026-06-03",
+      count: 1,
+    });
+    expect(rows.find((r) => r.key === "bench press")).toBeUndefined();
+  });
+
   it("is window-bounded and profile-scoped", () => {
     const a = newProfile("Activity Days A");
     const b = newProfile("Activity Days B");

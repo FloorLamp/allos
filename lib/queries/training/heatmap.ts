@@ -36,17 +36,47 @@ export function getWorkoutDayDensity(
 // Sessions + minutes per profile-local day AND named activity, in
 // [since, until] — the gather behind the Trends → Fitness workout day-history
 // matrix ("top N activities", the owner's PPL-breakdown ask: rows like Push
-// Day / Pull Day / Ride, not the coarse strength/cardio buckets). Identity is
-// `activityHistoryKey(workoutActivityLabel(title))` — the #1931 canonical
-// activity key over the title normalized of its time-of-day/duration
-// decoration — so "Push day", "Afternoon Push Day" and "Morning Push Day
-// Session" land on ONE row. The label is the first-seen normalized form.
+// Day / Pull Day / Cycling, not the coarse strength/cardio buckets).
+//
+// Identity, in order:
+//   1. A cardio/sport row's SOLE component names the activity itself
+//      ("Cycling", "Pickleball") — the same component identity the cardio
+//      analytics key on, and a far better one than a freeform provider title
+//      (a Strava ride is titled "Pizza Hut", not "Cycling"). A STRENGTH row's
+//      components are its EXERCISES, never the activity, so strength never
+//      takes this path.
+//   2. Otherwise `activityHistoryKey(workoutActivityLabel(title))` — the
+//      #1931 canonical activity key over the title normalized of its
+//      time-of-day/duration decoration — so "Push day", "Afternoon Push Day"
+//      and "Morning Push Day Session" land on ONE row.
+// The label is the first-seen form for the key.
 export interface WorkoutActivityDay {
   date: string; // YYYY-MM-DD, profile-local
-  key: string; // activityHistoryKey of the normalized title
-  label: string; // display name (first-seen normalized title)
+  key: string; // activityHistoryKey of the resolved activity name
+  label: string; // display name (first-seen resolved form)
   count: number; // sessions of this activity that day
   minutes: number; // total minutes (0 when all durations null)
+}
+
+function soleComponentActivity(
+  type: string,
+  componentsJson: string | null
+): string | null {
+  if (type === "strength" || !componentsJson) return null;
+  try {
+    const parts = JSON.parse(componentsJson) as { name?: unknown }[];
+    if (
+      Array.isArray(parts) &&
+      parts.length === 1 &&
+      typeof parts[0]?.name === "string" &&
+      parts[0].name.trim()
+    ) {
+      return parts[0].name.trim();
+    }
+  } catch {
+    // Malformed JSON → fall through to the title identity.
+  }
+  return null;
 }
 
 export function getWorkoutActivityDays(
@@ -56,7 +86,7 @@ export function getWorkoutActivityDays(
 ): WorkoutActivityDay[] {
   const rows = db
     .prepare(
-      `SELECT date, title, COALESCE(duration_min, 0) AS minutes
+      `SELECT date, title, type, components, COALESCE(duration_min, 0) AS minutes
          FROM activities
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY date ASC, id ASC`
@@ -64,13 +94,17 @@ export function getWorkoutActivityDays(
     .all(profileId, since, until) as {
     date: string;
     title: string;
+    type: string;
+    components: string | null;
     minutes: number;
   }[];
 
   const labelByKey = new Map<string, string>();
   const byDayKey = new Map<string, WorkoutActivityDay>();
   for (const r of rows) {
-    const label = workoutActivityLabel(r.title);
+    const label =
+      soleComponentActivity(r.type, r.components) ??
+      workoutActivityLabel(r.title);
     const key = activityHistoryKey(label);
     if (!labelByKey.has(key)) labelByKey.set(key, label);
     const mapKey = `${r.date}|${key}`;
