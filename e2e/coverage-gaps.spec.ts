@@ -102,3 +102,42 @@ test("a non-analyte assessment is never offered as an uncatalogued item (#2318)"
     page.getByTestId("tracked-gap").filter({ hasText: NON_ANALYTE })
   ).toHaveCount(0);
 });
+
+// #2319 — the catalog side of the same surface. A DEXA scan's per-region
+// decomposition is uncatalogued and always will be: there is no population reference
+// band for left-arm fat percentage, so curating it would mean inventing ranges. It
+// differs from the #2318 control above in exactly the way that matters — this row
+// DOES carry biomarker identity (same `scan` category as the curated whole-body
+// totals), so nothing upstream withholds it. What keeps it off the offered list is
+// the DECLARATION, and the page states the reason rather than hiding the name.
+const DEXA_REGIONAL = "Body Fat Percentage, Left Arm";
+
+test("a declared DEXA regional label is stated, not offered as an uncatalogued item (#2319)", async ({
+  page,
+}) => {
+  await page.goto("/data?section=coverage");
+  await expect(page.getByTestId("data-coverage")).toBeVisible();
+
+  // Detection IS running: the genuine gap beside it is still offered for tracking.
+  await expect(
+    page.getByTestId("coverage-candidate").filter({ hasText: GAP })
+  ).toBeVisible();
+
+  // The DEXA region is not offered — as a candidate, or as something tracked.
+  await expect(
+    page.getByTestId("coverage-candidate").filter({ hasText: DEXA_REGIONAL })
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("tracked-gap").filter({ hasText: DEXA_REGIONAL })
+  ).toHaveCount(0);
+
+  // It is STATED instead, with the reason — and with no Track button and no
+  // catalog-request link, which would ask for work that must never happen.
+  const declined = page
+    .getByTestId("coverage-declined")
+    .filter({ hasText: DEXA_REGIONAL });
+  await expect(declined).toBeVisible();
+  await expect(declined).toContainText("per-region decomposition");
+  await expect(declined.getByTestId("track-gap")).toHaveCount(0);
+  await expect(declined.getByTestId("request-gap-link")).toHaveCount(0);
+});
