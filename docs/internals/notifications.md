@@ -2002,6 +2002,18 @@ explicit `MESSAGE_LINE_MODULES` registry, not a pattern over the character.
 survivor (keyboard button labels, lists of coequal facts, prose). Adding a module to
 the registry is how a new message surface opts in.
 
+**What the scan does NOT catch, stated so nobody discovers it by shipping.** It keys
+on the grammar's own two separators. A producer that qualifies its head with
+**parentheses, a colon, or a semicolon** — `Workouts: 7 (5 last week)`, the shape the
+recap drifted into in the first place — passes the scan clean. That is the right
+scope for now: keying on every punctuation mark that could ever join two clauses is
+how the scan stops being readable and the abstraction under it turns into a join
+helper. So it is a known edge, not a guarantee: the scan proves nobody re-implements
+`—`/`·`, and REVIEW is what keeps a qualifier out of a head under different
+punctuation. The recap's remaining breakdown parenthetical (`value: "7 (strength 4,
+cardio 3)"`) is exactly such a case and is #2389 item 1's to re-cut — a breakdown
+decomposing the head's own figure, left deliberately.
+
 ## The Telegram command vocabulary (#1895)
 
 **The defect was silence.** The bot understood `/dose`, `/symptom` and `/temp`, and

@@ -464,7 +464,7 @@ describe("renderRecapMessage", () => {
   // system-initiated messages a profile receives were punctuated by different rules —
   // and only the digest's was nesting-proof. This is the one visible copy change the
   // unification forces, pinned line for line.
-  it("composes each bullet as head — note · comparison, with no parentheses", () => {
+  it("no longer nests a label's own parentheses inside another set", () => {
     const recap = buildWeeklyRecap(
       baseInput({
         workouts: [
@@ -481,12 +481,16 @@ describe("renderRecapMessage", () => {
     )
       .split("\n")
       .slice(1);
+    // The workouts line still carries ONE parenthetical, inside `value`: a breakdown
+    // decomposing the head's own figure. That is #2389 item 1's to re-cut, not an
+    // oversight here — what this pins is that the COMPOSITION adds no second set, so a
+    // label legitimately containing parens ("Romanian Deadlift (Rep Trap Bar)") cannot
+    // nest inside one.
     expect(lines).toEqual([
       "• Workouts: 2 (strength 1, cardio 1) — 1 last week",
       "• PRs: 1 — Romanian Deadlift (Rep Trap Bar)",
       "• Adherence: 92% — 12/13 doses · 1 skipped",
     ]);
-    // A label that legitimately contains parentheses no longer nests inside another set.
     expect(lines.join("\n")).not.toMatch(/\(\(|\)\)/);
   });
 });
