@@ -123,9 +123,9 @@ describe("getCuratedSupplementSuggestions (#2378)", () => {
 
     const out = getCuratedSupplementSuggestions(pid);
     expect(out).toHaveLength(1);
-    expect(out[0].safetyNotes.filter((n) => n.kind === "medication")).toHaveLength(
-      1
-    );
+    expect(
+      out[0].safetyNotes.filter((n) => n.kind === "medication")
+    ).toHaveLength(1);
   });
 
   it("says nothing about a substance already in the ACTIVE stack, and speaks again once it is stopped", () => {
