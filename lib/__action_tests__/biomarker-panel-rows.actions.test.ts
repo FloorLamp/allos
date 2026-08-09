@@ -34,7 +34,7 @@ function seedTwoPanels(profileId: number): void {
   seedLab(profileId, "Total Cholesterol", 205);
   seedLab(profileId, "LDL Cholesterol", 128);
   seedLab(profileId, "HDL Cholesterol", 47);
-  seedLab(profileId, "Free T4", 1.3);
+  seedLab(profileId, "Thyroxine, Free (Free T4)", 1.3);
 }
 
 function namesOf(res: Awaited<ReturnType<typeof loadBiomarkerPanelRows>>) {
@@ -57,7 +57,10 @@ describe("loadBiomarkerPanelRows", () => {
     expect(names).toContain("Non-HDL Cholesterol");
     expect(names).toContain("Cholesterol/HDL Ratio");
     // The thyroid analyte belongs to another group, which pays for its own rows.
-    expect(names).not.toContain("Free T4");
+    // Named by its canonical spelling (#2335) so it really does resolve to `thyroid`
+    // — a name that resolves to no panel at all would pass this assertion for the
+    // wrong reason.
+    expect(names).not.toContain("Thyroxine, Free (Free T4)");
   });
 
   it("applies the URL filters it is replayed with", async () => {
