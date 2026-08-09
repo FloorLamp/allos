@@ -145,7 +145,11 @@ const CATEGORY_ORDER = [
   "prescription",
 ];
 
-function categoryRank(category: string): number {
+// Where a records category sits in the tab strip. Exported so anything that has
+// to order rows the way the STRIP orders their tabs (the #2339 triage rows, whose
+// first match decides which tab an ambiguous label filters) reads the one order
+// instead of inventing a second.
+export function recordCategoryRank(category: string): number {
   const i = CATEGORY_ORDER.indexOf(category);
   return i === -1 ? CATEGORY_ORDER.length : i;
 }
@@ -172,6 +176,13 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "providers",
 ]);
 
+// The tab key a medical_records category gets. Exported because the triage links
+// (#2339) have to name the tab a given row is rendered on WITHOUT rebuilding the
+// strip, and a second copy of the collision rule would be a second answer.
+export function recordsTabKey(category: string): string {
+  return DOMAIN_TAB_KEYS.has(category) ? `records:${category}` : category;
+}
+
 // Build the tab strip from the produced counts: one tab per NON-EMPTY produced
 // type — record categories first (in canonical category order), then the
 // clinical/domain kinds — plus the provider chip count. Zero-count types get no
@@ -184,14 +195,12 @@ export function buildImportTabs(
     .filter((r) => r.count > 0)
     .sort(
       (a, b) =>
-        categoryRank(a.category) - categoryRank(b.category) ||
+        recordCategoryRank(a.category) - recordCategoryRank(b.category) ||
         a.category.localeCompare(b.category)
     );
   for (const r of cats) {
     tabs.push({
-      key: DOMAIN_TAB_KEYS.has(r.category)
-        ? `records:${r.category}`
-        : r.category,
+      key: recordsTabKey(r.category),
       label: recordCategoryLabel(r.category),
       count: r.count,
       kind: "records",

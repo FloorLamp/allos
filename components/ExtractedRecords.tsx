@@ -3,9 +3,13 @@
 import { IconLoader2 } from "@tabler/icons-react";
 import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
+import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { groupContiguous } from "@/lib/table-sort";
 import { recordNameLink } from "@/lib/import-browser";
+import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";
+import { ConfidenceRowNote } from "./ConfidenceBadge";
+import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
 import EditableRecordRow from "./EditableRecordRow";
 import RangeFilterSelect from "./RangeFilterSelect";
@@ -25,10 +29,24 @@ function nameKey(r: MedicalRecord): string {
 // affordance (the analyte columns don't apply). The name still links where the
 // category has a home (vitals → biomarker series; scan/instrument/derived/
 // reference get no link, per recordNameLink).
-function ReadonlyRecordRow({ record: r }: { record: MedicalRecord }) {
+function ReadonlyRecordRow({
+  record: r,
+  rowId,
+  focused,
+  flag,
+}: {
+  record: MedicalRecord;
+  rowId: string;
+  focused: boolean;
+  flag?: ConfidenceFlag;
+}) {
   const nameLink = recordNameLink(r.category, r.canonical_name);
   return (
-    <tr className="border-b border-black/5 dark:border-white/10">
+    <tr
+      id={rowId}
+      data-focused={focused ? "true" : undefined}
+      className={`border-b border-black/5 dark:border-white/10 ${focused ? TRIAGE_FOCUS_ROW : ""}`}
+    >
       <td className="td font-medium">
         {nameLink ? (
           <Link
@@ -41,6 +59,7 @@ function ReadonlyRecordRow({ record: r }: { record: MedicalRecord }) {
         ) : (
           r.name
         )}
+        {flag && <ConfidenceRowNote flag={flag} />}
         {r.provider_name ? (
           <div className="text-xs font-normal text-slate-500 dark:text-slate-400">
             {r.provider_id ? (
@@ -93,6 +112,9 @@ export default function ExtractedRecords({
   range,
   sort,
   emptyMessage,
+  tabKey,
+  focusedRowId,
+  rowFlags,
 }: {
   // Heading for the table — the active tab's label ("Labs", "Vitals"…).
   title?: string;
@@ -111,6 +133,14 @@ export default function ExtractedRecords({
   // (only when the table is name-sorted, matching the biomarkers table).
   sort: "name" | "panel" | "date";
   emptyMessage: string;
+  // The tab these rows belong to — half of a row's DOM id, so a "Check these
+  // first" link can name one row on one tab (#2339).
+  tabKey: string;
+  // The row a `?focus=` label resolved to, when it resolved to exactly one.
+  focusedRowId?: string | null;
+  // What the extractor hedged about, by row id — only for flags that resolved to
+  // exactly one row, so the badge never overstates which row it describes.
+  rowFlags?: Record<string, ConfidenceFlag>;
 }) {
   // Group contiguous same-name rows only when name-sorted AND on the analyte
   // grid (rows already arrive adjacent by name from the query); the read-only
@@ -118,8 +148,22 @@ export default function ExtractedRecords({
   const grouped =
     analyte && sort === "name" ? groupContiguous(records, nameKey) : null;
 
+  // A row's triage identity (#2339): its anchor id on this tab, whether a
+  // "Check these first" link focused it, and what the extractor hedged about it.
+  const triage = (r: MedicalRecord) => {
+    const rowId = triageRowId(tabKey, r.id);
+    return {
+      rowId,
+      focused: rowId === focusedRowId,
+      flag: rowFlags?.[rowId],
+    };
+  };
+
   return (
-    <div className="card mb-6 overflow-hidden p-0">
+    <div
+      className="card mb-6 overflow-hidden p-0"
+      data-testid="extracted-records"
+    >
       <div className="flex flex-wrap items-center gap-4 px-5 pt-5">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {title}{" "}
@@ -192,7 +236,7 @@ export default function ExtractedRecords({
               <tbody>
                 {!analyte
                   ? records.map((r) => (
-                      <ReadonlyRecordRow key={r.id} record={r} />
+                      <ReadonlyRecordRow key={r.id} record={r} {...triage(r)} />
                     ))
                   : grouped
                     ? grouped.map(({ row: r, isGroupStart, isGroupEnd }) => (
@@ -200,10 +244,15 @@ export default function ExtractedRecords({
                           key={r.id}
                           record={r}
                           grouped={{ isGroupStart, isGroupEnd }}
+                          {...triage(r)}
                         />
                       ))
                     : records.map((r) => (
-                        <EditableRecordRow key={r.id} record={r} />
+                        <EditableRecordRow
+                          key={r.id}
+                          record={r}
+                          {...triage(r)}
+                        />
                       ))}
               </tbody>
             </table>

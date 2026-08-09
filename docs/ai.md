@@ -122,6 +122,28 @@ maternal-vs-paternal line are extracted only when the document states them — a
 side is never read off a diagnosis name, and an ordinary relative is left
 unqualified rather than labeled.
 
+The same discipline governs the reading's **identity**, where getting it wrong is
+not cosmetic (#2338). A canonical name may carry qualifiers the document encodes
+**structurally** — the specimen, the panel/section a row sits under, laterality,
+method — because inferring those RECOVERS what the layout says: a bare `GLUCOSE`
+row inside a urinalysis section really is `Glucose, Urine`. It may not carry a
+**patient-state** condition the document does not print — fasting/non-fasting,
+post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise — because
+those describe how the patient was _prepared_, and a report either states one or
+it does not. The qualifier selects the reference band (normal glucose tops out at
+99 fasting and around 140 otherwise), so an inferred one decides whether a
+reading is flagged, and it forks the analyte's series across two canonical names
+by document. The rule is in the system prompt and the `canonical_name` schema
+field, and enforced in code by `stateAwareCanonical`
+(`lib/patient-state-qualifiers.ts`), which `normalizeResults` applies after the
+unit arbitration: a state qualifier the row's printed name and panel heading do
+not carry is dropped back to the unqualified entry. Evidence is verbatim printed
+text only — deliberately not the row's own `fasting` answer, which is the same
+model judgment that over-qualified the name. Nothing is lost either way:
+`medical_records.name` keeps the printed name and the `fasting` column keeps what
+the report said about the draw. A document that genuinely prints the condition
+("FBG (Glucose Fasting)") still lands on `Glucose, Fasting`.
+
 Every extracted row also carries the extractor's own **confidence** — a coarse
 `high` / `medium` / `low` plus a short reason for a non-high row (a smudged
 figure, an ambiguous unit, a date read from context, a hedged diagnosis). It is
@@ -137,6 +159,18 @@ card nor badge — an absent answer is "unknown", never a synthetic "low". One
 pure module (`lib/extraction-confidence.ts`) owns the vocabulary, the ranking,
 and the "deserves a look" rule, so the card, the badge, and the stored total
 cannot disagree.
+
+Each flagged row in that card is a **link to the row it names** (#2339), and the
+row it lands on wears the same confidence badge and reason. The flag stores no
+row id — an id is stale the moment a row is edited or the document reprocessed —
+so the link carries the LABEL and `lib/confidence-triage.ts` resolves it against
+the rows that exist right then, kind-scoped and exact after normalization (a
+medication compares on `medNameKey`, the identity its own domain already keys
+on). It refuses to guess: one match links at the row and highlights it, several
+matches filter the owning tab and select none, and no match is stated as "no
+longer in this import". `getDocumentTriageRows` builds the candidates out of the
+same profile-scoped, document-traced reads the tabs render from, so a link can
+only ever land on a row that tab shows.
 
 ### Provider tiers (Heavy / Light) and local inference
 

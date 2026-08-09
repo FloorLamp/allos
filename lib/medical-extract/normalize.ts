@@ -16,6 +16,7 @@ import {
   isGarbageCanonical,
 } from "../canonical-name";
 import { unitAwareCanonical } from "../canonical-unit-guard";
+import { stateAwareCanonical } from "../patient-state-qualifiers";
 import {
   normalizeResultStatus,
   parseFasting,
@@ -237,10 +238,23 @@ export function normalizeResults(
     // unit, the name resolved onto the wrong quantity (a "%" onto a "cells/uL" entry,
     // or the reverse). Re-resolve to the same-analyte sibling whose unit fits, rather
     // than mis-grouping the reading and silently denying it a range (#918 §1).
-    const canonicalName = unitAwareCanonical(
+    const unitResolved = unitAwareCanonical(
       snapped,
       name,
       str(r?.unit),
+      canonicalIndex
+    );
+    // #2338: the model may qualify an identity with a PATIENT-STATE condition the
+    // document never stated — two reports printing a bare "GLUCOSE" both landed on
+    // "Glucose, Fasting". That changes which reference band applies (99 vs ~140) and
+    // forks the analyte's series by document. Structural inference (specimen, panel,
+    // laterality, method) is untouched — the same reports' urine row correctly stays
+    // "Glucose, Urine"; only a state qualifier the printed text does not carry is
+    // dropped back to the unqualified entry. Evidence is the verbatim printed name
+    // and panel heading; see lib/patient-state-qualifiers.
+    const canonicalName = stateAwareCanonical(
+      unitResolved,
+      [name, str(r?.panel)],
       canonicalIndex
     );
     // Batch collapse: claim the FINAL resolved name's key in this extraction's

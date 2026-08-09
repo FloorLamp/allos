@@ -26,6 +26,7 @@ import {
   getDocumentMedications,
   getDocumentBodyRows,
   getDocumentProviders,
+  getDocumentTriageRows,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
@@ -40,6 +41,7 @@ import {
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
 import { recordSyncEvent } from "@/lib/integrations/connections";
+import { resolveTriageTarget } from "@/lib/confidence-triage";
 
 const DATE = "2020-05-01";
 
@@ -679,5 +681,109 @@ describe("getDocumentProviders (#1182)", () => {
       .get(docA, profileA) as { n: number };
     expect(row.n).toBe(countImportedDocumentRows(profileA, docA));
     expect(getDocumentProviders(profileA, docA).length).toBeGreaterThan(0);
+  });
+});
+
+// #2339: the candidate rows a "Check these first" flag's LABEL is resolved
+// against. The query composes the same profile-scoped, document-traced reads the
+// tabs render from, so a triage link can only ever land on a row that tab shows —
+// and the pure decision (lib/confidence-triage) then refuses to guess.
+describe("getDocumentTriageRows (#2339)", () => {
+  // Its own profile: a re-prescription of a drug the profile already tracks
+  // attaches as a COURSE on the existing med (#1204) instead of creating a second
+  // intake_items row, so a shared profile would leave this document's medication
+  // tab legitimately empty.
+  let profileT: number;
+  let triageDoc: number;
+
+  beforeAll(() => {
+    profileT = newProfile("IMPORT-T");
+    triageDoc = newDocument(profileT, "triage-labs.pdf");
+    persistDocumentImport(profileT, triageDoc, makeInput());
+  });
+
+  it("resolves a lab label to the one row it names, on the tab that renders it", () => {
+    const rows = getDocumentTriageRows(profileT, triageDoc, ["lab"]);
+    expect(
+      resolveTriageTarget({ kind: "lab", label: "Glucose" }, rows)
+    ).toMatchObject({ status: "row", tabKey: "lab" });
+  });
+
+  it("matches the canonical name the row was stored under", () => {
+    // The extractor called it "HDL"; the row canonicalized to "HDL Cholesterol".
+    // Either spelling must find it — the flag records the model's word, the table
+    // renders the stored one.
+    const rows = getDocumentTriageRows(profileT, triageDoc, ["lab"]);
+    for (const label of ["HDL", "HDL Cholesterol"]) {
+      expect(resolveTriageTarget({ kind: "lab", label }, rows)).toMatchObject({
+        status: "row",
+        tabKey: "lab",
+      });
+    }
+  });
+
+  it("reads only the kinds asked for", () => {
+    const rows = getDocumentTriageRows(profileT, triageDoc, ["condition"]);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.kind === "condition")).toBe(true);
+    expect(
+      resolveTriageTarget({ kind: "condition", label: "Hypertension" }, rows)
+    ).toMatchObject({ status: "row", tabKey: "conditions" });
+  });
+
+  it("finds a family-history row through the relation-qualified label", () => {
+    // extractionConfidenceItems labels these "Father: Type 2 diabetes" while the
+    // row stores the two halves separately.
+    const rows = getDocumentTriageRows(profileT, triageDoc, ["family_history"]);
+    expect(
+      resolveTriageTarget(
+        { kind: "family_history", label: "Father: Type 2 diabetes" },
+        rows
+      )
+    ).toMatchObject({ status: "row", tabKey: "family-history" });
+  });
+
+  it("finds the medication a prescription became (#1178)", () => {
+    const rows = getDocumentTriageRows(profileT, triageDoc, ["medication"]);
+    expect(
+      resolveTriageTarget(
+        { kind: "medication", label: "Lisinopril 10 mg" },
+        rows
+      )
+    ).toMatchObject({ status: "row", tabKey: "medications" });
+  });
+
+  it("is profile-scoped: another profile sees nothing on this document", () => {
+    expect(
+      getDocumentTriageRows(profileB, triageDoc, ["lab", "condition"])
+    ).toEqual([]);
+  });
+
+  it("filters instead of guessing when two rows carry the label", () => {
+    // A reviewer sent to the WRONG row may edit it, so a name that fits two rows
+    // resolves to the tab, filtered — never to one of them.
+    const twinDoc = newDocument(profileT, "triage-twins.pdf");
+    persistDocumentImport(profileT, twinDoc, makeInput());
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value, document_id)
+       VALUES (?, ?, 'lab', 'Glucose', 'Glucose', '101', ?)`
+    ).run(profileT, DATE, twinDoc);
+    const rows = getDocumentTriageRows(profileT, twinDoc, ["lab"]);
+    expect(
+      resolveTriageTarget({ kind: "lab", label: "Glucose" }, rows)
+    ).toEqual({ status: "filter", tabKey: "lab" });
+  });
+
+  it("reports missing once the row it named has left the document", () => {
+    const goneDoc = newDocument(profileT, "triage-gone.pdf");
+    persistDocumentImport(profileT, goneDoc, makeInput());
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = ? AND document_id = ? AND name = 'Glucose'"
+    ).run(profileT, goneDoc);
+    const rows = getDocumentTriageRows(profileT, goneDoc, ["lab"]);
+    expect(
+      resolveTriageTarget({ kind: "lab", label: "Glucose" }, rows)
+    ).toEqual({ status: "missing" });
   });
 });
