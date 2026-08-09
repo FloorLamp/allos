@@ -219,6 +219,10 @@ test("the biological-age hero renders on Longevity, and Biomarkers keeps the inp
 test("biological-age hero is absent for a child profile (#209)", async ({
   browser,
 }) => {
+  // Four server renders on this one path — login, the dashboard, Biomarkers and now
+  // Longevity, since #2367 put the two halves of the gate on two pages — each a
+  // first hit for this context. That is past the default budget on a loaded runner.
+  test.slow();
   const ctx = await browser.newContext({
     storageState: { cookies: [], origins: [] },
   });
