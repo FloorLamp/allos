@@ -224,49 +224,50 @@ export function formatRichMessageLine(line: RichMessageLine): MessageBody {
 // and a producer that is genuinely something else (an inline keyboard button label, an
 // AI prompt, a `·`-joined list of coequal facts) says so by not being on it — or, when
 // it lives beside lines that are, by carrying an allowlist entry that states why.
-export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] = [
-  {
-    module: "lib/notifications/digest.ts",
-    why: "The morning digest — the grammar's home surface (#1913/#2048). Its Today/Yesterday/Sleep/New sections are the largest set of message lines the app sends.",
-  },
-  {
-    module: "lib/notifications/upcoming-digest.ts",
-    why: "The digest's banded 'what's due' model and the named data-plumbing lines (#1685/#1757), including the title that names the profile.",
-  },
-  {
-    module: "lib/weekly-recap.ts",
-    why: "The weekly recap message (#32). The second system-initiated message a profile receives, and the surface that had drifted to a parenthesis grammar (#2389) — it is in scope precisely because it is not under lib/notifications/.",
-  },
-  {
-    module: "lib/notifications/supplement-format.ts",
-    why: "The dose reminder: per-dose body lines and the window title (#232/#380).",
-  },
-  {
-    module: "lib/notifications/preventive-format.ts",
-    why: "The preventive-care nudge's body line (#1722 item 3).",
-  },
-  {
-    module: "lib/notifications/food-format.ts",
-    why: "The protein nudge's status line (#1710/#1822) — the rich-text case, proving the emphasized rendering is punctuated by the same grammar.",
-  },
-  {
-    module: "lib/notifications/reconcile-core.ts",
-    why: "The closing sentence a reconciled pointer is edited down to (#2274/#2275).",
-  },
-  {
-    module: "lib/notifications/correction-rows.ts",
-    why: "The time-correction picker's question and the body's statement of record (#2264).",
-  },
-  {
-    module: "lib/notifications/household-round-format.ts",
-    why: "The household round's title and per-member section headers (#1719).",
-  },
-  {
-    module: "lib/notifications/offer-tail.ts",
-    why: "The digest's 'Log other…' tail (#1505). Registered so its keyboard-label separator is a REVIEWED exemption with a reason rather than an unexamined omission.",
-  },
-  {
-    module: "lib/notifications/workout-recap-format.ts",
-    why: "The post-workout finish nudge's weekly-status line (#981/#1122).",
-  },
-];
+export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
+  [
+    {
+      module: "lib/notifications/digest.ts",
+      why: "The morning digest — the grammar's home surface (#1913/#2048). Its Today/Yesterday/Sleep/New sections are the largest set of message lines the app sends.",
+    },
+    {
+      module: "lib/notifications/upcoming-digest.ts",
+      why: "The digest's banded 'what's due' model and the named data-plumbing lines (#1685/#1757), including the title that names the profile.",
+    },
+    {
+      module: "lib/weekly-recap.ts",
+      why: "The weekly recap message (#32). The second system-initiated message a profile receives, and the surface that had drifted to a parenthesis grammar (#2389) — it is in scope precisely because it is not under lib/notifications/.",
+    },
+    {
+      module: "lib/notifications/supplement-format.ts",
+      why: "The dose reminder: per-dose body lines and the window title (#232/#380).",
+    },
+    {
+      module: "lib/notifications/preventive-format.ts",
+      why: "The preventive-care nudge's body line (#1722 item 3).",
+    },
+    {
+      module: "lib/notifications/food-format.ts",
+      why: "The protein nudge's status line (#1710/#1822) — the rich-text case, proving the emphasized rendering is punctuated by the same grammar.",
+    },
+    {
+      module: "lib/notifications/reconcile-core.ts",
+      why: "The closing sentence a reconciled pointer is edited down to (#2274/#2275).",
+    },
+    {
+      module: "lib/notifications/correction-rows.ts",
+      why: "The time-correction picker's question and the body's statement of record (#2264).",
+    },
+    {
+      module: "lib/notifications/household-round-format.ts",
+      why: "The household round's title and per-member section headers (#1719).",
+    },
+    {
+      module: "lib/notifications/offer-tail.ts",
+      why: "The digest's 'Log other…' tail (#1505). Registered so its keyboard-label separator is a REVIEWED exemption with a reason rather than an unexamined omission.",
+    },
+    {
+      module: "lib/notifications/workout-recap-format.ts",
+      why: "The post-workout finish nudge's weekly-status line (#981/#1122).",
+    },
+  ];

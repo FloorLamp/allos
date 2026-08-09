@@ -476,7 +476,9 @@ describe("renderRecapMessage", () => {
         adherence: { taken: 12, skipped: 1, due: 14 },
       })
     );
-    const lines = String(recap.lines.length ? renderRecapMessage(recap, "Ada")!.body : "")
+    const lines = String(
+      recap.lines.length ? renderRecapMessage(recap, "Ada")!.body : ""
+    )
       .split("\n")
       .slice(1);
     expect(lines).toEqual([

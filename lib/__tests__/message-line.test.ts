@@ -54,9 +54,9 @@ describe("formatMessageLine: every combination of present and absent parts", () 
         deadline: "d",
       })
     ).toBe("🙋 H — b · n1 · n2 · c · d");
-    expect(formatMessageLine({ head: "H", notes: ["n"], comparison: "c" })).toBe(
-      "H — n · c"
-    );
+    expect(
+      formatMessageLine({ head: "H", notes: ["n"], comparison: "c" })
+    ).toBe("H — n · c");
     expect(formatMessageLine({ head: "H", because: "b", deadline: "d" })).toBe(
       "H — b · d"
     );
@@ -106,7 +106,9 @@ describe("formatRichMessageLine: the same grammar, with emphasis", () => {
       head: ["Protein: ", bold("88 g"), " so far"],
       notes: ["goal 100–130 g", "reached"],
     });
-    expect(plainBody(rich)).toBe("🥩 Protein: 88 g so far — goal 100–130 g · reached");
+    expect(plainBody(rich)).toBe(
+      "🥩 Protein: 88 g so far — goal 100–130 g · reached"
+    );
     expect(plainBody(rich)).toBe(
       formatMessageLine({
         glyph: "🥩",
@@ -182,13 +184,20 @@ describe("a head-only line adds nothing to what the producer wrote", () => {
   // The glyph is a VALUE, so a declared vocabulary (#2392) is a swap at the call site.
   it("takes its glyph from a constant exactly as from a literal", () => {
     const GLYPH = { sleep: "😴" } as const;
-    expect(formatMessageLine({ glyph: GLYPH.sleep, head: "Last night: 8h" })).toBe(
-      formatMessageLine({ glyph: "😴", head: "Last night: 8h" })
-    );
+    expect(
+      formatMessageLine({ glyph: GLYPH.sleep, head: "Last night: 8h" })
+    ).toBe(formatMessageLine({ glyph: "😴", head: "Last night: 8h" }));
   });
 
   it("adds only separators and single spaces — never a word of its own", () => {
-    const parts = ["GLYPH", "HEAD", "BECAUSE", "NOTE", "COMPARISON", "DEADLINE"];
+    const parts = [
+      "GLYPH",
+      "HEAD",
+      "BECAUSE",
+      "NOTE",
+      "COMPARISON",
+      "DEADLINE",
+    ];
     const out = formatMessageLine({
       glyph: parts[0],
       head: parts[1],
@@ -560,8 +569,8 @@ describe("message-line scan: the declared scope composes through the formatter",
 
     const interpolated =
       "export const lead = `recovering — sick ${n} day${n === 1 ? '' : 's'}`;";
-    expect(scanModule("lib/notifications/digest.ts", interpolated)).toHaveLength(
-      1
-    );
+    expect(
+      scanModule("lib/notifications/digest.ts", interpolated)
+    ).toHaveLength(1);
   });
 });

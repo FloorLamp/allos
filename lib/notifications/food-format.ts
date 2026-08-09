@@ -11,10 +11,7 @@ import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
 import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
-import {
-  formatMessageLine,
-  formatRichMessageLine,
-} from "./message-line";
+import { formatMessageLine, formatRichMessageLine } from "./message-line";
 import {
   DEFAULT_PROTEIN_PRESET_GRAMS,
   isProteinNudgeKey,

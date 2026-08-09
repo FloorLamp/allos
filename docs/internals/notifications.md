@@ -1962,7 +1962,7 @@ and a producer holding neither renders a bare head.
 
 **The head is opaque, deliberately.** The type models no structure inside the head —
 not the emphasized token a sentence turns on (`Nothing logged for **Midday**
-today.`), not a relative day, not a row label. Those are what the clause *says*; a
+today.`), not a relative day, not a row label. Those are what the clause _says_; a
 role for each would be a copy template wearing a grammar's clothes, re-invented per
 sentence shape. A rich head takes a sequence of parts instead, so emphasis lands
 where the sentence needs it. This is not the hole `${title} — ${detail}` left open:

@@ -321,8 +321,7 @@ export function recapMessageLine(line: RecapLine): MessageLine {
   return {
     head: line.bare ? line.value : `${line.label}: ${line.value}`,
     notes: line.notes,
-    comparison:
-      line.comparison.kind === "none" ? null : line.comparison.text,
+    comparison: line.comparison.kind === "none" ? null : line.comparison.text,
   };
 }
 
