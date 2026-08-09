@@ -29,6 +29,7 @@ import {
   type UnroutableReason,
 } from "../household-setup";
 import { isPushedIntake } from "../supplement-schedule";
+import type { Supplement } from "../types/intake";
 import { getOnboardingDataPresence } from "../onboarding-data";
 import { getOnboardingState, getNotifySchedule } from "../settings";
 import { profileRoutingFacts } from "../notifications/routing";
@@ -45,21 +46,23 @@ import { assessProfilePreventive, getFindingSuppressions } from "./upcoming";
 // The tick's own gates, asked as a question about the PROFILE rather than about this
 // minute. Timezone-free: nothing here consults a clock, because the condition is
 // structural.
+//
+// The roster and the dosed-item set are PASSED IN, not re-read: `getSupplements` carries
+// seven correlated subselects, and the caller has already paid for it once per member.
 function gatherSendSources(
   profileId: number,
+  items: readonly Supplement[],
+  dosedItemIds: ReadonlySet<number>,
   preventiveNudges: number
 ): SendSourceFacts {
   const sched = getNotifySchedule(profileId);
   const anyIntakeWindow = Object.values(sched.supplementMinutes).some(
     (m) => m != null
   );
-  const dosedItemIds = new Set(
-    getSupplementDoses(profileId).map((d) => d.item_id)
-  );
   let scheduledMedications = 0;
   let scheduledSupplements = 0;
   if (anyIntakeWindow) {
-    for (const item of getSupplements(profileId)) {
+    for (const item of items) {
       if (!item.active || !isPushedIntake(item)) continue;
       if (!dosedItemIds.has(item.id)) continue;
       if (item.kind === "medication") scheduledMedications++;
@@ -151,7 +154,12 @@ function gatherHouseholdSetupFactsUncached(
   }
   const presence = getOnboardingDataPresence(profileId);
   return {
-    sendSources: gatherSendSources(profileId, preventiveUnactioned.length),
+    sendSources: gatherSendSources(
+      profileId,
+      items,
+      dosedItemIds,
+      preventiveUnactioned.length
+    ),
     routing: profileRoutingFacts(profileId),
     onboardingStarted: getOnboardingState(profileId) !== null,
     hasStoredData: Object.values(presence).some(Boolean),
