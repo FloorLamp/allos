@@ -175,14 +175,31 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await expect(note).toContainText("Levine PhenoAge");
 });
 
-// #209: PhenoAge is surfaced as a headline biological-age HERO card pinned above the
-// Biomarkers table (not just the derived row). For the seeded ADULT profile (a full
-// nine-analyte panel + a known age) the card shows the biological age, its delta to
-// calendar age, and the required estimate citation. Read-only — no mutation.
-test("biomarkers page shows the biological-age hero for the adult (#209)", async ({
+// #209 as split by #2367: PhenoAge is surfaced as a headline biological-age HERO —
+// on EXACTLY ONE page. Biological age is a longevity index, so the hero is Longevity
+// §1; Results › Biomarkers keeps the part of it that is about the analyte catalog (the
+// input panel and its link to the hero) because that is the page where the missing
+// analytes are added. For the seeded ADULT profile (a full nine-analyte panel + a
+// known age) both halves render. Read-only — no mutation.
+test("the biological-age hero renders on Longevity, and Biomarkers keeps the inputs (#209/#2367)", async ({
   page,
 }) => {
   await page.goto("/results");
+  const results = page.getByRole("main");
+  // Not twice on two pages: the headline block is gone from here…
+  await expect(results.getByTestId("bio-age-hero")).toHaveCount(0);
+  // …and what remains is the catalog half, with the door to the hero.
+  const card = results.getByTestId("bio-age-inputs-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("bio-age-inputs-status")).toContainText(
+    "inputs present"
+  );
+  await expect(card.getByTestId("bio-age-hero-link")).toHaveAttribute(
+    "href",
+    "/longevity#bio-age"
+  );
+
+  await page.goto("/longevity");
   const hero = page.getByRole("main").getByTestId("bio-age-hero");
   await expect(hero).toBeVisible();
   // The headline number and its delta to chronological age.
@@ -236,8 +253,13 @@ test("biological-age hero is absent for a child profile (#209)", async ({
       { timeout: 15_000 }
     );
 
-    // On the child's Biomarkers page the hero is not rendered at all.
+    // On the child's Biomarkers page NOTHING bio-age renders — not the hero (which
+    // now lives on Longevity) and not the input panel that replaced it here.
     await page.goto("/results");
+    await expect(
+      page.getByRole("main").getByTestId("bio-age-inputs-card")
+    ).toHaveCount(0);
+    await page.goto("/longevity");
     await expect(
       page.getByRole("main").getByTestId("bio-age-hero")
     ).toHaveCount(0);
