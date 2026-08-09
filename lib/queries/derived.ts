@@ -28,6 +28,7 @@ import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
+  derivedInputSlots,
   DERIVED_NAMES,
   type ComponentReading,
   type DerivedName,
@@ -36,19 +37,26 @@ import {
 import { PHENOAGE_INPUT_NAMES } from "../bio-age";
 import type { MedicalRecord } from "../types";
 
-// The exact numeric an arithmetic index can consume from a stored reading: the
-// exact value_num when present, else the DETECTION LIMIT of a bounded below/above-
-// detection reading ("<0.2" → 0.2, ">10" → 10) — the standard left-censored-lab
-// substitution. Without it an undetectable hs-CRP (the good, low-inflammation case)
-// carries no value_num and silently drops the WHOLE PhenoAge draw, even though every
-// other input is present; the same fate awaits any censored derived-index component.
-// Null for a purely qualitative reading (nothing usable). Mirrors the chart's
-// plottable value so a component contributes the same number it plots.
+// The numeric an arithmetic index can consume from a stored reading, WITH its
+// censoring marker: the exact value_num when present, else the DETECTION LIMIT of a
+// bounded below/above-detection reading ("<0.2" → 0.2 with bound "<", ">10" → 10 with
+// bound ">") — the standard left-censored-lab substitution, and the same rule the
+// charts already follow (plottableReadingValue). Without it an undetectable hs-CRP
+// (the good, low-inflammation case) carries no value_num and silently drops the WHOLE
+// PhenoAge draw, even though every other input is present; the same fate awaits any
+// censored derived-index component. Null for a purely qualitative reading (nothing
+// usable).
+//
+// The `bound` is carried, not dropped: the convention is substitute the limit, KEEP
+// the marker, show it. A chart can say it with a hollow dot; a single derived number
+// can only say it by carrying the marker through to the reading (#2334), so the
+// deriver marks the result and names the input it rests on.
 function componentNumeric(r: {
   value_num: number | null;
   value: string | null;
-}): number | null {
-  return plottableReadingValue(r.value_num, r.value)?.value ?? null;
+}): { value: number; bound?: "<" | ">" } | null {
+  const p = plottableReadingValue(r.value_num, r.value);
+  return p ? { value: p.value, bound: p.bound } : null;
 }
 
 // A virtual (unstored) record synthesized from a computed derived reading. Same
@@ -119,18 +127,35 @@ const getDerivedComputation = cache(function getDerivedComputation(
     }))
   );
 
-  // Load each component series once, reduced to exact numeric readings — an
-  // arithmetic index can't consume a bounded/qualitative value. Keyed by the exact
-  // input canonical name (computeDerivedReadings looks up by spec.canonical).
+  // Load each component series once, reduced to the numerics an arithmetic index can
+  // consume (a censored reading contributes its limit plus the marker; a purely
+  // qualitative one contributes nothing). Keyed by the exact canonical name — one
+  // entry per ACCEPTED spelling, since computeDerivedReadings looks each up by name.
   const seriesByCanonical = new Map<string, ComponentReading[]>();
-  const presentInputs = new Set<string>();
   for (const canonical of derivedInputCanonicalNames()) {
     const rows = (grouped.get(canonicalGroupKey(canonical)) ?? [])
       .map((r) => ({ r, v: componentNumeric(r) }))
-      .filter((x): x is { r: MedicalRecord; v: number } => x.v != null)
-      .map(({ r, v }) => ({ date: r.date, value: v, unit: r.unit }));
+      .filter(
+        (
+          x
+        ): x is { r: MedicalRecord; v: { value: number; bound?: "<" | ">" } } =>
+          x.v != null
+      )
+      .map(({ r, v }) => ({
+        date: r.date,
+        value: v.value,
+        unit: r.unit,
+        ...(v.bound ? { bound: v.bound } : {}),
+      }));
     seriesByCanonical.set(canonical, rows);
-    if (rows.length > 0) presentInputs.add(canonical);
+  }
+
+  // An input SLOT is present when ANY name it accepts has a usable reading — the
+  // completeness checklist asks for one glucose, not one per spelling.
+  const presentInputs = new Set<string>();
+  for (const slot of derivedInputSlots()) {
+    if (slot.accepts.some((n) => (seriesByCanonical.get(n) ?? []).length > 0))
+      presentInputs.add(slot.key);
   }
 
   // Dates already covered by a stored reading of each derived analyte — skip them
@@ -276,7 +301,13 @@ export interface BioAgeDraw {
   date: string;
   bioAge: number;
   chronoAge: number | null;
-  inputs: { name: string; value: number; unit: string }[];
+  // The nine canonical-unit inputs. `name` is the canonical entry the value actually
+  // came from (which glucose spelling the draw carried), and `bound` marks a value
+  // substituted at a detection limit.
+  inputs: { name: string; value: number; unit: string; bound?: "<" | ">" }[];
+  // Set when the draw rests on ≥1 censored input — the hero says so and names it,
+  // because the headline number itself cannot show a "<".
+  censored?: DerivedReading["censored"];
 }
 
 // The biological-age (PhenoAge) reading data for a profile: every complete draw
@@ -300,6 +331,7 @@ export function getBioAgeReadings(profileId: number): {
       bioAge: r.value,
       chronoAge: getUserAgeOn(profileId, r.date),
       inputs: r.inputs,
+      ...(r.censored ? { censored: r.censored } : {}),
     }));
   // The nine PhenoAge inputs the profile has any usable reading of (drives the
   // partial-panel checklist CTA) — filtered from the shared present-input set.
