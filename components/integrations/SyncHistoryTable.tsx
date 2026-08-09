@@ -96,6 +96,7 @@ export default function SyncHistoryTable({
           today={state.today}
           providerId={state.id}
           initialCursor={state.historyNextBefore}
+          timeZone={state.timeZone}
           isAdmin={isAdmin}
         />
       )}

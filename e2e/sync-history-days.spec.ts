@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { openAllSyncDays } from "./helpers";
 import { E2E_LOGIN_SYNC_HISTORY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { frozenNow } from "./worker-env";
 
 // #1991 — sync history is not an event log.
 //
@@ -24,10 +25,16 @@ test.describe("day-grouped sync history (#1991)", () => {
     browser,
   }) => {
     test.slow();
-    const member = await loginAs(browser, {
-      username: E2E_LOGIN_SYNC_HISTORY,
-      password: E2E_MEMBER_PASSWORD,
-    });
+    const member = await loginAs(
+      browser,
+      {
+        username: E2E_LOGIN_SYNC_HISTORY,
+        password: E2E_MEMBER_PASSWORD,
+      },
+      // Deliberately differs from the profile's fixed-offset timezone. The ledger
+      // must render the clock that assigned the profile-local day, not this one.
+      { timezoneId: "Asia/Kathmandu" }
+    );
     try {
       await member.goto("/integrations/health-connect");
       const history = member.getByTestId("sync-history");
@@ -44,6 +51,15 @@ test.describe("day-grouped sync history (#1991)", () => {
       await expect(
         newestGroup.getByText("Changes and details", { exact: true })
       ).toBeVisible();
+      const expectedProfileClock = `13:${String(frozenNow().getUTCMinutes()).padStart(2, "0")}`;
+      const latestRun = history
+        .getByTestId("sync-history-latest")
+        .locator("xpath=ancestor::li[1]");
+      await expect(latestRun.locator("time")).toHaveText(expectedProfileClock);
+      await expect(latestRun.locator("time")).toHaveAttribute(
+        "title",
+        new RegExp(`, ${expectedProfileClock}$`)
+      );
       // It counts runs in the provider's own noun and carries the day's totals.
       await expect(newestDay).toContainText("30 pushes");
       await expect(newestDay).toHaveText(/30 pushes · \d+ new · \d+ changed/);

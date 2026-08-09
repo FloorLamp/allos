@@ -9,6 +9,7 @@ import {
   formatDateShape,
   formatDateWithYear,
   formatTimestamp,
+  formatTimestampDisplay,
   formatRelativeDate,
   formatCompactAge,
   formatRelativeTime,
@@ -408,6 +409,19 @@ describe("formatTimestamp", () => {
         zone: "utc",
       })
     ).toBe("Jan 2, 2026, 03:04");
+  });
+
+  it("returns one profile-zoned clock and absolute label across a day boundary", () => {
+    expect(
+      formatTimestampDisplay("2026-08-09T01:00:00Z", DEFAULT_FORMAT_PREFS, {
+        timeZone: "UTC",
+      })
+    ).toEqual({ absolute: "Aug 9, 2026, 01:00", clock: "01:00" });
+    expect(
+      formatTimestampDisplay("2026-08-09T01:00:00Z", DEFAULT_FORMAT_PREFS, {
+        timeZone: "America/New_York",
+      })
+    ).toEqual({ absolute: "Aug 8, 2026, 21:00", clock: "21:00" });
   });
 
   it("returns the raw text when unparseable rather than 'Invalid Date'", () => {

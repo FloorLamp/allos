@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import {
-  formatClock,
-  formatRelativeTime,
-  formatTimestamp,
-} from "@/lib/format-date";
+import { formatRelativeTime, formatTimestampDisplay } from "@/lib/format-date";
 
 // The ONE timestamp treatment for a sync (#1772): the absolute local time AND the
 // relative one, together. The surfaces disagreed three ways — the setup pages printed
@@ -25,6 +21,7 @@ export default function SyncTimestamp({
   className,
   relativeOnly = false,
   clockOnly = false,
+  timeZone,
 }: {
   value: string;
   className?: string;
@@ -35,6 +32,9 @@ export default function SyncTimestamp({
   // aligned TIME column uses only the reader's clock, with the full absolute stamp
   // retained in the tooltip.
   clockOnly?: boolean;
+  // A day-grouped profile ledger passes the same timezone that assigned its day.
+  // Other compact status surfaces retain their established reader-local display.
+  timeZone?: string;
 }) {
   const prefs = useFormatPrefs();
   const [relative, setRelative] = useState(() => formatRelativeTime(value));
@@ -46,7 +46,12 @@ export default function SyncTimestamp({
     return () => clearInterval(id);
   }, [value]);
 
-  const absolute = formatTimestamp(value, prefs);
+  const display = formatTimestampDisplay(
+    value,
+    prefs,
+    timeZone ? { timeZone } : undefined
+  );
+  const absolute = display?.absolute ?? value;
   // Parse the SQLite "YYYY-MM-DD HH:MM:SS" form explicitly as UTC for the machine
   // dateTime attribute; anything else is already zone-marked.
   const isUtc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value);
@@ -54,9 +59,7 @@ export default function SyncTimestamp({
   const machine = Number.isNaN(parsed.getTime())
     ? undefined
     : parsed.toISOString();
-  const clock = Number.isNaN(parsed.getTime())
-    ? value
-    : formatClock(prefs.timeFormat, parsed.getHours(), parsed.getMinutes());
+  const clock = display?.clock ?? value;
 
   return (
     <time

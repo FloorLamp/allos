@@ -62,12 +62,20 @@ function DayTitle({ day, today }: { day: string; today: string }) {
   );
 }
 
-function RunLine({ run, isAdmin }: { run: SyncRunView; isAdmin: boolean }) {
+function RunLine({
+  run,
+  isAdmin,
+  timeZone,
+}: {
+  run: SyncRunView;
+  isAdmin: boolean;
+  timeZone: string;
+}) {
   return (
     <li className="px-3 py-3" data-testid={`sync-run-${run.id}`}>
       <div className={LEDGER_GRID}>
         <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-          <SyncTimestamp value={run.at} clockOnly />
+          <SyncTimestamp value={run.at} clockOnly timeZone={timeZone} />
           {run.isLatest && <LatestBadge />}
         </div>
         <span
@@ -143,10 +151,12 @@ function RangeLine({
   entry,
   isAdmin,
   providerId,
+  timeZone,
 }: {
   entry: Extract<SyncDayEntryView, { kind: "range" }>;
   isAdmin: boolean;
   providerId: IntegrationId;
+  timeZone: string;
 }) {
   const [runs, setRuns] = useState<SyncRunView[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -167,7 +177,12 @@ function RangeLine({
     return (
       <>
         {runs.map((run) => (
-          <RunLine key={run.id} run={run} isAdmin={isAdmin} />
+          <RunLine
+            key={run.id}
+            run={run}
+            isAdmin={isAdmin}
+            timeZone={timeZone}
+          />
         ))}
       </>
     );
@@ -179,8 +194,9 @@ function RangeLine({
     >
       <div className={LEDGER_GRID}>
         <span className="whitespace-nowrap text-xs tabular-nums">
-          <SyncTimestamp value={entry.oldestAt} clockOnly /> –{" "}
-          <SyncTimestamp value={entry.newestAt} clockOnly />
+          <SyncTimestamp value={entry.oldestAt} clockOnly timeZone={timeZone} />{" "}
+          –{" "}
+          <SyncTimestamp value={entry.newestAt} clockOnly timeZone={timeZone} />
         </span>
         <span className="text-xs font-medium uppercase tracking-wide">
           Routine
@@ -205,10 +221,12 @@ function FailureRunLine({
   entry,
   isAdmin,
   providerId,
+  timeZone,
 }: {
   entry: Extract<SyncDayEntryView, { kind: "failure-run" }>;
   isAdmin: boolean;
   providerId: IntegrationId;
+  timeZone: string;
 }) {
   const [runs, setRuns] = useState<SyncRunView[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -229,7 +247,12 @@ function FailureRunLine({
     return (
       <>
         {runs.map((run) => (
-          <RunLine key={run.id} run={run} isAdmin={isAdmin} />
+          <RunLine
+            key={run.id}
+            run={run}
+            isAdmin={isAdmin}
+            timeZone={timeZone}
+          />
         ))}
       </>
     );
@@ -240,8 +263,17 @@ function FailureRunLine({
       <div className={LEDGER_GRID}>
         <div className="flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
           <span>
-            <SyncTimestamp value={entry.oldestAt} clockOnly /> –{" "}
-            <SyncTimestamp value={entry.newestAt} clockOnly />
+            <SyncTimestamp
+              value={entry.oldestAt}
+              clockOnly
+              timeZone={timeZone}
+            />{" "}
+            –{" "}
+            <SyncTimestamp
+              value={entry.newestAt}
+              clockOnly
+              timeZone={timeZone}
+            />
           </span>
           {entry.isLatest && <LatestBadge />}
         </div>
@@ -271,12 +303,14 @@ export default function SyncHistoryDays({
   today,
   providerId,
   initialCursor,
+  timeZone,
   isAdmin = false,
 }: {
   days: SyncDayView[];
   today: string;
   providerId: IntegrationId;
   initialCursor: string | null;
+  timeZone: string;
   isAdmin?: boolean;
 }) {
   const [olderDays, setOlderDays] = useState<SyncDayView[]>([]);
@@ -373,6 +407,7 @@ export default function SyncHistoryDays({
                         key={entry.run.id}
                         run={entry.run}
                         isAdmin={isAdmin}
+                        timeZone={timeZone}
                       />
                     );
                   }
@@ -388,6 +423,7 @@ export default function SyncHistoryDays({
                         entry={entry}
                         isAdmin={isAdmin}
                         providerId={providerId}
+                        timeZone={timeZone}
                       />
                     );
                   }
@@ -397,6 +433,7 @@ export default function SyncHistoryDays({
                       entry={entry}
                       isAdmin={isAdmin}
                       providerId={providerId}
+                      timeZone={timeZone}
                     />
                   );
                 })}
