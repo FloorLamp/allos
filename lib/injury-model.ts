@@ -10,6 +10,7 @@
 // the card ("avoiding Chest (right shoulder injury)"), never silent.
 
 import {
+  exerciseDisplayName,
   exerciseHistoryKey,
   isUnilateral,
   liftInfo,
@@ -306,11 +307,22 @@ export function regionInjuryConstraint(base: {
 
 // ── Per-exercise resolution (#2024) ──────────────────────────────────────────
 
+// The slice of a constraint that decides COVERAGE — the resolved level plus the
+// vocabulary each level reads. `InjuryConstraint` satisfies it structurally; a DRAFT the
+// user is still editing resolves into one through `resolveScope` (#2297), so the form's
+// preview and the engine's verdict are the same computation rather than two.
+export interface ScopeResolution {
+  scope: InjuryScope;
+  regions: readonly MuscleRegion[];
+  movements: readonly MovementPattern[];
+  exercises: readonly string[];
+}
+
 // Whether ONE constraint covers a given exercise, at the level the constraint was declared
 // at. Exercise identity goes through `exerciseHistoryKey` (never a raw label); a movement
 // pattern comes from the lifts catalog; a region falls back to `regionForExercise`.
 export function constraintCoversExercise(
-  c: InjuryConstraint,
+  c: ScopeResolution,
   exerciseName: string
 ): boolean {
   if (c.scope === "exercise")
@@ -410,6 +422,97 @@ export function exerciseInjuryVerdict(
     fallback: declared.length === 0,
     limitations,
   };
+}
+
+// ── The declared scope, as a sentence and as a change (#2024 / #2297) ────────
+
+// The human label for each movement pattern a constraint may name. Lives here, beside the
+// vocabulary itself, so the chip that reads a constraint back and the form that writes one
+// name the pattern identically.
+export const MOVEMENT_PATTERN_LABEL: Record<MovementPattern, string> = {
+  push: "Pushing",
+  pull: "Pulling",
+  legs: "Legs",
+  core: "Core",
+};
+
+// What a user DECLARED, at whatever level they declared it — the shape both a stored
+// `Injury` and a draft the form is still holding satisfy. `muscles` is optional because
+// the finer muscle list is a display/rollup input the injury form does not edit.
+export interface DeclaredScope {
+  regions: readonly MuscleRegion[];
+  movements: readonly MovementPattern[];
+  exercises: readonly string[];
+  laterality: InjuryLaterality | null;
+  muscles?: readonly MuscleId[];
+}
+
+// The one-line "what does this constraint actually cover?" summary, at the level it was
+// declared at (the exercise → movement → region precedence). A constraint that named lifts
+// says those lifts; one that named a pattern says the pattern; one that named neither reads
+// as its regions. Exercises are stored as canonical identities, so they render back through
+// `exerciseDisplayName` in the catalog's own casing — "Bench Press", not "bench press",
+// beside "Chest" / "Pushing".
+export function scopeSummary(s: DeclaredScope): string {
+  const side =
+    s.laterality && s.laterality !== "bilateral"
+      ? `${s.laterality} side · `
+      : "";
+  if (s.exercises.length > 0)
+    return `${side}${s.exercises.map(exerciseDisplayName).join(", ")}`;
+  if (s.movements.length > 0)
+    return `${side}${s.movements.map((m) => MOVEMENT_PATTERN_LABEL[m]).join(", ")}`;
+  return `${side}${s.regions.join(", ")}`;
+}
+
+// Resolve a declaration into the coverage slice the engine reads: the precedence level,
+// the full region set (declared regions + the coarse rollup of any finer muscles), and
+// canonical exercise identities. A draft holds user-facing lift NAMES, a stored row holds
+// keys, and `exerciseHistoryKey` is idempotent — so both resolve to the same thing.
+export function resolveScope(s: DeclaredScope): ScopeResolution {
+  return {
+    scope: injuryScope(s.exercises, s.movements),
+    regions: injuryRegions([...s.regions], [...(s.muscles ?? [])]),
+    movements: s.movements,
+    exercises: s.exercises
+      .map((e) => exerciseHistoryKey(e))
+      .filter((k) => k.length > 0),
+  };
+}
+
+// What editing a constraint's scope would CHANGE, over the lifts this profile actually
+// trains (#2297). Narrowing a constraint silently re-permits lifts it was excluding — that
+// is the point of the edit, but it is a consequence worth SHOWING rather than assuming, the
+// same disclosure answer #2199 gave the precedence override. Both sides run through the
+// SAME `constraintCoversExercise` the recommendation engine uses, so the preview cannot
+// promise something the engine will not do (#221).
+export interface ScopeChange {
+  // Lifts the saved constraint covered and the edited one does not — back in suggestions.
+  released: string[];
+  // Lifts the edited constraint newly covers — newly set aside.
+  added: string[];
+}
+
+export function scopeChange(
+  before: DeclaredScope,
+  after: DeclaredScope,
+  candidates: readonly string[]
+): ScopeChange {
+  const b = resolveScope(before);
+  const a = resolveScope(after);
+  const released: string[] = [];
+  const added: string[] = [];
+  const seen = new Set<string>();
+  for (const name of candidates) {
+    const key = exerciseHistoryKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const was = constraintCoversExercise(b, name);
+    const now = constraintCoversExercise(a, name);
+    if (was && !now) released.push(name);
+    else if (!was && now) added.push(name);
+  }
+  return { released, added };
 }
 
 // ── Review dates (#2024) ─────────────────────────────────────────────────────

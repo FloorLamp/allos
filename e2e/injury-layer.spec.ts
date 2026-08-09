@@ -117,6 +117,90 @@ test("a movement-scoped constraint narrows the exclusion and says so (#2024)", a
   ).toHaveCount(0);
 });
 
+// Issue #2297 — an injury is understood GRADUALLY, so its constraint has to be
+// correctable. The sequence the app could not express: log it broadly on day one because
+// that is all you know, learn a week later that it is only overhead work, and say so —
+// without deleting and re-logging (which would lose the start date and the history). The
+// edit form is the log form's own controls, and narrowing DISCLOSES what it re-permits
+// before it is saved rather than assuming it (#2199's disclosure answer, not a second
+// pattern). Same create-and-clean fixture discipline as the tests above.
+test("an over-broad constraint is narrowed in place and gives the region back (#2297)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=overview");
+
+  const bar = page.getByRole("main").getByTestId("injury-bar");
+  await expect(bar).toBeVisible();
+  await bar.getByTestId("injury-add-toggle").click();
+  const form = bar.getByTestId("injury-form");
+  await expect(form).toBeVisible();
+
+  // Day one: "my shoulder hurts when I push" — logged as the two regions involved,
+  // because that is genuinely all that is known yet.
+  await form.getByTestId("injury-label-input").fill("sore shoulder");
+  await form.getByTestId("injury-region-Chest").check();
+  await form.getByTestId("injury-region-Shoulders").check();
+  await settledClick(page, form.getByTestId("injury-submit"));
+
+  const chip = bar
+    .getByTestId("injury-chip")
+    .filter({ hasText: "sore shoulder" });
+  await expect(chip).toBeVisible();
+  // Both whole regions are off the table — including the lifts that are perfectly fine.
+  await expect(page.getByTestId("injury-exclusion-note")).toContainText(
+    "Avoiding Chest (sore shoulder injury)"
+  );
+
+  // A week later it is clear that only overhead work is affected. Correct it in place.
+  await chip.getByTestId("injury-edit-toggle").click();
+  const edit = chip.getByTestId("injury-edit-form");
+  await expect(edit).toBeVisible();
+  // The form opens on what was SAVED — a correction starts from the declaration, not
+  // from an empty draft the user would have to retype.
+  await expect(edit.getByTestId("injury-label-input")).toHaveValue(
+    "sore shoulder"
+  );
+  await expect(edit.getByTestId("injury-region-Chest")).toBeChecked();
+
+  // The finest level is reached through the SAME #2199 picker the log form uses.
+  const field = edit.getByLabel("Add an affected lift");
+  await settledFill(page, field, "Overhead Press");
+  const option = page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Overhead Press", exact: true });
+  await expect(option).toBeVisible();
+  await option.click();
+  await expect(
+    edit
+      .getByTestId("injury-exercise-chip")
+      .filter({ hasText: "Overhead Press" })
+  ).toBeVisible();
+
+  // Narrowing silently re-permits lifts that were being excluded. That is the intent —
+  // and it is SHOWN, before the save, over the lifts this profile actually trains.
+  await expect(edit.getByTestId("injury-edit-change")).toBeVisible();
+  await expect(edit.getByTestId("injury-edit-released")).toContainText(
+    "Back in your suggestions"
+  );
+
+  await settledClick(page, edit.getByTestId("injury-edit-submit"));
+
+  // The constraint now reads at the level declared…
+  await expect(chip.getByTestId("injury-scope")).toContainText(
+    "Overhead Press"
+  );
+  // …and the whole-region exclusion is gone: the Chest work that was fine all along is
+  // back in the recommendation, with the injury — and its start date — still on record.
+  await expect(page.getByTestId("injury-exclusion-note")).toHaveCount(0);
+  await expect(chip).toContainText("Active");
+
+  // Clean up so this file's other tests (and a --repeat-each rerun) start from zero.
+  await settledClick(page, chip.getByTestId("injury-set-resolved"));
+  await expect(
+    bar.getByTestId("injury-chip").filter({ hasText: "sore shoulder" })
+  ).toHaveCount(0);
+});
+
 // Issue #2199 — the FINEST level of the #2024 precedence finally has a door. The picker
 // writes into the `exercises` field the actions already accepted, at the identity the read
 // side already expects: a variant collapses to its base on the way in (exerciseHistoryKey),

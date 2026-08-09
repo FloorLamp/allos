@@ -14,6 +14,8 @@ import {
   parseLoadFactor,
   parseMovements,
   regionInjuryConstraint,
+  scopeChange,
+  scopeSummary,
   temperedExerciseLabel,
   temperedRegions,
   RECOVERING_LOAD_FACTOR,
@@ -373,6 +375,127 @@ describe("region tempering still works for region-scoped constraints", () => {
     };
     expect(temperedRegions([fine]).size).toBe(0);
     expect(exerciseInjuryVerdict([fine], "Bench Press").kind).toBe("tempered");
+  });
+});
+
+// #2297 — a constraint is understood gradually, so it must be correctable. These pin the
+// two pure pieces the edit form is built on: the summary the chip and the form share, and
+// the CHANGE an edit would make, resolved through the same coverage rule the engine uses.
+describe("the scope reads back at the level it was declared", () => {
+  it("names lifts, then patterns, then regions — with the side when there is one", () => {
+    expect(scopeSummary(inj({ regions: ["Chest"] }))).toBe("Chest");
+    expect(scopeSummary(inj({ regions: ["Chest"], movements: ["push"] }))).toBe(
+      "Pushing"
+    );
+    expect(
+      scopeSummary(
+        inj({
+          regions: ["Chest"],
+          movements: ["push"],
+          exercises: ["bench press"],
+        })
+      )
+      // The stored identity renders in the catalog's own casing, not the key's.
+    ).toBe("Bench Press");
+    expect(scopeSummary(inj({ regions: ["Chest"], laterality: "right" }))).toBe(
+      "right side · Chest"
+    );
+    // "Both sides" is not a side qualifier worth saying.
+    expect(
+      scopeSummary(inj({ regions: ["Chest"], laterality: "bilateral" }))
+    ).toBe("Chest");
+  });
+});
+
+describe("what editing a scope would change", () => {
+  const candidates = ["Bench Press", "Cable Fly", "Overhead Press", "Curl"];
+
+  it("narrowing a region to lifts RELEASES the rest of the region", () => {
+    const change = scopeChange(
+      { regions: ["Chest"], movements: [], exercises: [], laterality: null },
+      {
+        regions: ["Chest"],
+        movements: [],
+        // The draft holds user-facing names; the saved row holds keys. Both resolve
+        // through exerciseHistoryKey, so the preview compares like with like.
+        exercises: ["Bench Press"],
+        laterality: null,
+      },
+      candidates
+    );
+    expect(change.released).toEqual(["Cable Fly"]);
+    expect(change.added).toEqual([]);
+  });
+
+  it("widening a lift back to its movement pattern ADDS what it now covers", () => {
+    const change = scopeChange(
+      {
+        regions: ["Chest"],
+        movements: [],
+        exercises: ["bench press"],
+        laterality: null,
+      },
+      {
+        regions: ["Chest"],
+        movements: ["push"],
+        exercises: [],
+        laterality: null,
+      },
+      candidates
+    );
+    // Overhead Press is a Shoulders lift, so only the pattern reaches it; Curl is a pull.
+    expect(change.added).toEqual(["Cable Fly", "Overhead Press"]);
+    expect(change.released).toEqual([]);
+  });
+
+  it("an unchanged declaration changes nothing", () => {
+    const same = {
+      regions: ["Chest" as const],
+      movements: ["push" as const],
+      exercises: [],
+      laterality: null,
+    };
+    expect(scopeChange(same, same, candidates)).toEqual({
+      released: [],
+      added: [],
+    });
+  });
+
+  it("a finer muscle still rolls up to its region on both sides", () => {
+    // Declared by MUSCLE only (no region): the rollup is what the constraint covers, so
+    // narrowing it to one lift releases the rest of that region and nothing else.
+    const change = scopeChange(
+      {
+        regions: [],
+        muscles: ["chest"],
+        movements: [],
+        exercises: [],
+        laterality: null,
+      },
+      {
+        regions: [],
+        muscles: ["chest"],
+        movements: [],
+        exercises: ["Bench Press"],
+        laterality: null,
+      },
+      candidates
+    );
+    expect(change.released).toEqual(["Cable Fly"]);
+  });
+
+  it("counts a lift once however many spellings the list holds", () => {
+    const change = scopeChange(
+      { regions: ["Chest"], movements: [], exercises: [], laterality: null },
+      {
+        regions: ["Chest"],
+        movements: [],
+        exercises: ["Cable Fly"],
+        laterality: null,
+      },
+      ["Bench Press", "Barbell Bench Press"]
+    );
+    expect(change.released).toEqual(["Bench Press"]);
   });
 });
 

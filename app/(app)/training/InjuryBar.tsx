@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { useMemo, useState } from "react";
+import { IconPencil, IconPlus, IconX } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
@@ -12,15 +12,20 @@ import {
   exerciseHistoryKey,
   REGION_SCOPES,
   type MovementPattern,
+  type MuscleId,
   type MuscleRegion,
 } from "@/lib/lifts";
 import {
   INJURY_MOVEMENT_PATTERNS,
+  MOVEMENT_PATTERN_LABEL,
+  scopeChange,
+  scopeSummary,
   type InjuryLaterality,
   type InjuryStatus,
 } from "@/lib/injury-model";
 import {
   logInjury,
+  updateInjury,
   setInjuryStatus,
   deleteInjury,
   activateInjurySituation,
@@ -33,11 +38,21 @@ import {
 // Injury situation is toggled on. Coaching-tier: no notifications, purely a read/log
 // surface. The engine consumes the SAME injuries through the shared recommendation model,
 // so the exclusion/tempering shown on the next-workout card and here always agree (#221).
+//
+// #2297 — a chip's constraint can be CORRECTED in place. An injury is understood
+// gradually: it is logged broadly on day one because that is all you know, and a week
+// later you know it is only overhead work. The edit form is the SAME fields the log form
+// writes (one `InjuryScopeFields`, including #2199's exercise picker) rather than a second
+// vocabulary for the same concepts, and it edits the SCOPE only — the lifecycle (status,
+// start date) keeps the paths it already has.
 
 export interface InjuryView {
   id: number;
   label: string;
   regions: MuscleRegion[];
+  // The optional finer muscle list. Not editable here (the form's vocabulary is regions),
+  // but carried so an edit can round-trip it instead of dropping it.
+  muscles: MuscleId[];
   status: InjuryStatus;
   since: string | null;
   notes: string | null;
@@ -51,32 +66,6 @@ export interface InjuryView {
   // Whether the user's own review date has arrived. SUGGEST-ONLY: nothing about the
   // constraint changes until they act on it.
   reviewDue: boolean;
-}
-
-const MOVEMENT_LABEL: Record<MovementPattern, string> = {
-  push: "Pushing",
-  pull: "Pulling",
-  legs: "Legs",
-  core: "Core",
-};
-
-// The one-line "what does this constraint actually cover?" summary, at the level the user
-// declared it (#2024's exercise → movement → region precedence). A constraint that named
-// lifts says those lifts; one that named a pattern says the pattern; one that named
-// neither still reads as its regions, exactly as before.
-function scopeSummary(inj: InjuryView): string {
-  const side =
-    inj.laterality && inj.laterality !== "bilateral"
-      ? `${inj.laterality} side · `
-      : "";
-  // `exercises` are stored as canonical identities (exerciseHistoryKey), so they come
-  // back lowercased; render them in the catalog's own casing so the finest scope reads
-  // like its siblings ("Bench Press", not "bench press", beside "Chest" / "Pushing").
-  if (inj.exercises.length > 0)
-    return `${side}${inj.exercises.map(exerciseDisplayName).join(", ")}`;
-  if (inj.movements.length > 0)
-    return `${side}${inj.movements.map((m) => MOVEMENT_LABEL[m]).join(", ")}`;
-  return `${side}${inj.regions.join(", ")}`;
 }
 
 const STATUS_BADGE: Record<InjuryStatus, string> = {
@@ -93,6 +82,34 @@ const STATUS_LABEL: Record<InjuryStatus, string> = {
   resolved: "Resolved",
 };
 
+// The load-preference options the form offers, as submitted values. "" ⇒ the app's
+// disclosed 60% fallback.
+const LOAD_FACTOR_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Use our default (60%)" },
+  { value: "0.4", label: "40% of your usual target" },
+  { value: "0.5", label: "50%" },
+  { value: "0.7", label: "70%" },
+  { value: "0.8", label: "80%" },
+  { value: "0.9", label: "90%" },
+];
+
+// The options with the CURRENT value guaranteed present: a stored preference that isn't
+// one of the offered steps (a legacy or hand-set fraction) must still be selectable, or
+// re-saving an edit would silently drop the user's own setting back to the app default.
+function loadFactorOptions(
+  current: string
+): { value: string; label: string }[] {
+  if (!current || LOAD_FACTOR_OPTIONS.some((o) => o.value === current))
+    return LOAD_FACTOR_OPTIONS;
+  return [
+    ...LOAD_FACTOR_OPTIONS,
+    {
+      value: current,
+      label: `${Math.round(Number(current) * 100)}% (your setting)`,
+    },
+  ];
+}
+
 export default function InjuryBar({
   injuries,
   liftOptions,
@@ -106,6 +123,9 @@ export default function InjuryBar({
   suggestActivateSituation: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
+  // Which chip's scope is open for correction (#2297). One at a time: the edit form is a
+  // full-width panel inside the chip, so two open at once would bury the list.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const current = injuries.filter((i) => i.status !== "resolved");
 
   return (
@@ -168,6 +188,18 @@ export default function InjuryBar({
                 </span>
               )}
               <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingId((v) => (v === inj.id ? null : inj.id))
+                  }
+                  className="btn-ghost p-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
+                  aria-label={`Edit ${inj.label}`}
+                  title="Edit what this covers"
+                  data-testid="injury-edit-toggle"
+                >
+                  <IconPencil size={16} />
+                </button>
                 {inj.status === "active" && (
                   <StatusButton
                     id={inj.id}
@@ -211,6 +243,13 @@ export default function InjuryBar({
                   Nothing has changed on its own.
                 </p>
               )}
+              {editingId === inj.id && (
+                <EditInjuryForm
+                  injury={inj}
+                  liftOptions={liftOptions}
+                  onDone={() => setEditingId(null)}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -223,169 +262,10 @@ export default function InjuryBar({
       )}
 
       {showForm && (
-        <form
-          action={async (fd) => {
-            await logInjury(fd);
-            setShowForm(false);
-          }}
-          className="mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
-          data-testid="injury-form"
-        >
-          <div>
-            <label className="section-label" htmlFor="injury-label">
-              What&apos;s hurt?
-            </label>
-            <input
-              id="injury-label"
-              name="label"
-              required
-              maxLength={120}
-              placeholder="e.g. Right shoulder"
-              className="input mt-1 w-full"
-              data-testid="injury-label-input"
-            />
-          </div>
-          <fieldset>
-            <legend className="section-label">Affected regions</legend>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {REGION_SCOPES.map((r) => (
-                <label
-                  key={r}
-                  className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
-                >
-                  <input
-                    type="checkbox"
-                    name="regions"
-                    value={r}
-                    data-testid={`injury-region-${r}`}
-                  />
-                  {r}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {/* The #2024 precision — all OPTIONAL. Leaving every field alone records
-              exactly the region-scoped constraint this form always recorded; filling one
-              in narrows the constraint to what the user actually means, so one sore
-              movement stops deleting a whole region of suggestions. Nothing here is a
-              diagnosis, a severity, or a prohibition: it is the user saying what they
-              want left alone. */}
-          <fieldset>
-            <legend className="section-label">
-              Narrow it (optional) — movements
-            </legend>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Pick patterns if only some movements are affected. Naming
-              movements keeps the rest of the region in your suggestions.
-            </p>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {INJURY_MOVEMENT_PATTERNS.map((m) => (
-                <label
-                  key={m}
-                  className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
-                >
-                  <input
-                    type="checkbox"
-                    name="movements"
-                    value={m}
-                    data-testid={`injury-movement-${m}`}
-                  />
-                  {MOVEMENT_LABEL[m]}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <InjuryExercisePicker liftOptions={liftOptions} />
-          <div>
-            <label className="section-label" htmlFor="injury-laterality">
-              Side (optional)
-            </label>
-            <select
-              id="injury-laterality"
-              name="laterality"
-              defaultValue=""
-              className="input mt-1 w-full"
-              data-testid="injury-laterality"
-            >
-              <option value="">Not specified</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              <option value="bilateral">Both sides</option>
-            </select>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Recorded and shown. Suggestions are picked per exercise, not per
-              side, so on a two-sided lift we say the constraint applies to the
-              whole lift rather than pretending we worked around it.
-            </p>
-          </div>
-          <div>
-            <label className="section-label" htmlFor="injury-status">
-              Status
-            </label>
-            <select
-              id="injury-status"
-              name="status"
-              defaultValue="active"
-              className="input mt-1 w-full"
-            >
-              <option value="active">
-                Active — set the affected work aside
-              </option>
-              <option value="recovering">
-                Recovering — ease back at lighter loads
-              </option>
-            </select>
-          </div>
-          <div>
-            <label className="section-label" htmlFor="injury-load-factor">
-              While recovering, ease to (optional)
-            </label>
-            <select
-              id="injury-load-factor"
-              name="loadFactor"
-              defaultValue=""
-              className="input mt-1 w-full"
-              data-testid="injury-load-factor-input"
-            >
-              <option value="">Use our default (60%)</option>
-              <option value="0.4">40% of your usual target</option>
-              <option value="0.5">50%</option>
-              <option value="0.7">70%</option>
-              <option value="0.8">80%</option>
-              <option value="0.9">90%</option>
-            </select>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Our 60% is a conservative default, not a recommendation about your
-              recovery. Your setting always wins.
-            </p>
-          </div>
-          <div>
-            <label className="section-label" htmlFor="injury-review-date">
-              Remind me to revisit (optional)
-            </label>
-            <DateField
-              id="injury-review-date"
-              name="reviewDate"
-              data-testid="injury-review-date"
-            />
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              We&apos;ll ask whether it&apos;s still current. We never change it
-              for you.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <SubmitButton pendingLabel="Saving…" data-testid="injury-submit">
-              Log injury
-            </SubmitButton>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="btn-ghost"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        <LogInjuryForm
+          liftOptions={liftOptions}
+          onDone={() => setShowForm(false)}
+        />
       )}
 
       {suggestActivateSituation && current.length > 0 && (
@@ -410,6 +290,402 @@ export default function InjuryBar({
   );
 }
 
+// ── The scope form, written once and bound by both writes (#2297) ────────────
+
+// The declaration the form holds while it is being written: the same fields `logInjury`
+// and `updateInjury` read, as form-shaped values (a select's "" for "not specified", the
+// picker's user-facing lift NAMES — the actions canonicalize at the boundary).
+interface ScopeDraft {
+  label: string;
+  regions: MuscleRegion[];
+  movements: MovementPattern[];
+  exercises: string[];
+  laterality: InjuryLaterality | "";
+  loadFactor: string;
+  reviewDate: string;
+}
+
+function blankDraft(): ScopeDraft {
+  return {
+    label: "",
+    regions: [],
+    movements: [],
+    exercises: [],
+    laterality: "",
+    loadFactor: "",
+    reviewDate: "",
+  };
+}
+
+// A saved injury as the form holds it. Stored exercise identities render back in the
+// catalog's own casing, exactly as the chip shows them, so the picker's chips read like
+// what the user picked rather than the lowercase key they are stored as.
+function draftOf(inj: InjuryView): ScopeDraft {
+  return {
+    label: inj.label,
+    regions: inj.regions,
+    movements: inj.movements,
+    exercises: inj.exercises.map(exerciseDisplayName),
+    laterality: inj.laterality ?? "",
+    loadFactor: inj.loadFactor != null ? String(inj.loadFactor) : "",
+    reviewDate: inj.reviewDate ?? "",
+  };
+}
+
+function toggle<T>(xs: readonly T[], v: T): T[] {
+  return xs.includes(v) ? xs.filter((x) => x !== v) : [...xs, v];
+}
+
+// Every field of the injury SCOPE, written once. The log form and the edit form differ in
+// what they submit alongside it (a new row's status; an existing row's id and untouched
+// lifecycle) and in nothing else — a correction offers exactly the vocabulary the original
+// declaration did.
+function InjuryScopeFields({
+  idPrefix,
+  liftOptions,
+  draft,
+  onChange,
+  children,
+}: {
+  // DOM ids must stay unique when the log form and an edit form are open together.
+  idPrefix: string;
+  liftOptions: string[];
+  draft: ScopeDraft;
+  onChange: (patch: Partial<ScopeDraft>) => void;
+  // The status control, rendered between the side and the load preference. Only the log
+  // form has one: an existing injury's status is the chip's own lifecycle buttons.
+  children?: React.ReactNode;
+}) {
+  return (
+    <>
+      <div>
+        <label className="section-label" htmlFor={`${idPrefix}-label`}>
+          What&apos;s hurt?
+        </label>
+        <input
+          id={`${idPrefix}-label`}
+          name="label"
+          required
+          maxLength={120}
+          placeholder="e.g. Right shoulder"
+          className="input mt-1 w-full"
+          data-testid="injury-label-input"
+          value={draft.label}
+          onChange={(e) => onChange({ label: e.target.value })}
+        />
+      </div>
+      <fieldset>
+        <legend className="section-label">Affected regions</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {REGION_SCOPES.map((r) => (
+            <label
+              key={r}
+              className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+            >
+              <input
+                type="checkbox"
+                name="regions"
+                value={r}
+                data-testid={`injury-region-${r}`}
+                checked={draft.regions.includes(r)}
+                onChange={() => onChange({ regions: toggle(draft.regions, r) })}
+              />
+              {r}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {/* The #2024 precision — all OPTIONAL. Leaving every field alone records
+          exactly the region-scoped constraint this form always recorded; filling one
+          in narrows the constraint to what the user actually means, so one sore
+          movement stops deleting a whole region of suggestions. Nothing here is a
+          diagnosis, a severity, or a prohibition: it is the user saying what they
+          want left alone. */}
+      <fieldset>
+        <legend className="section-label">
+          Narrow it (optional) — movements
+        </legend>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          Pick patterns if only some movements are affected. Naming movements
+          keeps the rest of the region in your suggestions.
+        </p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {INJURY_MOVEMENT_PATTERNS.map((m) => (
+            <label
+              key={m}
+              className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+            >
+              <input
+                type="checkbox"
+                name="movements"
+                value={m}
+                data-testid={`injury-movement-${m}`}
+                checked={draft.movements.includes(m)}
+                onChange={() =>
+                  onChange({ movements: toggle(draft.movements, m) })
+                }
+              />
+              {MOVEMENT_PATTERN_LABEL[m]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <InjuryExercisePicker
+        liftOptions={liftOptions}
+        picked={draft.exercises}
+        onPicked={(exercises) => onChange({ exercises })}
+      />
+      <div>
+        <label className="section-label" htmlFor={`${idPrefix}-laterality`}>
+          Side (optional)
+        </label>
+        <select
+          id={`${idPrefix}-laterality`}
+          name="laterality"
+          className="input mt-1 w-full"
+          data-testid="injury-laterality"
+          value={draft.laterality}
+          onChange={(e) =>
+            onChange({ laterality: e.target.value as InjuryLaterality | "" })
+          }
+        >
+          <option value="">Not specified</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="bilateral">Both sides</option>
+        </select>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          Recorded and shown. Suggestions are picked per exercise, not per side,
+          so on a two-sided lift we say the constraint applies to the whole lift
+          rather than pretending we worked around it.
+        </p>
+      </div>
+      {children}
+      <div>
+        <label className="section-label" htmlFor={`${idPrefix}-load-factor`}>
+          While recovering, ease to (optional)
+        </label>
+        <select
+          id={`${idPrefix}-load-factor`}
+          name="loadFactor"
+          className="input mt-1 w-full"
+          data-testid="injury-load-factor-input"
+          value={draft.loadFactor}
+          onChange={(e) => onChange({ loadFactor: e.target.value })}
+        >
+          {loadFactorOptions(draft.loadFactor).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          Our 60% is a conservative default, not a recommendation about your
+          recovery. Your setting always wins.
+        </p>
+      </div>
+      <div>
+        <label className="section-label" htmlFor={`${idPrefix}-review-date`}>
+          Remind me to revisit (optional)
+        </label>
+        <DateField
+          id={`${idPrefix}-review-date`}
+          name="reviewDate"
+          data-testid="injury-review-date"
+          value={draft.reviewDate}
+          onChange={(v) => onChange({ reviewDate: v })}
+        />
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          We&apos;ll ask whether it&apos;s still current. We never change it for
+          you.
+        </p>
+      </div>
+    </>
+  );
+}
+
+// The one-tap quick-log form: the shared scope fields plus the STATUS a new injury is born
+// with (an existing one's status is the chip's lifecycle buttons, never restated here).
+function LogInjuryForm({
+  liftOptions,
+  onDone,
+}: {
+  liftOptions: string[];
+  onDone: () => void;
+}) {
+  const [draft, setDraft] = useState<ScopeDraft>(blankDraft);
+  const patch = (p: Partial<ScopeDraft>) => setDraft((d) => ({ ...d, ...p }));
+
+  return (
+    <form
+      action={async (fd) => {
+        await logInjury(fd);
+        onDone();
+      }}
+      className="mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
+      data-testid="injury-form"
+    >
+      <InjuryScopeFields
+        idPrefix="injury"
+        liftOptions={liftOptions}
+        draft={draft}
+        onChange={patch}
+      >
+        <div>
+          <label className="section-label" htmlFor="injury-status">
+            Status
+          </label>
+          <select
+            id="injury-status"
+            name="status"
+            defaultValue="active"
+            className="input mt-1 w-full"
+          >
+            <option value="active">Active — set the affected work aside</option>
+            <option value="recovering">
+              Recovering — ease back at lighter loads
+            </option>
+          </select>
+        </div>
+      </InjuryScopeFields>
+      <div className="flex items-center gap-2">
+        <SubmitButton pendingLabel="Saving…" data-testid="injury-submit">
+          Log injury
+        </SubmitButton>
+        <button type="button" onClick={onDone} className="btn-ghost">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// How many changed lifts the disclosure names before it counts the rest.
+const CHANGE_PREVIEW = 6;
+
+function previewNames(names: string[]): string {
+  const shown = names.slice(0, CHANGE_PREVIEW).join(", ");
+  const rest = names.length - CHANGE_PREVIEW;
+  return rest > 0 ? `${shown} +${rest} more` : shown;
+}
+
+// Correcting an existing injury's SCOPE (#2297) — the gap #2199 surfaced: every level of
+// the scope model was settable at log time and none of them was changeable afterwards, so
+// a constraint logged broadly on day one stayed broad, and the only ways out were to keep
+// excluding lifts that are fine or to delete and re-log (losing the start date and the
+// history).
+//
+// What it edits is the DECLARATION: the label, the regions/movements/lifts, the side, the
+// recovery load preference and the review date. What it does NOT edit is the LIFECYCLE —
+// the status has the chip's own Recovering/Resolve buttons, and `since` is history rather
+// than a correction (narrowing a scope says "I understand this better now"; moving a start
+// date says the injury began on a different day, which is a different gesture with
+// different consequences for everything dated against it). Both, plus the fine muscle list
+// and the notes this form has no control for, are round-tripped verbatim so a scope
+// correction cannot quietly rewrite them — `updateInjury` writes the whole row, so a field
+// the form omits is a field the form CLEARS.
+function EditInjuryForm({
+  injury,
+  liftOptions,
+  onDone,
+}: {
+  injury: InjuryView;
+  liftOptions: string[];
+  onDone: () => void;
+}) {
+  const [draft, setDraft] = useState<ScopeDraft>(() => draftOf(injury));
+  const [error, setError] = useState<string | null>(null);
+  const patch = (p: Partial<ScopeDraft>) => setDraft((d) => ({ ...d, ...p }));
+
+  // What saving would change, over the lifts this profile actually trains, resolved
+  // through the same precedence the engine applies. Narrowing re-permits lifts the
+  // constraint was excluding — the user's intent, but shown rather than assumed (the
+  // disclosure answer #2199 gave the precedence override, not a second pattern).
+  const change = useMemo(
+    () =>
+      scopeChange(
+        injury,
+        {
+          regions: draft.regions,
+          movements: draft.movements,
+          exercises: draft.exercises,
+          laterality: draft.laterality || null,
+          muscles: injury.muscles,
+        },
+        liftOptions
+      ),
+    [injury, draft, liftOptions]
+  );
+
+  return (
+    <form
+      action={async (fd) => {
+        const res = await updateInjury(fd);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        onDone();
+      }}
+      className="mt-2 w-full space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
+      data-testid="injury-edit-form"
+    >
+      <input type="hidden" name="id" value={injury.id} />
+      {/* The lifecycle this form deliberately does not touch, carried through unchanged. */}
+      <input type="hidden" name="status" value={injury.status} />
+      {injury.since && (
+        <input type="hidden" name="since" value={injury.since} />
+      )}
+      {injury.notes && (
+        <input type="hidden" name="notes" value={injury.notes} />
+      )}
+      {injury.muscles.map((m) => (
+        <input key={m} type="hidden" name="muscles" value={m} />
+      ))}
+      <InjuryScopeFields
+        idPrefix={`injury-edit-${injury.id}`}
+        liftOptions={liftOptions}
+        draft={draft}
+        onChange={patch}
+      />
+      {(change.released.length > 0 || change.added.length > 0) && (
+        <p
+          className="text-xs text-slate-600 dark:text-slate-300"
+          data-testid="injury-edit-change"
+        >
+          Saving changes what this covers.{" "}
+          {change.released.length > 0 && (
+            <span data-testid="injury-edit-released">
+              Back in your suggestions: {previewNames(change.released)}.{" "}
+            </span>
+          )}
+          {change.added.length > 0 && (
+            <span data-testid="injury-edit-added">
+              Newly set aside: {previewNames(change.added)}.
+            </span>
+          )}
+        </p>
+      )}
+      {error && (
+        <p
+          className="text-xs text-rose-600 dark:text-rose-400"
+          data-testid="injury-edit-error"
+        >
+          {error}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <SubmitButton pendingLabel="Saving…" data-testid="injury-edit-submit">
+          Save changes
+        </SubmitButton>
+        <button type="button" onClick={onDone} className="btn-ghost">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 // The FINEST level of the #2024 precedence — "these lifts", not "this pattern" or "this
 // region" (issue #2199). Its two siblings above are chip groups because their vocabularies
 // are 7 and 4 entries; the lift vocabulary is the whole catalog plus this profile's custom
@@ -423,9 +699,19 @@ export default function InjuryBar({
 // identity the constraint is stored and matched under: `exerciseHistoryKey` folds
 // "Dumbbell Curl" onto "curl", so a chip reading "Dumbbell Curl" would promise a precision
 // the engine cannot keep. The chip says "Curl" — the lift the constraint actually covers.
-function InjuryExercisePicker({ liftOptions }: { liftOptions: string[] }) {
+//
+// The picks live in the owning form's draft (#2297) so an edit can start from what was
+// saved and the change disclosure can read the pending value.
+function InjuryExercisePicker({
+  liftOptions,
+  picked,
+  onPicked,
+}: {
+  liftOptions: string[];
+  picked: string[];
+  onPicked: (picked: string[]) => void;
+}) {
   const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState<string[]>([]);
   const pickedKeys = new Set(picked.map(exerciseHistoryKey));
   const available = liftOptions.filter(
     (name) => !pickedKeys.has(exerciseHistoryKey(name))
@@ -438,10 +724,8 @@ function InjuryExercisePicker({ liftOptions }: { liftOptions: string[] }) {
     const name = baseLiftName(raw.trim()).trim();
     const key = exerciseHistoryKey(name);
     setQuery("");
-    if (!key) return;
-    setPicked((xs) =>
-      xs.some((x) => exerciseHistoryKey(x) === key) ? xs : [...xs, name]
-    );
+    if (!key || pickedKeys.has(key)) return;
+    onPicked([...picked, name]);
   }
 
   return (
@@ -467,7 +751,7 @@ function InjuryExercisePicker({ liftOptions }: { liftOptions: string[] }) {
                 type="button"
                 aria-label={`Remove ${name}`}
                 title="Remove lift"
-                onClick={() => setPicked((xs) => xs.filter((x) => x !== name))}
+                onClick={() => onPicked(picked.filter((x) => x !== name))}
                 className="text-brand-500 hover:text-rose-500"
               >
                 <IconX className="h-3 w-3" />
