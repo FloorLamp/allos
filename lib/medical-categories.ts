@@ -16,6 +16,11 @@
 //   • 'report'     — narrative micro/path report bodies → Results → Reports (#708);
 //     they carry text in `notes` with no value, so they must never appear in the
 //     analyte catalog.
+//   • 'assessment' — non-measurement assessments and qualifiers (#2318): a
+//     functional-status finding, a questionnaire ITEM answer, a temperature's body
+//     site. They are viewable on their document but carry no biomarker identity at
+//     all (see NON_IDENTITY_CATEGORIES below), so the analyte catalog is one of the
+//     several surfaces they must never reach.
 // 'vitals' STAYS browsable here on purpose (#1076): the physiologic vitals gained a
 // Trends → Vitals trend home, but the DOMAIN vitals catalogued here — audiogram
 // hearing thresholds (#713), intraocular pressure / visual acuity (#697), periodontal
@@ -37,6 +42,7 @@ export const MEDICAL_CATEGORIES = [
   "derived",
   "reference",
   "report",
+  "assessment",
 ] as const satisfies readonly MedicalCategory[];
 
 export const BIOMARKER_CATEGORIES = [
@@ -54,6 +60,34 @@ export const BIOMARKER_CATEGORIES = [
 export const NON_BIOMARKER_CATEGORIES = MEDICAL_CATEGORIES.filter(
   (c) => !(BIOMARKER_CATEGORIES as readonly MedicalCategory[]).includes(c)
 );
+
+// The categories that carry NO BIOMARKER IDENTITY at all (#2318). Being absent from
+// BIOMARKER_CATEGORIES only keeps a category out of the flat catalog; identity is a
+// stronger, separate claim, and it is the one the four #2318 shapes were making by
+// accident. A row in one of these categories:
+//
+//   • registers no `canonical_biomarkers` name on import (both the deterministic
+//     CCD/FHIR path and the AI path filter on this set), and
+//   • is excluded from `getUsedCanonicalNames`, which is what feeds Coverage
+//     candidacy (Data → Coverage → Uncatalogued items) AND every "the profile has
+//     readings for this analyte" series enumeration, and
+//   • contributes no point to `getBiomarkerSeries` — the series IS the identity, so
+//     a direct by-name read cannot draw one either — and does not count as a backing
+//     reading for the ★ / retest-dismissal de-orphan sweeps.
+//
+// One entry today. `report` is deliberately NOT here: that is the same question one
+// domain over and a separate decision — this list exists so the next category has an
+// obvious slot rather than a second copy of the filter.
+export const NON_IDENTITY_CATEGORIES = [
+  "assessment",
+] as const satisfies readonly MedicalCategory[];
+
+// Whether a record's category lets it claim a biomarker identity — a canonical name,
+// a coverage candidacy, a series. Pure; the SQL side reads
+// NON_IDENTITY_CATEGORIES directly (see lib/queries/medical.ts).
+export function carriesBiomarkerIdentity(category: string): boolean {
+  return !(NON_IDENTITY_CATEGORIES as readonly string[]).includes(category);
+}
 
 // The clinical flags a lab report can carry, and the only flags the AI extractor
 // is allowed to emit / the write action accepts. The derived "non-optimal*"

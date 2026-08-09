@@ -73,3 +73,32 @@ test("track an uncatalogued biomarker and get a de-identified catalog request (#
     page.getByTestId("coverage-candidate").filter({ hasText: GAP })
   ).toBeVisible();
 });
+
+// #2318 — the surface the issue names. A CCD's non-measurement observations (a
+// questionnaire ITEM's answer, a temperature's body site, a vaccine lot number) used
+// to land here as things the user is invited to track or ask us to catalogue. They
+// are stored and viewable on their document, but they carry no biomarker identity, so
+// they must never be offered as a gap. The seed puts one row of each kind on the same
+// profile, differing ONLY in category, so this is a real contrast and not an absence
+// that would hold even if detection were broken.
+const NON_ANALYTE = "Fictional screening item (e2e)";
+
+test("a non-analyte assessment is never offered as an uncatalogued item (#2318)", async ({
+  page,
+}) => {
+  await page.goto("/data?section=coverage");
+  await expect(page.getByTestId("data-coverage")).toBeVisible();
+
+  // Detection IS running on this profile: the analyte beside it is offered.
+  await expect(
+    page.getByTestId("coverage-candidate").filter({ hasText: GAP })
+  ).toBeVisible();
+
+  // The assessment is not — as a candidate, or as something already tracked.
+  await expect(
+    page.getByTestId("coverage-candidate").filter({ hasText: NON_ANALYTE })
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("tracked-gap").filter({ hasText: NON_ANALYTE })
+  ).toHaveCount(0);
+});

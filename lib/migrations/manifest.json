@@ -174,5 +174,6 @@
   "173-intake-log-recorded-at.ts": "f4b66995188b596d046f383201b04198e6fa72a340edcc8a3ae50ad13417db11",
   "174-canonical-alias-merge.ts": "c78978f90a38f3430a3b3ed660dee97602c6d26aa62e6cf99667e97308abdc8b",
   "175-telemetry-stream-summary.ts": "5e6f857e6fcc0c57e5eeb255753762b29c6f192f510fac582e6670d39c993c8d",
-  "176-unqualified-glucose-unflag.ts": "9772a544077edf8d09340e8bc1fd297c6401f6fbfe449de46ae5b613d741d0e3"
+  "176-unqualified-glucose-unflag.ts": "9772a544077edf8d09340e8bc1fd297c6401f6fbfe449de46ae5b613d741d0e3",
+  "177-assessment-category.ts": "3cc38edeae6dc689ef2cdb8d3f0ff2c530101443c54a5ee95f8ee56b6e211045"
 }

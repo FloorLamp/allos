@@ -182,6 +182,24 @@ export function seedSourceCompare(): void {
     `e2e: seeded uncatalogued biomarker "${COVERAGE_GAP_ANALYTE}" on profile ${PROFILE_ID} for coverage gaps (#550)`
   );
 
+  // Its CONTROL (#2318): a non-measurement observation a CCD carried — a screening
+  // questionnaire ITEM's answer — stored and viewable on its document but carrying no
+  // biomarker identity at all. It sits beside the analyte above on purpose: the two
+  // rows differ ONLY in their category, so a coverage page that offers one and not the
+  // other is showing that the category is what withholds identity.
+  // Idempotent: cleared then re-inserted on each seed run.
+  const NON_ANALYTE_OBSERVATION = "Fictional screening item (e2e)";
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+  ).run(PROFILE_ID, NON_ANALYTE_OBSERVATION);
+  db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, value, canonical_name, external_id)
+   VALUES (?, '2026-05-01', 'assessment', ?, 'Not at all', ?, 'ccda:obs:e2e-item:2026-05-01:Not at all')`
+  ).run(PROFILE_ID, NON_ANALYTE_OBSERVATION, NON_ANALYTE_OBSERVATION);
+  console.log(
+    `e2e: seeded non-analyte assessment "${NON_ANALYTE_OBSERVATION}" on profile ${PROFILE_ID} (#2318)`
+  );
+
   // Deterministic biomarker→food suggestion fixtures (#577). Currently-flagged-LOW
   // diet-responsive readings on profile 1 so the food-suggestion surfaces render, and a
   // synthetic "fish" allergy so the omega-3 suggestion shows its algae/ALA ALTERNATIVE

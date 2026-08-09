@@ -88,6 +88,10 @@ const NON_ANALYTE_CATEGORIES = new Set([
   "instrument",
   "derived",
   "reference",
+  // A non-measurement assessment or qualifier (#2318): a functional-status finding,
+  // a questionnaire item's answer, a temperature's body site. It has no unit and no
+  // band by definition, so the analyte grid would offer fields that cannot apply.
+  "assessment",
 ]);
 
 export function usesAnalyteGrid(category: string | undefined | null): boolean {
@@ -129,6 +133,12 @@ export function recordCategoryLabel(category: string): string {
       return "Imaging / scans";
     case "prescription":
       return "Prescriptions";
+    // The non-measurement observations a document carries (#2318) — a
+    // functional-status finding, a questionnaire item's answer, a qualifier. They get
+    // a tab of their own so the document stays fully viewable, which is the whole
+    // "nothing is lost" half of taking their biomarker identity away.
+    case "assessment":
+      return "Assessments";
     default:
       return category;
   }

@@ -185,7 +185,7 @@ export const IMPORT_SIDE_EFFECTS: readonly ImportSideEffect[] = [
   },
   {
     key: "canonical-name-registration",
-    what: "register the document's biomarker canonical names into the global canonical registry",
+    what: "register the document's biomarker canonical names into the global canonical registry — only from the categories that carry a biomarker IDENTITY (#2318: an `assessment` row names a questionnaire item or a qualifier, never an analyte, so it registers nothing)",
     where: "addCanonicalNames (applyImportFollowups, post-commit)",
     inTransaction: false,
     onDelete: "global",

@@ -3,6 +3,7 @@ import { cache } from "../request-cache";
 import { biomarkerFamily } from "../canonical-name";
 import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
 import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
+import { NON_IDENTITY_CATEGORIES } from "../medical-categories";
 import {
   inRepresentativeCte,
   medicalDedupSpec,
@@ -151,6 +152,13 @@ const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
 // where kind='biomarker' — the canonical analyte name, #1456), so a save keys on the
 // identical family identity the readings do.
 const SAVED_FAMILY_KEY = familyKeyOfExpr("key");
+// "this row carries a biomarker identity" as SQL — the statement
+// carriesBiomarkerIdentity makes in TypeScript (#2318). Every read that decides
+// whether a NAME is an analyte binds NON_IDENTITY_CATEGORIES through this, so a
+// category added to that list reaches all of them at once.
+const IDENTITY_CATEGORY_SQL = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
+  () => "?"
+).join(",")})`;
 
 // Build a "contains" LIKE pattern for free-text search, escaping the SQL wildcards
 // (%, _) and the escape char (\) so a user typing e.g. "50%" or "a_b" matches
@@ -652,15 +660,26 @@ export function addCanonicalNames(names: string[]): void {
 
 // Distinct canonical names actually used by records — including user-typed ones
 // not in the vocabulary, so prior manual names still autocomplete.
+//
+// EXCLUDES the categories that carry no biomarker identity (#2318). This one read is
+// what makes a stored name an ANALYTE: it feeds Coverage candidacy (Data → Coverage
+// → Uncatalogued items), the trajectory/trends series enumerations, the logical
+// outcome catalog and the canonical-name autocomplete. A functional-status finding,
+// a questionnaire ITEM's free-text answer or a temperature's body site is a stored
+// observation, not a quantity anyone can chart or ask us to catalogue — and letting
+// it through here is exactly how it became a permanent "uncatalogued item".
 export function getUsedCanonicalNames(profileId: number): string[] {
   return (
     db
       .prepare(
         `SELECT DISTINCT canonical_name FROM medical_records
          WHERE profile_id = ? AND canonical_name IS NOT NULL AND TRIM(canonical_name) != ''
+           AND ${IDENTITY_CATEGORY_SQL}
          ORDER BY canonical_name COLLATE NOCASE`
       )
-      .all(profileId) as { canonical_name: string }[]
+      .all(profileId, ...NON_IDENTITY_CATEGORIES) as {
+      canonical_name: string;
+    }[]
   ).map((r) => r.canonical_name);
 }
 
@@ -714,14 +733,24 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
   // anymore — each is its own trendable series (biomarkerFamily gives it its own
   // identity), so a request for "Vitamin D3, 25-Hydroxy" returns only the D3
   // readings, apart from the total; they share only the retest clock.
+  // A NON_IDENTITY row is excluded (#2318): the series IS the biomarker identity, so
+  // a category that carries none contributes no point to one. Without this the
+  // enumerations would agree the name is not an analyte while a direct by-name read
+  // still drew it a bandless chart.
   return db
     .prepare(
       `WITH ${DEDUP_IDS_CTE}
        SELECT * FROM medical_records
        WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} = ? COLLATE NOCASE AND ${IN_DEDUPED}
+         AND ${IDENTITY_CATEGORY_SQL}
        ORDER BY date ASC, id ASC`
     )
-    .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
+    .all(
+      profileId,
+      profileId,
+      biomarkerFamily(canonical),
+      ...NON_IDENTITY_CATEGORIES
+    ) as MedicalRecord[];
 });
 
 // getBiomarkerSeries for SEVERAL analytes in ONE pass (#1961), keyed by the exact
@@ -764,9 +793,15 @@ export function getBiomarkerSeriesFor(
        WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE IN (${families
          .map(() => "?")
          .join(",")}) AND ${IN_DEDUPED}
+         AND ${IDENTITY_CATEGORY_SQL}
        ORDER BY date ASC, id ASC`
     )
-    .all(profileId, profileId, ...families) as (MedicalRecord & {
+    .all(
+      profileId,
+      profileId,
+      ...families,
+      ...NON_IDENTITY_CATEGORIES
+    ) as (MedicalRecord & {
     series_family: string | null;
   })[];
 
@@ -880,6 +915,9 @@ export function findRecordsByContentIdentity(
 // matching the family-collapsed tile. Shared by every path that deletes records.
 // Scoped to kind='biomarker' — a `trend-metric` save keys on a metric id, not a
 // biomarker name, and must never be swept by a records-driven de-orphan (#1456).
+// A row in a NON_IDENTITY category does not count as a backing record (#2318): an
+// `assessment` never charts, so a star backed only by one points at nothing just as
+// surely as a star with no rows at all.
 export function cleanupOrphanSavedBiomarkers(profileId: number): void {
   db.prepare(
     `DELETE FROM saved_items
@@ -888,8 +926,9 @@ export function cleanupOrphanSavedBiomarkers(profileId: number): void {
        AND ${SAVED_FAMILY_KEY} NOT IN (
          SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
          WHERE profile_id = ? AND canonical_name IS NOT NULL
+           AND ${IDENTITY_CATEGORY_SQL}
        )`
-  ).run(profileId, profileId);
+  ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
 }
 
 // True when THIS biomarker — or any sibling in its #482 family — is saved, so

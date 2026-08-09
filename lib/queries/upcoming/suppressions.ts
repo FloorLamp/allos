@@ -20,6 +20,7 @@ import {
 import { movementLoadKey } from "../../lifts";
 import { activityHistoryKey } from "../../activities-catalog";
 import { cleanupOrphanSavedBiomarkers, biomarkerFamilyKey } from "../medical";
+import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
 // for O(1) lookup during filtering. This is the shared read behind BOTH the
@@ -109,24 +110,30 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // again, so removing it is a pure de-orphan (mirrors cleanupOrphanSavedBiomarkers).
 // 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
+  // A row in a NON_IDENTITY category is not a backing reading (#2318): an
+  // `assessment` never flags and never comes due for a retest, so a dismissal
+  // backed only by one can never fire again — exactly the de-orphan condition.
+  const backing = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
+    () => "?"
+  ).join(",")})`;
   db.prepare(
     `DELETE FROM upcoming_dismissals
        WHERE profile_id = ?
          AND signal_key LIKE 'biomarker:%'
          AND substr(signal_key, 11) NOT IN (
            SELECT DISTINCT lower(${biomarkerFamilyKey()})
-             FROM medical_records WHERE profile_id = ?
+             FROM medical_records WHERE profile_id = ? AND ${backing}
          )`
-  ).run(profileId, profileId);
+  ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
   db.prepare(
     `DELETE FROM upcoming_dismissals
        WHERE profile_id = ?
          AND signal_key LIKE 'biomarker-flag:%'
          AND substr(signal_key, 16) NOT IN (
            SELECT DISTINCT lower(${biomarkerFamilyKey()})
-             FROM medical_records WHERE profile_id = ?
+             FROM medical_records WHERE profile_id = ? AND ${backing}
          )`
-  ).run(profileId, profileId);
+  ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
 }
 
 // One call that sweeps BOTH name-keyed biomarker side-stores — the biomarker SAVES

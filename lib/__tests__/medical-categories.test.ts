@@ -6,6 +6,8 @@ import {
   MEDICAL_CATEGORIES,
   BIOMARKER_CATEGORIES,
   MEDICAL_FLAGS,
+  NON_IDENTITY_CATEGORIES,
+  carriesBiomarkerIdentity,
 } from "@/lib/medical-categories";
 
 // Guards against re-declaration drift (issue #305). The category enum and the
@@ -31,6 +33,8 @@ describe("medical-categories: single source of truth", () => {
       "reference",
       // #708 narrative diagnostic reports (micro/path report bodies).
       "report",
+      // #2318 non-measurement assessments and qualifiers from a CCD.
+      "assessment",
     ]);
   });
 
@@ -52,8 +56,27 @@ describe("medical-categories: single source of truth", () => {
       "instrument",
       "derived",
       "reference",
+      "assessment",
     ]) {
       expect(BIOMARKER_CATEGORIES as readonly string[]).not.toContain(excluded);
+    }
+  });
+
+  it("NON_IDENTITY_CATEGORIES withholds biomarker identity, and only from `assessment` (#2318)", () => {
+    expect([...NON_IDENTITY_CATEGORIES]).toEqual(["assessment"]);
+    // Every entry must be a real category, and none may be a browsable biomarker
+    // class — withholding identity from something the catalog lists would be a
+    // contradiction, not a policy.
+    for (const c of NON_IDENTITY_CATEGORIES) {
+      expect(MEDICAL_CATEGORIES as readonly string[]).toContain(c);
+      expect(BIOMARKER_CATEGORIES as readonly string[]).not.toContain(c);
+      expect(carriesBiomarkerIdentity(c)).toBe(false);
+    }
+    // Everything else DOES carry an identity — including `report`, whose exclusion
+    // from the flat catalog is a different (weaker) statement.
+    for (const c of MEDICAL_CATEGORIES) {
+      if ((NON_IDENTITY_CATEGORIES as readonly string[]).includes(c)) continue;
+      expect(carriesBiomarkerIdentity(c), c).toBe(true);
     }
   });
 

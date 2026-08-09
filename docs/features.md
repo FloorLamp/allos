@@ -1750,6 +1750,17 @@ submit yourself, carrying only the item's public name/code — never your values
 dates, or profile). A tracked gap that a later catalog update covers shows a
 **"now available"** state. Informational, not medical advice.
 
+Only things that are actually **measurements** are offered here. A clinical
+document also carries dated observations that are not: a functional-status
+finding, the body site a temperature was taken at, one screening question's
+answer, a bare result-status word. Those import as **assessments** — stored,
+dated and viewable on their document like any other row — but they carry no
+biomarker identity, so they never coin a catalog name, never appear as an
+uncatalogued item, and never draw a chart. A vaccine's lot number and expiry are
+attributes of the immunization entry, which already records them, so they are not
+imported as observations at all. Nothing is lost either way: the source document
+stays stored and viewable.
+
 ### Derived indices
 
 Standard derived indices (Non-HDL cholesterol, the cholesterol/HDL, LDL/HDL and

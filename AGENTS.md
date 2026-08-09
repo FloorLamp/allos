@@ -186,6 +186,21 @@ the surface's own key. A surface names a quantity or a row; it does not name a
 table. Neither phase changes schema — the physical merge is a separate, later
 decision. See `docs/internals/reading-model.md`.
 
+Not every dated observation a document carries IS a quantity. A functional-status
+finding, the body site a temperature was taken at, one screening question's answer
+and a bare result-status word are observations that state no measurement, and a
+clinical document files them beside real analytes. They store as the `assessment`
+category — dated, viewable on their document, and listed in
+`NON_IDENTITY_CATEGORIES` (`lib/medical-categories.ts`), which is what WITHHOLDS
+biomarker identity: no `canonical_biomarkers` registration, out of
+`getUsedCanonicalNames`, so never a Coverage candidate and never a series. The
+predicates that recognize them at the door are `lib/non-analyte-observations.ts`.
+Identity runs on the CODE and on the NAME, and a guard on one axis is not a guard
+(#2318 was exactly that: `functionalStatusExtractor` nulled the assessment LOINC
+and the same rows coined canonical names anyway). An attribute of another entity —
+a vaccine's lot number and expiry — is not an observation at all; the entity that
+owns it already stores it.
+
 ### Weekly cadence
 
 "How did this target do in week W?" is ONE question over `frequency_targets`, keyed
