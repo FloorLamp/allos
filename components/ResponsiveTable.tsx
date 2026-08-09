@@ -24,6 +24,22 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // `empty` meta/value cell drops out too, so a card never shows a line of
 // em-dashes that distinguish nothing (#531–#534 — label by what DIFFERS).
 //
+// A `meta` slot must differ WITHIN ITS GROUP, not merely across the table. In a
+// grouped table (#1499), a field that repeats the group's own heading is not detail
+// the phone was losing — it is the heading, reprinted once per row. That is what
+// took Panel and Category off the biomarker card (#2316): every row inside the group
+// headed "Lipids" said `PANEL Lipids`, and every real panel resolves to a single
+// category, so two of the card's meta lines distinguished nothing while costing the
+// viewport with the least room for them. They keep their columns and their filter
+// links at `md` and up, where a facet in a narrow column is genuinely useful; they
+// simply stop claiming a card line. Notes kept its slot in the same change, because
+// notes differ per reading — which is the whole test.
+//
+// This is a REVIEW rule, on purpose. "Constant within a group" is a property of the
+// data, not of the source, so there is no scan and no type for it: a runtime
+// assertion would fire on a legitimately-constant one-group view. Ask the question
+// when you author a slotted cell in a grouped table.
+//
 // Because `thead` is hidden below `sm`, a `meta` cell carries its own `label`,
 // rendered `sm:hidden` inside the cell. That keeps the column's meaning available
 // to sighted and assistive users in stacked-row mode, where the `<th>` is gone.

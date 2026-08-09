@@ -493,6 +493,32 @@ export function seedMultiProfile(): void {
     // A uniquely-named analyte per member so the spec can prove both members' rows merge.
     seedBioReading(bioSelfId, MVBIO_SELF_ANALYTE, "2024-05-01", 120, "ng/mL");
     seedBioReading(bioRoId, MVBIO_RO_ANALYTE, "2024-05-01", 95, "mg/dL");
+    // The read-only member's unique analyte came from a DOCUMENT (#2316). Provenance
+    // navigation is not a write, so its row must keep a ⋯ menu holding "View source
+    // document" even though the grant is read-only — the regression the source link's
+    // move into that menu could most easily introduce, since the menu used to render
+    // only for a writable row (#1331). Synthetic filename, no PHI, and idempotent.
+    db.prepare(
+      `DELETE FROM medical_documents WHERE profile_id = ? AND filename = 'e2e-mvbio-ro-labs.pdf'`
+    ).run(bioRoId);
+    const bioRoDocId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+              extraction_status, extracted_count, uploaded_at)
+           VALUES (?, 'e2e-mvbio-ro-labs.pdf', '', 'application/pdf', 2048,
+                   'Lab report', 'done', 1, '2024-05-01 09:00:00')`
+        )
+        .run(bioRoId).lastInsertRowid
+    );
+    // `document_id` only, and `source` back to NULL: on medical_records the FK IS
+    // the provenance link (the `source = 'document:<id>'` string encoding is for the
+    // clinical tables that have no such column), and sourceDocumentId prefers it.
+    db.prepare(
+      `UPDATE medical_records SET document_id = ?, source = NULL
+         WHERE profile_id = ? AND canonical_name = ?`
+    ).run(bioRoDocId, bioRoId, MVBIO_RO_ANALYTE);
     const bioLoginId = seedMemberLogin(E2E_LOGIN_MVBIO, bioSelfId, "write");
     grantProfile(bioLoginId, bioRoId, "read");
     console.log(

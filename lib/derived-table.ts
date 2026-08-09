@@ -38,6 +38,16 @@ export type BiomarkerSortColumn = (typeof BIOMARKER_SORT_COLUMNS)[number];
 // newest first under each heading.
 export const DEFAULT_BIOMARKER_SORT: BiomarkerSortColumn = "name";
 
+// The same two columns as the card-mode SELECT knows them (#1426): the ids the
+// (hidden) SortableHeaders carry, with Date opening newest-first, so the header
+// strip and the compact select can't disagree about what "sorted by date" means.
+// Declared here rather than in the table because the select is rendered by the
+// FILTER block now (#2316) and the headers by the table — one list, two surfaces.
+export const BIOMARKER_SORT_CHOICES = [
+  { column: "name", label: "Name" },
+  { column: "date", label: "Date", defaultDir: "desc" as const },
+] as const;
+
 // Resolve a raw `?sort=` value for the browser. Anything unrecognized — including
 // the `panel` an old #1499-era bookmark carries — falls back to the default rather
 // than failing the parse.

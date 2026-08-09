@@ -299,8 +299,11 @@ body::before {
      A `<td>` with NO `data-card` is desktop-only detail and is hidden on the card;
      that `:not([data-card])` rule outranks a Tailwind `hidden md:table-cell` on the
      same cell (0,2,1 vs 0,1,0), which is exactly what lets a column that's hidden on
-     a NARROW table reappear as a card meta line — the phone finally gets the panel,
-     category and notes it used to lose. */
+     a NARROW table reappear as a card meta line — the phone gets the notes it used
+     to lose. (It was "the panel, category and notes" until #2316: grouping made the
+     first two constant within every group, so they went back to being desktop-only
+     detail. The mechanism is unchanged; what a cell should SPEND it on is the rule
+     in components/ResponsiveTable.tsx.) */
   .table-cards {
     @apply max-sm:block;
   }
