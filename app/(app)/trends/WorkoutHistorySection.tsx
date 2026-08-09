@@ -65,7 +65,7 @@ export default async function WorkoutHistorySection({
       </div>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
         Every workout day in this window, then the same days split by activity.
-        Tap a day to open it on the Timeline.
+        Tap a day to see what it held.
       </p>
       {values.length === 0 ? (
         <EmptyState

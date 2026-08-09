@@ -144,7 +144,7 @@ export default async function NutritionSection({
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           Food-group servings you actually logged, day by day. Filter by group;
-          tap a day for its timeline.
+          tap a day to see what it held.
         </p>
         {foodValues.length === 0 ? (
           <EmptyState message="No food logged in this range. Widen the date range or log on the Nutrition page." />

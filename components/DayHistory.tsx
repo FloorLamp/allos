@@ -312,7 +312,14 @@ export default function DayHistory({
     onBlur: () => setDetail(null),
     onClick: () => {
       setDetail(text);
-      if (clickable) setSelectedDay((prev) => (prev === date ? null : date));
+      if (clickable) {
+        setSelectedDay((prev) => (prev === date ? null : date));
+        // Selection takes over from hover: on touch no mouseleave ever fires,
+        // and a matrix left dimmed forever reads as a bug, not a highlight —
+        // the SELECTED day gets its own persistent column marker instead.
+        setHoverDay(null);
+        setHoverRow(null);
+      }
     },
   });
 
@@ -401,27 +408,30 @@ export default function DayHistory({
           ))}
           {/* All/None are proper chips — dashed borders mark them as ACTIONS
               over the selection, not groups; each disables when it would be a
-              no-op. */}
-          <span
-            className="mx-0.5 h-4 w-px bg-black/10 dark:bg-white/15"
-            aria-hidden="true"
-          />
-          <button
-            type="button"
-            disabled={selected === null}
-            onClick={() => setSelected(null)}
-            className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
-          >
-            All
-          </button>
-          <button
-            type="button"
-            disabled={selected !== null && selected.size === 0}
-            onClick={() => setSelected(new Set())}
-            className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
-          >
-            None
-          </button>
+              no-op. Grouped with their divider so line wrapping never orphans
+              one of them. */}
+          <span className="flex items-center gap-1.5">
+            <span
+              className="mx-0.5 h-4 w-px bg-black/10 dark:bg-white/15"
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              disabled={selected === null}
+              onClick={() => setSelected(null)}
+              className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              disabled={selected !== null && selected.size === 0}
+              onClick={() => setSelected(new Set())}
+              className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
+            >
+              None
+            </button>
+          </span>
         </div>
       )}
 
@@ -452,7 +462,7 @@ export default function DayHistory({
                     const isSelected = selectedDay === cell.date;
                     // A matrix hover echoes onto its calendar day.
                     const echo = hoverRow !== null && hoverDay === cell.date;
-                    const cls = `rounded-[5px] ${LEVEL_CLASS[cell.level]}${
+                    const cls = `rounded-[5px] transition-shadow duration-150 ease-out motion-reduce:transition-none ${LEVEL_CLASS[cell.level]}${
                       isSelected
                         ? " ring-2 ring-slate-600 dark:ring-slate-200"
                         : echo
@@ -530,7 +540,7 @@ export default function DayHistory({
       {selectedDay && dayItems && (
         <div
           data-testid="day-history-daypanel"
-          className="rounded-lg border border-black/10 p-3 text-sm dark:border-white/10"
+          className="rounded-lg border border-black/10 p-3 text-sm motion-safe:animate-[overlay-fade-in_150ms_ease-out] dark:border-white/10"
         >
           <div className="flex items-center justify-between gap-3">
             <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -644,7 +654,7 @@ export default function DayHistory({
                   key={row.key}
                   data-testid="day-history-row"
                   data-group={row.key}
-                  className={`flex min-w-full items-center rounded-[4px]${
+                  className={`flex min-w-full items-center rounded-[4px] transition-colors duration-150 motion-reduce:transition-none${
                     crosshair && hoverRow === row.key
                       ? " bg-slate-500/10 dark:bg-white/10"
                       : ""
@@ -686,11 +696,13 @@ export default function DayHistory({
                         (hoverDay !== null && hoverDay === cell.date);
                       const ring = isHovered
                         ? " ring-2 ring-slate-600 dark:ring-slate-200"
-                        : !crosshair && hoverDay === cell.date
-                          ? " ring-2 ring-slate-400 dark:ring-slate-400"
-                          : cell.today
-                            ? ` ${TODAY_RING}`
-                            : "";
+                        : selectedDay === cell.date
+                          ? " ring-2 ring-slate-500 dark:ring-slate-300"
+                          : !crosshair && hoverDay === cell.date
+                            ? " ring-2 ring-slate-400 dark:ring-slate-400"
+                            : cell.today
+                              ? ` ${TODAY_RING}`
+                              : "";
                       const dim =
                         crosshair &&
                         (hoverDay !== null || hoverRow !== null) &&
@@ -711,7 +723,7 @@ export default function DayHistory({
                                   ? MTX_GAP + MTX_WEEK_GAP
                                   : MTX_GAP,
                           }}
-                          className={`rounded-[4px] ${LEVEL_CLASS[cell.level]}${ring}${dim}`}
+                          className={`rounded-[4px] transition-[opacity,box-shadow] duration-150 ease-out motion-reduce:transition-none ${LEVEL_CLASS[cell.level]}${ring}${dim}`}
                           {...matrixCellProps(
                             matrixCellSummary(row, ci),
                             row.key,

@@ -87,7 +87,7 @@ export default async function WellnessPage(props: {
           </h2>
           <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
             Every practice day in the trailing quarter, then the same days split
-            by practice. Tap a day to open it on the Timeline.
+            by practice. Tap a day to see what it held.
           </p>
           <DayHistory
             domain="practice"
