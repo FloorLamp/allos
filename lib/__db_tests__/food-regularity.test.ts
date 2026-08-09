@@ -5,9 +5,10 @@
 // food_log_events rows (the #2019 eaten-over-tap precedence included), the declared
 // gate producing genuine silence off a real ledger, the cap-direction exclusion — which
 // is read out of frequency_targets and the substance catalog — and the offer's
-// subtraction of what the window already holds today.
+// subtraction of what the window already holds today. It also owns the ATOMICITY case
+// for `logUsualFoodCore`, which only a real transaction can prove.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -15,12 +16,32 @@ import {
   FOOD_REGULARITY_MIN_WINDOW_DAYS,
   FOOD_REGULARITY_SPAN_DAYS,
 } from "@/lib/food-regularity";
+import { logUsualFoodCore } from "@/lib/food-usual-write";
 import {
   getCapDirectionFoodGroups,
   getFoodRegularity,
   getHabitualFoodGroups,
   getUsualFoodOffer,
 } from "@/lib/queries";
+
+// The mid-set refusal is UNREACHABLE through the product — `logUsualFoodCore` only ever
+// passes catalog slugs it just re-derived — which is exactly why the guard against it
+// needs a seam rather than a fixture. This mock is INERT by default (it delegates to the
+// real core); a test opts one group into refusing by naming it in `refusal.groupKey`.
+const refusal = vi.hoisted(() => ({ groupKey: null as string | null }));
+vi.mock("@/lib/food-log-write", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/food-log-write")>();
+  return {
+    ...actual,
+    logFoodServingCore: (
+      ...args: Parameters<typeof actual.logFoodServingCore>
+    ) =>
+      args[1] === refusal.groupKey
+        ? ({ kind: "unknown-group" } as const)
+        : actual.logFoodServingCore(...args),
+  };
+});
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -224,5 +245,108 @@ describe("getUsualFoodOffer (#2380)", () => {
   it("offers nothing for a window with no habit", () => {
     const { profileId, anchor } = seedMorningHabit("offer-other-window");
     expect(getUsualFoodOffer(profileId, "Evening", anchor)).toEqual([]);
+  });
+});
+
+describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
+  // Twelve mornings of fermented + berries, nothing logged today: the offer is the
+  // pair, in share-then-key order (berries, fermented).
+  function seedPair(name: string) {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    setTimezone(profileId, "UTC");
+    const anchor = today(profileId);
+    for (let d = 1; d <= 12; d++) {
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+    }
+    return { profileId, anchor };
+  }
+
+  // What today actually holds — the assertion that matters. A `nothing-to-log` outcome
+  // is worthless on its own: the defect this pins REPORTED nothing-to-log while a
+  // serving sat in the database.
+  function writtenToday(profileId: number, date: string) {
+    return {
+      counters: db
+        .prepare(
+          `SELECT group_key, servings FROM food_log
+            WHERE profile_id = ? AND date = ? ORDER BY group_key`
+        )
+        .all(profileId, date),
+      events: db
+        .prepare(
+          `SELECT group_key FROM food_log_events
+            WHERE profile_id = ? AND date = ? ORDER BY id`
+        )
+        .all(profileId, date),
+    };
+  }
+
+  it("rolls back the servings already written when a later one refuses", () => {
+    const { profileId, anchor } = seedPair("usual-atomic-refusal");
+    expect(getUsualFoodOffer(profileId, "Morning", anchor)).toEqual([
+      "berries",
+      "fermented",
+    ]);
+
+    // `berries` is written FIRST and succeeds; `fermented` then refuses. Returning
+    // from inside writeTx would commit the berries serving (better-sqlite3 commits on
+    // a normal return and rolls back only on a throw) while answering "nothing was
+    // logged" — a half-written set the user was told did not happen.
+    refusal.groupKey = "fermented";
+    try {
+      const outcome = logUsualFoodCore(profileId, "Morning", [
+        "berries",
+        "fermented",
+      ]);
+      expect(outcome).toEqual({ kind: "nothing-to-log" });
+    } finally {
+      refusal.groupKey = null;
+    }
+
+    // NOTHING was written — neither the day counter nor its ledger event.
+    expect(writtenToday(profileId, anchor)).toEqual({
+      counters: [],
+      events: [],
+    });
+    // …so the offer still stands, whole, and the next tap can still take it.
+    expect(getUsualFoodOffer(profileId, "Morning", anchor)).toEqual([
+      "berries",
+      "fermented",
+    ]);
+  });
+
+  it("writes the whole set once the refusal is gone", () => {
+    const { profileId, anchor } = seedPair("usual-atomic-success");
+    const outcome = logUsualFoodCore(profileId, "Morning", [
+      "berries",
+      "fermented",
+    ]);
+
+    expect(outcome.kind).toBe("logged");
+    expect(writtenToday(profileId, anchor)).toEqual({
+      counters: [
+        { group_key: "berries", servings: 1 },
+        { group_key: "fermented", servings: 1 },
+      ],
+      events: [{ group_key: "berries" }, { group_key: "fermented" }],
+    });
+  });
+
+  it("commits nothing and reports nothing when the offer is already empty", () => {
+    // The early return's case: no write has happened, so a plain return is correct
+    // there — this pins that the two paths agree on the observable outcome.
+    const { profileId, anchor } = seedPair("usual-atomic-empty");
+    expect(
+      logUsualFoodCore(profileId, "Morning", ["red_meat", "alcohol"])
+    ).toEqual({ kind: "nothing-to-log" });
+    expect(writtenToday(profileId, anchor)).toEqual({
+      counters: [],
+      events: [],
+    });
   });
 });
