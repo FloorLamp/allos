@@ -586,7 +586,9 @@ export function extractionConfidenceItems(
     // Which kind a records row is flagged under is the SAME question the triage
     // links ask of a persisted row, so both read one answer (#2339) — otherwise a
     // flag and the row it names could disagree about their own domain.
-    ...result.results.map((r) => item(recordConfidenceKind(r.category), r.name, r)),
+    ...result.results.map((r) =>
+      item(recordConfidenceKind(r.category), r.name, r)
+    ),
     ...result.immunizations.map((i) => item("immunization", i.vaccine, i)),
     ...result.conditions.map((c) => item("condition", c.name, c)),
     ...result.allergies.map((a) => item("allergy", a.substance, a)),
