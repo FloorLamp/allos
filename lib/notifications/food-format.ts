@@ -7,7 +7,11 @@
 // several servings / several groups), so a rebuild after a tap keeps every button
 // and only refreshes the per-button count + the tally line.
 
-import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
+import {
+  foodGroupBySlug,
+  foodGroupEmoji,
+  foodGroupShortName,
+} from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
 import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
@@ -247,7 +251,9 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
     .filter(([slug, n]) => n > 0 && !isProteinNudgeKey(slug))
     .map(([slug, n]) => ({
       emoji: foodGroupEmoji(slug),
-      name: foodGroupName(slug),
+      // The SHORT catalog name — one abbreviation vocabulary with the Trends
+      // day-history chips, and what keeps a five-group tally on a phone line.
+      name: foodGroupShortName(slug),
       n,
     }))
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
@@ -372,10 +378,13 @@ export function renderFoodNudge(
     const g = foodGroupBySlug(key);
     if (!g) return; // a retired/unknown slug can't render a button (belt; rankedKeys are catalog)
     const n = dayServings.get(key) ?? 0;
-    // The catalog glyph leads the label (#1710) — the same vocabulary the tally and the
-    // web food bar use, which is what makes the 3×2 grid readable at a glance.
+    // The catalog glyph leads the label (#1710) and the SHORT catalog name follows —
+    // the same abbreviation vocabulary the tally and the Trends day-history chips
+    // use, which is what keeps a half-width button ("🍬 Sweets") from truncating
+    // mid-word the way "Sugary foods & desserts" did.
     const emoji = foodGroupEmoji(key);
-    const name = emoji ? `${emoji} ${g.name}` : g.name;
+    const short = foodGroupShortName(key);
+    const name = emoji ? `${emoji} ${short}` : short;
     actions.push({
       label: n > 0 ? `${name} (${n})` : name,
       data: foodLogCallbackData(profileId, window, date, key),

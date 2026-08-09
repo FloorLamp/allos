@@ -10,6 +10,7 @@ import {
   shiftHHMM,
   showsDistanceField,
   soleComponentDuration,
+  workoutActivityLabel,
   timeOfDay,
   titleCase,
 } from "@/lib/activity-meta";
@@ -415,5 +416,23 @@ describe("soleComponentDuration (#791)", () => {
         sessionDurationMin: null,
       })
     ).toBeNull();
+  });
+});
+
+describe("workoutActivityLabel", () => {
+  it("merges time-of-day variants of a routine name onto one label", () => {
+    expect(workoutActivityLabel("Push day")).toBe("Push day");
+    expect(workoutActivityLabel("Afternoon Push Day")).toBe("Push Day");
+    // Both key identically through activityHistoryKey (lowercased trim).
+    expect(workoutActivityLabel("Afternoon Push Day").toLowerCase()).toBe(
+      workoutActivityLabel("Push day").toLowerCase()
+    );
+  });
+
+  it("strips the Fitbit-style duration infix and Session suffix", () => {
+    expect(
+      workoutActivityLabel("Afternoon 59 Min Stationary Bike Session")
+    ).toBe("Stationary Bike");
+    expect(workoutActivityLabel("Morning Running Session")).toBe("Running");
   });
 });

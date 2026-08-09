@@ -1,7 +1,7 @@
 // SERVER-ACTION TIER — issue #333: every activity write must revalidate /trends
-// (the FitnessSection volume chart + WorkoutHeatmapSection), not just /training and
+// (the FitnessSection volume chart + WorkoutHistorySection), not just /training and
 // the dashboard. /trends reads activity-derived data, so a create/edit/merge/delete
-// that skips it leaves the fitness chart and heatmap stale. These tests pin the exact
+// that skips it leaves the fitness chart and workout history stale. These tests pin the exact
 // revalidated path SET for each mutation so a future edit can't silently drop /trends
 // or the dedicated ride read model again.
 

@@ -585,3 +585,50 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   );
   await expect(reloaded).toHaveCount(0);
 });
+
+test("the cross-practice day-history renders a row per practice, on one day axis", async ({
+  page,
+}) => {
+  // Spec-owned logs (#868): two uniquely named practices with sessions inside
+  // the trailing-quarter window, deleted in finally. The section may also carry
+  // seed practices — assert about OUR rows, never exact counts.
+  const A = "History Sauna (e2e)";
+  const B = "History Breathwork (e2e)";
+  const keyA = practiceIdentity(A)!;
+  const keyB = practiceIdentity(B)!;
+  const day = (back: number) => {
+    const d = frozenNow();
+    d.setUTCDate(d.getUTCDate() - back);
+    return d.toISOString().slice(0, 10);
+  };
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    const insert = db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, duration_min)
+       VALUES (1, ?, ?, ?)`
+    );
+    insert.run(A, day(2), 20);
+    insert.run(A, day(9), 25);
+    insert.run(B, day(3), null);
+
+    await page.goto("/wellness");
+    const history = page.getByTestId("practice-history");
+    await expect(history).toBeVisible();
+    const rowA = history.locator(
+      `[data-testid="day-history-row"][data-group="${keyA}"]`
+    );
+    const rowB = history.locator(
+      `[data-testid="day-history-row"][data-group="${keyB}"]`
+    );
+    await expect(rowA).toHaveCount(1);
+    await expect(rowB).toHaveCount(1);
+    // Rows share ONE day axis: the calendar half renders beside them.
+    await expect(history.getByTestId("day-history-calendar")).toBeVisible();
+  } finally {
+    db.prepare(
+      `DELETE FROM practice_logs WHERE profile_id = 1 AND practice IN (?, ?)`
+    ).run(A, B);
+    db.close();
+  }
+});

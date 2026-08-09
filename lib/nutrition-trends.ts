@@ -8,18 +8,14 @@
 //     (getFoodHabitTrends) up into an OVERALL weekly hit-rate — "am I consistently
 //     hitting my food-group goals," the trend the point-in-time AdherenceFindings on
 //     /nutrition doesn't show (Part 2).
-//   - buildIntakeMatrix: a day-by-day pattern grid of what was actually logged —
-//     food-group servings (the #579 rollup applied per day) + confirmed supplement/med
-//     dose counts — each day linking INTO the Timeline (Part 3). Nutrition-scoped, never
-//     a chronological all-domain feed.
+//   - NUTRITION_HISTORY_WEEK_CAPS: the lens week caps for the intake history
+//     (Part 3), which is the generalized day-history calendar + matrix
+//     (lib/day-history.ts) over food servings + confirmed doses — each day
+//     linking INTO the Timeline. Nutrition-scoped, never a chronological
+//     all-domain feed.
 
-import {
-  rollupServings,
-  type FoodLogEntry,
-  type GroupServingTotal,
-} from "./food-log";
 import type { HabitWeekCell } from "./food-habit-trend";
-import { timelineDayHref, type AppRoute } from "./hrefs";
+import type { LensWeekCaps } from "./trends";
 
 // ---- Part 1: macros + fiber daily series ----------------------------------
 
@@ -141,46 +137,13 @@ export function aggregateFoodAdherenceByWeek(
     }));
 }
 
-// ---- Part 3: intake history pattern grid ----------------------------------
+// ---- Part 3: intake history (day-history calendar + matrix) ---------------
 
-// One day's logged intake: the food-group servings (the #579 rollup applied to just that
-// day's rows) and the count of confirmed supplement/med doses. Each day links into the
-// Timeline's single-day view for full detail (link, don't duplicate).
-export interface IntakeMatrixDay {
-  date: string;
-  href: AppRoute;
-  groups: GroupServingTotal[];
-  totalServings: number;
-  doseCount: number;
-}
-
-// Build the day-by-day intake matrix over `days` (the caller supplies the ordered day
-// list for the range — typically newest-first). Food servings come from the SAME
-// rollupServings the nutrition card uses (applied per day); dose counts are the confirmed
-// (taken) intake-item doses on each day. Pure: no DB, no clock.
-export function buildIntakeMatrix(
-  days: string[],
-  foodEntries: FoodLogEntry[],
-  doseDates: string[]
-): IntakeMatrixDay[] {
-  const foodByDate = new Map<string, FoodLogEntry[]>();
-  for (const e of foodEntries) {
-    const arr = foodByDate.get(e.date);
-    if (arr) arr.push(e);
-    else foodByDate.set(e.date, [e]);
-  }
-  const doseCountByDate = new Map<string, number>();
-  for (const d of doseDates)
-    doseCountByDate.set(d, (doseCountByDate.get(d) ?? 0) + 1);
-
-  return days.map((date) => {
-    const groups = rollupServings(foodByDate.get(date) ?? []);
-    return {
-      date,
-      href: timelineDayHref(date),
-      groups,
-      totalServings: groups.reduce((s, gr) => s + gr.servings, 0),
-      doseCount: doseCountByDate.get(date) ?? 0,
-    };
-  });
-}
+// The Nutrition lens's week caps for the intake history — the generalized
+// day-history's window is the hub's shared range clamped through these (the
+// FITNESS_WEEK_CAPS pattern). Max 13 weeks: a quarter of daily cells stays
+// scannable; a wider range keeps its most recent quarter.
+export const NUTRITION_HISTORY_WEEK_CAPS: LensWeekCaps = {
+  minWeeks: 4,
+  maxWeeks: 13,
+};

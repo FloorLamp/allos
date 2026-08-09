@@ -176,6 +176,20 @@ export function activityFromTitle(title: string): string {
     .trim();
 }
 
+/** The day-history row NAME for a workout session: the stored title normalized
+ * to the activity/routine it names — time-of-day prefix and "Session" suffix
+ * via activityFromTitle, plus the Fitbit-style "59 Min " duration infix — so
+ * "Push day", "Afternoon Push Day" and "Morning Push Day Session" all land on
+ * one row (keyed through `activityHistoryKey` of this label, the #1931
+ * canonical activity identity). Falls back to the raw title rather than an
+ * empty label. */
+export function workoutActivityLabel(title: string): string {
+  const stripped = activityFromTitle(title)
+    .replace(/^\d+\s*Min\s+/i, "")
+    .trim();
+  return stripped || title.trim();
+}
+
 /** The single part name the editor derives from a legacy (component-less)
  * cardio/sport row's freeform title: the stripped form when the picker knows
  * it, else the full title when IT is known (e.g. a row titled "Night Walk"

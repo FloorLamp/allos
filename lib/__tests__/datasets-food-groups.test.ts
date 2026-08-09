@@ -5,7 +5,9 @@ import {
   canonicalFoodGroup,
   FOOD_GROUPS,
   FOOD_GROUP_EMOJI,
+  FOOD_GROUP_SHORT,
   foodGroupEmoji,
+  foodGroupShortName,
 } from "@/lib/datasets/food-groups";
 import { foodGroupIconKey } from "@/lib/food-group-icon";
 import {
@@ -86,6 +88,24 @@ describe("food-group emoji catalog (#1710)", () => {
 
   it("degrades to no emoji for a retired/unknown slug", () => {
     expect(foodGroupEmoji("not_a_group")).toBe("");
+  });
+
+  it("short names cover every catalog group, stay short, and never collide", () => {
+    const slugs = FOOD_GROUPS.map((g) => g.slug).sort();
+    expect(Object.keys(FOOD_GROUP_SHORT).sort()).toEqual(slugs);
+    const shorts = Object.values(FOOD_GROUP_SHORT);
+    expect(new Set(shorts).size).toBe(shorts.length);
+    // "Short" is the contract: nothing longer than the chip budget.
+    for (const s of shorts) expect(s.length).toBeLessThanOrEqual(14);
+    // The distinguishing word survives abbreviation: the two fish groups
+    // must not collapse to one chip label.
+    expect(foodGroupShortName("fatty_fish")).not.toBe(
+      foodGroupShortName("lean_fish")
+    );
+  });
+
+  it("short name falls back to the full name, then the slug, for unknowns", () => {
+    expect(foodGroupShortName("not_a_group")).toBe("not_a_group");
   });
 
   // The web food surfaces render Tabler SVG icons per group (lib/food-group-icon.ts) —
