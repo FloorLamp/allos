@@ -5,6 +5,13 @@
 // outcome text no matter which surface asked.
 
 import { describe, it, expect } from "vitest";
+import type { IntegrationKind } from "@/lib/types/integrations";
+import {
+  KIND_DELIVERY,
+  isScheduledKind,
+  type IntegrationDelivery,
+} from "@/lib/integrations/delivery";
+import { INTEGRATIONS } from "@/lib/integrations/registry";
 import {
   consecutiveLeadingFailures,
   escalationPolicyLabel,
@@ -17,14 +24,22 @@ import {
   intermittentRunsLabel,
   needsAttention,
   observedSuccessCadenceMinutes,
+  pluralRunNoun,
   providerStanding,
   runWindowNorm,
   standingBadge,
   standingEscalates,
+  standingHeadline,
+  standingUnconfigured,
   successCadenceLabel,
+  syncRunNounForKind,
   syncVocabularyForKind,
   STANDING_RUN_WINDOW,
+  type AttendedStanding,
+  type OutboundStanding,
+  type ProviderStanding,
   type SyncEventFacts,
+  type SyncRunNoun,
 } from "@/lib/integrations/provider-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
 
@@ -56,8 +71,79 @@ describe("syncVocabularyForKind", () => {
     // Keyed on the KIND, never a provider id — a future shared-cache provider gets
     // the right words without a new branch.
     expect(syncVocabularyForKind("public")).toBe("forecast");
-    for (const kind of ["push", "oauth", "token", "archive", "feed"]) {
+    for (const kind of ALL_KINDS) {
+      if (kind === "public") continue;
       expect(syncVocabularyForKind(kind)).toBe("records");
+    }
+  });
+});
+
+// Every registered kind, read off the DECLARATION rather than typed out again — so a
+// new kind widens every loop below at once instead of quietly skipping them.
+const ALL_KINDS = Object.keys(KIND_DELIVERY) as IntegrationKind[];
+
+// ── The DELIVERY axis (#2301) ────────────────────────────────────────────────
+//
+// The `Record<IntegrationKind, IntegrationDelivery>` makes coverage a COMPILE-time
+// fact; these are the behavioural half.
+describe("KIND_DELIVERY — who moves the data", () => {
+  it("resolves a delivery for every registered provider", () => {
+    for (const def of INTEGRATIONS) {
+      expect(KIND_DELIVERY[def.kind], def.id).toBeDefined();
+    }
+  });
+
+  it("classifies the scheduled family exactly as the retired RECURRING_SOURCE_KINDS did", () => {
+    // THE REGRESSION PIN for the refactor: `RECURRING_SOURCE_KINDS` was a hand-written
+    // `Set<string>` of these four members, and it decided which providers reach Data →
+    // Review's "Connected sources". This refactor must not move a single provider
+    // across that line. (Its own comment recorded that hand-enumeration failing once
+    // already: `public` was missing, #1614.)
+    const RETIRED_RECURRING_SOURCE_KINDS = ["push", "oauth", "token", "public"];
+    const scheduled = ALL_KINDS.filter(isScheduledKind).sort();
+    expect(scheduled).toEqual([...RETIRED_RECURRING_SOURCE_KINDS].sort());
+  });
+
+  it("puts the two hand-run kinds in one attended family and the outbound feed alone", () => {
+    // The two members the Imports feed used to enumerate by naming ONE of them.
+    expect(
+      ALL_KINDS.filter((k) => KIND_DELIVERY[k] === "attended").sort()
+    ).toEqual(["archive", "external-attended"]);
+    expect(ALL_KINDS.filter((k) => KIND_DELIVERY[k] === "outbound")).toEqual([
+      "feed",
+    ]);
+  });
+});
+
+describe("syncRunNounForKind + pluralRunNoun", () => {
+  it("gives the attended kinds their own words instead of the polled dialect", () => {
+    expect(syncRunNounForKind("archive")).toBe("import");
+    expect(syncRunNounForKind("external-attended")).toBe("upload");
+    expect(syncRunNounForKind("push")).toBe("push");
+    expect(syncRunNounForKind("public")).toBe("refresh");
+    expect(syncRunNounForKind("oauth")).toBe("sync");
+    expect(syncRunNounForKind("token")).toBe("sync");
+  });
+
+  it("returns NULL only for the outbound feed — a run noun where no runs are recorded is a fiction", () => {
+    expect(syncRunNounForKind("feed")).toBeNull();
+    for (const kind of ALL_KINDS) {
+      if (kind === "feed") continue;
+      expect(syncRunNounForKind(kind), kind).not.toBeNull();
+    }
+  });
+
+  it("plurals every noun from a declared table, never a suffix rule", () => {
+    // The old `${noun}es` fallback yields "importes" and "uploades".
+    const plurals: Record<SyncRunNoun, string> = {
+      push: "pushes",
+      sync: "syncs",
+      refresh: "refreshes",
+      import: "imports",
+      upload: "uploads",
+    };
+    for (const [noun, plural] of Object.entries(plurals)) {
+      expect(pluralRunNoun(noun as SyncRunNoun)).toBe(plural);
     }
   });
 });
@@ -81,6 +167,7 @@ function standingOf(
   over: Partial<Parameters<typeof providerStanding>[0]> = {}
 ) {
   return providerStanding({
+    delivery: "scheduled",
     connected: true,
     needsReauth: false,
     latest: window[0] ?? null,
@@ -95,7 +182,12 @@ function standingOf(
 describe("providerStanding + standingBadge", () => {
   it("puts a dead credential ahead of everything else", () => {
     expect(
-      providerStanding({ connected: false, needsReauth: true, latest: ev() })
+      providerStanding({
+        delivery: "scheduled",
+        connected: false,
+        needsReauth: true,
+        latest: ev(),
+      })
     ).toBe("needs-reauth");
     expect(standingBadge("needs-reauth")).toEqual({
       label: "Needs reconnect",
@@ -105,14 +197,24 @@ describe("providerStanding + standingBadge", () => {
 
   it("distinguishes a removed source from a broken one (#294 vs #326)", () => {
     expect(
-      providerStanding({ connected: false, needsReauth: false, latest: ev() })
+      providerStanding({
+        delivery: "scheduled",
+        connected: false,
+        needsReauth: false,
+        latest: ev(),
+      })
     ).toBe("not-connected");
     expect(standingBadge("not-connected").tone).toBe("caution");
   });
 
   it("reads the run window for a connected provider", () => {
     expect(
-      providerStanding({ connected: true, needsReauth: false, latest: null })
+      providerStanding({
+        delivery: "scheduled",
+        connected: true,
+        needsReauth: false,
+        latest: null,
+      })
     ).toBe("never-synced");
     expect(
       standingOf([ev({ details: truncatedSyncDetails() }), ev(), ev()])
@@ -403,7 +505,7 @@ describe("runWindowNorm", () => {
 // asserts the property that makes the duplication impossible to reintroduce silently.
 describe("one question, one computation", () => {
   it("gives every surface the same outcome text for the same fixture", () => {
-    const cases: { ev: SyncEventFacts; kind: string }[] = [
+    const cases: { ev: SyncEventFacts; kind: IntegrationKind }[] = [
       { ev: ev({ inserted: 30, updated: 10 }), kind: "push" },
       { ev: ev({ ok: 0, error: "token refresh failed" }), kind: "oauth" },
       { ev: ev({ inserted: 12, updated: 4, unchanged: 320 }), kind: "public" },
@@ -428,5 +530,245 @@ describe("one question, one computation", () => {
       formatSyncChange(e, "forecast").primary
     );
     expect(eventVerdict(e, "forecast").tone).toBe("good");
+  });
+});
+
+// ── The #2301 split: three delivery families, three disjoint answer sets ──────
+//
+// The point of splitting the union is not that there are more words. It is that
+// certain answers become UNREPRESENTABLE at the producer: no fact about an attended
+// or outbound source can make `providerStanding` return a connection verdict, so no
+// future code path can put "Sync failing" on a file the user hands us. These iterate
+// the unions rather than naming members, so a state added later is covered by
+// construction.
+
+// Every member of each family, listed once so the property tests can walk them.
+const ATTENDED_STANDINGS: AttendedStanding[] = [
+  "imported",
+  "attempt-failed",
+  "never-imported",
+  "not-set-up",
+];
+const OUTBOUND_STANDINGS: OutboundStanding[] = ["feed-enabled", "feed-off"];
+const SCHEDULED_STANDINGS: ProviderStanding[] = [
+  "healthy",
+  "partial",
+  "intermittent",
+  "failing",
+  "needs-reauth",
+  "not-connected",
+  "never-synced",
+];
+
+// An attended provider's facts. The freshness fields are supplied on purpose — an
+// attended source is EXEMPT from them, and the test is that supplying them changes
+// nothing.
+function attendedStandingOf(
+  window: SyncEventFacts[],
+  over: Partial<Parameters<typeof providerStanding>[0]> = {}
+) {
+  return providerStanding({
+    delivery: "attended",
+    connected: true,
+    needsReauth: false,
+    latest: window[0] ?? null,
+    recentRuns: window,
+    lastSuccessAt: minutesBefore(400 * 24 * HOUR),
+    toleranceMinutes: null,
+    now: NOW,
+    ...over,
+  });
+}
+
+describe("attended standing (#2301) — a source allos does not drive", () => {
+  it("reads by the LATEST attempt, never as a flapping connection", () => {
+    // The prod shape this issue was opened on: patient-portals, 6 recorded runs,
+    // 3 of them failed, the newest one fine. The connection model called that
+    // "Intermittent" — a flapping-CONNECTION word for a tool a person runs by hand,
+    // whose own contract ("a successful run landed inside the provider's silence
+    // tolerance") is vacuous because the tolerance is null.
+    const window = [ev({ inserted: 2 }), ...runs(3, 2)];
+    expect(attendedStandingOf(window)).toBe("imported");
+    expect(attendedStandingOf(runs(1, 5))).toBe("attempt-failed");
+  });
+
+  it("distinguishes set-up-but-empty from never-set-up", () => {
+    // PROMOTED from the Fitbit Takeout page, which had hand-rolled exactly these
+    // three: `Last import ${when}.` / "Set up, but nothing imported yet." /
+    // "No archive imported yet."
+    expect(attendedStandingOf([], { connected: true })).toBe("never-imported");
+    expect(attendedStandingOf([], { connected: false })).toBe("not-set-up");
+  });
+
+  it("ignores the silence rule entirely, however old the last import is", () => {
+    // A ten-day-old file import is not a fault, and a year-old one is not either:
+    // allos cannot start this, so it may never call it late.
+    const old = [ev({ at: minutesBefore(400 * 24 * HOUR), inserted: 9 })];
+    expect(attendedStandingOf(old, { toleranceMinutes: 12 * HOUR })).toBe(
+      "imported"
+    );
+  });
+
+  it("has no needs-reauth: a dead upload token surfaces as a failed attempt", () => {
+    expect(attendedStandingOf(runs(1, 0), { needsReauth: true })).toBe(
+      "attempt-failed"
+    );
+  });
+
+  it("can never produce a scheduled state, whatever it is fed", () => {
+    const shapes: SyncEventFacts[][] = [
+      [],
+      runs(0, 5),
+      runs(5, 0),
+      runs(3, 3),
+      [ev({ details: truncatedSyncDetails() })],
+    ];
+    for (const window of shapes) {
+      for (const connected of [true, false]) {
+        for (const needsReauth of [true, false]) {
+          for (const toleranceMinutes of [null, 12 * HOUR]) {
+            const standing = attendedStandingOf(window, {
+              connected,
+              needsReauth,
+              toleranceMinutes,
+              lastSuccessAt: null,
+            });
+            expect(ATTENDED_STANDINGS).toContain(standing);
+            expect(SCHEDULED_STANDINGS).not.toContain(standing);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("outbound standing (#2301) — allos publishes, nothing arrives", () => {
+  it("states only whether the feed is live", () => {
+    // Prod: a connected calendar-feed row with ZERO events rendered "Connected",
+    // green, plus a permanent "No syncs yet". Nothing will ever sync in.
+    const out = (connected: boolean) =>
+      providerStanding({
+        delivery: "outbound",
+        connected,
+        needsReauth: false,
+        latest: null,
+        now: NOW,
+      });
+    expect(out(true)).toBe("feed-enabled");
+    expect(out(false)).toBe("feed-off");
+    expect(SCHEDULED_STANDINGS).not.toContain(out(true));
+  });
+});
+
+describe("the badge/attention tables over the whole union", () => {
+  it("never calls a source allos does not drive GOOD", () => {
+    // `good` is a HEALTH verdict, and it is the one claim allos cannot make about a
+    // source it does not drive. `standingBadge` used to return tone "good" for both
+    // `healthy` and `never-synced`, which is what painted a ten-day-old file import
+    // and a permanently-empty outbound feed green.
+    for (const standing of [...ATTENDED_STANDINGS, ...OUTBOUND_STANDINGS]) {
+      for (const noun of [null, "import", "upload"] as const) {
+        expect(standingBadge(standing, noun).tone, standing).not.toBe("good");
+      }
+    }
+  });
+
+  it("follows the run noun for the attended dialect", () => {
+    expect(standingBadge("imported", "import").label).toBe("Last import");
+    expect(standingBadge("imported", "upload").label).toBe("Last upload");
+    expect(standingBadge("attempt-failed", "upload").label).toBe(
+      "Last upload failed"
+    );
+    expect(standingBadge("never-imported", "upload").label).toBe(
+      "Nothing uploaded yet"
+    );
+    expect(standingBadge("not-set-up").label).toBe("Not set up");
+    expect(standingBadge("feed-enabled").label).toBe("Feed enabled");
+    expect(standingBadge("feed-off").label).toBe("Feed off");
+  });
+
+  it("promises no next run in an attended or outbound headline", () => {
+    // The latent half of the defect: an attended page adopting the shared status
+    // header would have rendered "Syncing normally" and "the next successful sync
+    // catches up". Nothing catches up — there is no next run until a person starts one.
+    for (const standing of [...ATTENDED_STANDINGS, ...OUTBOUND_STANDINGS]) {
+      const line = standingHeadline(standing, syncRunNounForKind("archive"));
+      expect(line, standing).not.toMatch(/sync/i);
+      expect(line, standing).not.toMatch(/catches up/i);
+    }
+    expect(standingHeadline("imported", "import")).toBe("Imported");
+    expect(standingHeadline("imported", "upload")).toBe("Uploaded");
+    expect(standingHeadline("attempt-failed", "import")).toBe(
+      "The last import failed"
+    );
+    expect(standingHeadline("never-imported", "import")).toBe(
+      "Set up — nothing imported yet"
+    );
+    expect(standingHeadline("feed-enabled")).toBe(
+      "Publishing to your calendar"
+    );
+  });
+
+  it("lets NO attended or outbound state escalate", () => {
+    // The property that makes the split worth doing rather than three more members on
+    // a flat union: allos cannot claim a source it does not drive is *still* broken.
+    for (const standing of [...ATTENDED_STANDINGS, ...OUTBOUND_STANDINGS]) {
+      expect(standingEscalates(standing), standing).toBe(false);
+    }
+    // …but a failed attempt IS an attention item — expanded in Review, no badge, no
+    // digest line.
+    expect(needsAttention("attempt-failed")).toBe(true);
+    expect(needsAttention("imported")).toBe(false);
+    expect(needsAttention("never-imported")).toBe(false);
+    expect(needsAttention("not-set-up")).toBe(false);
+    expect(needsAttention("feed-enabled")).toBe(false);
+    expect(needsAttention("feed-off")).toBe(false);
+  });
+
+  it("treats the three never-set-up states as one question", () => {
+    // The Import grid shows a pitch card for a provider nobody set up, whatever its
+    // delivery family. One decision, not three member lists.
+    expect(standingUnconfigured("not-connected")).toBe(true);
+    expect(standingUnconfigured("not-set-up")).toBe(true);
+    expect(standingUnconfigured("feed-off")).toBe(true);
+    for (const standing of [
+      "healthy",
+      "intermittent",
+      "imported",
+      "attempt-failed",
+      "never-imported",
+      "feed-enabled",
+    ] as ProviderStanding[]) {
+      expect(standingUnconfigured(standing), standing).toBe(false);
+    }
+  });
+});
+
+describe("escalationPolicyLabel — the attended inverse (#2301)", () => {
+  it("states the positive for an attended source instead of staying silent", () => {
+    const line = escalationPolicyLabel(null, "import", "attended")!;
+    expect(line).toContain("only ever as fresh as your last import");
+    expect(line).toContain("never marks it late");
+    expect(escalationPolicyLabel(null, "upload", "attended")).toContain(
+      "your last upload"
+    );
+    // And it does not promise an escalation it will never perform.
+    expect(line).not.toContain("Sync failing");
+  });
+
+  it("says nothing at all for an outbound feed", () => {
+    // Nothing arrives, so there is no lateness either way.
+    for (const tolerance of [null, 12 * HOUR]) {
+      expect(escalationPolicyLabel(tolerance, null, "outbound")).toBeNull();
+    }
+  });
+});
+
+// The delivery types are used as values above only through KIND_DELIVERY; this pins
+// that the exported union still names exactly the three families the axis declares.
+describe("IntegrationDelivery", () => {
+  it("has exactly three families, all of them reachable from a registered kind", () => {
+    const families = new Set<IntegrationDelivery>(Object.values(KIND_DELIVERY));
+    expect([...families].sort()).toEqual(["attended", "outbound", "scheduled"]);
   });
 });

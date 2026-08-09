@@ -177,6 +177,9 @@ export function isEscalatedSource(source: ConnectedSource): boolean {
 // "2 of the last 8 runs failed · last success 1 hour ago" — calm amber, never an
 // alert.
 function HealthyRow({ source }: { source: ConnectedSource }) {
+  // No noun, deliberately: `getConnectedSources` filters to `isScheduledKind`, and the
+  // noun only ever selects the ATTENDED dialect — every scheduled label ignores it. The
+  // one invariant in #2301 held by a caller rather than by a type, so it is stated here.
   const badge = standingBadge(source.standing);
   const href = homeHref(source);
   const intermittent = source.standing === "intermittent";

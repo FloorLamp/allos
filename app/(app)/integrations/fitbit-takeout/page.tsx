@@ -4,6 +4,12 @@ import { PageHeader } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
+import { deliveryForKind } from "@/lib/integrations/delivery";
+import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
+import {
+  escalationPolicyLabel,
+  syncRunNounForKind,
+} from "@/lib/integrations/provider-state";
 import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import TakeoutUpload from "./TakeoutUpload";
@@ -20,6 +26,18 @@ export default async function FitbitTakeoutPage() {
   const def = getIntegration("fitbit-takeout")!;
   const conn = getConnection(profile.id, "fitbit-takeout");
   const lastImport = getLastSuccessfulSyncAt(profile.id, "fitbit-takeout");
+  // The escalation policy, stated where the reader is (#1880 item 1, #2301). Every
+  // scheduled provider page states its own rule under the sync history; this page has
+  // no history table, so the one thing an attended source's owner needs to know — that
+  // allos will never mark it late, because only they can start it — had no surface at
+  // all. Sourced exactly as `SyncHistoryTable` sources it, and DERIVED FROM THE KIND
+  // rather than asserting "attended" here: the kind is where delivery is declared, so
+  // this line cannot drift from it.
+  const policy = escalationPolicyLabel(
+    silenceToleranceMinutes(def),
+    syncRunNounForKind(def.kind),
+    deliveryForKind(def.kind)
+  );
 
   return (
     <div className="space-y-6">
@@ -119,6 +137,14 @@ export default async function FitbitTakeoutPage() {
               ? "Set up, but nothing imported yet."
               : "No archive imported yet."}
         </p>
+        {policy && (
+          <p
+            data-testid="takeout-escalation-policy"
+            className="mt-3 max-w-prose rounded-lg border border-dashed border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+          >
+            {policy}
+          </p>
+        )}
         <div className="mt-3">
           <IntegrationSyncHistoryLink lastSuccessAt={lastImport} />
         </div>

@@ -199,7 +199,10 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   for (const r of rows) {
     if (r.n_new === 0) continue;
     const def = getIntegration(r.provider as IntegrationId);
-    if (syncVocabularyForKind(def?.kind ?? "") === "forecast") continue;
+    // An UNREGISTERED provider id has no kind to ask about, so it keeps the default
+    // record dialect (#2301 typed the vocabulary function, which is what stopped an
+    // empty-string kind being silently accepted here).
+    if (def && syncVocabularyForKind(def.kind) === "forecast") continue;
     const kinds = byProvider.get(r.provider) ?? [];
     kinds.push(arrivalKind(r.target_table, r.metric));
     byProvider.set(r.provider, kinds);
