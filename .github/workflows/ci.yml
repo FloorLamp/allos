@@ -77,6 +77,34 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # `npm run typecheck` is `next typegen && tsc --noEmit` (#2293), not bare
+      # `tsc`. Next's `Route<T>` — which `AppRoute` and `RevalidateTarget` are —
+      # only carries the real route union when `.next/types/routes.d.ts` exists;
+      # `/.next/` and `next-env.d.ts` are both gitignored, so on this fresh
+      # checkout a bare `tsc` saw `Route` fall back to `string & {}` and accepted
+      # every route literal, including ones naming pages that do not exist. The
+      # guarantee still landed — `next build` regenerates the types and does
+      # enforce the union — but minutes later, in the e2e jobs, reading as a build
+      # error rather than "this route does not exist".
+      #
+      # Typegen is in the npm script rather than a step here on purpose: a
+      # developer running `npm run typecheck` locally then gets the same answer CI
+      # gets, which is the half of #2293 a CI-only step would have left broken.
+      #
+      # Measured cost. `next typegen` itself is ~1s. The route types it
+      # materialises then make `tsc` do real work at every href position instead
+      # of collapsing it to `string`, which on a slow box is worth ~30s (isolated
+      # locally: 65–79s bare, 98–116s with the types). On THIS runner it does not
+      # cleanly separate from noise — the baseline was 35–44s over eight samples
+      # from the PRs merged just before #2293, and #2293's own two runs came in at
+      # 54s and 39s. Call it low tens of seconds at worst, in a job whose two
+      # coverage-gated test tiers dominate it.
+      #
+      # Do not strip typegen back out to buy that back: `Route` degrades SILENTLY,
+      # so the gate would go on passing while checking nothing. It would not stay
+      # silent for long, though — lib/__tests__/revalidate-route.test.ts pins a
+      # non-existent route with `@ts-expect-error`, and without the generated types
+      # that directive goes UNUSED, which is itself a `tsc` error.
       - name: Typecheck
         run: npm run typecheck
 

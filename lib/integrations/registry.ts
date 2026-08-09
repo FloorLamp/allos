@@ -3,6 +3,7 @@ import type {
   IntegrationId,
   IntegrationPagingTunables,
 } from "@/lib/types";
+import { KIND_DELIVERY, type IntegrationDelivery } from "./delivery";
 
 // Declarative list of integrations. The Integrations page renders from this, so
 // adding a provider is a matter of adding an entry (and, for 'available' ones, a
@@ -472,6 +473,28 @@ export const INTEGRATIONS: IntegrationDef[] = [
 
 export function getIntegration(id: IntegrationId): IntegrationDef | undefined {
   return INTEGRATIONS.find((i) => i.id === id);
+}
+
+// WHO MOVES this provider's data (#2301), derived from its kind — never declared on
+// the entry, because the kind already states it and two providers of one kind cannot
+// differ. An unregistered id is treated as `scheduled`: that is the family every
+// connection-shaped reader was already written for, so an id with no registry entry
+// keeps the behaviour it has today rather than silently changing families.
+export function integrationDelivery(
+  def: IntegrationDef | undefined
+): IntegrationDelivery {
+  return def ? KIND_DELIVERY[def.kind] : "scheduled";
+}
+
+// The registered providers of one delivery family, in registry order. This is what
+// replaced the hand-enumerated member lists — a `Set<string>` of four kinds in the
+// Connected-sources filter, and a single provider id spelled into the Imports feed's
+// SQL. Status is NOT filtered here: a caller that only wants shippable entries adds
+// `status === "available"` itself, the way getConnectedSources always has.
+export function integrationsWithDelivery(
+  delivery: IntegrationDelivery
+): IntegrationDef[] {
+  return INTEGRATIONS.filter((i) => KIND_DELIVERY[i.kind] === delivery);
 }
 
 // A registered provider allos PULLS (#2040) — one that declares the `pull` facet AND

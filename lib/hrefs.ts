@@ -7,8 +7,18 @@
 //    `Route` type (from `experimental`-graduated `typedRoutes`, enabled in
 //    next.config.js), so an invalid internal pathname stored in a model — the
 //    #283 dead-link class (`/goals`, `/medical` after a page was consolidated
-//    away) — becomes a `tsc` (⇒ `npm run build`) error. External URLs stay a
-//    plain `string`; only INTERNAL app routes are `AppRoute`.
+//    away) — becomes a `tsc` error. External URLs stay a plain `string`; only
+//    INTERNAL app routes are `AppRoute`.
+//
+//    THE ALIAS IS ONLY AS TYPED AS THE GENERATED TYPES ARE PRESENT (#2293).
+//    `Route<T>` carries the real route union when `.next/types/routes.d.ts`
+//    exists and falls back to `string & {}` when it does not — silently, with
+//    every dead literal accepted. `/.next/` and `next-env.d.ts` are both
+//    gitignored, so a fresh checkout has neither until something generates them.
+//    That is why `npm run typecheck` is `next typegen && tsc --noEmit` rather
+//    than bare `tsc`: typegen (~1s) materialises the union so the fast gate has
+//    the same teeth `npm run build` has. If a route literal ever stops being
+//    checked, look there first — the failure mode is silence, not an error.
 //
 //    Reversibility (issue #285 note): `typedRoutes` is young. If a Next upgrade
 //    breaks it, flip this ONE line to `export type AppRoute = string;` and every
