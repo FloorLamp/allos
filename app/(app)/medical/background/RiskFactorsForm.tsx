@@ -58,10 +58,16 @@ const FIELDS: {
 
 export default function RiskFactorsForm({
   attributes,
+  reviewed: reviewedInitial,
 }: {
   attributes: RiskAttributes;
+  // Whether this profile has ever REVIEWED the list (#1045's marker, read at the
+  // page boundary). Held in local state below so the footer reflects the save the
+  // user just made without a round trip.
+  reviewed: boolean;
 }) {
   const [attrs, setAttrs] = useState<RiskAttributes>(attributes);
+  const [reviewed, setReviewed] = useState(reviewedInitial);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save(next: RiskAttributes) {
@@ -69,6 +75,10 @@ export default function RiskFactorsForm({
     for (const { key, name } of FIELDS) fd.set(name, next[key] ? "1" : "0");
     runSave(async () => {
       await saveRiskFactors(fd);
+      // EVERY save stamps the review marker (the action does it unconditionally),
+      // so any successful save — a toggle or the footer button — makes the review
+      // real. Flipping it here is what retires the button and shows the line.
+      setReviewed(true);
     });
   }
 
@@ -121,6 +131,42 @@ export default function RiskFactorsForm({
             </span>
           </label>
         ))}
+      </div>
+
+      {/* The negative declaration (#2299). The data-quality gap clears on the
+          REVIEW MARKER, not on a stored flag — so a profile to which none of the
+          five apply had nothing to press and the "Fix it →" CTA landed on a form
+          with no fix. This footer both WRITES the marker (through the existing
+          save path, with the current all-false payload — the stamp is a side
+          effect saveRiskFactors already performs) and DISPLAYS it, which is the
+          other half: an unreviewed profile and a declared-empty one used to render
+          an identical list of five unchecked boxes.
+
+          A button, not a sixth checkbox: a persistent "none apply" flag would be a
+          VALUE contradicting the other five, needing mutual exclusion and an
+          un-set path. The button writes the marker that already means exactly
+          this. Offered while UNREVIEWED regardless of what is checked — checking a
+          box saves, which sets reviewed, so "some factor is on" and "reviewed" are
+          the same state; unreviewed → button, reviewed → line, never both. */}
+      <div className="border-t border-black/5 pt-4 dark:border-white/10">
+        {reviewed ? (
+          <p
+            className="text-xs text-slate-500 dark:text-slate-400"
+            data-testid="risk-reviewed"
+          >
+            Reviewed &mdash; update any time.
+          </p>
+        ) : (
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            data-testid="risk-none-apply"
+            disabled={pending}
+            onClick={() => save(attrs)}
+          >
+            None of these apply
+          </button>
+        )}
       </div>
 
       <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">

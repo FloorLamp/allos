@@ -82,6 +82,18 @@ export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
 export const E2E_LOGIN_DQ_ADULT = "e2e_dq_adult";
 export const DQ_ADULT_PROFILE = "Data Quality Adult (e2e)";
 
+// A member whose SOLE profile is an adult with NOTHING structural left to declare
+// except the risk-factor review (#2299): birthdate + sex + smoking status set, no
+// meds, no labs, no failed documents — and risk factors UNREVIEWED with every flag
+// off. So the "Data quality" widget carries exactly ONE gap ("Review risk factors"),
+// and clearing it from the form makes the whole widget self-hide, which is the
+// regression assertion. Dedicated on purpose: its spec PRESSES "None of these apply",
+// and the marker that writes is DURABLE — done on a shared profile it would silently
+// disarm the gap for every later spec. The spec resets the profile's risk_* keys
+// before each run, so --repeat-each groups sharing a worker DB stay clean.
+export const E2E_LOGIN_RISK_REVIEW = "e2e_risk_review";
+export const RISK_REVIEW_PROFILE = "Risk Review (e2e)";
+
 // A member granted a dedicated ADULT profile for the record↔visit / episode↔visit
 // linking spec (#1050/#1053). Seeds a self-contained visit + a same-day unlinked
 // medication (with its prescription record) + an illness episode spanning that day
