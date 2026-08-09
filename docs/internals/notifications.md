@@ -57,6 +57,49 @@ login-keyed (`push_subscriptions.login_id`).
   have Telegram enabled + a chat + haven't muted the profile, deduped by chat).
   The push audience (`getPushSubscriptionsForProfile`) is the same
   grants-minus-mute set with the old `role='admin'` bypass removed.
+- **An unroutable profile now SAYS SO (#2173).** The exclusion above is correct
+  and unchanged, but its consequence used to be invisible: a profile with no
+  managing login (or whose managing logins have no channel) builds its reminders
+  every day and fans them out to nobody, and the tick treats "no channel" as a
+  non-error (`0 = sent / nothing due / no channel`) — no log line, no health
+  signal, no UI note. The predicate is
+  `unroutable()` (`lib/household-setup.ts`, pure) over three facts that already
+  exist: the **send-source scan** (would this profile send anything at all?), the
+  **edge set** (`managingLoginIdsForProfile`), and **per-login channel presence**
+  (`profileRoutingFacts`, `lib/notifications/routing.ts`). It is
+  **timezone-free** — the condition is structural, never scheduled — and it
+  **cannot double-fire with `notify_lifecycle`**: that marker records a channel
+  that was ATTEMPTED and FAILED, and this returns null the moment ANY channel is
+  configured, so the two are disjoint by construction rather than by a filter. It
+  is a **rendered aggregate only**: an inline note on Settings → Notifications
+  (`notify-unroutable`, where someone would fix it) and a line on the
+  `/household` setup row. It never sends and it never enters the digest — see
+  `docs/internals/findings.md`. Two deliberate readings:
+  `profileRoutingFacts` **ignores mute** (a mute is a warned, deliberate choice —
+  #1324 already tells the last unmuted caregiver what they are doing — while
+  unroutable is a gap nobody chose), and it counts the **profile-scoped Home
+  Assistant webhook**, which delivers with no managing login at all.
+- **The instance gate on unroutable (owner ruling, PR #2362).** While **no channel
+  technology is configured anywhere on the instance** — no Telegram bot, no Web
+  Push, no Home Assistant, no email — `unroutable` is silent for **every** profile,
+  on both surfaces. "Notifications are not set up yet" and "notifications are set
+  up, and this member cannot be reached by them" are different states, and only the
+  second is a household setup-health defect; the check starts firing the moment any
+  channel exists anywhere, which is exactly when the asymmetry between members
+  becomes real. The accepted cost is stated rather than rediscovered: an operator
+  who never configures any channel never learns from this surface that their
+  reminders go nowhere — a fresh install that warns on day one teaches people to
+  ignore the surface, and an ignored surface cannot do its job on the day the
+  asymmetry is real. The gate is **`instanceHasAnyChannel()`**
+  (`lib/notifications/routing.ts`), one fact about the SERVER evaluated once and
+  carried on every profile's `RoutingFacts`: the three instance-level technologies
+  (`INSTANCE_CHANNEL_TECHNOLOGY`, the same source `loginHasAnyChannel` pairs with a
+  login's row) plus a sweep for a Home Assistant webhook on any profile, since HA
+  has no instance-level half and an HA-only household must still hear about the
+  sibling nothing reaches. It is emphatically **not** the fold "every profile came
+  back unroutable, therefore suppress" — that predicate would also silence a fully
+  configured instance on which every member happens to be unreachable, the loudest
+  true case, and `lib/__tests__/household-setup.test.ts` pins the difference.
 - **What stayed profile-keyed vs moved login-keyed.** The **fire decision**
   stays event-keyed **profile+slot+day** — one evaluation, unchanged: every
   `notify_last_*` marker, the per-profile **schedule** (digest hour, recap day,

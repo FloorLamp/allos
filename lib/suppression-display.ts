@@ -201,6 +201,13 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
       ? `Digest time suggestion — ${formatNotifyTime(configured)} → ${formatNotifyTime(proposed)}`
       : "Digest time suggestion";
   },
+  // A household member's setup row (#2173), keyed on the FAILING CHECK SET
+  // (`household-setup:never-onboarded+undosed-items`). The set IS the episode, so the
+  // label names how many checks the dismissal covered rather than quoting ids back.
+  "household-setup:": (t) => {
+    const n = t.split("+").filter(Boolean).length;
+    return n > 1 ? `Member setup — ${n} checks` : "Member setup";
+  },
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
   "condition-review:": () => "Condition suggestion",

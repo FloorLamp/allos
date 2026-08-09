@@ -167,3 +167,27 @@ export const E2E_LOGIN_HH_ROUND = "e2e_hhround";
 export const HH_ROUND_CAREGIVER_PROFILE = "HH Round Caregiver (e2e)";
 export const HH_ROUND_WARD_PROFILE = "HH Round Ward (e2e)";
 export const HH_ROUND_SHADOW_PROFILE = "HH Round Shadow (e2e)";
+
+// ── Member setup health on the Household board (issue #2173) ─────────────────
+// A spec-owned caregiver fixture for e2e/household-setup.spec.ts. The setup row is a
+// DERIVED VERDICT over a whole profile's configuration — the #2353 rule applied one
+// level up from rows — so it owns three profiles nothing else writes rather than
+// asserting over a shared one. A neighbour adding a dose, an onboarding row or a
+// notification channel anywhere else can then never flip these cards.
+//
+// The three cover the three states the board has to tell apart:
+//   • OK    — onboarded, one dosed active supplement, and a PROFILE-scoped Home
+//             Assistant webhook, which is the one channel that routes with no managing
+//             login at all. Healthy: no setup section renders.
+//   • GAP   — the same dosed supplement with NO channel anywhere, so it is unroutable
+//             (the edge set is non-empty — the member's own grant is in it — and holds
+//             no channel), PLUS an active medication with no dose row. Not dismissible:
+//             a standing "this profile is unroutable" dismissal must not exist.
+//   • QUIET — never onboarded and empty, with an all-inactive obligated roster. Nothing
+//             would send, so it is quiet rather than unroutable, and its row IS
+//             dismissible — which is what makes the episode-scoped dismiss testable.
+export const E2E_LOGIN_SETUP_HEALTH = "e2e_setuphealth";
+export const SETUP_HEALTH_OK_PROFILE = "Setup OK (e2e)";
+export const SETUP_HEALTH_GAP_PROFILE = "Setup Gap (e2e)";
+export const SETUP_HEALTH_QUIET_PROFILE = "Setup Quiet (e2e)";
+export const SETUP_HEALTH_GAP_MED = "Setup Gap Undosed Med (e2e)";
