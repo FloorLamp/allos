@@ -153,11 +153,18 @@ test("search expands the groups it matched, so a hit is never hidden (#1499)", a
   // An analyte that lives INSIDE a group which is collapsed by default. A search
   // that left it folded would read as no-results — the failure mode the rule exists
   // to prevent.
+  // The needle is the bare print form a lab actually reports; the ROW reads the
+  // canonical entry, which since #2335 spells the hormone and its fraction out and
+  // keeps "Free T4" only inside its parenthetical. So this also pins that the search
+  // still reaches an analyte through its abbreviation after the rename.
   await page.goto(`${BIOMARKERS}?q=Free+T4`);
   const thyroid = group(page, "thyroid");
   await expect(thyroid).toHaveAttribute("data-open", "true");
   await expect(
-    thyroid.getByRole("link", { name: "Free T4", exact: true })
+    thyroid.getByRole("link", {
+      name: "Thyroxine, Free (Free T4)",
+      exact: true,
+    })
   ).toBeVisible();
 
   // The `?panel=` facet (#1502) composes the same way: naming one group opens it.
@@ -336,6 +343,32 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   await expect(
     group(page, "cbc").getByTestId("biomarker-panel-toggle")
   ).toHaveAttribute("aria-label", "Complete blood count · 7 analytes");
+
+  await page.context().close();
+});
+
+test("a differential row states which measure it is (#2335)", async ({
+  browser,
+}) => {
+  // Searching the BARE analyte still finds the row — the reader keeps typing what a
+  // lab prints, and the retired spelling routes through CANONICAL_ALIASES — while the
+  // row that comes back SAYS which measure it is. A bare "Lymphocytes" heading is the
+  // defect this closed: it meant the percentage, while a bare "Monocytes" in the same
+  // panel meant a cell count. `current=1` keeps the fixture's three draws down to the
+  // one current reading, so the row is named exactly once.
+  const page = await openIndex(
+    browser,
+    `${BIOMARKERS}?q=Lymphocytes&current=1`
+  );
+  const cbc = group(page, "cbc");
+  await expect(cbc).toHaveAttribute("data-open", "true");
+  await expect(
+    cbc.getByRole("link", { name: "Lymphocytes, Relative", exact: true })
+  ).toBeVisible();
+  // …and the retired bare heading is nowhere on the page it used to head.
+  await expect(
+    page.getByRole("link", { name: "Lymphocytes", exact: true })
+  ).toHaveCount(0);
 
   await page.context().close();
 });

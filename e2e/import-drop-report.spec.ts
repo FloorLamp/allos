@@ -159,7 +159,12 @@ test.describe("Import detail: deliberately uncurated analytes", () => {
     // the series that actually carries the quantity.
     const instead = declined.getByTestId("declined-name-instead");
     await expect(instead).toHaveCount(1);
-    await expect(instead).toHaveAttribute("href", "/biomarkers/view?name=eGFR");
+    await expect(instead).toHaveAttribute(
+      "href",
+      `/biomarkers/view?name=${encodeURIComponent(
+        "Estimated Glomerular Filtration Rate (eGFR)"
+      )}`
+    );
   });
 
   test("drops the Unresolved analytes card entirely when everything left is declared", async ({

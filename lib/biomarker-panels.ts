@@ -226,7 +226,7 @@ export const BIOMARKER_PANELS: Record<
     "Glucose, Fasting",
     "Hemoglobin A1c",
     "Insulin",
-    "HOMA-IR",
+    "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     "C-Peptide",
     "Glucose, Gestational Screen (50 g)",
     "Leptin",
@@ -240,7 +240,7 @@ export const BIOMARKER_PANELS: Record<
   kidney: [
     "Blood Urea Nitrogen (BUN)",
     "Creatinine",
-    "eGFR",
+    "Estimated Glomerular Filtration Rate (eGFR)",
     "Cystatin C",
     "BUN/Creatinine Ratio",
     "Uric Acid",
@@ -285,21 +285,21 @@ export const BIOMARKER_PANELS: Record<
     "Mean Corpuscular Hemoglobin Concentration (MCHC)",
     "Red Cell Distribution Width (RDW)",
     "Mean Platelet Volume (MPV)",
-    "Neutrophils",
+    "Neutrophils, Relative",
     "Neutrophils, Absolute",
-    "Lymphocytes",
+    "Lymphocytes, Relative",
     "Lymphocytes, Absolute",
-    "Monocytes",
+    "Monocytes, Absolute",
     "Monocytes, Relative",
-    "Eosinophils",
+    "Eosinophils, Absolute",
     "Eosinophils, Relative",
-    "Basophils",
+    "Basophils, Absolute",
     "Basophils, Relative",
-    "Immature Granulocytes",
+    "Immature Granulocytes, Relative",
     "Immature Granulocytes, Absolute",
-    "Nucleated Red Blood Cells",
+    "Nucleated Red Blood Cells, Relative",
     "Nucleated Red Blood Cells, Absolute",
-    "Reticulocytes",
+    "Reticulocytes, Relative",
     "Reticulocytes, Absolute",
     // Reported ALONGSIDE their parent fraction, never instead of it (#2300) — an
     // atypical-lymphocyte % and a band % are extra smear lines, so they are their own
@@ -322,10 +322,10 @@ export const BIOMARKER_PANELS: Record<
   ],
   thyroid: [
     "Thyroid-Stimulating Hormone (TSH)",
-    "Free T4",
-    "Free T3",
-    "Total T4",
-    "Total T3",
+    "Thyroxine, Free (Free T4)",
+    "Triiodothyronine, Free (Free T3)",
+    "Thyroxine, Total (Total T4)",
+    "Triiodothyronine, Total (Total T3)",
     "Thyroid Peroxidase Antibodies (TPOAb)",
     "Thyroglobulin Antibodies (TgAb)",
   ],
@@ -388,7 +388,7 @@ export const BIOMARKER_PANELS: Record<
     // The ANA screen joins the autoantibody half of this panel for the same reason RF
     // does (#2300): it is an immunoglobulin assay, and a one-member `autoimmune` panel
     // would be a thinner grouping than the one a report actually arrives on.
-    "ANA Screen, IFA",
+    "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
   ],
   allergy: [
     "Immunoglobulin E (Total)",
@@ -430,7 +430,7 @@ export const BIOMARKER_PANELS: Record<
     "Hepatitis B Surface Antibody (HBsAb)",
     "Hepatitis C Antibody (Anti-HCV)",
     "HIV Antigen/Antibody",
-    "RPR",
+    "Rapid Plasma Reagin (RPR)",
     "Chlamydia trachomatis NAAT",
     "Neisseria gonorrhoeae NAAT",
     "HPV, High-Risk",
@@ -536,10 +536,10 @@ export const BIOMARKER_PANELS: Record<
     "Single-Leg Balance",
   ],
   vision: [
-    "Visual Acuity",
+    "Visual Acuity, Unspecified Eye",
     "Visual Acuity, Right Eye",
     "Visual Acuity, Left Eye",
-    "Intraocular Pressure",
+    "Intraocular Pressure, Unspecified Eye",
     "Intraocular Pressure, Right Eye",
     "Intraocular Pressure, Left Eye",
   ],
@@ -567,7 +567,12 @@ export const BIOMARKER_PANELS: Record<
   // they ARE one order — a pulmonology report prints all four together — so they are
   // one panel, which is what makes the cross-reference chip on a peak-flow reading
   // point at the spirometry it was taken alongside.
-  respiratory: ["Peak Expiratory Flow", "FEV1", "FVC", "FEV1/FVC Ratio"],
+  respiratory: [
+    "Peak Expiratory Flow",
+    "Forced Expiratory Volume in 1 Second (FEV1)",
+    "Forced Vital Capacity (FVC)",
+    "FEV1/FVC Ratio",
+  ],
   "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };

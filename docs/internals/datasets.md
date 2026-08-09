@@ -272,6 +272,57 @@ reprocess, and a future declaration takes effect everywhere at once.
 list so a re-persist cannot freeze today's registry into the blob and cost that
 retroactivity.
 
+### What a canonical name must carry (#2335)
+
+The rule the curated dataset is held to, written down beside `CANONICAL_ALIASES`
+in `lib/canonical-name.ts` and **enforced** by
+`lib/__tests__/canonical-naming-rule.test.ts`:
+
+- A bare name is permitted **only** where a single universal convention fixes its
+  meaning. In practice that is the **serum specimen**: `Albumin`, `Creatinine`,
+  `Magnesium` and `Folate` beside their `, Urine` / `, RBC` siblings are
+  unambiguous to every clinician and stay bare.
+- Where two members of one family differ by **measure** (relative/absolute),
+  **specimen**, **fraction** (free/total) or **side** (left/right), **every**
+  member states its qualifier — including the one that feels like the default.
+
+The second half is what the CBC differential taught. It held both conventions at
+once: bare `Neutrophils` was the percentage while bare `Monocytes` was the cell
+count, so within one panel a bare name meant opposite things. Picking a
+convention and fixing the outliers would not have held — a bare name keeps
+attracting mis-mapped imports whatever we declare it to mean. Qualifying every
+member makes the ambiguity **unrepresentable** rather than merely resolved, and
+`unitAwareCanonical` (which resolved exactly this %-versus-count collision on a
+real import) arbitrates anything that still arrives bare.
+
+The scan pairs entries by their **comma-qualifier** — an entry `X` sitting beside
+an entry `X, <qualifier>` — rather than by a general token-subset test, which
+drowns in coincidences (`Insulin` is a sub-name of `Insulin-Like Growth Factor 1`)
+and would need exactly the long allowlist that makes a half-scan worthless. Every
+qualifier that actually sits beside a bare sibling is declared with its **axis**,
+and the axis decides whether a bare form may exist, so the scan fails two ways:
+on an undeclared qualifier (a new axis nobody thought about) and on a declared one
+whose axis forbids a bare sibling.
+
+The same pass finished the **`Long Name (ABBR)`** convention. That form is not
+cosmetic: `buildCanonicalIndex` auto-derives BOTH the bare abbreviation and the
+bare long name from such an entry (`FULL_ABBR_RE`), so a hand-written alias row
+for either is redundant — the `FEV1`, `FVC` and `eGFR` routes were deleted when
+those entries took the long form. A parenthetical containing a **space** is not
+treated as an acronym (`looksLikeAbbreviation`), so the thyroid fractions and the
+ANA screen keep load-bearing curated routes.
+
+**Migration 177** carries the 20 renamed entries, reusing #2306's
+`applyCanonicalRename` rather than duplicating its checklist of what a canonical
+name is keyed by. It also **deletes** the retired vocabulary rows, which #2306's
+pass deliberately never does: there the retired row is `ai`-coined and a curated
+row is the authority, whereas here the retired name IS the curated one the dataset
+just dropped, and `seedCanonicalBiomarkers` has no delete pass — so left in place
+it would win its own key forever and block the alias route added to rescue it.
+Because `name` is a `FLAG_RELEVANT_FIELD`, `canonicalFlagsSignature()` moves on
+its own and the boot reconcile re-derives once; `FLAG_LOGIC_VERSION` is
+deliberately **not** bumped, since no range, unit or direction changed.
+
 ## Migrating the next dataset (a thin PR)
 
 1. Reshape its `scripts/gen-*.ts` (or hand-authored JSON) to emit a framework

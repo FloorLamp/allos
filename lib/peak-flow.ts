@@ -87,8 +87,8 @@ export const PEAK_FLOW_SLUG = "peak-flow";
  * that reads it (the membership boundary METRIC_KNOWLEDGE writes down).
  */
 export const SPIROMETRY_CANONICAL_NAMES = [
-  "FEV1",
-  "FVC",
+  "Forced Expiratory Volume in 1 Second (FEV1)",
+  "Forced Vital Capacity (FVC)",
   "FEV1/FVC Ratio",
 ] as const;
 

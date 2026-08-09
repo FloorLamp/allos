@@ -13,27 +13,39 @@ const g = (snapped: string, printed: string, unit: string | null) =>
 
 describe("unitAwareCanonical — the unit is the arbiter (#918 §1)", () => {
   it("re-routes a count value off a '%' entry to the absolute sibling", () => {
-    // Model named an absolute lymphocyte count "Lymphocytes" — the % entry. The
-    // cells/uL unit contradicts it; the count sibling is the right home.
-    expect(g("Lymphocytes", "ABSOLUTE LYMPHOCYTES", "cells/uL")).toBe(
+    // Model named an absolute lymphocyte count "Lymphocytes, Relative" — the %
+    // entry. The cells/uL unit contradicts it; the count sibling is the right home.
+    expect(g("Lymphocytes, Relative", "ABSOLUTE LYMPHOCYTES", "cells/uL")).toBe(
       "Lymphocytes, Absolute"
     );
   });
 
   it("re-routes a '%' value off a count entry to the relative sibling", () => {
-    // The bare Monocytes/Eosinophils/Basophils entries are the cells/uL counts; a
-    // "%" value belongs on the ", Relative" sibling.
-    expect(g("Monocytes", "MONOCYTES", "%")).toBe("Monocytes, Relative");
-    expect(g("Eosinophils", "EOSINOPHILS", "%")).toBe("Eosinophils, Relative");
-    expect(g("Basophils", "BASOPHILS", "%")).toBe("Basophils, Relative");
+    // The ", Absolute" entries are the cells/uL counts; a "%" value belongs on the
+    // ", Relative" sibling. This is the arbitration #2335 leans on: the retired bare
+    // spellings now ROUTE to one half of each pair, and a contradicting unit is what
+    // sends the reading to the other half.
+    expect(g("Monocytes, Absolute", "MONOCYTES", "%")).toBe(
+      "Monocytes, Relative"
+    );
+    expect(g("Eosinophils, Absolute", "EOSINOPHILS", "%")).toBe(
+      "Eosinophils, Relative"
+    );
+    expect(g("Basophils, Absolute", "BASOPHILS", "%")).toBe(
+      "Basophils, Relative"
+    );
   });
 
   it("leaves a unit-COMPATIBLE resolution untouched", () => {
-    expect(g("Monocytes", "MONOCYTES", "cells/uL")).toBe("Monocytes");
+    expect(g("Monocytes, Absolute", "MONOCYTES", "cells/uL")).toBe(
+      "Monocytes, Absolute"
+    );
     expect(g("Monocytes, Relative", "MONOCYTES", "%")).toBe(
       "Monocytes, Relative"
     );
-    expect(g("Lymphocytes", "LYMPHOCYTES", "%")).toBe("Lymphocytes");
+    expect(g("Lymphocytes, Relative", "LYMPHOCYTES", "%")).toBe(
+      "Lymphocytes, Relative"
+    );
   });
 
   it("never fires without a provable contradiction (protects the urine-glucose case, §2)", () => {

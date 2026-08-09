@@ -47,6 +47,10 @@ const followUp: FollowUpItemLike = {
 
 describe("IOP adapter — identity", () => {
   it("recognizes IOP readings (any eye / generic / abbreviation), not lookalikes", () => {
+    // The matcher is spelling-tolerant on purpose, so it recognises the current
+    // canonical entry, the RETIRED bare spelling a pre-#2335 row may still print as
+    // its provenance name, and the per-eye siblings alike.
+    expect(isIopBiomarker("Intraocular Pressure, Unspecified Eye")).toBe(true);
     expect(isIopBiomarker("Intraocular Pressure")).toBe(true);
     expect(isIopBiomarker("Intraocular Pressure, Right Eye")).toBe(true);
     expect(isIopBiomarker("Intraocular Pressure, Left Eye")).toBe(true);
@@ -65,6 +69,13 @@ describe("IOP adapter — identity", () => {
         rec({ id: 1, canonical_name: "Intraocular Pressure, Left Eye" })
       )
     ).toBe("left eye");
+    // "Unspecified Eye" (#2335) states that the report named no side — which is an
+    // absence of laterality, not a third eye, so it still recovers "".
+    expect(
+      iopLateralityLabel(
+        rec({ id: 1, canonical_name: "Intraocular Pressure, Unspecified Eye" })
+      )
+    ).toBe("");
     expect(
       iopLateralityLabel(rec({ id: 1, canonical_name: "Intraocular Pressure" }))
     ).toBe("");

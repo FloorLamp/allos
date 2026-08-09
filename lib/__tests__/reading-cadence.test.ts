@@ -51,10 +51,10 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   "Single-Leg Balance": "episodic",
   // Vision (#697) — a tonometry reading or a Snellen fraction per eye exam. Visual
   // acuity is qualitative and has no numeric axis at all.
-  "Intraocular Pressure": "episodic",
+  "Intraocular Pressure, Unspecified Eye": "episodic",
   "Intraocular Pressure, Right Eye": "episodic",
   "Intraocular Pressure, Left Eye": "episodic",
-  "Visual Acuity": "episodic",
+  "Visual Acuity, Unspecified Eye": "episodic",
   "Visual Acuity, Right Eye": "episodic",
   "Visual Acuity, Left Eye": "episodic",
   // Dental (#705) — measured at a cleaning, against a millimetre/percentage band.
@@ -87,8 +87,8 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   // report a handful of times in a life and read against a band (or, for the two
   // absolute volumes, against nothing — no predicted equation ships here), which is
   // the lab cadence and the lab renderer, exactly like an audiogram threshold.
-  FEV1: "episodic",
-  FVC: "episodic",
+  "Forced Expiratory Volume in 1 Second (FEV1)": "episodic",
+  "Forced Vital Capacity (FVC)": "episodic",
   "FEV1/FVC Ratio": "episodic",
 };
 

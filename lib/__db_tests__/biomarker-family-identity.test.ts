@@ -254,23 +254,31 @@ describe("supplement-suggest 'new reading' count keys on the family (#504)", () 
 });
 
 describe("derived-analyte retest is satisfied by fresh inputs (#482 scope 2)", () => {
+  // The kidney index's canonical entry, and the retest key derived from it. Both are
+  // the "Long Name (ABBR)" spelling since #2335 — and the key is the LOWERCASED name,
+  // so it moves with the rename. Storing the retired bare "eGFR" here would have gone
+  // on passing the first assertion while proving nothing (no entry of that name, so
+  // no retest clock either).
+  const EGFR = "Estimated Glomerular Filtration Rate (eGFR)";
+  const EGFR_KEY = `biomarker:${EGFR.toLowerCase()}`;
+
   it("a stored eGFR is not overdue while its input (Creatinine) is fresh", () => {
     const stale = shiftDateStr(p.todayStr, -800); // past the 365d window
     const fresh = shiftDateStr(p.todayStr, -20);
-    addReading("eGFR", stale, 78, "mL/min/1.73m2");
+    addReading(EGFR, stale, 78, "mL/min/1.73m2");
     addReading("Creatinine", fresh, 1.0, "mg/dL");
 
     // The stored eGFR is old, but re-drawing Creatinine re-derives it, so the clock
     // treats the fresh input as the effective last-tested date — no retest nudge.
-    expect(retestKeys()).not.toContain("biomarker:egfr");
+    expect(retestKeys()).not.toContain(EGFR_KEY);
   });
 
   it("a stored eGFR IS overdue when its input is also stale", () => {
     const stale = shiftDateStr(p.todayStr, -800);
-    addReading("eGFR", stale, 78, "mL/min/1.73m2");
+    addReading(EGFR, stale, 78, "mL/min/1.73m2");
     addReading("Creatinine", shiftDateStr(p.todayStr, -790), 1.0, "mg/dL");
 
-    expect(retestKeys()).toContain("biomarker:egfr");
+    expect(retestKeys()).toContain(EGFR_KEY);
   });
 });
 

@@ -107,9 +107,16 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // re-reconcile on its own (same reasoning as #2300). `Glucose, Fasting` keeps 70–99 —
 // it is correct, and 70 (the clinical hypoglycemia threshold, not the 65 lab artifact)
 // is now the only fasting floor left in the dataset.
+// Updated for #2335: 20 entries were RENAMED so every canonical name states what it
+// measures (the CBC differential's relative/absolute halves, the two unqualified eye
+// entries, and the remaining opaque abbreviations). `name` is a FLAG_RELEVANT_FIELD,
+// so a pure rename legitimately moves the signature and the boot reconcile runs once
+// — which is exactly what the renamed rows need, since a reading re-pointed by
+// migration 177 is judged against its entry's band under the new name. No range, unit
+// or direction changed, so FLAG_LOGIC_VERSION is again NOT bumped.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "32020fb3ad69324b77300c4c45c86e741869875154352015ece277c15ef3ab4b"; // phi-scan-ok
+  "9713dbdaa6dac6803046b8ce0418cad7511c0661d5e25aa4f44479be2cb95329"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

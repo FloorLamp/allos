@@ -180,7 +180,7 @@
       "panel": "glycemic"
     },
     {
-      "name": "HOMA-IR",
+      "name": "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
       "category": "lab",
       "unit": "index",
       "ref_low": null,
@@ -714,7 +714,7 @@
       "panel": "kidney"
     },
     {
-      "name": "eGFR",
+      "name": "Estimated Glomerular Filtration Rate (eGFR)",
       "category": "lab",
       "unit": "mL/min/1.73m2",
       "ref_low": 60,
@@ -1014,7 +1014,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Neutrophils",
+      "name": "Neutrophils, Relative",
       "category": "lab",
       "unit": "%",
       "ref_low": 40,
@@ -1052,7 +1052,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Lymphocytes",
+      "name": "Lymphocytes, Relative",
       "category": "lab",
       "unit": "%",
       "ref_low": 20,
@@ -1214,7 +1214,7 @@
       "panel": "thyroid"
     },
     {
-      "name": "Free T4",
+      "name": "Thyroxine, Free (Free T4)",
       "category": "lab",
       "unit": "ng/dL",
       "ref_low": 0.8,
@@ -1230,7 +1230,7 @@
       "panel": "thyroid"
     },
     {
-      "name": "Free T3",
+      "name": "Triiodothyronine, Free (Free T3)",
       "category": "lab",
       "unit": "pg/mL",
       "ref_low": 2.3,
@@ -2196,7 +2196,7 @@
       "panel": "liver"
     },
     {
-      "name": "Basophils",
+      "name": "Basophils, Absolute",
       "category": "lab",
       "unit": "cells/uL",
       "ref_low": 0,
@@ -2208,7 +2208,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Eosinophils",
+      "name": "Eosinophils, Absolute",
       "category": "lab",
       "unit": "cells/uL",
       "ref_low": 15,
@@ -2220,7 +2220,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Monocytes",
+      "name": "Monocytes, Absolute",
       "category": "lab",
       "unit": "cells/uL",
       "ref_low": 200,
@@ -2826,7 +2826,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Nucleated Red Blood Cells",
+      "name": "Nucleated Red Blood Cells, Relative",
       "category": "lab",
       "unit": "%",
       "ref_low": null,
@@ -2868,7 +2868,7 @@
       "panel": "cbc"
     },
     {
-      "name": "Immature Granulocytes",
+      "name": "Immature Granulocytes, Relative",
       "category": "lab",
       "unit": "%",
       "ref_low": null,
@@ -2944,7 +2944,7 @@
       "panel": "hemoglobin-variants"
     },
     {
-      "name": "Total T4",
+      "name": "Thyroxine, Total (Total T4)",
       "category": "lab",
       "unit": "ug/dL",
       "ref_low": 4.5,
@@ -2956,7 +2956,7 @@
       "panel": "thyroid"
     },
     {
-      "name": "Total T3",
+      "name": "Triiodothyronine, Total (Total T3)",
       "category": "lab",
       "unit": "ng/dL",
       "ref_low": 80,
@@ -3036,7 +3036,7 @@
       "panel": "electrolytes"
     },
     {
-      "name": "Reticulocytes",
+      "name": "Reticulocytes, Relative",
       "category": "lab",
       "unit": "%",
       "ref_low": 0.5,
@@ -3611,7 +3611,7 @@
       "panel": "lipids"
     },
     {
-      "name": "Intraocular Pressure",
+      "name": "Intraocular Pressure, Unspecified Eye",
       "category": "vitals",
       "unit": "mmHg",
       "ref_low": 10,
@@ -3647,7 +3647,7 @@
       "panel": "vision"
     },
     {
-      "name": "Visual Acuity",
+      "name": "Visual Acuity, Unspecified Eye",
       "category": "vitals",
       "unit": null,
       "ref_low": null,
@@ -4001,7 +4001,7 @@
       "panel": "glycemic"
     },
     {
-      "name": "RPR",
+      "name": "Rapid Plasma Reagin (RPR)",
       "category": "lab",
       "unit": null,
       "ref_low": null,
@@ -4337,7 +4337,7 @@
       "panel": "respiratory"
     },
     {
-      "name": "FEV1",
+      "name": "Forced Expiratory Volume in 1 Second (FEV1)",
       "category": "vitals",
       "unit": "L",
       "ref_low": null,
@@ -4349,7 +4349,7 @@
       "panel": "respiratory"
     },
     {
-      "name": "FVC",
+      "name": "Forced Vital Capacity (FVC)",
       "category": "vitals",
       "unit": "L",
       "ref_low": null,
@@ -4637,7 +4637,7 @@
       "panel": "omega-fatty-acids"
     },
     {
-      "name": "ANA Screen, IFA",
+      "name": "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
       "category": "lab",
       "unit": null,
       "ref_low": null,

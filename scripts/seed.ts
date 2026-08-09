@@ -655,7 +655,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "HOMA-IR",
-    canonical: "HOMA-IR",
+    canonical: "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     unit: "index",
     ref: "<2.0",
     values: [2.1, 1.8, 1.5, 1.3, 1.1, 0.9],
@@ -711,7 +711,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "eGFR",
-    canonical: "eGFR",
+    canonical: "Estimated Glomerular Filtration Rate (eGFR)",
     unit: "mL/min/1.73m2",
     ref: ">60",
     values: [88, 84, 80, 76, 72, 68],
@@ -741,7 +741,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "Lymphocytes",
-    canonical: "Lymphocytes",
+    canonical: "Lymphocytes, Relative",
     unit: "%",
     ref: "20-40",
     values: [32, 33, 34, 34, 35, 36],
@@ -782,7 +782,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "Free T3",
-    canonical: "Free T3",
+    canonical: "Triiodothyronine, Free (Free T3)",
     unit: "pg/mL",
     ref: "2.3-4.2",
     values: [3.0, 3.1, 3.2, 3.3, 3.4, 3.5],
@@ -912,7 +912,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "Free T4",
-    canonical: "Free T4",
+    canonical: "Thyroxine, Free (Free T4)",
     unit: "ng/dL",
     ref: "0.8-1.8",
     values: [1.1, 1.2, 1.2, 1.3], // newest maps to daysAgo(450) ≈ 1.2y ago → stale
@@ -1019,10 +1019,12 @@ for (const [days, thresholds] of [
 // dated pulmonology visit. The ratio is the one value with a real cutoff, and it is
 // seeded just BELOW it (68%) so the flagged-reading surfaces have a respiratory row;
 // the two absolute volumes carry no band and simply trend.
-for (const [name, value, unit] of [
-  ["FEV1", 3.1, "L"],
-  ["FVC", 4.55, "L"],
-  ["FEV1/FVC Ratio", 68, "%"],
+// The printed name is what a PFT report actually prints (the bare abbreviation); the
+// canonical name is the "Long Name (ABBR)" entry it snaps onto (#2335).
+for (const [name, canonical, value, unit] of [
+  ["FEV1", "Forced Expiratory Volume in 1 Second (FEV1)", 3.1, "L"],
+  ["FVC", "Forced Vital Capacity (FVC)", 4.55, "L"],
+  ["FEV1/FVC Ratio", "FEV1/FVC Ratio", 68, "%"],
 ] as const) {
   medIds.push(
     Number(
@@ -1034,7 +1036,7 @@ for (const [name, value, unit] of [
         unit,
         name === "FEV1/FVC Ratio" ? "≥70%" : null,
         value,
-        name,
+        canonical,
         "Spirometry"
       ).lastInsertRowid
     )
