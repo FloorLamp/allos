@@ -34,7 +34,8 @@ server→client boundary.
 - **Food** rows key on the catalog slug (`food_log.group_key`); labels, icons
   (`FoodGroupIcon` + tier tint), and the chip abbreviations
   (`foodGroupShortName`, the curated `FOOD_GROUP_SHORT` map beside the emoji
-  map) all come from the one catalog. An unknown/retired slug still renders,
+  map — the SAME vocabulary the Telegram food nudge's buttons and tally use)
+  all come from the one catalog. An unknown/retired slug still renders,
   labeled by its key.
 - **Workouts** key on `activityHistoryKey` (#1931) with identity resolved in
   `getWorkoutActivityDays`: a cardio/sport row's SOLE component names the

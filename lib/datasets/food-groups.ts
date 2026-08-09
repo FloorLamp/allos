@@ -103,12 +103,14 @@ export { FOOD_GROUP_EMOJI };
 
 // ---- One SHORT name per group ----
 //
-// The chip/row vocabulary for dense surfaces (the Trends day-history filter
-// chips and matrix row labels): the full catalog name where it is already
-// compact, a curated abbreviation where it is not — each keeping the word that
-// actually distinguishes the group (never "Fish" for two fish groups). Same
-// contract as the emoji map: one entry per catalog slug, pinned by
-// `datasets-food-groups.test.ts`.
+// The abbreviation vocabulary for dense surfaces — the Trends day-history
+// filter chips and matrix row labels, AND the Telegram food nudge's half-width
+// quick-log buttons and tally line (one vocabulary across surfaces, the #221
+// discipline the emoji map already follows): the full catalog name where it is
+// already compact, a curated abbreviation where it is not — each keeping the
+// word that actually distinguishes the group (never "Fish" for two fish
+// groups). Same contract as the emoji map: one entry per catalog slug, pinned
+// by `datasets-food-groups.test.ts`.
 const FOOD_GROUP_SHORT: Readonly<Record<string, string>> = {
   fatty_fish: "Fatty fish",
   lean_fish: "Lean fish",

@@ -23,6 +23,7 @@ import {
   FOOD_GROUPS,
   FOOD_GROUP_EMOJI,
   foodGroupEmoji,
+  foodGroupShortName,
   foodGroupSlugs,
 } from "@/lib/food-groups";
 import { plainBody } from "@/lib/notifications/rich-text";
@@ -53,7 +54,7 @@ describe("renderFoodNudge", () => {
     // the tally and the web food bar use.
     expect(logButtons.map((a) => a.label)).toEqual(
       RANKED_GROUPS.slice(0, FOOD_QUICK_COUNT).map(
-        (g) => `${foodGroupEmoji(g.slug)} ${g.name}`
+        (g) => `${foodGroupEmoji(g.slug)} ${foodGroupShortName(g.slug)}`
       )
     );
     expect(logButtons[0].data).toBe(
@@ -71,9 +72,11 @@ describe("renderFoodNudge", () => {
     // #1016's "n this slot" is gone with the read-time window derivation it depended on:
     // a Telegram tap no longer asserts a meal, so "this slot" would have to be re-derived
     // and a tap minutes past a boundary would tick nobody's button.
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (3)`);
+    expect(first.label).toBe(
+      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} (3)`
+    );
     expect(plainBody(msg.body)).toContain(
-      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
+      `✓ Today: ${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} ×3`
     );
   });
 
@@ -88,7 +91,9 @@ describe("renderFoodNudge", () => {
       new Map([[other.slug, 2]])
     );
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name}`);
+    expect(first.label).toBe(
+      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)}`
+    );
   });
 
   it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
