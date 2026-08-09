@@ -138,6 +138,18 @@ pure module (`lib/extraction-confidence.ts`) owns the vocabulary, the ranking,
 and the "deserves a look" rule, so the card, the badge, and the stored total
 cannot disagree.
 
+Each flagged row in that card is a **link to the row it names** (#2339), and the
+row it lands on wears the same confidence badge and reason. The flag stores no
+row id — an id is stale the moment a row is edited or the document reprocessed —
+so the link carries the LABEL and `lib/confidence-triage.ts` resolves it against
+the rows that exist right then, kind-scoped and exact after normalization (a
+medication compares on `medNameKey`, the identity its own domain already keys
+on). It refuses to guess: one match links at the row and highlights it, several
+matches filter the owning tab and select none, and no match is stated as "no
+longer in this import". `getDocumentTriageRows` builds the candidates out of the
+same profile-scoped, document-traced reads the tabs render from, so a link can
+only ever land on a row that tab shows.
+
 ### Provider tiers (Heavy / Light) and local inference
 
 AI config lives in the database under **Settings → Server → AI providers**
