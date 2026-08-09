@@ -20,6 +20,7 @@
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
+import { formatMessageLine } from "./message-line";
 
 // One member's due-unconfirmed doses for the round. `name` arrives ALREADY
 // disambiguated (#534) — the builder resolves two "Alex"es to stable labels before
@@ -92,7 +93,10 @@ export function renderHouseholdRoundMessage(input: {
   const body = sections
     .map((s) =>
       [
-        spansDates ? `${s.name} — ${sectionDateLabel(s.date)}:` : `${s.name}:`,
+        `${formatMessageLine({
+          head: s.name,
+          notes: [spansDates ? sectionDateLabel(s.date) : null],
+        })}:`,
         ...s.doses.map((d) => `• ${householdDoseLabel(d)}`),
       ].join("\n")
     )
@@ -100,7 +104,11 @@ export function renderHouseholdRoundMessage(input: {
 
   const total = householdRoundDoseCount(sections);
   const memberNoun = sections.length === 1 ? "member" : "members";
-  const title = `💊 Household doses — ${total} due across ${sections.length} ${memberNoun}`;
+  const title = formatMessageLine({
+    glyph: "💊",
+    head: "Household doses",
+    notes: [`${total} due across ${sections.length} ${memberNoun}`],
+  });
 
   // Under the cap the round carries its confirm buttons — and, since #1718, the deep
   // link ALONGSIDE them. Web Push and Home Assistant strip the buttons, so those

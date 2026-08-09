@@ -20,6 +20,7 @@ import { formatRecapLine, type Recap } from "../session-recap";
 import { frequencyScopeLabel } from "../goals";
 import { fmtDistance } from "../units";
 import { activityTypeAskCallback } from "./callback-data";
+import { formatMessageLine } from "./message-line";
 
 // The workout-affectable frequency scopes (#1122): the target kinds a lifting/cardio
 // session can actually advance. `food_group` (a nutrition scope, #580) and
@@ -78,7 +79,10 @@ export function weeklyRemainingLine(
       t.target.scope_kind,
       t.target.scope_value
     );
-    return `${label} — ${t.count} of ${t.per_week} this week, ${tail}.`;
+    return formatMessageLine({
+      head: label,
+      notes: [`${t.count} of ${t.per_week} this week, ${tail}.`],
+    });
   }
 
   // Nothing in progress: a calm celebratory line when every workout target is met,

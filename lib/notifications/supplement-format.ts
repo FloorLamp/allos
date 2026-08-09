@@ -30,6 +30,7 @@ import type {
 } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
+import { formatMessageLine } from "./message-line";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -197,14 +198,13 @@ function doseLine(
     e.supp.kind === "medication"
       ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
       : e.dose.amount;
-  const amt = doseDetail ? ` — ${doseDetail}` : "";
   const mark = e.taken
-    ? "✅ "
+    ? "✅"
     : e.skipped
-      ? "⏭ "
+      ? "⏭"
       : e.supp.obligation === "must"
-        ? "🔴 "
-        : "• ";
+        ? "🔴"
+        : "•";
   const tail: string[] = [];
   if (showFood) {
     const food = foodNote(e.dose);
@@ -247,8 +247,14 @@ function doseLine(
     if (foodDrug) tail.push(foodDrug);
   }
   tail.push(...adherenceNotes(e.adherence));
-  const suffix = tail.length ? ` · ${tail.join(" · ")}` : "";
-  return `${mark}${e.supp.name}${amt}${suffix}`;
+  // The mark is the line's glyph, the item its head, and the amount the first of its
+  // notes — the same shape as every other message line, so the take-with condition and
+  // the adherence percentage that follow are punctuated by the grammar and not here.
+  return formatMessageLine({
+    glyph: mark,
+    head: e.supp.name,
+    notes: [doseDetail, ...tail],
+  });
 }
 
 // Build the message for a window from its entries. Pending doses (each with a
@@ -284,10 +290,14 @@ export function renderWindowMessage(
     const body = resolved.map((e) => doseLine(e, false, age)).join("\n");
     // Title reflects the whole session: "all N taken" when nothing was skipped,
     // else a taken/skipped breakdown so a skip isn't misread as a take.
-    const title =
-      skippedN === 0
-        ? `💊 ${label} ${noun} — all ${takenN} taken ✅`
-        : `💊 ${label} ${noun} — ${takenN} taken · ${skippedN} skipped`;
+    const title = formatMessageLine({
+      glyph: "💊",
+      head: `${label} ${noun}`,
+      notes:
+        skippedN === 0
+          ? [`all ${takenN} taken ✅`]
+          : [`${takenN} taken`, `${skippedN} skipped`],
+    });
     return { title, body };
   }
 
@@ -403,10 +413,11 @@ export function renderMergedIntakeMessage(
     actions.push(...doseSessionActions(profileId, p.slot, date, pending, true));
   }
 
-  const title =
-    pendingTotal === 0
-      ? `💊 ${labels.join(" & ")} ${noun} — all done ✅`
-      : `💊 ${labels.join(" & ")} ${noun}`;
+  const title = formatMessageLine({
+    glyph: "💊",
+    head: `${labels.join(" & ")} ${noun}`,
+    notes: [pendingTotal === 0 ? "all done ✅" : null],
+  });
   return {
     title,
     body: sections.join("\n\n"),

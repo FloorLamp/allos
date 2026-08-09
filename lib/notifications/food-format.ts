@@ -10,7 +10,8 @@
 import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
-import { bold, joinBody, rich, richFrom, type MessageBody } from "./rich-text";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
+import { formatMessageLine, formatRichMessageLine } from "./message-line";
 import {
   DEFAULT_PROTEIN_PRESET_GRAMS,
   isProteinNudgeKey,
@@ -150,17 +151,39 @@ export function foodOptInCallbackData(
 // isn't a problem — and below the band is a neutral marker: no nag, no praise. The
 // classification itself is lib/protein's `proteinTodayStatus`, shared with every other
 // surface that states a conclusion (#221).
+// The protein line's qualifiers, declared once for both renderings: the goal band, then
+// the status words when there are any (the below-band case is deliberately NEUTRAL —
+// a marker, no nag, no praise, #1710/#992).
+function proteinLineNotes(parts: ProteinNudgeLineParts): (string | null)[] {
+  return [`goal ${parts.band}`, parts.statusWords];
+}
+
+// The food-nudge protein status line as PLAIN text (issue #974/#1710/#1822 item 4):
+// "🍗 Protein: 36 g+ so far — goal 80–105 g". The channels that carry no emphasis get
+// this; it is the same MessageLine as the emphasized body above, which is what keeps
+// #221's one-conclusion-one-set-of-words true across channels.
+export function proteinNudgeLine(parts: ProteinNudgeLineParts): string {
+  return formatMessageLine({
+    glyph: parts.emoji,
+    head: `Protein: ${parts.amount} so far`,
+    notes: proteinLineNotes(parts),
+  });
+}
+
 function proteinBody(
   parts: ProteinNudgeLineParts | string | null | undefined
 ): MessageBody | null {
   if (!parts) return null;
   // No goal band ⇒ no conclusion to state, and none is invented.
   if (typeof parts === "string") return parts;
-  const tail = parts.statusWords ? ` — ${parts.statusWords}` : "";
-  // The joiner is the plain line's (#1822 item 4), with the figure emphasized: the
-  // parts already separate amount/band/status, so the two renderings can only differ
-  // in emphasis, never in what they claim.
-  return rich`${parts.emoji} Protein: ${bold(parts.amount)} so far · goal ${parts.band}${tail}`;
+  // The ONE grammar, with the figure emphasized (#1822 item 4 / #2391): the two
+  // renderings read the SAME declared parts, so they can only differ in emphasis —
+  // never in what they claim or how they are punctuated.
+  return formatRichMessageLine({
+    glyph: parts.emoji,
+    head: ["Protein: ", bold(parts.amount), " so far"],
+    notes: proteinLineNotes(parts),
+  });
 }
 
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.

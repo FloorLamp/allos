@@ -15,6 +15,7 @@ import {
   foodLessCallbackData,
   foodOptInCallbackData,
   countVisibleFoodButtons,
+  proteinNudgeLine,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
 import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
@@ -29,7 +30,6 @@ import { plainBody } from "@/lib/notifications/rich-text";
 import { correctionBursts } from "@/lib/correction-time";
 import { correctionBodyStatement } from "@/lib/notifications/correction-rows";
 import {
-  proteinTodayNudgeLine,
   proteinTodayNudgeParts,
   proteinIntake,
   proteinTarget,
@@ -114,10 +114,12 @@ describe("renderFoodNudge", () => {
     });
     // The nudge renders the SAME line lib/protein composes for any other surface —
     // one classification, one set of words (#221).
-    expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
+    expect(plainBody(msg.body)).toContain(
+      proteinNudgeLine(proteinTodayNudgeParts(t))
+    );
     // #1822 item 4: the same facts, unstacked — the floor marker is the trailing "+".
     expect(plainBody(msg.body)).toContain(
-      "Protein: 55 g+ so far · goal 95–130 g"
+      "Protein: 55 g+ so far — goal 95–130 g"
     );
     expect(plainBody(msg.body)).not.toContain("at least");
     expect(String(Math.round(t.todayGrams))).toBe("55");

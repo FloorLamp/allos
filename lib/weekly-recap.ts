@@ -46,6 +46,11 @@ import { weekWindow } from "./week-window";
 import { sriPresentation } from "./sleep-regularity";
 import type { WeekMode, WeekStart, WeightUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
+import {
+  formatMessageLine,
+  messageLineQualifiers,
+  type MessageLine,
+} from "./notifications/message-line";
 
 // The seven-day window ending on `today` (inclusive) plus the preceding seven-day
 // comparison window. All bounds are YYYY-MM-DD strings in the profile's timezone.
@@ -290,7 +295,12 @@ export interface RecapLine {
   // counts behind an adherence percentage, the weekend shift behind an SRI. Kept
   // separate from `comparison` so the two can never be confused for each other
   // again.
-  note?: string;
+  //
+  // A LIST since #2391, matching the shared message-line shape: the adherence line
+  // carries two independent facts ("12/14 doses", "1 skipped") and used to punctuate
+  // the second one itself. Nullish entries are dropped, so a conditional fact may be
+  // passed positionally.
+  notes?: readonly (string | null | undefined)[];
   // True when `value` is a complete, self-labeled line and the row label must not
   // be printed in front of it — the shared intake delta line (#1505) already leads
   // with its own "Missed:"/"Resumed:" prefixes, and nesting it under a second label
@@ -299,14 +309,27 @@ export interface RecapLine {
   bare?: boolean;
 }
 
-// The parenthetical a surface prints after a line's value: the non-comparative note
-// first, then the declared comparison, "·"-separated. ONE composition for the card
-// and the notification (#221) — neither may reassemble the pieces itself.
+// A recap line in the shared message-line shape (#2391). ONE place decides which parts
+// a recap line has and in what order; the notification formats it, the card lays out its
+// qualifiers, and the narrative prompt reads the same parts. The row label folds into the
+// head — which is exactly what makes "label: value — note · comparison" and the digest's
+// "glyph title — because · dueText" the same grammar.
+//
+// A BARE line is already self-labelled (the shared intake delta line, #1505) and its head
+// is its value alone; printing the row label in front of it labelled it twice (#1935).
+export function recapMessageLine(line: RecapLine): MessageLine {
+  return {
+    head: line.bare ? line.value : `${line.label}: ${line.value}`,
+    notes: line.notes,
+    comparison: line.comparison.kind === "none" ? null : line.comparison.text,
+  };
+}
+
+// The annotation a CARD prints after a line's value: the line's qualifiers, in the one
+// declared order. ONE composition for the card and the notification (#221) — neither may
+// reassemble the pieces itself.
 export function recapLineAnnotation(line: RecapLine): string | undefined {
-  const parts = [
-    line.note,
-    line.comparison.kind === "none" ? undefined : line.comparison.text,
-  ].filter((p): p is string => !!p);
+  const parts = messageLineQualifiers(recapMessageLine(line));
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
@@ -406,7 +429,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "PRs",
       value: `${input.prLabels.length}`,
       comparison: NO_COMPARISON,
-      note: extra > 0 ? `${shown} +${extra} more` : shown,
+      notes: [extra > 0 ? `${shown} +${extra} more` : shown],
     });
   }
 
@@ -434,7 +457,6 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   if (input.adherence && input.adherence.due > 0) {
     const { taken, skipped, due } = input.adherence;
     const intended = due - skipped;
-    const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
     if (intended > 0) {
       const p = Math.round((taken / intended) * 100);
       lines.push({
@@ -442,7 +464,11 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         label: "Adherence",
         value: `${p}%`,
         comparison: NO_COMPARISON,
-        note: `${taken}/${intended} doses${skipNote}`,
+        // Two independent facts, declared as two notes: the grammar punctuates them.
+        notes: [
+          `${taken}/${intended} doses`,
+          skipped > 0 ? `${skipped} skipped` : null,
+        ],
       });
     } else {
       // Every due dose was skipped — no percentage to report, just the count.
@@ -451,7 +477,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         label: "Adherence",
         value: `${skipped} skipped`,
         comparison: NO_COMPARISON,
-        note: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
+        notes: [`${skipped} dose${skipped === 1 ? "" : "s"} skipped`],
       });
     }
   }
@@ -487,7 +513,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
               text: `${fmtWeight(prior, wu)} last ${noun}`,
             }
           : NO_COMPARISON,
-      note,
+      notes: [note],
     });
   }
 
@@ -523,7 +549,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "Sleep regularity",
       value: sriPresentation(input.sri).text,
       comparison: NO_COMPARISON,
-      note: shiftH,
+      notes: [shiftH],
     });
   }
 
@@ -555,7 +581,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "Goals reached",
       value: `${input.goalsCompleted.length}`,
       comparison: NO_COMPARISON,
-      note: input.goalsCompleted.slice(0, 3).join(", "),
+      notes: [input.goalsCompleted.slice(0, 3).join(", ")],
     });
   }
 
@@ -667,21 +693,25 @@ export function renderRecapMessage(
   const body = narr
     ? narr
     : recap.lines
-        .map((l) => {
-          const ann = recapLineAnnotation(l);
-          // A bare line is already self-labelled (the shared intake delta line) —
-          // printing the row label in front of it would label it twice (#1935).
-          const head = l.bare ? l.value : `${l.label}: ${l.value}`;
-          return `• ${head}${ann ? ` (${ann})` : ""}`;
-        })
+        // THE DOCUMENTED GRAMMAR, not a parenthesis of its own (#2391/#2389 item 2).
+        // The recap composed with parentheses while the digest moved to declared parts,
+        // so the two system-initiated messages a profile receives were punctuated by
+        // different rules — and only one of them was nesting-proof. A label legitimately
+        // contains parentheses ("Romanian Deadlift (Rep Trap Bar)"), and wrapping an
+        // annotation containing one in another set nested.
+        .map((l) => formatMessageLine({ glyph: "•", ...recapMessageLine(l) }))
         .join("\n");
-  const who = profileName ? ` — ${profileName}` : "";
   // The recap was the only builder that took no deepLinkBase and returned no actions
   // (#1722 item 2) — a week's summary with nowhere to go and look. Every sibling
   // carries one.
   const base = deepLinkBase.replace(/\/$/, "");
   return {
-    title: `📊 Weekly recap${who}`,
+    // The profile name is a NOTE on the title — a shared chat can carry several.
+    title: formatMessageLine({
+      glyph: "📊",
+      head: "Weekly recap",
+      notes: [profileName],
+    }),
     body: `${recapRangeLabel(recap.start, recap.end)}\n${body}`,
     kind: "weekly-recap",
     ...(base

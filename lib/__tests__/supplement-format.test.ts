@@ -302,8 +302,11 @@ describe("renderWindowMessage", () => {
         adherence: { pct: 50 },
       }),
     ]);
+    // The em dash introduces the FIRST qualifier a line actually has (#2391): the
+    // Magnesium row carries no amount, so its percentage leads the tail instead of
+    // arriving after a `·` with nothing in front of it.
     expect(msg.body).toBe(
-      "🔴 Vitamin D — 2000 IU · with fat · 93%\n• Magnesium · 50%"
+      "🔴 Vitamin D — 2000 IU · with fat · 93%\n• Magnesium — 50%"
     );
     expect(msg.body).not.toContain("🔥");
   });

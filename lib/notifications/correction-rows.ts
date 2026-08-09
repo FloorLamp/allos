@@ -37,6 +37,7 @@ import {
   type CorrectionBurst,
 } from "../correction-time";
 import type { NotificationAction } from "./types";
+import { formatMessageLine } from "./message-line";
 
 // The two callback prefixes one domain's correction affordance uses.
 export interface CorrectionPrefixes {
@@ -144,7 +145,10 @@ export function correctionBodyStatement(
 ): string | null {
   const corrected = bursts.filter((b) => b.corrected);
   if (corrected.length === 0) return null;
-  return `🕐 Recorded: ${corrected.map((b) => burstLabel(b, tz)).join(" · ")}`;
+  return formatMessageLine({
+    glyph: "🕐",
+    head: `Recorded: ${corrected.map((b) => burstLabel(b, tz)).join(" · ")}`,
+  });
 }
 
 // The picker's question. The subject is the burst as the user knows it; the verb is the
@@ -155,7 +159,11 @@ export function correctionPickerTitle(
   burst: CorrectionBurst,
   tz: string
 ): string {
-  return `🕐 ${burstSubject(burst, tz)} — ${verb}?`;
+  return formatMessageLine({
+    glyph: "🕐",
+    head: burstSubject(burst, tz),
+    notes: [`${verb}?`],
+  });
 }
 
 // Is a picker currently OPEN on this keyboard, and on which burst?
