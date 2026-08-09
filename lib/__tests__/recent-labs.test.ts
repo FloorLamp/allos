@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { recentLabHighlights, recentLabStatus } from "@/lib/recent-labs";
+import {
+  recentLabHighlights,
+  recentLabStatus,
+  RECENT_LAB_STALE_DAYS,
+} from "@/lib/recent-labs";
+import { shiftDateStr } from "@/lib/date";
 import { flagLabel, flagTone } from "@/lib/reference-range";
 import type { MedicalRecord } from "@/lib/types";
 
@@ -97,17 +102,19 @@ describe("recentLabHighlights", () => {
     expect(input.map((r) => r.name)).toEqual(["A", "B"]);
   });
 
-  // #1216: the recency floor. Without a `todayStr` no age can be computed, so no
-  // row is claimed stale; with one, a reading older than the year window is flagged
-  // stale (still surfaced — an unresolved abnormal never expires — but labeled).
-  it("flags no row stale when no todayStr is supplied", () => {
+  // #1216: the recency floor, resolved since #2303 by the shared `freshnessState`.
+  // Without a `todayStr` no age can be computed, so the row is `not-applicable` — no
+  // claim either way, where the retired boolean read as fresh. With one, a reading past
+  // the year window is `due` (still surfaced — an unresolved abnormal never expires —
+  // but labeled).
+  it("claims nothing about an undatable row (no todayStr)", () => {
     const rows = recentLabHighlights([
       rec({ name: "Old", date: "2010-01-01" }),
     ]);
-    expect(rows[0].stale).toBe(false);
+    expect(rows[0].freshness).toBe("not-applicable");
   });
 
-  it("marks a reading older than the year floor as stale", () => {
+  it("marks a reading older than the year floor due", () => {
     const today = "2026-07-15";
     const rows = recentLabHighlights(
       [
@@ -117,9 +124,25 @@ describe("recentLabHighlights", () => {
       6,
       today
     );
-    const byName = Object.fromEntries(rows.map((r) => [r.name, r.stale]));
-    expect(byName["Fresh"]).toBe(false);
-    expect(byName["Aged"]).toBe(true);
+    const byName = Object.fromEntries(rows.map((r) => [r.name, r.freshness]));
+    expect(byName["Fresh"]).toBe("current");
+    expect(byName["Aged"]).toBe("due");
+  });
+
+  // The migration onto the shared decision must not move the boundary: stale STRICTLY
+  // after the floor, so a reading exactly a year old is still current.
+  it("keeps the floor boundary — exactly at the floor is current, one day past is due", () => {
+    const today = "2026-07-15";
+    const at = shiftDateStr(today, -RECENT_LAB_STALE_DAYS);
+    const past = shiftDateStr(today, -(RECENT_LAB_STALE_DAYS + 1));
+    const rows = recentLabHighlights(
+      [rec({ name: "At", date: at }), rec({ name: "Past", date: past })],
+      6,
+      today
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.name, r.freshness]));
+    expect(byName["At"]).toBe("current");
+    expect(byName["Past"]).toBe("due");
   });
 
   it("keeps a stale flagged marker in the list, labeled not hidden", () => {
@@ -130,7 +153,7 @@ describe("recentLabHighlights", () => {
       today
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].stale).toBe(true);
+    expect(rows[0].freshness).toBe("due");
   });
 });
 

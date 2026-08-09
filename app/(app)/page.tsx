@@ -34,8 +34,7 @@ import {
   getMoodOnDate,
   getProteinToday,
   getMetricDailyTotals,
-  getLatestBiomarkerTrendPoints,
-  getLatestBodyMetricDailyPoints,
+  getVitalsLatestModel,
   getNavRelevance,
   getSituationalDueCount,
   getDerivedSituationLines,
@@ -54,7 +53,6 @@ import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
-import { latestTrend } from "@/lib/latest-trend";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
@@ -157,9 +155,7 @@ import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
 import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
 import StepsTodayWidget from "@/components/dashboard/StepsTodayWidget";
-import VitalsLatestWidget, {
-  type VitalsLatestModel,
-} from "@/components/dashboard/VitalsLatestWidget";
+import VitalsLatestWidget from "@/components/dashboard/VitalsLatestWidget";
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
@@ -657,48 +653,13 @@ export default async function Dashboard() {
     stepsRows.length > 0 ? summarizeStepsToday(stepsRows, on) : null;
 
   // vitals-latest (#1221): the latest BP + resting HR readings with a trend arrow, over
-  // the SAME series queries behind Trends → Vitals (getBiomarkerSeries for BP,
-  // getBodyMetricDailySeries for resting HR), each reduced via the shared latestTrend
-  // helper (#221). Null components self-omit; an all-null model is the data-aware CTA.
-  let vitalsModel: VitalsLatestModel | null = null;
-  if (has("vitals-latest")) {
-    // The card reads only the last two points (latestTrend), so pull just the trend
-    // tail rather than the whole BP/resting-HR history (#1367): getLatestBiomarkerTrendPoints
-    // and getLatestBodyMetricDailyPoints return the exact same two points the full
-    // series' tail would, without materializing years of synced readings per render.
-    const systolic = getLatestBiomarkerTrendPoints(
-      profile.id,
-      "Blood Pressure Systolic"
-    ).map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
-    const diastolic = getLatestBiomarkerTrendPoints(
-      profile.id,
-      "Blood Pressure Diastolic"
-    ).map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
-    const restingHrSeries = getLatestBodyMetricDailyPoints(
-      profile.id,
-      "resting_hr"
-    ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
-    const sysLatest = latestTrend(systolic);
-    const diaLatest = latestTrend(diastolic);
-    const hrLatest = latestTrend(restingHrSeries);
-    const bp =
-      sysLatest && diaLatest
-        ? {
-            systolic: sysLatest.value,
-            diastolic: diaLatest.value,
-            date: sysLatest.date,
-            direction: sysLatest.direction,
-          }
-        : null;
-    const restingHr = hrLatest
-      ? {
-          value: hrLatest.value,
-          date: hrLatest.date,
-          direction: hrLatest.direction,
-        }
-      : null;
-    vitalsModel = bp || restingHr ? { bp, restingHr } : null;
-  }
+  // the SAME series queries behind Trends → Vitals, each reduced via the shared
+  // latestTrend helper and framed by the per-quantity presentation floor (#2303) — the
+  // whole model is `getVitalsLatestModel` (#221), which the DB tier pins end to end.
+  // Null components self-omit; an all-null model is the data-aware CTA.
+  const vitalsModel = has("vitals-latest")
+    ? getVitalsLatestModel(profile.id, on)
+    : null;
 
   // cycle-phase (#1221): "Cycle day N · <phase>" over cycleDayOnDate + cyclePhaseOnDate
   // (lib/cycle.ts, #221). Relevance-gated in the registry. Since #1679 the tile also
@@ -1008,7 +969,9 @@ export default async function Dashboard() {
           <StepsTodayWidget summary={stepsSummary} />
         ) : null;
       case "vitals-latest":
-        return vitalsModel ? <VitalsLatestWidget model={vitalsModel} /> : null;
+        return vitalsModel ? (
+          <VitalsLatestWidget model={vitalsModel} today={on} />
+        ) : null;
       case "cycle-phase":
         return cycleControl ? (
           <CyclePhaseWidget

@@ -96,7 +96,13 @@ exists** (#1892). Latest vitals keeps a small **"Log reading"** action in its
 populated state, opening the same measurements quick-entry its empty CTA opens:
 the affordance used to vanish the moment the first reading landed, so the person
 who logs blood pressure weekly — the one who actually opens that card — had
-none. Biomarker stars remain available on Biomarkers and Trends as personal
+none. Both glance cards carry a **recency floor**: Recent labs age-labels a result
+older than a year, and Latest vitals does the same for a blood pressure older than
+six months or a resting heart rate older than two weeks — the value stays exactly
+where it was, the date line becomes an age ("4 years ago") in amber, and the trend
+arrow drops, because an arrow is a claim about now. Readings taken in one sitting
+(three sequential cuff readings at a clinic visit) never draw an arrow between
+each other at any age. Biomarker stars remain available on Biomarkers and Trends as personal
 pins—what someone wants to follow even while normal—and are deliberately
 separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
 standard, sleep regularity, biological age, and biomarkers in optimal range as

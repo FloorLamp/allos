@@ -8,7 +8,11 @@ import {
 } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 import { readingDetailHref, type AppRoute } from "./hrefs";
-import { daysBetweenDateStr } from "./date";
+import {
+  freshnessAgeDays,
+  freshnessState,
+  type FreshnessState,
+} from "./freshness";
 
 // Recency floor (#1216): a reading older than this many days is "stale" — still
 // worth surfacing (a latest-per-marker highlight, and an unresolved abnormal never
@@ -32,10 +36,13 @@ export interface RecentLabRow {
   flag: MedicalFlag | null;
   date: string;
   href: AppRoute;
-  // True when the reading is older than RECENT_LAB_STALE_DAYS relative to the
-  // caller's `todayStr` — the render layer age-labels it distinctly. False when no
-  // `todayStr` was supplied (a caller that can't compute age gets no false claim).
-  stale: boolean;
+  // The reading's presentation verdict against RECENT_LAB_STALE_DAYS, resolved by the
+  // shared `freshnessState` (#2303 — this floor predates lib/freshness.ts and used to
+  // compare by hand here). `due` is the one the render layer age-labels distinctly.
+  // `not-applicable` covers an undatable reading and a caller that supplied no
+  // `todayStr`: no age is knowable, so no claim either way — and never a fold into
+  // "fresh", which is what the boolean did.
+  freshness: FreshnessState;
 }
 
 // The visible text label a compact lab row pairs with its flag color — the
@@ -90,8 +97,7 @@ export function recentLabHighlights(
     .slice(0, limit)
     .map((r) => {
       const name = r.canonical_name?.trim() || r.name;
-      const age =
-        todayStr != null ? daysBetweenDateStr(r.date, todayStr) : null;
+      const age = freshnessAgeDays(r.date, todayStr);
       return {
         name,
         value: r.value,
@@ -99,7 +105,7 @@ export function recentLabHighlights(
         flag: r.flag,
         date: r.date,
         href: readingDetailHref(r.canonical_name, r.name),
-        stale: age != null && age > RECENT_LAB_STALE_DAYS,
+        freshness: freshnessState(age, RECENT_LAB_STALE_DAYS),
       };
     });
 }
