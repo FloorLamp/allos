@@ -23,7 +23,10 @@ beforeEach(() => {
   revalidate.mockClear();
   // An instance WITH channel technology configured, so the #2362 instance gate is open
   // and the unroutable case below is reachable at all.
-  setTelegramBotConfig({ telegramBotToken: "bot-for-tests", telegramMode: "poll" });
+  setTelegramBotConfig({
+    telegramBotToken: "bot-for-tests",
+    telegramMode: "poll",
+  });
 });
 
 const revalidatedHousehold = () =>
@@ -78,9 +81,9 @@ describe("dismissMemberSetupAction (#2173)", () => {
     );
 
     // Nothing silenced: the row is still offered under its own key.
-    expect(householdSetupForProfile(member.id, today(member.id))?.dedupeKey).toBe(
-      row.dedupeKey
-    );
+    expect(
+      householdSetupForProfile(member.id, today(member.id))?.dedupeKey
+    ).toBe(row.dedupeKey);
     // …and the page re-renders against the current set rather than sitting there.
     expect(revalidatedHousehold()).toBe(true);
   });

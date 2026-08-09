@@ -288,7 +288,9 @@ describe("the four-profile household's setup rows (#2173)", () => {
       // instance-wide, so an earlier test's webhook on an earlier profile would still
       // count, correctly.
       setTelegramBotConfig({ telegramBotToken: "", telegramMode: "poll" });
-      db.prepare("DELETE FROM profile_settings WHERE key LIKE 'ha_notify_%'").run();
+      db.prepare(
+        "DELETE FROM profile_settings WHERE key LIKE 'ha_notify_%'"
+      ).run();
       expect(instanceHasAnyChannel()).toBe(false);
     });
 

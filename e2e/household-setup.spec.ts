@@ -60,12 +60,14 @@ function hasHomeAssistantWebhook(profileId: number): boolean {
   try {
     db.pragma("busy_timeout = 5000");
     return (
-      db
-        .prepare(
-          "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'ha_notify_enabled'"
-        )
-        .get(profileId) as { value?: string } | undefined
-    )?.value === "1";
+      (
+        db
+          .prepare(
+            "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'ha_notify_enabled'"
+          )
+          .get(profileId) as { value?: string } | undefined
+      )?.value === "1"
+    );
   } finally {
     db.close();
   }

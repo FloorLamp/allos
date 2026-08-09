@@ -243,13 +243,13 @@ accessible set once, already a class-2 rendered aggregate — owns it.
 table. Each is an existing query asked per member (`lib/queries/household-setup.ts`
 composes them; `lib/household-setup.ts` decides and phrases):
 
-| Check                   | Fires when                                                                                                   | CTA                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Check                   | Fires when                                                                                                                                               | CTA                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `unroutable`            | the instance has ANY channel configured AND the profile WOULD send something AND either the edge set is empty or no login in it has a configured channel | the grant UI (`/settings/family`) or the channel form (`/settings/notifications`) |
-| `never-onboarded`       | no `onboarding_state` row AND **thin presence** (not one onboarding data domain has a first value)           | that member's `/onboarding`                                                       |
-| `undosed-items`         | active, non-`may` items with zero un-retired dose rows — scheduled-shaped and never due                      | one item → its own edit form; several → the kind's surface                        |
-| `preventive-unactioned` | the preventive planner's own outstanding set: **overdue**, unbooked, unsuppressed                            | that member's `/upcoming`                                                         |
-| `roster-inactive`       | the whole roster is inactive and some of it is `must`/`should`                                               | **none** — SUGGEST-only                                                           |
+| `never-onboarded`       | no `onboarding_state` row AND **thin presence** (not one onboarding data domain has a first value)                                                       | that member's `/onboarding`                                                       |
+| `undosed-items`         | active, non-`may` items with zero un-retired dose rows — scheduled-shaped and never due                                                                  | one item → its own edit form; several → the kind's surface                        |
+| `preventive-unactioned` | the preventive planner's own outstanding set: **overdue**, unbooked, unsuppressed                                                                        | that member's `/upcoming`                                                         |
+| `roster-inactive`       | the whole roster is inactive and some of it is `must`/`should`                                                                                           | **none** — SUGGEST-only                                                           |
 
 Seven properties are load-bearing:
 

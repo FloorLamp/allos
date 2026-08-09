@@ -36,7 +36,10 @@ const NO_ROUTE: RoutingFacts = {
 };
 
 // A fresh install: no Telegram bot, no Web Push, no Home Assistant, no email.
-const BARE_INSTANCE: RoutingFacts = { ...NO_ROUTE, instanceHasAnyChannel: false };
+const BARE_INSTANCE: RoutingFacts = {
+  ...NO_ROUTE,
+  instanceHasAnyChannel: false,
+};
 
 function facts(over: Partial<HouseholdSetupFacts> = {}): HouseholdSetupFacts {
   return {
@@ -89,9 +92,9 @@ describe("the unroutable predicate (#2173)", () => {
     const f = facts({
       sendSources: { ...NO_SENDS, scheduledSupplements: 1 },
       routing: {
+        ...NO_ROUTE,
         managingLoginIds: [3, 7],
         channelledLoginIds: [7],
-        profileChannelConfigured: false,
       },
     });
     expect(unroutable(f)).toBe(null);
@@ -155,12 +158,14 @@ describe("the INSTANCE gate on unroutable (#2362 ruling)", () => {
   const SENDS: SendSourceFacts = { ...NO_SENDS, scheduledMedications: 3 };
 
   it("is silent on a bare instance — a fresh install warns about nothing on day one", () => {
-    expect(unroutable(facts({ sendSources: SENDS, routing: BARE_INSTANCE }))).toBe(
-      null
-    );
+    expect(
+      unroutable(facts({ sendSources: SENDS, routing: BARE_INSTANCE }))
+    ).toBe(null);
     // …and the row it would have carried is gone with it, not merely re-worded.
     expect(
-      detectHouseholdSetup(facts({ sendSources: SENDS, routing: BARE_INSTANCE }))
+      detectHouseholdSetup(
+        facts({ sendSources: SENDS, routing: BARE_INSTANCE })
+      )
     ).toBe(null);
   });
 
