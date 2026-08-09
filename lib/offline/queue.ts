@@ -126,6 +126,9 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "medication-refill": arguedExclusion(
     "A refill is stock arithmetic against the server's current supply plus the #1893 recency confirm — an increment applied to a total that may have moved, the same class as the excluded food '−' decrement, not a capture of raw fields."
   ),
+  "food-usual": arguedExclusion(
+    "Declared idempotent, and still excluded for the period-lifecycle reason (#2380): the offer is rendered from server state — the habitual set MINUS what that window already holds — and its write core re-derives that set to refuse a stale tap. Offline neither half is available: the capture would be a list of group keys whose justification expired, and the underlying food_log counter is ADDITIVE, so replaying it against a window logged from another device or the Telegram button double-logs a breakfast with no offer ever having stood. The single-serving taps underneath it queue as they always did, so nothing is unreachable offline — only the shortcut is.",
+  ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
   ),

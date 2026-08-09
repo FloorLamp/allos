@@ -46,14 +46,17 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
+import { usualFoodOffer } from "@/lib/food-regularity";
 import {
   deleteFoodLogEvent,
   logFoodServing,
+  logUsualFood,
   undoFoodServing,
   updateFoodLogEvent,
   type FoodEventDeleteResult,
   type FoodEventEditResult,
   type FoodLogResult,
+  type UsualFoodResult,
 } from "./actions";
 import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
 
@@ -75,6 +78,16 @@ type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 // triggers would otherwise reorder the list under the user's finger — jarring right
 // where they just tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
 // readable on a narrow phone without leaving the page.
+
+// "Berries", "Berries and Fermented foods", "Berries, Eggs and Fermented foods" — the
+// group names a "log my usual" control names OUT LOUD, in its label and in the toast
+// that answers it (#2380). Plain English on purpose: the label has to be readable as a
+// promise of what the tap writes, which is also why the two never diverge — the button
+// and its answer format the same list.
+function namesPhrase(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
 
 const TIER_ORDER: FoodGroupTier[] = ["encourage", "neutral", "limit"];
 const TIER_LABEL: Record<FoodGroupTier, string> = {
@@ -189,6 +202,7 @@ export default function FoodLogBar({
   groupsBySlot,
   proteinRankBySlot,
   excludedGroups,
+  usualBySlot,
   slot,
   slotBoundaries,
   eatingTimeOptions = [],
@@ -211,6 +225,12 @@ export default function FoodLogBar({
   // Profile-scoped food groups excluded from suggestions. Edited in-place through
   // the modal rather than navigating away from the meal being logged.
   excludedGroups: string[];
+  // The groups this profile logs in each window nearly every time it logs that window
+  // at all (#2380) — the HABITUAL set, share-descending, cap-direction groups already
+  // removed server-side. A window under the declared gate is an empty list, which
+  // renders as nothing: silence, not a hedge. Optional and defaulted, so a surface that
+  // has no use for the shortcut (the global quick-entry sheet) simply omits it.
+  usualBySlot?: Record<FoodSlot, string[]>;
   // The profile's current food window (#950), derived server-side from the same
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
@@ -292,6 +312,14 @@ export default function FoodLogBar({
   // this classification exists for — never raises a confirm.
   const ledger = useOptimisticLedger<{ day: number; meal: number }>(
     "food-serving"
+  );
+  // The "log my usual <window>" shortcut (#2380) is its OWN affordance, not a batch of
+  // serving taps: it is idempotent (its contents are the habitual groups this window
+  // still has nothing logged for, so a second tap has nothing to offer) and answered
+  // from its typed outcome, because a stale offer must refuse rather than confirm.
+  // A separate ledger so its cooldown never absorbs a real "+" beside it.
+  const usualLedger = useOptimisticLedger<Record<string, ServingCounts>>(
+    "food-usual"
   );
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
@@ -871,6 +899,116 @@ export default function FoodLogBar({
     });
   }
 
+  // ---- "Log my usual <window>" (#2380) ----
+
+  // WHAT THE SHORTCUT WOULD WRITE, from the same pure rule the server's offer and the
+  // write core run: the habitual groups this window still has nothing logged for,
+  // and only while that is at least FOOD_USUAL_MIN_GROUPS of them — below that the
+  // ranked row underneath is already one tap and a second control would only be more
+  // to read. Empty means the offer is not rendered at all: no habit, nothing already
+  // faster, nothing to say.
+  //
+  // Live off the SAME optimistic counts the rows use, so tapping the shortcut (or the
+  // rows one by one) makes it disappear on the same tap rather than a render later.
+  // Today only: the offer is a shortcut for the day being lived, never a bulk backfill
+  // of days nobody remembers — the ledger is where regularity comes from.
+  const usualOffer = useMemo(
+    () =>
+      activeDate === today
+        ? usualFoodOffer(
+            usualBySlot?.[activeSlot] ?? [],
+            new Set(
+              Object.keys(slotCounts).filter(
+                (slug) => (slotCounts[slug] ?? 0) > 0
+              )
+            )
+          )
+        : [],
+    [activeDate, today, usualBySlot, activeSlot, slotCounts]
+  );
+  const usualGroups = useMemo(
+    () =>
+      usualOffer
+        .map((slug) => groupsBySlot[activeSlot].find((g) => g.slug === slug))
+        .filter((g): g is FoodGroup => !!g),
+    [usualOffer, groupsBySlot, activeSlot]
+  );
+
+  async function logUsual() {
+    const slugs = usualGroups.map((g) => g.slug);
+    if (slugs.length === 0) return;
+    const window = activeSlot;
+    const before: Record<string, ServingCounts> = Object.fromEntries(
+      slugs.map((slug) => [
+        slug,
+        {
+          day: counts[slug] ?? 0,
+          meal: slotCountsByDate[activeDate]?.[window]?.[slug] ?? 0,
+        },
+      ])
+    );
+    const commit = (next: Record<string, ServingCounts>) => {
+      for (const [slug, value] of Object.entries(next)) {
+        setCount(slug, () => value.day);
+        setSlotCount(window, slug, () => value.meal);
+      }
+    };
+    await usualLedger.tap<UsualFoodResult>({
+      from: before,
+      optimistic: Object.fromEntries(
+        slugs.map((slug) => [
+          slug,
+          { day: before[slug].day + 1, meal: before[slug].meal + 1 },
+        ])
+      ),
+      commit,
+      write: async () => {
+        const fd = new FormData();
+        fd.set("meal_slot", window);
+        // The keys the BUTTON named. The core intersects them with the offer it
+        // re-derives from fresh state, so this list is an upper bound on the write and
+        // never an instruction to write outside the offer that currently stands.
+        fd.set("groups", slugs.join(","));
+        return logUsualFood(fd);
+      },
+      settle: (result) => {
+        if (!result.ok) {
+          // The offer went stale between render and tap (logged from another device,
+          // from the Telegram button). Answered from the typed outcome — never
+          // confirmed unconditionally — and the optimistic bump rolls back.
+          toast(result.error || "Couldn't log those servings — try again.", {
+            tone: "error",
+          });
+          return { kind: "rollback" };
+        }
+        toast(
+          `Logged ${namesPhrase(
+            result.groups.map(
+              (g) =>
+                usualGroups.find((group) => group.slug === g.groupKey)?.name ??
+                g.groupKey
+            )
+          )}.`
+        );
+        // Adopt the server's authoritative figures for every group it actually wrote —
+        // which may be FEWER than the button named, if part of the offer expired.
+        // Groups it did not write keep their pre-tap counts, so the display matches
+        // what the database now holds rather than what the tap guessed (#748 item 2).
+        const adopted: Record<string, ServingCounts> = { ...before };
+        for (const g of result.groups)
+          adopted[g.groupKey] = { day: g.servings, meal: g.mealServings };
+        return { kind: "adopt", value: adopted };
+      },
+      onError: () => {
+        // Online-only by declaration (lib/offline/queue.ts): the offer's justification
+        // is server state, and an additive replay could double-log a window. The
+        // single-serving rows beside it still queue, so nothing is unreachable.
+        toast("Couldn't log those servings — try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
+  }
+
   function toggleDetail(slug: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -1248,6 +1386,43 @@ export default function FoodLogBar({
         )}
         <section data-testid="food-quick-log">
           <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
+          {/* The regularity shortcut (#2380). Present only when the ledger says this
+              window has a habit AND at least two of it are still unlogged today — one
+              group is already one tap on the row below, so the offer would cost more to
+              read than it saves. The label NAMES every group it will write, and both it
+              and the write core derive that list from the same rule, so the button
+              cannot promise a write the server would not perform. It is an OFFER: the
+              user's tap is the write, always. */}
+          {usualGroups.length > 0 && (
+            <button
+              type="button"
+              data-testid="food-usual-offer"
+              data-groups={usualGroups.map((g) => g.slug).join(",")}
+              aria-label={`Log your usual ${activeSlot}: ${namesPhrase(
+                usualGroups.map((g) => g.name)
+              )}`}
+              title={`One tap logs the ${usualGroups.length} servings you log most ${activeSlot.toLowerCase()}s`}
+              disabled={usualLedger.blocked()}
+              onClick={() => void logUsual()}
+              className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+            >
+              <IconPlus
+                className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
+                stroke={2}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Your usual {activeSlot}
+                </span>
+                <span
+                  data-testid="food-usual-names"
+                  className="block truncate text-xs text-slate-600 dark:text-slate-300"
+                >
+                  {namesPhrase(usualGroups.map((g) => g.name))}
+                </span>
+              </span>
+            </button>
+          )}
           {statingTime && (
             <div
               data-testid="food-eating-time"

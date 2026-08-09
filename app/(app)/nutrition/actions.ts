@@ -12,6 +12,7 @@ import {
   updateFoodLogEventCore,
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
+import { logUsualFoodCore } from "@/lib/food-usual-write";
 import {
   judgeEatenAt,
   parseEatingTimeChoice,
@@ -179,6 +180,49 @@ export async function undoFoodServing(
       ? { mealServings: outcome.mealServings }
       : {}),
   };
+}
+
+// ---- "Log my usual <window>" (issue #2380) ----
+
+// What the one-tap usual offer answers with: the groups it ACTUALLY logged, each with
+// the server's authoritative day + window counts, so the bar adopts server truth for
+// every row it optimistically bumped. `ok: false` covers the stale-offer case — the
+// tap is answered from its typed outcome and never confirmed unconditionally.
+export type UsualFoodResult =
+  | {
+      ok: true;
+      window: FoodSlot;
+      groups: { groupKey: string; servings: number; mealServings: number }[];
+    }
+  | { ok: false; error: string };
+
+// Log one serving of each still-offered "usual" group into a meal window, on the
+// profile's today. The user's tap is the write — the app never logs food on anyone's
+// behalf (#2380) — and the button that raised it named every group in `groups`.
+//
+// The action validates SHAPE only. WHICH groups may land is the core's question, and
+// it re-derives the offer from fresh server state rather than trusting this form, so a
+// forged, replayed or simply stale submission can never write outside the offer that
+// currently stands. There is no `date` field: the core resolves the profile's own
+// today, so this path cannot backfill.
+export async function logUsualFood(
+  formData: FormData
+): Promise<UsualFoodResult> {
+  const { profile } = await requireWriteAccess();
+  const rawWindow = String(formData.get("meal_slot") ?? "").trim();
+  if (!isFoodSlot(rawWindow)) return formError("Unknown meal window.");
+  const named = String(formData.get("groups") ?? "")
+    .split(",")
+    .map((slug) => slug.trim())
+    .filter(Boolean);
+  if (named.length === 0) return formError("Nothing to log.");
+  const outcome = logUsualFoodCore(profile.id, rawWindow, named);
+  if (outcome.kind === "nothing-to-log")
+    return formError("Those servings are already logged.");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
+  return { ok: true, window: outcome.window, groups: outcome.groups };
 }
 
 // The correction's answer (issue #1934): the placement the serving LEFT and the one it
