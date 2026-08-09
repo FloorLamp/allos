@@ -14,6 +14,7 @@ import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { periodLabel } from "@/lib/recap-narrative";
 import type { NarrativePeriod } from "@/lib/recap-narrative";
+import { RECAP_SCALES, parseRecapScale } from "@/lib/recap-scale";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import DateField from "@/components/DateField";
@@ -23,14 +24,12 @@ import { generateForDate, generateRecap } from "./actions";
 // A recap-narrative title from its stored kind + window ("Weekly recap · Jul 3 –
 // Jul 9"). Falls back gracefully when a start date is absent.
 function recapTitle(
-  kind: "week" | "month",
+  kind: NarrativePeriod,
   start: string | null,
   end: string,
   prefs: DisplayFormatPrefs
 ) {
-  const label = periodLabel(kind as NarrativePeriod)
-    .replace("This", "")
-    .trim();
+  const label = periodLabel(kind).replace("This", "").trim();
   const cap = label.charAt(0).toUpperCase() + label.slice(1);
   const window = start
     ? `${formatLongDate(start, prefs)} – ${formatLongDate(end, prefs)}`
@@ -39,7 +38,7 @@ function recapTitle(
 }
 
 // The Trends hub's Insights tab: the hub's DERIVED VIEWS over your own data —
-// the AI daily insights (reusing getInsights), the AI weekly/monthly recap
+// the AI daily insights (reusing getInsights), the AI period recap
 // narratives (issue #20) and their generate forms, the situation-impact analytics
 // (#1297), and — since #1489 — the **Compare** overlay, which used to be a tab of
 // its own.
@@ -105,25 +104,25 @@ export default async function InsightsSection({
                 <div className="label">Period recap</div>
                 <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
                   An AI narrative of your training, adherence, and body-metric
-                  trends over the last week or month, grounded in your recap
-                  data. Uses Claude when <code>ANTHROPIC_API_KEY</code> is set;
-                  otherwise a built-in summary is generated.
+                  trends over the last week, month or quarter, grounded in your
+                  recap data. Uses Claude when <code>ANTHROPIC_API_KEY</code> is
+                  set; otherwise a built-in summary is generated.
                 </p>
               </div>
-              <SubmitButton
-                name="period"
-                value="week"
-                pendingLabel="Generating…"
-              >
-                ✦ Weekly recap
-              </SubmitButton>
-              <SubmitButton
-                name="period"
-                value="month"
-                pendingLabel="Generating…"
-              >
-                ✦ Monthly recap
-              </SubmitButton>
+              {/* One button per recap SCALE, from the registry (#2178) — the
+                  narrative periods and the recap's own cadence are one
+                  vocabulary, so a fourth scale would not need a fourth button
+                  written by hand. */}
+              {RECAP_SCALES.map((sc) => (
+                <SubmitButton
+                  key={sc.scale}
+                  name="period"
+                  value={sc.value}
+                  pendingLabel="Generating…"
+                >
+                  {`✦ ${sc.label}`}
+                </SubmitButton>
+              ))}
             </form>
 
             {recaps.length > 0 && (
@@ -137,7 +136,7 @@ export default async function InsightsSection({
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h3 className="font-semibold text-slate-800 dark:text-slate-100">
                         {recapTitle(
-                          n.kind === "month" ? "month" : "week",
+                          parseRecapScale(n.kind),
                           n.period_start,
                           n.period_end,
                           formatPrefs

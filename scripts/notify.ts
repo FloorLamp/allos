@@ -42,7 +42,6 @@ import { FOOD_NUDGE_WINDOWS } from "../lib/notifications/food-format";
 import {
   DIGEST_MARKER_KEY,
   TICK_SLOT_MARKER_KEYS,
-  WEEKLY_RECAP_MARKER_KEY,
   foodNudgeMarkerKey,
   intakeSlotMarkerKey,
 } from "../lib/notifications/send-markers";
@@ -96,7 +95,7 @@ import {
 import { reconcileProfileMessages } from "../lib/notifications/reconcile";
 import { runInTickScope } from "../lib/tick-cache";
 import { beginNotifyRun } from "../lib/notify-log";
-import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
+import { runRecap } from "../lib/notifications/recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
@@ -892,23 +891,25 @@ async function tickProfile(
     });
   }
 
-  // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapMinute
-  // (this profile's timezone). Own per-profile/day dedup key — the recap only
-  // triggers on its weekday, and the same-day marker prevents a double send, so
-  // next week's same weekday (a new date) fires again. The weekday+time pair
-  // needs no cross-midnight care: slotDue never wraps, so both attempts share
-  // the weekday.
+  // Periodic recap (#32, #2178): the profile's ONE recap slot — the chosen weekday at
+  // weeklyRecapMinute, in this profile's timezone. The weekday+time pair needs no
+  // cross-midnight care: slotDue never wraps, so both attempts share the weekday.
+  //
+  // The tick decides only that the SLOT is open. WHICH scale speaks — weekly, monthly
+  // or quarterly — is `planRecapSend` inside runRecap, over the profile's cadence and
+  // the three period-anchored markers. That is deliberate: a longer period REPLACES the
+  // shorter one's send in this slot, so there is exactly one recap per slot and this
+  // gate must not fork per scale.
   if (
     sched.weeklyRecapDay != null &&
     weekday === sched.weeklyRecapDay &&
-    slotDue(sched.weeklyRecapMinute ?? 9 * 60, minute, tickMinutes) &&
-    getProfileSetting(profile.id, WEEKLY_RECAP_MARKER_KEY) !== date
+    slotDue(sched.weeklyRecapMinute ?? 9 * 60, minute, tickMinutes)
   ) {
     try {
-      const wr = await runWeeklyRecap(profile.id, profile.name, date);
+      const wr = await runRecap(profile.id, profile.name, date);
       if (wr.failed) anyFailed = true;
     } catch (e) {
-      log.error("weekly recap failed", {
+      log.error("recap failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });

@@ -1350,7 +1350,7 @@ A key whose tail is interpolated from a free-form variable is invisible to any
 scan, which is how four namespaces stayed unregistered. Those now mint through
 declared builders in the same module — `foodNudgeMarkerKey`,
 `intakeSlotMarkerKey`, `TICK_SLOT_MARKER_KEYS`, `DIGEST_MARKER_KEY`,
-`WEEKLY_RECAP_MARKER_KEY` — over closed, typed slot vocabularies.
+`recapMarkerKey` — over closed, typed slot vocabularies.
 
 **One cadence decision, four planners.** `planNudgeCadence`
 (`lib/nudge-cadence.ts`) is the pure "given what has already been sent, what is
@@ -1386,14 +1386,14 @@ for **every** `NotificationKind`, what owns its cadence — either
 `nudge-cadence` (naming the adapter module) or one of the exemption owners, each
 with a written reason:
 
-| Owner               | What decides the send                                                                    | Families                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes | refill, preventive, illness-care, followup                |
-| `user-schedule`     | a schedule the user configured; a per-day marker only stops a double send within the day | dose, digest, weekly-recap, workout, food, mood, practice |
-| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder          | escalation, redose                                        |
-| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                          | workout-recap, workout-stale, ease-back, milestone        |
-| `on-demand`         | the user's own request, one second earlier                                               | prn-list, symptom, temp, test                             |
-| `not-dispatched`    | nothing mints the kind                                                                   | upcoming, other                                           |
+| Owner               | What decides the send                                                                                             | Families                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes                          | refill, preventive, illness-care, followup                |
+| `user-schedule`     | a schedule the user configured; a per-day (or per-period) marker only stops the same subject being reported twice | dose, digest, weekly-recap, workout, food, mood, practice |
+| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder                                   | escalation, redose                                        |
+| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                                                   | workout-recap, workout-stale, ease-back, milestone        |
+| `on-demand`         | the user's own request, one second earlier                                                                        | prn-list, symptom, temp, test                             |
+| `not-dispatched`    | nothing mints the kind                                                                                            | upcoming, other                                           |
 
 The exemptions are the point, not an admission. `planNudgeCadence` answers one
 question — when does an **episode** nudge repeat, and when is its marker stale?
@@ -1415,6 +1415,99 @@ the declaration, and a declaration cannot claim an adapter that does not exist.
 A safety kind may never be declared a member: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
 is the one policy that must not move.
+
+## The review has a cadence (#2178)
+
+The periodic review is **one engine at three scales** — weekly, monthly,
+quarterly — with the scale as a **declared axis**, and it **replaces, never
+stacks**.
+
+**The engine.** `buildRecap` (`lib/recap.ts`) is the ONE pure computation. Every
+difference between a weekly, a monthly and a quarterly recap is a row in
+`RECAP_SCALES` (`lib/recap-scale.ts`) — the period arithmetic, the send marker,
+the narrative kind, the nouns the copy speaks, the gather bound — plus a column
+in `RECAP_LINE_MODEL`, where **every line declares which scales it speaks at and
+why**. `buildRecap` never branches on the scale; it resolves the declared period
+and emits the lines whose declared scale set contains it. Adding a fourth length
+is a row and a column, not a code path. The DB gather
+(`lib/notifications/recap-data.ts`) reads the same declaration and **skips the
+queries whose line does not speak at this scale**, so the registry is
+load-bearing for cost as well as for content.
+
+**The period model.** `PeriodComparison` is the typed "this period vs the
+immediately prior same-shaped period" #2166 asked for. **Months and quarters are
+always calendar** — `week_mode` defines only weeks, and no rolling-month
+convention is invented. Weeks still go through `resolveRecapWindow`, so #223's
+"this week matches the routine counters" and #1021's completed-week send are
+byte-for-byte unchanged.
+
+**The inclusion test**, generalized from #1935's owner-decided coverage rule: a
+line appears at a scale only if its fact **becomes visible** at that scale, and
+**no scale re-totals the smaller periods**. "You did 47 workouts" is four weekly
+lines summed and handed back with an authority none of them had, so the count
+lines (`workouts`, `adherence`, `zone2`) are declared week-only and the longer
+scales speak **shares, rates and directions** instead — `training-mix`
+(composition + sessions/week), `adherence-pattern` (the weekday/weekend split and
+the drift, which is what a monthly percentage averages away), `weight-trajectory`
+(robust net change, a per-week rate, and the same figure one period back). A line
+that merely still _works_ at a longer scale is not admitted.
+
+**The precedence rule — replace, never stack.** A profile has ONE recap slot: the
+weekday and time it already configured (`notify_recap_day` / `notify_recap_hour`,
+off by default). Every scale arrives in that slot and nowhere else.
+
+> At a recap slot, a scale is **applicable** when it is at or above the profile's
+> chosen cadence, its calendar period has closed, and this slot is the **first**
+> one on or after the day it closed. Exactly one recap is sent: the applicable
+> scale with the **longest** period. The scales it outranks are marked spent for
+> their own period without sending — their news is inside the one that went out,
+> so they are spent, not queued.
+
+`planRecapSend` (`lib/recap-scale.ts`) is that rule, pure and DB-free; the tick
+only decides that the slot is open. On the first slot on or after Jan 1 / Apr 1 /
+Jul 1 / Oct 1 a weekly profile has a week, a month **and** a quarter closed at
+once — the **quarter-end Sunday** — and receives one quarterly recap rather than
+three messages. The "first arrival" clause is what keeps it self-limiting: a
+deploy, or a recap re-enabled in mid-May, never delivers March out of nowhere,
+because March's arrival day is long past.
+
+**Reach and consent.** The attention doctrine (`docs/internals/findings.md`) lets
+the system reduce contact unilaterally and never increase it. Monthly and
+quarterly recaps therefore need **no new consent**: a longer scale can only ever
+_replace_ the send that was already going to happen in a slot the user
+configured. A weekly profile receives exactly one recap per slot (52 a year: 40
+weekly, 8 monthly, 4 quarterly — pinned by
+`lib/__tests__/recap-scale.test.ts`); a monthly or quarterly profile receives
+strictly fewer. Choosing a longer cadence is a contact **reduction**, which is a
+user's to make freely, and the system never moves the setting itself. Running two
+cadences at once is not offered.
+
+**The marker.** `notify_last_recap_<scale>`, minted through `recapMarkerKey` over
+the closed scale union, cadence class `per-period`: the value is the **end date of
+the period the scale last spoke for**, not a send date. That is what retires a
+superseded scale — a quarterly recap advances the week's marker to the week it
+would have reported, so those days are never delivered twice. The old
+`notify_last_weekly_recap` is `legacy` with its residue stated: nothing reads it,
+it is deliberately not migrated, and the changeover costs nothing because the new
+week marker reads as absent and the first recap fires at the profile's normal
+slot — the day it would have fired anyway.
+
+**Settings.** The cadence is `notify_recap_scale`, profile-scoped **content**
+beside the profile-scoped schedule; delivery channels stay login-scoped, per the
+mixed-scope Notifications model. It renders as a third select on the recap row's
+`day-time` control, because it is the same consent as the day and the time: one
+slot, one arrival.
+
+**The dashboard card** follows the setting — the same gather drives card and send
+(#221's identical-numbers invariant), the card on the **in-progress** period and
+the send on the one that **closed**. The persisted widget id stays `weekly-recap`;
+renaming it would silently un-place every saved dashboard layout.
+
+**Not a fourth cadence.** The annual retrospective (#2179) is deliberately absent
+from `RECAP_SCALES` — a profile whose only review arrives every twelve months has
+no review, and a year does not fit in a message. It is a rendered surface with a
+pointer send, and because it would _stack_ beside the chosen cadence it carries
+its own toggle. This registry owns the review; it does not own the retrospective.
 
 ## The tick has a memo of its own (#2118, #2111, #2249, #2283)
 
@@ -2224,7 +2317,7 @@ emphasis stops meaning anything. A stored recap narrative (#421) is prose and ta
 **Channel parity is free and tested.** `plainBody()` of an emphasized line is
 byte-identical to `formatMessageLine` over the same parts, so Web Push, Home Assistant and
 email carry exactly the words they carried before. Every string assertion in
-`lib/__tests__/digest.test.ts` and `lib/__tests__/weekly-recap.test.ts` reads `plainBody`,
+`lib/__tests__/digest.test.ts` and `lib/__tests__/recap.test.ts` reads `plainBody`,
 which makes each one a parity check.
 
 ## The Telegram command vocabulary (#1895)

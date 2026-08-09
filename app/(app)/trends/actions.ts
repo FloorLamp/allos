@@ -9,6 +9,7 @@ import { generateRecapNarrative } from "@/lib/ai-narrative";
 import { withAiLogContext } from "@/lib/ai-log";
 import { dismissFinding, saveNarrative } from "@/lib/queries";
 import type { NarrativePeriod } from "@/lib/recap-narrative";
+import { parseRecapScale } from "@/lib/recap-scale";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -38,7 +39,7 @@ export async function generateForDate(formData: FormData) {
   revalidateRoute("/");
 }
 
-// Generate (or regenerate) the AI weekly/monthly recap narrative and store it for
+// Generate (or regenerate) the AI period recap narrative and store it for
 // the active profile (issue #20). Like the daily insight, the Insights tab is
 // age-gated, so this re-checks the gate on the write path and bounces a direct
 // POST for a restricted profile. The narrative narrates over the same rule-based
@@ -47,8 +48,12 @@ export async function generateForDate(formData: FormData) {
 export async function generateRecap(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
   if (isTrainingRestricted(profile.id)) redirect("/");
-  const raw = String(formData.get("period") ?? "").trim();
-  const period: NarrativePeriod = raw === "month" ? "month" : "week";
+  // The narrative period IS the recap scale (#2178) — parsed through the registry's
+  // own parser, so a fourth scale needs no change here and an unknown value falls back
+  // to `week` rather than being refused.
+  const period: NarrativePeriod = parseRecapScale(
+    String(formData.get("period") ?? "").trim()
+  );
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
     () => generateRecapNarrative(profile.id, period, login.id)

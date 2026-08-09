@@ -580,6 +580,10 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   what: string;
 }[] = [
   {
+    prefix: "notify_last_recap_",
+    what: "profile_settings per-PERIOD send marker (#2178) — the tail is a RecapScale, the value the end date of the period that scale last spoke for. It silences nothing: it records what has already been reported, and the user's own cadence setting is what decides which scales are consulted at all (lib/notifications/send-markers, recapMarkerKey)",
+  },
+  {
     prefix: "notify_last_followup_",
     what: "profile_settings one-shot send marker (lib/followup-nudge)",
   },

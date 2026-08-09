@@ -135,7 +135,7 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
   {
     kind: "weekly-recap",
     cadence: "user-schedule",
-    why: "The same scheduled composition on a weekly grain: the chosen weekday and hour decide it, and `notify_last_weekly_recap` stops a double send within that day. It reports seven days that are already over, so there is no live episode a cadence engine could be spacing sends across.",
+    why: "The same scheduled composition on a periodic grain: the chosen weekday and time decide the SLOT, and `notify_last_recap_<scale>` stops a period being reported twice. It narrates a period that is already over, so there is no live episode a cadence engine could be spacing sends across. #2178 added a second decision INSIDE that slot — which scale (week / month / quarter) speaks — and it is deliberately not the shared planner either: `planRecapSend` (lib/recap-scale.ts) answers 'which of these closed calendar periods claims this one arrival', which is a precedence question over the calendar, not a candidate/freeze/sweep question over live subjects. It can never increase the number of sends, so it moves no contact policy.",
   },
   {
     kind: "workout",

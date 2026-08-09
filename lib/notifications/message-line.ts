@@ -244,7 +244,7 @@ export function formatEmphasizedLine(line: MessageLine): MessageBody {
 // UI strings, chart captions and page copy use both. Inferring scope from the
 // punctuation would sweep all of that into one lowest-common-denominator abstraction and
 // leave the scan full of noise nobody reads. Inferring it from a directory would be
-// wrong in the other direction — `lib/weekly-recap.ts` composes a system-initiated
+// wrong in the other direction — `lib/recap.ts` composes a system-initiated
 // message and does not live under `lib/notifications/`, while half of what does live
 // there is transport, tokens and registries.
 //
@@ -271,8 +271,8 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
       why: "The digest's banded 'what's due' model and the named data-plumbing lines (#1685/#1757), including the title that names the profile.",
     },
     {
-      module: "lib/weekly-recap.ts",
-      why: "The weekly recap message (#32). The second system-initiated message a profile receives, and the surface that had drifted to a parenthesis grammar (#2389) — it is in scope precisely because it is not under lib/notifications/.",
+      module: "lib/recap.ts",
+      why: "The periodic recap message (#32/#2178). The second system-initiated message a profile receives, and the surface that had drifted to a parenthesis grammar (#2389) — it is in scope precisely because it is not under lib/notifications/.",
     },
     {
       module: "lib/notifications/supplement-format.ts",
@@ -304,7 +304,7 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
     },
     {
       module: "lib/nutrition-day.ts",
-      why: "The digest's yesterday nutrition line (#2379) — the homogeneous-tail case, where the head is a section noun and each short nutrient is one note. Registered although it is a domain module, because that is where the line's parts are composed; like lib/weekly-recap.ts it is in scope for what it produces, not for where it lives.",
+      why: "The digest's yesterday nutrition line (#2379) — the homogeneous-tail case, where the head is a section noun and each short nutrient is one note. Registered although it is a domain module, because that is where the line's parts are composed; like lib/recap.ts it is in scope for what it produces, not for where it lives.",
     },
     {
       module: "lib/notifications/workout-recap-format.ts",

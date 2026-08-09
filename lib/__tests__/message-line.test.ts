@@ -358,12 +358,12 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
     why: "tallyLine lists the food groups logged today ('✅ Today: 🥬 Leafy greens ×2 · 🫐 Berries ×1', #1016) — a list of coequal counts about different foods, none qualifying another, with the group names emphasized individually.",
   },
   {
-    module: "lib/weekly-recap.ts",
+    module: "lib/recap.ts",
     includes: "parts.length > 0 ? parts.join(",
     why: "recapLineAnnotation renders the recap CARD's annotation run — a styled <span> beside the value in a dashboard widget, not a message line. It takes its part ORDER from messageLineQualifiers over recapMessageLine, so the card and the Telegram recap can never order or select a line's qualifiers differently (#221); the message itself is composed by formatMessageLine in renderRecapMessage.",
   },
   {
-    module: "lib/weekly-recap.ts",
+    module: "lib/recap.ts",
     includes: "`recovering ",
     why: "A headline CLAUSE, not a line: the headline is a comma-joined phrase ('4 workouts, 2 PRs') and this is one of its parts, where the em dash is ordinary prose punctuation inside a single clause (#837). Nothing here has a head and qualifiers.",
   },

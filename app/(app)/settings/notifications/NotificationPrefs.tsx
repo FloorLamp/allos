@@ -28,6 +28,7 @@ import {
   nextColumnBulkTarget,
   sweepableKinds,
 } from "@/lib/notifications/matrix-bulk";
+import { RECAP_SCALES } from "@/lib/recap-scale";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
 import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
@@ -436,6 +437,7 @@ export default function NotificationPrefs({
     recap_day:
       schedule.weeklyRecapDay == null ? "" : String(schedule.weeklyRecapDay),
     recap_hour: formatNotifyTime(schedule.weeklyRecapMinute ?? 9 * 60),
+    recap_scale: schedule.recapScale,
     milestones_enabled: schedule.milestonesEnabled ? "1" : "0",
     preventive_enabled: schedule.preventiveEnabled ? "1" : "0",
     waking_start_hour: String(schedule.wakingStartHour),
@@ -892,6 +894,31 @@ export default function NotificationPrefs({
 
                   {e.control.type === "day-time" && (
                     <div className="mt-2 flex flex-wrap gap-2">
+                      {/* The CADENCE (#2178). It sits beside the day and time because
+                          it is the same consent: one slot, one arrival. Choosing a
+                          longer period never adds a message — it only decides which
+                          lengths of period may claim this slot, and a longer one
+                          REPLACES the shorter one when both close on the same day. */}
+                      {e.control.scaleField && (
+                        <select
+                          value={values[e.control.scaleField]}
+                          onChange={(ev) =>
+                            set(
+                              (e.control as { scaleField: string }).scaleField,
+                              ev.target.value
+                            )
+                          }
+                          className="input sm:w-40"
+                          aria-label={`${e.label} cadence`}
+                          data-testid={`kind-scale-${e.kind}`}
+                        >
+                          {RECAP_SCALES.map((sc) => (
+                            <option key={sc.scale} value={sc.value}>
+                              {sc.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <select
                         value={values[e.control.dayField]}
                         onChange={(ev) =>

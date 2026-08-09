@@ -23,8 +23,8 @@ import {
   SEND_MARKER_KEYS,
   SEND_MARKER_REGISTRY,
   TICK_SLOT_MARKER_KEYS,
-  WEEKLY_RECAP_MARKER_KEY,
   foodNudgeMarkerKey,
+  recapMarkerKey,
   intakeSlotMarkerKey,
   sendMarkerEntryFor,
 } from "@/lib/notifications/send-markers";
@@ -200,6 +200,15 @@ describe("send-marker registry (#2036)", () => {
     expect(sendMarkerEntryFor("notify_last_supp_PreWorkout")?.key).toBe(
       "notify_last_supp_"
     );
+    // The recap family (#2178) resolves every scale its builder can mint, and its
+    // RETIRED single-key predecessor still resolves to its own legacy entry rather
+    // than being swallowed by the new namespace.
+    expect(sendMarkerEntryFor("notify_last_recap_quarter")?.key).toBe(
+      "notify_last_recap_"
+    );
+    expect(sendMarkerEntryFor("notify_last_weekly_recap")?.key).toBe(
+      "notify_last_weekly_recap"
+    );
     // A fixed key matches EXACTLY: nothing may inherit `notify_last_workout`'s entry.
     expect(sendMarkerEntryFor("notify_last_workout_9")).toBeNull();
     expect(sendMarkerEntryFor("notify_nonsense")).toBeNull();
@@ -213,7 +222,9 @@ describe("send-marker registry (#2036)", () => {
       intakeSlotMarkerKey("PreWorkout"),
       ...Object.values(TICK_SLOT_MARKER_KEYS),
       DIGEST_MARKER_KEY,
-      WEEKLY_RECAP_MARKER_KEY,
+      recapMarkerKey("week"),
+      recapMarkerKey("month"),
+      recapMarkerKey("quarter"),
     ])
       expect(sendMarkerEntryFor(key), key).not.toBeNull();
   });

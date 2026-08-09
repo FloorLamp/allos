@@ -41,6 +41,7 @@
 // now mint through a builder here, over a closed slot union. That is what turns the scan
 // from "checks the literals someone happened to write out" into a real total.
 
+import type { RecapScale } from "../recap-scale";
 import type { FoodNudgeWindow } from "./food-format";
 import type { IntakeSendSlot } from "./supplement-format";
 
@@ -80,6 +81,13 @@ export type SendMarkerCadence =
   | "one-shot"
   /** The value accumulates send dates; the cadence is spent after N of them. */
   | "repeat-n"
+  /**
+   * The value is the END DATE of the PERIOD the signal last spoke for. A newly closed
+   * period re-arms it; the same period can never fire twice however many ticks or
+   * retries see it (#2178). Distinct from `per-day`, whose subject is the day itself:
+   * a per-period marker is a claim about a SPAN of days, and one arrival day is not it.
+   */
+  | "per-period"
   /** Not a dedup marker at all: an instant the next run reads "since" from. */
   | "watermark"
   /** Nothing reads it anymore. */
@@ -281,6 +289,20 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     retention: "None needed (closed vocabulary).",
   },
 
+  {
+    key: "notify_last_recap_",
+    markerClass: "slot-keyed",
+    cadence: "per-period",
+    store: "profile_settings",
+    shape:
+      "`<RecapScale>` — week / month / quarter, the closed cadence union declared in lib/recap-scale.ts and minted ONLY through recapMarkerKey below",
+    value:
+      "the END DATE of the period this scale last spoke for — not a send date (#2178). Equality with the candidate period's end is what makes a scale already-spent, which is also how a SUPERSEDED scale is retired: when a quarterly recap replaces a weekly one, the week's marker is advanced to the week it would have reported, so those days are never delivered twice.",
+    writer:
+      "lib/notifications/recap-data.ts (runRecap), gated by scripts/notify.ts on the profile's one recap slot",
+    retention:
+      "None needed. The vocabulary is closed and declared in code, so a marker cannot outlive its subject, and the stored value is a period end that only ever moves forward. A profile that switches cadence simply stops consulting the scales below its new floor; their markers go inert rather than stranded, and switching back resumes from the last period they actually reported on.",
+  },
   // ── profile-fixed: one key per profile, re-armed by the day ─────────────────
   {
     key: "notify_last_digest",
@@ -306,19 +328,6 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     writer: "lib/notifications/digest-data.ts, gated by scripts/notify.ts",
     retention:
       "None needed. The stored date IS the key's lifetime: a record for any other day parses as absent (parseDigestAttempt), so the day rolling over re-arms both the attempt budget and the decline/failure distinction. Static never writes it.",
-  },
-  {
-    key: "notify_last_weekly_recap",
-    fixed: true,
-    markerClass: "profile-fixed",
-    cadence: "per-day",
-    store: "profile_settings",
-    shape: "none — one key per profile",
-    value: "the profile-local date the weekly recap was delivered",
-    writer:
-      "lib/notifications/weekly-recap-data.ts, gated by scripts/notify.ts",
-    retention:
-      "None needed. The recap only triggers on its chosen weekday, so a same-day marker prevents the double send and next week's same weekday is a new date.",
   },
   {
     key: "notify_last_workout",
@@ -419,6 +428,19 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
 
   // ── legacy: no write path mints these anymore ──────────────────────────────
   {
+    key: "notify_last_weekly_recap",
+    fixed: true,
+    markerClass: "legacy",
+    cadence: "retired",
+    store: "profile_settings",
+    shape: "none — one key per profile",
+    value: "was the profile-local DATE the weekly recap was delivered",
+    writer:
+      "nobody — #2178 replaced the single weekly marker with the per-scale, period-anchored `notify_last_recap_<scale>` family",
+    retention:
+      "No sweep, and none is needed: nothing reads the key, so the residue is inert. It is deliberately NOT migrated into the new family. The two carry different values (a send date vs a period end), and the changeover costs nothing to leave alone — the new week marker reads as absent, so the first recap fires at the profile's normal recap slot, which is exactly the day it would have fired anyway.",
+  },
+  {
     key: "notify_last_error",
     markerClass: "legacy",
     cadence: "retired",
@@ -477,11 +499,15 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
   },
   {
     key: "notify_recap_day",
-    what: "profile schedule: the weekly recap's weekday",
+    what: "profile schedule: the recap slot's weekday (and its off switch)",
   },
   {
     key: "notify_recap_hour",
-    what: "profile schedule: the weekly recap's hour",
+    what: "profile schedule: the recap slot's time",
+  },
+  {
+    key: "notify_recap_scale",
+    what: "profile CONTENT preference (#2178): which scale — week / month / quarter — the recap slot speaks at. It decides what the send says, never whether or when one happens; the schedule keys above own that.",
   },
   {
     key: "notify_supp_morning_hour",
@@ -602,5 +628,12 @@ export type TickSlot = keyof typeof TICK_SLOT_MARKER_KEYS;
 export const DIGEST_MARKER_KEY = "notify_last_digest";
 /** The Dynamic digest's per-day FAILED-attempt record (#2211) — see the entry above. */
 export const DIGEST_ATTEMPT_KEY = "notify_digest_attempt";
-/** The weekly recap's per-day send marker. */
-export const WEEKLY_RECAP_MARKER_KEY = "notify_last_weekly_recap";
+/**
+ * The recap's per-scale, period-anchored marker (#2178). The tail is a member of the
+ * closed `RecapScale` union, so the scan can see every key this family can ever mint —
+ * the reason it is a builder and not an interpolation at the call site.
+ */
+export const RECAP_MARKER_PREFIX = "notify_last_recap_";
+export function recapMarkerKey(scale: RecapScale): string {
+  return `${RECAP_MARKER_PREFIX}${scale}`;
+}

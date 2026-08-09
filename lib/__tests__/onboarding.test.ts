@@ -234,6 +234,7 @@ describe("onboarding notification schedule", () => {
     digestMode: "static" as const,
     weeklyRecapDay: null,
     weeklyRecapMinute: 9 * 60,
+    recapScale: "week" as const,
     milestonesEnabled: true,
     preventiveEnabled: true,
     wakingStartHour: 8,

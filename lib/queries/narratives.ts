@@ -6,10 +6,13 @@
 
 import { db } from "../db";
 import type { Narrative, NarrativeKind } from "../types";
+import { RECAP_SCALES } from "../recap-scale";
 
 // The recap kinds (period-scoped) the Insights tab lists. Now the whole narrative
 // vocabulary, since the lab-trend kind was removed (#1164).
-export const RECAP_KINDS: readonly NarrativeKind[] = ["week", "month"];
+export const RECAP_KINDS: readonly NarrativeKind[] = RECAP_SCALES.map(
+  (e) => e.scale
+);
 
 export interface SaveNarrativeInput {
   kind: NarrativeKind;

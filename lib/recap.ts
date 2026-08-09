@@ -1,11 +1,19 @@
-// Weekly recap (issue #32) — a PURE, rule-based summary of the last seven days:
-// workouts, personal records, supplement adherence, a robust body-weight trend,
-// aerobic base, and sleep regularity. No DB, no network, no AI — so it runs in the
-// dashboard widget, the weekly notification, and the unit tests alike, and works
+// THE recap engine (issues #32 / #2178) — a PURE, rule-based summary of the last
+// PERIOD: workouts, personal records, supplement adherence, a robust body-weight
+// trend, aerobic base, and sleep regularity. No DB, no network, no AI — so it runs in
+// the dashboard widget, the recap notification, and the unit tests alike, and works
 // with zero AI configuration. The DB gather lives in
-// lib/notifications/weekly-recap-data.ts (mirroring the digest's data/render
+// lib/notifications/recap-data.ts (mirroring the digest's data/render
 // split); this module turns the gathered facts into a line model and renders the
 // notification message.
+//
+// ONE ENGINE, SCALE AS A DECLARED AXIS (#2178). A weekly, a monthly and a quarterly
+// recap are the SAME question over a longer window, so they are one computation. The
+// scale is data — a row in lib/recap-scale.ts naming its period arithmetic, its send
+// marker, its narrative kind and its nouns — and every LINE below declares which
+// scales it speaks at (RECAP_LINE_MODEL). `buildRecap` never branches on the scale; it
+// resolves the declared period and emits the lines whose declared scale set contains
+// it. A fourth length would be a row and a column, not a code path.
 //
 // COVERAGE RULE (#1935, owner-decided) — the recap's comparative advantage over the
 // daily digest is showing what you CANNOT see day to day, so that is the inclusion
@@ -29,12 +37,18 @@
 // journal week summary (issue #223). A rolling-mode profile still gets a trailing
 // seven days ending on "today" (unchanged); a calendar-mode profile gets the
 // current calendar week through today, with the prior full week as the comparison
-// window. Any OTHER period length (e.g. the monthly recap, #20) falls back to a
-// trailing `days` window — `week_mode` only defines a week. The range label on
+// window. Months and quarters are ALWAYS calendar — `week_mode` defines only weeks,
+// and no rolling-month convention is invented (lib/recap-scale.ts). The range label on
 // both surfaces prints the concrete start–end dates, so the copy is honest in
 // either mode.
 
-import { shiftDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr, weekdayOfDateStr } from "./date";
+import {
+  recapPeriod,
+  recapScaleEntry,
+  type PeriodComparison,
+  type RecapScale,
+} from "./recap-scale";
 import {
   formatMonthDay,
   DEFAULT_FORMAT_PREFS,
@@ -121,13 +135,33 @@ export function resolveRecapWindow(
   };
 }
 
-// A short noun for the period length, used in the comparison phrasing ("last week"
-// vs "last month"). 7 -> "week", 30/31 -> "month", anything else -> "period",
-// so the default (7) preserves the original "last week"/"this week" wording.
-export function periodNounFor(days: number): string {
-  if (days === 7) return "week";
-  if (days === 30 || days === 31) return "month";
-  return "period";
+// The week-window resolver in the shape lib/recap-scale.ts injects it — the ONE
+// week computation, handed to the scale axis rather than duplicated inside it.
+export function resolveWeekPeriod(
+  today: string,
+  weekMode: WeekMode,
+  weekStart: WeekStart,
+  completed: boolean
+): RecapWindow {
+  return resolveRecapWindow(today, 7, weekMode, weekStart, completed);
+}
+
+// The period a recap at `scale` covers, over the ONE week resolver above. Every
+// caller — the gather, the builder, the tick's planner — goes through this, so the
+// window a recap is BUILT from can never differ from the one it was GATHERED for.
+export function periodFor(
+  scale: RecapScale,
+  today: string,
+  weekMode: WeekMode = "rolling",
+  weekStart: WeekStart = 0,
+  completed = false
+): PeriodComparison {
+  return recapPeriod(scale, today, {
+    weekMode,
+    weekStart,
+    completed,
+    resolveWeek: resolveWeekPeriod,
+  });
 }
 
 // Whether `date` (YYYY-MM-DD) falls within [start, end] inclusive — plain string
@@ -155,28 +189,39 @@ export interface RecapWeight {
   weightKg: number;
 }
 
+// One day's dose ledger inside the window — the raw material of the month/quarter
+// adherence PATTERN line. `due` excludes nothing; `skipped` is the deliberate-skip
+// count (#232) the percentage denominator drops, exactly as at week scale.
+export interface RecapAdherenceDay {
+  date: string;
+  due: number;
+  taken: number;
+  skipped: number;
+}
+
 // The gathered facts the recap summarizes. Everything is already scoped to the
 // profile and, where noted, pre-filtered to the trailing window by the gather.
 export interface RecapInput {
   today: string;
   weightUnit: WeightUnit;
-  // Length of the recap window in days. Defaults to 7 (trailing week) when
-  // omitted, so pre-#20 callers are unchanged; a monthly recap passes 30. Drives
-  // both the window math and the "last week"/"last month" comparison wording.
-  periodDays?: number;
+  // WHICH SCALE this recap speaks at (#2178). Omitted ⇒ "week", so every pre-#2178
+  // caller is unchanged. Drives the period arithmetic, the "last week"/"last month"
+  // comparison wording, and — through RECAP_LINE_MODEL — which lines are emitted at
+  // all. It is DECLARED, never inferred from a day count.
+  scale?: RecapScale;
   // The profile's week definition, applied to the 7-day weekly recap so its
   // window matches the routine counters / journal (issue #223). Omitted ⇒
   // "rolling" (trailing seven days), preserving the pre-#223 behavior; ignored for
   // non-weekly periods (weekMode only defines a week).
   weekMode?: WeekMode;
   weekStart?: WeekStart;
-  // Calendar-mode completed-week selection (issue #1021): true on the NOTIFICATION
-  // path, where the recap summarizes the last COMPLETED calendar week rather than
-  // the in-progress one. Omitted/false ⇒ the dashboard's in-progress window; no
-  // effect in rolling mode or for non-weekly periods. Carried on the input so
-  // buildWeeklyRecap resolves the SAME window the gather filtered by.
-  completedWeek?: boolean;
-  // Workouts (one per activity) in the current and previous seven-day windows.
+  // Completed-period selection (issue #1021, generalized by #2178): true on the
+  // NOTIFICATION path, where the recap narrates the last CLOSED period rather than the
+  // in-progress one. Omitted/false ⇒ the dashboard's in-progress window. At week scale
+  // it is a no-op in rolling mode (a trailing seven days is always a full week).
+  // Carried on the input so buildRecap resolves the SAME period the gather filtered by.
+  completed?: boolean;
+  // Workouts (one per activity) in the current and previous periods.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
   // Personal records (strength + cardio) dated within the current window; labels
@@ -185,6 +230,13 @@ export interface RecapInput {
   // Supplement/medication adherence over the window, or null when nothing was
   // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
   adherence: { taken: number; skipped: number; due: number } | null;
+  // One row per day of the window that had a due dose (#2178). The WEEK's line is a
+  // percentage; a month's percentage hides everything worth knowing, so month and
+  // quarter scale read the SHAPE out of these rows instead — the weekday/weekend split
+  // and whether the second half of the period ran ahead of or behind the first.
+  // Gathered by the SAME per-day loop that produces `adherence`, so the two can never
+  // disagree. Omitted/empty ⇒ the pattern line is omitted.
+  adherenceDays?: RecapAdherenceDay[];
   // The state-change HEADLINE for the pushed tier (#1505 part 3) —
   // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
   // ONE shared `intakeDeltaLine` the morning digest and the household card also
@@ -240,10 +292,13 @@ export interface RecapInput {
 export type RecapLineKey =
   | "recovery"
   | "workouts"
+  | "training-mix"
   | "prs"
   | "intake-deltas"
   | "adherence"
+  | "adherence-pattern"
   | "weight"
+  | "weight-trajectory"
   | "zone2"
   | "sleepRegularity"
   | "mood"
@@ -275,22 +330,112 @@ const NO_COMPARISON: RecapComparison = { kind: "none" };
 // The ONE comparison idiom each line is allowed to speak. A line may fall back to
 // "none" when the data for its idiom is missing (no prior weigh-in, no Zone 2
 // target), but it may never compare a SECOND way — that is the drift the untyped
-// slot allowed. Pinned by lib/__tests__/weekly-recap.test.ts, so a new key is a
+// slot allowed. Pinned by lib/__tests__/recap.test.ts, so a new key is a
 // type error here until its author declares one.
 export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
   {
     recovery: "none", // a fact about the window, not a trend
     workouts: "prior",
+    "training-mix": "prior", // the same share, one period back
     prs: "none", // which lifts, not how many more than last week
     "intake-deltas": "none", // the shared line is ITSELF the week-over-week change
     adherence: "none", // a rate; its note carries the dose counts
+    "adherence-pattern": "none", // a SHAPE; its note carries the drift, not a score
     weight: "prior",
+    "weight-trajectory": "prior", // the same net change, one period back
     zone2: "target", // measured against the weekly target, never against last week
     sleepRegularity: "none", // its note carries the weekend shift, not a comparison
     mood: "none", // a summary, never a score to beat (#992/#716)
     goals: "none",
     "fitness-check": "none",
   };
+
+// ── THE PER-LINE SCALE MODEL (#2178) ────────────────────────────────────────────
+//
+// #1935's owner-decided coverage rule was "does this fact only become visible at WEEK
+// scale?". Generalized: a line appears at a scale only if its fact BECOMES VISIBLE at
+// that scale. Two corollaries, both load-bearing:
+//
+//   • NO SCALE RE-TOTALS THE SMALLER PERIODS. "You did 47 workouts" is four weekly
+//     lines summed and handed back with an authority none of them had. A longer scale
+//     earns its place by speaking in SHAPES, RATES and DIRECTIONS — a composition
+//     share, a per-week rate, a trajectory — never a bare cumulative count of the
+//     events the shorter scale already counted.
+//   • A LINE THAT MERELY STILL WORKS AT A LONGER SCALE IS NOT ADMITTED. A monthly
+//     adherence percentage is computable and useless: it averages away the very
+//     pattern (weekday vs weekend, first half vs second) that a month is the first
+//     window able to show.
+//
+// Every key answers, with a reason. lib/__tests__/recap.test.ts pins totality, pins
+// that every scale has at least one line, and pins the never-re-total rule by name.
+export interface RecapLineScaleSpec {
+  scales: readonly RecapScale[];
+  why: string;
+}
+
+export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
+  recovery: {
+    scales: ["week", "month", "quarter"],
+    why: "Days inside a flagged illness episode, derived from the episodes themselves rather than summed from smaller reports (#837). It is CONTEXT for the numbers under it, and low numbers need that context at every length — a quarter with three weeks of illness in it reads as a failed quarter without it.",
+  },
+  workouts: {
+    scales: ["week"],
+    why: "A session COUNT is the week's own fact. At month scale the same line is the re-total the rule forbids — 'you did 18 workouts' is four weekly lines added up — so the month speaks composition and rate through `training-mix` instead.",
+  },
+  "training-mix": {
+    scales: ["month", "quarter"],
+    why: "A SHARE needs enough sessions to mean anything; one week of 'strength 67%' is three sessions and noise. Composition drift — the slow slide from lifting toward running, or the deload block that changed the balance — is exactly what a month makes visible and a week cannot. Reported as shares plus a per-week RATE, never a total.",
+  },
+  prs: {
+    scales: ["week", "month"],
+    why: "A personal record is a discrete event, not a total, so naming the lifts is news at either length. Withheld at quarter scale on purpose: thirteen weeks of records is a list, and a list is where a summary turns into a scoreboard.",
+  },
+  "intake-deltas": {
+    scales: ["week"],
+    why: "The shared #1505 line is ITSELF a state change over the last few days ('Missed: Glycine (2 days)'). Nesting it in a monthly recap would present a stale week-scale delta as a month's news.",
+  },
+  adherence: {
+    scales: ["week"],
+    why: "A percentage over seven days is a readable rate that one missed dose nudges rather than zeroes. Over a month it averages the shape away, which is the whole reason `adherence-pattern` exists.",
+  },
+  "adherence-pattern": {
+    scales: ["month", "quarter"],
+    why: "The weekday/weekend split and the first-half/second-half drift need several weeks of days before either is signal rather than coincidence. This is the #2178 inclusion test working in the constructive direction: not the weekly line at a longer length, a DIFFERENT fact the longer length is the first to show.",
+  },
+  weight: {
+    scales: ["week"],
+    why: "The latest weigh-in against last week's — a point reading with a short comparison, which is what a week can honestly say about a noisy daily quantity.",
+  },
+  "weight-trajectory": {
+    scales: ["month", "quarter"],
+    why: "Over a month the useful question stops being 'what did the scale say' and becomes 'where is this going and how fast'. Robust median endpoints over the period plus a per-week rate, compared against the SAME figure one period back — a direction, not a total.",
+  },
+  zone2: {
+    scales: ["week"],
+    why: "Measured against the WEEKLY aerobic-base target (#159). There is no monthly target to measure against, and multiplying the weekly one by four would invent a goal the user never set.",
+  },
+  sleepRegularity: {
+    scales: ["week", "month", "quarter"],
+    why: "The SRI is already a trailing 28-night index (#160) — it is a month-scale statistic that the weekly recap borrows. It is native at month and quarter scale and needs no re-derivation to speak there.",
+  },
+  mood: {
+    scales: ["week"],
+    why: "An opt-in, gentle summary of a handful of check-ins (#992). Averaging a quarter of mood scores into one number is precisely the over-claim the line's own contract forbids.",
+  },
+  goals: {
+    scales: ["week", "month", "quarter"],
+    why: "A goal reached is a dated event, so it belongs to whichever window contains it at any length — and quarter scale is the horizon goals are actually set on, which is why it is one of the few lines that leads a quarterly recap.",
+  },
+  "fitness-check": {
+    scales: ["week", "month", "quarter"],
+    why: "A completed battery is a discrete event with its own comparison built in (this fitness age vs the prior one). It cannot be summed and it does not decay, so it reports identically at every length.",
+  },
+};
+
+/** Does this line speak at this scale? The ONE reader of the declaration above. */
+export function lineSpeaksAt(key: RecapLineKey, scale: RecapScale): boolean {
+  return RECAP_LINE_MODEL[key].scales.includes(scale);
+}
 
 export interface RecapLine {
   // A short machine label used as a stable key and (title-cased) as the row label.
@@ -341,14 +486,17 @@ export function recapLineAnnotation(line: RecapLine): string | undefined {
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-export interface WeeklyRecap {
+export interface Recap {
+  // Which scale this recap speaks at — carried on the result so a surface never has
+  // to re-derive it from the window's length.
+  scale: RecapScale;
   start: string;
   end: string;
   // A one-line factual headline, e.g. "4 workouts, 2 PRs". Empty string when there
   // is nothing to report.
   headline: string;
   lines: RecapLine[];
-  // True when the week had no workouts, no adherence, and no weight readings — the
+  // True when the period had no workouts, no adherence, and no weight readings — the
   // caller then skips the notification (the widget still renders a quiet nudge).
   isEmpty: boolean;
 }
@@ -383,28 +531,133 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
   return last - first;
 }
 
+// The smallest number of sessions a composition SHARE is allowed to speak over. Three
+// sessions rendered as "strength 67%" is a percentage of noise, and a share that swings
+// 33 points on one session is worse than no line at all.
+export const RECAP_MIX_MIN_SESSIONS = 4;
+
+// The smallest number of intended doses the adherence SHAPE is allowed to speak over.
+// Below it a "weekends 50%" is two doses, and a split is a coincidence, not a pattern.
+export const RECAP_PATTERN_MIN_DOSES = 14;
+
+export interface RecapTrainingMix {
+  sessions: number;
+  /** Share of the TYPED sessions, per bucket, in the fixed strength/cardio/sport order. */
+  shares: { type: WorkoutType; pct: number }[];
+  /** Sessions per week over the period — a RATE, deliberately not a total. */
+  perWeek: number;
+}
+
+/**
+ * The composition + rate of a period's training. Null when there are too few sessions
+ * for a share to mean anything (RECAP_MIX_MIN_SESSIONS), or when nothing carried a
+ * bucket at all — an all-`unclassified` month has no composition to report, and
+ * inventing one is the #2272 mistake.
+ */
+export function trainingMix(
+  workouts: RecapWorkout[],
+  windowDays: number
+): RecapTrainingMix | null {
+  if (workouts.length < RECAP_MIX_MIN_SESSIONS || windowDays <= 0) return null;
+  const counts = countByType(workouts);
+  const typed = counts.strength + counts.cardio + counts.sport;
+  if (typed === 0) return null;
+  const order: WorkoutType[] = ["strength", "cardio", "sport"];
+  return {
+    sessions: workouts.length,
+    shares: order
+      .filter((t) => counts[t] > 0)
+      .map((t) => ({ type: t, pct: Math.round((counts[t] / typed) * 100) })),
+    perWeek: Math.round((workouts.length / windowDays) * 7 * 10) / 10,
+  };
+}
+
+export interface RecapAdherenceShape {
+  weekdayPct: number | null;
+  weekendPct: number | null;
+  /** Second half of the period against the first — a WITHIN-period direction. */
+  drift: "steady" | "improving" | "slipping";
+  intended: number;
+}
+
+const DRIFT_POINTS = 8;
+
+/**
+ * The SHAPE of a period's adherence: the weekday/weekend split and whether the second
+ * half ran ahead of or behind the first. Null below RECAP_PATTERN_MIN_DOSES intended
+ * doses. Deliberate skips (#232) leave the denominator exactly as they do at week scale.
+ */
+export function adherenceShape(
+  days: readonly RecapAdherenceDay[]
+): RecapAdherenceShape | null {
+  const withDoses = days.filter((d) => d.due - d.skipped > 0);
+  const intended = withDoses.reduce((a, d) => a + (d.due - d.skipped), 0);
+  if (intended < RECAP_PATTERN_MIN_DOSES) return null;
+  const pct = (rows: readonly RecapAdherenceDay[]): number | null => {
+    const denom = rows.reduce((a, d) => a + (d.due - d.skipped), 0);
+    if (denom <= 0) return null;
+    return Math.round((rows.reduce((a, d) => a + d.taken, 0) / denom) * 100);
+  };
+  const isWeekend = (d: RecapAdherenceDay) => {
+    const wd = weekdayOfDateStr(d.date);
+    return wd === 0 || wd === 6;
+  };
+  const half = Math.floor(withDoses.length / 2);
+  const firstPct = pct(withDoses.slice(0, half));
+  const secondPct = pct(withDoses.slice(half));
+  const delta =
+    firstPct != null && secondPct != null ? secondPct - firstPct : 0;
+  return {
+    weekdayPct: pct(withDoses.filter((d) => !isWeekend(d))),
+    weekendPct: pct(withDoses.filter(isWeekend)),
+    drift:
+      delta >= DRIFT_POINTS
+        ? "improving"
+        : delta <= -DRIFT_POINTS
+          ? "slipping"
+          : "steady",
+    intended,
+  };
+}
+
+// A signed display delta ("−1.8 kg"), through the login's weight unit.
+function signedWeight(deltaKg: number, wu: WeightUnit): string {
+  const arrow = deltaKg > 0 ? "+" : deltaKg < 0 ? "−" : "±";
+  return `${arrow}${kgTo(Math.abs(deltaKg), wu).toFixed(1)} ${wu}`;
+}
+
 // Assemble the recap line model from the gathered facts. Quiet and factual: plain
 // counts and one declared comparison per line, no exclamation, no score. Sections
 // with nothing to say are omitted entirely.
-export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
-  const days = input.periodDays ?? 7;
-  const win = resolveRecapWindow(
+//
+// The SCALE is the only axis (#2178): the period comes from lib/recap-scale.ts and
+// every line goes through `push`, which drops any line whose declared scale set does
+// not contain this scale. There is no `if (scale === "month")` anywhere below, and
+// there must never be — a scale difference belongs in the registry.
+export function buildRecap(input: RecapInput): Recap {
+  const scale = input.scale ?? "week";
+  const entry = recapScaleEntry(scale);
+  const win = periodFor(
+    scale,
     input.today,
-    days,
     input.weekMode,
     input.weekStart,
-    input.completedWeek ?? false
+    input.completed ?? false
   );
-  const noun = periodNounFor(days);
+  const windowDays = (daysBetweenDateStr(win.start, win.end) ?? 6) + 1;
+  const noun = entry.noun;
   const wu = input.weightUnit;
   const lines: RecapLine[] = [];
+  const push = (line: RecapLine) => {
+    if (lineSpeaksAt(line.key, scale)) lines.push(line);
+  };
   const illnessDays = input.illnessDays ?? 0;
 
   // Recovery context (issue #837): a sick week reads as a sick week, not a failed
   // one. Leads the lines so the low numbers below are read in context — the app's
   // own tracked illness state, not a scold. No comparison (a fact, not a trend).
   if (illnessDays > 0) {
-    lines.push({
+    push({
       key: "recovery",
       label: "Recovery",
       value: `sick ${illnessDays} day${illnessDays === 1 ? "" : "s"} this ${noun}`,
@@ -418,7 +671,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   const prevCount = input.prevWorkouts.length;
   if (workoutCount > 0 || prevCount > 0) {
     const breakdown = typeBreakdown(counts);
-    lines.push({
+    push({
       key: "workouts",
       label: "Workouts",
       value: breakdown
@@ -428,11 +681,39 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     });
   }
 
+  // Training composition + rate (#2178) — the month/quarter answer to the same
+  // question the weekly `workouts` line answers with a count. The count is
+  // deliberately absent: "18 workouts" is four weekly lines summed and handed back
+  // with an authority none of them had. What a month is the first window to show is
+  // the SHAPE — which kind of training the period was actually made of, and how that
+  // share moved — plus a per-week rate that a missed week nudges instead of zeroing.
+  const mix = trainingMix(input.workouts, windowDays);
+  const prevMix = trainingMix(
+    input.prevWorkouts,
+    (daysBetweenDateStr(win.prevStart, win.prevEnd) ?? windowDays - 1) + 1
+  );
+  if (mix) {
+    const lead = mix.shares[0];
+    const priorLead = prevMix?.shares.find((s) => s.type === lead.type);
+    push({
+      key: "training-mix",
+      label: "Training mix",
+      value: mix.shares.map((s) => `${s.type} ${s.pct}%`).join(", "),
+      comparison: priorLead
+        ? {
+            kind: "prior",
+            text: `${lead.type} ${priorLead.pct}% last ${noun}`,
+          }
+        : NO_COMPARISON,
+      notes: [`${mix.perWeek.toFixed(1)} sessions/week`],
+    });
+  }
+
   // Personal records set this week.
   if (input.prLabels.length > 0) {
     const shown = input.prLabels.slice(0, 3).join(", ");
     const extra = input.prLabels.length - 3;
-    lines.push({
+    push({
       key: "prs",
       label: "PRs",
       value: `${input.prLabels.length}`,
@@ -451,7 +732,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   // anyway (nothing changed; something did not happen). The label survives for
   // accessibility and as the row key; it is not printed in front of the value.
   if (input.intakeDeltaLine) {
-    lines.push({
+    push({
       key: "intake-deltas",
       label: "Intake",
       value: input.intakeDeltaLine,
@@ -467,7 +748,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     const intended = due - skipped;
     if (intended > 0) {
       const p = Math.round((taken / intended) * 100);
-      lines.push({
+      push({
         key: "adherence",
         label: "Adherence",
         value: `${p}%`,
@@ -480,7 +761,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       });
     } else {
       // Every due dose was skipped — no percentage to report, just the count.
-      lines.push({
+      push({
         key: "adherence",
         label: "Adherence",
         value: `${skipped} skipped`,
@@ -488,6 +769,30 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         notes: [`${skipped} dose${skipped === 1 ? "" : "s"} skipped`],
       });
     }
+  }
+
+  // Adherence PATTERN (#2178) — the month/quarter line, and the clearest case of the
+  // inclusion test working constructively. A monthly percentage is computable and
+  // useless: it averages away the weekday/weekend split and the drift, which are the
+  // only two things about a month of doses worth telling anyone. Reported as a shape,
+  // with the direction as a NOTE rather than a comparison — there is no score here to
+  // beat, and the drift is a within-period observation, not a period-over-period one.
+  const shape = adherenceShape(input.adherenceDays ?? []);
+  if (shape && (shape.weekdayPct != null || shape.weekendPct != null)) {
+    const parts: string[] = [];
+    if (shape.weekdayPct != null) parts.push(`weekdays ${shape.weekdayPct}%`);
+    if (shape.weekendPct != null) parts.push(`weekends ${shape.weekendPct}%`);
+    push({
+      key: "adherence-pattern",
+      label: "Adherence pattern",
+      value: parts.join(", "),
+      comparison: NO_COMPARISON,
+      notes: [
+        shape.drift === "steady"
+          ? `steady across the ${noun}`
+          : `${shape.drift} through the ${noun}`,
+      ],
+    });
   }
 
   // Body weight: the latest reading, its week-over-week comparison, and the robust
@@ -510,7 +815,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       prevWeights.length > 0
         ? prevWeights[prevWeights.length - 1].weightKg
         : null;
-    lines.push({
+    push({
       key: "weight",
       label: "Weight",
       value: fmtWeight(latest, wu),
@@ -525,13 +830,56 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     });
   }
 
+  // Weight TRAJECTORY (#2178) — the month/quarter line. Over a month the useful
+  // question stops being "what did the scale say on the last day" and becomes "where
+  // is this going, and how fast": the robust median-endpoint net change over the
+  // period, a per-week rate so two periods of different lengths stay comparable, and
+  // the SAME net change one period back as the declared comparison. A direction, never
+  // a total, and never a fourth invented statistic.
+  //
+  // WHY NOT lib/long-range-series.ts. #2178 proposed reusing it verbatim for this
+  // trajectory so the message and the 1Y chart would tell one story. It cannot: that
+  // module DECLARES a floor — `LONG_RANGE_MIN_DAYS = 180`, below which `longRangeGrain`
+  // returns null and `aggregateLongRange` refuses — and every period this line speaks at
+  // is under it (a calendar month is 28–31 days, a quarter 90–92). Verbatim reuse
+  // returns null for every monthly and quarterly recap. Lowering the floor to reach them
+  // is not "verbatim": it is a change to when the TRENDS CHART stops plotting raw points,
+  // and it would silently bucket every 90D range on that surface. The two also want
+  // different answers — a chart wants a per-bucket mean SERIES to draw, this line wants
+  // one scalar direction to say — so `robustEndpoints` (the same computation the weekly
+  // `weight` line already uses) is what keeps the recap's two weight lines consistent
+  // with each other, which is the agreement that is actually reachable here.
+  const prevTrend = weightTrendKg(prevWeights);
+  if (trend != null) {
+    const perWeek = (trend / windowDays) * 7;
+    push({
+      key: "weight-trajectory",
+      label: "Weight trend",
+      value: signedWeight(trend, wu),
+      comparison:
+        prevTrend != null
+          ? {
+              kind: "prior",
+              text: `${signedWeight(prevTrend, wu)} last ${noun}`,
+            }
+          : NO_COMPARISON,
+      // TWO notes, not one string with a `·` in it (#2391): the per-week rate and the
+      // latest reading are peer facts about the head, and the grammar owns the separator
+      // between them.
+      notes: [
+        `${signedWeight(perWeek, wu)}/week`,
+        `now ${fmtWeight(input.weights[input.weights.length - 1].weightKg, wu)}`,
+      ],
+    });
+  }
+
   // Zone 2 aerobic base (#159): easy-endurance minutes vs the weekly target.
   if (input.zone2Min != null && input.zone2Min > 0) {
     const target =
       input.zone2Target != null && input.zone2Target > 0
         ? input.zone2Target
         : null;
-    lines.push({
+    push({
       key: "zone2",
       label: "Zone 2",
       value: `${input.zone2Min} min`,
@@ -552,7 +900,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       input.socialJetlagMin != null && input.socialJetlagMin > 0
         ? `${(input.socialJetlagMin / 60).toFixed(1)}h weekend shift`
         : undefined;
-    lines.push({
+    push({
       key: "sleepRegularity",
       label: "Sleep regularity",
       value: sriPresentation(input.sri).text,
@@ -571,7 +919,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   if (input.mood != null && input.mood.daysLogged > 0) {
     const avg = Math.round(input.mood.avgValence * 10) / 10;
     const days = input.mood.daysLogged;
-    lines.push({
+    push({
       key: "mood",
       label: "Mood",
       value:
@@ -584,7 +932,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
 
   // Goals completed this week.
   if (input.goalsCompleted.length > 0) {
-    lines.push({
+    push({
       key: "goals",
       label: "Goals reached",
       value: `${input.goalsCompleted.length}`,
@@ -605,7 +953,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
               : ""
           }`
         : "battery refreshed";
-    lines.push({
+    push({
       key: "fitness-check",
       label: "Fitness check",
       value,
@@ -619,15 +967,30 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     (input.adherence == null || input.adherence.due === 0) &&
     input.weights.length === 0;
 
-  // Headline: the two facts most worth leading with, else a quiet fallback.
+  // Headline: the two facts most worth leading with, else a quiet fallback. It obeys
+  // the same declaration the lines do — a scale that does not speak the workout COUNT
+  // must not smuggle it back in through the headline, so it leads with the rate its
+  // own line reports instead.
   const headParts: string[] = [];
-  if (workoutCount > 0)
+  if (lineSpeaksAt("workouts", scale) && workoutCount > 0)
     headParts.push(`${workoutCount} workout${workoutCount === 1 ? "" : "s"}`);
-  if (input.prLabels.length > 0)
+  if (lineSpeaksAt("training-mix", scale) && mix)
+    headParts.push(`${mix.perWeek.toFixed(1)} sessions/week`);
+  if (lineSpeaksAt("prs", scale) && input.prLabels.length > 0)
     headParts.push(
       `${input.prLabels.length} PR${input.prLabels.length === 1 ? "" : "s"}`
     );
-  if (headParts.length === 0 && input.adherence) {
+  if (
+    headParts.length === 0 &&
+    lineSpeaksAt("weight-trajectory", scale) &&
+    trend != null
+  )
+    headParts.push(`${signedWeight(trend, wu)} body weight`);
+  if (
+    headParts.length === 0 &&
+    lineSpeaksAt("adherence", scale) &&
+    input.adherence
+  ) {
     const intended = input.adherence.due - input.adherence.skipped;
     if (intended > 0) {
       const p = Math.round((input.adherence.taken / intended) * 100);
@@ -642,7 +1005,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     );
   const headline = headParts.join(", ");
 
-  return { start: win.start, end: win.end, headline, lines, isEmpty };
+  return { scale, start: win.start, end: win.end, headline, lines, isEmpty };
 }
 
 // The window label — "Jul 3 – Jul 9" — rendered through the login's date-format
@@ -674,7 +1037,7 @@ export interface StoredRecapNarrative {
 // describes this week). Returns the trimmed summary, or null when none applies.
 export function pickRecapNarrative(
   narratives: StoredRecapNarrative[],
-  recap: WeeklyRecap
+  recap: Recap
 ): string | null {
   const exact = narratives.find((n) => n.period_end === recap.end);
   if (exact) return exact.summary.trim() || null;
@@ -685,13 +1048,15 @@ export function pickRecapNarrative(
 }
 
 // Render the recap to a channel-agnostic notification message, or null when the
-// week was empty (nothing worth interrupting the user for). Kept separate from
+// period was empty (nothing worth interrupting the user for). The title names the
+// SCALE from the registry (#2178), so a monthly recap says "Monthly recap" rather
+// than a weekly heading over month-scale lines. Kept separate from
 // assembly, mirroring the digest. The title names the profile — a shared chat can
 // carry several. When a stored recap `narrative` is supplied (#421), it replaces
 // the bare "• label: value" bullets — the narrative already reads over the same
 // facts; the bullets are the fallback when no narrative has been generated.
 export function renderRecapMessage(
-  recap: WeeklyRecap,
+  recap: Recap,
   profileName: string,
   narrative?: string | null,
   deepLinkBase = ""
@@ -726,10 +1091,13 @@ export function renderRecapMessage(
   // carries one.
   const base = deepLinkBase.replace(/\/$/, "");
   return {
-    // The profile name is a NOTE on the title — a shared chat can carry several.
+    // The profile name is a NOTE on the title — a shared chat can carry several. The
+    // HEAD names the scale from the registry (#2178), so a monthly recap says "Monthly
+    // recap" rather than a weekly heading over month-scale lines; the glyph is the same
+    // one at every scale, because it is the same message breathing slower.
     title: formatMessageLine({
       glyph: GLYPH.recap,
-      head: "Weekly recap",
+      head: recapScaleEntry(recap.scale).label,
       notes: [profileName],
     }),
     body,

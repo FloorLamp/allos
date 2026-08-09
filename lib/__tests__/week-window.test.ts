@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { shiftDateStr } from "@/lib/date";
 import { weekWindow, trailingWeeks } from "@/lib/week-window";
-import { recapWindow, resolveRecapWindow } from "@/lib/weekly-recap";
+import { recapWindow, resolveRecapWindow } from "@/lib/recap";
 
 // TODAY is a Wednesday, so a calendar week starting Monday is a partial,
 // in-progress week (Mon–Wed) — the case #223 is about.

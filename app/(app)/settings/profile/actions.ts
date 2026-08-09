@@ -72,6 +72,7 @@ import {
   parseNotifyTime,
 } from "@/lib/notifications/schedule";
 import { parseDigestMode } from "@/lib/notifications/digest-schedule";
+import { parseRecapScale } from "@/lib/recap-scale";
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
@@ -446,7 +447,7 @@ export async function saveNotificationPrefs(formData: FormData) {
     // silently enabling the mode that waits.
     digestMinute: time("digest_hour"),
     digestMode: parseDigestMode(String(formData.get("digest_mode") ?? "")),
-    // Weekly recap (#32): weekday 0-6, "" / "off" → off.
+    // Recap slot (#32): weekday 0-6, "" / "off" → off.
     weeklyRecapDay: (() => {
       const raw = String(formData.get("recap_day") ?? "").trim();
       if (raw === "" || raw === "off") return null;
@@ -454,6 +455,11 @@ export async function saveNotificationPrefs(formData: FormData) {
       return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
     })(),
     weeklyRecapMinute: time("recap_hour") ?? 9 * 60,
+    // Recap cadence (#2178): the shortest period the slot may report on. An
+    // unrecognised value parses to `week`, the default — a malformed submit must never
+    // move someone to a quieter cadence they did not choose, because only the USER may
+    // change how often they are contacted (contact-consent, docs/internals/findings.md).
+    recapScale: parseRecapScale(String(formData.get("recap_scale") ?? "")),
     // Milestone alerts (#32): default on.
     milestonesEnabled:
       formData.get("milestones_enabled") === "on" ||
