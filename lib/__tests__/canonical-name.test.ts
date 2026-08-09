@@ -1007,11 +1007,11 @@ describe("deliberately uncurated analytes (#2313)", () => {
       "Trunk Fat Mass (g)",
       "Subtotal Lean Mass (g)",
       "Total Mass (g)",
-      // The derived depot ratios and mass indices.
+      // The derived depot ratios. The two mass INDICES left this list in #2322 —
+      // they divide by height rather than by a segment and have published
+      // population references, so they are curated entries now (asserted below).
       "Android/Gynoid Ratio",
       "Trunk to Legs Fat Ratio",
-      "Fat Mass Index",
-      "Lean Mass Index",
     ];
     for (const name of declared) {
       const d = uncuratedAnalyte(name);
@@ -1034,12 +1034,65 @@ describe("deliberately uncurated analytes (#2313)", () => {
       expect(uncuratedAnalyte(total), total).toBeNull();
       expect(curatedKeys.has(normalizeCanonicalKey(total)), total).toBe(true);
     }
-    // And the genuine curation candidates #2322 owns stay actionable.
-    for (const candidate of [
-      "Waist Circumference",
+    // And the two mass INDICES #2322 promoted out of the DEXA family are curated
+    // entries now — the same shape as the totals above, for the same reason: they
+    // are whole-body measures with published references, not a scan's segments.
+    for (const promoted of ["Fat Mass Index", "Lean Mass Index"]) {
+      expect(uncuratedAnalyte(promoted), promoted).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(promoted)), promoted).toBe(
+        true
+      );
+    }
+    // The #2322 curations proper. `uncuratedAnalyte` is null for a CURATED name
+    // exactly as it is for an unknown one — the registry only ever speaks about
+    // names this repo declined — so the curated half is pinned against the dataset.
+    for (const curated of [
       "QTc Interval",
-      "Ankle-Brachial Index (ABI)",
+      "Ankle-Brachial Index (ABI), Left",
+      "Electrocardiogram (ECG) Interpretation",
+    ]) {
+      expect(uncuratedAnalyte(curated), curated).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(curated)), curated).toBe(
+        true
+      );
+    }
+  });
+
+  // #2322 — the stress test's own vitals. The interesting property is that ONE
+  // report's two halves are declined for OPPOSITE reasons, which is the case a
+  // single family-wide declaration would have flattened.
+  it("splits the stress test's resting and peak vitals (#2322)", () => {
+    // RESTING is the resting series under a visit label, so it points at it. Each
+    // side of the cuff gets its OWN target — a shared declaration would have sent
+    // a diastolic reading to the systolic entry.
+    const systolic = uncuratedAnalyte(
+      "Stress Test Resting Blood Pressure Systolic"
+    );
+    const diastolic = uncuratedAnalyte(
+      "Stress Test Resting Blood Pressure Diastolic"
+    );
+    expect(systolic?.kind).toBe("covered-elsewhere");
+    expect(
+      systolic && systolic.kind === "covered-elsewhere" && systolic.instead
+    ).toBe("Blood Pressure Systolic");
+    expect(
+      diastolic && diastolic.kind === "covered-elsewhere" && diastolic.instead
+    ).toBe("Blood Pressure Diastolic");
+    // PEAK is not the resting series, so it has nothing to point at — pointing it
+    // at the resting entry is the false promise `instead` exists to prevent. All
+    // three peak names are ONE decision.
+    const peak = [
+      "Stress Test Maximum Blood Pressure Systolic",
+      "Stress Test Maximum Blood Pressure Diastolic",
+      "Stress Test Maximum Heart Rate",
+    ].map((n) => uncuratedAnalyte(n));
+    for (const d of peak) expect(d?.kind).toBe("out-of-scope");
+    expect(new Set(peak).size).toBe(1);
+    // Neither half is curated — curating either would fork the vitals series.
+    for (const name of [
+      "Stress Test Resting Blood Pressure Systolic",
+      "Stress Test Maximum Heart Rate",
     ])
-      expect(uncuratedAnalyte(candidate), candidate).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(name)), name).toBe(false);
   });
 });

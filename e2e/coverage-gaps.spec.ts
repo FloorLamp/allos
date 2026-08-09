@@ -140,4 +140,55 @@ test("a declared DEXA regional label is stated, not offered as an uncatalogued i
   await expect(declined).toContainText("per-region decomposition");
   await expect(declined.getByTestId("track-gap")).toHaveCount(0);
   await expect(declined.getByTestId("request-gap-link")).toHaveCount(0);
+
+  // The out-of-scope shape has nothing to point at, so it renders no link. That is
+  // the contrast the covered-elsewhere case below is written against.
+  await expect(declined.getByTestId("coverage-declined-instead")).toHaveCount(
+    0
+  );
+});
+
+// #2322 — the declaration's OTHER shape. A stress test's resting blood pressure IS
+// an ordinary resting blood pressure; the "Stress Test" prefix names the visit, not a
+// different measurement. So it is declined as `covered-elsewhere`, and the whole
+// point of that shape is the link: the reader is sent to the series that genuinely
+// carries the quantity instead of being left to deduce that one exists. The DEXA
+// case above cannot exercise it, because out-of-scope has no target by construction.
+const STRESS_RESTING_BP = "Stress Test Resting Blood Pressure Systolic";
+
+test("a covered-elsewhere declined analyte links to the series that carries it (#2322)", async ({
+  page,
+}) => {
+  await page.goto("/data?section=coverage");
+  await expect(page.getByTestId("data-coverage")).toBeVisible();
+
+  // Detection IS running: the genuine gap beside it is still offered for tracking.
+  await expect(
+    page.getByTestId("coverage-candidate").filter({ hasText: GAP })
+  ).toBeVisible();
+
+  // Curating it would fork the blood-pressure series, so it is never offered.
+  await expect(
+    page
+      .getByTestId("coverage-candidate")
+      .filter({ hasText: STRESS_RESTING_BP })
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("tracked-gap").filter({ hasText: STRESS_RESTING_BP })
+  ).toHaveCount(0);
+
+  const declined = page
+    .getByTestId("coverage-declined")
+    .filter({ hasText: STRESS_RESTING_BP });
+  await expect(declined).toBeVisible();
+  await expect(declined).toContainText("names the appointment");
+  await expect(declined.getByTestId("track-gap")).toHaveCount(0);
+  await expect(declined.getByTestId("request-gap-link")).toHaveCount(0);
+
+  // …and the link resolves to a REAL destination — the systolic metric surface —
+  // rather than promising a series that doesn't exist.
+  const instead = declined.getByTestId("coverage-declined-instead");
+  await expect(instead).toHaveText("See Blood Pressure Systolic");
+  await instead.click();
+  await expect(page).toHaveURL(/\/trends\/metric\/systolic/);
 });

@@ -791,8 +791,8 @@ function without<T>(set: Set<T>, value: T): Set<T> {
 // is the PANEL: a six-analyte lipid panel with twelve draws is seventy-two rows, so a
 // panel could straddle a page boundary and render on both with partial counts, and
 // paging re-collapsed every group the reader had opened. The INDEX is bounded by
-// construction instead — PANEL_IDS is a closed 35-entry taxonomy, so the header list
-// has a hard ceiling no lab history can exceed.
+// construction instead — PANEL_IDS is a closed, small taxonomy (37 entries today), so
+// the header list has a hard ceiling no lab history can exceed.
 //
 // BOUNDED PAYLOAD (#1651). That ceiling is on the index, not on the readings inside
 // it, and props handed to a client component are serialized into the RSC payload

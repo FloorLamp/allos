@@ -219,6 +219,27 @@ export function seedSourceCompare(): void {
     `e2e: seeded DEXA regional label "${DEXA_REGIONAL}" on profile ${PROFILE_ID} (#2319)`
   );
 
+  // Its THIRD control (#2322): the OTHER shape of a declaration. The DEXA row above
+  // is `out-of-scope` — nothing to point at — so until now no browser test had ever
+  // rendered a `covered-elsewhere` one, whose whole job is the "See <entry>" link to
+  // the series that genuinely carries the quantity. A stress test's RESTING blood
+  // pressure is exactly that: it is an ordinary resting blood pressure under a visit
+  // label, so it must resolve to "Blood Pressure Systolic" rather than fork a second
+  // series. Same `vitals` category and mmHg unit as the curated entry, so nothing
+  // upstream withholds it and the declaration is what keeps it off the offered list.
+  // Idempotent: cleared then re-inserted on each seed run.
+  const STRESS_RESTING_BP = "Stress Test Resting Blood Pressure Systolic";
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+  ).run(PROFILE_ID, STRESS_RESTING_BP);
+  db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, value_num, unit, canonical_name)
+   VALUES (?, '2026-05-01', 'vitals', ?, 124, 'mmHg', ?)`
+  ).run(PROFILE_ID, STRESS_RESTING_BP, STRESS_RESTING_BP);
+  console.log(
+    `e2e: seeded declined stress-test vital "${STRESS_RESTING_BP}" on profile ${PROFILE_ID} (#2322)`
+  );
+
   // Deterministic biomarker→food suggestion fixtures (#577). Currently-flagged-LOW
   // diet-responsive readings on profile 1 so the food-suggestion surfaces render, and a
   // synthetic "fish" allergy so the omega-3 suggestion shows its algae/ALA ALTERNATIVE

@@ -659,9 +659,19 @@ const DEXA_BONE_REGIONS = [
 const DEXA_MASS_REGIONS = ["Trunk", "Head", "Android", "Gynoid", "Subtotal"];
 const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 
-// The scan-level rows that aren't per-region: whole-scan mass compartments, the
-// derived depot ratios, and the two mass indices. Same decision, same reason — each
-// is arithmetic over one scan's segments, and none has a population band of its own.
+// The scan-level rows that aren't per-region: whole-scan mass compartments and the
+// derived depot ratios. Same decision, same reason — each is arithmetic over one
+// scan's segments, and none has a population band of its own.
+//
+// "Fat Mass Index" and "Lean Mass Index" USED to be listed here and are not any more
+// (#2322). They failed this declaration's own test: they are not arithmetic over a
+// scan's SEGMENTS but over the whole body and the subject's HEIGHT, which is what
+// makes them comparable between people — and both have published population
+// references (Schutz 2002 / NHANES DXA, Kelly 2009), which "no population reference
+// range exists for them" flatly denied. The dataset was already carrying the proof:
+// "Appendicular Lean Mass Index" has been a curated kg/m2 entry all along. They are
+// curated entries now, so the completeness guard would fail if either name were left
+// declared here as well.
 const DEXA_SCAN_LEVEL = [
   "Total Mass",
   "Total Fat Mass",
@@ -670,8 +680,6 @@ const DEXA_SCAN_LEVEL = [
   "Bone Mineral Density Z-Score",
   "Android/Gynoid Ratio",
   "Trunk to Legs Fat Ratio",
-  "Fat Mass Index",
-  "Lean Mass Index",
 ];
 
 // Expanded rather than hand-listed: the family is a cross product, and writing ~80
@@ -704,12 +712,58 @@ function dexaDecompositionNames(): string[] {
   return [...byKey.values()];
 }
 
+// The stress test's own vitals (#2322 Group 1). A treadmill report prints a blood
+// pressure and a heart rate twice — once at rest before the test, once at peak
+// effort — and both halves arrive with a "Stress Test" prefix in exactly the units
+// the curated vitals already use. Curating either half would FORK the blood-pressure
+// and heart-rate series, which is the trap `Neutrophils Relative` fell into, so
+// neither is curated. But the two halves are declined for OPPOSITE reasons, and
+// collapsing them into one declaration is what would make the promise false.
+//
+// The RESTING half genuinely IS the resting series: the prefix names the VISIT, not
+// a different measurement, so it points at the entry that carries it.
+const STRESS_TEST_RESTING_BP_REASON =
+  "A blood pressure taken at rest before a stress test is an ordinary resting blood pressure — the “stress test” label names the appointment, not a different measurement. Allos files it with the rest of your blood pressure readings, so it trends there rather than starting a second series.";
+
+const STRESS_TEST_RESTING_SYSTOLIC: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Blood Pressure Systolic",
+  reason: STRESS_TEST_RESTING_BP_REASON,
+};
+
+const STRESS_TEST_RESTING_DIASTOLIC: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Blood Pressure Diastolic",
+  reason: STRESS_TEST_RESTING_BP_REASON,
+};
+
+// The PEAK half is NOT the resting series, and pointing it at one would be a false
+// promise — the specific failure `instead` is guarded against. A peak-exercise blood
+// pressure belongs beside no resting reading, and the highest heart rate you reached
+// on a treadmill is the opposite of a resting heart rate. Whether peak-exercise
+// vitals deserve a series of their own is a design question about what the app
+// models, not a name the catalog can settle, so they are `out-of-scope` — the shape
+// that says "nothing to point at" instead of inventing a target.
+const STRESS_TEST_PEAK_VITALS: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "A peak-exercise reading — the highest value reached during the test — is a different measurement from the resting blood pressure and heart rate Allos trends, so it is deliberately not filed with them. Exercise-peak vitals aren't tracked as their own series today; the value is imported and stays visible on the stress-test report.",
+};
+
 const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["eGFR, African American", EGFR_RACE_BRANCHED],
   ["eGFR, Non-African-American", EGFR_RACE_BRANCHED],
   ["eGFR, Thai", EGFR_RACE_BRANCHED],
   ["Beta Adrenergic Blocker Screen", TOXICOLOGY_SCREEN],
   ["Diuretic Screen, Urine", TOXICOLOGY_SCREEN],
+  ["Stress Test Resting Blood Pressure Systolic", STRESS_TEST_RESTING_SYSTOLIC],
+  [
+    "Stress Test Resting Blood Pressure Diastolic",
+    STRESS_TEST_RESTING_DIASTOLIC,
+  ],
+  ["Stress Test Maximum Blood Pressure Systolic", STRESS_TEST_PEAK_VITALS],
+  ["Stress Test Maximum Blood Pressure Diastolic", STRESS_TEST_PEAK_VITALS],
+  ["Stress Test Maximum Heart Rate", STRESS_TEST_PEAK_VITALS],
   ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
     name,
     DEXA_DECOMPOSITION,
