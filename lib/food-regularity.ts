@@ -57,6 +57,17 @@ export const FOOD_REGULARITY_MIN_WINDOW_DAYS = 7;
 // which survives a weekend away and does not survive a coin flip.
 export const FOOD_REGULARITY_HABITUAL_SHARE = 0.6;
 
+// The first day of the span, given the profile's today — the module's own knowledge,
+// the way `recentWindowStart` is the ranking's. A gather asks for it rather than
+// re-deriving the shift, so the SQL bound and the arithmetic below can never describe
+// two different spans.
+export function foodRegularityWindowStart(
+  today: string,
+  spanDays: number = FOOD_REGULARITY_SPAN_DAYS
+): string {
+  return shiftDateStr(today, -(spanDays - 1));
+}
+
 // One food event as the measure reads it: which group, which profile-local day, and
 // which window it DERIVED to. The window is the caller's — `foodEventWindow`'s
 // precedence (declared slot → eating instant → tap instant) — so a habit counts the
@@ -98,10 +109,9 @@ export function foodRegularity(
   events: readonly FoodRegularityEvent[],
   opts: { today: string; spanDays?: number }
 ): FoodRegularity {
-  const span = opts.spanDays ?? FOOD_REGULARITY_SPAN_DAYS;
   // Inclusive of today: a partly-lived day distorts nothing, because a window with
   // nothing logged in it yet contributes to neither numerator nor denominator.
-  const from = shiftDateStr(opts.today, -(span - 1));
+  const from = foodRegularityWindowStart(opts.today, opts.spanDays);
   const out = {} as FoodRegularity;
   for (const window of FOOD_SLOTS) out[window] = null;
 

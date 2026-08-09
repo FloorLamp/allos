@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { E2E_LOGIN_FOODSLOT, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_FOODSLOT,
+  E2E_LOGIN_FOODUSUAL,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // Slot-aware food-log ranking + the N-week habit consistency trend (#950 / #954).
 //
@@ -98,6 +102,91 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(
       greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toHaveAttribute("title", /not tracked yet$/);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// ── Food regularity: the usual-breakfast shortcut (#2380) ────────────────────
+//
+// Fixture-OWNED on its own profile (E2E_LOGIN_FOODUSUAL): three weeks of mornings
+// holding the SAME TWO groups and nothing else, with today deliberately empty, plus a
+// daily evening alcohol habit that must never be offered back. The spec WRITES (it taps
+// the offer), so it owns its fixture rather than sharing one.
+
+test("a regular window offers its usual set in one tap, and stops offering it once logged (#2380)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FOODUSUAL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    test.slow();
+    await page.goto("/nutrition");
+
+    // Whatever window the run's frozen clock lands in, the habit is in Morning.
+    await page.getByTestId("food-slot-morning").click();
+    await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
+
+    // The offer names EXACTLY the groups it will write — the label is the promise.
+    const offer = page.getByTestId("food-usual-offer");
+    await expect(offer).toBeVisible();
+    await expect(offer).toHaveAttribute("data-groups", "berries,fermented");
+    await expect(page.getByTestId("food-usual-names")).toHaveText(
+      "Berries and Fermented foods"
+    );
+
+    // One tap logs both. The counts beside the rows are the evidence.
+    await expect(page.getByTestId("count-berries")).toHaveText("0");
+    await expect(page.getByTestId("count-fermented")).toHaveText("0");
+    await offer.click();
+    await expect(page.getByTestId("count-berries")).toHaveText("1");
+    await expect(page.getByTestId("count-fermented")).toHaveText("1");
+
+    // …and the offer is GONE, because it is rendered from state: the window now holds
+    // its usual set, so there is nothing left that a second tap could log.
+    await expect(offer).toHaveCount(0);
+
+    // The absence survives a reload — it is the server's answer, not a local flag.
+    await page.reload();
+    await page.getByTestId("food-slot-morning").click();
+    await expect(page.getByTestId("count-berries")).toHaveText("1");
+    await expect(page.getByTestId("food-usual-offer")).toHaveCount(0);
+
+    // Teardown through the product's own "−", which doubles as the assertion that the
+    // offer renders from state in BOTH directions: undo what made it disappear and it
+    // comes back, with no dismissal bookkeeping anywhere. Leaves the fixture exactly as
+    // it was found, so the spec is repeat-safe.
+    await page.getByTestId("undo-berries").click();
+    await expect(page.getByTestId("count-berries")).toHaveText("0");
+    await page.getByTestId("undo-fermented").click();
+    await expect(page.getByTestId("count-fermented")).toHaveText("0");
+    await expect(page.getByTestId("food-usual-offer")).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("a cap-direction group is never offered back as an expectation (#2380 / #998)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FOODUSUAL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    test.slow();
+    await page.goto("/nutrition");
+
+    // The fixture's evenings hold alcohol AND leafy greens every day for three weeks —
+    // two habitual groups by the arithmetic. Alcohol is excluded because its counter is
+    // the substance ledger, which leaves ONE, and one group is already one tap on the
+    // row below. So the window that is MOST regular offers nothing at all.
+    await page.getByTestId("food-slot-evening").click();
+    await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
+    await expect(page.getByTestId("food-quick-log")).toBeVisible();
+    await expect(page.getByTestId("food-usual-offer")).toHaveCount(0);
   } finally {
     await page.context().close();
   }

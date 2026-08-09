@@ -4,7 +4,7 @@
 // is lib/food-suggest.ts; this module only assembles its typed inputs from the
 // profile-scoped reads and hands them over.
 
-import { shiftDateStr, utcInstant } from "../date";
+import { utcInstant } from "../date";
 import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
@@ -35,6 +35,7 @@ import { foodSlotAnchors, FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import {
   FOOD_REGULARITY_SPAN_DAYS,
   foodRegularity,
+  foodRegularityWindowStart,
   habitualFoodGroups,
   usualFoodOffer,
   type FoodRegularity,
@@ -598,7 +599,7 @@ export function getProteinTapsOnDate(profileId: number, date: string): number {
 // food_log_events filter.
 export function getFoodRegularity(profileId: number): FoodRegularity {
   const t = today(profileId);
-  const from = shiftDateStr(t, -(FOOD_REGULARITY_SPAN_DAYS - 1));
+  const from = foodRegularityWindowStart(t);
   const rows = db
     .prepare(
       `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at

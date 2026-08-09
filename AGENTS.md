@@ -221,6 +221,32 @@ calendar, with the payload and level function supplied by the caller; `lensWindo
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
 only the per-lens week caps supplied.
 
+### Food regularity
+
+"How often does this group actually show up in this meal window?" is an
+OBSERVATION and never a target — `frequency_targets` and the cadence ledger own
+"how often should it". `lib/food-regularity.ts` owns the measure: a group's share
+of the days that WINDOW was logged at all (not of every day — a day with no
+morning log is evidence about logging, not about breakfast), over
+`FOOD_REGULARITY_SPAN_DAYS` (21, three whole weeks, strictly inside the ranking's
+365-day frecency window). Under `FOOD_REGULARITY_MIN_WINDOW_DAYS` (7) a window
+answers `null`, and null means SILENCE — read it as no expectation, never as a
+habit broken.
+
+Its one consumer is speed, not insight: the Food tab's "Your usual `<window>`"
+button logs the habitual groups that window still has nothing logged for, in one
+tap instead of two. It is an OFFER — the user's tap is the write, the app never
+logs food on anyone's behalf, and there is no send, no finding and no target
+anywhere in it. The label names every group it will write and
+`logUsualFoodCore` re-derives the same offer from fresh state and writes only the
+intersection, so a stale tap refuses instead of logging a second breakfast.
+
+A group whose counter IS a substance ledger, or which carries an active
+cap-direction target, is measured but never presented back as an expectation
+(#998's language: reflecting it normalises it). The catalog's `limit` tier is NOT
+an exclusion — #1980 ruled tier never moves a group into or out of a fast path.
+See `docs/internals/food-regularity.md`.
+
 ### Instants and days
 
 "When did this happen?" (an INSTANT) and "which day does it count for?" (a
