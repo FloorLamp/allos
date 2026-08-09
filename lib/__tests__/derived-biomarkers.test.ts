@@ -7,10 +7,14 @@ import {
   derivedInputCanonicalNamesFor,
   derivedInputKeysFor,
   derivedInputSlots,
+  derivedInputUnitsFor,
   DERIVED_NAMES,
   DERIVED_DEFS_BY_NAME,
+  AGE_INPUT_KEY,
+  PHENOAGE_MIN_AGE,
   type ComponentReading,
   type DerivedDemographics,
+  type PhenoAgeReferenceResolver,
 } from "../derived-biomarkers";
 import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
 import { reconciledFlag } from "../reference-range";
@@ -1232,5 +1236,215 @@ describe("derived indices ↔ the canonical dataset", () => {
     // set of "HDL Cholesterol", so routing it to the ratio would hijack a distinct
     // analyte on a guess.
     expect(resolve("Cholesterol/HDL")).toBe("HDL Cholesterol");
+  });
+});
+
+// ── PhenoAge leave-one-out effects (#2366) ───────────────────────────────────
+//
+// "Which input is moving my number, and by how much?" answered as a COUNTERFACTUAL in
+// years: re-run the whole model with one input at a reference value, report the
+// difference. These pin the definition (not a share of `xb`), the ordering, the
+// absent-reference case, and — the acceptance test — that the decomposition and the
+// engine's own number are the same computation.
+describe("computeDerivedReadings — PhenoAge input effects (#2366)", () => {
+  const DATE = "2024-01-01";
+
+  // The same nine-analyte canonical-unit draw the PhenoAge suite above uses.
+  const DRAW: Record<string, number> = {
+    Albumin: 4.7,
+    Creatinine: 1.0,
+    "Glucose, Fasting": 90,
+    "High-Sensitivity C-Reactive Protein (hs-CRP)": 0.5,
+    Lymphocytes: 35,
+    "Mean Corpuscular Volume (MCV)": 90,
+    "Red Cell Distribution Width (RDW)": 13,
+    "Alkaline Phosphatase": 65,
+    "White Blood Cell Count": 5.5,
+  };
+
+  const UNITS: Record<string, string> = {
+    Albumin: "g/dL",
+    Creatinine: "mg/dL",
+    "Glucose, Fasting": "mg/dL",
+    "High-Sensitivity C-Reactive Protein (hs-CRP)": "mg/L",
+    Lymphocytes: "%",
+    "Mean Corpuscular Volume (MCV)": "fL",
+    "Red Cell Distribution Width (RDW)": "%",
+    "Alkaline Phosphatase": "U/L",
+    "White Blood Cell Count": "10^3/uL",
+  };
+
+  // Synthetic reference values, one per input — the RULE that picks them from the
+  // curated bands is lib/bio-age's and is tested there; what matters here is that the
+  // counterfactual uses whatever it is handed.
+  const REFS: Record<string, number> = {
+    Albumin: 4.7,
+    Creatinine: 0.95,
+    "Glucose, Fasting": 80,
+    "High-Sensitivity C-Reactive Protein (hs-CRP)": 1,
+    Lymphocytes: 32.5,
+    "Mean Corpuscular Volume (MCV)": 90,
+    "Red Cell Distribution Width (RDW)": 12.25,
+    "Alkaline Phosphatase": 84.5,
+    "White Blood Cell Count": 7.1,
+  };
+
+  function series(
+    over: Record<string, ComponentReading[]> = {}
+  ): Map<string, ComponentReading[]> {
+    return seriesOf({
+      ...Object.fromEntries(
+        Object.entries(DRAW).map(([name, value]) => [
+          name,
+          [{ date: DATE, value, unit: UNITS[name] }],
+        ])
+      ),
+      ...over,
+    });
+  }
+
+  // Every input referenced, except any name in `without` — the absent-reference case.
+  function resolver(without: string[] = []): PhenoAgeReferenceResolver {
+    return ({ key, name }) =>
+      without.includes(name) || REFS[key] == null
+        ? null
+        : { value: REFS[key], basis: "optimal" };
+  }
+
+  // The model evaluated directly from a canonical-unit draw, for reconciliation.
+  function model(vals: Record<string, number>, age: number): number {
+    const v = phenoAge({
+      albuminGL: vals["Albumin"] * 10,
+      creatinineUmolL: vals["Creatinine"] * 88.4017,
+      glucoseMmolL: vals["Glucose, Fasting"] / 18.0182,
+      crpMgDl: vals["High-Sensitivity C-Reactive Protein (hs-CRP)"] / 10,
+      lymphocytePct: vals["Lymphocytes"],
+      mcvFl: vals["Mean Corpuscular Volume (MCV)"],
+      rdwPct: vals["Red Cell Distribution Width (RDW)"],
+      alpUL: vals["Alkaline Phosphatase"],
+      wbcThousandUl: vals["White Blood Cell Count"],
+      ageYears: age,
+    });
+    if (v == null) throw new Error("model declined on a complete draw");
+    return v;
+  }
+
+  function effectsOf(
+    resolve: PhenoAgeReferenceResolver,
+    over: Record<string, ComponentReading[]> = {}
+  ) {
+    const r = computeDerivedReadings(series(over), demo("male", 45), {
+      phenoAgeReference: resolve,
+    });
+    const pheno = find(r, "PhenoAge", DATE);
+    if (!pheno?.effects) throw new Error("no PhenoAge effects");
+    return { pheno, effects: pheno.effects };
+  }
+
+  it("attaches NOTHING without a reference resolver (no extra model runs)", () => {
+    const r = computeDerivedReadings(series(), demo("male", 45));
+    expect(find(r, "PhenoAge", DATE)?.effects).toBeUndefined();
+  });
+
+  it("reports the nine analytes plus chronological age, ranked by absolute years", () => {
+    const { effects } = effectsOf(resolver());
+    expect(effects).toHaveLength(10);
+    // Chronological age is IN the list, not hidden: it is a term in the predictor and
+    // usually the dominant one, and seeing that is what stops the number reading as a
+    // verdict on the labs alone.
+    expect(effects.map((e) => e.key)).toContain(AGE_INPUT_KEY);
+    const magnitudes = effects.map((e) => Math.abs(e.effectYears ?? 0));
+    expect([...magnitudes].sort((a, b) => b - a)).toEqual(magnitudes);
+    // Each row carries the value the claim is checkable against.
+    const rdw = effects.find(
+      (e) => e.key === "Red Cell Distribution Width (RDW)"
+    );
+    expect(rdw?.value).toBe(13);
+    expect(rdw?.unit).toBe("%");
+    expect(rdw?.reference).toEqual({ value: 12.25, basis: "optimal" });
+  });
+
+  // THE ACCEPTANCE TEST. Each row is the engine's own result minus the engine re-run
+  // with that one input moved — computed here from the published formula directly, so
+  // a decomposition that drifted from the model would fail rather than agree with
+  // itself.
+  it("reconciles: every counterfactual reproduces the engine's own number", () => {
+    const { pheno, effects } = effectsOf(resolver());
+    const baseline = model(DRAW, 45);
+    expect(pheno.value).toBeCloseTo(baseline, 1);
+    for (const e of effects) {
+      const counterfactual =
+        e.key === AGE_INPUT_KEY
+          ? model(DRAW, PHENOAGE_MIN_AGE)
+          : model({ ...DRAW, [e.key]: e.reference!.value }, 45);
+      // To the display precision the row is stated in (1 dp) — the rounding is the
+      // ONLY difference between the two paths.
+      expect(e.effectYears, e.key).toBeCloseTo(baseline - counterfactual, 1);
+    }
+  });
+
+  it("moves the AGE row to the model's own floor — no invented optimal age", () => {
+    const { effects } = effectsOf(resolver());
+    const age = effects.find((e) => e.key === AGE_INPUT_KEY);
+    expect(age?.reference).toEqual({
+      value: PHENOAGE_MIN_AGE,
+      basis: "model-floor",
+    });
+    expect(age?.value).toBe(45);
+    expect(age?.unit).toBe("years");
+    // A 45-year-old's age term dominates a healthy panel — the point of showing it.
+    expect(age?.effectYears).toBeGreaterThan(0);
+    expect(effects[0].key).toBe(AGE_INPUT_KEY);
+  });
+
+  it("reports an input with NO curated reference as absent, never as zero, and last", () => {
+    // The live case: a draw carrying the unqualified, deliberately band-less "Glucose"
+    // (#2337) instead of the fasting entry. The input still computed the number; what
+    // it has no basis for is a target to compare against.
+    const { effects } = effectsOf(resolver(["Glucose"]), {
+      "Glucose, Fasting": [],
+      Glucose: [{ date: DATE, value: 90, unit: "mg/dL" }],
+    });
+    const glucose = effects.find((e) => e.name === "Glucose");
+    expect(glucose).toBeDefined();
+    expect(glucose!.effectYears).toBeNull();
+    expect(glucose!.effectYears).not.toBe(0);
+    expect(glucose!.reference).toBeNull();
+    // Sorted after every row that HAS a comparison — an unanswerable question is not
+    // a small answer.
+    expect(effects[effects.length - 1].name).toBe("Glucose");
+    expect(effects.filter((e) => e.effectYears != null)).toHaveLength(9);
+  });
+
+  it("carries a CENSORED input's marker onto its effect row (#2334)", () => {
+    // hs-CRP below the detection limit: the value is the substituted limit, so the
+    // effect computed from it is bounded too and the row has to say so.
+    const { effects } = effectsOf(resolver(), {
+      "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+        { date: DATE, value: 0.2, unit: "mg/L", bound: "<" },
+      ],
+    });
+    const crp = effects.find((e) => e.label === "CRP");
+    expect(crp?.bound).toBe("<");
+    expect(crp?.value).toBe(0.2);
+    expect(crp?.effectYears).not.toBeNull();
+  });
+
+  it("publishes each input's declared canonical unit, keyed by input key", () => {
+    // A caller comparing a curated band against an input's value has to state it in
+    // the unit the FORMULA consumes; the dataset entry's own unit is not always that
+    // unit, so the declaration is read from the spec rather than re-guessed.
+    const units = derivedInputUnitsFor("PhenoAge");
+    expect(Object.keys(units)).toHaveLength(9);
+    expect(units["High-Sensitivity C-Reactive Protein (hs-CRP)"]).toBe("mg/L");
+    expect(units["Glucose, Fasting"]).toBe("mg/dL");
+    expect(derivedInputUnitsFor("Not An Index")).toEqual({});
+  });
+
+  it("names the glucose entry the value actually came from", () => {
+    const { effects } = effectsOf(resolver());
+    const glucose = effects.find((e) => e.label === "Glu");
+    expect(glucose?.key).toBe("Glucose, Fasting");
+    expect(glucose?.name).toBe("Glucose, Fasting");
   });
 });

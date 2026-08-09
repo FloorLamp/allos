@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  bioAgeEffectLabel,
+  bioAgeEffectPhrase,
+  isBioAgeAgeInput,
+  phenoAgeReferenceBasisLabel,
+  phenoAgeReferenceValue,
   PHENOAGE_INPUT_NAMES,
   PHENOAGE_INPUT_ACCEPTED_NAMES,
   PHENOAGE_INPUT_COUNT,
@@ -12,6 +17,12 @@ import {
   completenessChecklistMessage,
   isBioAgeHiddenForAge,
 } from "../bio-age";
+import {
+  AGE_INPUT_KEY,
+  type PhenoAgeInputEffect,
+} from "../derived-biomarkers";
+import canonicalSeed from "../canonical-biomarkers.json";
+import type { CanonicalBiomarker } from "../types";
 
 describe("PhenoAge input catalogue", () => {
   it("carries the nine analytes the formula consumes", () => {
@@ -275,5 +286,160 @@ describe("isBioAgeHiddenForAge", () => {
 
   it("never hides on unknown age", () => {
     expect(isBioAgeHiddenForAge(null)).toBe(false);
+  });
+});
+
+// ── What each input is compared against (#2366) ──────────────────────────────
+//
+// The counterfactual itself is arithmetic on the model (lib/derived-biomarkers); the
+// decision tested here is WHICH value it moves an input to, and whether the copy can
+// be read as a claim about the person rather than about the model.
+describe("phenoAgeReferenceValue", () => {
+  // Only the band fields matter; the rest of a curated entry is irrelevant here.
+  function entry(over: Partial<CanonicalBiomarker>): CanonicalBiomarker {
+    return { name: "X", category: "lab", ...over } as CanonicalBiomarker;
+  }
+
+  it("takes the OPTIMAL band's midpoint when the entry curates one", () => {
+    const r = phenoAgeReferenceValue(
+      entry({ optimal_low: 4.4, optimal_high: 5, ref_low: 3.5, ref_high: 5 }),
+      "male",
+      45,
+      null
+    );
+    // The optimal band wins over the (wider) reference band it sits inside.
+    expect(r).toEqual({ value: 4.7, basis: "optimal" });
+  });
+
+  it("falls back to the REFERENCE band's midpoint when no optimal band exists", () => {
+    const r = phenoAgeReferenceValue(
+      entry({ ref_low: 40, ref_high: 129 }),
+      "male",
+      45,
+      null
+    );
+    expect(r).toEqual({ value: 84.5, basis: "reference" });
+  });
+
+  it("uses a ONE-SIDED band's stated bound — a half-open band has no midpoint", () => {
+    // hs-CRP's shape: curated as "optimal ≤1 mg/L" with no lower edge and no reference
+    // floor. Averaging it against a lower bound that does not exist would invent one.
+    const r = phenoAgeReferenceValue(
+      entry({ optimal_high: 1, ref_high: 3 }),
+      "male",
+      45,
+      null
+    );
+    expect(r).toEqual({ value: 1, basis: "optimal" });
+  });
+
+  it("closes a one-sided OPTIMAL band with the reference band's other edge", () => {
+    // RDW: optimal ≤13, reference 11.5–14.5. The pair that applies is 11.5–13.
+    const r = phenoAgeReferenceValue(
+      entry({ optimal_high: 13, ref_low: 11.5, ref_high: 14.5 }),
+      "male",
+      45,
+      null
+    );
+    expect(r).toEqual({ value: 12.25, basis: "optimal" });
+  });
+
+  it("returns NULL for an entry with no band at all", () => {
+    // The unqualified "Glucose" (#2337): band-less on purpose, because a draw that
+    // never said whether the patient fasted cannot be judged. No target is invented.
+    expect(phenoAgeReferenceValue(entry({}), "male", 45, null)).toBeNull();
+    expect(phenoAgeReferenceValue(null, "male", 45, null)).toBeNull();
+  });
+
+  it("resolves the band that applies to THIS profile's age and sex", () => {
+    const cb = entry({
+      ref_low: 40,
+      ref_high: 129,
+      ranges_by_age: [{ min_age: 0, max_age: 19, ref_low: 45, ref_high: 155 }],
+    });
+    expect(phenoAgeReferenceValue(cb, "male", 45, null)?.value).toBe(84.5);
+    expect(phenoAgeReferenceValue(cb, "male", 15, null)?.value).toBe(100);
+  });
+
+  it("answers for every curated PhenoAge input except the band-less glucose", () => {
+    // The seed JSON carries the curated FIELDS; the stored-row columns (source,
+    // created_at) are added at seed time and are irrelevant to a band lookup.
+    const seed = (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers;
+    const byName = new Map(
+      seed.map((b) => [b.name, b as Partial<CanonicalBiomarker>])
+    );
+    for (const name of PHENOAGE_INPUT_ACCEPTED_NAMES) {
+      const cb = byName.get(name);
+      expect(cb, name).toBeDefined();
+      const r = phenoAgeReferenceValue(cb as CanonicalBiomarker, "male", 45, null);
+      if (name === "Glucose") expect(r, name).toBeNull();
+      else expect(r, name).not.toBeNull();
+    }
+  });
+});
+
+describe("bio-age effect copy", () => {
+  function effect(over: Partial<PhenoAgeInputEffect> = {}): PhenoAgeInputEffect {
+    return {
+      key: "Red Cell Distribution Width (RDW)",
+      name: "Red Cell Distribution Width (RDW)",
+      label: "RDW",
+      value: 14.2,
+      unit: "%",
+      reference: { value: 12.25, basis: "optimal" },
+      effectYears: 1.4,
+      ...over,
+    };
+  }
+
+  it("signs the years and never writes a bare hyphen for a negative", () => {
+    expect(bioAgeEffectLabel(effect())).toBe("+1.4 yr");
+    expect(bioAgeEffectLabel(effect({ effectYears: -0.6 }))).toBe("−0.6 yr");
+    expect(bioAgeEffectLabel(effect({ effectYears: 0 }))).toBe("±0.0 yr");
+    expect(bioAgeEffectLabel(effect({ effectYears: null }))).toBeNull();
+  });
+
+  it("describes the MODEL, not the person — never advice, never a prediction", () => {
+    const phrase = bioAgeEffectPhrase(effect());
+    expect(phrase).toContain("The model reads 1.4 years higher");
+    expect(phrase).toContain("12.3 % (optimal)");
+    // The claim is about what the index would read, not about what would happen to
+    // the reader if the analyte changed (see the attention doctrine).
+    expect(phrase).not.toMatch(/you (could|would|should)|lower your|improve/i);
+  });
+
+  it("says an absent reference is NOT a zero effect", () => {
+    const phrase = bioAgeEffectPhrase(
+      effect({ name: "Glucose", reference: null, effectYears: null })
+    );
+    expect(phrase).toContain("no comparison");
+    expect(phrase).toContain("not a zero effect");
+  });
+
+  it("says a comparison resting on a censored value rests on the limit", () => {
+    const phrase = bioAgeEffectPhrase(
+      effect({ label: "CRP", bound: "<", value: 0.2 })
+    );
+    expect(phrase).toContain("detection limit");
+    expect(phrase).toContain("substituted limit");
+  });
+
+  it("names the basis of the reference so the target is checkable", () => {
+    expect(phenoAgeReferenceBasisLabel({ value: 1, basis: "optimal" })).toBe(
+      "optimal"
+    );
+    expect(phenoAgeReferenceBasisLabel({ value: 1, basis: "reference" })).toBe(
+      "reference"
+    );
+    // The age row's reference is the model's own floor — stated as such rather than
+    // dressed up as an "optimal age", which does not exist.
+    expect(
+      phenoAgeReferenceBasisLabel({ value: 18, basis: "model-floor" })
+    ).toBe("youngest modelled age");
+  });
+
+  it("marks the chronological-age row, which links to no analyte series", () => {
+    expect(isBioAgeAgeInput(effect({ key: AGE_INPUT_KEY }))).toBe(true);
+    expect(isBioAgeAgeInput(effect())).toBe(false);
   });
 });
