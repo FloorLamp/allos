@@ -114,9 +114,21 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // — which is exactly what the renamed rows need, since a reading re-pointed by
 // migration 177 is judged against its entry's band under the new name. No range, unit
 // or direction changed, so FLAG_LOGIC_VERSION is again NOT bumped.
+// Updated for #2322: 19 new curated entries close out the uncatalogued analytes that
+// had no home — the ECG group (intervals, the three frontal-plane axes, ventricular
+// rate and the reading clinician's interpretation), the per-side ABI and CAVI, the
+// two whole-body mass indices, peak METs, and four qualitative verdicts. Most are
+// RANGELESS, but several add real bands the boot reconcile now judges stored readings
+// against: QTc (450 ms, 460 in women — the one in this set that changes what a person
+// is told), PR 120–200 ms, QRS ≤110 ms, the P/QRS axis arcs, ventricular rate 60–100,
+// ABI 1.00–1.40, CAVI ≤8.0 and the sex-specific Fat Mass Index range. A stored ECG or
+// vascular reading that previously matched no entry picks up its flag on the next
+// boot. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation LOGIC is
+// unchanged and the dataset half of the signature already forces the re-reconcile on
+// its own (the #2300/#2337/#2335 reasoning).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "9713dbdaa6dac6803046b8ce0418cad7511c0661d5e25aa4f44479be2cb95329"; // phi-scan-ok
+  "d33f5288493fa580d832e338e4adf5671d117a42c116097ab5504aed1505e684"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

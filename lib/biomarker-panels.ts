@@ -93,6 +93,8 @@ export const PANEL_IDS = [
   "heavy-metals",
   "pfas",
   "vital-signs",
+  "cardiac-electrical",
+  "arterial-function",
   "body-composition",
   "fitness",
   "vision",
@@ -141,6 +143,8 @@ export const PANEL_LABELS: Record<PanelId, { label: string; order: number }> = {
   "heavy-metals": { label: "Heavy metals", order: 250 },
   pfas: { label: "PFAS", order: 260 },
   "vital-signs": { label: "Vital signs", order: 270 },
+  "cardiac-electrical": { label: "Cardiac electrical activity", order: 272 },
+  "arterial-function": { label: "Arterial function", order: 274 },
   "body-composition": { label: "Body composition", order: 280 },
   fitness: { label: "Functional fitness", order: 290 },
   vision: { label: "Vision", order: 300 },
@@ -523,19 +527,54 @@ export const BIOMARKER_PANELS: Record<
     "Oxygen Saturation",
     "Body Temperature",
   ],
+  // Cardiac electrical activity (#2322). ONE tracing prints all of these: the
+  // intervals, the three frontal-plane axes, the ventricular rate the machine
+  // measured off that strip, and the reading clinician's verdict on the whole
+  // thing. They are not vital signs — a ventricular rate is not a pulse and a QTc
+  // is not monitored the way a temperature is — so they get their own panel rather
+  // than diluting `vital-signs`, which is the cuff-and-thermometer set.
+  "cardiac-electrical": [
+    "Ventricular Rate",
+    "PR Interval",
+    "QRS Duration",
+    "QT Interval",
+    "QTc Interval",
+    "P Axis",
+    "QRS Axis",
+    "T Axis",
+    "Electrocardiogram (ECG) Interpretation",
+  ],
+  // Arterial function (#2322) — the non-invasive vascular study: ABI screens the leg
+  // arteries for narrowing, CAVI measures how stiff the arterial tree is. Both are
+  // printed per side by the same cuff-based device on the same report, which is the
+  // "one order" criterion this taxonomy assigns by.
+  "arterial-function": [
+    "Ankle-Brachial Index (ABI), Left",
+    "Ankle-Brachial Index (ABI), Right",
+    "Cardio-Ankle Vascular Index (CAVI), Left",
+    "Cardio-Ankle Vascular Index (CAVI), Right",
+  ],
   "body-composition": [
     "Body Fat Percentage",
     "Visceral Adipose Tissue",
+    "Fat Mass Index",
+    "Lean Mass Index",
     "Appendicular Lean Mass Index",
     "Bone Mineral Density T-Score",
   ],
+  // The functional-fitness markers plus the exercise TEST that measures capacity:
+  // peak METs and the supervising clinician's verdict arrive on one stress-test
+  // report, and METs is the same quantity VO2 Max expresses in other units.
   fitness: [
     "VO2 Max",
+    "Metabolic Equivalents (METs)",
+    "Exercise Stress Test Result",
     "Grip Strength",
     "30-Second Chair Stand",
     "Single-Leg Balance",
   ],
   vision: [
+    "Color Vision",
     "Visual Acuity, Unspecified Eye",
     "Visual Acuity, Right Eye",
     "Visual Acuity, Left Eye",
@@ -556,6 +595,7 @@ export const BIOMARKER_PANELS: Record<
     "Hearing Threshold, Left Ear 2 kHz",
     "Hearing Threshold, Left Ear 4 kHz",
     "Hearing Threshold, Left Ear 8 kHz",
+    "Audiologic Diagnosis",
   ],
   dental: [
     "Periodontal Probing Depth",

@@ -90,6 +90,34 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   "Forced Expiratory Volume in 1 Second (FEV1)": "episodic",
   "Forced Vital Capacity (FVC)": "episodic",
   "FEV1/FVC Ratio": "episodic",
+  // Electrocardiogram (#2322) — EPISODIC, and this is the family most likely to be
+  // mis-read as continuous because one of its members is a heart rate. It isn't a
+  // pulse stream: every value here is measured off ONE 10-second tracing recorded
+  // at a clinic, including the ventricular rate, so they arrive at the lab cadence
+  // and are read against a band on the reading detail page. The interpretation line
+  // is the reading clinician's verdict, which has no numeric axis at all.
+  "Ventricular Rate": "episodic",
+  "PR Interval": "episodic",
+  "QRS Duration": "episodic",
+  "QT Interval": "episodic",
+  "QTc Interval": "episodic",
+  "P Axis": "episodic",
+  "QRS Axis": "episodic",
+  "T Axis": "episodic",
+  "Electrocardiogram (ECG) Interpretation": "episodic",
+  // Arterial function (#2322) — a cuff-based vascular study done every few years.
+  "Ankle-Brachial Index (ABI), Left": "episodic",
+  "Ankle-Brachial Index (ABI), Right": "episodic",
+  "Cardio-Ankle Vascular Index (CAVI), Left": "episodic",
+  "Cardio-Ankle Vascular Index (CAVI), Right": "episodic",
+  // Exercise testing (#2322) — a supervised treadmill test and its verdict, on the
+  // same annual-at-best cadence as the other functional-fitness markers above.
+  "Metabolic Equivalents (METs)": "episodic",
+  "Exercise Stress Test Result": "episodic",
+  // The two qualitative verdicts #2322 curated beside their measured siblings: a
+  // colour-vision screen at an eye exam, an audiologist's summary of a hearing test.
+  "Color Vision": "episodic",
+  "Audiologic Diagnosis": "episodic",
 };
 
 describe("reading cadence — the vitals audit", () => {
